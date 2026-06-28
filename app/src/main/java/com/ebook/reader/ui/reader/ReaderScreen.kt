@@ -410,6 +410,15 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
 
                         if (!used) {
                             // 没有预渲染，走原来的流程
+                            // 切换前先设置 WebView 背景色，避免闪白
+                            val th = viewModel.uiState.value.readerTheme
+                            val bg = when (th) {
+                                "night" -> "#1a1a1a"
+                                "sepia" -> "#f5e6d3"
+                                "green" -> "#e8f5e9"
+                                else -> "#ffffff"
+                            }
+                            webViewRef.value?.setBackgroundColor(android.graphics.Color.parseColor(bg))
                             flipOffset.animateTo(if (direction > 0) -1f else 1f, tween(350, easing = FastOutSlowInEasing))
                             if (direction > 0) viewModel.nextChapter() else viewModel.previousChapter()
                             val d = CompletableDeferred<Unit>(); paginationDeferred.value = d
@@ -483,8 +492,15 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     }
 
     var displayedHtml = uiState.chapterHtml
+    // 根据主题计算 Compose 层背景色
+    val composeBgColor = when (uiState.readerTheme) {
+        "night" -> Color(0xFF1a1a1a)
+        "sepia" -> Color(0xFFf5e6d3)
+        "green" -> Color(0xFFe8f5e9)
+        else -> Color(0xFFFBFBFC)
+    }
 
-    Box(Modifier.fillMaxSize().background(com.ebook.reader.ui.theme.ReaderColors.Light.background)) {
+    Box(Modifier.fillMaxSize().background(composeBgColor)) {
         // WebView 始终在组合中（加载时也创建，确保 HTML 能加载）
         Box(Modifier.fillMaxSize().graphicsLayer { translationX = flipOffset.value * size.width }) {
             val isPdf = uiState.book?.format?.name == "PDF"
@@ -923,8 +939,14 @@ private fun HtmlContent(html: String, bridge: ReaderJsBridge, isPdf: Boolean = f
                         android.util.Log.e("PG", "WebView error: $errorCode $desc")
                     }
                 }
-                // 设置初始背景色（后续由主题切换更新）
-                setBackgroundColor(android.graphics.Color.WHITE)
+                // 设置初始背景色为主题色（避免切换章节时闪白）
+                val initBgColor = when (currentTheme.value) {
+                    "night" -> "#1a1a1a"
+                    "sepia" -> "#f5e6d3"
+                    "green" -> "#e8f5e9"
+                    else -> "#ffffff"
+                }
+                setBackgroundColor(android.graphics.Color.parseColor(initBgColor))
                 onWebViewCreated(this)
             }
         },
