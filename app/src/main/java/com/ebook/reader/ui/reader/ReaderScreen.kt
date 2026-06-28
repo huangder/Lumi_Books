@@ -362,7 +362,6 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     val uiState by viewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
     val flipOffset = remember { Animatable(0f) }
-    var displayedHtml = uiState.chapterHtml
     val webViewRef = remember { mutableStateOf<WebView?>(null) }
     DisposableEffect(Unit) {
         onDispose {
@@ -477,6 +476,25 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 webViewRef.value?.evaluateJavascript("window.preRenderChapter && preRenderChapter($prevIdx, ${android.util.Base64.encodeToString(html.toByteArray(), android.util.Base64.NO_WRAP)})") {}
             }
         }
+    }
+
+    // 根据主题计算背景色
+    val bgColorHex = when (uiState.readerTheme) {
+        "night" -> "#1a1a1a"
+        "sepia" -> "#f5e6d3"
+        "green" -> "#e8f5e9"
+        else -> "#ffffff"
+    }
+    val textColorHex = when (uiState.readerTheme) {
+        "night" -> "#e0e0e0"
+        "sepia" -> "#3e2723"
+        "green" -> "#1b5e20"
+        else -> "#333333"
+    }
+    // 在 HTML 中嵌入背景色，避免切换章节时闪白
+    val displayedHtml = uiState.chapterHtml.let { html ->
+        if (html.isEmpty()) html
+        else html.replace("<body", "<body style=\"background:$bgColorHex;color:$textColorHex;\"")
     }
 
     Box(Modifier.fillMaxSize().background(com.ebook.reader.ui.theme.ReaderColors.Light.background)) {
@@ -874,6 +892,18 @@ private fun HtmlContent(html: String, bridge: ReaderJsBridge, isPdf: Boolean = f
                 addJavascriptInterface(bridge, "AndroidBridge")
                 var lastHtmlLen = 0
                 webViewClient = object : WebViewClient() {
+                    override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                        super.onPageStarted(view, url, favicon)
+                        // 页面开始加载时立即设置背景色，避免闪白
+                        val th = currentTheme.value
+                        val bgColor = when (th) {
+                            "night" -> "#1a1a1a"
+                            "sepia" -> "#f5e6d3"
+                            "green" -> "#e8f5e9"
+                            else -> "#ffffff"
+                        }
+                        view?.setBackgroundColor(android.graphics.Color.parseColor(bgColor))
+                    }
                     override fun onPageFinished(view: WebView?, url: String?) {
                         super.onPageFinished(view, url)
                         android.util.Log.e("PG", "onPageFinished")
@@ -892,8 +922,6 @@ private fun HtmlContent(html: String, bridge: ReaderJsBridge, isPdf: Boolean = f
                             "green" -> "#1b5e20"
                             else -> "#333333"
                         }
-                        // 立即设置 WebView 背景色，避免闪白
-                        view?.setBackgroundColor(android.graphics.Color.parseColor(bgColor))
                         // 延迟注入 JS（等图片/样式加载完）
                         view?.postDelayed({
                             val css = "body{font-size:${fs}px !important;background:$bgColor !important;color:$textColor !important;}p,h1,h2,h3,h4,h5,h6,li,blockquote,pre{color:$textColor !important;}"
