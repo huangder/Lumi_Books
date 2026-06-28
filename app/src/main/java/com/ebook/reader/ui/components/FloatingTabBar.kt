@@ -1,0 +1,127 @@
+package com.ebook.reader.ui.components
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.MenuBook
+import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material3.Icon
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
+import com.ebook.reader.ui.theme.AppColors
+
+data class TabItem(
+    val selectedIcon: ImageVector,
+    val unselectedIcon: ImageVector
+)
+
+val tabs = listOf(
+    TabItem(Icons.Filled.Home, Icons.Outlined.Home),
+    TabItem(Icons.Filled.MenuBook, Icons.Outlined.MenuBook),
+    TabItem(Icons.Filled.BarChart, Icons.Outlined.BarChart)
+)
+
+@Composable
+fun FloatingTabBar(
+    selectedIndex: Int,
+    onTabSelected: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 80.dp, vertical = 14.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .shadow(
+                    elevation = 40.dp,
+                    shape = CircleShape,
+                    ambientColor = if (isSystemInDarkTheme()) Color(0xCCFFFFFF) else Color(0xCC000000),
+                    spotColor = if (isSystemInDarkTheme()) Color(0xCCFFFFFF) else Color(0xCC000000)
+                )
+                .clip(CircleShape)
+                .background(if (isSystemInDarkTheme()) Color(0xFF1C1C1E) else Color.White)
+                .padding(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            tabs.forEachIndexed { index, tab ->
+                TabItemView(
+                    tab = tab,
+                    isSelected = index == selectedIndex,
+                    onClick = { onTabSelected(index) },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TabItemView(
+    tab: TabItem,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() }
+            ) { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(
+                    if (isSelected) AppColors.Accent.copy(alpha = 0.12f)
+                    else Color.Transparent
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = if (isSelected) tab.selectedIcon else tab.unselectedIcon,
+                contentDescription = null,
+                tint = if (isSelected) AppColors.TextPrimary else AppColors.TextSecondary,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun isSystemInDarkTheme(): Boolean {
+    return androidx.compose.foundation.isSystemInDarkTheme()
+}
