@@ -216,7 +216,7 @@ private fun buildPaginationJs(isPdf: Boolean = false, bgColor: String = "#ffffff
             var html = atob(htmlB64);
             var w = document.createElement('div');
             w.setAttribute('data-pg', '1');
-            w.style.cssText = 'position:absolute;top:0;left:0;height:' + vh + 'px;padding:' + PAD_V + 'px 0;box-sizing:border-box;column-width:' + vw + 'px;column-gap:0;column-fill:auto;overflow:hidden;background:#FFF;visibility:hidden;';
+            w.style.cssText = 'position:absolute;top:0;left:0;height:' + vh + 'px;padding:' + PAD_V + 'px 0;box-sizing:border-box;column-width:' + vw + 'px;column-gap:0;column-fill:auto;overflow:hidden;background:' + BG + ';visibility:hidden;';
             w.innerHTML = html;
             // 保留 _wrap 结构
             var wrapDiv = w.querySelector('#_wrap');
@@ -409,8 +409,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         val used = webViewRef.value?.evaluateJavascriptSync("window.usePreRendered ? usePreRendered($targetIdx) : false") == "true"
 
                         if (!used) {
-                            // 没有预渲染，走原来的流程
-                            // 切换前先设置 WebView 背景色，避免闪白
+                            // 没有预渲染，走加载流程
+                            // 先设置 WebView 背景色，避免闪白
                             val th = viewModel.uiState.value.readerTheme
                             val bg = when (th) {
                                 "night" -> "#1a1a1a"
@@ -419,13 +419,15 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                 else -> "#ffffff"
                             }
                             webViewRef.value?.setBackgroundColor(android.graphics.Color.parseColor(bg))
-                            flipOffset.animateTo(if (direction > 0) -1f else 1f, tween(350, easing = FastOutSlowInEasing))
+                            // 🔥 关键优化：先触发章节切换（WebView 异步加载），再播放滑动动画（并行）
                             if (direction > 0) viewModel.nextChapter() else viewModel.previousChapter()
+                            flipOffset.animateTo(if (direction > 0) -1f else 1f, tween(250, easing = FastOutSlowInEasing))
+                            // WebView 加载和滑动动画并行进行，等待分页完成
                             val d = CompletableDeferred<Unit>(); paginationDeferred.value = d
                             withTimeoutOrNull(500L) { d.await() }; paginationDeferred.value = null
                             if (direction < 0) webViewRef.value?.evaluateJavascript("window.flipToLastPage()", null)
                             flipOffset.snapTo(if (direction > 0) 1f else -1f)
-                            flipOffset.animateTo(0f, tween(350, easing = FastOutSlowInEasing))
+                            flipOffset.animateTo(0f, tween(250, easing = FastOutSlowInEasing))
                         } else {
                             // 预渲染成功，直接切换
                             if (direction > 0) viewModel.nextChapter() else viewModel.previousChapter()
@@ -467,26 +469,42 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     // 全屏沉浸：隐藏状态栏和手势条
     ImmersiveMode()
 
-    // 预渲染相邻章节（当靠近边缘时，PDF 不需要）
+    // 预渲染相邻章节（激进策略：距边界 5 页就开始预渲染，PDF 也启用）
     LaunchedEffect(uiState.currentPageIndex, uiState.totalPages) {
-        if (uiState.totalPages <= 0 || uiState.book?.format?.name == "PDF") return@LaunchedEffect
+        if (uiState.totalPages <= 0) return@LaunchedEffect
         val page = uiState.currentPageIndex
         val total = uiState.totalPages
         val chapterIdx = uiState.currentChapterIndex
-        // 最后 2 页 → 预渲染下一章
-        if (page >= total - 2) {
+        // 最后 5 页 → 预渲染下一章（原来 2 页，大幅提前）
+        if (page >= total - 5) {
             val nextIdx = chapterIdx + 1
             val html = viewModel.getAdjacentChapterHtml(nextIdx)
             if (html != null) {
-                webViewRef.value?.evaluateJavascript("window.preRenderChapter && preRenderChapter($nextIdx, ${android.util.Base64.encodeToString(html.toByteArray(), android.util.Base64.NO_WRAP)})") {}
+                webViewRef.value?.evaluateJavascript("window.preRenderChapter && preRenderChapter($nextIdx, '${android.util.Base64.encodeToString(html.toByteArray(), android.util.Base64.NO_WRAP)}')") {}
+            }
+            // 最后 2 页 → 预渲染下下章（再提前一层）
+            if (page >= total - 2) {
+                val next2 = chapterIdx + 2
+                val html2 = viewModel.getAdjacentChapterHtml(next2)
+                if (html2 != null) {
+                    webViewRef.value?.evaluateJavascript("window.preRenderChapter && preRenderChapter($next2, '${android.util.Base64.encodeToString(html2.toByteArray(), android.util.Base64.NO_WRAP)}')") {}
+                }
             }
         }
-        // 前 2 页 → 预渲染上一章
-        if (page <= 1) {
+        // 前 3 页 → 预渲染上一章（原来 2 页）
+        if (page <= 3) {
             val prevIdx = chapterIdx - 1
             val html = viewModel.getAdjacentChapterHtml(prevIdx)
             if (html != null) {
-                webViewRef.value?.evaluateJavascript("window.preRenderChapter && preRenderChapter($prevIdx, ${android.util.Base64.encodeToString(html.toByteArray(), android.util.Base64.NO_WRAP)})") {}
+                webViewRef.value?.evaluateJavascript("window.preRenderChapter && preRenderChapter($prevIdx, '${android.util.Base64.encodeToString(html.toByteArray(), android.util.Base64.NO_WRAP)}')") {}
+            }
+            // 前 1 页 → 预渲染上上章
+            if (page <= 1) {
+                val prev2 = chapterIdx - 2
+                val html2 = viewModel.getAdjacentChapterHtml(prev2)
+                if (html2 != null) {
+                    webViewRef.value?.evaluateJavascript("window.preRenderChapter && preRenderChapter($prev2, '${android.util.Base64.encodeToString(html2.toByteArray(), android.util.Base64.NO_WRAP)}')") {}
+                }
             }
         }
     }
@@ -925,7 +943,7 @@ private fun HtmlContent(html: String, bridge: ReaderJsBridge, isPdf: Boolean = f
                             "green" -> "#1b5e20"
                             else -> "#333333"
                         }
-                        // 延迟注入 JS（等图片/样式加载完）
+                        // 注入 CSS 和分页 JS（onPageFinished 时 DOM 已就绪，仅需短延迟确保 layout 完成）
                         view?.postDelayed({
                             val css = "body{font-size:${fs}px !important;background:$bgColor !important;color:$textColor !important;}p,h1,h2,h3,h4,h5,h6,li,blockquote,pre{color:$textColor !important;}"
                             // 使用 _theme id 创建样式表，确保 updateTheme 能更新它
@@ -933,7 +951,7 @@ private fun HtmlContent(html: String, bridge: ReaderJsBridge, isPdf: Boolean = f
                                 // 字体 CSS 生效后再运行分页 JS（用正确的字体和背景色计算页数）
                                 view.evaluateJavascript(buildPaginationJs(isPdf, bgColor)) {}
                             }
-                        }, 300)
+                        }, 50)
                     }
                     override fun onReceivedError(view: WebView?, errorCode: Int, desc: String?, url: String?) {
                         android.util.Log.e("PG", "WebView error: $errorCode $desc")

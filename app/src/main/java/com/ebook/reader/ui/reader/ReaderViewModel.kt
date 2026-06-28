@@ -216,10 +216,14 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    /** 预加载缓存：key=章节索引，value=HTML */
-    private val preloadCache = mutableMapOf<Int, String>()
+    /** 预加载缓存：key=章节索引，value=HTML，最大 15 条 */
+    private val preloadCache = object : LinkedHashMap<Int, String>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, String>?): Boolean {
+            return size > 15
+        }
+    }
 
-    /** 预加载相邻章节 */
+    /** 预加载相邻章节（激进策略：尽早预加载前后多章） */
     fun preloadAdjacentChapters() {
         val state = _uiState.value
         val parser = parser ?: return
@@ -227,8 +231,8 @@ class ReaderViewModel @Inject constructor(
         val progress = state.currentPageIndex.toFloat() / state.totalPages
         android.util.Log.e("PG", "preloadCheck: page=${state.currentPageIndex} total=${state.totalPages} progress=${progress}")
 
-        // 过半 → 预加载下一章
-        if (progress >= 0.4f) {
+        // 进度 > 15% → 预加载下一章（几乎进入章节就触发）
+        if (progress >= 0.15f) {
             val next = state.currentChapterIndex + 1
             if (next < state.chapterCount && next !in preloadCache) {
                 android.util.Log.e("PG", "Preloading next chapter $next")
@@ -239,10 +243,23 @@ class ReaderViewModel @Inject constructor(
                     } catch (_: Exception) {}
                 }
             }
+            // 进度 > 50% → 再预加载下下章（提前 2 章缓冲）
+            if (progress >= 0.5f) {
+                val next2 = state.currentChapterIndex + 2
+                if (next2 < state.chapterCount && next2 !in preloadCache) {
+                    android.util.Log.e("PG", "Preloading chapter+2: $next2")
+                    viewModelScope.launch {
+                        try {
+                            preloadCache[next2] = parser.getChapterHtml(next2)
+                            android.util.Log.e("PG", "Preloaded chapter+2 $next2")
+                        } catch (_: Exception) {}
+                    }
+                }
+            }
         }
 
-        // 前 2 页 → 预加载上一章
-        if (state.currentPageIndex <= 1) {
+        // 前 3 页 → 预加载上一章
+        if (state.currentPageIndex <= 3) {
             val prev = state.currentChapterIndex - 1
             if (prev >= 0 && prev !in preloadCache) {
                 android.util.Log.e("PG", "Preloading prev chapter $prev")
@@ -253,22 +270,41 @@ class ReaderViewModel @Inject constructor(
                     } catch (_: Exception) {}
                 }
             }
+            // 前 1 页 → 再预加载上上章
+            if (state.currentPageIndex <= 1) {
+                val prev2 = state.currentChapterIndex - 2
+                if (prev2 >= 0 && prev2 !in preloadCache) {
+                    android.util.Log.e("PG", "Preloading chapter-2: $prev2")
+                    viewModelScope.launch {
+                        try {
+                            preloadCache[prev2] = parser.getChapterHtml(prev2)
+                            android.util.Log.e("PG", "Preloaded chapter-2 $prev2")
+                        } catch (_: Exception) {}
+                    }
+                }
+            }
         }
     }
 
-    /** 获取章节 HTML（优先用缓存） */
+    /** 获取章节 HTML（优先用缓存，缓存不再 one-shot 删除，由 LRU 自动淘汰） */
     fun getChapterHtml(index: Int): String {
         preloadCache[index]?.let { cached ->
-            preloadCache.remove(index)
             return cached
         }
-        return parser?.getChapterHtml(index) ?: ""
+        // 缓存 miss，从 parser 获取并写入缓存
+        val html = parser?.getChapterHtml(index) ?: ""
+        if (html.isNotEmpty()) {
+            preloadCache[index] = html
+        }
+        return html
     }
 
     /** 获取相邻章节 HTML（用于预渲染，不清除缓存） */
     fun getAdjacentChapterHtml(index: Int): String? {
         return preloadCache[index] ?: try {
-            parser?.getChapterHtml(index)
+            val html = parser?.getChapterHtml(index)
+            if (html != null) preloadCache[index] = html
+            html
         } catch (_: Exception) { null }
     }
 

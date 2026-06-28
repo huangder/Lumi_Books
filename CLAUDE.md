@@ -84,13 +84,16 @@ UI (Compose) ← ViewModel ← Repository ← Room DAO / DataStore
 
 ## 文档索引
 
+- `docs/agent-onboarding.md` — 🔥 **Agent速通指南**（新Agent首先阅读）
 - `docs/requirements.md` — 功能需求
 - `docs/technical-spec.md` — 技术栈和架构设计
 - `docs/design-spec.md` — UI/UX设计标准
 - `docs/development-plan.md` — 分阶段开发计划
+- `docs/project-status.md` — 项目完成状态
 - `devlog/` — 开发日志（按日期），记录bug修复和重要决策
 - `devlog/bugfix-white-screen-2026-06-17.md` — 白屏问题排查和11项修复记录
 - `devlog/2026-06-27.md` — 字体大小与分页联动修复
+- `devlog/2026-06-29-plan-chapter-transition-optimization.md` — 章节切换卡顿分析与优化计划
 
 ## 开发规范
 
