@@ -278,18 +278,22 @@ private fun buildPaginationJs(isPdf: Boolean = false, bgColor: String = "#ffffff
     window.repaginate = function(keepPage) {
         if (!wrap || !outer) return;
         vw = innerWidth; vh = innerHeight;
-        // 重新计算页数
+        // 先重置宽度，强制浏览器 reflow
+        wrap.style.width = 'auto';
         wrap.style.columnWidth = vw + 'px';
+        // 强制 reflow 后再计算 scrollWidth
+        void wrap.offsetHeight;
         var tw = wrap.scrollWidth;
         var newTotal = Math.max(1, Math.ceil(tw / vw));
-        // 如果页数变了，更新宽度
-        if (newTotal !== total) {
-            total = newTotal;
-            wrap.style.width = (total * vw) + 'px';
-        }
-        // 保持当前页或跳到有效页
-        if (keepPage && cur >= total) cur = total - 1;
+        var oldTotal = total;
+        var oldCur = cur;
+        // 更新页数和宽度
+        total = newTotal;
+        wrap.style.width = (total * vw) + 'px';
+        // 确保当前页在有效范围内
         if (cur < 0) cur = 0;
+        if (cur >= total) cur = total - 1;
+        console.log('repaginate: oldTotal=' + oldTotal + ' newTotal=' + total + ' oldCur=' + oldCur + ' newCur=' + cur + ' tw=' + tw);
         wrap.style.transform = 'translateX(' + (-cur * vw) + 'px)';
         try { AndroidBridge.onPageChanged(cur, total); } catch(e) {}
     };
@@ -478,24 +482,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         }
     }
 
-    // 根据主题计算背景色
-    val bgColorHex = when (uiState.readerTheme) {
-        "night" -> "#1a1a1a"
-        "sepia" -> "#f5e6d3"
-        "green" -> "#e8f5e9"
-        else -> "#ffffff"
-    }
-    val textColorHex = when (uiState.readerTheme) {
-        "night" -> "#e0e0e0"
-        "sepia" -> "#3e2723"
-        "green" -> "#1b5e20"
-        else -> "#333333"
-    }
-    // 在 HTML 中嵌入背景色，避免切换章节时闪白
-    val displayedHtml = uiState.chapterHtml.let { html ->
-        if (html.isEmpty()) html
-        else html.replace("<body", "<body style=\"background:$bgColorHex;color:$textColorHex;\"")
-    }
+    var displayedHtml = uiState.chapterHtml
 
     Box(Modifier.fillMaxSize().background(com.ebook.reader.ui.theme.ReaderColors.Light.background)) {
         // WebView 始终在组合中（加载时也创建，确保 HTML 能加载）
@@ -936,8 +923,8 @@ private fun HtmlContent(html: String, bridge: ReaderJsBridge, isPdf: Boolean = f
                         android.util.Log.e("PG", "WebView error: $errorCode $desc")
                     }
                 }
-                // 不硬编码背景色，由主题 CSS 控制
-                setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                // 设置初始背景色（后续由主题切换更新）
+                setBackgroundColor(android.graphics.Color.WHITE)
                 onWebViewCreated(this)
             }
         },
