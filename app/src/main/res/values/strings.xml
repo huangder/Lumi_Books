@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Lumi</string>
+
+    <!-- 首页 -->
+    <string name="home_title">首页</string>
+    <string name="import_book">导入书籍</string>
+    <string name="today_reading_time">今日阅读时长</string>
+    <string name="no_books">暂无书籍</string>
+    <string name="import_books_hint">点击导入按钮添加您的电子书</string>
+
+    <!-- 统计页 -->
+    <string name="statistics_title">统计</string>
+    <string name="today_reading">今日阅读</string>
+    <string name="monthly_reading">本月阅读</string>
+    <string name="daily_goal">日目标</string>
+    <string name="goal_progress">目标进度</string>
+    <string name="set_goal">设置目标</string>
+    <string name="reading_minutes">%d 分钟</string>
+    <string name="reading_hours">%1$d 小时 %2$d 分钟</string>
+
+    <!-- 阅读器 -->
+    <string name="reader_title">阅读器</string>
+    <string name="chapter_list">目录</string>
+    <string name="font_settings">字体设置</string>
+    <string name="theme_settings">主题设置</string>
+    <string name="brightness">亮度</string>
+    <string name="add_bookmark">添加书签</string>
+    <string name="bookmarks">书签</string>
+    <string name="notes">笔记</string>
+    <string name="search">搜索</string>
+    <string name="reading_progress">阅读进度</string>
+    <string name="font_size">字体大小</string>
+    <string name="line_height">行距</string>
+    <string name="letter_spacing">字间距</string>
+    <string name="font_type">字体类型</string>
+
+    <!-- 通用 -->
+    <string name="confirm">确定</string>
+    <string name="cancel">取消</string>
+    <string name="save">保存</string>
+    <string name="delete">删除</string>
+    <string name="edit">编辑</string>
+    <string name="settings">设置</string>
+    <string name="loading">加载中...</string>
+    <string name="error">错误</string>
+    <string name="success">成功</string>
+    <string name="retry">重试</string>
+    <string name="close">关闭</string>
+
+    <!-- 格式 -->
+    <string name="format_epub">EPUB</string>
+    <string name="format_pdf">PDF</string>
+    <string name="format_txt">TXT</string>
+
+    <!-- 时间 -->
+    <string name="time_seconds">%d 秒</string>
+    <string name="time_minutes">%d 分钟</string>
+    <string name="time_hours">%d 小时</string>
+    <string name="time_days">%d 天</string>
+</resources>

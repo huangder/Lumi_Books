@@ -1,0 +1,631 @@
+package com.ebook.reader.ui.home
+
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.Book
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import java.util.Calendar
+import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.AsyncImage
+import com.ebook.reader.domain.model.Book
+import com.ebook.reader.domain.model.BookFormat
+import com.ebook.reader.util.parser.BookParserFactory
+import com.ebook.reader.ui.animation.OverscrollBounce
+import com.ebook.reader.ui.animation.cardPressEffect
+import com.ebook.reader.ui.components.StatusGradientOverlay
+import com.ebook.reader.ui.theme.AppColors
+import com.ebook.reader.ui.theme.AppRadius
+import com.ebook.reader.ui.theme.AppSpace
+import com.ebook.reader.ui.theme.AppType
+import com.ebook.reader.ui.theme.DingliSong
+import com.ebook.reader.ui.theme.SansSerif
+import com.ebook.reader.util.FileUtils
+import com.ebook.reader.util.TimeUtils
+
+@Composable
+fun HomeScreen(
+    onNavigateToReader: (bookId: String, coverPath: String?, title: String) -> Unit,
+    onNavigateToStatistics: () -> Unit,
+    onNavigateToBookshelf: () -> Unit,
+    onTabBarVisibleChange: (Boolean) -> Unit = {},
+    viewModel: HomeViewModel = hiltViewModel()
+) {
+    val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+    var showGoalSheet by remember { mutableStateOf(false) }
+    val lastReadBook = uiState.books.maxByOrNull { it.lastReadTime }
+
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let {
+            val fileName = FileUtils.getFileNameFromUri(context, it) ?: "unknown.epub"
+            val extension = FileUtils.getFileExtension(fileName)
+            if (extension in listOf("epub", "pdf", "txt")) {
+                val file = FileUtils.copyFileToInternal(context, it, fileName)
+                file?.let { bookFile ->
+                    val format = when (extension) {
+                        "epub" -> BookFormat.EPUB
+                        "pdf" -> BookFormat.PDF
+                        else -> BookFormat.TXT
+                    }
+                    // 提取封面
+                    val coverPath = try {
+                        val parser = BookParserFactory.createParser(format, context)
+                        val content = parser.parse(bookFile.absolutePath)
+                        content.coverPath
+                    } catch (_: Exception) { null }
+
+                    val book = Book(
+                        id = FileUtils.generateBookId(),
+                        title = fileName.substringBeforeLast('.'),
+                        author = "未知作者",
+                        filePath = bookFile.absolutePath,
+                        coverPath = coverPath,
+                        format = format,
+                        lastReadTime = System.currentTimeMillis(),
+                        readingProgress = 0f,
+                        createdAt = System.currentTimeMillis()
+                    )
+                    viewModel.insertBook(book)
+                }
+            }
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize().background(AppColors.WindowBg)) {
+        OverscrollBounce(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+        ) {
+            Spacer(Modifier.height(AppSpace.md)) // 和状态栏/遮罩拉开距离
+            HomeHeader()
+            Spacer(Modifier.height(AppSpace.lg))
+
+            ImportHint()
+            Spacer(Modifier.height(AppSpace.lg))
+
+            val lastReadBook = uiState.books.maxByOrNull { it.lastReadTime }
+            if (lastReadBook != null) {
+                ContinueReadingCard(
+                    book = lastReadBook,
+                    onClick = { onNavigateToReader(lastReadBook.id, lastReadBook.coverPath, lastReadBook.title) }
+                )
+                Spacer(Modifier.height(AppSpace.lg))
+            }
+
+            if (uiState.books.size > 1) {
+                SectionHeader("之前读过")
+                Spacer(Modifier.height(AppSpace.md))
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = AppSpace.lg),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpace.md)
+                ) {
+                    val otherBooks = uiState.books.sortedByDescending { it.lastReadTime }.drop(1)
+                    items(otherBooks) { book ->
+                        RecentBookCard(
+                            book = book,
+                            onClick = { onNavigateToReader(book.id, book.coverPath, book.title) }
+                        )
+                    }
+                }
+                Spacer(Modifier.height(AppSpace.lg))
+            }
+
+            ReadingGoalCard(
+                readingTime = uiState.todayReadingTime,
+                dailyGoal = uiState.dailyGoal,
+                onCardClick = { showGoalSheet = true },
+                onContinueClick = {
+                    lastReadBook?.let { onNavigateToReader(it.id, it.coverPath, it.title) }
+                }
+            )
+            Spacer(Modifier.height(AppSpace.lg))
+
+            // 今年读过的图书（最近阅读的前3本）
+            val booksThisYear = uiState.books
+                .sortedByDescending { it.lastReadTime }
+                .take(3)
+            if (booksThisYear.isNotEmpty()) {
+                SectionHeader("最近读过")
+                Spacer(Modifier.height(AppSpace.md))
+                BooksReadGrid(
+                    books = booksThisYear,
+                    modifier = Modifier.padding(horizontal = AppSpace.lg)
+                )
+            }
+            Spacer(Modifier.height(120.dp))
+        } // Column 结束
+        } // OverscrollBounce 结束
+
+        StatusGradientOverlay()
+
+        ReadingGoalSheet(
+            visible = showGoalSheet,
+            todayReadingTime = uiState.todayReadingTime,
+            dailyGoal = uiState.dailyGoal,
+            currentBook = lastReadBook,
+            onDismiss = { showGoalSheet = false },
+            onSaveGoal = { minutes -> viewModel.saveDailyGoal(minutes) },
+            onTabBarVisibleChange = onTabBarVisibleChange
+        )
+
+        // 导入 FAB
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 24.dp, bottom = 100.dp)
+                .size(56.dp)
+                .shadow(8.dp, CircleShape, ambientColor = AppColors.Shadow)
+                .clip(CircleShape)
+                .background(Color.Black)
+                .clickable { launcher.launch("*/*") },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Default.Add, "导入", tint = Color.White, modifier = Modifier.size(24.dp))
+        }
+    } // 外层 Box 结束
+}
+
+// ─── Header ──────────────────────────────────────────────────────
+
+@Composable
+private fun HomeHeader() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AppSpace.lg, vertical = AppSpace.md),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "主页",
+            fontSize = AppType.Display,
+            fontWeight = FontWeight.Bold,
+            fontFamily = DingliSong,
+            letterSpacing = (-0.02).sp,
+            color = AppColors.TextPrimary
+        )
+        Spacer(Modifier.weight(1f))
+        // 默认头像（以后支持用户换头像）
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(AppColors.BgGray),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.AccountCircle,
+                contentDescription = "头像",
+                tint = AppColors.TextSecondary,
+                modifier = Modifier.size(36.dp)
+            )
+        }
+    }
+}
+
+// ─── 导入提示 ──────────────────────────────────────────────────
+
+@Composable
+private fun ImportHint() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AppSpace.lg)
+            .clip(RoundedCornerShape(AppRadius.md))
+            .background(AppColors.BgGray)
+            .padding(AppSpace.md),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            Icons.Outlined.Book,
+            contentDescription = null,
+            tint = AppColors.TextSecondary,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(Modifier.width(AppSpace.md))
+        Text(
+            text = "在此处管理您的本地 PDF 和 EPUB 图书",
+            fontSize = AppType.BodySmall,
+            color = AppColors.TextSecondary,
+            fontFamily = SansSerif
+        )
+    }
+}
+
+// ─── 继续阅读卡片 ──────────────────────────────────────────────
+
+@Composable
+private fun ContinueReadingCard(book: Book, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AppSpace.lg)
+            .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .clip(RoundedCornerShape(AppRadius.lg))
+            .background(AppColors.CardBg)
+            .cardPressEffect()
+            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onClick)
+            .padding(AppSpace.md),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // 封面（3:4 比例）
+        AsyncImage(
+            model = book.coverPath,
+            contentDescription = book.title,
+            modifier = Modifier
+                .width(72.dp)
+                .aspectRatio(0.75f)
+                .clip(RoundedCornerShape(AppRadius.sm))
+                .background(AppColors.BgGray),
+            contentScale = ContentScale.Crop
+        )
+        Spacer(Modifier.width(AppSpace.md))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = book.title,
+                fontSize = AppType.Body,
+                fontWeight = FontWeight.SemiBold,
+                fontFamily = DingliSong,
+                color = AppColors.TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.height(AppSpace.xs))
+            Text(
+                text = book.author,
+                fontSize = AppType.BodySmall,
+                color = AppColors.TextSecondary,
+                maxLines = 1
+            )
+            Spacer(Modifier.height(AppSpace.xs))
+            Text(
+                text = "图书 · ${(book.readingProgress * 100).toInt()}%",
+                fontSize = AppType.Caption,
+                color = AppColors.TextSecondary
+            )
+        }
+        IconButton(onClick = { }, modifier = Modifier.size(32.dp)) {
+            Icon(Icons.Outlined.MoreVert, null, tint = AppColors.TextSecondary, modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
+// ─── 区块标题 ──────────────────────────────────────────────────
+
+@Composable
+private fun SectionHeader(title: String) {
+    Text(
+        text = title,
+        fontSize = AppType.Section,
+        fontWeight = FontWeight.Bold,
+        fontFamily = DingliSong,
+        color = AppColors.TextPrimary,
+        modifier = Modifier.padding(horizontal = AppSpace.lg)
+    )
+}
+
+// ─── 最近阅读卡片 ──────────────────────────────────────────────
+
+@Composable
+private fun RecentBookCard(book: Book, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .width(260.dp)
+            .shadow(10.dp, RoundedCornerShape(AppRadius.md), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .clip(RoundedCornerShape(AppRadius.md))
+            .background(AppColors.CardBg)
+            .cardPressEffect()
+            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onClick)
+            .padding(AppSpace.sm),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AsyncImage(
+            model = book.coverPath,
+            contentDescription = book.title,
+            modifier = Modifier
+                .size(56.dp, 74.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(AppColors.BgGray),
+            contentScale = ContentScale.Crop
+        )
+        Spacer(Modifier.width(AppSpace.sm))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = book.title,
+                fontSize = AppType.BodySmall,
+                fontWeight = FontWeight.SemiBold,
+                color = AppColors.TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = book.author,
+                fontSize = AppType.Caption,
+                color = AppColors.TextSecondary,
+                maxLines = 1
+            )
+            Text(
+                text = "${(book.readingProgress * 100).toInt()}%",
+                fontSize = AppType.Caption,
+                color = AppColors.Accent
+            )
+        }
+    }
+}
+
+// ─── 阅读目标卡片 ──────────────────────────────────────────────
+
+@Composable
+private fun ReadingGoalCard(
+    readingTime: Long,
+    dailyGoal: Int,
+    onCardClick: () -> Unit,
+    onContinueClick: () -> Unit
+) {
+    val goalMs = dailyGoal * 60 * 1000L
+    val progress = (readingTime.toFloat() / goalMs).coerceIn(0f, 1f)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AppSpace.lg)
+            .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .clip(RoundedCornerShape(AppRadius.lg))
+            .background(AppColors.CardBg)
+            .cardPressEffect()
+            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onCardClick)
+            .padding(AppSpace.lg),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // 半圆弧进度条
+        ArcProgressBar(
+            progress = progress,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(140.dp)
+        )
+
+        Spacer(Modifier.height(AppSpace.sm))
+
+        // 大数字
+        Text(
+            text = TimeUtils.formatDurationShort(readingTime),
+            fontSize = AppType.Huge,
+            fontWeight = FontWeight.Bold,
+            color = AppColors.TextPrimary
+        )
+        Text(
+            text = "(目标 $dailyGoal 分钟)",
+            fontSize = AppType.Caption,
+            color = AppColors.TextSecondary
+        )
+
+        Spacer(Modifier.height(AppSpace.lg))
+
+        // 继续阅读按钮
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .clip(RoundedCornerShape(AppRadius.capsule))
+                .background(Color.Black)
+                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onContinueClick),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "继续阅读",
+                fontSize = AppType.Body,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White
+            )
+        }
+
+        Spacer(Modifier.height(AppSpace.lg))
+
+        // 星期打卡
+        WeeklyCheckIn()
+    }
+}
+
+// ─── 半圆弧进度条 ──────────────────────────────────────────────
+
+@Composable
+private fun ArcProgressBar(progress: Float, modifier: Modifier = Modifier) {
+    val accentColor = AppColors.Accent
+    Canvas(modifier = modifier) {
+        val stroke = 10.dp.toPx()
+        val radius = (minOf(size.width, size.height * 2) - stroke) / 2
+        val diameter = radius * 2
+        val cx = size.width / 2
+        // 圆心下移，让半圆弧更靠底部
+        val cy = size.height + radius * 0.15f
+        val topLeft = Offset(cx - radius, cy - radius)
+
+        drawArc(
+            color = Color(0xFFE5E5EA),
+            startAngle = 180f,
+            sweepAngle = 180f,
+            useCenter = false,
+            topLeft = topLeft,
+            size = Size(diameter, diameter),
+            style = Stroke(width = stroke, cap = StrokeCap.Round)
+        )
+        drawArc(
+            color = accentColor,
+            startAngle = 180f,
+            sweepAngle = 180f * progress,
+            useCenter = false,
+            topLeft = topLeft,
+            size = Size(diameter, diameter),
+            style = Stroke(width = stroke, cap = StrokeCap.Round)
+        )
+    }
+}
+
+// ─── 星期打卡 ──────────────────────────────────────────────────
+
+@Composable
+private fun WeeklyCheckIn() {
+    val days = listOf("日", "一", "二", "三", "四", "五", "六")
+    // Calendar.SUNDAY=1, MONDAY=2 ... SATURDAY=7
+    // 我们的索引: 0=日, 1=一 ... 6=六
+    val todayIndex = Calendar.getInstance().get(Calendar.DAY_OF_WEEK) - 1
+    val accentColor = AppColors.Accent
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly
+    ) {
+        days.forEachIndexed { index, day ->
+            val isPast = index < todayIndex
+            val isToday = index == todayIndex
+            val isFuture = index > todayIndex
+
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    modifier = Modifier.size(38.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    // 已过的日期：进度轮廓圆环
+                    if (isPast) {
+                        Canvas(modifier = Modifier.size(38.dp)) {
+                            val stroke = 2.dp.toPx()
+                            val r = (size.minDimension - stroke) / 2
+                            // 背景圆环
+                            drawCircle(
+                                color = Color(0xFFE5E5EA),
+                                radius = r,
+                                style = Stroke(width = stroke)
+                            )
+                            // 进度弧（模拟已打卡）
+                            drawArc(
+                                color = accentColor,
+                                startAngle = -90f,
+                                sweepAngle = 360f,
+                                useCenter = false,
+                                topLeft = Offset(stroke / 2, stroke / 2),
+                                size = Size(r * 2, r * 2),
+                                style = Stroke(width = stroke, cap = StrokeCap.Round)
+                            )
+                        }
+                    }
+                    // 今天：高亮圆圈
+                    if (isToday) {
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(AppColors.Accent)
+                        )
+                    }
+                    Text(
+                        text = day,
+                        fontSize = 12.sp,
+                        color = when {
+                            isToday -> Color.White
+                            isPast -> AppColors.Accent
+                            else -> AppColors.TextSecondary
+                        },
+                        fontWeight = if (isToday || isPast) FontWeight.Bold else FontWeight.Normal
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ─── 今年读过的图书网格 ────────────────────────────────────────
+
+@Composable
+private fun BooksReadGrid(books: List<Book>, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpace.md)
+    ) {
+        // 3列占位网格
+        repeat(3) { index ->
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .aspectRatio(0.75f)
+                    .clip(RoundedCornerShape(AppRadius.sm))
+                    .background(AppColors.BgGray)
+                    .border(1.dp, AppColors.Divider, RoundedCornerShape(AppRadius.sm)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (index < books.size) {
+                    AsyncImage(
+                        model = books[index].coverPath,
+                        contentDescription = books[index].title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Text(
+                        text = "${index + 1}",
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Light,
+                        color = AppColors.Divider
+                    )
+                }
+            }
+        }
+    }
+}
