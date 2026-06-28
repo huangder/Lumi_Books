@@ -294,8 +294,8 @@ private fun buildPaginationJs(isPdf: Boolean = false, bgColor: String = "#ffffff
         try { AndroidBridge.onPageChanged(cur, total); } catch(e) {}
     };
 
-    // ── 更新主题（背景色+文字色，主题变化时调用）──
-    window.updateTheme = function(bg, textColor) {
+    // ── 更新主题（背景色+文字色+字体大小，主题变化时调用）──
+    window.updateTheme = function(bg, textColor, fontSize) {
         BG = bg;
         try { document.body.style.background = bg; } catch(e) {}
         try { if (outer) outer.style.background = bg; } catch(e) {}
@@ -310,10 +310,10 @@ private fun buildPaginationJs(isPdf: Boolean = false, bgColor: String = "#ffffff
                 s.id = '_theme';
                 document.head.appendChild(s);
             }
-            var cssText = 'body{background:' + bg + ' !important;color:' + textColor + ' !important;}p,h1,h2,h3,h4,h5,h6,li,blockquote,pre{color:' + textColor + ' !important;}';
+            var fs = fontSize || '16';
+            var cssText = 'body{font-size:' + fs + 'px !important;background:' + bg + ' !important;color:' + textColor + ' !important;}p,h1,h2,h3,h4,h5,h6,li,blockquote,pre{color:' + textColor + ' !important;}';
             s.textContent = cssText;
-            console.log('updateTheme called: bg=' + bg + ' textColor=' + textColor + ' css=' + cssText);
-        } catch(e) { console.log('updateTheme error: ' + e); }
+        } catch(e) {}
     };
 
     // ── 触摸事件 ──
@@ -877,23 +877,25 @@ private fun HtmlContent(html: String, bridge: ReaderJsBridge, isPdf: Boolean = f
                     override fun onPageFinished(view: WebView?, url: String?) {
                         super.onPageFinished(view, url)
                         android.util.Log.e("PG", "onPageFinished")
+                        // 从 remember 变量读取最新值（不是闭包捕获的旧值）
+                        val fs = currentFontSize.floatValue
+                        val th = currentTheme.value
+                        val bgColor = when (th) {
+                            "night" -> "#1a1a1a"
+                            "sepia" -> "#f5e6d3"
+                            "green" -> "#e8f5e9"
+                            else -> "#ffffff"
+                        }
+                        val textColor = when (th) {
+                            "night" -> "#e0e0e0"
+                            "sepia" -> "#3e2723"
+                            "green" -> "#1b5e20"
+                            else -> "#333333"
+                        }
+                        // 立即设置 WebView 背景色，避免闪白
+                        view?.setBackgroundColor(android.graphics.Color.parseColor(bgColor))
                         // 延迟注入 JS（等图片/样式加载完）
                         view?.postDelayed({
-                            // 从 remember 变量读取最新值（不是闭包捕获的旧值）
-                            val fs = currentFontSize.floatValue
-                            val th = currentTheme.value
-                            val bgColor = when (th) {
-                                "night" -> "#1a1a1a"
-                                "sepia" -> "#f5e6d3"
-                                "green" -> "#e8f5e9"
-                                else -> "#ffffff"
-                            }
-                            val textColor = when (th) {
-                                "night" -> "#e0e0e0"
-                                "sepia" -> "#3e2723"
-                                "green" -> "#1b5e20"
-                                else -> "#333333"
-                            }
                             val css = "body{font-size:${fs}px !important;background:$bgColor !important;color:$textColor !important;}p,h1,h2,h3,h4,h5,h6,li,blockquote,pre{color:$textColor !important;}"
                             // 使用 _theme id 创建样式表，确保 updateTheme 能更新它
                             view.evaluateJavascript("(function(){var s=document.getElementById('_theme');if(!s){s=document.createElement('style');s.id='_theme';document.head.appendChild(s);}s.textContent='$css';})()") {
@@ -944,7 +946,7 @@ private fun HtmlContent(html: String, bridge: ReaderJsBridge, isPdf: Boolean = f
                 // 更新 CSS 样式
                 append("var s=document.getElementById('_theme');if(!s){s=document.createElement('style');s.id='_theme';document.head.appendChild(s);}s.textContent='$css';")
                 // 始终调用 updateTheme 确保所有层同步
-                append("if(window.updateTheme)window.updateTheme('$bgColor','$textColor');")
+                append("if(window.updateTheme)window.updateTheme('$bgColor','$textColor','$fontSize');")
                 append("})()")
             }
             webView.evaluateJavascript(js) {
