@@ -380,6 +380,23 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     LaunchedEffect(uiState.isLoading) {
         if (!uiState.isLoading) onLoadingComplete()
     }
+
+    // 加载超时保护：如果 chapterHtml 非空但 10 秒内未收到 onPaginationComplete，强制关闭加载画面
+    LaunchedEffect(uiState.chapterHtml) {
+        if (uiState.chapterHtml.isNotEmpty() && uiState.isLoading) {
+            // HTML 已加载到 WebView，等 10 秒
+            kotlinx.coroutines.delay(10_000)
+            // 10 秒后如果还在 loading，说明 pagination JS 可能出错了
+            if (viewModel.uiState.value.isLoading) {
+                android.util.Log.e("PG", "LOADING TIMEOUT after 10s! Force dismissing. htmlLen=${uiState.chapterHtml.length}")
+                // 检查 JS 诊断信息
+                webViewRef.value?.evaluateJavascript("window.__paginateDebug||'no_diag'") { result ->
+                    android.util.Log.e("PG", "JS diag on timeout: $result")
+                }
+                viewModel.onPaginationDone()
+            }
+        }
+    }
     val isChapterAnimating = remember { mutableStateOf(false) }
     val paginationDeferred = remember { mutableStateOf<CompletableDeferred<Unit>?>(null) }
     var showToc by remember { mutableStateOf(false) }
@@ -437,6 +454,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             handleChapterSwapped = { direction -> viewModel.onChapterSwapped(direction) },
             handleCenterTap = { viewModel.toggleMenu() },
             handlePaginationComplete = {
+                android.util.Log.e("PG", "onPaginationComplete CALLED")
                 paginationDeferred.value?.complete(Unit)
                 onPageReady()
                 // 跳到保存的页码，完成后再关闭加载画面
@@ -946,7 +964,15 @@ private fun HtmlContent(html: String, bridge: ReaderJsBridge, isPdf: Boolean = f
                             // 使用 _theme id 创建样式表，确保 updateTheme 能更新它
                             view.evaluateJavascript("(function(){var s=document.getElementById('_theme');if(!s){s=document.createElement('style');s.id='_theme';document.head.appendChild(s);}s.textContent='$css';})()") {
                                 // 字体 CSS 生效后再运行分页 JS（用正确的字体和背景色计算页数）
-                                view.evaluateJavascript(buildPaginationJs(isPdf, bgColor)) {}
+                                val paginationJsCode = buildPaginationJs(isPdf, bgColor)
+                                view.evaluateJavascript(paginationJsCode) {
+                                    // 2 秒后检查 JS 层分页是否成功，用于诊断
+                                    view.postDelayed({
+                                        view.evaluateJavascript("JSON.stringify({ready:window.__paginationReady,dbg:window.__paginateDebug||''})") { result ->
+                                            android.util.Log.e("PG", "Pagination diagnostic: $result")
+                                        }
+                                    }, 2000)
+                                }
                             }
                         }, 150)
                     }
