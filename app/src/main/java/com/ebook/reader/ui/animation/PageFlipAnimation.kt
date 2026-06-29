@@ -21,11 +21,9 @@ object SlideCoverAnimation : PageFlipAnimation {
         el.style.borderRadius = '0';
         el.style.zIndex = '';
     }
-    // hasPreRendered: botLayer 是否持有预渲染章节 wrapper（非克隆）
-    botLayer._preIdx = undefined;
     function cleanupLayers() {
         // 如果 botLayer 持有预渲染 wrapper，先移回 body 再清理
-        if (botLayer._preIdx !== undefined) {
+        if (botLayer && botLayer._preIdx !== undefined) {
             var pr = preRendered[botLayer._preIdx];
             if (pr && pr.wrapper && pr.wrapper.parentNode === botLayer) {
                 pr.wrapper.style.visibility = 'hidden';
@@ -33,11 +31,9 @@ object SlideCoverAnimation : PageFlipAnimation {
             }
             delete botLayer._preIdx;
         }
-        resetLayer(topLayer); resetLayer(botLayer);
-        topLayer.innerHTML = ''; botLayer.innerHTML = '';
-        botLayer.style.display = 'none';
-        topLayer.style.display = 'none';
-        edgeShadow.style.opacity = '0';
+        if (topLayer) { resetLayer(topLayer); topLayer.innerHTML = ''; topLayer.style.display = 'none'; }
+        if (botLayer) { resetLayer(botLayer); botLayer.innerHTML = ''; botLayer.style.display = 'none'; }
+        if (edgeShadow) edgeShadow.style.opacity = '0';
         if (outer) outer.style.visibility = 'visible';
     }
     function initLayers(b) {
@@ -47,6 +43,7 @@ object SlideCoverAnimation : PageFlipAnimation {
         botLayer = document.createElement('div');
         botLayer.setAttribute('data-pg', '1');
         botLayer.style.cssText = 'position:absolute;top:0;left:0;width:' + vw + 'px;height:' + vh + 'px;overflow:hidden;background:' + BG + ';transition:none;display:none;z-index:9;';
+        botLayer._preIdx = undefined;
         edgeShadow = document.createElement('div');
         edgeShadow.setAttribute('data-pg', '1');
         edgeShadow.style.cssText = 'position:absolute;top:0;width:80px;height:100%;pointer-events:none;z-index:11;opacity:0;';
