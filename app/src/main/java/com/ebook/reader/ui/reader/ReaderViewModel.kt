@@ -143,6 +143,36 @@ class ReaderViewModel @Inject constructor(
         val html = getChapterHtml(state.currentChapterIndex)
         android.util.Log.e("PG", "loadChapterContent: chapter=" + state.currentChapterIndex + " html.length=" + (html?.length ?: 0))
         _uiState.value = _uiState.value.copy(chapterHtml = html, currentPageIndex = startPage, pageReady = false)
+        // 🔥 激进预加载：进入章节后立即在后台拉取前后相邻章节到 preloadCache
+        eagerPreloadAdjacent(state.currentChapterIndex)
+    }
+
+    /**
+     * 🔥 激进预加载：进入章节后立即在后台拉取前后相邻章节的HTML到 preloadCache。
+     * 不阻塞当前章节渲染，fire-and-forget。
+     * 参考 HiReader 的 3 章节缓冲区设计——永远保持相邻章节已加载。
+     */
+    private fun eagerPreloadAdjacent(chapterIdx: Int) {
+        val state = _uiState.value
+        val p = parser ?: return
+        val isPdf = state.book?.format?.name == "PDF"
+        // PDF: 每页都是"章节"，预加载前后5页（页小，渲染快但边界频繁）
+        // EPUB/TXT: 预加载前后2章
+        val windowSize = if (isPdf) 5 else 2
+        val indices = ((chapterIdx - windowSize)..(chapterIdx + windowSize))
+            .filter { it != chapterIdx && it in 0 until state.chapterCount && it !in preloadCache }
+        if (indices.isEmpty()) return
+        android.util.Log.e("PG", "eagerPreload: chapter=$chapterIdx window=$windowSize indices=$indices")
+        viewModelScope.launch {
+            indices.forEach { idx ->
+                try {
+                    preloadCache[idx] = p.getChapterHtml(idx)
+                    android.util.Log.d("PG", "eagerPreload done: chapter $idx")
+                } catch (_: Exception) {
+                    android.util.Log.d("PG", "eagerPreload failed: chapter $idx")
+                }
+            }
+        }
     }
 
     /**
@@ -216,14 +246,14 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    /** 预加载缓存：key=章节索引，value=HTML，最大 15 条 */
-    private val preloadCache = object : LinkedHashMap<Int, String>(16, 0.75f, true) {
+    /** 预加载缓存：key=章节索引，value=HTML，最大 24 条（激进预加载需要更大窗口） */
+    private val preloadCache = object : LinkedHashMap<Int, String>(26, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, String>?): Boolean {
-            return size > 15
+            return size > 24
         }
     }
 
-    /** 预加载相邻章节（激进策略：尽早预加载前后多章） */
+    /** 预加载相邻章节（激进策略：进入章节即触发，大幅提前预加载窗口） */
     fun preloadAdjacentChapters() {
         val state = _uiState.value
         val parser = parser ?: return
@@ -231,8 +261,8 @@ class ReaderViewModel @Inject constructor(
         val progress = state.currentPageIndex.toFloat() / state.totalPages
         android.util.Log.e("PG", "preloadCheck: page=${state.currentPageIndex} total=${state.totalPages} progress=${progress}")
 
-        // 进度 > 15% → 预加载下一章（几乎进入章节就触发）
-        if (progress >= 0.15f) {
+        // 🔥 进入章节就立即预加载下一章（progress >= 0 即触发，原来是 15%）
+        if (progress >= 0f) {
             val next = state.currentChapterIndex + 1
             if (next < state.chapterCount && next !in preloadCache) {
                 android.util.Log.e("PG", "Preloading next chapter $next")
@@ -243,8 +273,8 @@ class ReaderViewModel @Inject constructor(
                     } catch (_: Exception) {}
                 }
             }
-            // 进度 > 50% → 再预加载下下章（提前 2 章缓冲）
-            if (progress >= 0.5f) {
+            // 进度 > 30% → 再预加载下下章（原来 50%，更激进）
+            if (progress >= 0.3f) {
                 val next2 = state.currentChapterIndex + 2
                 if (next2 < state.chapterCount && next2 !in preloadCache) {
                     android.util.Log.e("PG", "Preloading chapter+2: $next2")
@@ -258,8 +288,8 @@ class ReaderViewModel @Inject constructor(
             }
         }
 
-        // 前 3 页 → 预加载上一章
-        if (state.currentPageIndex <= 3) {
+        // 🔥 前 8 页 → 预加载上一章（原来 3 页，大幅提前）
+        if (state.currentPageIndex <= 8) {
             val prev = state.currentChapterIndex - 1
             if (prev >= 0 && prev !in preloadCache) {
                 android.util.Log.e("PG", "Preloading prev chapter $prev")
@@ -270,8 +300,8 @@ class ReaderViewModel @Inject constructor(
                     } catch (_: Exception) {}
                 }
             }
-            // 前 1 页 → 再预加载上上章
-            if (state.currentPageIndex <= 1) {
+            // 🔥 前 3 页 → 再预加载上上章（原来 1 页）
+            if (state.currentPageIndex <= 3) {
                 val prev2 = state.currentChapterIndex - 2
                 if (prev2 >= 0 && prev2 !in preloadCache) {
                     android.util.Log.e("PG", "Preloading chapter-2: $prev2")

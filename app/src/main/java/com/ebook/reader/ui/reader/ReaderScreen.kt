@@ -415,39 +415,25 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             handlePageChanged = { page, total -> viewModel.onPageChanged(page, total) },
             handleChapterFlip = { },
             handleChapterFlipReady = { direction ->
+                // 🔥 简化 Miss Path：JS 已展示 loading 占位 + 1:1 跟手拖拽
+                // Kotlin 侧仅负责异步获取相邻章节 HTML 并注入 JS 完成预渲染
+                // 不再使用 Compose flipOffset 动画，不再调用 loadDataWithBaseURL
                 val canFlip = if (direction > 0) viewModel.uiState.value.currentChapterIndex < viewModel.uiState.value.chapterCount - 1
                 else viewModel.uiState.value.currentChapterIndex > 0
                 if (!canFlip) return@ReaderJsBridge
                 scope.launch {
-                    isChapterAnimating.value = true
-                    val wv = webViewRef.value ?: return@launch
-                    wv.evaluateJavascript("window.__animating = true", null)
-                    try {
-                        // ═══ True Miss 路径：JS 已确认无预渲染，走完整加载+动画流程 ═══
-                        val th = viewModel.uiState.value.readerTheme
-                        val bg = when (th) {
-                            "night" -> "#1a1a1a"
-                            "sepia" -> "#f5e6d3"
-                            "green" -> "#e8f5e9"
-                            else -> "#ffffff"
-                        }
-                        wv.evaluateJavascript("window.__chapterTransition=true;try{document.body.style.visibility='hidden'}catch(e){}", null)
-                        wv.setBackgroundColor(android.graphics.Color.parseColor(bg))
-                        // 滑出（旧内容仍在）
-                        flipOffset.animateTo(if (direction > 0) -1f else 1f, tween(200, easing = FastOutSlowInEasing))
-                        // 加载新章节
-                        if (direction > 0) viewModel.nextChapter() else viewModel.previousChapter()
-                        // 等待分页完成
-                        val d = CompletableDeferred<Unit>(); paginationDeferred.value = d
-                        withTimeoutOrNull(500L) { d.await() }; paginationDeferred.value = null
-                        if (direction < 0) wv.evaluateJavascript("window.flipToLastPage()", null)
-                        // 瞬移 + 滑入
-                        flipOffset.snapTo(if (direction > 0) 1f else -1f)
-                        flipOffset.animateTo(0f, tween(200, easing = FastOutSlowInEasing))
-                        wv.evaluateJavascript("window.__chapterTransition=false;try{document.body.style.visibility='visible'}catch(e){}", null)
-                    } finally {
-                        wv.evaluateJavascript("window.__animating = false", null)
-                        flipOffset.snapTo(0f); isChapterAnimating.value = false
+                    val adjIdx = viewModel.uiState.value.currentChapterIndex + direction
+                    val html = viewModel.getAdjacentChapterHtml(adjIdx)
+                    if (html != null) {
+                        val b64 = android.util.Base64.encodeToString(
+                            html.toByteArray(), android.util.Base64.NO_WRAP
+                        )
+                        val wv = webViewRef.value
+                        // 注入预渲染 + 触发 onPreRenderReady（如果用户还在拖拽中则无缝替换 loading 占位）
+                        wv?.evaluateJavascript(
+                            "window.preRenderChapter && preRenderChapter($adjIdx, '$b64');window.onPreRenderReady && onPreRenderReady($adjIdx);"
+                        ) {}
+                        android.util.Log.d("PG", "Emergency preRender done: chapter $adjIdx")
                     }
                 }
             },
@@ -477,6 +463,25 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 } else {
                     viewModel.onPaginationDone()
                 }
+                // 🔥 分页完成后立即 JS 预渲染相邻章节（绕过 Compose 重组延迟）
+                val chapterIdx = viewModel.uiState.value.currentChapterIndex
+                val chapterCount = viewModel.uiState.value.chapterCount
+                val isPdf = viewModel.uiState.value.book?.format?.name == "PDF"
+                val windowSize = if (isPdf) 5 else 2
+                ((chapterIdx - windowSize)..(chapterIdx + windowSize))
+                    .filter { it != chapterIdx && it in 0 until chapterCount }
+                    .forEach { adjIdx ->
+                        val html = viewModel.getAdjacentChapterHtml(adjIdx)
+                        if (html != null) {
+                            val b64 = android.util.Base64.encodeToString(
+                                html.toByteArray(), android.util.Base64.NO_WRAP
+                            )
+                            webViewRef.value?.evaluateJavascript(
+                                "window.preRenderChapter && preRenderChapter($adjIdx, '$b64')"
+                            ) {}
+                            android.util.Log.d("PG", "Immediate JS pre-render: chapter $adjIdx")
+                        }
+                    }
             }
         )
     }
@@ -484,21 +489,21 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     // 全屏沉浸：隐藏状态栏和手势条
     ImmersiveMode()
 
-    // 预渲染相邻章节（激进策略：距边界 5 页就开始预渲染，PDF 也启用）
+    // 🔥 预渲染相邻章节（激进策略：距边界 8 页就开始预渲染，短章节也能覆盖）
     LaunchedEffect(uiState.currentPageIndex, uiState.totalPages) {
         if (uiState.totalPages <= 0) return@LaunchedEffect
         val page = uiState.currentPageIndex
         val total = uiState.totalPages
         val chapterIdx = uiState.currentChapterIndex
-        // 最后 5 页 → 预渲染下一章（原来 2 页，大幅提前）
-        if (page >= total - 5) {
+        // 🔥 最后 8 页 → 预渲染下一章（原来 5 页，更激进）
+        if (page >= total - 8) {
             val nextIdx = chapterIdx + 1
             val html = viewModel.getAdjacentChapterHtml(nextIdx)
             if (html != null) {
                 webViewRef.value?.evaluateJavascript("window.preRenderChapter && preRenderChapter($nextIdx, '${android.util.Base64.encodeToString(html.toByteArray(), android.util.Base64.NO_WRAP)}')") {}
             }
-            // 最后 2 页 → 预渲染下下章（再提前一层）
-            if (page >= total - 2) {
+            // 🔥 最后 3 页 → 预渲染下下章（原来 2 页）
+            if (page >= total - 3) {
                 val next2 = chapterIdx + 2
                 val html2 = viewModel.getAdjacentChapterHtml(next2)
                 if (html2 != null) {
@@ -506,15 +511,15 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 }
             }
         }
-        // 前 3 页 → 预渲染上一章（原来 2 页）
-        if (page <= 3) {
+        // 🔥 前 5 页 → 预渲染上一章（原来 3 页）
+        if (page <= 5) {
             val prevIdx = chapterIdx - 1
             val html = viewModel.getAdjacentChapterHtml(prevIdx)
             if (html != null) {
                 webViewRef.value?.evaluateJavascript("window.preRenderChapter && preRenderChapter($prevIdx, '${android.util.Base64.encodeToString(html.toByteArray(), android.util.Base64.NO_WRAP)}')") {}
             }
-            // 前 1 页 → 预渲染上上章
-            if (page <= 1) {
+            // 🔥 前 2 页 → 预渲染上上章（原来 1 页）
+            if (page <= 2) {
                 val prev2 = chapterIdx - 2
                 val html2 = viewModel.getAdjacentChapterHtml(prev2)
                 if (html2 != null) {
