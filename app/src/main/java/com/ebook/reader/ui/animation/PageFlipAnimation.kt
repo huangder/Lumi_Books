@@ -239,6 +239,26 @@ object SlideCoverAnimation : PageFlipAnimation {
         })(performance.now());
     }
 
+    // 🔥 Kotlin 异步加载完成后调用：如果用户正在拖拽，无缝替换 loading 占位为真实内容
+    window.onPreRenderReady = function(chapterIndex) {
+        if (typeof dg === 'undefined' || !dg.on) return;
+        var dir = dg.cx - dg.x0 < 0 ? 1 : -1;
+        var adjIdx = dir > 0 ? window.__currentChapterIdx + 1 : window.__currentChapterIdx - 1;
+        if (chapterIndex !== adjIdx || !preRendered[adjIdx]) return;
+        if (typeof botLayer === 'undefined' || !botLayer || botLayer._loadingIdx !== adjIdx) return;
+        var pr = preRendered[adjIdx];
+        while (botLayer.firstChild) botLayer.firstChild.remove();
+        botLayer.appendChild(pr.wrapper);
+        pr.wrapper.style.visibility = 'visible';
+        pr.wrapper.style.position = 'absolute';
+        pr.wrapper.style.top = '0';
+        pr.wrapper.style.left = '0';
+        pr.wrapper.style.transform = (dir > 0) ? 'none' : 'translateX(' + (-(pr.total - 1) * vw) + 'px)';
+        botLayer._preIdx = adjIdx;
+        botLayer._loadingIdx = undefined;
+        delete botLayer._loadingIdx;
+    };
+
     function aDrag(dx) {
         var c = dx;
         var isF = c < 0;
@@ -293,14 +313,16 @@ object SlideCoverAnimation : PageFlipAnimation {
                 }
                 return;
             }
-            // 无预渲染：回退到渐进式橡皮筋阻力（跟手→逐渐变硬）
-            var absDx = Math.abs(dx);
-            var maxSlide = vw * 0.3;
-            c = (dx > 0 ? 1 : -1) * maxSlide * (1 - Math.exp(-absDx / (vw * 0.1)));
+            // 🔥 无预渲染：展示 loading 占位层 + 1:1 跟手拖拽（无阻力！）
+            // 参考 HiReader：动画不等内容加载，展示 loading 状态，异步注入内容后替换
         }
 
         if (atBoundary) {
-            // 无预渲染的边界：只显示当前页克隆 + 阻力
+            // 🔥 边界无预渲染：botLayer 显示 loading spinner，topLayer 显示当前页克隆
+            // 拖拽参数与 Hit Path 完全相同（1:1跟手，无视差阻力）
+            var adjIdx2 = isF ? window.__currentChapterIdx + 1 : window.__currentChapterIdx - 1;
+            if (outer) outer.style.visibility = 'hidden';
+            // topLayer: 当前页克隆
             if (!topLayer.firstChild) {
                 var cw2 = wrap.cloneNode(true);
                 cw2.style.transform = 'translateX(' + (-cur * vw) + 'px)';
@@ -308,12 +330,41 @@ object SlideCoverAnimation : PageFlipAnimation {
             }
             topLayer.style.display = '';
             topLayer.style.backgroundColor = BG;
-            topLayer.style.zIndex = '10';
-            topLayer.style.boxShadow = isF ? '0 0 48px rgba(0,0,0,0.15), 4px 0 16px rgba(0,0,0,0.08)' : '0 0 48px rgba(0,0,0,0.15), -4px 0 16px rgba(0,0,0,0.08)';
-            topLayer.style.borderRadius = isF ? '0 36px 36px 0' : '36px 0 0 36px';
-            topLayer.style.transform = 'translateX(' + c + 'px)';
-            botLayer.style.display = 'none';
-            if (outer) outer.style.visibility = 'hidden';
+            // botLayer: loading 占位（如果还没创建或章节变了就重建）
+            if (!botLayer.firstChild || botLayer._loadingIdx !== adjIdx2) {
+                while (botLayer.firstChild) botLayer.firstChild.remove();
+                var ld = document.createElement('div');
+                ld.style.cssText = 'display:flex;align-items:center;justify-content:center;height:100%;font-size:14px;';
+                ld.innerHTML = '<div style="text-align:center;color:' + (BG === '#1a1a1a' ? '#666' : '#999') + ';"><div style="width:24px;height:24px;border:2px solid ' + (BG === '#1a1a1a' ? '#333' : '#ddd') + ';border-top-color:' + (BG === '#1a1a1a' ? '#888' : '#999') + ';border-radius:50%;display:inline-block;animation:_spin 0.8s linear infinite;"></div><div style="margin-top:12px;">加载中...</div></div>';
+                if (!document.getElementById('_spinKeyframes')) {
+                    var sk = document.createElement('style'); sk.id = '_spinKeyframes';
+                    sk.textContent = '@keyframes _spin{to{transform:rotate(360deg)}}';
+                    document.head.appendChild(sk);
+                }
+                botLayer.appendChild(ld);
+                botLayer._loadingIdx = adjIdx2;
+            }
+            botLayer.style.display = '';
+            botLayer.style.backgroundColor = BG;
+            // 🔥 与 Hit Path 完全相同的拖拽参数——1:1跟手，无阻力！
+            if (isF) {
+                topLayer.style.zIndex = '10'; botLayer.style.zIndex = '9';
+                topLayer.style.boxShadow = '0 0 48px rgba(0,0,0,0.15), 4px 0 16px rgba(0,0,0,0.08)';
+                topLayer.style.borderRadius = '0 36px 36px 0';
+                botLayer.style.boxShadow = 'none'; botLayer.style.borderRadius = '0';
+                topLayer.style.transform = 'translateX(' + c + 'px)';
+                botLayer.style.transform = 'translateX(' + Math.round(vw * 0.7 + c * 0.3) + 'px)';
+            } else {
+                botLayer.style.zIndex = '10'; topLayer.style.zIndex = '9';
+                botLayer.style.boxShadow = '0 0 48px rgba(0,0,0,0.15), 4px 0 16px rgba(0,0,0,0.08)';
+                botLayer.style.borderRadius = '0 36px 36px 0';
+                topLayer.style.boxShadow = 'none'; topLayer.style.borderRadius = '0';
+                botLayer.style.transform = 'translateX(' + Math.round(-vw + c) + 'px)';
+                topLayer.style.transform = 'translateX(' + Math.round(c * 0.2) + 'px)';
+            }
+            // 通知 Kotlin 紧急预渲染此章节
+            try { AndroidBridge.onChapterFlipReady(isF ? 1 : -1); } catch(e) {}
+        }
         } else {
             // 正常章节内拖拽（不变）
             if (outer) outer.style.visibility = 'hidden';
@@ -364,8 +415,7 @@ object SlideCoverAnimation : PageFlipAnimation {
                 animateChapterSwap(dir, adjIdx);
                 return;
             }
-            // 无预渲染：回退到 Kotlin 层（Miss 路径）
-            try { AndroidBridge.onChapterFlipReady(dir); } catch(e) {}
+            // 🔥 无预渲染：bounceBack（loading 占位已在 aDrag 中展示，Kotlin 紧急预加载已触发）
         }
         bounceBack(350);
     }
@@ -376,7 +426,7 @@ object SlideCoverAnimation : PageFlipAnimation {
             // 章节边界：尝试 JS 层预渲染命中
             var adjIdx = dir > 0 ? window.__currentChapterIdx + 1 : window.__currentChapterIdx - 1;
             if (preRendered[adjIdx]) { chapterFlipTo(dir); return; }
-            // 无预渲染：回退到 Kotlin
+            // 🔥 无预渲染：通知 Kotlin 紧急加载（loading 状态将在下次拖拽时展示）
             try { AndroidBridge.onChapterFlipReady(dir); } catch(e) {}
             return;
         }
@@ -481,10 +531,9 @@ object SimpleSlideAnimation : PageFlipAnimation {
                 }
                 return;
             }
-            // 无预渲染：渐进式橡皮筋阻力
-            var absDx = Math.abs(dx);
-            var maxSlide = vw * 0.3;
-            c = (dx > 0 ? 1 : -1) * maxSlide * (1 - Math.exp(-absDx / (vw * 0.1)));
+            // 🔥 无预渲染：1:1跟手拖拽（无阻力），触发 Kotlin 紧急加载
+            // PDF 页面小渲染快，不需要 loading 占位
+            try { AndroidBridge.onChapterFlipReady(isF ? 1 : -1); } catch(e) {}
         }
         wrap.style.transition = 'none';
         wrap.style.transform = 'translateX(' + Math.round(-cur * vw + c) + 'px)';
@@ -535,7 +584,7 @@ object SimpleSlideAnimation : PageFlipAnimation {
                 })(performance.now());
                 return;
             }
-            try { AndroidBridge.onChapterFlipReady(dir); } catch(e) {}
+            // 🔥 无预渲染：bounceBack（紧急加载已在 aDrag 中触发）
         }
         bounceBack();
     }
