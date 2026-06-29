@@ -88,6 +88,30 @@ object SlideCoverAnimation : PageFlipAnimation {
         return true;
     }
 
+    // 拖拽过阈值时动画切换到相邻章节（从当前拖拽位置开始动画）
+    function animateChapterSwap(dir, adjIdx) {
+        if (flipping) return;
+        flipping = true;
+        var d = 280, t0 = performance.now();
+        var startTop = gx(topLayer), startBot = gx(botLayer);
+        var endTop = dir > 0 ? -vw : 0, endBot = 0;
+        // 边缘阴影随动画渐显/渐隐
+        if (edgeShadow) {
+            edgeShadow.style.left = (dir > 0) ? '' : '0';
+            edgeShadow.style.right = (dir > 0) ? '0' : '';
+            edgeShadow.style.background = 'linear-gradient(' + (dir > 0 ? 'to right' : 'to left') + ', rgba(0,0,0,0.18), transparent)';
+        }
+        (function go(now) {
+            var el = now - t0, pg = Math.min(el / d, 1), t = eo(pg);
+            topLayer.style.transform = 'translateX(' + Math.round(startTop + (endTop - startTop) * t) + 'px)';
+            botLayer.style.transform = 'translateX(' + Math.round(startBot + (endBot - startBot) * t) + 'px)';
+            if (edgeShadow && pg > 0.1) edgeShadow.style.opacity = Math.min((pg - 0.1) / 0.9, 0.5);
+            if (pg < 1) { animId = requestAnimationFrame(go); return; }
+            animId = null; flipping = false;
+            completeChapterSwap(dir, adjIdx);
+        })(performance.now());
+    }
+
     // 章节边界动画翻页（tap 触发）
     function chapterFlipTo(dir) {
         if (flipping) return;
@@ -200,6 +224,7 @@ object SlideCoverAnimation : PageFlipAnimation {
 
     function bounceBack(dur) {
         if (flipping) return;
+        flipping = true;
         var x0 = gx(topLayer), d = dur || 350, t0 = performance.now();
         var botX0 = gx(botLayer);
         var botTarget = (botX0 > 0) ? vw : -vw;
@@ -207,8 +232,10 @@ object SlideCoverAnimation : PageFlipAnimation {
             var el = now - t0, pg = Math.min(el / d, 1), t = eb(pg);
             topLayer.style.transform = 'translateX(' + Math.round(x0 * (1 - t)) + 'px)';
             botLayer.style.transform = 'translateX(' + Math.round(botX0 + (botTarget - botX0) * t) + 'px)';
+            if (edgeShadow && pg > 0.5) edgeShadow.style.opacity = Math.max(0, (1 - pg) / 0.5 * 0.5);
             if (pg < 1) { animId = requestAnimationFrame(go); return; }
-            cleanupLayers();  // cleanupLayers 会把预渲染 wrapper 移回 body
+            animId = null; flipping = false;
+            cleanupLayers();
         })(performance.now());
     }
 
@@ -266,8 +293,10 @@ object SlideCoverAnimation : PageFlipAnimation {
                 }
                 return;
             }
-            // 无预渲染：回退到橡皮筋阻力（原有行为）
-            c = dx * 0.25;
+            // 无预渲染：回退到渐进式橡皮筋阻力（跟手→逐渐变硬）
+            var absDx = Math.abs(dx);
+            var maxSlide = vw * 0.3;
+            c = (dx > 0 ? 1 : -1) * maxSlide * (1 - Math.exp(-absDx / (vw * 0.1)));
         }
 
         if (atBoundary) {
@@ -332,7 +361,7 @@ object SlideCoverAnimation : PageFlipAnimation {
             // 章节边界：尝试在 JS 内完成切换
             var adjIdx = dir > 0 ? window.__currentChapterIdx + 1 : window.__currentChapterIdx - 1;
             if (preRendered[adjIdx]) {
-                completeChapterSwap(dir, adjIdx);
+                animateChapterSwap(dir, adjIdx);
                 return;
             }
             // 无预渲染：回退到 Kotlin 层（Miss 路径）
@@ -394,6 +423,7 @@ object SimpleSlideAnimation : PageFlipAnimation {
 
     function bounceBack() {
         if (flipping) return;
+        flipping = true;
         var start = gx(wrap);
         var end = -cur * vw;
         var d = 280;
@@ -403,6 +433,7 @@ object SimpleSlideAnimation : PageFlipAnimation {
             var t = 1 - Math.pow(1 - pg, 4);
             wrap.style.transform = 'translateX(' + Math.round(start + (end - start) * t) + 'px)';
             if (pg < 1) { animId = requestAnimationFrame(go); return; }
+            animId = null; flipping = false;
             // 如果 bounceBack 时 outer 中有预渲染 wrapper，移回 body
             if (outer._prWrapper) {
                 outer._prWrapper.style.visibility = 'hidden';
@@ -450,8 +481,10 @@ object SimpleSlideAnimation : PageFlipAnimation {
                 }
                 return;
             }
-            // 无预渲染：橡皮筋阻力
-            c = dx * 0.25;
+            // 无预渲染：渐进式橡皮筋阻力
+            var absDx = Math.abs(dx);
+            var maxSlide = vw * 0.3;
+            c = (dx > 0 ? 1 : -1) * maxSlide * (1 - Math.exp(-absDx / (vw * 0.1)));
         }
         wrap.style.transition = 'none';
         wrap.style.transform = 'translateX(' + Math.round(-cur * vw + c) + 'px)';
@@ -465,13 +498,17 @@ object SimpleSlideAnimation : PageFlipAnimation {
             var adjIdx = dir > 0 ? window.__currentChapterIdx + 1 : window.__currentChapterIdx - 1;
             var pr = preRendered[adjIdx];
             if (pr) {
-                // 完成 swap
-                if (wrap) wrap.remove();
-                wrap = pr.wrapper;
-                wrap.style.visibility = 'visible';
+                // 动画交换：当前 wrap 滑出 + 预渲染 wrapper 滑入
+                flipping = true;
+                var oldWrap = wrap, newWrap = pr.wrapper;
+                if (animId) { cancelAnimationFrame(animId); animId = null; }
+                var oldStart = gx(oldWrap);
+                var targetCur = dir < 0 ? pr.total - 1 : 0;
+                var newTarget = -targetCur * vw;
+                var newStart = gx(newWrap);
+                var d = 280, t0 = performance.now();
                 total = pr.total;
-                cur = dir < 0 ? total - 1 : 0;
-                wrap.style.transform = 'translateX(' + (-cur * vw) + 'px)';
+                cur = targetCur;
                 window.__currentChapterIdx = adjIdx;
                 delete preRendered[adjIdx];
                 for (var k in preRendered) {
@@ -481,8 +518,21 @@ object SimpleSlideAnimation : PageFlipAnimation {
                     }
                 }
                 outer._prWrapper = null; outer._prIdx = undefined;
-                try { AndroidBridge.onPageChanged(cur, total); } catch(e) {}
-                try { AndroidBridge.onChapterSwapped(dir); } catch(e) {}
+                (function go(now) {
+                    var el = now - t0, pg = Math.min(el / d, 1);
+                    var t = 1 - Math.pow(1 - pg, 3);
+                    oldWrap.style.transform = 'translateX(' + Math.round(oldStart * (1 - t)) + 'px)';
+                    newWrap.style.transform = 'translateX(' + Math.round(newStart + (newTarget - newStart) * t) + 'px)';
+                    if (pg < 1) { animId = requestAnimationFrame(go); return; }
+                    animId = null; flipping = false;
+                    oldWrap.remove();
+                    wrap = newWrap;
+                    wrap.style.visibility = 'visible';
+                    wrap.style.transform = 'translateX(' + newTarget + 'px)';
+                    outer.appendChild(wrap);
+                    try { AndroidBridge.onPageChanged(cur, total); } catch(e) {}
+                    try { AndroidBridge.onChapterSwapped(dir); } catch(e) {}
+                })(performance.now());
                 return;
             }
             try { AndroidBridge.onChapterFlipReady(dir); } catch(e) {}
