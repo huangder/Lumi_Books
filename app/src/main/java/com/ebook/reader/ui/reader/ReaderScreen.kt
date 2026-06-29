@@ -115,7 +115,7 @@ private suspend fun WebView.evaluateJavascriptSuspend(script: String): String {
     }
 }
 
-private fun buildPaginationJs(isPdf: Boolean = false, bgColor: String = "#ffffff"): String {
+private fun buildPaginationJs(isPdf: Boolean = false, bgColor: String = "#ffffff", chapterIndex: Int = 0): String {
     val anim = if (isPdf) SimpleSlideAnimation else SlideCoverAnimation
     val animationJs = anim.buildAnimationJs(bgColor)
     return """
@@ -143,6 +143,7 @@ private fun buildPaginationJs(isPdf: Boolean = false, bgColor: String = "#ffffff
     function init() {
     if (__initRunning) return;
     __initRunning = true;
+    window.__currentChapterIdx = $chapterIndex;
     try {
         vw = innerWidth; vh = innerHeight;
         PAD_H = Math.round(vw * 0.12);
@@ -232,7 +233,7 @@ private fun buildPaginationJs(isPdf: Boolean = false, bgColor: String = "#ffffff
             var t = Math.max(1, Math.ceil(tw / vw));
             w.style.width = (t * vw) + 'px';
             preRendered[chapterIndex] = { wrapper: w, total: t };
-        } catch(e) {}
+        } catch(e) { window.__preRenderError = 'ch' + chapterIndex + ':' + e.message; }
     };
 
     window.usePreRendered = function(chapterIndex) {
@@ -347,11 +348,9 @@ private fun buildPaginationJs(isPdf: Boolean = false, bgColor: String = "#ffffff
             var x = t.clientX;
             if (x > vw * 0.3 && x < vw * 0.7) { try { AndroidBridge.onCenterTap(); } catch(e) {} }
             else if (x <= vw * 0.3) {
-                if (cur > 0) { tapFlip(-1); }
-                else try { AndroidBridge.onChapterFlipReady(-1); } catch(e) {}
+                tapFlip(-1);
             } else {
-                if (cur < total - 1) { tapFlip(1); }
-                else try { AndroidBridge.onChapterFlipReady(1); } catch(e) {}
+                tapFlip(1);
             }
         }
     }, {passive: true});
@@ -432,8 +431,9 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         // 注入预渲染 + 触发 onPreRenderReady（如果用户还在拖拽中则无缝替换 loading 占位）
                         wv?.evaluateJavascript(
                             "window.preRenderChapter && preRenderChapter($adjIdx, '$b64');window.onPreRenderReady && onPreRenderReady($adjIdx);"
-                        ) {}
-                        android.util.Log.d("PG", "Emergency preRender done: chapter $adjIdx")
+                        ) { result ->
+                            android.util.Log.d("PG", "Emergency preRender result: $result (chapter $adjIdx)")
+                        }
                     }
                 }
             },
@@ -478,8 +478,9 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                             )
                             webViewRef.value?.evaluateJavascript(
                                 "window.preRenderChapter && preRenderChapter($adjIdx, '$b64')"
-                            ) {}
-                            android.util.Log.d("PG", "Immediate JS pre-render: chapter $adjIdx")
+                            ) { result ->
+                                if (result != "null") android.util.Log.e("PG", "preRender chapter $adjIdx failed: $result")
+                            }
                         }
                     }
             }
@@ -500,14 +501,14 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             val nextIdx = chapterIdx + 1
             val html = viewModel.getAdjacentChapterHtml(nextIdx)
             if (html != null) {
-                webViewRef.value?.evaluateJavascript("window.preRenderChapter && preRenderChapter($nextIdx, '${android.util.Base64.encodeToString(html.toByteArray(), android.util.Base64.NO_WRAP)}')") {}
+                webViewRef.value?.evaluateJavascript("window.preRenderChapter && preRenderChapter($nextIdx, '${android.util.Base64.encodeToString(html.toByteArray(), android.util.Base64.NO_WRAP)}')") { r -> if (r != "null") android.util.Log.e("PG", "preRender chapter $nextIdx failed: $r") }
             }
             // 🔥 最后 3 页 → 预渲染下下章（原来 2 页）
             if (page >= total - 3) {
                 val next2 = chapterIdx + 2
                 val html2 = viewModel.getAdjacentChapterHtml(next2)
                 if (html2 != null) {
-                    webViewRef.value?.evaluateJavascript("window.preRenderChapter && preRenderChapter($next2, '${android.util.Base64.encodeToString(html2.toByteArray(), android.util.Base64.NO_WRAP)}')") {}
+                    webViewRef.value?.evaluateJavascript("window.preRenderChapter && preRenderChapter($next2, '${android.util.Base64.encodeToString(html2.toByteArray(), android.util.Base64.NO_WRAP)}')") { r -> if (r != "null") android.util.Log.e("PG", "preRender chapter $next2 failed: $r") }
                 }
             }
         }
@@ -516,14 +517,14 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             val prevIdx = chapterIdx - 1
             val html = viewModel.getAdjacentChapterHtml(prevIdx)
             if (html != null) {
-                webViewRef.value?.evaluateJavascript("window.preRenderChapter && preRenderChapter($prevIdx, '${android.util.Base64.encodeToString(html.toByteArray(), android.util.Base64.NO_WRAP)}')") {}
+                webViewRef.value?.evaluateJavascript("window.preRenderChapter && preRenderChapter($prevIdx, '${android.util.Base64.encodeToString(html.toByteArray(), android.util.Base64.NO_WRAP)}')") { r -> if (r != "null") android.util.Log.e("PG", "preRender chapter $prevIdx failed: $r") }
             }
             // 🔥 前 2 页 → 预渲染上上章（原来 1 页）
             if (page <= 2) {
                 val prev2 = chapterIdx - 2
                 val html2 = viewModel.getAdjacentChapterHtml(prev2)
                 if (html2 != null) {
-                    webViewRef.value?.evaluateJavascript("window.preRenderChapter && preRenderChapter($prev2, '${android.util.Base64.encodeToString(html2.toByteArray(), android.util.Base64.NO_WRAP)}')") {}
+                    webViewRef.value?.evaluateJavascript("window.preRenderChapter && preRenderChapter($prev2, '${android.util.Base64.encodeToString(html2.toByteArray(), android.util.Base64.NO_WRAP)}')") { r -> if (r != "null") android.util.Log.e("PG", "preRender chapter $prev2 failed: $r") }
                 }
             }
         }
@@ -969,7 +970,7 @@ private fun HtmlContent(html: String, bridge: ReaderJsBridge, isPdf: Boolean = f
                             // 使用 _theme id 创建样式表，确保 updateTheme 能更新它
                             view.evaluateJavascript("(function(){var s=document.getElementById('_theme');if(!s){s=document.createElement('style');s.id='_theme';document.head.appendChild(s);}s.textContent='$css';})()") {
                                 // 字体 CSS 生效后再运行分页 JS（用正确的字体和背景色计算页数）
-                                val paginationJsCode = buildPaginationJs(isPdf, bgColor)
+                                val paginationJsCode = buildPaginationJs(isPdf, bgColor, chapterIndex)
                                 view.evaluateJavascript(paginationJsCode) {
                                     // 2 秒后检查 JS 层分页是否成功，用于诊断
                                     view.postDelayed({

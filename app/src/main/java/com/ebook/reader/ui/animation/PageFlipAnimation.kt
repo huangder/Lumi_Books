@@ -32,9 +32,11 @@ object SlideCoverAnimation : PageFlipAnimation {
             delete botLayer._preIdx;
         }
         if (topLayer) { resetLayer(topLayer); topLayer.innerHTML = ''; topLayer.style.display = 'none'; }
-        if (botLayer) { resetLayer(botLayer); botLayer.innerHTML = ''; botLayer.style.display = 'none'; }
+        if (botLayer) { resetLayer(botLayer); botLayer.innerHTML = ''; botLayer.style.display = 'none'; botLayer._loadingIdx = undefined; delete botLayer._loadingIdx; }
         if (edgeShadow) edgeShadow.style.opacity = '0';
         if (outer) outer.style.visibility = 'visible';
+        // 🔥 不在此清除 __pendingFlip —— bounceBack 是合法的等待状态，
+        // 内容到达后 onPreRenderReady 会负责清除并自动完成章节切换
     }
     function initLayers(b) {
         topLayer = document.createElement('div');
@@ -85,6 +87,7 @@ object SlideCoverAnimation : PageFlipAnimation {
         if (outer) outer.style.visibility = 'visible';
         try { AndroidBridge.onPageChanged(cur, total); } catch(e) {}
         try { AndroidBridge.onChapterSwapped(dir); } catch(e) {}
+        window.__pendingFlip = undefined;
         return true;
     }
 
@@ -239,24 +242,54 @@ object SlideCoverAnimation : PageFlipAnimation {
         })(performance.now());
     }
 
-    // 🔥 Kotlin 异步加载完成后调用：如果用户正在拖拽，无缝替换 loading 占位为真实内容
+    // 🔥 Kotlin 异步加载完成后调用：处理预渲染内容
+    // 三种场景：
+    // 1. 用户仍在拖拽 → 无缝替换 loading 为真实内容
+    // 2. 用户已松手但有 __pendingFlip → 自动完成章节切换动画
+    // 3. 用户已松手无 pending → 清除 loading 标记，preRendered 已就绪，下次拖拽走 Hit Path
     window.onPreRenderReady = function(chapterIndex) {
-        if (typeof dg === 'undefined' || !dg.on) return;
-        var dir = dg.cx - dg.x0 < 0 ? 1 : -1;
-        var adjIdx = dir > 0 ? window.__currentChapterIdx + 1 : window.__currentChapterIdx - 1;
-        if (chapterIndex !== adjIdx || !preRendered[adjIdx]) return;
-        if (typeof botLayer === 'undefined' || !botLayer || botLayer._loadingIdx !== adjIdx) return;
-        var pr = preRendered[adjIdx];
-        while (botLayer.firstChild) botLayer.firstChild.remove();
-        botLayer.appendChild(pr.wrapper);
-        pr.wrapper.style.visibility = 'visible';
-        pr.wrapper.style.position = 'absolute';
-        pr.wrapper.style.top = '0';
-        pr.wrapper.style.left = '0';
-        pr.wrapper.style.transform = (dir > 0) ? 'none' : 'translateX(' + (-(pr.total - 1) * vw) + 'px)';
-        botLayer._preIdx = adjIdx;
-        botLayer._loadingIdx = undefined;
-        delete botLayer._loadingIdx;
+        // 🔥 守卫：__currentChapterIdx 可能因 WebView evaluateJavascript 执行顺序尚未初始化
+        var cci = window.__currentChapterIdx;
+        if (cci !== undefined) {
+            var dir = chapterIndex > cci ? 1 : -1;
+            if (chapterIndex !== (dir > 0 ? cci + 1 : cci - 1)) return;
+        }
+        if (!preRendered[chapterIndex]) return;
+
+        // ── 场景 1：用户仍在拖拽中 ──
+        if (typeof dg !== 'undefined' && dg.on) {
+            if (typeof botLayer !== 'undefined' && botLayer && botLayer._loadingIdx === chapterIndex) {
+                var pr = preRendered[chapterIndex];
+                while (botLayer.firstChild) botLayer.firstChild.remove();
+                botLayer.appendChild(pr.wrapper);
+                pr.wrapper.style.visibility = 'visible';
+                pr.wrapper.style.position = 'absolute';
+                pr.wrapper.style.top = '0';
+                pr.wrapper.style.left = '0';
+                pr.wrapper.style.transform = (dir > 0) ? 'none' : 'translateX(' + (-(pr.total - 1) * vw) + 'px)';
+                botLayer._preIdx = chapterIndex;
+                botLayer._loadingIdx = undefined;
+                delete botLayer._loadingIdx;
+                window.__pendingFlip = undefined;
+            }
+            return;
+        }
+
+        // ── 清理 loading 标记 ──
+        if (typeof botLayer !== 'undefined' && botLayer) {
+            botLayer._loadingIdx = undefined;
+            delete botLayer._loadingIdx;
+        }
+
+        // ── 场景 2：有 pending 标记 → 自动完成章节切换动画 ──
+        if (window.__pendingFlip === chapterIndex && !flipping) {
+            window.__pendingFlip = undefined;
+            chapterFlipTo(dir);
+            return;
+        }
+
+        // ── 场景 3：无 pending → preRendered 已缓存，下次拖拽/点击走 Hit Path ──
+        window.__pendingFlip = undefined;
     };
 
     function aDrag(dx) {
@@ -359,9 +392,13 @@ object SlideCoverAnimation : PageFlipAnimation {
                 botLayer.style.transform = 'translateX(' + Math.round(-vw + c) + 'px)';
                 topLayer.style.transform = 'translateX(' + Math.round(c * 0.2) + 'px)';
             }
+            // 🔥 设置 pending 标记，onPreRenderReady 到达后自动完成章节切换
+            window.__pendingFlip = adjIdx2;
             // 通知 Kotlin 紧急预渲染此章节
             try { AndroidBridge.onChapterFlipReady(isF ? 1 : -1); } catch(e) {}
         } else {
+            // 🔥 章节内拖拽：取消任何待处理的跨章节翻转标记
+            window.__pendingFlip = undefined;
             // 正常章节内拖拽（不变）
             if (outer) outer.style.visibility = 'hidden';
             if (!topLayer.firstChild) {
@@ -422,7 +459,8 @@ object SlideCoverAnimation : PageFlipAnimation {
             // 章节边界：尝试 JS 层预渲染命中
             var adjIdx = dir > 0 ? window.__currentChapterIdx + 1 : window.__currentChapterIdx - 1;
             if (preRendered[adjIdx]) { chapterFlipTo(dir); return; }
-            // 🔥 无预渲染：通知 Kotlin 紧急加载（loading 状态将在下次拖拽时展示）
+            // 🔥 无预渲染：设置 pending 标记 + 通知 Kotlin 紧急加载
+            window.__pendingFlip = adjIdx;
             try { AndroidBridge.onChapterFlipReady(dir); } catch(e) {}
             return;
         }
@@ -487,6 +525,7 @@ object SimpleSlideAnimation : PageFlipAnimation {
                 outer._prWrapper = null;
                 outer._prIdx = undefined;
             }
+            // 🔥 不在此清除 __pendingFlip —— bounceBack 是合法的等待状态
         })(performance.now());
     }
 
@@ -527,9 +566,13 @@ object SimpleSlideAnimation : PageFlipAnimation {
                 }
                 return;
             }
-            // 🔥 无预渲染：1:1跟手拖拽（无阻力），触发 Kotlin 紧急加载
+            // 🔥 无预渲染：1:1跟手拖拽（无阻力），设置 pending + 触发 Kotlin 紧急加载
             // PDF 页面小渲染快，不需要 loading 占位
+            window.__pendingFlip = adjIdx;
             try { AndroidBridge.onChapterFlipReady(isF ? 1 : -1); } catch(e) {}
+        } else {
+            // 🔥 章节内拖拽：取消任何待处理的跨章节翻转标记
+            window.__pendingFlip = undefined;
         }
         wrap.style.transition = 'none';
         wrap.style.transform = 'translateX(' + Math.round(-cur * vw + c) + 'px)';
@@ -563,6 +606,7 @@ object SimpleSlideAnimation : PageFlipAnimation {
                     }
                 }
                 outer._prWrapper = null; outer._prIdx = undefined;
+                window.__pendingFlip = undefined;
                 (function go(now) {
                     var el = now - t0, pg = Math.min(el / d, 1);
                     var t = 1 - Math.pow(1 - pg, 3);
@@ -580,7 +624,7 @@ object SimpleSlideAnimation : PageFlipAnimation {
                 })(performance.now());
                 return;
             }
-            // 🔥 无预渲染：bounceBack（紧急加载已在 aDrag 中触发）
+            // 🔥 无预渲染：bounceBack（紧急加载已在 aDrag 中触发，__pendingFlip 已设置）
         }
         bounceBack();
     }
@@ -610,6 +654,7 @@ object SimpleSlideAnimation : PageFlipAnimation {
                     }
                 }
                 outer._prWrapper = null; outer._prIdx = undefined;
+                window.__pendingFlip = undefined;
                 var start, end, d;
                 if (dir > 0) { start = vw; end = 0; }
                 else { start = -vw; end = 0; }
@@ -627,12 +672,60 @@ object SimpleSlideAnimation : PageFlipAnimation {
                 })(performance.now());
                 return;
             }
+            // 🔥 无预渲染：设置 pending 标记 + 通知 Kotlin
+            window.__pendingFlip = adjIdx;
             try { AndroidBridge.onChapterFlipReady(dir); } catch(e) {}
             return;
         }
         try { AndroidBridge.onPageFlip(dir); } catch(e) {}
         flipTo(np);
     }
+
+    // 🔥 Kotlin 异步加载完成后调用（PDF 简化版）
+    window.onPreRenderReady = function(chapterIndex) {
+        // 🔥 守卫：__currentChapterIdx 可能因 WebView evaluateJavascript 执行顺序尚未初始化
+        var cci = window.__currentChapterIdx;
+        if (cci !== undefined) {
+            var dir = chapterIndex > cci ? 1 : -1;
+            if (chapterIndex !== (dir > 0 ? cci + 1 : cci - 1)) return;
+        }
+        if (!preRendered[chapterIndex]) return;
+        if (window.__pendingFlip !== chapterIndex || flipping) return;
+        window.__pendingFlip = undefined;
+        // 自动完成章节切换（简单滑入动画）
+        var pr = preRendered[chapterIndex];
+        flipping = true;
+        if (wrap) wrap.remove();
+        wrap = pr.wrapper;
+        wrap.style.visibility = 'visible';
+        total = pr.total;
+        cur = dir < 0 ? total - 1 : 0;
+        outer.appendChild(wrap);
+        window.__currentChapterIdx = chapterIndex;
+        delete preRendered[chapterIndex];
+        for (var k in preRendered) {
+            if (preRendered[k] && preRendered[k].wrapper) {
+                try { preRendered[k].wrapper.remove(); } catch(e2) {}
+                delete preRendered[k];
+            }
+        }
+        outer._prWrapper = null; outer._prIdx = undefined;
+        var start, end, d;
+        if (dir > 0) { start = vw; end = 0; }
+        else { start = -vw; end = 0; }
+        wrap.style.transform = 'translateX(' + start + 'px)';
+        d = 380; var t0 = performance.now();
+        (function go(now) {
+            var el = now - t0, pg = Math.min(el / d, 1);
+            var t = 1 - Math.pow(1 - pg, 3);
+            wrap.style.transform = 'translateX(' + Math.round(start + (end - start) * t) + 'px)';
+            if (pg < 1) { animId = requestAnimationFrame(go); return; }
+            animId = null; flipping = false;
+            wrap.style.transform = 'translateX(' + (-cur * vw) + 'px)';
+            try { AndroidBridge.onPageChanged(cur, total); } catch(e) {}
+            try { AndroidBridge.onChapterSwapped(dir); } catch(e) {}
+        })(performance.now());
+    };
     """.trimIndent()
 }
 
