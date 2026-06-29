@@ -239,6 +239,16 @@ object SlideCoverAnimation : PageFlipAnimation {
             if (pg < 1) { animId = requestAnimationFrame(go); return; }
             animId = null; flipping = false;
             cleanupLayers();
+            // 🔥 bounceBack 完成后检查是否有待处理的跨章节翻转
+            // （onPreRenderReady 可能在动画期间到达，当时 flipping=true 无法触发 chapterFlipTo）
+            if (window.__pendingFlip !== undefined) {
+                var pendingIdx = window.__pendingFlip;
+                var pdir = pendingIdx > window.__currentChapterIdx ? 1 : -1;
+                if (preRendered[pendingIdx]) {
+                    window.__pendingFlip = undefined;
+                    chapterFlipTo(pdir);
+                }
+            }
         })(performance.now());
     }
 
@@ -282,9 +292,13 @@ object SlideCoverAnimation : PageFlipAnimation {
         }
 
         // ── 场景 2：有 pending 标记 → 自动完成章节切换动画 ──
-        if (window.__pendingFlip === chapterIndex && !flipping) {
-            window.__pendingFlip = undefined;
-            chapterFlipTo(dir);
+        // 🔥 若 flipping 为 true（bounceBack 仍在动画中），保留 pending，
+        // bounceBack 动画完成后会检查并自动触发 chapterFlipTo
+        if (window.__pendingFlip === chapterIndex) {
+            if (!flipping) {
+                window.__pendingFlip = undefined;
+                chapterFlipTo(dir);
+            }
             return;
         }
 
@@ -526,6 +540,32 @@ object SimpleSlideAnimation : PageFlipAnimation {
                 outer._prIdx = undefined;
             }
             // 🔥 不在此清除 __pendingFlip —— bounceBack 是合法的等待状态
+            // 但需要检查待处理的跨章节翻转（onPreRenderReady 可能在动画期间到达）
+            if (window.__pendingFlip !== undefined) {
+                var pendingIdx = window.__pendingFlip;
+                var pdir = pendingIdx > window.__currentChapterIdx ? 1 : -1;
+                if (preRendered[pendingIdx]) {
+                    window.__pendingFlip = undefined;
+                    // PDF 简化版：直接交换 wrapper
+                    var pr = preRendered[pendingIdx];
+                    if (wrap) wrap.remove();
+                    wrap = pr.wrapper;
+                    wrap.style.visibility = 'visible';
+                    total = pr.total;
+                    cur = pdir < 0 ? total - 1 : 0;
+                    outer.appendChild(wrap);
+                    window.__currentChapterIdx = pendingIdx;
+                    delete preRendered[pendingIdx];
+                    for (var k in preRendered) {
+                        if (preRendered[k] && preRendered[k].wrapper) {
+                            try { preRendered[k].wrapper.remove(); } catch(e2) {}
+                            delete preRendered[k];
+                        }
+                    }
+                    try { AndroidBridge.onPageChanged(cur, total); } catch(e) {}
+                    try { AndroidBridge.onChapterSwapped(pdir); } catch(e) {}
+                }
+            }
         })(performance.now());
     }
 
