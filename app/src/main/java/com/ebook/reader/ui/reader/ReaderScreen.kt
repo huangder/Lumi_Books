@@ -194,16 +194,16 @@ private fun buildPaginationJs(isPdf: Boolean = false, bgColor: String = "#ffffff
 
         cur = 0;
         wrap.style.transform = 'none';
-        // 显示 body（columns 已设置好）
-        b.style.visibility = 'visible';
+        // 显示 body（章节切换期间由 Kotlin 控制可见性，避免动画中途露出内容）
+        if (!window.__chapterTransition) b.style.visibility = 'visible';
         window.__paginateDebug = 'OK:' + total + ' tw=' + tw + ' sw=' + wrap.scrollWidth;
         window.__paginationReady = true;
         try { AndroidBridge.onPageChanged(0, total); } catch(e) {}
         try { AndroidBridge.onPaginationComplete(); } catch(e) {}
     } catch(e) {
         window.__paginateDebug = 'ERR:' + e.message;
-        // 出错时也要确保 body 可见
-        try { document.body.style.visibility = 'visible'; } catch(e2) {}
+        // 出错时也要确保 body 可见（但章节切换期间例外）
+        if (!window.__chapterTransition) try { document.body.style.visibility = 'visible'; } catch(e2) {}
     }
     }
 
@@ -409,8 +409,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         val used = webViewRef.value?.evaluateJavascriptSync("window.usePreRendered ? usePreRendered($targetIdx) : false") == "true"
 
                         if (!used) {
-                            // 没有预渲染，走加载流程
-                            // 先设置 WebView 背景色，避免闪白
+                            // ── 预渲染 Miss：走完整加载+动画流程 ──
                             val th = viewModel.uiState.value.readerTheme
                             val bg = when (th) {
                                 "night" -> "#1a1a1a"
@@ -418,19 +417,25 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                 "green" -> "#e8f5e9"
                                 else -> "#ffffff"
                             }
+                            // Step 1: 设置标志位（init() 中检测到此标志不显示 body），隐藏 body
+                            webViewRef.value?.evaluateJavascript("window.__chapterTransition=true;try{document.body.style.visibility='hidden'}catch(e){}", null)
                             webViewRef.value?.setBackgroundColor(android.graphics.Color.parseColor(bg))
-                            // 🔥 关键优化：先触发章节切换（WebView 异步加载），再播放滑动动画（并行）
-                            if (direction > 0) viewModel.nextChapter() else viewModel.previousChapter()
+                            // Step 2: 先滑出（旧内容仍在，用户看到正常的滑出动画）
                             flipOffset.animateTo(if (direction > 0) -1f else 1f, tween(250, easing = FastOutSlowInEasing))
-                            // WebView 加载和滑动动画并行进行，等待分页完成
+                            // Step 3: WebView 完全不可见后才触发加载（并行进行）
+                            if (direction > 0) viewModel.nextChapter() else viewModel.previousChapter()
+                            // Step 4: 等待分页完成（加载在后台进行）
                             val d = CompletableDeferred<Unit>(); paginationDeferred.value = d
                             withTimeoutOrNull(500L) { d.await() }; paginationDeferred.value = null
                             if (direction < 0) webViewRef.value?.evaluateJavascript("window.flipToLastPage()", null)
+                            // Step 5: 瞬移到另一侧（用户不可见）
                             flipOffset.snapTo(if (direction > 0) 1f else -1f)
+                            // Step 6: 滑入动画 + 动画结束后显示 body
                             flipOffset.animateTo(0f, tween(250, easing = FastOutSlowInEasing))
+                            webViewRef.value?.evaluateJavascript("window.__chapterTransition=false;try{document.body.style.visibility='visible'}catch(e){}", null)
                         } else {
-                            // 预渲染成功，直接切换
-                            if (direction > 0) viewModel.nextChapter() else viewModel.previousChapter()
+                            // ── 预渲染 Hit：DOM 已 swap，仅更新 ViewModel 状态（不触发 loadDataWithBaseURL）──
+                            viewModel.onChapterSwapped(direction)
                         }
                     } finally {
                         webViewRef.value?.evaluateJavascript("window.__animating = false", null)
@@ -943,7 +948,7 @@ private fun HtmlContent(html: String, bridge: ReaderJsBridge, isPdf: Boolean = f
                             "green" -> "#1b5e20"
                             else -> "#333333"
                         }
-                        // 注入 CSS 和分页 JS（onPageFinished 时 DOM 已就绪，仅需短延迟确保 layout 完成）
+                        // 注入 CSS 和分页 JS（150ms 延迟确保大章节 DOM layout 完成）
                         view?.postDelayed({
                             val css = "body{font-size:${fs}px !important;background:$bgColor !important;color:$textColor !important;}p,h1,h2,h3,h4,h5,h6,li,blockquote,pre{color:$textColor !important;}"
                             // 使用 _theme id 创建样式表，确保 updateTheme 能更新它
@@ -951,7 +956,7 @@ private fun HtmlContent(html: String, bridge: ReaderJsBridge, isPdf: Boolean = f
                                 // 字体 CSS 生效后再运行分页 JS（用正确的字体和背景色计算页数）
                                 view.evaluateJavascript(buildPaginationJs(isPdf, bgColor)) {}
                             }
-                        }, 50)
+                        }, 150)
                     }
                     override fun onReceivedError(view: WebView?, errorCode: Int, desc: String?, url: String?) {
                         android.util.Log.e("PG", "WebView error: $errorCode $desc")
@@ -982,7 +987,9 @@ private fun HtmlContent(html: String, bridge: ReaderJsBridge, isPdf: Boolean = f
                 webView.tag = html.hashCode().toString()
                 // 加载 HTML 前先设置 WebView 背景色，避免闪白
                 webView.setBackgroundColor(bgColorInt)
-                webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+                // 将背景色注入 body 标签，确保页面从渲染第一帧起就是正确的背景色
+                val htmlWithBg = html.replace("<body", "<body style=\"background:$bgColor\"", ignoreCase = true)
+                webView.loadDataWithBaseURL(null, htmlWithBg, "text/html", "UTF-8", null)
             }
             val css = "body{font-size:${fontSize}px !important;background:$bgColor !important;color:$textColor !important;}p,h1,h2,h3,h4,h5,h6,li,blockquote,pre{color:$textColor !important;}"
             // 检测字体大小变化，变化后需要重新分页

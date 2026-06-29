@@ -308,6 +308,20 @@ class ReaderViewModel @Inject constructor(
         } catch (_: Exception) { null }
     }
 
+    /**
+     * 预渲染命中时调用：仅更新章节索引和进度，不更新 chapterHtml（避免触发 loadDataWithBaseURL 破坏 DOM swap）
+     */
+    fun onChapterSwapped(direction: Int) {
+        val state = _uiState.value
+        val newIdx = (state.currentChapterIndex + direction).coerceIn(0, state.chapterCount - 1)
+        _uiState.value = _uiState.value.copy(
+            currentChapterIndex = newIdx,
+            currentPageIndex = 0
+        )
+        saveProgress()
+        preloadAdjacentChapters()
+    }
+
     fun toggleMenu() {
         _uiState.value = _uiState.value.copy(
             isMenuVisible = !_uiState.value.isMenuVisible
