@@ -93,6 +93,7 @@ class ReaderJsBridge(
     private val handlePageChanged: (page: Int, total: Int) -> Unit,
     private val handleChapterFlip: (direction: Int) -> Unit,
     private val handleChapterFlipReady: (direction: Int) -> Unit,
+    private val handleChapterSwapped: (direction: Int) -> Unit = {},
     private val handleCenterTap: () -> Unit,
     private val handlePaginationComplete: () -> Unit = {}
 ) {
@@ -100,6 +101,7 @@ class ReaderJsBridge(
     @JavascriptInterface fun onPageChanged(page: Int, total: Int) = handlePageChanged(page, total)
     @JavascriptInterface fun onChapterFlip(direction: Int) = handleChapterFlip(direction)
     @JavascriptInterface fun onChapterFlipReady(direction: Int) = handleChapterFlipReady(direction)
+    @JavascriptInterface fun onChapterSwapped(direction: Int) = handleChapterSwapped(direction)
     @JavascriptInterface fun onCenterTap() = handleCenterTap()
     @JavascriptInterface fun onPaginationComplete() = handlePaginationComplete()
 }
@@ -244,6 +246,7 @@ private fun buildPaginationJs(isPdf: Boolean = false, bgColor: String = "#ffffff
         total = pr.total;
         outer.appendChild(wrap);
         cur = 0;
+        window.__currentChapterIdx = chapterIndex;
         delete preRendered[chapterIndex];
         // 清理其他预渲染
         for (var k in preRendered) {
@@ -403,55 +406,35 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     val wv = webViewRef.value ?: return@launch
                     wv.evaluateJavascript("window.__animating = true", null)
                     try {
-                        val targetIdx = if (direction > 0) viewModel.uiState.value.currentChapterIndex + 1
-                                        else viewModel.uiState.value.currentChapterIndex - 1
-
-                        // Step 1: 异步检查预渲染是否可用（只读检查，不执行 DOM swap）
-                        val hasPreRender = withTimeoutOrNull(200L) {
-                            wv.evaluateJavascriptSuspend("window.preRendered && preRendered[$targetIdx] !== undefined ? 'true' : 'false'")
-                        } == "true"
-
-                        if (!hasPreRender) {
-                            // ═══ 预渲染 Miss：完整加载+动画流程 ═══
-                            val th = viewModel.uiState.value.readerTheme
-                            val bg = when (th) {
-                                "night" -> "#1a1a1a"
-                                "sepia" -> "#f5e6d3"
-                                "green" -> "#e8f5e9"
-                                else -> "#ffffff"
-                            }
-                            // Step M1: 设置标志位 + 隐藏 body
-                            wv.evaluateJavascript("window.__chapterTransition=true;try{document.body.style.visibility='hidden'}catch(e){}", null)
-                            wv.setBackgroundColor(android.graphics.Color.parseColor(bg))
-                            // Step M2: 先滑出（旧内容仍在，用户看到正常的滑出动画）
-                            flipOffset.animateTo(if (direction > 0) -1f else 1f, tween(200, easing = FastOutSlowInEasing))
-                            // Step M3: WebView 完全不可见后才触发加载
-                            if (direction > 0) viewModel.nextChapter() else viewModel.previousChapter()
-                            // Step M4: 等待分页完成
-                            val d = CompletableDeferred<Unit>(); paginationDeferred.value = d
-                            withTimeoutOrNull(500L) { d.await() }; paginationDeferred.value = null
-                            if (direction < 0) wv.evaluateJavascript("window.flipToLastPage()", null)
-                            // Step M5: 瞬移到另一侧 + 滑入 + 显示 body
-                            flipOffset.snapTo(if (direction > 0) 1f else -1f)
-                            flipOffset.animateTo(0f, tween(200, easing = FastOutSlowInEasing))
-                            wv.evaluateJavascript("window.__chapterTransition=false;try{document.body.style.visibility='visible'}catch(e){}", null)
-                        } else {
-                            // ═══ 预渲染 Hit：有预渲染内容，播放滑出→swap→滑入动画 ═══
-                            // Step H1: 滑出旧内容（WebView 仍显示当前章节最后一页）
-                            flipOffset.animateTo(if (direction > 0) -1f else 1f, tween(180, easing = FastOutSlowInEasing))
-                            // Step H2: WebView 完全不可见时 swap DOM + 更新状态
-                            wv.evaluateJavascriptSuspend("usePreRendered($targetIdx)")
-                            viewModel.onChapterSwapped(direction)
-                            // Step H3: 瞬移到另一侧 + 滑入（新内容出现）
-                            flipOffset.snapTo(if (direction > 0) 1f else -1f)
-                            flipOffset.animateTo(0f, tween(180, easing = FastOutSlowInEasing))
+                        // ═══ True Miss 路径：JS 已确认无预渲染，走完整加载+动画流程 ═══
+                        val th = viewModel.uiState.value.readerTheme
+                        val bg = when (th) {
+                            "night" -> "#1a1a1a"
+                            "sepia" -> "#f5e6d3"
+                            "green" -> "#e8f5e9"
+                            else -> "#ffffff"
                         }
+                        wv.evaluateJavascript("window.__chapterTransition=true;try{document.body.style.visibility='hidden'}catch(e){}", null)
+                        wv.setBackgroundColor(android.graphics.Color.parseColor(bg))
+                        // 滑出（旧内容仍在）
+                        flipOffset.animateTo(if (direction > 0) -1f else 1f, tween(200, easing = FastOutSlowInEasing))
+                        // 加载新章节
+                        if (direction > 0) viewModel.nextChapter() else viewModel.previousChapter()
+                        // 等待分页完成
+                        val d = CompletableDeferred<Unit>(); paginationDeferred.value = d
+                        withTimeoutOrNull(500L) { d.await() }; paginationDeferred.value = null
+                        if (direction < 0) wv.evaluateJavascript("window.flipToLastPage()", null)
+                        // 瞬移 + 滑入
+                        flipOffset.snapTo(if (direction > 0) 1f else -1f)
+                        flipOffset.animateTo(0f, tween(200, easing = FastOutSlowInEasing))
+                        wv.evaluateJavascript("window.__chapterTransition=false;try{document.body.style.visibility='visible'}catch(e){}", null)
                     } finally {
                         wv.evaluateJavascript("window.__animating = false", null)
                         flipOffset.snapTo(0f); isChapterAnimating.value = false
                     }
                 }
             },
+            handleChapterSwapped = { direction -> viewModel.onChapterSwapped(direction) },
             handleCenterTap = { viewModel.toggleMenu() },
             handlePaginationComplete = {
                 paginationDeferred.value?.complete(Unit)
@@ -536,7 +519,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         // WebView 始终在组合中（加载时也创建，确保 HTML 能加载）
         Box(Modifier.fillMaxSize().graphicsLayer { translationX = flipOffset.value * size.width }) {
             val isPdf = uiState.book?.format?.name == "PDF"
-            HtmlContent(html = displayedHtml, bridge = bridge, isPdf = isPdf, fontSize = uiState.fontSize, theme = uiState.readerTheme, onWebViewCreated = { webViewRef.value = it })
+            HtmlContent(html = displayedHtml, bridge = bridge, isPdf = isPdf, fontSize = uiState.fontSize, theme = uiState.readerTheme, chapterIndex = uiState.currentChapterIndex, onWebViewCreated = { webViewRef.value = it })
         }
 
         // 过渡页在 NavGraph 层处理，这里只显示阅读内容
@@ -909,7 +892,7 @@ private fun MenuItemRow(title: String, subtitle: String?, trailing: @Composable 
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun HtmlContent(html: String, bridge: ReaderJsBridge, isPdf: Boolean = false, fontSize: Float = 16f, theme: String = "day", onWebViewCreated: (WebView) -> Unit = {}) {
+private fun HtmlContent(html: String, bridge: ReaderJsBridge, isPdf: Boolean = false, fontSize: Float = 16f, theme: String = "day", chapterIndex: Int = 0, onWebViewCreated: (WebView) -> Unit = {}) {
     // 用 remember 存储可变引用，让 onPageFinished 能读取最新值（而不是闭包捕获的旧值）
     val currentFontSize = remember { mutableFloatStateOf(fontSize) }
     val currentTheme = remember { mutableStateOf(theme) }
@@ -999,6 +982,8 @@ private fun HtmlContent(html: String, bridge: ReaderJsBridge, isPdf: Boolean = f
                 // 将背景色注入 body 标签，确保页面从渲染第一帧起就是正确的背景色
                 val htmlWithBg = html.replace("<body", "<body style=\"background:$bgColor\"", ignoreCase = true)
                 webView.loadDataWithBaseURL(null, htmlWithBg, "text/html", "UTF-8", null)
+                // 设置当前章节索引供 JS 边界拖拽和预渲染命中检测
+                webView.evaluateJavascript("window.__currentChapterIdx = $chapterIndex", null)
             }
             val css = "body{font-size:${fontSize}px !important;background:$bgColor !important;color:$textColor !important;}p,h1,h2,h3,h4,h5,h6,li,blockquote,pre{color:$textColor !important;}"
             // 检测字体大小变化，变化后需要重新分页

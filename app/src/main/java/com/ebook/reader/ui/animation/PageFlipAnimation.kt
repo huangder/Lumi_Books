@@ -21,7 +21,18 @@ object SlideCoverAnimation : PageFlipAnimation {
         el.style.borderRadius = '0';
         el.style.zIndex = '';
     }
+    // hasPreRendered: botLayer 是否持有预渲染章节 wrapper（非克隆）
+    botLayer._preIdx = undefined;
     function cleanupLayers() {
+        // 如果 botLayer 持有预渲染 wrapper，先移回 body 再清理
+        if (botLayer._preIdx !== undefined) {
+            var pr = preRendered[botLayer._preIdx];
+            if (pr && pr.wrapper && pr.wrapper.parentNode === botLayer) {
+                pr.wrapper.style.visibility = 'hidden';
+                try { document.body.appendChild(pr.wrapper); } catch(e5) {}
+            }
+            delete botLayer._preIdx;
+        }
         resetLayer(topLayer); resetLayer(botLayer);
         topLayer.innerHTML = ''; botLayer.innerHTML = '';
         botLayer.style.display = 'none';
@@ -42,6 +53,103 @@ object SlideCoverAnimation : PageFlipAnimation {
         b.appendChild(topLayer);
         b.appendChild(botLayer);
         b.appendChild(edgeShadow);
+    }
+
+    // 完成章节切换：将预渲染 wrapper 设为当前 wrap，通知 Kotlin
+    function completeChapterSwap(dir, adjIdx) {
+        var pr = preRendered[adjIdx];
+        if (!pr) return false;
+        if (wrap) wrap.remove();
+        wrap = pr.wrapper;
+        wrap.style.visibility = 'visible';
+        wrap.style.position = 'absolute';
+        wrap.style.top = '0';
+        wrap.style.left = '0';
+        // 重置 transform 以显示正确页
+        if (dir < 0) wrap.style.transform = 'translateX(' + (-(pr.total - 1) * vw) + 'px)';
+        else wrap.style.transform = 'none';
+        total = pr.total;
+        cur = dir < 0 ? total - 1 : 0;
+        outer.appendChild(wrap);
+        window.__currentChapterIdx = adjIdx;
+        delete preRendered[adjIdx];
+        // 清理其他预渲染
+        for (var k in preRendered) {
+            if (preRendered[k] && preRendered[k].wrapper) {
+                try { preRendered[k].wrapper.remove(); } catch(e2) {}
+                delete preRendered[k];
+            }
+        }
+        delete botLayer._preIdx;
+        resetLayer(topLayer); resetLayer(botLayer);
+        topLayer.innerHTML = ''; botLayer.innerHTML = '';
+        botLayer.style.display = 'none'; topLayer.style.display = 'none';
+        edgeShadow.style.opacity = '0';
+        if (outer) outer.style.visibility = 'visible';
+        try { AndroidBridge.onPageChanged(cur, total); } catch(e) {}
+        try { AndroidBridge.onChapterSwapped(dir); } catch(e) {}
+        return true;
+    }
+
+    // 章节边界动画翻页（tap 触发）
+    function chapterFlipTo(dir) {
+        if (flipping) return;
+        var adjIdx = dir > 0 ? window.__currentChapterIdx + 1 : window.__currentChapterIdx - 1;
+        var pr = preRendered[adjIdx];
+        if (!pr) { try { AndroidBridge.onChapterFlipReady(dir); } catch(e) {} return; }
+        if (animId) { cancelAnimationFrame(animId); animId = null; }
+        flipping = true;
+        if (outer) outer.style.visibility = 'hidden';
+
+        // topLayer: 当前页克隆
+        if (!topLayer.firstChild) {
+            var cw = wrap.cloneNode(true);
+            cw.style.transform = 'translateX(' + (-cur * vw) + 'px)';
+            topLayer.appendChild(cw);
+        }
+        topLayer.style.display = '';
+        topLayer.style.backgroundColor = BG;
+
+        // botLayer: 预渲染相邻章节（真实内容）
+        while (botLayer.firstChild) botLayer.firstChild.remove();
+        botLayer.appendChild(pr.wrapper);
+        pr.wrapper.style.visibility = 'visible';
+        pr.wrapper.style.position = 'absolute';
+        pr.wrapper.style.top = '0';
+        pr.wrapper.style.left = '0';
+        // 前进→显示第一列，后退→显示最后一列
+        pr.wrapper.style.transform = dir < 0 ? 'translateX(' + (-(pr.total - 1) * vw) + 'px)' : 'none';
+        botLayer._preIdx = adjIdx;
+        botLayer.style.display = '';
+        botLayer.style.backgroundColor = BG;
+
+        if (dir > 0) {
+            topLayer.style.zIndex = '10'; botLayer.style.zIndex = '9';
+            topLayer.style.boxShadow = '0 0 48px rgba(0,0,0,0.15), 4px 0 16px rgba(0,0,0,0.08)';
+            topLayer.style.borderRadius = '0 36px 36px 0';
+            botLayer.style.boxShadow = 'none'; botLayer.style.borderRadius = '0';
+            topLayer.style.transform = 'translateX(0px)';
+            botLayer.style.transform = 'translateX(' + Math.round(vw * 0.7) + 'px)';
+        } else {
+            botLayer.style.zIndex = '10'; topLayer.style.zIndex = '9';
+            botLayer.style.boxShadow = '0 0 48px rgba(0,0,0,0.15), 4px 0 16px rgba(0,0,0,0.08)';
+            botLayer.style.borderRadius = '0 36px 36px 0';
+            topLayer.style.boxShadow = 'none'; topLayer.style.borderRadius = '0';
+            botLayer.style.transform = 'translateX(' + Math.round(-vw) + 'px)';
+            topLayer.style.transform = 'translateX(0px)';
+        }
+
+        var d = 380, t0 = performance.now();
+        var startTop = gx(topLayer), startBot = gx(botLayer);
+        var endTop = dir > 0 ? -vw : 0, endBot = 0;
+        (function go(now) {
+            var el = now - t0, pg = Math.min(el / d, 1), t = eo(pg);
+            topLayer.style.transform = 'translateX(' + Math.round(startTop + (endTop - startTop) * t) + 'px)';
+            botLayer.style.transform = 'translateX(' + Math.round(startBot + (endBot - startBot) * t) + 'px)';
+            if (pg < 1) { animId = requestAnimationFrame(go); return; }
+            animId = null; flipping = false;
+            completeChapterSwap(dir, adjIdx);
+        })(performance.now());
     }
 
     function flipTo(p, dur) {
@@ -103,7 +211,7 @@ object SlideCoverAnimation : PageFlipAnimation {
             topLayer.style.transform = 'translateX(' + Math.round(x0 * (1 - t)) + 'px)';
             botLayer.style.transform = 'translateX(' + Math.round(botX0 + (botTarget - botX0) * t) + 'px)';
             if (pg < 1) { animId = requestAnimationFrame(go); return; }
-            cleanupLayers();
+            cleanupLayers();  // cleanupLayers 会把预渲染 wrapper 移回 body
         })(performance.now());
     }
 
@@ -112,15 +220,68 @@ object SlideCoverAnimation : PageFlipAnimation {
         var isF = c < 0;
         var target = isF ? cur + 1 : cur - 1;
         var atBoundary = (isF && cur >= total - 1) || (!isF && cur <= 0);
-        if (atBoundary) c = dx * 0.25;
-        if (!topLayer.firstChild) {
-            var cw = wrap.cloneNode(true);
-            cw.style.transform = 'translateX(' + (-cur * vw) + 'px)';
-            topLayer.appendChild(cw);
-        }
-        topLayer.style.display = '';
-        topLayer.style.backgroundColor = BG;
+
         if (atBoundary) {
+            // 检查是否有预渲染的相邻章节
+            var adjIdx = isF ? window.__currentChapterIdx + 1 : window.__currentChapterIdx - 1;
+            var pr = preRendered[adjIdx];
+            if (pr) {
+                // ✅ 预渲染命中：展示真实下一章内容，跟手拖拽（无阻力）
+                if (outer) outer.style.visibility = 'hidden';
+                if (!topLayer.firstChild) {
+                    var cw = wrap.cloneNode(true);
+                    cw.style.transform = 'translateX(' + (-cur * vw) + 'px)';
+                    topLayer.appendChild(cw);
+                }
+                topLayer.style.display = '';
+                topLayer.style.backgroundColor = BG;
+
+                // botLayer 加载预渲染 wrapper（非克隆！真实内容）
+                if (!botLayer.firstChild || botLayer._preIdx !== adjIdx) {
+                    while (botLayer.firstChild) botLayer.firstChild.remove();
+                    botLayer.appendChild(pr.wrapper);
+                    pr.wrapper.style.visibility = 'visible';
+                    pr.wrapper.style.position = 'absolute';
+                    pr.wrapper.style.top = '0';
+                    pr.wrapper.style.left = '0';
+                    // 前进→显示第一列，后退→显示最后一列
+                    pr.wrapper.style.transform = isF ? 'none' : 'translateX(' + (-(pr.total - 1) * vw) + 'px)';
+                    botLayer._preIdx = adjIdx;
+                }
+                botLayer.style.display = '';
+                botLayer.style.backgroundColor = BG;
+
+                // 正常跟手拖拽（无阻力！因为下一章内容真实存在）
+                if (isF) {
+                    topLayer.style.zIndex = '10'; botLayer.style.zIndex = '9';
+                    topLayer.style.boxShadow = '0 0 48px rgba(0,0,0,0.15), 4px 0 16px rgba(0,0,0,0.08)';
+                    topLayer.style.borderRadius = '0 36px 36px 0';
+                    botLayer.style.boxShadow = 'none'; botLayer.style.borderRadius = '0';
+                    topLayer.style.transform = 'translateX(' + c + 'px)';
+                    botLayer.style.transform = 'translateX(' + Math.round(vw * 0.7 + c * 0.3) + 'px)';
+                } else {
+                    botLayer.style.zIndex = '10'; topLayer.style.zIndex = '9';
+                    botLayer.style.boxShadow = '0 0 48px rgba(0,0,0,0.15), 4px 0 16px rgba(0,0,0,0.08)';
+                    botLayer.style.borderRadius = '0 36px 36px 0';
+                    topLayer.style.boxShadow = 'none'; topLayer.style.borderRadius = '0';
+                    botLayer.style.transform = 'translateX(' + Math.round(-vw + c) + 'px)';
+                    topLayer.style.transform = 'translateX(' + Math.round(c * 0.2) + 'px)';
+                }
+                return;
+            }
+            // 无预渲染：回退到橡皮筋阻力（原有行为）
+            c = dx * 0.25;
+        }
+
+        if (atBoundary) {
+            // 无预渲染的边界：只显示当前页克隆 + 阻力
+            if (!topLayer.firstChild) {
+                var cw2 = wrap.cloneNode(true);
+                cw2.style.transform = 'translateX(' + (-cur * vw) + 'px)';
+                topLayer.appendChild(cw2);
+            }
+            topLayer.style.display = '';
+            topLayer.style.backgroundColor = BG;
             topLayer.style.zIndex = '10';
             topLayer.style.boxShadow = isF ? '0 0 48px rgba(0,0,0,0.15), 4px 0 16px rgba(0,0,0,0.08)' : '0 0 48px rgba(0,0,0,0.15), -4px 0 16px rgba(0,0,0,0.08)';
             topLayer.style.borderRadius = isF ? '0 36px 36px 0' : '36px 0 0 36px';
@@ -128,7 +289,15 @@ object SlideCoverAnimation : PageFlipAnimation {
             botLayer.style.display = 'none';
             if (outer) outer.style.visibility = 'hidden';
         } else {
+            // 正常章节内拖拽（不变）
             if (outer) outer.style.visibility = 'hidden';
+            if (!topLayer.firstChild) {
+                var cw3 = wrap.cloneNode(true);
+                cw3.style.transform = 'translateX(' + (-cur * vw) + 'px)';
+                topLayer.appendChild(cw3);
+            }
+            topLayer.style.display = '';
+            topLayer.style.backgroundColor = BG;
             if (!botLayer.firstChild || botLayer.firstChild._t !== target) {
                 var bw = wrap.cloneNode(true);
                 bw._t = target;
@@ -158,7 +327,18 @@ object SlideCoverAnimation : PageFlipAnimation {
     function dEnd(dx, vel) {
         if (Math.abs(dx) / vw > 0.25 || Math.abs(vel) > 350) {
             var dir = dx < 0 ? 1 : -1, np = cur + dir;
-            if (np >= 0 && np < total) { try { AndroidBridge.onPageFlip(dir); } catch(e) {} flipTo(np, 450); return; }
+            if (np >= 0 && np < total) {
+                // 章节内翻页
+                try { AndroidBridge.onPageFlip(dir); } catch(e) {}
+                flipTo(np, 450); return;
+            }
+            // 章节边界：尝试在 JS 内完成切换
+            var adjIdx = dir > 0 ? window.__currentChapterIdx + 1 : window.__currentChapterIdx - 1;
+            if (preRendered[adjIdx]) {
+                completeChapterSwap(dir, adjIdx);
+                return;
+            }
+            // 无预渲染：回退到 Kotlin 层（Miss 路径）
             try { AndroidBridge.onChapterFlipReady(dir); } catch(e) {}
         }
         bounceBack(350);
@@ -166,7 +346,14 @@ object SlideCoverAnimation : PageFlipAnimation {
 
     function tapFlip(dir) {
         var np = cur + dir;
-        if (np < 0 || np >= total) return;
+        if (np < 0 || np >= total) {
+            // 章节边界：尝试 JS 层预渲染命中
+            var adjIdx = dir > 0 ? window.__currentChapterIdx + 1 : window.__currentChapterIdx - 1;
+            if (preRendered[adjIdx]) { chapterFlipTo(dir); return; }
+            // 无预渲染：回退到 Kotlin
+            try { AndroidBridge.onChapterFlipReady(dir); } catch(e) {}
+            return;
+        }
         try { AndroidBridge.onPageFlip(dir); } catch(e) {}
         flipTo(np, 450);
     }
@@ -219,13 +406,56 @@ object SimpleSlideAnimation : PageFlipAnimation {
             var t = 1 - Math.pow(1 - pg, 4);
             wrap.style.transform = 'translateX(' + Math.round(start + (end - start) * t) + 'px)';
             if (pg < 1) { animId = requestAnimationFrame(go); return; }
+            // 如果 bounceBack 时 outer 中有预渲染 wrapper，移回 body
+            if (outer._prWrapper) {
+                outer._prWrapper.style.visibility = 'hidden';
+                try { document.body.appendChild(outer._prWrapper); } catch(e) {}
+                outer._prWrapper = null;
+                outer._prIdx = undefined;
+            }
         })(performance.now());
     }
 
     function aDrag(dx) {
         var c = dx;
-        if (dx > 0 && cur === 0) c = dx * 0.25;
-        else if (dx < 0 && cur === total - 1) c = dx * 0.25;
+        var isF = c < 0;
+        var atBoundary = (isF && cur >= total - 1) || (!isF && cur <= 0);
+
+        if (atBoundary) {
+            var adjIdx = isF ? window.__currentChapterIdx + 1 : window.__currentChapterIdx - 1;
+            var pr = preRendered[adjIdx];
+            if (pr) {
+                // 预渲染命中：将相邻章节 wrapper 放入 outer，与当前 wrap 一起拖拽
+                wrap.style.transition = 'none';
+                if (outer._prIdx !== adjIdx) {
+                    // 移除旧的预渲染 wrapper
+                    if (outer._prWrapper) {
+                        outer._prWrapper.style.visibility = 'hidden';
+                        try { document.body.appendChild(outer._prWrapper); } catch(e) {}
+                    }
+                    outer.appendChild(pr.wrapper);
+                    pr.wrapper.style.visibility = 'visible';
+                    pr.wrapper.style.position = 'absolute';
+                    pr.wrapper.style.top = '0';
+                    pr.wrapper.style.left = '0';
+                    outer._prWrapper = pr.wrapper;
+                    outer._prIdx = adjIdx;
+                }
+                // 根据方向设置预渲染 wrapper 的初始位置
+                if (isF) {
+                    // 前进：预渲染在右侧
+                    pr.wrapper.style.transform = 'none';
+                    wrap.style.transform = 'translateX(' + Math.round(-cur * vw + c) + 'px)';
+                } else {
+                    // 后退：预渲染在左侧，显示最后一页
+                    pr.wrapper.style.transform = 'translateX(' + (-(pr.total - 1) * vw) + 'px)';
+                    wrap.style.transform = 'translateX(' + Math.round(-cur * vw + c) + 'px)';
+                }
+                return;
+            }
+            // 无预渲染：橡皮筋阻力
+            c = dx * 0.25;
+        }
         wrap.style.transition = 'none';
         wrap.style.transform = 'translateX(' + Math.round(-cur * vw + c) + 'px)';
     }
@@ -234,6 +464,30 @@ object SimpleSlideAnimation : PageFlipAnimation {
         if (Math.abs(dx) / vw > 0.25 || Math.abs(vel) > 350) {
             var dir = dx < 0 ? 1 : -1, np = cur + dir;
             if (np >= 0 && np < total) { try { AndroidBridge.onPageFlip(dir); } catch(e) {} flipTo(np); return; }
+            // 章节边界：尝试 JS 内完成
+            var adjIdx = dir > 0 ? window.__currentChapterIdx + 1 : window.__currentChapterIdx - 1;
+            var pr = preRendered[adjIdx];
+            if (pr) {
+                // 完成 swap
+                if (wrap) wrap.remove();
+                wrap = pr.wrapper;
+                wrap.style.visibility = 'visible';
+                total = pr.total;
+                cur = dir < 0 ? total - 1 : 0;
+                wrap.style.transform = 'translateX(' + (-cur * vw) + 'px)';
+                window.__currentChapterIdx = adjIdx;
+                delete preRendered[adjIdx];
+                for (var k in preRendered) {
+                    if (preRendered[k] && preRendered[k].wrapper) {
+                        try { preRendered[k].wrapper.remove(); } catch(e2) {}
+                        delete preRendered[k];
+                    }
+                }
+                outer._prWrapper = null; outer._prIdx = undefined;
+                try { AndroidBridge.onPageChanged(cur, total); } catch(e) {}
+                try { AndroidBridge.onChapterSwapped(dir); } catch(e) {}
+                return;
+            }
             try { AndroidBridge.onChapterFlipReady(dir); } catch(e) {}
         }
         bounceBack();
@@ -241,7 +495,49 @@ object SimpleSlideAnimation : PageFlipAnimation {
 
     function tapFlip(dir) {
         var np = cur + dir;
-        if (np < 0 || np >= total) return;
+        if (np < 0 || np >= total) {
+            // 章节边界：尝试 JS 层预渲染命中
+            var adjIdx = dir > 0 ? window.__currentChapterIdx + 1 : window.__currentChapterIdx - 1;
+            var pr = preRendered[adjIdx];
+            if (pr) {
+                // 简单动画翻页
+                if (flipping) return;
+                flipping = true;
+                if (wrap) wrap.remove();
+                wrap = pr.wrapper;
+                wrap.style.visibility = 'visible';
+                total = pr.total;
+                cur = dir < 0 ? total - 1 : 0;
+                outer.appendChild(wrap);
+                window.__currentChapterIdx = adjIdx;
+                delete preRendered[adjIdx];
+                for (var k in preRendered) {
+                    if (preRendered[k] && preRendered[k].wrapper) {
+                        try { preRendered[k].wrapper.remove(); } catch(e2) {}
+                        delete preRendered[k];
+                    }
+                }
+                outer._prWrapper = null; outer._prIdx = undefined;
+                var start, end, d;
+                if (dir > 0) { start = vw; end = 0; }
+                else { start = -vw; end = 0; }
+                wrap.style.transform = 'translateX(' + start + 'px)';
+                d = 380; var t0 = performance.now();
+                (function go(now) {
+                    var el = now - t0, pg = Math.min(el / d, 1);
+                    var t = 1 - Math.pow(1 - pg, 3);
+                    wrap.style.transform = 'translateX(' + Math.round(start + (end - start) * t) + 'px)';
+                    if (pg < 1) { animId = requestAnimationFrame(go); return; }
+                    animId = null; flipping = false;
+                    wrap.style.transform = 'translateX(' + (-cur * vw) + 'px)';
+                    try { AndroidBridge.onPageChanged(cur, total); } catch(e) {}
+                    try { AndroidBridge.onChapterSwapped(dir); } catch(e) {}
+                })(performance.now());
+                return;
+            }
+            try { AndroidBridge.onChapterFlipReady(dir); } catch(e) {}
+            return;
+        }
         try { AndroidBridge.onPageFlip(dir); } catch(e) {}
         flipTo(np);
     }
