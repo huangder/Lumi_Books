@@ -4,24 +4,7 @@
             "outputFile": "com.ebook.reader.test.app-mergeDebugAndroidTestResources-35:/values-gl/values-gl.xml",
             "map": [
                 {
-                    "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.11.1\\transforms\\38240c7ac61dd0f71d3000f3b447463a\\transformed\\core-1.15.0\\res\\values-gl\\values-gl.xml",
-                    "from": {
-                        "startLines": "2,3,4,5,6,7,8,9",
-                        "startColumns": "4,4,4,4,4,4,4,4",
-                        "startOffsets": "55,154,256,356,454,561,667,783",
-                        "endColumns": "98,101,99,97,106,105,115,100",
-                        "endOffsets": "149,251,351,449,556,662,778,879"
-                    },
-                    "to": {
-                        "startLines": "2,3,4,5,6,7,8,24",
-                        "startColumns": "4,4,4,4,4,4,4,4",
-                        "startOffsets": "105,204,306,406,504,611,717,2155",
-                        "endColumns": "98,101,99,97,106,105,115,100",
-                        "endOffsets": "199,301,401,499,606,712,828,2251"
-                    }
-                },
-                {
-                    "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.11.1\\transforms\\845531b21d965ce5ae76ad9a35d63c31\\transformed\\ui-release\\res\\values-gl\\values-gl.xml",
+                    "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.13\\transforms\\2e698c387947aa40f58106e8678d53d0\\transformed\\ui-release\\res\\values-gl\\values-gl.xml",
                     "from": {
                         "startLines": "2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19",
                         "startColumns": "4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4",
@@ -35,6 +18,23 @@
                         "startOffsets": "833,929,1012,1121,1222,1311,1390,1483,1575,1663,1748,1838,1915,1999,2079,2256,2338,2410",
                         "endColumns": "95,82,108,100,88,78,92,91,87,84,89,76,83,79,75,81,71,121",
                         "endOffsets": "924,1007,1116,1217,1306,1385,1478,1570,1658,1743,1833,1910,1994,2074,2150,2333,2405,2527"
+                    }
+                },
+                {
+                    "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.13\\transforms\\0e1e5722d8d00985dbe6e233cdb91d7d\\transformed\\core-1.15.0\\res\\values-gl\\values-gl.xml",
+                    "from": {
+                        "startLines": "2,3,4,5,6,7,8,9",
+                        "startColumns": "4,4,4,4,4,4,4,4",
+                        "startOffsets": "55,154,256,356,454,561,667,783",
+                        "endColumns": "98,101,99,97,106,105,115,100",
+                        "endOffsets": "149,251,351,449,556,662,778,879"
+                    },
+                    "to": {
+                        "startLines": "2,3,4,5,6,7,8,24",
+                        "startColumns": "4,4,4,4,4,4,4,4",
+                        "startOffsets": "105,204,306,406,504,611,717,2155",
+                        "endColumns": "98,101,99,97,106,105,115,100",
+                        "endOffsets": "199,301,401,499,606,712,828,2251"
                     }
                 }
             ]

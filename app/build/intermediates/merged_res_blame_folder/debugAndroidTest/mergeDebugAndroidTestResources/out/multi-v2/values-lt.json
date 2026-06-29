@@ -4,24 +4,7 @@
             "outputFile": "com.ebook.reader.test.app-mergeDebugAndroidTestResources-35:/values-lt/values-lt.xml",
             "map": [
                 {
-                    "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.11.1\\transforms\\38240c7ac61dd0f71d3000f3b447463a\\transformed\\core-1.15.0\\res\\values-lt\\values-lt.xml",
-                    "from": {
-                        "startLines": "2,3,4,5,6,7,8,9",
-                        "startColumns": "4,4,4,4,4,4,4,4",
-                        "startOffsets": "55,153,263,362,465,576,686,806",
-                        "endColumns": "97,109,98,102,110,109,119,100",
-                        "endOffsets": "148,258,357,460,571,681,801,902"
-                    },
-                    "to": {
-                        "startLines": "2,3,4,5,6,7,8,24",
-                        "startColumns": "4,4,4,4,4,4,4,4",
-                        "startOffsets": "105,203,313,412,515,626,736,2148",
-                        "endColumns": "97,109,98,102,110,109,119,100",
-                        "endOffsets": "198,308,407,510,621,731,851,2244"
-                    }
-                },
-                {
-                    "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.11.1\\transforms\\845531b21d965ce5ae76ad9a35d63c31\\transformed\\ui-release\\res\\values-lt\\values-lt.xml",
+                    "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.13\\transforms\\2e698c387947aa40f58106e8678d53d0\\transformed\\ui-release\\res\\values-lt\\values-lt.xml",
                     "from": {
                         "startLines": "2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19",
                         "startColumns": "4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4",
@@ -35,6 +18,23 @@
                         "startOffsets": "856,949,1033,1131,1236,1331,1408,1499,1586,1670,1756,1844,1919,1996,2073,2249,2329,2412",
                         "endColumns": "92,83,97,104,94,76,90,86,83,85,87,74,76,76,74,79,82,121",
                         "endOffsets": "944,1028,1126,1231,1326,1403,1494,1581,1665,1751,1839,1914,1991,2068,2143,2324,2407,2529"
+                    }
+                },
+                {
+                    "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.13\\transforms\\0e1e5722d8d00985dbe6e233cdb91d7d\\transformed\\core-1.15.0\\res\\values-lt\\values-lt.xml",
+                    "from": {
+                        "startLines": "2,3,4,5,6,7,8,9",
+                        "startColumns": "4,4,4,4,4,4,4,4",
+                        "startOffsets": "55,153,263,362,465,576,686,806",
+                        "endColumns": "97,109,98,102,110,109,119,100",
+                        "endOffsets": "148,258,357,460,571,681,801,902"
+                    },
+                    "to": {
+                        "startLines": "2,3,4,5,6,7,8,24",
+                        "startColumns": "4,4,4,4,4,4,4,4",
+                        "startOffsets": "105,203,313,412,515,626,736,2148",
+                        "endColumns": "97,109,98,102,110,109,119,100",
+                        "endOffsets": "198,308,407,510,621,731,851,2244"
                     }
                 }
             ]

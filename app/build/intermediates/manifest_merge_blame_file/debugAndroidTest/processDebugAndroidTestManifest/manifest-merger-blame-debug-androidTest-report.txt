@@ -3,96 +3,96 @@
 3    package="com.ebook.reader.test" >
 4
 5    <uses-sdk
-5-->D:\vibe_coding\android_books\app\build\intermediates\tmp\manifest\androidTest\debug\tempFile1ProcessTestManifest6558075589954330395.xml:5:5-74
+5-->D:\vibe_coding\android_books\app\build\intermediates\tmp\manifest\androidTest\debug\tempFile1ProcessTestManifest12064211596803862132.xml:5:5-74
 6        android:minSdkVersion="26"
-6-->D:\vibe_coding\android_books\app\build\intermediates\tmp\manifest\androidTest\debug\tempFile1ProcessTestManifest6558075589954330395.xml:5:15-41
+6-->D:\vibe_coding\android_books\app\build\intermediates\tmp\manifest\androidTest\debug\tempFile1ProcessTestManifest12064211596803862132.xml:5:15-41
 7        android:targetSdkVersion="35" />
-7-->D:\vibe_coding\android_books\app\build\intermediates\tmp\manifest\androidTest\debug\tempFile1ProcessTestManifest6558075589954330395.xml:5:42-71
+7-->D:\vibe_coding\android_books\app\build\intermediates\tmp\manifest\androidTest\debug\tempFile1ProcessTestManifest12064211596803862132.xml:5:42-71
 8
 9    <instrumentation
-9-->D:\vibe_coding\android_books\app\build\intermediates\tmp\manifest\androidTest\debug\tempFile1ProcessTestManifest6558075589954330395.xml:11:5-15:66
+9-->D:\vibe_coding\android_books\app\build\intermediates\tmp\manifest\androidTest\debug\tempFile1ProcessTestManifest12064211596803862132.xml:11:5-15:66
 10        android:name="androidx.test.runner.AndroidJUnitRunner"
-10-->D:\vibe_coding\android_books\app\build\intermediates\tmp\manifest\androidTest\debug\tempFile1ProcessTestManifest6558075589954330395.xml:11:22-76
+10-->D:\vibe_coding\android_books\app\build\intermediates\tmp\manifest\androidTest\debug\tempFile1ProcessTestManifest12064211596803862132.xml:11:22-76
 11        android:functionalTest="false"
-11-->D:\vibe_coding\android_books\app\build\intermediates\tmp\manifest\androidTest\debug\tempFile1ProcessTestManifest6558075589954330395.xml:14:22-52
+11-->D:\vibe_coding\android_books\app\build\intermediates\tmp\manifest\androidTest\debug\tempFile1ProcessTestManifest12064211596803862132.xml:14:22-52
 12        android:handleProfiling="false"
-12-->D:\vibe_coding\android_books\app\build\intermediates\tmp\manifest\androidTest\debug\tempFile1ProcessTestManifest6558075589954330395.xml:13:22-53
+12-->D:\vibe_coding\android_books\app\build\intermediates\tmp\manifest\androidTest\debug\tempFile1ProcessTestManifest12064211596803862132.xml:13:22-53
 13        android:label="Tests for com.ebook.reader"
-13-->D:\vibe_coding\android_books\app\build\intermediates\tmp\manifest\androidTest\debug\tempFile1ProcessTestManifest6558075589954330395.xml:15:22-64
+13-->D:\vibe_coding\android_books\app\build\intermediates\tmp\manifest\androidTest\debug\tempFile1ProcessTestManifest12064211596803862132.xml:15:22-64
 14        android:targetPackage="com.ebook.reader" />
-14-->D:\vibe_coding\android_books\app\build\intermediates\tmp\manifest\androidTest\debug\tempFile1ProcessTestManifest6558075589954330395.xml:12:22-62
+14-->D:\vibe_coding\android_books\app\build\intermediates\tmp\manifest\androidTest\debug\tempFile1ProcessTestManifest12064211596803862132.xml:12:22-62
 15
 16    <uses-permission android:name="android.permission.REORDER_TASKS" />
-16-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\0953589c8f53fa2cf910e832a257916d\transformed\core-1.5.0\AndroidManifest.xml:24:5-72
-16-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\0953589c8f53fa2cf910e832a257916d\transformed\core-1.5.0\AndroidManifest.xml:24:22-69
+16-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\d322adfcf20f5225aff49b8251337684\transformed\core-1.5.0\AndroidManifest.xml:24:5-72
+16-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\d322adfcf20f5225aff49b8251337684\transformed\core-1.5.0\AndroidManifest.xml:24:22-69
 17
 18    <queries>
-18-->[androidx.test:runner:1.5.2] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\58654d63f2db40d692ca1fa25d7f7623\transformed\runner-1.5.2\AndroidManifest.xml:24:5-28:15
+18-->[androidx.test:runner:1.5.2] C:\Users\Huangder\.gradle\caches\8.13\transforms\eabac43be4c05b2fa0d4aa73981a2660\transformed\runner-1.5.2\AndroidManifest.xml:24:5-28:15
 19        <package android:name="androidx.test.orchestrator" />
-19-->[androidx.test:runner:1.5.2] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\58654d63f2db40d692ca1fa25d7f7623\transformed\runner-1.5.2\AndroidManifest.xml:25:9-62
-19-->[androidx.test:runner:1.5.2] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\58654d63f2db40d692ca1fa25d7f7623\transformed\runner-1.5.2\AndroidManifest.xml:25:18-59
+19-->[androidx.test:runner:1.5.2] C:\Users\Huangder\.gradle\caches\8.13\transforms\eabac43be4c05b2fa0d4aa73981a2660\transformed\runner-1.5.2\AndroidManifest.xml:25:9-62
+19-->[androidx.test:runner:1.5.2] C:\Users\Huangder\.gradle\caches\8.13\transforms\eabac43be4c05b2fa0d4aa73981a2660\transformed\runner-1.5.2\AndroidManifest.xml:25:18-59
 20        <package android:name="androidx.test.services" />
-20-->[androidx.test:runner:1.5.2] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\58654d63f2db40d692ca1fa25d7f7623\transformed\runner-1.5.2\AndroidManifest.xml:26:9-58
-20-->[androidx.test:runner:1.5.2] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\58654d63f2db40d692ca1fa25d7f7623\transformed\runner-1.5.2\AndroidManifest.xml:26:18-55
+20-->[androidx.test:runner:1.5.2] C:\Users\Huangder\.gradle\caches\8.13\transforms\eabac43be4c05b2fa0d4aa73981a2660\transformed\runner-1.5.2\AndroidManifest.xml:26:9-58
+20-->[androidx.test:runner:1.5.2] C:\Users\Huangder\.gradle\caches\8.13\transforms\eabac43be4c05b2fa0d4aa73981a2660\transformed\runner-1.5.2\AndroidManifest.xml:26:18-55
 21        <package android:name="com.google.android.apps.common.testing.services" />
-21-->[androidx.test:runner:1.5.2] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\58654d63f2db40d692ca1fa25d7f7623\transformed\runner-1.5.2\AndroidManifest.xml:27:9-83
-21-->[androidx.test:runner:1.5.2] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\58654d63f2db40d692ca1fa25d7f7623\transformed\runner-1.5.2\AndroidManifest.xml:27:18-80
+21-->[androidx.test:runner:1.5.2] C:\Users\Huangder\.gradle\caches\8.13\transforms\eabac43be4c05b2fa0d4aa73981a2660\transformed\runner-1.5.2\AndroidManifest.xml:27:9-83
+21-->[androidx.test:runner:1.5.2] C:\Users\Huangder\.gradle\caches\8.13\transforms\eabac43be4c05b2fa0d4aa73981a2660\transformed\runner-1.5.2\AndroidManifest.xml:27:18-80
 22    </queries>
 23
 24    <application
-24-->D:\vibe_coding\android_books\app\build\intermediates\tmp\manifest\androidTest\debug\tempFile1ProcessTestManifest6558075589954330395.xml:7:5-9:19
+24-->D:\vibe_coding\android_books\app\build\intermediates\tmp\manifest\androidTest\debug\tempFile1ProcessTestManifest12064211596803862132.xml:7:5-9:19
 25        android:debuggable="true"
 26        android:extractNativeLibs="false" >
 27        <uses-library android:name="android.test.runner" />
-27-->D:\vibe_coding\android_books\app\build\intermediates\tmp\manifest\androidTest\debug\tempFile1ProcessTestManifest6558075589954330395.xml:8:9-60
-27-->D:\vibe_coding\android_books\app\build\intermediates\tmp\manifest\androidTest\debug\tempFile1ProcessTestManifest6558075589954330395.xml:8:23-57
+27-->D:\vibe_coding\android_books\app\build\intermediates\tmp\manifest\androidTest\debug\tempFile1ProcessTestManifest12064211596803862132.xml:8:9-60
+27-->D:\vibe_coding\android_books\app\build\intermediates\tmp\manifest\androidTest\debug\tempFile1ProcessTestManifest12064211596803862132.xml:8:23-57
 28
 29        <activity
-29-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\0953589c8f53fa2cf910e832a257916d\transformed\core-1.5.0\AndroidManifest.xml:27:9-34:20
+29-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\d322adfcf20f5225aff49b8251337684\transformed\core-1.5.0\AndroidManifest.xml:27:9-34:20
 30            android:name="androidx.test.core.app.InstrumentationActivityInvoker$BootstrapActivity"
-30-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\0953589c8f53fa2cf910e832a257916d\transformed\core-1.5.0\AndroidManifest.xml:28:13-99
+30-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\d322adfcf20f5225aff49b8251337684\transformed\core-1.5.0\AndroidManifest.xml:28:13-99
 31            android:exported="true"
-31-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\0953589c8f53fa2cf910e832a257916d\transformed\core-1.5.0\AndroidManifest.xml:29:13-36
+31-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\d322adfcf20f5225aff49b8251337684\transformed\core-1.5.0\AndroidManifest.xml:29:13-36
 32            android:theme="@style/WhiteBackgroundTheme" >
-32-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\0953589c8f53fa2cf910e832a257916d\transformed\core-1.5.0\AndroidManifest.xml:30:13-56
+32-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\d322adfcf20f5225aff49b8251337684\transformed\core-1.5.0\AndroidManifest.xml:30:13-56
 33            <intent-filter android:priority="-100" >
-33-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\0953589c8f53fa2cf910e832a257916d\transformed\core-1.5.0\AndroidManifest.xml:31:13-33:29
-33-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\0953589c8f53fa2cf910e832a257916d\transformed\core-1.5.0\AndroidManifest.xml:31:28-51
+33-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\d322adfcf20f5225aff49b8251337684\transformed\core-1.5.0\AndroidManifest.xml:31:13-33:29
+33-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\d322adfcf20f5225aff49b8251337684\transformed\core-1.5.0\AndroidManifest.xml:31:28-51
 34                <category android:name="android.intent.category.LAUNCHER" />
-34-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\0953589c8f53fa2cf910e832a257916d\transformed\core-1.5.0\AndroidManifest.xml:32:17-77
-34-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\0953589c8f53fa2cf910e832a257916d\transformed\core-1.5.0\AndroidManifest.xml:32:27-74
+34-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\d322adfcf20f5225aff49b8251337684\transformed\core-1.5.0\AndroidManifest.xml:32:17-77
+34-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\d322adfcf20f5225aff49b8251337684\transformed\core-1.5.0\AndroidManifest.xml:32:27-74
 35            </intent-filter>
 36        </activity>
 37        <activity
-37-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\0953589c8f53fa2cf910e832a257916d\transformed\core-1.5.0\AndroidManifest.xml:35:9-42:20
+37-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\d322adfcf20f5225aff49b8251337684\transformed\core-1.5.0\AndroidManifest.xml:35:9-42:20
 38            android:name="androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity"
-38-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\0953589c8f53fa2cf910e832a257916d\transformed\core-1.5.0\AndroidManifest.xml:36:13-95
+38-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\d322adfcf20f5225aff49b8251337684\transformed\core-1.5.0\AndroidManifest.xml:36:13-95
 39            android:exported="true"
-39-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\0953589c8f53fa2cf910e832a257916d\transformed\core-1.5.0\AndroidManifest.xml:37:13-36
+39-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\d322adfcf20f5225aff49b8251337684\transformed\core-1.5.0\AndroidManifest.xml:37:13-36
 40            android:theme="@style/WhiteBackgroundTheme" >
-40-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\0953589c8f53fa2cf910e832a257916d\transformed\core-1.5.0\AndroidManifest.xml:38:13-56
+40-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\d322adfcf20f5225aff49b8251337684\transformed\core-1.5.0\AndroidManifest.xml:38:13-56
 41            <intent-filter android:priority="-100" >
-41-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\0953589c8f53fa2cf910e832a257916d\transformed\core-1.5.0\AndroidManifest.xml:31:13-33:29
-41-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\0953589c8f53fa2cf910e832a257916d\transformed\core-1.5.0\AndroidManifest.xml:31:28-51
+41-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\d322adfcf20f5225aff49b8251337684\transformed\core-1.5.0\AndroidManifest.xml:31:13-33:29
+41-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\d322adfcf20f5225aff49b8251337684\transformed\core-1.5.0\AndroidManifest.xml:31:28-51
 42                <category android:name="android.intent.category.LAUNCHER" />
-42-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\0953589c8f53fa2cf910e832a257916d\transformed\core-1.5.0\AndroidManifest.xml:32:17-77
-42-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\0953589c8f53fa2cf910e832a257916d\transformed\core-1.5.0\AndroidManifest.xml:32:27-74
+42-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\d322adfcf20f5225aff49b8251337684\transformed\core-1.5.0\AndroidManifest.xml:32:17-77
+42-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\d322adfcf20f5225aff49b8251337684\transformed\core-1.5.0\AndroidManifest.xml:32:27-74
 43            </intent-filter>
 44        </activity>
 45        <activity
-45-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\0953589c8f53fa2cf910e832a257916d\transformed\core-1.5.0\AndroidManifest.xml:43:9-50:20
+45-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\d322adfcf20f5225aff49b8251337684\transformed\core-1.5.0\AndroidManifest.xml:43:9-50:20
 46            android:name="androidx.test.core.app.InstrumentationActivityInvoker$EmptyFloatingActivity"
-46-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\0953589c8f53fa2cf910e832a257916d\transformed\core-1.5.0\AndroidManifest.xml:44:13-103
+46-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\d322adfcf20f5225aff49b8251337684\transformed\core-1.5.0\AndroidManifest.xml:44:13-103
 47            android:exported="true"
-47-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\0953589c8f53fa2cf910e832a257916d\transformed\core-1.5.0\AndroidManifest.xml:45:13-36
+47-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\d322adfcf20f5225aff49b8251337684\transformed\core-1.5.0\AndroidManifest.xml:45:13-36
 48            android:theme="@style/WhiteBackgroundDialogTheme" >
-48-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\0953589c8f53fa2cf910e832a257916d\transformed\core-1.5.0\AndroidManifest.xml:46:13-62
+48-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\d322adfcf20f5225aff49b8251337684\transformed\core-1.5.0\AndroidManifest.xml:46:13-62
 49            <intent-filter android:priority="-100" >
-49-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\0953589c8f53fa2cf910e832a257916d\transformed\core-1.5.0\AndroidManifest.xml:31:13-33:29
-49-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\0953589c8f53fa2cf910e832a257916d\transformed\core-1.5.0\AndroidManifest.xml:31:28-51
+49-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\d322adfcf20f5225aff49b8251337684\transformed\core-1.5.0\AndroidManifest.xml:31:13-33:29
+49-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\d322adfcf20f5225aff49b8251337684\transformed\core-1.5.0\AndroidManifest.xml:31:28-51
 50                <category android:name="android.intent.category.LAUNCHER" />
-50-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\0953589c8f53fa2cf910e832a257916d\transformed\core-1.5.0\AndroidManifest.xml:32:17-77
-50-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.11.1\transforms\0953589c8f53fa2cf910e832a257916d\transformed\core-1.5.0\AndroidManifest.xml:32:27-74
+50-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\d322adfcf20f5225aff49b8251337684\transformed\core-1.5.0\AndroidManifest.xml:32:17-77
+50-->[androidx.test:core:1.5.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\d322adfcf20f5225aff49b8251337684\transformed\core-1.5.0\AndroidManifest.xml:32:27-74
 51            </intent-filter>
 52        </activity>
 53    </application>
