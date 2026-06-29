@@ -315,10 +315,7 @@ object SlideCoverAnimation : PageFlipAnimation {
             }
             // 🔥 无预渲染：展示 loading 占位层 + 1:1 跟手拖拽（无阻力！）
             // 参考 HiReader：动画不等内容加载，展示 loading 状态，异步注入内容后替换
-        }
-
-        if (atBoundary) {
-            // 🔥 边界无预渲染：botLayer 显示 loading spinner，topLayer 显示当前页克隆
+            // botLayer 显示 loading spinner，topLayer 显示当前页克隆
             // 拖拽参数与 Hit Path 完全相同（1:1跟手，无视差阻力）
             var adjIdx2 = isF ? window.__currentChapterIdx + 1 : window.__currentChapterIdx - 1;
             if (outer) outer.style.visibility = 'hidden';
@@ -364,7 +361,6 @@ object SlideCoverAnimation : PageFlipAnimation {
             }
             // 通知 Kotlin 紧急预渲染此章节
             try { AndroidBridge.onChapterFlipReady(isF ? 1 : -1); } catch(e) {}
-        }
         } else {
             // 正常章节内拖拽（不变）
             if (outer) outer.style.visibility = 'hidden';
