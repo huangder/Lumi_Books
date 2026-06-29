@@ -80,3 +80,83 @@ PDF 动画的 `bounceBack()` 同样问题。
 - 末页点击右边缘 → 自动触发章节切换动画
 - logcat 检查 `"PG"` tag：无 NaN、undefined、静默失败
 - `evaluateJavascript` 回调日志确认内容注入成功
+
+---
+
+## 第五轮修复（2026-06-30）：bounceBack × onPreRenderReady 竞态条件
+
+### 问题
+
+第四轮修复后仍然不工作。通过 logcat 确认 Emergency preRender 路径正常触发（`Emergency preRender result: null (chapter 21)`），但章节切换动画不播放。
+
+### 根因
+
+**竞态条件**：`bounceBack` 动画（350ms）和 Kotlin 异步加载之间的竞争。
+
+```
+dEnd → bounceBack(350ms) 开始, flipping=true
+                            ↓
+                  Kotlin 异步加载很快完成（缓存命中，~10ms）
+                            ↓
+                  onPreRenderReady 运行，但 flipping=true
+                            ↓
+    EPUB: 场景2跳过(!flipping=false) → 场景3清除 __pendingFlip  ← BUG!
+    PDF:  直接 return（保留 pending 但 bounceBack 完成时无人检查）← BUG!
+                            ↓
+                  bounceBack 完成, flipping=false
+                            ↓
+    但 __pendingFlip 已清除/被忽略，章节切换永不触发
+```
+
+### 修复（PageFlipAnimation.kt，3 处）
+
+**Fix 1 — EPUB `onPreRenderReady` 场景 2**：当 `__pendingFlip === chapterIndex` 但 `flipping` 为 true 时，不 fall through 到场景 3（会清除 pending），而是直接 return 保留 pending 标记。
+
+```javascript
+// 修复前：
+if (window.__pendingFlip === chapterIndex && !flipping) {
+    window.__pendingFlip = undefined;
+    chapterFlipTo(dir);
+    return;
+}
+window.__pendingFlip = undefined;  // ← 场景3会清除pending!
+
+// 修复后：
+if (window.__pendingFlip === chapterIndex) {
+    if (!flipping) {
+        window.__pendingFlip = undefined;
+        chapterFlipTo(dir);
+    }
+    // flipping=true → 保留 pending，bounceBack 完成后会处理
+    return;
+}
+window.__pendingFlip = undefined;
+```
+
+**Fix 2 — EPUB `bounceBack` 完成回调**：动画结束后检查 `__pendingFlip`，如果有待处理的跨章节翻转且 `preRendered` 已就绪，自动触发 `chapterFlipTo`。
+
+**Fix 3 — PDF `bounceBack` 完成回调**：同上逻辑，但使用 PDF 的直接 wrapper 交换方式（无双层动画）。
+
+### 数据流
+
+```
+aDrag 边界 → __pendingFlip=adjIdx → onChapterFlipReady → Kotlin async
+dEnd → bounceBack(350ms, flipping=true)
+                                    ↓
+                          Kotlin 完成 → preRenderChapter + onPreRenderReady
+                                    ↓
+            onPreRenderReady: pending匹配但flipping=true → 保留pending return
+                                    ↓
+            bounceBack 完成 → flipping=false → cleanupLayers
+                                    ↓
+            检查 __pendingFlip → 找到pending + preRendered就绪
+                                    ↓
+            chapterFlipTo(dir) → 动画播放 → completeChapterSwap → onChapterSwapped
+```
+
+### 编译
+
+```
+./gradlew compileDebugKotlin   # BUILD SUCCESSFUL
+./gradlew assembleDebug         # BUILD SUCCESSFUL
+```
