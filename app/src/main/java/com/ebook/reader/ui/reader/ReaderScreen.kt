@@ -84,7 +84,9 @@ import com.ebook.reader.ui.theme.DingliSong
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.resume
 
 class ReaderJsBridge(
     private val handlePageFlip: (direction: Int) -> Unit,
@@ -102,16 +104,13 @@ class ReaderJsBridge(
     @JavascriptInterface fun onPaginationComplete() = handlePaginationComplete()
 }
 
-/** 同步执行 JS（阻塞当前线程） */
-private fun WebView.evaluateJavascriptSync(script: String): String {
-    var result = ""
-    val latch = java.util.concurrent.CountDownLatch(1)
-    evaluateJavascript(script) { r ->
-        result = r?.removeSurrounding("\"") ?: ""
-        latch.countDown()
+/** 异步执行 JS（挂起协程，不阻塞主线程） */
+private suspend fun WebView.evaluateJavascriptSuspend(script: String): String {
+    return suspendCancellableCoroutine { cont ->
+        evaluateJavascript(script) { result ->
+            cont.resume(result?.removeSurrounding("\"") ?: "")
+        }
     }
-    latch.await(2, java.util.concurrent.TimeUnit.SECONDS)
-    return result
 }
 
 private fun buildPaginationJs(isPdf: Boolean = false, bgColor: String = "#ffffff"): String {
@@ -401,15 +400,19 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 if (!canFlip) return@ReaderJsBridge
                 scope.launch {
                     isChapterAnimating.value = true
-                    webViewRef.value?.evaluateJavascript("window.__animating = true", null)
+                    val wv = webViewRef.value ?: return@launch
+                    wv.evaluateJavascript("window.__animating = true", null)
                     try {
-                        // 尝试使用预渲染的 wrapper
                         val targetIdx = if (direction > 0) viewModel.uiState.value.currentChapterIndex + 1
                                         else viewModel.uiState.value.currentChapterIndex - 1
-                        val used = webViewRef.value?.evaluateJavascriptSync("window.usePreRendered ? usePreRendered($targetIdx) : false") == "true"
 
-                        if (!used) {
-                            // ── 预渲染 Miss：走完整加载+动画流程 ──
+                        // Step 1: 异步检查预渲染是否可用（只读检查，不执行 DOM swap）
+                        val hasPreRender = withTimeoutOrNull(200L) {
+                            wv.evaluateJavascriptSuspend("window.preRendered && preRendered[$targetIdx] !== undefined ? 'true' : 'false'")
+                        } == "true"
+
+                        if (!hasPreRender) {
+                            // ═══ 预渲染 Miss：完整加载+动画流程 ═══
                             val th = viewModel.uiState.value.readerTheme
                             val bg = when (th) {
                                 "night" -> "#1a1a1a"
@@ -417,28 +420,34 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                 "green" -> "#e8f5e9"
                                 else -> "#ffffff"
                             }
-                            // Step 1: 设置标志位（init() 中检测到此标志不显示 body），隐藏 body
-                            webViewRef.value?.evaluateJavascript("window.__chapterTransition=true;try{document.body.style.visibility='hidden'}catch(e){}", null)
-                            webViewRef.value?.setBackgroundColor(android.graphics.Color.parseColor(bg))
-                            // Step 2: 先滑出（旧内容仍在，用户看到正常的滑出动画）
-                            flipOffset.animateTo(if (direction > 0) -1f else 1f, tween(250, easing = FastOutSlowInEasing))
-                            // Step 3: WebView 完全不可见后才触发加载（并行进行）
+                            // Step M1: 设置标志位 + 隐藏 body
+                            wv.evaluateJavascript("window.__chapterTransition=true;try{document.body.style.visibility='hidden'}catch(e){}", null)
+                            wv.setBackgroundColor(android.graphics.Color.parseColor(bg))
+                            // Step M2: 先滑出（旧内容仍在，用户看到正常的滑出动画）
+                            flipOffset.animateTo(if (direction > 0) -1f else 1f, tween(200, easing = FastOutSlowInEasing))
+                            // Step M3: WebView 完全不可见后才触发加载
                             if (direction > 0) viewModel.nextChapter() else viewModel.previousChapter()
-                            // Step 4: 等待分页完成（加载在后台进行）
+                            // Step M4: 等待分页完成
                             val d = CompletableDeferred<Unit>(); paginationDeferred.value = d
                             withTimeoutOrNull(500L) { d.await() }; paginationDeferred.value = null
-                            if (direction < 0) webViewRef.value?.evaluateJavascript("window.flipToLastPage()", null)
-                            // Step 5: 瞬移到另一侧（用户不可见）
+                            if (direction < 0) wv.evaluateJavascript("window.flipToLastPage()", null)
+                            // Step M5: 瞬移到另一侧 + 滑入 + 显示 body
                             flipOffset.snapTo(if (direction > 0) 1f else -1f)
-                            // Step 6: 滑入动画 + 动画结束后显示 body
-                            flipOffset.animateTo(0f, tween(250, easing = FastOutSlowInEasing))
-                            webViewRef.value?.evaluateJavascript("window.__chapterTransition=false;try{document.body.style.visibility='visible'}catch(e){}", null)
+                            flipOffset.animateTo(0f, tween(200, easing = FastOutSlowInEasing))
+                            wv.evaluateJavascript("window.__chapterTransition=false;try{document.body.style.visibility='visible'}catch(e){}", null)
                         } else {
-                            // ── 预渲染 Hit：DOM 已 swap，仅更新 ViewModel 状态（不触发 loadDataWithBaseURL）──
+                            // ═══ 预渲染 Hit：有预渲染内容，播放滑出→swap→滑入动画 ═══
+                            // Step H1: 滑出旧内容（WebView 仍显示当前章节最后一页）
+                            flipOffset.animateTo(if (direction > 0) -1f else 1f, tween(180, easing = FastOutSlowInEasing))
+                            // Step H2: WebView 完全不可见时 swap DOM + 更新状态
+                            wv.evaluateJavascriptSuspend("usePreRendered($targetIdx)")
                             viewModel.onChapterSwapped(direction)
+                            // Step H3: 瞬移到另一侧 + 滑入（新内容出现）
+                            flipOffset.snapTo(if (direction > 0) 1f else -1f)
+                            flipOffset.animateTo(0f, tween(180, easing = FastOutSlowInEasing))
                         }
                     } finally {
-                        webViewRef.value?.evaluateJavascript("window.__animating = false", null)
+                        wv.evaluateJavascript("window.__animating = false", null)
                         flipOffset.snapTo(0f); isChapterAnimating.value = false
                     }
                 }

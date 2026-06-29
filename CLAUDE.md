@@ -95,6 +95,7 @@ UI (Compose) ← ViewModel ← Repository ← Room DAO / DataStore
 - `devlog/2026-06-27.md` — 字体大小与分页联动修复
 - `devlog/2026-06-29-plan-chapter-transition-optimization.md` — 章节切换卡顿分析与优化计划
 - `devlog/2026-06-29-chapter-white-screen-fix.md` — 🔥 白屏回归修复 + HiReader参考架构分析
+- `devlog/2026-06-29-chapter-stutter-fix.md` — 🔥 章节切换主线程阻塞修复 + 异步化
 
 ## 开发规范
 
