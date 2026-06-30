@@ -93,7 +93,6 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
         if (shStart < readView.width.toFloat() && shEnd > shStart + 2f) {
             canvas.save()
             canvas.clipRect(shStart, y, readView.width.toFloat(), y + vh)
-
             val colors = intArrayOf(
                 0x26000000.toInt(),
                 0x18000000.toInt(),
