@@ -31,6 +31,7 @@ class PageLayoutEngine {
     private val textPaint: TextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = 56f  // 默认 16sp * 3.5 density → 56px
         color = 0xFF333333.toInt()
+        linkColor = color   // 🔥 防止 URLSpan 将链接文字绘制为透明色（默认 linkColor=0）
         isSubpixelText = true
     }
 
@@ -84,6 +85,7 @@ class PageLayoutEngine {
         lineSpacingMultiplier = lineSpacingMult
         textPaint.textSize = fontSizePx
         textPaint.color = textColor
+        textPaint.linkColor = textColor   // 🔥 同步：避免主题切换后 URLSpan 颜色不同步
         this.chapterCount = chapterCount
 
         if (changed) {
