@@ -171,8 +171,8 @@ class ReadView(context: Context) : FrameLayout(context) {
 
         // 边距：上下 ≈ 1.78x 左右
         val density = resources.displayMetrics.density
-        val marginHoriz = 36f * density
-        val marginVert = 60f * density
+        val marginHoriz = 44f * density
+        val marginVert = 72f * density
         val lineSpacing = 2.5f * density
 
         // 配置布局引擎
