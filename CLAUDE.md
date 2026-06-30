@@ -27,7 +27,7 @@ Windows环境下用 `gradlew.bat` 替代 `./gradlew`。
 
 ## 架构
 
-三层架构，包名 `com.ebook.reader`：
+三层架构，包名 `com.huangder.lumibooks`：
 
 ```
 data/          → Room数据库(Entity/DAO)、DataStore、Repository实现

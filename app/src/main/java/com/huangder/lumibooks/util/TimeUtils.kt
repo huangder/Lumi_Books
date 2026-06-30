@@ -1,4 +1,4 @@
-package com.ebook.reader.util
+package com.huangder.lumibooks.util
 
 import java.text.SimpleDateFormat
 import java.util.Date

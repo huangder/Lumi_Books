@@ -1,4 +1,4 @@
-package com.ebook.reader.ui.components
+package com.huangder.lumibooks.ui.components
 
 import android.app.Activity
 import androidx.compose.runtime.Composable

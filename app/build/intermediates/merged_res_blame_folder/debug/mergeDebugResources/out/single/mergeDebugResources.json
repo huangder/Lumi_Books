@@ -1,42 +1,42 @@
 [
     {
-        "merged": "com.ebook.reader.app-debug-68:/drawable_splash_background.xml.flat",
-        "source": "com.ebook.reader.app-main-70:/drawable/splash_background.xml"
+        "merged": "com.huangder.lumibooks.app-debug-68:/drawable_splash_background.xml.flat",
+        "source": "com.huangder.lumibooks.app-main-70:/drawable/splash_background.xml"
     },
     {
-        "merged": "com.ebook.reader.app-debug-68:/drawable_ic_launcher_foreground.xml.flat",
-        "source": "com.ebook.reader.app-main-70:/drawable/ic_launcher_foreground.xml"
+        "merged": "com.huangder.lumibooks.app-debug-68:/drawable_ic_launcher_foreground.xml.flat",
+        "source": "com.huangder.lumibooks.app-main-70:/drawable/ic_launcher_foreground.xml"
     },
     {
-        "merged": "com.ebook.reader.app-debug-68:/xml_file_paths.xml.flat",
-        "source": "com.ebook.reader.app-main-70:/xml/file_paths.xml"
+        "merged": "com.huangder.lumibooks.app-debug-68:/mipmap-xxhdpi_ic_launcher.png.flat",
+        "source": "com.huangder.lumibooks.app-main-70:/mipmap-xxhdpi/ic_launcher.png"
     },
     {
-        "merged": "com.ebook.reader.app-debug-68:/mipmap-mdpi_ic_launcher.png.flat",
-        "source": "com.ebook.reader.app-main-70:/mipmap-mdpi/ic_launcher.png"
+        "merged": "com.huangder.lumibooks.app-debug-68:/font_dingli_song.ttf.flat",
+        "source": "com.huangder.lumibooks.app-main-70:/font/dingli_song.ttf"
     },
     {
-        "merged": "com.ebook.reader.app-debug-68:/mipmap-xxhdpi_ic_launcher.png.flat",
-        "source": "com.ebook.reader.app-main-70:/mipmap-xxhdpi/ic_launcher.png"
+        "merged": "com.huangder.lumibooks.app-debug-68:/mipmap-xhdpi_ic_launcher.png.flat",
+        "source": "com.huangder.lumibooks.app-main-70:/mipmap-xhdpi/ic_launcher.png"
     },
     {
-        "merged": "com.ebook.reader.app-debug-68:/mipmap-xhdpi_ic_launcher.png.flat",
-        "source": "com.ebook.reader.app-main-70:/mipmap-xhdpi/ic_launcher.png"
+        "merged": "com.huangder.lumibooks.app-debug-68:/mipmap-hdpi_ic_launcher.png.flat",
+        "source": "com.huangder.lumibooks.app-main-70:/mipmap-hdpi/ic_launcher.png"
     },
     {
-        "merged": "com.ebook.reader.app-debug-68:/font_dingli_song.ttf.flat",
-        "source": "com.ebook.reader.app-main-70:/font/dingli_song.ttf"
+        "merged": "com.huangder.lumibooks.app-debug-68:/mipmap-mdpi_ic_launcher.png.flat",
+        "source": "com.huangder.lumibooks.app-main-70:/mipmap-mdpi/ic_launcher.png"
     },
     {
-        "merged": "com.ebook.reader.app-debug-68:/mipmap-xxxhdpi_ic_launcher.png.flat",
-        "source": "com.ebook.reader.app-main-70:/mipmap-xxxhdpi/ic_launcher.png"
+        "merged": "com.huangder.lumibooks.app-debug-68:/drawable_ic_launcher_background.xml.flat",
+        "source": "com.huangder.lumibooks.app-main-70:/drawable/ic_launcher_background.xml"
     },
     {
-        "merged": "com.ebook.reader.app-debug-68:/mipmap-hdpi_ic_launcher.png.flat",
-        "source": "com.ebook.reader.app-main-70:/mipmap-hdpi/ic_launcher.png"
+        "merged": "com.huangder.lumibooks.app-debug-68:/xml_file_paths.xml.flat",
+        "source": "com.huangder.lumibooks.app-main-70:/xml/file_paths.xml"
     },
     {
-        "merged": "com.ebook.reader.app-debug-68:/drawable_ic_launcher_background.xml.flat",
-        "source": "com.ebook.reader.app-main-70:/drawable/ic_launcher_background.xml"
+        "merged": "com.huangder.lumibooks.app-debug-68:/mipmap-xxxhdpi_ic_launcher.png.flat",
+        "source": "com.huangder.lumibooks.app-main-70:/mipmap-xxxhdpi/ic_launcher.png"
     }
 ]

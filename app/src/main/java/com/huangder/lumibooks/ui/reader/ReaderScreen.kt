@@ -1,4 +1,4 @@
-package com.ebook.reader.ui.reader
+package com.huangder.lumibooks.ui.reader
 
 import android.webkit.WebView
 import androidx.compose.animation.AnimatedVisibility
@@ -67,16 +67,16 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import com.ebook.reader.ui.animation.AppEasing
-import com.ebook.reader.ui.animation.cardPressEffect
-import com.ebook.reader.ui.components.ImmersiveMode
-import com.ebook.reader.ui.reader.engine.ReadView
-import com.ebook.reader.ui.reader.engine.ReadViewCallbacks
-import com.ebook.reader.ui.theme.AppColors
-import com.ebook.reader.ui.theme.AppRadius
-import com.ebook.reader.ui.theme.AppSpace
-import com.ebook.reader.ui.theme.AppType
-import com.ebook.reader.ui.theme.DingliSong
+import com.huangder.lumibooks.ui.animation.AppEasing
+import com.huangder.lumibooks.ui.animation.cardPressEffect
+import com.huangder.lumibooks.ui.components.ImmersiveMode
+import com.huangder.lumibooks.ui.reader.engine.ReadView
+import com.huangder.lumibooks.ui.reader.engine.ReadViewCallbacks
+import com.huangder.lumibooks.ui.theme.AppColors
+import com.huangder.lumibooks.ui.theme.AppRadius
+import com.huangder.lumibooks.ui.theme.AppSpace
+import com.huangder.lumibooks.ui.theme.AppType
+import com.huangder.lumibooks.ui.theme.DingliSong
 import kotlinx.coroutines.launch
 
 @Composable

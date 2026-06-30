@@ -1,4 +1,4 @@
-package com.ebook.reader.ui.reader
+package com.huangder.lumibooks.ui.reader
 
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -41,15 +41,15 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.ebook.reader.ui.animation.AppEasing
-import com.ebook.reader.ui.theme.AppColors
-import com.ebook.reader.ui.theme.AppRadius
+import com.huangder.lumibooks.ui.animation.AppEasing
+import com.huangder.lumibooks.ui.theme.AppColors
+import com.huangder.lumibooks.ui.theme.AppRadius
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import com.ebook.reader.ui.theme.AppSpace
-import com.ebook.reader.ui.theme.AppType
-import com.ebook.reader.ui.theme.DingliSong
-import com.ebook.reader.ui.theme.ReaderColors
+import com.huangder.lumibooks.ui.theme.AppSpace
+import com.huangder.lumibooks.ui.theme.AppType
+import com.huangder.lumibooks.ui.theme.DingliSong
+import com.huangder.lumibooks.ui.theme.ReaderColors
 
 /**
  * 主题设置弹窗（字体大小 + 主题切换）

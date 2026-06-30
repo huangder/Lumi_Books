@@ -3,7 +3,7 @@
 **生效日期**：2026年6月29日  
 **最近更新**：2026年6月29日  
 **应用名称**：Lumi  
-**包名**：com.ebook.reader
+**包名**：com.huangder.lumibooks
 
 ---
 

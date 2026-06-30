@@ -7,11 +7,11 @@ plugins {
 }
 
 android {
-    namespace = "com.ebook.reader"
+    namespace = "com.huangder.lumibooks"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.ebook.reader"
+        applicationId = "com.huangder.lumibooks"
         minSdk = 26
         targetSdk = 35
         versionCode = 3

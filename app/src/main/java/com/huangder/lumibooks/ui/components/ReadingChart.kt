@@ -1,4 +1,4 @@
-package com.ebook.reader.ui.components
+package com.huangder.lumibooks.ui.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,8 +12,8 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
-import com.ebook.reader.ui.statistics.DailyReading
-import com.ebook.reader.util.TimeUtils
+import com.huangder.lumibooks.ui.statistics.DailyReading
+import com.huangder.lumibooks.util.TimeUtils
 
 @Composable
 fun ReadingChart(

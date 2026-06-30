@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.ebook.reader"
+    package="com.huangder.lumibooks"
     android:versionCode="3"
     android:versionName="1.00.03_beta" >
 
@@ -15,13 +15,13 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
 
     <permission
-        android:name="com.ebook.reader.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+        android:name="com.huangder.lumibooks.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
         android:protectionLevel="signature" />
 
-    <uses-permission android:name="com.ebook.reader.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+    <uses-permission android:name="com.huangder.lumibooks.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
 
     <application
-        android:name="com.ebook.reader.EBookReaderApp"
+        android:name="com.huangder.lumibooks.EBookReaderApp"
         android:allowBackup="true"
         android:appComponentFactory="androidx.core.app.CoreComponentFactory"
         android:debuggable="true"
@@ -32,7 +32,7 @@
         android:testOnly="true"
         android:theme="@style/Theme.EBookReader" >
         <activity
-            android:name="com.ebook.reader.MainActivity"
+            android:name="com.huangder.lumibooks.MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
             android:exported="true"
             android:theme="@style/Theme.EBookReader"
@@ -47,7 +47,7 @@
         <!-- 文件提供者 -->
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="com.ebook.reader.fileprovider"
+            android:authorities="com.huangder.lumibooks.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true" >
             <meta-data
@@ -64,7 +64,7 @@
 
         <provider
             android:name="androidx.startup.InitializationProvider"
-            android:authorities="com.ebook.reader.androidx-startup"
+            android:authorities="com.huangder.lumibooks.androidx-startup"
             android:exported="false" >
             <meta-data
                 android:name="androidx.emoji2.text.EmojiCompatInitializer"

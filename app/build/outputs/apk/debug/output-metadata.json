@@ -4,7 +4,7 @@
     "type": "APK",
     "kind": "Directory"
   },
-  "applicationId": "com.ebook.reader",
+  "applicationId": "com.huangder.lumibooks",
   "variantName": "debug",
   "elements": [
     {

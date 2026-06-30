@@ -1,13 +1,13 @@
-package com.ebook.reader.ui.statistics
+package com.huangder.lumibooks.ui.statistics
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.ebook.reader.data.local.DataStoreManager
-import com.ebook.reader.data.local.dao.BookDuration
-import com.ebook.reader.domain.repository.BookRepository
-import com.ebook.reader.domain.repository.ReadingRepository
-import com.ebook.reader.domain.model.Book
-import com.ebook.reader.util.TimeUtils
+import com.huangder.lumibooks.data.local.DataStoreManager
+import com.huangder.lumibooks.data.local.dao.BookDuration
+import com.huangder.lumibooks.domain.repository.BookRepository
+import com.huangder.lumibooks.domain.repository.ReadingRepository
+import com.huangder.lumibooks.domain.model.Book
+import com.huangder.lumibooks.util.TimeUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

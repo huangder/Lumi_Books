@@ -154,7 +154,7 @@ MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] C:\Users\Hu
 		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:16:9-49
 	android:name
 		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:11:9-39
-activity#com.ebook.reader.MainActivity
+activity#com.huangder.lumibooks.MainActivity
 ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:19:9-29:20
 	android:windowSoftInputMode
 		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:24:13-55
@@ -396,7 +396,7 @@ ADDED from [androidx.core:core:1.15.0] C:\Users\Huangder\.gradle\caches\8.13\tra
 		ADDED from [androidx.core:core:1.15.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\0e1e5722d8d00985dbe6e233cdb91d7d\transformed\core-1.15.0\AndroidManifest.xml:24:9-44
 	android:name
 		ADDED from [androidx.core:core:1.15.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\0e1e5722d8d00985dbe6e233cdb91d7d\transformed\core-1.15.0\AndroidManifest.xml:23:9-81
-permission#com.ebook.reader.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+permission#com.huangder.lumibooks.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
 ADDED from [androidx.core:core:1.15.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\0e1e5722d8d00985dbe6e233cdb91d7d\transformed\core-1.15.0\AndroidManifest.xml:22:5-24:47
 	android:protectionLevel
 		ADDED from [androidx.core:core:1.15.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\0e1e5722d8d00985dbe6e233cdb91d7d\transformed\core-1.15.0\AndroidManifest.xml:24:9-44
@@ -406,7 +406,7 @@ uses-permission#${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
 ADDED from [androidx.core:core:1.15.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\0e1e5722d8d00985dbe6e233cdb91d7d\transformed\core-1.15.0\AndroidManifest.xml:26:5-97
 	android:name
 		ADDED from [androidx.core:core:1.15.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\0e1e5722d8d00985dbe6e233cdb91d7d\transformed\core-1.15.0\AndroidManifest.xml:26:22-94
-uses-permission#com.ebook.reader.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+uses-permission#com.huangder.lumibooks.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
 ADDED from [androidx.core:core:1.15.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\0e1e5722d8d00985dbe6e233cdb91d7d\transformed\core-1.15.0\AndroidManifest.xml:26:5-97
 	android:name
 		ADDED from [androidx.core:core:1.15.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\0e1e5722d8d00985dbe6e233cdb91d7d\transformed\core-1.15.0\AndroidManifest.xml:26:22-94

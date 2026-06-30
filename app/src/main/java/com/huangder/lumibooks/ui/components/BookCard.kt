@@ -1,4 +1,4 @@
-package com.ebook.reader.ui.components
+package com.huangder.lumibooks.ui.components
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -18,7 +18,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import com.ebook.reader.domain.model.Book
+import com.huangder.lumibooks.domain.model.Book
 
 @Composable
 fun BookCard(

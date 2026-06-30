@@ -1,4 +1,4 @@
-package com.ebook.reader.ui.reader.engine
+package com.huangder.lumibooks.ui.reader.engine
 
 /**
  * 单页布局元数据。

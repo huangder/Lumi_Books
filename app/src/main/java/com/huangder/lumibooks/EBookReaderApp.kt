@@ -1,4 +1,4 @@
-package com.ebook.reader
+package com.huangder.lumibooks
 
 import android.app.Application
 import dagger.hilt.android.HiltAndroidApp

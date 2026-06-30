@@ -1,4 +1,4 @@
-package com.ebook.reader.util
+package com.huangder.lumibooks.util
 
 object Constants {
     // 数据库

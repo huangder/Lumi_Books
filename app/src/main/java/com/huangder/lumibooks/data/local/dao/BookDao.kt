@@ -1,4 +1,4 @@
-package com.ebook.reader.data.local.dao
+package com.huangder.lumibooks.data.local.dao
 
 import androidx.room.Dao
 import androidx.room.Delete
@@ -6,7 +6,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
-import com.ebook.reader.data.local.entity.BookEntity
+import com.huangder.lumibooks.data.local.entity.BookEntity
 import kotlinx.coroutines.flow.Flow
 
 @Dao

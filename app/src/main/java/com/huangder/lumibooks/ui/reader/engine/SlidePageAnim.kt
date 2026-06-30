@@ -1,9 +1,12 @@
-package com.ebook.reader.ui.reader.engine
+package com.huangder.lumibooks.ui.reader.engine
 
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.Shader
+import java.util.LinkedHashMap
 
 /**
  * 水平视差滑动翻页动画。
@@ -13,18 +16,28 @@ import android.graphics.Shader
  * - 下层：恒定速度比视差（上层速度 * PARALLAX_RATIO），从偏移位出发到达终点
  *   - NEXT: nextX = (vw + ox) * ratio，start=0.3*vw(右侧) → end=0(中央)
  *   - PREV: curX = ox * ratio，start=0(中央) → end=0.3*vw(右侧)
- * - 上层：直角 + 外阴影
+ * - 上层：R 角（软件离屏裁剪 + 缓存）+ 外阴影
  */
 class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
 
     companion object {
         private const val SHADOW_WIDTH_PX = 250
+        private const val CORNER_RADIUS_PX = 48f
         /** 下层页面速度比 = 上层速度 * PARALLAX_RATIO */
         private const val PARALLAX_RATIO = 0.3f
     }
 
     private val density: Float get() = readView.resources.displayMetrics.density
     private val shadowWidth: Float get() = SHADOW_WIDTH_PX * density.coerceAtLeast(1f)
+    private val cornerRadius: Float get() = CORNER_RADIUS_PX * density.coerceAtLeast(1f)
+
+    /** R 角裁剪缓存（最多 3 个：prev/cur/next），软件 Canvas clipPath 100% 可靠 */
+    private val roundedCache = object : LinkedHashMap<Bitmap, Bitmap>(4, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Bitmap, Bitmap>?): Boolean {
+            if (size > 3) { eldest?.value?.recycle(); return true }
+            return false
+        }
+    }
 
     override fun onDraw(canvas: Canvas) {
         val vw = readView.width.toFloat()
@@ -62,14 +75,18 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
         }
     }
 
-    /** 上层：页面内容 + 外阴影 */
+    /** 上层：右侧 R 角（软件离屏裁剪 + 缓存）+ 外阴影 */
     private fun drawUpperPage(
         canvas: Canvas, bitmap: android.graphics.Bitmap?,
         x: Float, y: Float, vw: Float, vh: Float
     ) {
-        drawPageBitmap(canvas, bitmap, x, y, vw, vh)
+        if (bitmap == null || bitmap.isRecycled) return
 
-        // 外阴影：从上层右边缘向右延伸，在下层页面上可见
+        // 用缓存的圆角 Bitmap，drawBitmap 画到主 Canvas（动画行为 = 标准 drawBitmap）
+        val rounded = getRoundedBitmap(bitmap, vw, vh)
+        canvas.drawBitmap(rounded, x, y, null)
+
+        // 外阴影：从上层右边缘向右延伸
         val right = x + vw
         val shStart = right
         val shEnd = (right + shadowWidth).coerceAtMost(readView.width.toFloat())
@@ -91,6 +108,27 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
             canvas.drawRect(shStart, y, shEnd, y + vh, shadowPaint)
             canvas.restore()
         }
+    }
+
+    /** 软件 Canvas + clipPath 裁剪右侧 R 角（缓存复用，首次创建后零开销） */
+    private fun getRoundedBitmap(source: Bitmap, vw: Float, vh: Float): Bitmap {
+        roundedCache[source]?.let { if (!it.isRecycled) return it }
+        roundedCache.remove(source)
+
+        val pageW = vw.toInt(); val pageH = vh.toInt()
+        val rounded = Bitmap.createBitmap(pageW, pageH, Bitmap.Config.ARGB_8888)
+        val tempCanvas = Canvas(rounded)  // 软件 Canvas，clipPath 始终生效
+
+        val r = cornerRadius
+        val radii = floatArrayOf(0f, 0f, r, r, r, r, 0f, 0f)  // 仅右侧圆角
+        val pagePath = Path().apply {
+            addRoundRect(0f, 0f, pageW.toFloat(), pageH.toFloat(), radii, Path.Direction.CW)
+        }
+        tempCanvas.clipPath(pagePath)
+        tempCanvas.drawBitmap(source, 0f, 0f, null)
+
+        roundedCache[source] = rounded
+        return rounded
     }
 
     private fun drawLowerPage(
@@ -129,6 +167,12 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
             shader = LinearGradient(0f, 0f, shEnd, 0f, colors, stops, Shader.TileMode.CLAMP)
         }
         canvas.drawRect(0f, 0f, shEnd, vh, paint)
+    }
+
+    override fun abortAnim() {
+        roundedCache.values.forEach { if (!it.isRecycled) it.recycle() }
+        roundedCache.clear()
+        super.abortAnim()
     }
 
     // ── Scroller ──

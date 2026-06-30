@@ -1,7 +1,7 @@
-package com.ebook.reader.util.parser
+package com.huangder.lumibooks.util.parser
 
 import android.content.Context
-import com.ebook.reader.domain.model.BookFormat
+import com.huangder.lumibooks.domain.model.BookFormat
 
 object BookParserFactory {
     fun createParser(format: BookFormat, context: Context): BookParser {

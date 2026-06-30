@@ -1,4 +1,4 @@
-package com.ebook.reader.util
+package com.huangder.lumibooks.util
 
 import android.content.Context
 import android.text.Layout

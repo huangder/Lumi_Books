@@ -1,4 +1,4 @@
-package com.ebook.reader.ui.reader.engine
+package com.huangder.lumibooks.ui.reader.engine
 
 import android.graphics.Canvas
 import android.view.animation.PathInterpolator

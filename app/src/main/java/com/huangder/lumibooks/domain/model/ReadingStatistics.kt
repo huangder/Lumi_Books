@@ -1,4 +1,4 @@
-package com.ebook.reader.domain.model
+package com.huangder.lumibooks.domain.model
 
 data class ReadingStatistics(
     val todayReadingTime: Long,

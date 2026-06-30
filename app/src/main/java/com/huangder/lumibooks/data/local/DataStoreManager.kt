@@ -1,4 +1,4 @@
-package com.ebook.reader.data.local
+package com.huangder.lumibooks.data.local
 
 import android.content.Context
 import androidx.datastore.core.DataStore

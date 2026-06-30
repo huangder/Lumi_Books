@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.ebook.reader.app-mergeDebugResources-66:/values/values.xml",
+            "outputFile": "com.huangder.lumibooks.app-mergeDebugResources-66:/values/values.xml",
             "map": [
                 {
                     "source": "D:\\vibe_coding\\android_books\\app\\src\\main\\res\\values\\colors.xml",

@@ -1,4 +1,4 @@
-package com.ebook.reader.ui.components
+package com.huangder.lumibooks.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -31,7 +31,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
-import com.ebook.reader.ui.theme.AppColors
+import com.huangder.lumibooks.ui.theme.AppColors
 
 data class TabItem(
     val selectedIcon: ImageVector,
