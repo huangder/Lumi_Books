@@ -21,9 +21,9 @@ abstract class PageAnimationController(
         /** 翻页动画时长 ms */
         const val ANIM_DURATION = 300
         /** 回弹动画时长 ms */
-        const val BOUNCE_DURATION = 200
+        const val BOUNCE_DURATION = 350
         /** 翻页触发阈值（占屏幕宽度的比例） */
-        const val FLIP_THRESHOLD = 0.25f
+        const val FLIP_THRESHOLD = 0.12f
     }
 
     enum class Direction { NONE, NEXT, PREV }
@@ -49,6 +49,8 @@ abstract class PageAnimationController(
     protected var hasMoved: Boolean = false
     /** 触摸按下时间 */
     protected var downTime: Long = 0L
+    /** 本次动画是翻页（true）还是回弹（false） */
+    private var isFlipAnim: Boolean = false
 
     /** 动画完成回调 */
     var onAnimationComplete: (() -> Unit)? = null
@@ -98,9 +100,12 @@ abstract class PageAnimationController(
                 }
 
                 if (hasMoved) {
-                    // 确定方向
-                    if (direction == Direction.NONE) {
-                        direction = if (event.x - startX > 0) Direction.PREV else Direction.NEXT
+                    // 🔥 每次 MOVE 根据累计偏移实时更新方向（支持手势反悔）
+                    val cumulativeDx = event.x - startX
+                    direction = when {
+                        cumulativeDx > 8f -> Direction.PREV
+                        cumulativeDx < -8f -> Direction.NEXT
+                        else -> Direction.NONE
                     }
                     readView.invalidate()
                 }
@@ -133,15 +138,21 @@ abstract class PageAnimationController(
                     val viewWidth = readView.width.toFloat()
                     val fraction = Math.abs(dx) / viewWidth
 
-                    if (fraction >= FLIP_THRESHOLD) {
-                        // 🔥 翻页前校验：目标槽位已加载才能翻，否则回弹
+                    // 🔥 根据最终累计偏移重算方向（支持手势反悔）
+                    direction = when {
+                        dx > 8f -> Direction.PREV
+                        dx < -8f -> Direction.NEXT
+                        else -> Direction.NONE
+                    }
+
+                    if (fraction >= FLIP_THRESHOLD && direction != Direction.NONE) {
                         if (onCanFlip?.invoke(direction) == true) {
+                            isFlipAnim = true
                             startAnim(fromDrag = true)
                         } else {
                             startBounceBack()
                         }
                     } else {
-                        // 力度不足，回弹
                         startBounceBack()
                     }
                 } else {
@@ -165,7 +176,11 @@ abstract class PageAnimationController(
         }
         if (isRunning) {
             isRunning = false
-            onAnimationComplete?.invoke()
+            // 🔥 仅翻页动画（非回弹）才执行 slot shift
+            if (isFlipAnim) {
+                isFlipAnim = false
+                onAnimationComplete?.invoke()
+            }
             direction = Direction.NONE
             touchX = startX
             readView.invalidate()
@@ -181,16 +196,26 @@ abstract class PageAnimationController(
         }
         isRunning = false
         isDragging = false
+        isFlipAnim = false
         direction = Direction.NONE
+        // 🔥 确保 UI 刷新到空闲状态
+        readView.invalidate()
     }
 
     protected fun startBounceBack() {
+        // 🔥 回弹不是翻页，清除方向防止 onAnimationComplete 错误 shift
+        direction = Direction.NONE
+        isFlipAnim = false
         val fromX = touchX.toInt()
         val toX = startX.toInt()
         val dx = toX - fromX
+        if (dx == 0) {
+            readView.invalidate()
+            return
+        }
         isRunning = true
         scroller.startScroll(fromX, 0, dx, 0, BOUNCE_DURATION)
-        readView.invalidate()
+        readView.postInvalidateOnAnimation()
     }
 
     fun getOffsetX(): Float = touchX - startX

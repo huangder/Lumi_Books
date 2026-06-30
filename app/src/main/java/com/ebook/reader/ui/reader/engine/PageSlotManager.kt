@@ -37,8 +37,8 @@ class PageSlotManager(
     private var loadingJob: Job? = null
     private var chapterCount: Int = 0
 
-    /** 文本内容提供者：根据章节索引返回纯文本 */
-    var contentProvider: (suspend (Int) -> String?)? = null
+    /** 文本内容提供者：根据章节索引返回文本（支持 Spannable） */
+    var contentProvider: (suspend (Int) -> CharSequence?)? = null
 
     /** 当前全局页码 */
     var currentGlobalPage: Int = 0
@@ -115,11 +115,13 @@ class PageSlotManager(
                 }
                 val chapterLayout = layoutEngine.layout(chapterIndex, text)
 
-                // 🔥 边界检查：目标页必须存在
+                // 🔥 边界检查：页面超出范围时自动 clamp
+                // 字体变小后旧页码可能超出新的总页数，clamp 到合法范围避免空白页
                 if (pageInChapter < 0 || pageInChapter >= chapterLayout.totalPages) {
-                    Log.w(TAG, "Page out of bounds: slot=$slotIdx ch=$chapterIndex pg=$pageInChapter total=${chapterLayout.totalPages}")
-                    slot.isLoaded = false
-                    if (slotIdx == SLOT_CUR) notifyPageChanged()
+                    val clampedPage = pageInChapter.coerceIn(0, chapterLayout.totalPages - 1)
+                    Log.w(TAG, "Page clamped: slot=$slotIdx ch=$chapterIndex pg=$pageInChapter->$clampedPage total=${chapterLayout.totalPages}")
+                    slot.pageIndex = clampedPage
+                    loadSlot(slotIdx, chapterIndex, clampedPage)
                     return@launch
                 }
 

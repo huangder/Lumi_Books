@@ -158,7 +158,7 @@ class TxtParser : BookParser {
         """.trimMargin()
     }
 
-    override fun getChapterContent(chapterIndex: Int): String {
+    override fun getChapterContent(chapterIndex: Int): CharSequence {
         return if (chapterIndex in chapters.indices) chapters[chapterIndex].content else ""
     }
 

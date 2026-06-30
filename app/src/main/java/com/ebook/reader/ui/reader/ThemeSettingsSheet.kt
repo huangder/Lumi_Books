@@ -93,7 +93,7 @@ fun ThemeSettingsSheet(
         Box(
             Modifier.fillMaxSize()
                 .graphicsLayer { alpha = sheetAlpha.value }
-                .background(Color.Black.copy(alpha = 0.4f))
+                .background(Color.Black.copy(alpha = 0.1f))
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { isClosing = true }
         )
 

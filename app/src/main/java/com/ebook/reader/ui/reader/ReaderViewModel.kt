@@ -1,6 +1,11 @@
 package com.ebook.reader.ui.reader
 
 import android.content.Context
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.AbsoluteSizeSpan
+import android.text.style.StyleSpan
+import android.graphics.Typeface
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -263,6 +268,12 @@ class ReaderViewModel @Inject constructor(
         )
         if (_uiState.value.isLoading) {
             _uiState.value = _uiState.value.copy(isLoading = false)
+            // 🔥 如果是恢复进度（pendingPageFraction > 0），不在此处 saveProgress
+            // ReaderScreen 会在跳转到正确页面后再触发保存
+            if (_uiState.value.pendingPageFraction <= 0f) {
+                saveProgress()
+            }
+            return
         }
         saveProgress()
     }
@@ -379,9 +390,29 @@ class ReaderViewModel @Inject constructor(
         } catch (_: Exception) { null }
     }
 
-    /** 获取章节纯文本（TXT 格式用，用于 StaticLayout 排版） */
-    fun getChapterText(index: Int): String? {
-        return try { parser?.getChapterContent(index) } catch (_: Exception) { null }
+    /** 获取章节纯文本（TXT/EPUB 格式用，用于 StaticLayout 排版）。
+     *  返回 CharSequence 支持标题格式化（Spannable）。 */
+    fun getChapterText(index: Int): CharSequence? {
+        val raw = try { parser?.getChapterContent(index) } catch (_: Exception) { null } ?: return null
+        if (raw.isEmpty()) return raw
+
+        // EPUB: 已由 Html.fromHtml() 生成 Spanned（含标题/粗体/斜体/链接/分段），直接返回
+        if (raw is Spanned) return raw
+
+        // TXT: 纯文本无格式，首行标题加大加粗 + 后空一行
+        val newlineIdx = raw.indexOf('\n')
+        return if (newlineIdx > 0) {
+            val title = raw.substring(0, newlineIdx)
+            val body = raw.substring(newlineIdx + 1)
+            val spannable = SpannableString("$title\n\n$body")
+            // 标题：1.5x 字号 + 粗体
+            val titleEnd = title.length
+            spannable.setSpan(AbsoluteSizeSpan(22, true), 0, titleEnd, 0)  // 22sp
+            spannable.setSpan(StyleSpan(Typeface.BOLD), 0, titleEnd, 0)
+            spannable
+        } else {
+            raw  // 无换行，保持原样
+        }
     }
 
     /**
