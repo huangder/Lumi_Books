@@ -1,9 +1,9 @@
-package com.ebook.reader.domain.repository
+package com.huangder.lumibooks.domain.repository
 
-import com.ebook.reader.data.local.dao.BookDuration
-import com.ebook.reader.domain.model.Bookmark
-import com.ebook.reader.domain.model.Note
-import com.ebook.reader.domain.model.ReadingRecord
+import com.huangder.lumibooks.data.local.dao.BookDuration
+import com.huangder.lumibooks.domain.model.Bookmark
+import com.huangder.lumibooks.domain.model.Note
+import com.huangder.lumibooks.domain.model.ReadingRecord
 import kotlinx.coroutines.flow.Flow
 
 interface ReadingRepository {

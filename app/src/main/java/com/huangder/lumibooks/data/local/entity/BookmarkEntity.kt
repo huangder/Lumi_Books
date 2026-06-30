@@ -1,4 +1,4 @@
-package com.ebook.reader.data.local.entity
+package com.huangder.lumibooks.data.local.entity
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey

@@ -1,4 +1,4 @@
-package com.ebook.reader.ui.theme
+package com.huangder.lumibooks.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
@@ -8,7 +8,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.ebook.reader.R
+import com.huangder.lumibooks.R
 
 // ─── 字体 ───
 val DingliSong = FontFamily(

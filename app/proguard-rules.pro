@@ -34,5 +34,5 @@
 -dontwarn nl.siegmann.epublib.**
 
 # Keep data classes
--keep class com.ebook.reader.data.** { *; }
--keep class com.ebook.reader.domain.** { *; }
+-keep class com.huangder.lumibooks.data.** { *; }
+-keep class com.huangder.lumibooks.domain.** { *; }

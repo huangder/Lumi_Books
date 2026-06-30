@@ -1,15 +1,15 @@
-package com.ebook.reader.data.local.database
+package com.huangder.lumibooks.data.local.database
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
-import com.ebook.reader.data.local.dao.BookDao
-import com.ebook.reader.data.local.dao.BookmarkDao
-import com.ebook.reader.data.local.dao.NoteDao
-import com.ebook.reader.data.local.dao.ReadingRecordDao
-import com.ebook.reader.data.local.entity.BookEntity
-import com.ebook.reader.data.local.entity.BookmarkEntity
-import com.ebook.reader.data.local.entity.NoteEntity
-import com.ebook.reader.data.local.entity.ReadingRecordEntity
+import com.huangder.lumibooks.data.local.dao.BookDao
+import com.huangder.lumibooks.data.local.dao.BookmarkDao
+import com.huangder.lumibooks.data.local.dao.NoteDao
+import com.huangder.lumibooks.data.local.dao.ReadingRecordDao
+import com.huangder.lumibooks.data.local.entity.BookEntity
+import com.huangder.lumibooks.data.local.entity.BookmarkEntity
+import com.huangder.lumibooks.data.local.entity.NoteEntity
+import com.huangder.lumibooks.data.local.entity.ReadingRecordEntity
 
 @Database(
     entities = [

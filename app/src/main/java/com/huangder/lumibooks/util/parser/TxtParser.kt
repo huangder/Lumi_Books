@@ -1,4 +1,4 @@
-package com.ebook.reader.util.parser
+package com.huangder.lumibooks.util.parser
 
 import java.io.File
 import java.nio.ByteBuffer

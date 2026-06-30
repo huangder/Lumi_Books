@@ -1,4 +1,4 @@
-package com.ebook.reader
+package com.huangder.lumibooks
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -9,8 +9,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.navigation.compose.rememberNavController
-import com.ebook.reader.ui.navigation.MainNavGraph
-import com.ebook.reader.ui.theme.EBookReaderTheme
+import com.huangder.lumibooks.ui.navigation.MainNavGraph
+import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint

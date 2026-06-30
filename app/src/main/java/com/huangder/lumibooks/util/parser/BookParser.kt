@@ -1,4 +1,4 @@
-package com.ebook.reader.util.parser
+package com.huangder.lumibooks.util.parser
 
 data class Chapter(
     val index: Int,

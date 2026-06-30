@@ -1,4 +1,4 @@
-package com.ebook.reader.ui.reader
+package com.huangder.lumibooks.ui.reader
 
 import android.content.Context
 import android.text.SpannableString
@@ -9,16 +9,16 @@ import android.graphics.Typeface
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.ebook.reader.data.local.DataStoreManager
-import com.ebook.reader.domain.model.Book
-import com.ebook.reader.domain.model.Bookmark
-import com.ebook.reader.domain.model.Note
-import com.ebook.reader.domain.model.ReadingRecord
-import com.ebook.reader.domain.repository.BookRepository
-import com.ebook.reader.domain.repository.ReadingRepository
-import com.ebook.reader.util.TimeUtils
-import com.ebook.reader.util.parser.BookParser
-import com.ebook.reader.util.parser.BookParserFactory
+import com.huangder.lumibooks.data.local.DataStoreManager
+import com.huangder.lumibooks.domain.model.Book
+import com.huangder.lumibooks.domain.model.Bookmark
+import com.huangder.lumibooks.domain.model.Note
+import com.huangder.lumibooks.domain.model.ReadingRecord
+import com.huangder.lumibooks.domain.repository.BookRepository
+import com.huangder.lumibooks.domain.repository.ReadingRepository
+import com.huangder.lumibooks.util.TimeUtils
+import com.huangder.lumibooks.util.parser.BookParser
+import com.huangder.lumibooks.util.parser.BookParserFactory
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow

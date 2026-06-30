@@ -1,4 +1,4 @@
-package com.ebook.reader.ui.theme
+package com.huangder.lumibooks.ui.theme
 
 import android.app.Activity
 import android.os.Build

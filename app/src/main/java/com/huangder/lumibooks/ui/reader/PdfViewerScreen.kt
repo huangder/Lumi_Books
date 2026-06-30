@@ -1,4 +1,4 @@
-package com.ebook.reader.ui.reader
+package com.huangder.lumibooks.ui.reader
 
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
@@ -63,13 +63,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.ebook.reader.ui.animation.AppEasing
-import com.ebook.reader.ui.components.ImmersiveMode
-import com.ebook.reader.ui.theme.AppColors
-import com.ebook.reader.ui.theme.AppType
+import com.huangder.lumibooks.ui.animation.AppEasing
+import com.huangder.lumibooks.ui.components.ImmersiveMode
+import com.huangder.lumibooks.ui.theme.AppColors
+import com.huangder.lumibooks.ui.theme.AppType
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import com.ebook.reader.ui.theme.DingliSong
+import com.huangder.lumibooks.ui.theme.DingliSong
 import java.io.File
 
 @Composable
@@ -87,7 +87,7 @@ fun PdfViewerScreen(
     var showMenu by remember { mutableStateOf(false) }
 
     if (filePath == null || pageCount <= 0) {
-        Box(Modifier.fillMaxSize().background(com.ebook.reader.ui.theme.ReaderColors.Light.background), Alignment.Center) {
+        Box(Modifier.fillMaxSize().background(com.huangder.lumibooks.ui.theme.ReaderColors.Light.background), Alignment.Center) {
             CircularProgressIndicator()
         }
         return
@@ -144,7 +144,7 @@ fun PdfViewerScreen(
         }
     }
 
-    Box(Modifier.fillMaxSize().background(com.ebook.reader.ui.theme.ReaderColors.Light.background)) {
+    Box(Modifier.fillMaxSize().background(com.huangder.lumibooks.ui.theme.ReaderColors.Light.background)) {
         // PDF 页面列表（双指缩放 + 拖拽 + 点击切换菜单）
         Box(
             modifier = Modifier

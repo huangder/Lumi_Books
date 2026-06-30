@@ -1,4 +1,4 @@
-package com.ebook.reader.ui.components
+package com.huangder.lumibooks.ui.components
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -31,12 +31,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.ebook.reader.ui.animation.AppEasing
-import com.ebook.reader.ui.theme.AppColors
-import com.ebook.reader.ui.theme.AppRadius
-import com.ebook.reader.ui.theme.AppSpace
-import com.ebook.reader.ui.theme.AppType
-import com.ebook.reader.ui.theme.DingliSong
+import com.huangder.lumibooks.ui.animation.AppEasing
+import com.huangder.lumibooks.ui.theme.AppColors
+import com.huangder.lumibooks.ui.theme.AppRadius
+import com.huangder.lumibooks.ui.theme.AppSpace
+import com.huangder.lumibooks.ui.theme.AppType
+import com.huangder.lumibooks.ui.theme.DingliSong
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 

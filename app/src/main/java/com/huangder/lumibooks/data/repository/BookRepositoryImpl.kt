@@ -1,10 +1,10 @@
-package com.ebook.reader.data.repository
+package com.huangder.lumibooks.data.repository
 
-import com.ebook.reader.data.local.dao.BookDao
-import com.ebook.reader.data.local.entity.BookEntity
-import com.ebook.reader.domain.model.Book
-import com.ebook.reader.domain.model.BookFormat
-import com.ebook.reader.domain.repository.BookRepository
+import com.huangder.lumibooks.data.local.dao.BookDao
+import com.huangder.lumibooks.data.local.entity.BookEntity
+import com.huangder.lumibooks.domain.model.Book
+import com.huangder.lumibooks.domain.model.BookFormat
+import com.huangder.lumibooks.domain.repository.BookRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject

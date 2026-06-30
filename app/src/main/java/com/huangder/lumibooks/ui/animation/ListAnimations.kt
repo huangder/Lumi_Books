@@ -1,4 +1,4 @@
-package com.ebook.reader.ui.animation
+package com.huangder.lumibooks.ui.animation
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween

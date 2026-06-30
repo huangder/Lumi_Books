@@ -1,4 +1,4 @@
-package com.ebook.reader.ui.animation
+package com.huangder.lumibooks.ui.animation
 
 interface PageFlipAnimation {
     val name: String

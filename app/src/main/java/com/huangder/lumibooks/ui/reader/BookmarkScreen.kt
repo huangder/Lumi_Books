@@ -1,4 +1,4 @@
-package com.ebook.reader.ui.reader
+package com.huangder.lumibooks.ui.reader
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -32,7 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.ebook.reader.domain.model.Bookmark
+import com.huangder.lumibooks.domain.model.Bookmark
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale

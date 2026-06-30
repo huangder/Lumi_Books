@@ -1,4 +1,4 @@
-package com.ebook.reader.ui.reader
+package com.huangder.lumibooks.ui.reader
 
 import android.graphics.Bitmap
 

@@ -1,4 +1,4 @@
-package com.ebook.reader.ui.bookshelf
+package com.huangder.lumibooks.ui.bookshelf
 
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -56,19 +56,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
-import com.ebook.reader.domain.model.Book
-import com.ebook.reader.domain.model.BookFormat
-import com.ebook.reader.util.parser.BookParserFactory
-import com.ebook.reader.ui.animation.OverscrollBounce
-import com.ebook.reader.ui.animation.cardPressEffect
-import com.ebook.reader.ui.components.StatusGradientOverlay
-import com.ebook.reader.ui.home.HomeViewModel
-import com.ebook.reader.ui.theme.AppColors
-import com.ebook.reader.ui.theme.AppRadius
-import com.ebook.reader.ui.theme.AppSpace
-import com.ebook.reader.ui.theme.AppType
-import com.ebook.reader.ui.theme.DingliSong
-import com.ebook.reader.util.FileUtils
+import com.huangder.lumibooks.domain.model.Book
+import com.huangder.lumibooks.domain.model.BookFormat
+import com.huangder.lumibooks.util.parser.BookParserFactory
+import com.huangder.lumibooks.ui.animation.OverscrollBounce
+import com.huangder.lumibooks.ui.animation.cardPressEffect
+import com.huangder.lumibooks.ui.components.StatusGradientOverlay
+import com.huangder.lumibooks.ui.home.HomeViewModel
+import com.huangder.lumibooks.ui.theme.AppColors
+import com.huangder.lumibooks.ui.theme.AppRadius
+import com.huangder.lumibooks.ui.theme.AppSpace
+import com.huangder.lumibooks.ui.theme.AppType
+import com.huangder.lumibooks.ui.theme.DingliSong
+import com.huangder.lumibooks.util.FileUtils
 
 private val filterTabs = listOf("全部图书", "下载内容", "PDF", "收藏")
 

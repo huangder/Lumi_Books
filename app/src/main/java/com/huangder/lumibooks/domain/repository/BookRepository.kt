@@ -1,6 +1,6 @@
-package com.ebook.reader.domain.repository
+package com.huangder.lumibooks.domain.repository
 
-import com.ebook.reader.domain.model.Book
+import com.huangder.lumibooks.domain.model.Book
 import kotlinx.coroutines.flow.Flow
 
 interface BookRepository {

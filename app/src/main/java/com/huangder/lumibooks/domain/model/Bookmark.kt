@@ -1,4 +1,4 @@
-package com.ebook.reader.domain.model
+package com.huangder.lumibooks.domain.model
 
 data class Bookmark(
     val id: Long = 0,
