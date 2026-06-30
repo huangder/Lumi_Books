@@ -1,11 +1,11 @@
 package com.ebook.reader.ui.reader.engine
 
-import android.graphics.BitmapShader
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.LinearGradient
-import android.graphics.Matrix
 import android.graphics.Paint
-import android.graphics.Path
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import android.graphics.Shader
 
 /**
@@ -16,7 +16,7 @@ import android.graphics.Shader
  * - 下层：恒定速度比视差（上层速度 * PARALLAX_RATIO），从偏移位出发到达终点
  *   - NEXT: nextX = (vw + ox) * ratio，start=0.3*vw(右侧) → end=0(中央)
  *   - PREV: curX = ox * ratio，start=0(中央) → end=0.3*vw(右侧)
- * - 上层：R 角裁剪（saveLayer 离屏层） + 外阴影
+ * - 上层：右侧 R 角（软件离屏裁剪 + 缓存） + 外阴影
  */
 class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
 
@@ -67,7 +67,7 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
         }
     }
 
-    /** 上层：右侧 R 角（BitmapShader 方案）+ 外阴影 */
+    /** 上层：右侧 R 角（saveLayer + drawCircle DST_OUT 打孔）+ 外阴影 */
     private fun drawUpperPage(
         canvas: Canvas, bitmap: android.graphics.Bitmap?,
         x: Float, y: Float, vw: Float, vh: Float
@@ -75,21 +75,20 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
         if (bitmap == null || bitmap.isRecycled) return
         val r = cornerRadius
 
-        // BitmapShader：用页面 bitmap 作为纹理源，偏移到 (x, y)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            shader = BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
-            val matrix = Matrix()
-            matrix.postTranslate(-x, -y)
-            shader?.setLocalMatrix(matrix)
+        // saveLayer → drawBitmap 画页面 → drawCircle DST_OUT 打掉右侧直角
+        // drawCircle 是 GPU 原生操作，DST_OUT 在离屏层内可靠生效
+        canvas.saveLayer(x, y, x + vw, y + vh, null)
+        canvas.drawBitmap(bitmap, x, y, null)
+
+        val clearPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
         }
+        canvas.drawCircle(x + vw, y, r, clearPaint)          // 右上角
+        canvas.drawCircle(x + vw, y + vh, r, clearPaint)      // 右下角
 
-        // 1. 绘制四个角都圆角的矩形（GPU 原生支持 drawRoundRect）
-        canvas.drawRoundRect(x, y, x + vw, y + vh, r, r, paint)
-        // 2. 覆盖左侧圆角恢复直角（着色器从相同位图采样，无缝拼接）
-        canvas.drawRect(x, y, x + r, y + r, paint)           // 左上角
-        canvas.drawRect(x, y + vh - r, x + r, y + vh, paint) // 左下角
+        canvas.restore()
 
-        // 3. 外阴影：从上层右边缘向右延伸，在下层页面上可见
+        // 外阴影：从上层右边缘向右延伸
         val right = x + vw
         val shStart = right
         val shEnd = (right + shadowWidth).coerceAtMost(readView.width.toFloat())
