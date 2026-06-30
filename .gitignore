@@ -13,3 +13,8 @@
 .externalNativeBuild
 .cxx
 local.properties
+devlog/
+docs/
+font/
+icon/
+pagedesign/
