@@ -461,7 +461,13 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     val uiState by viewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
     val flipOffset = remember { Animatable(0f) }
-    val webViewRef = remember { mutableStateOf<WebView?>(null) }
+    val activeWebViewRef = remember { mutableStateOf<WebView?>(null) }
+    val hiddenWebViewRef = remember { mutableStateOf<WebView?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val screenWidthPx = remember { context.resources.displayMetrics.widthPixels.toFloat() }
+    var chapterInSlot0 by remember { mutableStateOf(uiState.currentChapterIndex) }
+    var chapterInSlot1 by remember { mutableStateOf(-1) }
+    val slot1Html = remember { mutableStateOf("") }
     DisposableEffect(Unit) {
         onDispose {
             viewModel.saveAndPause()
@@ -483,7 +489,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             if (viewModel.uiState.value.isLoading) {
                 android.util.Log.e("PG", "LOADING TIMEOUT after 10s! Force dismissing. htmlLen=${uiState.chapterHtml.length}")
                 // 检查 JS 诊断信息
-                webViewRef.value?.evaluateJavascript("window.__paginateDebug||'no_diag'") { result ->
+                activeWebViewRef.value?.evaluateJavascript("window.__paginateDebug||'no_diag'") { result ->
                     android.util.Log.e("PG", "JS diag on timeout: $result")
                 }
                 viewModel.onPaginationDone()
@@ -508,11 +514,22 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             handlePageChanged = { page, total -> viewModel.onPageChanged(page, total) },
             handleChapterFlip = { },
             handleChapterFlipReady = { direction ->
-                // Phase 1: 章节边界通知，跨章切换由 Compose 双 WebView 实现（后续 Phase）
-                // 当前仅记录日志，JS 侧已执行 snapBack()
-                val cci = viewModel.uiState.value.currentChapterIndex
+                // Phase 2: 章节边界 → 预加载相邻章节到隐藏 WebView
+                val state = viewModel.uiState.value
+                val cci = state.currentChapterIndex
                 val adj = cci + direction
-                android.util.Log.e("PG", "Chapter boundary: cci=$cci dir=$direction adj=$adj (cross-chapter not implemented yet)")
+                if (adj in 0 until state.chapterCount) {
+                    val html = viewModel.getAdjacentChapterHtml(adj)
+                    if (html != null && html.isNotEmpty()) {
+                        chapterInSlot1 = adj
+                        slot1Html.value = html
+                        android.util.Log.e("PG", "Slot1 preloaded: chapter=$adj dir=$direction htmlLen=${html.length}")
+                    } else {
+                        android.util.Log.e("PG", "Slot1 preload FAILED: chapter=$adj dir=$direction (no cached HTML)")
+                    }
+                } else {
+                    android.util.Log.e("PG", "Chapter boundary out of range: adj=$adj chapters=${state.chapterCount}")
+                }
             },
             handleChapterSwapped = { direction -> viewModel.onChapterSwapped(direction) },
             handleCenterTap = { viewModel.toggleMenu() },
@@ -528,10 +545,10 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         .coerceIn(0, state.totalPages - 1)
                     android.util.Log.e("PG", "Will jump to page $targetPage")
                     // 延迟跳页，跳完后再延迟关闭加载画面（等浏览器重绘）
-                    webViewRef.value?.postDelayed({
-                        webViewRef.value?.evaluateJavascript("setPageImmediate($targetPage)") {
+                    activeWebViewRef.value?.postDelayed({
+                        activeWebViewRef.value?.evaluateJavascript("setPageImmediate($targetPage)") {
                             // 跳页后等 200ms 让浏览器重绘，再关闭加载画面
-                            webViewRef.value?.postDelayed({
+                            activeWebViewRef.value?.postDelayed({
                                 viewModel.clearPendingPageFraction()
                                 viewModel.onPaginationDone()
                             }, 200)
@@ -560,9 +577,41 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     }
 
     Box(Modifier.fillMaxSize().background(composeBgColor)) {
-        // WebView 始终在组合中（加载时也创建，确保 HTML 能加载）
-        Box(Modifier.fillMaxSize().graphicsLayer { translationX = flipOffset.value * size.width }) {
-            HtmlContent(html = displayedHtml, bridge = bridge, fontSize = uiState.fontSize, theme = uiState.readerTheme, chapterIndex = uiState.currentChapterIndex, onWebViewCreated = { webViewRef.value = it })
+        // ── Slot 0（主 WebView）：始终可见 ──
+        Box(Modifier.fillMaxSize().graphicsLayer { translationX = 0f }) {
+            HtmlContent(
+                html = displayedHtml,
+                bridge = bridge,
+                fontSize = uiState.fontSize,
+                theme = uiState.readerTheme,
+                chapterIndex = chapterInSlot0,
+                onWebViewCreated = { activeWebViewRef.value = it }
+            )
+        }
+
+        // ── Slot 1（预加载 WebView）：隐藏在屏幕右侧 ──
+        if (slot1Html.value.isNotEmpty()) {
+            Box(Modifier.fillMaxSize().graphicsLayer { translationX = screenWidthPx }) {
+                HtmlContent(
+                    html = slot1Html.value,
+                    bridge = bridge,
+                    fontSize = uiState.fontSize,
+                    theme = uiState.readerTheme,
+                    chapterIndex = chapterInSlot1,
+                    onWebViewCreated = { hiddenWebViewRef.value = it }
+                )
+            }
+        }
+
+        // 同步当前章节索引到 slot 0
+        LaunchedEffect(uiState.currentChapterIndex) {
+            if (chapterInSlot0 != uiState.currentChapterIndex) {
+                // 非边界跳转（TOC/Slider）：更新 slot 0 的章节索引，清除 slot 1 预加载
+                chapterInSlot0 = uiState.currentChapterIndex
+                slot1Html.value = ""
+                chapterInSlot1 = -1
+                android.util.Log.e("PG", "Chapter jump via TOC/Slider: reset slot0=$chapterInSlot0, cleared slot1")
+            }
         }
 
         // 过渡页在 NavGraph 层处理，这里只显示阅读内容
@@ -935,13 +984,14 @@ private fun MenuItemRow(title: String, subtitle: String?, trailing: @Composable 
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun HtmlContent(html: String, bridge: ReaderJsBridge, fontSize: Float = 16f, theme: String = "day", chapterIndex: Int = 0, onWebViewCreated: (WebView) -> Unit = {}) {
+private fun HtmlContent(html: String, bridge: ReaderJsBridge, fontSize: Float = 16f, theme: String = "day", chapterIndex: Int = 0, modifier: Modifier = Modifier, onWebViewCreated: (WebView) -> Unit = {}) {
     // 用 remember 存储可变引用，让 onPageFinished 能读取最新值（而不是闭包捕获的旧值）
     val currentFontSize = remember { mutableFloatStateOf(fontSize) }
     val currentTheme = remember { mutableStateOf(theme) }
     var prevFontSize by remember { mutableFloatStateOf(fontSize) }
     var prevTheme by remember { mutableStateOf(theme) }
     AndroidView(
+        modifier = modifier,
         factory = { ctx ->
             WebView(ctx).apply {
                 layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
@@ -1062,8 +1112,7 @@ private fun HtmlContent(html: String, bridge: ReaderJsBridge, fontSize: Float = 
                     webView.evaluateJavascript("window.repaginate(true)") {}
                 }
             }
-        },
-        modifier = Modifier.fillMaxSize()
+        }
     )
 }
 
