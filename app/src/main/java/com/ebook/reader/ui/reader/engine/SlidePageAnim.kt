@@ -57,7 +57,13 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
                 drawUpperPage(canvas, prev, -vw + ox, 0f, vw, vh)
             }
             // 空闲
-            else -> drawPageBitmap(canvas, cur, 0f, 0f, vw, vh)
+            else -> {
+                drawPageBitmap(canvas, cur, 0f, 0f, vw, vh)
+                // 翻页完成后阴影渐隐叠加
+                if (shadowFadeAlpha > 0f) {
+                    drawFadeOutShadow(canvas, vw, vh)
+                }
+            }
         }
     }
 
@@ -73,7 +79,7 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             shader = BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
             val matrix = Matrix()
-            matrix.postTranslate(x, y)
+            matrix.postTranslate(-x, -y)
             shader?.setLocalMatrix(matrix)
         }
 
@@ -124,6 +130,25 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
             canvas.drawBitmap(bitmap, x, y, null)
             canvas.restore()
         }
+    }
+
+    /** 翻页完成后的阴影渐隐叠加层 */
+    private fun drawFadeOutShadow(canvas: Canvas, vw: Float, vh: Float) {
+        val shEnd = shadowWidth.coerceAtMost(vw)
+        if (shEnd < 2f) return
+
+        val baseAlpha = (shadowFadeAlpha * 0x26).toInt().coerceIn(0, 0x26)
+        val colors = intArrayOf(
+            (baseAlpha shl 24),
+            ((baseAlpha * 0.6).toInt() shl 24),
+            ((baseAlpha * 0.2).toInt() shl 24),
+            0
+        )
+        val stops = floatArrayOf(0.0f, 0.2f, 0.5f, 1.0f)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = LinearGradient(0f, 0f, shEnd, 0f, colors, stops, Shader.TileMode.CLAMP)
+        }
+        canvas.drawRect(0f, 0f, shEnd, vh, paint)
     }
 
     // ── Scroller ──

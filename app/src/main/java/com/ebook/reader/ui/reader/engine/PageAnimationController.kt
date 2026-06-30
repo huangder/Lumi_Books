@@ -24,6 +24,8 @@ abstract class PageAnimationController(
         const val BOUNCE_DURATION = 350
         /** 翻页触发阈值（占屏幕宽度的比例） */
         const val FLIP_THRESHOLD = 0.12f
+        /** 阴影渐隐时长 ms */
+        private const val SHADOW_FADE_DURATION = 200
     }
 
     enum class Direction { NONE, NEXT, PREV }
@@ -51,6 +53,9 @@ abstract class PageAnimationController(
     protected var downTime: Long = 0L
     /** 本次动画是翻页（true）还是回弹（false） */
     private var isFlipAnim: Boolean = false
+    /** 翻页完成后阴影渐隐 alpha（供子类 onDraw 读取） */
+    protected var shadowFadeAlpha: Float = 0f
+    private var isShadowFading: Boolean = false
 
     /** 动画完成回调 */
     var onAnimationComplete: (() -> Unit)? = null
@@ -176,6 +181,7 @@ abstract class PageAnimationController(
         }
         if (isRunning) {
             isRunning = false
+            val wasFlip = isFlipAnim
             // 🔥 仅翻页动画（非回弹）才执行 slot shift
             if (isFlipAnim) {
                 isFlipAnim = false
@@ -184,6 +190,23 @@ abstract class PageAnimationController(
             direction = Direction.NONE
             touchX = startX
             readView.invalidate()
+
+            // 翻页完成后启动阴影渐隐
+            if (wasFlip) {
+                shadowFadeAlpha = 1f
+                isShadowFading = true
+            }
+        }
+        // 阴影渐隐帧循环
+        if (isShadowFading) {
+            shadowFadeAlpha -= (16f / SHADOW_FADE_DURATION)
+            if (shadowFadeAlpha <= 0f) {
+                shadowFadeAlpha = 0f
+                isShadowFading = false
+                return false
+            }
+            readView.invalidate()
+            return true
         }
         return false
     }
@@ -197,6 +220,8 @@ abstract class PageAnimationController(
         isRunning = false
         isDragging = false
         isFlipAnim = false
+        isShadowFading = false
+        shadowFadeAlpha = 0f
         direction = Direction.NONE
         // 🔥 确保 UI 刷新到空闲状态
         readView.invalidate()
