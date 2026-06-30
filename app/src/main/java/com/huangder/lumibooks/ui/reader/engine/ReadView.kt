@@ -55,6 +55,10 @@ class ReadView(context: Context) : FrameLayout(context) {
     private var pendingStartPage: Int = 0
 
     init {
+        // 🔥 强制软件渲染：硬件 Canvas 不支持非矩形 clipPath，
+        // 软件 Canvas 上 clipPath 100% 可靠，开销可忽略（仅 2-3 次 bitmap blit）
+        setLayerType(LAYER_TYPE_SOFTWARE, null)
+
         // 🔥 确保接收触摸事件
         isClickable = true
         isFocusable = true
