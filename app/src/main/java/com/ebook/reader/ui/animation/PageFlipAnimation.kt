@@ -56,6 +56,7 @@ object SlideCoverAnimation : PageFlipAnimation {
 
     // 完成章节切换：将预渲染 wrapper 设为当前 wrap，通知 Kotlin
     function completeChapterSwap(dir, adjIdx) {
+        window.__ccsCalled = adjIdx;  // 🔥 追踪：completeChapterSwap 被调用
         var pr = preRendered[adjIdx];
         if (!pr) return false;
         if (wrap) wrap.remove();
@@ -117,10 +118,11 @@ object SlideCoverAnimation : PageFlipAnimation {
 
     // 章节边界动画翻页（tap 触发）
     function chapterFlipTo(dir) {
-        if (flipping) return;
+        if (flipping) { window.__cftBlocked = 'flipping'; return; }
         var adjIdx = dir > 0 ? window.__currentChapterIdx + 1 : window.__currentChapterIdx - 1;
         var pr = preRendered[adjIdx];
-        if (!pr) { try { AndroidBridge.onChapterFlipReady(dir); } catch(e) {} return; }
+        if (!pr) { window.__cftNoPr = adjIdx; window.__pendingFlip = adjIdx; try { AndroidBridge.onChapterFlipReady(dir); } catch(e) {} return; }
+        window.__cftCalled = adjIdx;  // 🔥 追踪：chapterFlipTo 开始执行
         if (animId) { cancelAnimationFrame(animId); animId = null; }
         flipping = true;
         if (outer) outer.style.visibility = 'hidden';
@@ -241,12 +243,17 @@ object SlideCoverAnimation : PageFlipAnimation {
             cleanupLayers();
             // 🔥 bounceBack 完成后检查是否有待处理的跨章节翻转
             // （onPreRenderReady 可能在动画期间到达，当时 flipping=true 无法触发 chapterFlipTo）
+            window.__bbDone = 1;  // 🔥 追踪：bounceBack 完成
             if (window.__pendingFlip !== undefined) {
                 var pendingIdx = window.__pendingFlip;
                 var pdir = pendingIdx > window.__currentChapterIdx ? 1 : -1;
+                window.__bbPendingIdx = pendingIdx;  // 🔥 追踪：bounceBack 看到的 pending
                 if (preRendered[pendingIdx]) {
                     window.__pendingFlip = undefined;
+                    window.__bbTriggeredFlip = pendingIdx;  // 🔥 追踪：bounceBack 触发了 chapterFlipTo
                     chapterFlipTo(pdir);
+                } else {
+                    window.__bbNoPr = pendingIdx;  // 🔥 追踪：pending 存在但 preRendered 不存在
                 }
             }
         })(performance.now());
@@ -540,11 +547,14 @@ object SimpleSlideAnimation : PageFlipAnimation {
             }
             // 🔥 不在此清除 __pendingFlip —— bounceBack 是合法的等待状态
             // 但需要检查待处理的跨章节翻转（onPreRenderReady 可能在动画期间到达）
+            window.__bbDone = 1;  // 🔥 追踪：bounceBack 完成
             if (window.__pendingFlip !== undefined) {
                 var pendingIdx = window.__pendingFlip;
                 var pdir = pendingIdx > window.__currentChapterIdx ? 1 : -1;
+                window.__bbPendingIdx = pendingIdx;  // 🔥 追踪
                 if (preRendered[pendingIdx]) {
                     window.__pendingFlip = undefined;
+                    window.__bbTriggeredFlip = pendingIdx;  // 🔥 追踪：bounceBack 触发了章节交换
                     // PDF 简化版：直接交换 wrapper
                     var pr = preRendered[pendingIdx];
                     if (wrap) wrap.remove();
@@ -563,6 +573,8 @@ object SimpleSlideAnimation : PageFlipAnimation {
                     }
                     try { AndroidBridge.onPageChanged(cur, total); } catch(e) {}
                     try { AndroidBridge.onChapterSwapped(pdir); } catch(e) {}
+                } else {
+                    window.__bbNoPr = pendingIdx;  // 🔥 追踪：pending 存在但 preRendered 不存在
                 }
             }
         })(performance.now());

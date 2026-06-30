@@ -211,6 +211,7 @@ private fun buildPaginationJs(isPdf: Boolean = false, bgColor: String = "#ffffff
 
     // ── 预渲染系统 ──
     var preRendered = {};  // {chapterIndex: {wrapper, total}}
+    window.preRendered = preRendered;  // 🔥 暴露到 window 供诊断查询
 
     window.preRenderChapter = function(chapterIndex, htmlB64) {
         if (preRendered[chapterIndex]) return;
@@ -237,7 +238,8 @@ private fun buildPaginationJs(isPdf: Boolean = false, bgColor: String = "#ffffff
             var t = Math.max(1, Math.ceil(tw / vw));
             w.style.width = (t * vw) + 'px';
             preRendered[chapterIndex] = { wrapper: w, total: t };
-        } catch(e) { window.__preRenderError = 'ch' + chapterIndex + ':' + e.message; }
+            window.__preRenderInvoked = (window.__preRenderInvoked || '') + chapterIndex + ':ok;';
+        } catch(e) { window.__preRenderError = 'ch' + chapterIndex + ':' + e.message; window.__preRenderInvoked = (window.__preRenderInvoked || '') + chapterIndex + ':err;'; }
     };
 
     window.usePreRendered = function(chapterIndex) {
@@ -325,6 +327,28 @@ private fun buildPaginationJs(isPdf: Boolean = false, bgColor: String = "#ffffff
             var cssText = 'body{font-size:' + fs + 'px !important;background:' + bg + ' !important;color:' + textColor + ' !important;}p,h1,h2,h3,h4,h5,h6,li,blockquote,pre{color:' + textColor + ' !important;}';
             s.textContent = cssText;
         } catch(e) {}
+    };
+
+    // ── 诊断函数（供 Kotlin 查询闭包变量，避免 window.preRendered/window.flipping 假阴性）──
+    window.__getDiag = function(adjIdx) {
+        return JSON.stringify({
+            err: window.__preRenderError || 'none',
+            pr: preRendered[adjIdx] ? 1 : 0,
+            pf: window.__pendingFlip,
+            fl: typeof flipping !== 'undefined' ? flipping : null,
+            cci: window.__currentChapterIdx,
+            prk: Object.keys(preRendered).join(','),
+            inv: window.__preRenderInvoked || '',
+            // 🔥 Round 8: 追踪 bounceBack→chapterFlipTo→completeChapterSwap 链
+            bb: window.__bbDone || 0,
+            bbt: window.__bbTriggeredFlip,
+            bbn: window.__bbNoPr,
+            bbp: window.__bbPendingIdx,
+            cft: window.__cftCalled,
+            cfb: window.__cftBlocked,
+            cfn: window.__cftNoPr,
+            ccs: window.__ccsCalled
+        });
     };
 
     // ── 触摸事件 ──
@@ -424,31 +448,43 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 val canFlip = if (direction > 0) viewModel.uiState.value.currentChapterIndex < viewModel.uiState.value.chapterCount - 1
                 else viewModel.uiState.value.currentChapterIndex > 0
                 if (!canFlip) return@ReaderJsBridge
-                scope.launch {
-                    val adjIdx = viewModel.uiState.value.currentChapterIndex + direction
-                    val html = viewModel.getAdjacentChapterHtml(adjIdx)
-                    if (html != null) {
-                        val b64 = android.util.Base64.encodeToString(
-                            html.toByteArray(), android.util.Base64.NO_WRAP
-                        )
-                        val wv = webViewRef.value
-                        // 注入预渲染 + 触发 onPreRenderReady（如果用户还在拖拽中则无缝替换 loading 占位）
-                        wv?.evaluateJavascript(
-                            "window.preRenderChapter && preRenderChapter($adjIdx, '$b64');window.onPreRenderReady && onPreRenderReady($adjIdx);"
-                        ) { result ->
-                            android.util.Log.e("PG", "Emergency preRender result: $result (chapter $adjIdx)")
-                            // 🔥 延迟 100ms 查询诊断状态，区分成功和静默失败
-                            wv?.postDelayed({
-                                wv?.evaluateJavascript(
-                                    "JSON.stringify({err:window.__preRenderError||'none',pr:" +
-                                    "(window.preRendered&&preRendered[$adjIdx]?1:0)," +
-                                    "pf:window.__pendingFlip,fl:window.flipping," +
-                                    "cci:window.__currentChapterIdx," +
-                                    "prk:Object.keys(window.preRendered||{}).join(',')})"
-                                ) { diag ->
-                                    android.util.Log.e("PG", "Emergency DIAG: $diag")
-                                }
-                            }, 100)
+                val wv = webViewRef.value ?: return@ReaderJsBridge
+                // 🔥 Round 8：从 JS 读取 __pendingFlip（JS 侧的权威 adjIdx），避免 ViewModel/WebView 状态不同步
+                // ViewModel.currentChapterIndex 可能与 WebView.__currentChapterIdx 不一致
+                wv.evaluateJavascript("window.__pendingFlip") { pending ->
+                    val jsAdjIdx = pending?.removeSurrounding("\"")?.toIntOrNull()
+                    // 优先用 JS 侧的 adjIdx，回退到 ViewModel 计算
+                    val adjIdx = jsAdjIdx ?: (viewModel.uiState.value.currentChapterIndex + direction)
+                    android.util.Log.e("PG", "Emergency: jsAdjIdx=$jsAdjIdx fallback=${viewModel.uiState.value.currentChapterIndex + direction} final=$adjIdx")
+                    if (adjIdx !in 0 until viewModel.uiState.value.chapterCount) return@evaluateJavascript
+                    scope.launch {
+                        val html = viewModel.getAdjacentChapterHtml(adjIdx)
+                        if (html != null) {
+                            val b64 = android.util.Base64.encodeToString(
+                                html.toByteArray(), android.util.Base64.NO_WRAP
+                            )
+                            // 注入预渲染 + 触发 onPreRenderReady（如果用户还在拖拽中则无缝替换 loading 占位）
+                            wv.evaluateJavascript(
+                                "window.preRenderChapter && preRenderChapter($adjIdx, '$b64');window.onPreRenderReady && onPreRenderReady($adjIdx);"
+                            ) { result ->
+                                android.util.Log.e("PG", "Emergency preRender result: $result (chapter $adjIdx)")
+                                // 🔥 延迟 100ms 查询诊断状态（使用闭包内 __getDiag，避免 window.preRendered 假阴性）
+                                wv.postDelayed({
+                                    wv.evaluateJavascript(
+                                        "window.__getDiag && __getDiag($adjIdx) || JSON.stringify({err:'no_diag_fn'})"
+                                    ) { diag ->
+                                        android.util.Log.e("PG", "Emergency DIAG(100ms): $diag")
+                                    }
+                                }, 100)
+                                // 🔥 Round 8: 500ms 后二次查询，确认 bounceBack→chapterFlipTo→completeChapterSwap 是否完成
+                                wv.postDelayed({
+                                    wv.evaluateJavascript(
+                                        "window.__getDiag && __getDiag($adjIdx) || JSON.stringify({err:'no_diag_fn'})"
+                                    ) { diag ->
+                                        android.util.Log.e("PG", "Emergency DIAG(500ms): $diag")
+                                    }
+                                }, 500)
+                            }
                         }
                     }
                 }
