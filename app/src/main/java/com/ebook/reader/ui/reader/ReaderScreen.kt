@@ -93,7 +93,9 @@ class ReaderJsBridge(
     private val handleChapterFlipReady: (direction: Int) -> Unit,
     private val handleChapterSwapped: (direction: Int) -> Unit = {},
     private val handleCenterTap: () -> Unit,
-    private val handlePaginationComplete: () -> Unit = {}
+    private val handlePaginationComplete: () -> Unit = {},
+    private val handleDragAtBoundary: (offsetPx: Float) -> Unit = {},
+    private val handleDragCancel: () -> Unit = {}
 ) {
     @JavascriptInterface fun onPageFlip(direction: Int) = handlePageFlip(direction)
     @JavascriptInterface fun onPageChanged(page: Int, total: Int) = handlePageChanged(page, total)
@@ -102,6 +104,8 @@ class ReaderJsBridge(
     @JavascriptInterface fun onChapterSwapped(direction: Int) = handleChapterSwapped(direction)
     @JavascriptInterface fun onCenterTap() = handleCenterTap()
     @JavascriptInterface fun onPaginationComplete() = handlePaginationComplete()
+    @JavascriptInterface fun onDragAtBoundary(offsetPx: Float) = handleDragAtBoundary(offsetPx)
+    @JavascriptInterface fun onDragCancel() = handleDragCancel()
 }
 
 /** 异步执行 JS（挂起协程，不阻塞主线程） */
@@ -352,12 +356,9 @@ private fun buildPaginationJs(bgColor: String = "#ffffff", chapterIndex: Int = 0
         var atBoundary = (isF && cur >= total - 1) || (!isF && cur <= 0);
 
         if (atBoundary) {
-            // Chapter boundary: rubber-band effect + notify Kotlin once
+            // Chapter boundary: rubber-band effect + real-time Compose tracking
             c = c * 0.25;
-            if (!dg._boundaryNotified) {
-                dg._boundaryNotified = true;
-                try { AndroidBridge.onChapterFlipReady(isF ? 1 : -1); } catch(e) {}
-            }
+            try { AndroidBridge.onDragAtBoundary(dx); } catch(e) {}
         } else {
             dg._boundaryNotified = false;
         }
@@ -409,14 +410,21 @@ private fun buildPaginationJs(bgColor: String = "#ffffff", chapterIndex: Int = 0
     }
 
     function dEnd(dx, vel) {
+        var dir = dx < 0 ? 1 : -1, np = cur + dir;
+        var atBoundary = (dir > 0 && cur >= total - 1) || (dir < 0 && cur <= 0);
         if (Math.abs(dx) / vw > 0.25 || Math.abs(vel) > 350) {
-            var dir = dx < 0 ? 1 : -1, np = cur + dir;
             if (np >= 0 && np < total) {
                 // Within-chapter flip
                 try { AndroidBridge.onPageFlip(dir); } catch(e) {}
                 flipTo(np, 450); return;
             }
-            // Chapter boundary: bounceBack (cross-chapter transition handled by Compose in later phases)
+            // Chapter boundary with enough force → commit transition (Compose handles the slide)
+            try { AndroidBridge.onChapterFlipReady(dir); } catch(e) {}
+            bounceBack(350); return;
+        }
+        // Chapter boundary without enough force → cancel (bounce back Compose position too)
+        if (atBoundary) {
+            try { AndroidBridge.onDragCancel(); } catch(e) {}
         }
         bounceBack(350);
     }
@@ -522,6 +530,9 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         }
     }
     val isChapterAnimating = remember { mutableStateOf(false) }
+    // ── Real-time drag tracking for finger-following cross-chapter slide ──
+    var isDraggingAtBoundary by remember { mutableStateOf(false) }
+    var dragFraction by remember { mutableFloatStateOf(0f) }
     val paginationDeferred = remember { mutableStateOf<CompletableDeferred<Unit>?>(null) }
     var showToc by remember { mutableStateOf(false) }
     var showThemeSheet by remember { mutableStateOf(false) }
@@ -534,52 +545,88 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     }
 
     // ── Chapter transition logic ──
-    fun preloadHiddenSlot(adjChapter: Int, direction: Int) {
-        val html = viewModel.getAdjacentChapterHtml(adjChapter)
-        if (html != null && html.isNotEmpty()) {
-            if (activeSlot == 0) {
-                chapterInSlot1 = adjChapter
-                slot1Html.value = html
-                slot1Ready = false
+
+    /**
+     * @param setPending 是否设置 transition 状态。true=真正要翻章，false=仅后台预加载。
+     */
+    fun preloadHiddenSlot(adjChapter: Int, direction: Int, setPending: Boolean = true) {
+        if (activeSlot == 0) {
+            // Hidden slot = Slot 1
+            if (chapterInSlot1 == adjChapter && slot1Html.value.isNotEmpty()) {
+                // 已在后台预加载过同一章 → 直接标记 ready，无需重载 WebView
+                slot1Ready = true
+                android.util.Log.e("PG", "preloadHiddenSlot: chapter=$adjChapter ALREADY LOADED in slot1 → ready")
             } else {
-                chapterInSlot0 = adjChapter
-                slot0Html.value = html
-                slot0Ready = false
+                val html = viewModel.getAdjacentChapterHtml(adjChapter)
+                if (html != null && html.isNotEmpty()) {
+                    chapterInSlot1 = adjChapter
+                    slot1Html.value = html
+                    slot1Ready = false
+                    android.util.Log.e("PG", "preloadHiddenSlot: chapter=$adjChapter → slot1 (loading)")
+                } else {
+                    android.util.Log.e("PG", "preloadHiddenSlot FAILED: chapter=$adjChapter (no HTML)")
+                }
             }
+        } else {
+            // Hidden slot = Slot 0
+            if (chapterInSlot0 == adjChapter && slot0Html.value.isNotEmpty()) {
+                slot0Ready = true
+                android.util.Log.e("PG", "preloadHiddenSlot: chapter=$adjChapter ALREADY LOADED in slot0 → ready")
+            } else {
+                val html = viewModel.getAdjacentChapterHtml(adjChapter)
+                if (html != null && html.isNotEmpty()) {
+                    chapterInSlot0 = adjChapter
+                    slot0Html.value = html
+                    slot0Ready = false
+                    android.util.Log.e("PG", "preloadHiddenSlot: chapter=$adjChapter → slot0 (loading)")
+                } else {
+                    android.util.Log.e("PG", "preloadHiddenSlot FAILED: chapter=$adjChapter (no HTML)")
+                }
+            }
+        }
+        if (setPending) {
             hiddenSlotSide = if (direction > 0) 1 else -1
             pendingTransitionDir = direction
-            android.util.Log.e("PG", "preloadHiddenSlot: chapter=$adjChapter dir=$direction activeSlot=$activeSlot hiddenSide=$hiddenSlotSide")
-        } else {
-            android.util.Log.e("PG", "preloadHiddenSlot FAILED: chapter=$adjChapter (no HTML)")
         }
     }
 
     fun checkAndAnimate() {
         if (pendingTransitionDir == 0) return
+        if (isChapterAnimating.value) {
+            android.util.Log.e("PG", "checkAndAnimate BLOCKED: already animating")
+            return
+        }
         val hiddenReady = if (activeSlot == 0) slot1Ready else slot0Ready
         if (!hiddenReady) return
-        android.util.Log.e("PG", "checkAndAnimate: ready! dir=$pendingTransitionDir activeSlot=$activeSlot")
+        // 消费 pendingTransitionDir，防止后续 pagination complete 重复触发
+        val dir = pendingTransitionDir
+        pendingTransitionDir = 0
+        android.util.Log.e("PG", "checkAndAnimate: ready! dir=$dir activeSlot=$activeSlot")
         scope.launch {
             isChapterAnimating.value = true
-            val target = if (pendingTransitionDir > 0) -1f else 1f
+            // Bug3 fix: 向后翻章时，先把隐藏槽位跳到最后一页再启动 slide 动画
+            if (dir < 0) {
+                val hiddenWebView = if (activeSlot == 0) slot1WebView.value else slot0WebView.value
+                android.util.Log.e("PG", "checkAndAnimate: backward → flipToLastPage on hidden slot")
+                hiddenWebView?.evaluateJavascript("window.flipToLastPage()") {}
+                kotlinx.coroutines.delay(80)  // 等 WebView 渲染最后一页
+            }
+            val target = if (dir > 0) -1f else 1f
             slideAnim.animateTo(target, animationSpec = tween(300, easing = FastOutSlowInEasing))
-            // Slot swap: the preloaded slot already has the correct new chapter.
-            // Just toggle activeSlot; old active keeps its chapter (becomes hidden).
-            val oldDir = pendingTransitionDir
             val newActive = if (activeSlot == 0) 1 else 0
             val currentChapter = if (activeSlot == 0) chapterInSlot1 else chapterInSlot0
-            android.util.Log.e("PG", "Animation complete: swap activeSlot=$activeSlot->$newActive currentChapter=$currentChapter")
+            android.util.Log.e("PG", "Animation complete: swap activeSlot=$activeSlot->$newActive newChapter=$currentChapter")
             activeSlot = newActive
             slot0Ready = false
             slot1Ready = false
-            viewModel.onChapterSwapped(oldDir)
+            viewModel.onChapterSwapped(dir)
             slideAnim.snapTo(0f)
-            pendingTransitionDir = 0
             isChapterAnimating.value = false
-            // Preload next adjacent chapter into the now-hidden slot
-            val nextAdj = currentChapter + oldDir
+            pendingTransitionDir = 0  // 防御纵深：动画完成后清除残留的 transition 状态
+            // Preload next adjacent chapter into the now-hidden slot (setPending=false: 后台预加载不触发 transition)
+            val nextAdj = currentChapter + dir
             if (nextAdj in 0 until viewModel.uiState.value.chapterCount) {
-                preloadHiddenSlot(nextAdj, oldDir)
+                preloadHiddenSlot(nextAdj, dir, setPending = false)
             }
             android.util.Log.e("PG", "Swap done: activeSlot=$activeSlot slot0Ch=$chapterInSlot0 slot1Ch=$chapterInSlot1")
         }
@@ -589,20 +636,59 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     val bridge0 = remember {
         ReaderJsBridge(
             handlePageFlip = { },
-            handlePageChanged = { page, total -> viewModel.onPageChanged(page, total) },
+            handlePageChanged = { page, total ->
+                if (activeSlot == 0) viewModel.onPageChanged(page, total)
+                // 主动预加载：靠近章节边界时后台加载相邻章节到隐藏槽位
+                if (total > 3 && activeSlot == 0) {
+                    val ch = chapterInSlot0
+                    val count = viewModel.uiState.value.chapterCount
+                    when {
+                        page <= 1 -> {
+                            val prev = ch - 1
+                            if (prev >= 0) preloadHiddenSlot(prev, -1, setPending = false)
+                        }
+                        page >= total - 2 -> {
+                            val next = ch + 1
+                            if (next < count) preloadHiddenSlot(next, 1, setPending = false)
+                        }
+                    }
+                }
+            },
             handleChapterFlip = { },
             handleChapterFlipReady = { direction ->
+                if (isChapterAnimating.value) {
+                    android.util.Log.e("PG", "Bridge0 handleChapterFlipReady BLOCKED: animating")
+                    return@ReaderJsBridge
+                }
+                isDraggingAtBoundary = false
                 val cci = if (activeSlot == 0) chapterInSlot0 else chapterInSlot1
                 val adj = cci + direction
+                android.util.Log.e("PG", "Bridge0 handleChapterFlipReady: cci=$cci dir=$direction adj=$adj dragFrac=$dragFraction")
                 if (adj in 0 until viewModel.uiState.value.chapterCount) {
-                    preloadHiddenSlot(adj, direction)
-                    checkAndAnimate()
+                    preloadHiddenSlot(adj, direction, setPending = true)
+                    scope.launch {
+                        slideAnim.snapTo(dragFraction)
+                        checkAndAnimate()
+                    }
                 }
             },
             handleChapterSwapped = { direction -> viewModel.onChapterSwapped(direction) },
             handleCenterTap = { viewModel.toggleMenu() },
+            handleDragAtBoundary = { offsetPx ->
+                isDraggingAtBoundary = true
+                dragFraction = (offsetPx / screenWidthPx).coerceIn(-0.4f, 0.4f)
+            },
+            handleDragCancel = {
+                if (isDraggingAtBoundary) {
+                    isDraggingAtBoundary = false
+                    scope.launch {
+                        slideAnim.snapTo(dragFraction)
+                        slideAnim.animateTo(0f, tween(200, easing = FastOutSlowInEasing))
+                    }
+                }
+            },
             handlePaginationComplete = {
-                android.util.Log.e("PG", "onPaginationComplete Slot0 CALLED")
+                android.util.Log.e("PG", "onPaginationComplete Slot0 CALLED activeSlot=$activeSlot")
                 slot0Ready = true
                 paginationDeferred.value?.complete(Unit)
                 onPageReady()
@@ -631,28 +717,82 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     val bridge1 = remember {
         ReaderJsBridge(
             handlePageFlip = { },
-            handlePageChanged = { _, _ -> },  // Slot 1 page changes don't update ViewModel
+            handlePageChanged = { page, total ->
+                if (activeSlot == 1) viewModel.onPageChanged(page, total)
+                // 主动预加载：靠近章节边界时后台加载相邻章节到隐藏槽位
+                if (total > 3 && activeSlot == 1) {
+                    val ch = chapterInSlot1
+                    val count = viewModel.uiState.value.chapterCount
+                    when {
+                        page <= 1 -> {
+                            val prev = ch - 1
+                            if (prev >= 0) preloadHiddenSlot(prev, -1, setPending = false)
+                        }
+                        page >= total - 2 -> {
+                            val next = ch + 1
+                            if (next < count) preloadHiddenSlot(next, 1, setPending = false)
+                        }
+                    }
+                }
+            },
             handleChapterFlip = { },
             handleChapterFlipReady = { direction ->
+                if (isChapterAnimating.value) {
+                    android.util.Log.e("PG", "Bridge1 handleChapterFlipReady BLOCKED: animating")
+                    return@ReaderJsBridge
+                }
+                isDraggingAtBoundary = false
                 val cci = if (activeSlot == 1) chapterInSlot1 else chapterInSlot0
                 val adj = cci + direction
+                android.util.Log.e("PG", "Bridge1 handleChapterFlipReady: cci=$cci dir=$direction adj=$adj dragFrac=$dragFraction")
                 if (adj in 0 until viewModel.uiState.value.chapterCount) {
-                    preloadHiddenSlot(adj, direction)
-                    checkAndAnimate()
+                    preloadHiddenSlot(adj, direction, setPending = true)
+                    scope.launch {
+                        slideAnim.snapTo(dragFraction)
+                        checkAndAnimate()
+                    }
                 }
             },
             handleChapterSwapped = { },
             handleCenterTap = { viewModel.toggleMenu() },
-            handlePaginationComplete = {
-                android.util.Log.e("PG", "onPaginationComplete Slot1 CALLED (preload)")
-                if (activeSlot == 1) {
-                    // Slot 1 is active → normal pagination flow
-                    slot1Ready = true
-                    checkAndAnimate()
-                } else {
-                    slot1Ready = true
-                    checkAndAnimate()
+            handleDragAtBoundary = { offsetPx ->
+                isDraggingAtBoundary = true
+                dragFraction = (offsetPx / screenWidthPx).coerceIn(-0.4f, 0.4f)
+            },
+            handleDragCancel = {
+                if (isDraggingAtBoundary) {
+                    isDraggingAtBoundary = false
+                    scope.launch {
+                        slideAnim.snapTo(dragFraction)
+                        slideAnim.animateTo(0f, tween(200, easing = FastOutSlowInEasing))
+                    }
                 }
+            },
+            handlePaginationComplete = {
+                android.util.Log.e("PG", "onPaginationComplete Slot1 CALLED activeSlot=$activeSlot")
+                slot1Ready = true
+                if (activeSlot == 1) {
+                    // Slot 1 is active → handle normal pagination flow
+                    paginationDeferred.value?.complete(Unit)
+                    onPageReady()
+                    val state = viewModel.uiState.value
+                    val fraction = state.pendingPageFraction
+                    if (fraction > 0f && state.totalPages > 0) {
+                        val targetPage = (fraction * state.totalPages).toInt()
+                            .coerceIn(0, state.totalPages - 1)
+                        slot1WebView.value?.postDelayed({
+                            slot1WebView.value?.evaluateJavascript("setPageImmediate($targetPage)") {
+                                slot1WebView.value?.postDelayed({
+                                    viewModel.clearPendingPageFraction()
+                                    viewModel.onPaginationDone()
+                                }, 200)
+                            }
+                        }, 500)
+                    } else {
+                        viewModel.onPaginationDone()
+                    }
+                }
+                checkAndAnimate()
             }
         )
     }
@@ -673,8 +813,9 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         Box(Modifier
             .fillMaxSize()
             .graphicsLayer {
-                translationX = if (activeSlot == 0) slideAnim.value * screenWidthPx
-                               else hiddenSlotSide * screenWidthPx + slideAnim.value * screenWidthPx
+                val offset = if (isDraggingAtBoundary) dragFraction else slideAnim.value
+                translationX = if (activeSlot == 0) offset * screenWidthPx
+                               else hiddenSlotSide * screenWidthPx + offset * screenWidthPx
             }
         ) {
             HtmlContent(
@@ -692,8 +833,9 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             Box(Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    translationX = if (activeSlot == 1) slideAnim.value * screenWidthPx
-                                   else hiddenSlotSide * screenWidthPx + slideAnim.value * screenWidthPx
+                    val offset = if (isDraggingAtBoundary) dragFraction else slideAnim.value
+                    translationX = if (activeSlot == 1) offset * screenWidthPx
+                                   else hiddenSlotSide * screenWidthPx + offset * screenWidthPx
                 }
             ) {
                 HtmlContent(
@@ -707,25 +849,41 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             }
         }
 
-        // 同步：当 ViewModel 章节变化（TOC/Slider 跳转），更新 Slot 0
+        // 同步：当 ViewModel 章节变化（TOC/Slider 跳转），更新活跃槽位
         LaunchedEffect(uiState.currentChapterIndex) {
-            if (chapterInSlot0 != uiState.currentChapterIndex && activeSlot == 0) {
-                // 非边界跳转（TOC/Slider）：重载 Slot 0，清除 Slot 1
-                slot0Html.value = uiState.chapterHtml
-                chapterInSlot0 = uiState.currentChapterIndex
-                slot0Ready = false
-                slot1Html.value = ""
-                chapterInSlot1 = -1
-                slot1Ready = false
+            val activeChapter = if (activeSlot == 0) chapterInSlot0 else chapterInSlot1
+            if (activeChapter != uiState.currentChapterIndex && uiState.chapterHtml.isNotEmpty()) {
+                // 非边界跳转（TOC/Slider）：重载活跃槽位，清除隐藏槽位
+                if (activeSlot == 0) {
+                    slot0Html.value = uiState.chapterHtml
+                    chapterInSlot0 = uiState.currentChapterIndex
+                    slot0Ready = false
+                    slot1Html.value = ""
+                    chapterInSlot1 = -1
+                    slot1Ready = false
+                } else {
+                    slot1Html.value = uiState.chapterHtml
+                    chapterInSlot1 = uiState.currentChapterIndex
+                    slot1Ready = false
+                    slot0Html.value = ""
+                    chapterInSlot0 = -1
+                    slot0Ready = false
+                }
                 pendingTransitionDir = 0
-                android.util.Log.e("PG", "TOC jump: slot0 reset to chapter=$chapterInSlot0, cleared slot1")
+                android.util.Log.e("PG", "TOC jump: activeSlot=$activeSlot reset to chapter=${uiState.currentChapterIndex}, hidden cleared")
             }
         }
 
-        // 同步 Slot 0 HTML 来自 ViewModel 的首次加载
+        // 同步活跃槽位 HTML 来自 ViewModel 的首次加载
         LaunchedEffect(uiState.chapterHtml) {
-            if (uiState.chapterHtml.isNotEmpty() && slot0Html.value.isEmpty()) {
-                slot0Html.value = uiState.chapterHtml
+            if (uiState.chapterHtml.isNotEmpty()) {
+                if (activeSlot == 0 && slot0Html.value.isEmpty()) {
+                    slot0Html.value = uiState.chapterHtml
+                    chapterInSlot0 = uiState.currentChapterIndex
+                } else if (activeSlot == 1 && slot1Html.value.isEmpty()) {
+                    slot1Html.value = uiState.chapterHtml
+                    chapterInSlot1 = uiState.currentChapterIndex
+                }
             }
         }
 
