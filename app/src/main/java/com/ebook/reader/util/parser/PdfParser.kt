@@ -93,7 +93,7 @@ class PdfParser(private val context: Context) : BookParser {
         return html
     }
 
-    override fun getChapterContent(chapterIndex: Int): String {
+    override fun getChapterContent(chapterIndex: Int): CharSequence {
         return if (chapterIndex in 0 until pageCount) "PDF 第${chapterIndex + 1}页 / 共${pageCount}页" else ""
     }
 

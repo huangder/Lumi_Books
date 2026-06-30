@@ -44,7 +44,7 @@ class ReadView(context: Context) : FrameLayout(context) {
 
     // ── 外部回调 ──
     private var callbacks: ReadViewCallbacks? = null
-    private var contentProvider: (suspend (Int) -> String?)? = null
+    private var contentProvider: (suspend (Int) -> CharSequence?)? = null
 
     // ── 配置状态 ──
     private var isConfigured = false
@@ -55,8 +55,11 @@ class ReadView(context: Context) : FrameLayout(context) {
     private var pendingStartPage: Int = 0
 
     init {
+        // 🔥 确保接收触摸事件
+        isClickable = true
+        isFocusable = true
+
         // 添加三个 PageSurfaceView 到布局
-        // 它们都是 MATCH_PARENT 大小，z-order 通过 addView 顺序决定
         addView(prevPageView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(curPageView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(nextPageView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
@@ -110,6 +113,8 @@ class ReadView(context: Context) : FrameLayout(context) {
         // 页面变化回调
         slotManager.onPageChangedCallback = { globalPage, chapterIdx, pageInChapter, chapterTotal ->
             callbacks?.onPageChanged(globalPage, chapterIdx, pageInChapter, chapterTotal)
+            // 🔥 确保 ReadView 重绘（dispatchDraw 不经过子 View 的 invalidate 路径）
+            invalidate()
         }
 
         setWillNotDraw(false)
@@ -121,7 +126,7 @@ class ReadView(context: Context) : FrameLayout(context) {
         callbacks = cbs
     }
 
-    fun setContentProvider(provider: suspend (Int) -> String?) {
+    fun setContentProvider(provider: suspend (Int) -> CharSequence?) {
         contentProvider = provider
         slotManager.contentProvider = provider
     }
@@ -160,10 +165,10 @@ class ReadView(context: Context) : FrameLayout(context) {
         // 主题颜色
         val (bgColor, textColor) = getThemeColors(theme)
 
-        // 边距（16sp ≈ 56px for default density, 但会随 fontSize 缩放）
+        // 边距：上下 ≈ 1.78x 左右
         val density = resources.displayMetrics.density
-        val marginHoriz = 16f * density
-        val marginVert = 12f * density
+        val marginHoriz = 36f * density
+        val marginVert = 60f * density
         val lineSpacing = 2.5f * density
 
         // 配置布局引擎
@@ -182,13 +187,15 @@ class ReadView(context: Context) : FrameLayout(context) {
         )
 
         // 配置渲染器
+        val visibleH = (height - marginVert * 2).toFloat().coerceAtLeast(1f)
         renderer.configure(
             width = width,
             height = height,
             backgroundColor = bgColor,
             textColor = textColor,
             marginLeftPx = marginHoriz,
-            marginTopPx = marginVert
+            marginTopPx = marginVert,
+            visibleHeightPx = visibleH
         )
 
         if (needsRelayout) {

@@ -1,143 +1,146 @@
 package com.ebook.reader.ui.reader.engine
 
 import android.graphics.Canvas
+import android.graphics.LinearGradient
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.Shader
 
 /**
  * 水平视差滑动翻页动画。
  *
- * 复现当前 WebView 的翻页动画效果：
- * - 跟手拖拽：两个 Bitmap 跟随手指滑动
- * - 松手翻页：300ms Scroller 动画完成
- * - 松手回弹：200ms Scroller 动画回弹
- * - 阴影：页面边缘渐变阴影
+ * - PREV：上一页在上层从左侧全速滑入，覆盖下层当前页
+ * - NEXT：当前页在上层全速左滑出，揭示下层下一页
+ * - 下层：恒定速度比视差（上层速度 * PARALLAX_RATIO），从偏移位出发到达终点
+ *   - NEXT: nextX = (vw + ox) * ratio，start=0.3*vw(右侧) → end=0(中央)
+ *   - PREV: curX = ox * ratio，start=0(中央) → end=0.3*vw(右侧)
+ * - 上层：R 角裁剪（saveLayer 离屏层） + 外阴影
  */
 class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
 
     companion object {
-        /** 阴影宽度 dp（px 值在绘制时根据密度计算） */
-        private const val SHADOW_WIDTH = 30
+        private const val SHADOW_WIDTH_PX = 250
+        private const val CORNER_RADIUS_PX = 80f
+        /** 下层页面速度比 = 上层速度 * PARALLAX_RATIO */
+        private const val PARALLAX_RATIO = 0.3f
     }
+
+    private val density: Float get() = readView.resources.displayMetrics.density
+    private val shadowWidth: Float get() = SHADOW_WIDTH_PX * density.coerceAtLeast(1f)
+    private val cornerRadius: Float get() = CORNER_RADIUS_PX * density.coerceAtLeast(1f)
 
     override fun onDraw(canvas: Canvas) {
-        val viewWidth = readView.width.toFloat()
-        val viewHeight = readView.height.toFloat()
-        if (viewWidth <= 0 || viewHeight <= 0) return
+        val vw = readView.width.toFloat()
+        val vh = readView.height.toFloat()
+        if (vw <= 0 || vh <= 0) return
 
-        val offsetX = touchX - startX
-        val curBitmap = readView.getCurBitmap()
+        val ox = touchX - startX
+        val cur = readView.getCurBitmap()
 
         when {
-            // ── 正向翻页（下一页） ──
+            // NEXT：上层 cur 全速左滑，下层 next 从右侧偏移位慢速滑入
             direction == Direction.NEXT -> {
-                val targetBitmap = readView.getNextBitmap()
-                // progress: 0（起始）→ 1（完成）
-                val progress = (-offsetX / viewWidth).coerceIn(0f, 1f)
-                // 目标页用 quadratic ease-out：先快后慢，营造"从底层滑入"的层级感
-                val eased = 1f - (1f - progress) * (1f - progress)
-                val nextX = viewWidth * (1f - eased)
-
-                // 目标页（底层，轻微移动）
-                drawPageBitmap(canvas, targetBitmap, nextX, 0f, viewWidth, viewHeight)
-                // 当前页（顶层，全速左移）
-                drawPageBitmap(canvas, curBitmap, offsetX, 0f, viewWidth, viewHeight)
-
-                // 阴影：当前页右边缘，模拟"页面抬起"的光影
-                val shadowX = viewWidth + offsetX
-                if (shadowX > 0 && shadowX < viewWidth) {
-                    canvas.drawRect(
-                        shadowX, 0f,
-                        (shadowX + SHADOW_WIDTH).coerceAtMost(viewWidth), viewHeight,
-                        createShadowPaint(SHADOW_WIDTH, fromLeft = false)
-                    )
-                }
+                val next = readView.getNextBitmap()
+                // 恒定速度比：nextX = (vw + ox) * ratio，start=0.3*vw(右侧) → end=0(中央)
+                val lowerX = (vw + ox) * PARALLAX_RATIO
+                drawLowerPage(canvas, next, lowerX, 0f, vw, vh)
+                drawUpperPage(canvas, cur, ox, 0f, vw, vh)
             }
-
-            // ── 反向翻页（上一页） ──
+            // PREV：上层 prev 从左侧全速滑入，下层 cur 向右慢速偏移
             direction == Direction.PREV -> {
-                val targetBitmap = readView.getPrevBitmap()
-                val progress = (offsetX / viewWidth).coerceIn(0f, 1f)
-                val eased = 1f - (1f - progress) * (1f - progress)
-                val prevX = -viewWidth * (1f - eased)
-
-                // 目标页（底层，轻微移动）
-                drawPageBitmap(canvas, targetBitmap, prevX, 0f, viewWidth, viewHeight)
-                // 当前页（顶层，全速右移）
-                drawPageBitmap(canvas, curBitmap, offsetX, 0f, viewWidth, viewHeight)
-
-                // 阴影：当前页左边缘
-                val shadowX = offsetX
-                if (shadowX > 0 && shadowX < viewWidth) {
-                    canvas.drawRect(
-                        (shadowX - SHADOW_WIDTH).coerceAtLeast(0f), 0f,
-                        shadowX, viewHeight,
-                        createShadowPaint(SHADOW_WIDTH, fromLeft = true)
-                    )
-                }
+                val prev = readView.getPrevBitmap()
+                // 恒定速度比：curX = ox * ratio，start=0(中央) → end=0.3*vw(右侧)
+                val lowerX = ox * PARALLAX_RATIO
+                drawLowerPage(canvas, cur, lowerX, 0f, vw, vh)
+                drawUpperPage(canvas, prev, -vw + ox, 0f, vw, vh)
             }
-
-            // ── 空闲 ──
-            else -> {
-                drawPageBitmap(canvas, curBitmap, 0f, 0f, viewWidth, viewHeight)
-            }
+            // 空闲
+            else -> drawPageBitmap(canvas, cur, 0f, 0f, vw, vh)
         }
     }
 
-    override fun startAnim(fromDrag: Boolean) {
-        val viewWidth = readView.width.toFloat()
-        val fromX: Float
-        val toX: Float
-        val dx: Int
+    /** 上层：R 角裁剪 + 外阴影（向右延伸到下层页面） */
+    private fun drawUpperPage(
+        canvas: Canvas, bitmap: android.graphics.Bitmap?,
+        x: Float, y: Float, vw: Float, vh: Float
+    ) {
+        if (bitmap == null || bitmap.isRecycled) return
+        val r = cornerRadius
+        val left = x; val top = y; val right = x + vw; val bottom = y + vh
 
-        when {
-            direction == Direction.NEXT -> {
-                fromX = if (fromDrag) touchX else startX
-                toX = startX - viewWidth
-                dx = (toX - fromX).toInt()
-            }
-            direction == Direction.PREV -> {
-                fromX = if (fromDrag) touchX else startX
-                toX = startX + viewWidth
-                dx = (toX - fromX).toInt()
-            }
-            else -> {
-                // 点击翻页（没有拖拽方向，需要根据调用上下文确定）
-                // 由外部设置 direction 后调用
-                return
-            }
+        val radii = floatArrayOf(0f, 0f, r, r, r, r, 0f, 0f)
+        val pagePath = Path().apply {
+            addRoundRect(left, top, right, bottom, radii, Path.Direction.CW)
         }
 
-        isRunning = true
-        scroller.startScroll(fromX.toInt(), 0, dx, 0, ANIM_DURATION)
-        readView.invalidate()
+        // 1. 绘制上层 Bitmap（R 角裁剪）
+        // 🔥 saveLayer 创建离屏缓冲，确保 clipPath 在硬件加速下正确执行
+        canvas.saveLayer(0f, 0f, readView.width.toFloat(), readView.height.toFloat(), null)
+        canvas.clipPath(pagePath)
+        canvas.drawBitmap(bitmap, x, y, null)
+        canvas.restore()
+
+        // 2. 外阴影：从上层右边缘向右延伸，在下层页面上可见
+        val shStart = right
+        val shEnd = (right + shadowWidth).coerceAtMost(readView.width.toFloat())
+        if (shStart < readView.width.toFloat() && shEnd > shStart + 2f) {
+            canvas.save()
+            // 只在屏幕范围内、上层页面右边的区域绘制
+            canvas.clipRect(shStart, top, readView.width.toFloat(), bottom)
+
+            val colors = intArrayOf(
+                0x26000000.toInt(),
+                0x18000000.toInt(),
+                0x08000000.toInt(),
+                0x02000000.toInt(),
+                0x00000000
+            )
+            val stops = floatArrayOf(0.0f, 0.2f, 0.5f, 0.75f, 1.0f)
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                shader = LinearGradient(shStart, 0f, shEnd, 0f, colors, stops, Shader.TileMode.CLAMP)
+            }
+            canvas.drawRect(shStart, top, shEnd, bottom, paint)
+            canvas.restore()
+        }
     }
 
-    /**
-     * 从点击触发翻页（无拖拽，从 0 开始动画）。
-     */
-    fun startFromTap(dir: Direction) {
-        direction = dir
-        touchX = startX
-        startAnim(fromDrag = false)
+    private fun drawLowerPage(
+        canvas: Canvas, bitmap: android.graphics.Bitmap?,
+        x: Float, y: Float, vw: Float, vh: Float
+    ) {
+        drawPageBitmap(canvas, bitmap, x, y, vw, vh)
     }
 
-    /**
-     * 绘制单页 Bitmap，剪裁到视图范围。
-     */
     private fun drawPageBitmap(
-        canvas: Canvas,
-        bitmap: android.graphics.Bitmap?,
-        x: Float,
-        y: Float,
-        viewWidth: Float,
-        viewHeight: Float
+        canvas: Canvas, bitmap: android.graphics.Bitmap?,
+        x: Float, y: Float, vw: Float, vh: Float
     ) {
         if (bitmap != null && !bitmap.isRecycled) {
             canvas.save()
-            // 剪裁到屏幕范围
-            canvas.clipRect(0f, 0f, viewWidth, viewHeight)
+            canvas.clipRect(0f, 0f, vw, vh)
             canvas.drawBitmap(bitmap, x, y, null)
             canvas.restore()
         }
-        // bitmap 为 null 时不做任何事（背景色由 Activity/Compose 提供）
+    }
+
+    // ── Scroller ──
+
+    override fun startAnim(fromDrag: Boolean) {
+        val vw = readView.width.toFloat()
+        val fromX: Float; val toX: Float
+        when {
+            direction == Direction.NEXT -> { fromX = if (fromDrag) touchX else startX; toX = startX - vw }
+            direction == Direction.PREV -> { fromX = if (fromDrag) touchX else startX; toX = startX + vw }
+            else -> return
+        }
+        val dx = (toX - fromX).toInt()
+        if (dx == 0) { direction = Direction.NONE; return }
+        isRunning = true
+        scroller.startScroll(fromX.toInt(), 0, dx, 0, ANIM_DURATION)
+        readView.postInvalidateOnAnimation()
+    }
+
+    fun startFromTap(dir: Direction) {
+        direction = dir; touchX = startX; startAnim(fromDrag = false)
     }
 }

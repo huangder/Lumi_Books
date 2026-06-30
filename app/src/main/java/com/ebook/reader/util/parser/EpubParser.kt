@@ -2,11 +2,14 @@ package com.ebook.reader.util.parser
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.text.Html
+import android.text.Spanned
 import android.util.Base64
 import java.io.File
 import java.io.FileInputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
+import kotlin.text.RegexOption
 
 class EpubParser(private val context: Context? = null) : BookParser {
     private var chapters: List<Chapter> = emptyList()
@@ -86,13 +89,13 @@ class EpubParser(private val context: Context? = null) : BookParser {
                 if (entry != null) {
                     val rawHtml = zipFile.getInputStream(entry).bufferedReader().readText()
                     val processedHtml = processHtml(zipFile, rawHtml)
-                    val plainText = stripHtml(rawHtml)
+                    val formattedText = htmlToSpanned(rawHtml)
 
                     result.add(
                         Chapter(
                             index = index,
                             title = extractTitle(rawHtml) ?: "第${index + 1}章",
-                            content = plainText,
+                            content = formattedText,
                             htmlContent = processedHtml
                         )
                     )
@@ -111,13 +114,13 @@ class EpubParser(private val context: Context? = null) : BookParser {
                 try {
                     val rawHtml = zipFile.getInputStream(entry).bufferedReader().readText()
                     val processedHtml = processHtml(zipFile, rawHtml)
-                    val plainText = stripHtml(rawHtml)
-                    if (plainText.isNotBlank()) {
+                    val formattedText = htmlToSpanned(rawHtml)
+                    if (formattedText.isNotBlank()) {
                         result.add(
                             Chapter(
                                 index = index,
                                 title = "第${index + 1}章",
-                                content = plainText,
+                                content = formattedText,
                                 htmlContent = processedHtml
                             )
                         )
@@ -286,17 +289,31 @@ class EpubParser(private val context: Context? = null) : BookParser {
         return "image/png"
     }
 
-    private fun stripHtml(html: String): String {
-        val htmlTagRegex = """<[^>]+>""".toRegex()
-        return html
-            .replace(htmlTagRegex, " ")
-            .replace("&nbsp;", " ")
-            .replace("&amp;", "&")
-            .replace("&lt;", "<")
-            .replace("&gt;", ">")
-            .replace("&quot;", "\"")
-            .replace("\\s+".toRegex(), " ")
-            .trim()
+    /**
+     * 将 HTML 转换为 Spanned，保留段落、标题、粗体、斜体、链接等格式。
+     * StaticLayout 原生支持所有标准 Android Span 类型。
+     */
+    private fun htmlToSpanned(html: String): Spanned {
+        // 提取 <body> 内容，避免 <head>/<title> 等标签内容泄漏为正文
+        val bodyContent = extractBody(html) ?: html
+
+        // 移除无法在 StaticLayout 中渲染的标签
+        val cleaned = bodyContent
+            .replace(Regex("""<img[^>]*/?>""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""<svg[^>]*>.*?</svg>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
+            .replace(Regex("""<script[^>]*>.*?</script>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
+            .replace(Regex("""<style[^>]*>.*?</style>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
+
+        return Html.fromHtml(cleaned, Html.FROM_HTML_MODE_LEGACY)
+    }
+
+    /** 从 HTML 中提取 <body> 标签内的内容 */
+    private fun extractBody(html: String): String? {
+        val bodyRegex = Regex(
+            """<body[^>]*>(.*?)</body>""",
+            setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)
+        )
+        return bodyRegex.find(html)?.groupValues?.get(1)
     }
 
     private fun extractTitle(html: String): String? {
@@ -375,7 +392,7 @@ class EpubParser(private val context: Context? = null) : BookParser {
         }
     }
 
-    override fun getChapterContent(chapterIndex: Int): String {
+    override fun getChapterContent(chapterIndex: Int): CharSequence {
         return if (chapterIndex in chapters.indices) chapters[chapterIndex].content else ""
     }
 

@@ -16,6 +16,7 @@ class PageRenderer {
     private var textColor: Int = 0xFF333333.toInt()
     private var marginLeft: Float = 48f
     private var marginTop: Float = 32f
+    private var visibleHeight: Float = 1856f
     private var canvasWidth: Int = 1080
     private var canvasHeight: Int = 1920
 
@@ -29,11 +30,13 @@ class PageRenderer {
         backgroundColor: Int,
         textColor: Int,
         marginLeftPx: Float = 48f,
-        marginTopPx: Float = 32f
+        marginTopPx: Float = 32f,
+        visibleHeightPx: Float = 1856f
     ) {
         val sizeChanged = canvasWidth != width || canvasHeight != height
         canvasWidth = width
         canvasHeight = height
+        visibleHeight = visibleHeightPx
         bgColor = backgroundColor
         this.textColor = textColor
         marginLeft = marginLeftPx
@@ -66,16 +69,12 @@ class PageRenderer {
         // 绘制文本行：用 StaticLayout.draw() 比逐行 drawText 更可靠
         canvas.save()
         canvas.translate(marginLeft, marginTop)
-        // 偏移到本页的起始行
+        // 🔥 clipRect 必须在 T2（-pageStartY）之前执行！
+        // 否则 T2 会把裁剪区域也偏移 -pageStartY，导致 page 1+ 的裁剪飞到 bitmap 上方变成空白页
+        canvas.clipRect(0f, 0f, sl.width.toFloat(), visibleHeight)
+        // 偏移到本页的起始行（仅影响 sl.draw，不影响 clip 位置）
         val pageStartY = sl.getLineTop(pageLayout.startLine)
         canvas.translate(0f, -pageStartY.toFloat())
-        // 剪裁到可视区域（一页的高度）
-        // endLine 是 exclusive，最后一行的索引是 endLine - 1
-        // 用 getLineBottom 而非 getLineTop(endLine)，避免尾部最后一页的最后一行被裁掉
-        val lastLine = (pageLayout.endLine - 1).coerceIn(0, sl.lineCount - 1)
-        val clipBottom = sl.getLineBottom(lastLine)
-        val clipHeight = (clipBottom - pageStartY).coerceAtLeast(1)
-        canvas.clipRect(0f, 0f, sl.width.toFloat(), clipHeight.toFloat())
         sl.draw(canvas)
         canvas.restore()
 

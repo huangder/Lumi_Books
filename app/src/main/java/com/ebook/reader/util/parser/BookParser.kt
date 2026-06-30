@@ -3,7 +3,7 @@ package com.ebook.reader.util.parser
 data class Chapter(
     val index: Int,
     val title: String,
-    val content: String,
+    val content: CharSequence,  // EPUB 为 Spanned（保留格式），TXT/PDF 为 String
     val htmlContent: String = ""  // 完整章节HTML，WebView渲染用
 )
 
@@ -21,7 +21,7 @@ data class BookContent(
  */
 interface BookParser {
     fun parse(filePath: String): BookContent
-    fun getChapterContent(chapterIndex: Int): String
+    fun getChapterContent(chapterIndex: Int): CharSequence
     fun getChapterHtml(chapterIndex: Int): String
     fun getChapterCount(): Int
 

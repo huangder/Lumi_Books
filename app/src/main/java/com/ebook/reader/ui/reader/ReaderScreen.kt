@@ -412,7 +412,7 @@ private fun ReaderTopBar(title: String, onBack: () -> Unit, bgColor: Color = Col
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 8.dp)
+            .statusBarsPadding()
             .height(140.dp)
     ) {
         Box(

@@ -99,7 +99,7 @@ class PageLayoutEngine {
      */
     suspend fun layout(
         chapterIndex: Int,
-        text: String
+        text: CharSequence
     ): ChapterLayout = withContext(Dispatchers.IO) {
         // 检查缓存
         layoutCache[chapterIndex]?.let { return@withContext it }
