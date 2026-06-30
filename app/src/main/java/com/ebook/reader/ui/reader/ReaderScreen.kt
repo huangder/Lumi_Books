@@ -356,8 +356,10 @@ private fun buildPaginationJs(bgColor: String = "#ffffff", chapterIndex: Int = 0
         var atBoundary = (isF && cur >= total - 1) || (!isF && cur <= 0);
 
         if (atBoundary) {
-            // Chapter boundary: rubber-band effect + real-time Compose tracking
-            c = c * 0.25;
+            // Chapter boundary: moderate rubber-band + real-time Compose tracking
+            // 0.5 resistance (was 0.25) → closer to within-chapter feel
+            // Compose slot position provides the main visual of adjacent chapter sliding in
+            c = c * 0.5;
             try { AndroidBridge.onDragAtBoundary(dx); } catch(e) {}
         } else {
             dg._boundaryNotified = false;
@@ -639,15 +641,15 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             handlePageChanged = { page, total ->
                 if (activeSlot == 0) viewModel.onPageChanged(page, total)
                 // 主动预加载：靠近章节边界时后台加载相邻章节到隐藏槽位
-                if (total > 3 && activeSlot == 0) {
+                if (total > 4 && activeSlot == 0) {
                     val ch = chapterInSlot0
                     val count = viewModel.uiState.value.chapterCount
                     when {
-                        page <= 1 -> {
+                        page <= 2 -> {
                             val prev = ch - 1
                             if (prev >= 0) preloadHiddenSlot(prev, -1, setPending = false)
                         }
-                        page >= total - 2 -> {
+                        page >= total - 3 -> {
                             val next = ch + 1
                             if (next < count) preloadHiddenSlot(next, 1, setPending = false)
                         }
@@ -676,7 +678,21 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             handleCenterTap = { viewModel.toggleMenu() },
             handleDragAtBoundary = { offsetPx ->
                 isDraggingAtBoundary = true
-                dragFraction = (offsetPx / screenWidthPx).coerceIn(-0.4f, 0.4f)
+                val hiddenReady = if (activeSlot == 0) slot1Ready else slot0Ready
+                if (!hiddenReady) {
+                    // Lazy preload: trigger on first boundary drag if not already preloaded
+                    val cci = if (activeSlot == 0) chapterInSlot0 else chapterInSlot1
+                    val dir = if (offsetPx < 0) 1 else -1
+                    val adj = cci + dir
+                    val count = viewModel.uiState.value.chapterCount
+                    if (adj in 0 until count) {
+                        preloadHiddenSlot(adj, dir, setPending = false)
+                        android.util.Log.e("PG", "Bridge0 lazy preload: adj=$adj dir=$dir")
+                    }
+                }
+                // Dynamic range: 0.7 when preloaded (hidden slot ~70% visible), 0.35 when not
+                val maxDrag = if (hiddenReady) 0.7f else 0.35f
+                dragFraction = (offsetPx / screenWidthPx).coerceIn(-maxDrag, maxDrag)
             },
             handleDragCancel = {
                 if (isDraggingAtBoundary) {
@@ -720,15 +736,15 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             handlePageChanged = { page, total ->
                 if (activeSlot == 1) viewModel.onPageChanged(page, total)
                 // 主动预加载：靠近章节边界时后台加载相邻章节到隐藏槽位
-                if (total > 3 && activeSlot == 1) {
+                if (total > 4 && activeSlot == 1) {
                     val ch = chapterInSlot1
                     val count = viewModel.uiState.value.chapterCount
                     when {
-                        page <= 1 -> {
+                        page <= 2 -> {
                             val prev = ch - 1
                             if (prev >= 0) preloadHiddenSlot(prev, -1, setPending = false)
                         }
-                        page >= total - 2 -> {
+                        page >= total - 3 -> {
                             val next = ch + 1
                             if (next < count) preloadHiddenSlot(next, 1, setPending = false)
                         }
@@ -757,7 +773,21 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             handleCenterTap = { viewModel.toggleMenu() },
             handleDragAtBoundary = { offsetPx ->
                 isDraggingAtBoundary = true
-                dragFraction = (offsetPx / screenWidthPx).coerceIn(-0.4f, 0.4f)
+                val hiddenReady = if (activeSlot == 1) slot0Ready else slot1Ready
+                if (!hiddenReady) {
+                    // Lazy preload: trigger on first boundary drag if not already preloaded
+                    val cci = if (activeSlot == 1) chapterInSlot1 else chapterInSlot0
+                    val dir = if (offsetPx < 0) 1 else -1
+                    val adj = cci + dir
+                    val count = viewModel.uiState.value.chapterCount
+                    if (adj in 0 until count) {
+                        preloadHiddenSlot(adj, dir, setPending = false)
+                        android.util.Log.e("PG", "Bridge1 lazy preload: adj=$adj dir=$dir")
+                    }
+                }
+                // Dynamic range: 0.7 when preloaded (hidden slot ~70% visible), 0.35 when not
+                val maxDrag = if (hiddenReady) 0.7f else 0.35f
+                dragFraction = (offsetPx / screenWidthPx).coerceIn(-maxDrag, maxDrag)
             },
             handleDragCancel = {
                 if (isDraggingAtBoundary) {
