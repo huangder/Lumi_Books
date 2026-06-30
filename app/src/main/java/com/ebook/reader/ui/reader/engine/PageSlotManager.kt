@@ -115,24 +115,31 @@ class PageSlotManager(
                 }
                 val chapterLayout = layoutEngine.layout(chapterIndex, text)
 
+                // 🔥 跨章 PREV 修正：resolvePrevPage 在上一章未缓存时 fallback 到 page=0
+                // 此时章节布局已加载，纠正为最后一页
+                var actualPage = pageInChapter
+                if (slotIdx == SLOT_PREV && actualPage == 0 && chapterIndex < currentChapterIndex) {
+                    actualPage = chapterLayout.totalPages - 1
+                    slot.pageIndex = actualPage
+                }
+
                 // 🔥 边界检查：页面超出范围时自动 clamp
-                // 字体变小后旧页码可能超出新的总页数，clamp 到合法范围避免空白页
-                if (pageInChapter < 0 || pageInChapter >= chapterLayout.totalPages) {
-                    val clampedPage = pageInChapter.coerceIn(0, chapterLayout.totalPages - 1)
-                    Log.w(TAG, "Page clamped: slot=$slotIdx ch=$chapterIndex pg=$pageInChapter->$clampedPage total=${chapterLayout.totalPages}")
+                if (actualPage < 0 || actualPage >= chapterLayout.totalPages) {
+                    val clampedPage = actualPage.coerceIn(0, chapterLayout.totalPages - 1)
+                    Log.w(TAG, "Page clamped: slot=$slotIdx ch=$chapterIndex pg=$actualPage->$clampedPage total=${chapterLayout.totalPages}")
                     slot.pageIndex = clampedPage
                     loadSlot(slotIdx, chapterIndex, clampedPage)
                     return@launch
                 }
 
-                val bitmap = renderer.renderPage(chapterLayout, pageInChapter)
+                val bitmap = renderer.renderPage(chapterLayout, actualPage)
 
                 // 确认该槽位没有被重新加载覆盖
-                if (slot.chapterIndex == chapterIndex && slot.pageIndex == pageInChapter) {
+                if (slot.chapterIndex == chapterIndex && slot.pageIndex == actualPage) {
                     slot.surfaceView.setPageBitmap(bitmap)
-                    slot.globalPageIndex = layoutEngine.localToGlobal(chapterIndex, pageInChapter)
+                    slot.globalPageIndex = layoutEngine.localToGlobal(chapterIndex, actualPage)
                     slot.isLoaded = true
-                    Log.d(TAG, "Slot $slotIdx loaded: ch=$chapterIndex pg=$pageInChapter")
+                    Log.d(TAG, "Slot $slotIdx loaded: ch=$chapterIndex pg=$actualPage")
 
                     // 如果是当前槽位，通知页面变化（关键：初始加载时触发 isLoading=false）
                     if (slotIdx == SLOT_CUR) {
@@ -148,7 +155,7 @@ class PageSlotManager(
                     renderer.releaseBitmap(bitmap)
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to load slot $slotIdx ch=$chapterIndex pg=$pageInChapter", e)
+                Log.e(TAG, "Failed to load slot $slotIdx ch=$chapterIndex", e)
                 slot.isLoaded = false
                 // 加载失败也通知页面变化，避免 loading 卡死
                 if (slotIdx == SLOT_CUR) notifyPageChanged()
