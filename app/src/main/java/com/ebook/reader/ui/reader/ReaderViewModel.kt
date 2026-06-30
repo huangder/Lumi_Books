@@ -36,7 +36,11 @@ data class ReaderUiState(
     val pendingPageFraction: Float = 0f,
     val fontSize: Float = 16f,
     val readerTheme: String = "day",
-    val error: String? = null
+    val error: String? = null,
+    /** 全局页码（跨所有章节），新引擎用 */
+    val globalPageIndex: Int = 0,
+    /** 是否使用新 Canvas 引擎 */
+    val useNewEngine: Boolean = true
 )
 
 @HiltViewModel
@@ -109,11 +113,13 @@ class ReaderViewModel @Inject constructor(
                     val startChapter = progressFraction.toInt().coerceIn(0, chapterCount - 1)
                     val pageFraction = (progressFraction - startChapter).coerceIn(0f, 1f)
 
+                    val isPdf = book.format.name == "PDF"
                     _uiState.value = _uiState.value.copy(
                         book = book,
                         chapterCount = chapterCount,
                         currentChapterIndex = startChapter,
-                        pendingPageFraction = pageFraction
+                        pendingPageFraction = pageFraction,
+                        useNewEngine = !isPdf  // TXT/EPUB 用新 Canvas 引擎，PDF 保留 WebView
                     )
 
                     loadChapterContent()
@@ -237,6 +243,28 @@ class ReaderViewModel @Inject constructor(
         saveProgress()
         android.util.Log.e("PG", "onPageChanged page=$page total=$total")
         preloadAdjacentChapters()
+    }
+
+    /**
+     * 新 Canvas 引擎页面切换回调。
+     */
+    fun onNewEnginePageChanged(
+        globalPage: Int,
+        chapterIndex: Int,
+        pageInChapter: Int,
+        chapterTotalPages: Int
+    ) {
+        _uiState.value = _uiState.value.copy(
+            globalPageIndex = globalPage,
+            currentChapterIndex = chapterIndex,
+            currentPageIndex = pageInChapter,
+            totalPages = chapterTotalPages,
+            pageReady = true
+        )
+        if (_uiState.value.isLoading) {
+            _uiState.value = _uiState.value.copy(isLoading = false)
+        }
+        saveProgress()
     }
 
     /** WebView 分页完成后调用 */
