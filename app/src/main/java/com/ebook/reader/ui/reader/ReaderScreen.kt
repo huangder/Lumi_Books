@@ -1,18 +1,12 @@
 package com.ebook.reader.ui.reader
 
-import android.annotation.SuppressLint
-import android.view.ViewGroup
-import android.webkit.JavascriptInterface
-import android.webkit.WebSettings
 import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -65,6 +59,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -74,428 +70,28 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.ebook.reader.ui.animation.AppEasing
 import com.ebook.reader.ui.animation.cardPressEffect
 import com.ebook.reader.ui.components.ImmersiveMode
+import com.ebook.reader.ui.reader.engine.ReadView
+import com.ebook.reader.ui.reader.engine.ReadViewCallbacks
 import com.ebook.reader.ui.theme.AppColors
 import com.ebook.reader.ui.theme.AppRadius
 import com.ebook.reader.ui.theme.AppSpace
 import com.ebook.reader.ui.theme.AppType
 import com.ebook.reader.ui.theme.DingliSong
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.coroutines.resume
-
-class ReaderJsBridge(
-    private val handlePageFlip: (direction: Int) -> Unit,
-    private val handlePageChanged: (page: Int, total: Int) -> Unit,
-    private val handleChapterFlip: (direction: Int) -> Unit,
-    private val handleChapterFlipReady: (direction: Int) -> Unit,
-    private val handleChapterSwapped: (direction: Int) -> Unit = {},
-    private val handleCenterTap: () -> Unit,
-    private val handlePaginationComplete: () -> Unit = {},
-    private val handleDragAtBoundary: (offsetPx: Float) -> Unit = {},
-    private val handleDragCancel: () -> Unit = {}
-) {
-    @JavascriptInterface fun onPageFlip(direction: Int) = handlePageFlip(direction)
-    @JavascriptInterface fun onPageChanged(page: Int, total: Int) = handlePageChanged(page, total)
-    @JavascriptInterface fun onChapterFlip(direction: Int) = handleChapterFlip(direction)
-    @JavascriptInterface fun onChapterFlipReady(direction: Int) = handleChapterFlipReady(direction)
-    @JavascriptInterface fun onChapterSwapped(direction: Int) = handleChapterSwapped(direction)
-    @JavascriptInterface fun onCenterTap() = handleCenterTap()
-    @JavascriptInterface fun onPaginationComplete() = handlePaginationComplete()
-    @JavascriptInterface fun onDragAtBoundary(offsetPx: Float) = handleDragAtBoundary(offsetPx)
-    @JavascriptInterface fun onDragCancel() = handleDragCancel()
-}
-
-/** 异步执行 JS（挂起协程，不阻塞主线程） */
-private suspend fun WebView.evaluateJavascriptSuspend(script: String): String {
-    return suspendCancellableCoroutine { cont ->
-        evaluateJavascript(script) { result ->
-            cont.resume(result?.removeSurrounding("\"") ?: "")
-        }
-    }
-}
-
-/**
- * Phase 1 修复版：恢复原始 SlideCoverAnimation 章内翻页逻辑（topLayer/botLayer 双层视差）。
- * 仅删除跨章相关代码（preRendered、chapterFlipTo、animateChapterSwap、
- * completeChapterSwap、onPreRenderReady、bounceBack 跨章检测）。
- * 跨章动画移到 Compose 层（双 WebView slide，后续 Phase 实现）。
- */
-private fun buildPaginationJs(bgColor: String = "#ffffff", chapterIndex: Int = 0): String {
-    return """
-(function() {
-    var cur = 0, total = 1, vw, vh, PAD_H, PAD_V = 70;
-    var wrap = null, outer = null, animId = null;
-    var BG = '$bgColor';
-    window.__paginationReady = false;
-    window.__currentChapterIdx = $chapterIndex;
-    var dg = { on: false, x0: 0, y0: 0, t0: 0, cx: 0, moved: false };
-    var topLayer = null, botLayer = null, edgeShadow = null;
-
-    function eo(t) { return 1 - Math.pow(1 - t, 3); }
-    function eb(t) { return 1 - Math.pow(1 - t, 4); }
-    function gx(el) {
-        var s = el.style.transform;
-        if (!s || s === 'none') return 0;
-        var m = s.match(/translateX\(([-\d.]+)px\)/);
-        return m ? +m[1] : 0;
-    }
-
-    // ── Layer management ──
-    function resetLayer(el) {
-        el.style.transform = 'none';
-        el.style.boxShadow = 'none';
-        el.style.borderRadius = '0';
-        el.style.zIndex = '';
-    }
-    function cleanupLayers() {
-        if (topLayer) { resetLayer(topLayer); topLayer.innerHTML = ''; topLayer.style.display = 'none'; }
-        if (botLayer) { resetLayer(botLayer); botLayer.innerHTML = ''; botLayer.style.display = 'none'; }
-        if (edgeShadow) edgeShadow.style.opacity = '0';
-        if (outer) outer.style.visibility = 'visible';
-    }
-    function initLayers(b) {
-        topLayer = document.createElement('div');
-        topLayer.setAttribute('data-pg', '1');
-        topLayer.style.cssText = 'position:absolute;top:0;left:0;width:' + vw + 'px;height:' + vh + 'px;overflow:hidden;background:' + BG + ';transition:none;z-index:10;display:none;';
-        botLayer = document.createElement('div');
-        botLayer.setAttribute('data-pg', '1');
-        botLayer.style.cssText = 'position:absolute;top:0;left:0;width:' + vw + 'px;height:' + vh + 'px;overflow:hidden;background:' + BG + ';transition:none;display:none;z-index:9;';
-        edgeShadow = document.createElement('div');
-        edgeShadow.setAttribute('data-pg', '1');
-        edgeShadow.style.cssText = 'position:absolute;top:0;width:80px;height:100%;pointer-events:none;z-index:11;opacity:0;';
-        b.appendChild(topLayer);
-        b.appendChild(botLayer);
-        b.appendChild(edgeShadow);
-    }
-
-    // ── Init ──
-    var __initRunning = false;
-    function init() {
-        if (__initRunning) return;
-        __initRunning = true;
-        window.__currentChapterIdx = $chapterIndex;
-        try {
-            vw = innerWidth; vh = innerHeight;
-            PAD_H = Math.round(vw * 0.12);
-            window.__paginationReady = false;
-
-            var b = document.body;
-            b.style.margin = '0'; b.style.padding = '0'; b.style.overflow = 'hidden';
-            b.style.width = vw + 'px'; b.style.height = vh + 'px';
-            b.style.position = 'relative';
-
-            var old = b.querySelectorAll('[data-pg]');
-            for (var i = 0; i < old.length; i++) old[i].remove();
-
-            if (!document.getElementById('_pg')) {
-                var s = document.createElement('style'); s.id = '_pg';
-                s.textContent = 'p,h1,h2,h3,h4,h5,h6,li,blockquote,pre{margin-left:' + PAD_H + 'px !important;margin-right:' + PAD_H + 'px !important;margin-bottom:12px !important;}h1,h2,h3{margin-top:' + PAD_V + 'px !important;}img{max-width:100%;height:auto;display:block;margin:8px auto;}';
-                document.head.appendChild(s);
-            }
-
-            wrap = document.createElement('div');
-            wrap.setAttribute('data-pg', '1');
-            wrap.style.cssText = 'position:absolute;top:0;left:0;height:' + vh + 'px;padding:' + PAD_V + 'px 0;box-sizing:border-box;column-width:' + vw + 'px;column-gap:0;column-fill:auto;overflow:hidden;background:' + BG + ';';
-            var kids = [];
-            for (var i = 0; i < b.children.length; i++) {
-                var c = b.children[i], t = c.tagName.toLowerCase();
-                if (t !== 'script' && t !== 'style' && t !== 'link' && !c.getAttribute('data-pg')) kids.push(c);
-            }
-            for (var i = 0; i < kids.length; i++) wrap.appendChild(kids[i]);
-            b.appendChild(wrap);
-
-            var tw = wrap.scrollWidth;
-            total = Math.max(1, Math.ceil(tw / vw));
-            wrap.style.width = (total * vw) + 'px';
-
-            outer = document.createElement('div');
-            outer.setAttribute('data-pg', '1');
-            outer.style.cssText = 'position:absolute;top:0;left:0;width:' + vw + 'px;height:' + vh + 'px;overflow:hidden;background:' + BG + ';z-index:0;';
-            outer.appendChild(wrap);
-            b.appendChild(outer);
-            initLayers(b);
-
-            cur = 0;
-            wrap.style.transform = 'none';
-            b.style.visibility = 'visible';
-            window.__paginateDebug = 'OK:' + total + ' tw=' + tw;
-            window.__paginationReady = true;
-            try { AndroidBridge.onPageChanged(0, total); } catch(e) {}
-            try { AndroidBridge.onPaginationComplete(); } catch(e) {}
-        } catch(e) {
-            window.__paginateDebug = 'ERR:' + e.message;
-            try { document.body.style.visibility = 'visible'; } catch(e2) {}
-        }
-    }
-
-    // ── Page navigation (within-chapter) ──
-    function setP(p) {
-        if (p < 0 || p >= total) return;
-        cur = p;
-        wrap.style.transition = 'none';
-        wrap.style.transform = 'translateX(' + (-p * vw) + 'px)';
-        try { AndroidBridge.onPageChanged(cur, total); } catch(e) {}
-    }
-    window.setPageImmediate = setP;
-    window.flipToLastPage = function() {
-        if (!window.__paginationReady || total <= 0) { setTimeout(window.flipToLastPage, 50); return; }
-        setP(total - 1);
-    };
-
-    // ── Repaginate (font/theme change) ──
-    window.repaginate = function(keepPage) {
-        if (!wrap || !outer) return;
-        vw = innerWidth; vh = innerHeight;
-        wrap.style.width = 'auto';
-        wrap.style.columnWidth = vw + 'px';
-        void wrap.offsetHeight;
-        var tw = wrap.scrollWidth;
-        var newTotal = Math.max(1, Math.ceil(tw / vw));
-        total = newTotal;
-        wrap.style.width = (total * vw) + 'px';
-        if (cur >= total) cur = total - 1;
-        if (cur < 0) cur = 0;
-        wrap.style.transform = 'translateX(' + (-cur * vw) + 'px)';
-        try { AndroidBridge.onPageChanged(cur, total); } catch(e) {}
-    };
-
-    // ── Update theme ──
-    window.updateTheme = function(bg, textColor, fontSize) {
-        BG = bg;
-        try { document.body.style.background = bg; } catch(e) {}
-        try { if (outer) outer.style.background = bg; } catch(e) {}
-        try { if (wrap) wrap.style.background = bg; } catch(e) {}
-        try { if (topLayer) topLayer.style.backgroundColor = bg; } catch(e) {}
-        try { if (botLayer) botLayer.style.backgroundColor = bg; } catch(e) {}
-        try {
-            var s = document.getElementById('_theme');
-            if (!s) { s = document.createElement('style'); s.id = '_theme'; document.head.appendChild(s); }
-            s.textContent = 'body{font-size:' + (fontSize||16) + 'px !important;background:' + bg + ' !important;color:' + textColor + ' !important;}p,h1,h2,h3,h4,h5,h6,li,blockquote,pre{color:' + textColor + ' !important;}';
-        } catch(e) {}
-    };
-
-    // ── Simplified diag ──
-    window.__getDiag = function() {
-        return JSON.stringify({ cur: cur, total: total, cci: window.__currentChapterIdx, ready: window.__paginationReady });
-    };
-
-    // ── Within-chapter animated flip (original SlideCoverAnimation, cross-chapter removed) ──
-    function flipTo(p, dur) {
-        if (p < 0 || p >= total || p === cur) return;
-        if (animId) { cancelAnimationFrame(animId); animId = null; }
-        var dir = p > cur ? 1 : -1;
-        if (outer) outer.style.visibility = 'hidden';
-        if (!topLayer.firstChild) {
-            var cw = wrap.cloneNode(true);
-            cw.style.transform = 'translateX(' + (-cur * vw) + 'px)';
-            topLayer.appendChild(cw);
-        }
-        topLayer.style.display = '';
-        topLayer.style.backgroundColor = BG;
-        var startTop = gx(topLayer);
-        if (!botLayer.firstChild) {
-            var bw = wrap.cloneNode(true);
-            bw.style.transform = 'translateX(' + (-p * vw) + 'px)';
-            botLayer.innerHTML = '';
-            botLayer.appendChild(bw);
-        }
-        botLayer.style.display = '';
-        topLayer.style.zIndex = dir > 0 ? '10' : '9';
-        botLayer.style.zIndex = dir > 0 ? '9' : '10';
-        var upper = dir > 0 ? topLayer : botLayer;
-        upper.style.boxShadow = '0 0 48px rgba(0,0,0,0.15), 4px 0 16px rgba(0,0,0,0.08)';
-        upper.style.borderRadius = '0 36px 36px 0';
-        upper.style.backgroundColor = BG;
-        var startBot = gx(botLayer);
-        var endTop, endBot;
-        if (dir > 0) { endTop = -vw; endBot = 0; if (startBot === 0) startBot = vw * 0.7; }
-        else { endBot = 0; endTop = startTop + vw * 0.2; if (startBot === 0) startBot = -vw * 0.5; }
-        botLayer.style.transform = 'translateX(' + startBot + 'px)';
-        var d = dur || 450, t0 = performance.now();
-        (function go(now) {
-            var el = now - t0, pg = Math.min(el / d, 1), t = eo(pg);
-            var topX = startTop + (endTop - startTop) * t;
-            var botX = dir > 0 ? startBot + (endBot - startBot) * (t * 0.3 + 0.7) : startBot + (endBot - startBot) * t;
-            topLayer.style.transform = 'translateX(' + Math.round(topX) + 'px)';
-            botLayer.style.transform = 'translateX(' + Math.round(botX) + 'px)';
-            if (pg < 1) { animId = requestAnimationFrame(go); return; }
-            animId = null;
-            cleanupLayers();
-            wrap.style.transition = 'none';
-            wrap.style.transform = 'translateX(' + (-p * vw) + 'px)';
-            cur = p;
-            try { AndroidBridge.onPageChanged(cur, total); } catch(e) {}
-        })(performance.now());
-    }
-
-    // ── Bounce back (spring-back when drag released within threshold or at boundary) ──
-    function bounceBack(dur) {
-        if (animId) { cancelAnimationFrame(animId); animId = null; }
-        var x0 = gx(topLayer), d = dur || 350, t0 = performance.now();
-        var botX0 = gx(botLayer);
-        var botTarget = (botX0 > 0) ? vw : -vw;
-        (function go(now) {
-            var el = now - t0, pg = Math.min(el / d, 1), t = eb(pg);
-            topLayer.style.transform = 'translateX(' + Math.round(x0 * (1 - t)) + 'px)';
-            botLayer.style.transform = 'translateX(' + Math.round(botX0 + (botTarget - botX0) * t) + 'px)';
-            if (edgeShadow && pg > 0.5) edgeShadow.style.opacity = Math.max(0, (1 - pg) / 0.5 * 0.5);
-            if (pg < 1) { animId = requestAnimationFrame(go); return; }
-            animId = null;
-            cleanupLayers();
-        })(performance.now());
-    }
-
-    // ── Drag: within-chapter with layer parallax, rubber-band at boundaries ──
-    function aDrag(dx) {
-        var c = dx;
-        var isF = c < 0;
-        var target = isF ? cur + 1 : cur - 1;
-        var atBoundary = (isF && cur >= total - 1) || (!isF && cur <= 0);
-
-        if (atBoundary) {
-            // Chapter boundary: light rubber-band + real-time Compose tracking
-            // 0.7 resistance (was 0.25) → near within-chapter feel
-            // Compose slot position provides the main visual of adjacent chapter sliding in
-            c = c * 0.7;
-            try { AndroidBridge.onDragAtBoundary(dx); } catch(e) {}
-        } else {
-            dg._boundaryNotified = false;
-        }
-
-        // Show layers for drag
-        if (outer) outer.style.visibility = 'hidden';
-        if (!topLayer.firstChild) {
-            var cw = wrap.cloneNode(true);
-            cw.style.transform = 'translateX(' + (-cur * vw) + 'px)';
-            topLayer.appendChild(cw);
-        }
-        topLayer.style.display = '';
-        topLayer.style.backgroundColor = BG;
-
-        if (atBoundary) {
-            // Chapter boundary: only show topLayer (rubber-band), hide botLayer (target is out of bounds)
-            botLayer.style.display = 'none';
-            topLayer.style.zIndex = '10';
-            topLayer.style.boxShadow = '0 0 48px rgba(0,0,0,0.15), 4px 0 16px rgba(0,0,0,0.08)';
-            topLayer.style.borderRadius = '0 36px 36px 0';
-            topLayer.style.transform = 'translateX(' + c + 'px)';
-        } else {
-            // Within chapter: both layers with parallax
-            if (!botLayer.firstChild || botLayer.firstChild._t !== target) {
-                var bw = wrap.cloneNode(true);
-                bw._t = target;
-                bw.style.transform = 'translateX(' + (-target * vw) + 'px)';
-                botLayer.innerHTML = '';
-                botLayer.appendChild(bw);
-            }
-            botLayer.style.display = '';
-
-            if (isF) {
-                topLayer.style.zIndex = '10'; botLayer.style.zIndex = '9';
-                topLayer.style.boxShadow = '0 0 48px rgba(0,0,0,0.15), 4px 0 16px rgba(0,0,0,0.08)';
-                topLayer.style.borderRadius = '0 36px 36px 0';
-                botLayer.style.boxShadow = 'none'; botLayer.style.borderRadius = '0';
-                topLayer.style.transform = 'translateX(' + c + 'px)';
-                botLayer.style.transform = 'translateX(' + Math.round(vw * 0.7 + c * 0.3) + 'px)';
-            } else {
-                botLayer.style.zIndex = '10'; topLayer.style.zIndex = '9';
-                botLayer.style.boxShadow = '0 0 48px rgba(0,0,0,0.15), 4px 0 16px rgba(0,0,0,0.08)';
-                botLayer.style.borderRadius = '0 36px 36px 0';
-                topLayer.style.boxShadow = 'none'; topLayer.style.borderRadius = '0';
-                botLayer.style.transform = 'translateX(' + Math.round(-vw + c) + 'px)';
-                topLayer.style.transform = 'translateX(' + Math.round(c * 0.2) + 'px)';
-            }
-        }
-    }
-
-    function dEnd(dx, vel) {
-        var dir = dx < 0 ? 1 : -1, np = cur + dir;
-        var atBoundary = (dir > 0 && cur >= total - 1) || (dir < 0 && cur <= 0);
-        if (Math.abs(dx) / vw > 0.25 || Math.abs(vel) > 350) {
-            if (np >= 0 && np < total) {
-                // Within-chapter flip
-                try { AndroidBridge.onPageFlip(dir); } catch(e) {}
-                flipTo(np, 450); return;
-            }
-            // Chapter boundary with enough force → commit transition (Compose handles the slide)
-            try { AndroidBridge.onChapterFlipReady(dir); } catch(e) {}
-            bounceBack(350); return;
-        }
-        // Chapter boundary without enough force → cancel (bounce back Compose position too)
-        if (atBoundary) {
-            try { AndroidBridge.onDragCancel(); } catch(e) {}
-        }
-        bounceBack(350);
-    }
-
-    // ── Tap flip ──
-    function tapFlip(dir) {
-        var np = cur + dir;
-        if (np < 0 || np >= total) {
-            // Chapter boundary → notify Kotlin (Compose handles transition in later phases)
-            try { AndroidBridge.onChapterFlipReady(dir); } catch(e) {}
-            return;
-        }
-        try { AndroidBridge.onPageFlip(dir); } catch(e) {}
-        flipTo(np, 450);
-    }
-
-    // ── Touch events ──
-    document.addEventListener('touchstart', function(e) {
-        if (animId) return;
-        var t = e.touches[0]; dg.x0 = t.clientX; dg.y0 = t.clientY; dg.cx = t.clientX;
-        dg.t0 = Date.now(); dg.on = false; dg.moved = false; dg._boundaryNotified = false;
-    }, {passive: true});
-
-    document.addEventListener('touchmove', function(e) {
-        if (animId) return;
-        var t = e.touches[0], dx = t.clientX - dg.x0, dy = Math.abs(t.clientY - dg.y0);
-        if (!dg.moved && Math.abs(dx) > 8 && Math.abs(dx) > dy) { dg.moved = true; dg.on = true; }
-        if (dg.on) { e.preventDefault(); dg.cx = t.clientX; aDrag(dg.cx - dg.x0); }
-    }, {passive: false});
-
-    document.addEventListener('touchend', function(e) {
-        if (animId) return;
-        var t = e.changedTouches[0], dx = t.clientX - dg.x0, dy = Math.abs(t.clientY - dg.y0), el = Date.now() - dg.t0;
-        if (dg.on) { dEnd(dx, el > 0 ? dx / (el / 1000) : 0); dg.on = false; dg.moved = false; return; }
-        if (el < 300 && dy < 20) {
-            var x = t.clientX;
-            if (x > vw * 0.3 && x < vw * 0.7) { try { AndroidBridge.onCenterTap(); } catch(e) {} }
-            else if (x <= vw * 0.3) { tapFlip(-1); }
-            else { tapFlip(1); }
-        }
-    }, {passive: true});
-
-    addEventListener('resize', init);
-    if (document.readyState === 'complete') init();
-    else addEventListener('load', init);
-})();
-""".trimIndent()
-}
 
 @Composable
 fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> Unit = {}, onLoadingComplete: () -> Unit = {}, viewModel: ReaderViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
-    val flipOffset = remember { Animatable(0f) }
-    // ── Dual WebView state ──
-    var activeSlot by remember { mutableStateOf(0) }  // 0 or 1
-    var chapterInSlot0 by remember { mutableStateOf(uiState.currentChapterIndex) }
-    var chapterInSlot1 by remember { mutableStateOf(-1) }
-    var slot0Ready by remember { mutableStateOf(false) }
-    var slot1Ready by remember { mutableStateOf(false) }
-    var pendingTransitionDir by remember { mutableStateOf(0) }  // 0=none, +1=forward, -1=backward
-    var hiddenSlotSide by remember { mutableStateOf(1) }  // 1=right (+W), -1=left (-W)
-    val slideAnim = remember { Animatable(0f) }  // drives translationX for both slots
-    val slot0Html = remember { mutableStateOf("") }
-    val slot1Html = remember { mutableStateOf("") }
-    val slot0WebView = remember { mutableStateOf<WebView?>(null) }
-    val slot1WebView = remember { mutableStateOf<WebView?>(null) }
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val screenWidthPx = remember { context.resources.displayMetrics.widthPixels.toFloat() }
+    val context = LocalContext.current
+    val density = LocalDensity.current
+
+    // ReadView 引用
+    val readViewRef = remember { mutableStateOf<ReadView?>(null) }
+
+    // TOC 跳转标记（区分用户点击 TOC 和正常翻页带来的章节变化）
+    val isTocJump = remember { mutableStateOf(false) }
+
     DisposableEffect(Unit) {
         onDispose {
             viewModel.saveAndPause()
@@ -508,37 +104,16 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         if (!uiState.isLoading) onLoadingComplete()
     }
 
-    // 加载超时保护：如果 chapterHtml 非空但 10 秒内未收到 onPaginationComplete，强制关闭加载画面
-    LaunchedEffect(uiState.chapterHtml) {
-        if (uiState.chapterHtml.isNotEmpty() && uiState.isLoading) {
-            // HTML 已加载到 WebView，等 10 秒
-            kotlinx.coroutines.delay(10_000)
-            // 10 秒后如果还在 loading，说明 pagination JS 可能出错了
-            if (viewModel.uiState.value.isLoading) {
-                android.util.Log.e("PG", "LOADING TIMEOUT after 10s! Force dismissing. htmlLen=${uiState.chapterHtml.length}")
-                // 检查 JS 诊断信息
-                slot0WebView.value?.evaluateJavascript("window.__paginateDebug||'no_diag'") { result ->
-                    android.util.Log.e("PG", "JS diag on timeout: $result")
-                }
-                viewModel.onPaginationDone()
-            }
+    // TOC 跳转：当 currentChapterIndex 变化且是 TOC 触发时，跳转 ReadView
+    LaunchedEffect(uiState.currentChapterIndex) {
+        if (isTocJump.value && readViewRef.value != null) {
+            isTocJump.value = false
+            readViewRef.value?.jumpToChapter(uiState.currentChapterIndex)
         }
     }
-    // 初始化 Slot 0 的 HTML（首次加载）
-    LaunchedEffect(uiState.chapterHtml) {
-        if (uiState.chapterHtml.isNotEmpty() && slot0Html.value.isEmpty()) {
-            slot0Html.value = uiState.chapterHtml
-            chapterInSlot0 = uiState.currentChapterIndex
-        }
-    }
-    val isChapterAnimating = remember { mutableStateOf(false) }
-    // ── Real-time drag tracking for finger-following cross-chapter slide ──
-    var isDraggingAtBoundary by remember { mutableStateOf(false) }
-    var dragFraction by remember { mutableFloatStateOf(0f) }
-    val paginationDeferred = remember { mutableStateOf<CompletableDeferred<Unit>?>(null) }
+
     var showToc by remember { mutableStateOf(false) }
     var showThemeSheet by remember { mutableStateOf(false) }
-    // 根据主题计算菜单遮罩背景色
     val menuBgColor = when (uiState.readerTheme) {
         "night" -> Color(0xFF1a1a1a)
         "sepia" -> Color(0xFFf5e6d3)
@@ -546,312 +121,10 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         else -> Color.White
     }
 
-    // ── Chapter transition logic ──
-
-    /**
-     * @param setPending 是否设置 transition 状态。true=真正要翻章，false=仅后台预加载。
-     */
-    fun preloadHiddenSlot(adjChapter: Int, direction: Int, setPending: Boolean = true) {
-        if (activeSlot == 0) {
-            // Hidden slot = Slot 1
-            if (chapterInSlot1 == adjChapter && slot1Html.value.isNotEmpty()) {
-                // 已在后台预加载过同一章 → 直接标记 ready，无需重载 WebView
-                slot1Ready = true
-                android.util.Log.e("PG", "preloadHiddenSlot: chapter=$adjChapter ALREADY LOADED in slot1 → ready")
-            } else {
-                val html = viewModel.getAdjacentChapterHtml(adjChapter)
-                if (html != null && html.isNotEmpty()) {
-                    chapterInSlot1 = adjChapter
-                    slot1Html.value = html
-                    slot1Ready = false
-                    android.util.Log.e("PG", "preloadHiddenSlot: chapter=$adjChapter → slot1 (loading)")
-                } else {
-                    android.util.Log.e("PG", "preloadHiddenSlot FAILED: chapter=$adjChapter (no HTML)")
-                }
-            }
-        } else {
-            // Hidden slot = Slot 0
-            if (chapterInSlot0 == adjChapter && slot0Html.value.isNotEmpty()) {
-                slot0Ready = true
-                android.util.Log.e("PG", "preloadHiddenSlot: chapter=$adjChapter ALREADY LOADED in slot0 → ready")
-            } else {
-                val html = viewModel.getAdjacentChapterHtml(adjChapter)
-                if (html != null && html.isNotEmpty()) {
-                    chapterInSlot0 = adjChapter
-                    slot0Html.value = html
-                    slot0Ready = false
-                    android.util.Log.e("PG", "preloadHiddenSlot: chapter=$adjChapter → slot0 (loading)")
-                } else {
-                    android.util.Log.e("PG", "preloadHiddenSlot FAILED: chapter=$adjChapter (no HTML)")
-                }
-            }
-        }
-        if (setPending) {
-            hiddenSlotSide = if (direction > 0) 1 else -1
-            pendingTransitionDir = direction
-        }
-    }
-
-    fun checkAndAnimate() {
-        if (pendingTransitionDir == 0) return
-        if (isChapterAnimating.value) {
-            android.util.Log.e("PG", "checkAndAnimate BLOCKED: already animating")
-            return
-        }
-        val hiddenReady = if (activeSlot == 0) slot1Ready else slot0Ready
-        if (!hiddenReady) return
-        // 消费 pendingTransitionDir，防止后续 pagination complete 重复触发
-        val dir = pendingTransitionDir
-        pendingTransitionDir = 0
-        android.util.Log.e("PG", "checkAndAnimate: ready! dir=$dir activeSlot=$activeSlot")
-        scope.launch {
-            isChapterAnimating.value = true
-            // Bug3 fix: 向后翻章时，先把隐藏槽位跳到最后一页再启动 slide 动画
-            if (dir < 0) {
-                val hiddenWebView = if (activeSlot == 0) slot1WebView.value else slot0WebView.value
-                android.util.Log.e("PG", "checkAndAnimate: backward → flipToLastPage on hidden slot")
-                hiddenWebView?.evaluateJavascript("window.flipToLastPage()") {}
-                kotlinx.coroutines.delay(80)  // 等 WebView 渲染最后一页
-            }
-            val target = if (dir > 0) -1f else 1f
-            slideAnim.animateTo(target, animationSpec = tween(300, easing = FastOutSlowInEasing))
-            val newActive = if (activeSlot == 0) 1 else 0
-            val currentChapter = if (activeSlot == 0) chapterInSlot1 else chapterInSlot0
-            android.util.Log.e("PG", "Animation complete: swap activeSlot=$activeSlot->$newActive newChapter=$currentChapter")
-            activeSlot = newActive
-            slot0Ready = false
-            slot1Ready = false
-            viewModel.onChapterSwapped(dir)
-            slideAnim.snapTo(0f)
-            dragFraction = 0f  // 重置拖拽偏移，避免残留值污染后续动画
-            isChapterAnimating.value = false
-            pendingTransitionDir = 0  // 防御纵深：动画完成后清除残留的 transition 状态
-            // Preload next adjacent chapter into the now-hidden slot (setPending=false: 后台预加载不触发 transition)
-            val nextAdj = currentChapter + dir
-            if (nextAdj in 0 until viewModel.uiState.value.chapterCount) {
-                preloadHiddenSlot(nextAdj, dir, setPending = false)
-            }
-            android.util.Log.e("PG", "Swap done: activeSlot=$activeSlot slot0Ch=$chapterInSlot0 slot1Ch=$chapterInSlot1")
-        }
-    }
-
-    // Bridge for Slot 0
-    val bridge0 = remember {
-        ReaderJsBridge(
-            handlePageFlip = { },
-            handlePageChanged = { page, total ->
-                if (activeSlot == 0) viewModel.onPageChanged(page, total)
-                // 主动预加载：靠近章节边界时后台加载相邻章节到隐藏槽位
-                if (total > 4 && activeSlot == 0) {
-                    val ch = chapterInSlot0
-                    val count = viewModel.uiState.value.chapterCount
-                    when {
-                        page <= 2 -> {
-                            val prev = ch - 1
-                            if (prev >= 0) preloadHiddenSlot(prev, -1, setPending = false)
-                        }
-                        page >= total - 3 -> {
-                            val next = ch + 1
-                            if (next < count) preloadHiddenSlot(next, 1, setPending = false)
-                        }
-                    }
-                }
-            },
-            handleChapterFlip = { },
-            handleChapterFlipReady = { direction ->
-                if (isChapterAnimating.value) {
-                    android.util.Log.e("PG", "Bridge0 handleChapterFlipReady BLOCKED: animating")
-                    return@ReaderJsBridge
-                }
-                // 捕获拖拽状态：只有从拖拽触发时才从手指位置继续动画
-                // (tap 触发的翻章应从 slideAnim=0 开始，避免残留 dragFraction 污染)
-                val continueFromDrag = isDraggingAtBoundary
-                val captureDragFraction = dragFraction
-                val cci = if (activeSlot == 0) chapterInSlot0 else chapterInSlot1
-                val adj = cci + direction
-                android.util.Log.e("PG", "Bridge0 handleChapterFlipReady: cci=$cci dir=$direction adj=$adj continueFromDrag=$continueFromDrag dragFrac=$captureDragFraction")
-                if (adj in 0 until viewModel.uiState.value.chapterCount) {
-                    preloadHiddenSlot(adj, direction, setPending = true)
-                    scope.launch {
-                        if (continueFromDrag) {
-                            slideAnim.snapTo(captureDragFraction)
-                        }
-                        // 在 snapTo 之后切换，消除 dragFraction→slideAnim 的帧间跳变
-                        isDraggingAtBoundary = false
-                        checkAndAnimate()
-                    }
-                }
-            },
-            handleChapterSwapped = { direction -> viewModel.onChapterSwapped(direction) },
-            handleCenterTap = { viewModel.toggleMenu() },
-            handleDragCancel = {
-                if (isDraggingAtBoundary) {
-                    val lastDragFraction = dragFraction
-                    scope.launch {
-                        slideAnim.snapTo(lastDragFraction)
-                        // 在 snapTo 之后切换，消除拖拽→回弹的帧间跳变
-                        isDraggingAtBoundary = false
-                        slideAnim.animateTo(0f, tween(200, easing = FastOutSlowInEasing))
-                        dragFraction = 0f  // 回弹完成后重置
-                    }
-                }
-            },
-            handleDragAtBoundary = { offsetPx ->
-                isDraggingAtBoundary = true
-                val hiddenReady = if (activeSlot == 0) slot1Ready else slot0Ready
-                if (!hiddenReady) {
-                    // Lazy preload: trigger on first boundary drag if not already preloaded
-                    val cci = if (activeSlot == 0) chapterInSlot0 else chapterInSlot1
-                    val dir = if (offsetPx < 0) 1 else -1
-                    val adj = cci + dir
-                    val count = viewModel.uiState.value.chapterCount
-                    if (adj in 0 until count) {
-                        preloadHiddenSlot(adj, dir, setPending = false)
-                        android.util.Log.e("PG", "Bridge0 lazy preload: adj=$adj dir=$dir")
-                    }
-                }
-                // Dynamic range: 0.85 when preloaded (hidden slot slides in sooner), 0.35 when not
-                val maxDrag = if (hiddenReady) 0.85f else 0.35f
-                dragFraction = (offsetPx / screenWidthPx).coerceIn(-maxDrag, maxDrag)
-            },
-            handlePaginationComplete = {
-                android.util.Log.e("PG", "onPaginationComplete Slot0 CALLED activeSlot=$activeSlot")
-                slot0Ready = true
-                paginationDeferred.value?.complete(Unit)
-                onPageReady()
-                val state = viewModel.uiState.value
-                val fraction = state.pendingPageFraction
-                if (fraction > 0f && state.totalPages > 0) {
-                    val targetPage = (fraction * state.totalPages).toInt()
-                        .coerceIn(0, state.totalPages - 1)
-                    slot0WebView.value?.postDelayed({
-                        slot0WebView.value?.evaluateJavascript("setPageImmediate($targetPage)") {
-                            slot0WebView.value?.postDelayed({
-                                viewModel.clearPendingPageFraction()
-                                viewModel.onPaginationDone()
-                            }, 200)
-                        }
-                    }, 500)
-                } else {
-                    viewModel.onPaginationDone()
-                }
-                checkAndAnimate()
-            }
-        )
-    }
-
-    // Bridge for Slot 1 (hidden/preload slot)
-    val bridge1 = remember {
-        ReaderJsBridge(
-            handlePageFlip = { },
-            handlePageChanged = { page, total ->
-                if (activeSlot == 1) viewModel.onPageChanged(page, total)
-                // 主动预加载：靠近章节边界时后台加载相邻章节到隐藏槽位
-                if (total > 4 && activeSlot == 1) {
-                    val ch = chapterInSlot1
-                    val count = viewModel.uiState.value.chapterCount
-                    when {
-                        page <= 2 -> {
-                            val prev = ch - 1
-                            if (prev >= 0) preloadHiddenSlot(prev, -1, setPending = false)
-                        }
-                        page >= total - 3 -> {
-                            val next = ch + 1
-                            if (next < count) preloadHiddenSlot(next, 1, setPending = false)
-                        }
-                    }
-                }
-            },
-            handleChapterFlip = { },
-            handleChapterFlipReady = { direction ->
-                if (isChapterAnimating.value) {
-                    android.util.Log.e("PG", "Bridge1 handleChapterFlipReady BLOCKED: animating")
-                    return@ReaderJsBridge
-                }
-                // 捕获拖拽状态：只有从拖拽触发时才从手指位置继续动画
-                // (tap 触发的翻章应从 slideAnim=0 开始，避免残留 dragFraction 污染)
-                val continueFromDrag = isDraggingAtBoundary
-                val captureDragFraction = dragFraction
-                val cci = if (activeSlot == 1) chapterInSlot1 else chapterInSlot0
-                val adj = cci + direction
-                android.util.Log.e("PG", "Bridge1 handleChapterFlipReady: cci=$cci dir=$direction adj=$adj continueFromDrag=$continueFromDrag dragFrac=$captureDragFraction")
-                if (adj in 0 until viewModel.uiState.value.chapterCount) {
-                    preloadHiddenSlot(adj, direction, setPending = true)
-                    scope.launch {
-                        if (continueFromDrag) {
-                            slideAnim.snapTo(captureDragFraction)
-                        }
-                        // 在 snapTo 之后切换，消除 dragFraction→slideAnim 的帧间跳变
-                        isDraggingAtBoundary = false
-                        checkAndAnimate()
-                    }
-                }
-            },
-            handleChapterSwapped = { },
-            handleCenterTap = { viewModel.toggleMenu() },
-            handleDragAtBoundary = { offsetPx ->
-                isDraggingAtBoundary = true
-                val hiddenReady = if (activeSlot == 1) slot0Ready else slot1Ready
-                if (!hiddenReady) {
-                    // Lazy preload: trigger on first boundary drag if not already preloaded
-                    val cci = if (activeSlot == 1) chapterInSlot1 else chapterInSlot0
-                    val dir = if (offsetPx < 0) 1 else -1
-                    val adj = cci + dir
-                    val count = viewModel.uiState.value.chapterCount
-                    if (adj in 0 until count) {
-                        preloadHiddenSlot(adj, dir, setPending = false)
-                        android.util.Log.e("PG", "Bridge1 lazy preload: adj=$adj dir=$dir")
-                    }
-                }
-                // Dynamic range: 0.85 when preloaded (hidden slot slides in sooner), 0.35 when not
-                val maxDrag = if (hiddenReady) 0.85f else 0.35f
-                dragFraction = (offsetPx / screenWidthPx).coerceIn(-maxDrag, maxDrag)
-            },
-            handleDragCancel = {
-                if (isDraggingAtBoundary) {
-                    val lastDragFraction = dragFraction
-                    scope.launch {
-                        slideAnim.snapTo(lastDragFraction)
-                        // 在 snapTo 之后切换，消除拖拽→回弹的帧间跳变
-                        isDraggingAtBoundary = false
-                        slideAnim.animateTo(0f, tween(200, easing = FastOutSlowInEasing))
-                        dragFraction = 0f  // 回弹完成后重置
-                    }
-                }
-            },
-            handlePaginationComplete = {
-                android.util.Log.e("PG", "onPaginationComplete Slot1 CALLED activeSlot=$activeSlot")
-                slot1Ready = true
-                if (activeSlot == 1) {
-                    // Slot 1 is active → handle normal pagination flow
-                    paginationDeferred.value?.complete(Unit)
-                    onPageReady()
-                    val state = viewModel.uiState.value
-                    val fraction = state.pendingPageFraction
-                    if (fraction > 0f && state.totalPages > 0) {
-                        val targetPage = (fraction * state.totalPages).toInt()
-                            .coerceIn(0, state.totalPages - 1)
-                        slot1WebView.value?.postDelayed({
-                            slot1WebView.value?.evaluateJavascript("setPageImmediate($targetPage)") {
-                                slot1WebView.value?.postDelayed({
-                                    viewModel.clearPendingPageFraction()
-                                    viewModel.onPaginationDone()
-                                }, 200)
-                            }
-                        }, 500)
-                    } else {
-                        viewModel.onPaginationDone()
-                    }
-                }
-                checkAndAnimate()
-            }
-        )
-    }
-
-    // 全屏沉浸：隐藏状态栏和手势条
+    // 全屏沉浸
     ImmersiveMode()
 
-    // 根据主题计算 Compose 层背景色
+    // 主题背景色
     val composeBgColor = when (uiState.readerTheme) {
         "night" -> Color(0xFF1a1a1a)
         "sepia" -> Color(0xFFf5e6d3)
@@ -859,101 +132,73 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         else -> Color(0xFFFBFBFC)
     }
 
-    // ── 格式分支：TXT 走新 Bitmap+Canvas 引擎，EPUB/PDF 保持 WebView ──
-    val isTxtFormat = uiState.book?.format?.name == "TXT"
-
     Box(Modifier.fillMaxSize().background(composeBgColor)) {
-        if (isTxtFormat) {
-            // ── TXT: Bitmap + Canvas 翻页引擎 ──
-            TxtReaderContent(
-                viewModel = viewModel,
-                uiState = uiState,
-                onMenuToggle = { viewModel.toggleMenu() }
+        // ── 新 Canvas 引擎（TXT/EPUB） ──
+        if (uiState.useNewEngine) {
+            val bgColorInt = when (uiState.readerTheme) {
+                "night" -> 0xFF1a1a1a.toInt()
+                "sepia" -> 0xFFf5e6d3.toInt()
+                "green" -> 0xFFe8f5e9.toInt()
+                else -> 0xFFFBFBFC.toInt()
+            }
+            val textColorInt = when (uiState.readerTheme) {
+                "night" -> 0xFFCCCCCC.toInt()
+                "sepia" -> 0xFF4a3728.toInt()
+                "green" -> 0xFF2e7d32.toInt()
+                else -> 0xFF333333.toInt()
+            }
+
+            AndroidView(
+                factory = { ctx ->
+                    ReadView(ctx).apply {
+                        setCallbacks(object : ReadViewCallbacks {
+                            override fun onPageChanged(
+                                globalPage: Int,
+                                chapterIndex: Int,
+                                pageInChapter: Int,
+                                chapterTotalPages: Int
+                            ) {
+                                viewModel.onNewEnginePageChanged(
+                                    globalPage, chapterIndex, pageInChapter, chapterTotalPages
+                                )
+                            }
+
+                            override fun onMenuToggle() {
+                                viewModel.toggleMenu()
+                            }
+
+                            override fun onLoadingChanged(isLoading: Boolean) {
+                                // 新引擎的加载状态通过 onPageChanged 首次回调来结束
+                            }
+                        })
+                        setContentProvider { chapterIndex ->
+                            viewModel.getChapterText(chapterIndex)
+                        }
+                        readViewRef.value = this
+                    }
+                },
+                update = { readView ->
+                    val fontSizePx = uiState.fontSize * density.density
+                    readView.configure(
+                        fontSizePx = fontSizePx,
+                        theme = uiState.readerTheme,
+                        chapterCount = uiState.chapterCount,
+                        startChapter = uiState.currentChapterIndex,
+                        startPage = uiState.currentPageIndex
+                    )
+                },
+                modifier = Modifier.fillMaxSize()
             )
-        } else {
-            // ── EPUB/PDF: 原有双 WebView 方案 ──
-            // ── Slot 0 ──
-            Box(Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    val offset = if (isDraggingAtBoundary) dragFraction else slideAnim.value
-                    translationX = if (activeSlot == 0) offset * screenWidthPx
-                                   else hiddenSlotSide * screenWidthPx + offset * screenWidthPx
-                }
-            ) {
-                HtmlContent(
-                    html = slot0Html.value,
-                    bridge = bridge0,
-                    fontSize = uiState.fontSize,
-                    theme = uiState.readerTheme,
-                    chapterIndex = chapterInSlot0,
-                    onWebViewCreated = { slot0WebView.value = it }
-                )
-            }
-
-        // ── Slot 1 ──
-        if (slot1Html.value.isNotEmpty()) {
-            Box(Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    val offset = if (isDraggingAtBoundary) dragFraction else slideAnim.value
-                    translationX = if (activeSlot == 1) offset * screenWidthPx
-                                   else hiddenSlotSide * screenWidthPx + offset * screenWidthPx
-                }
-            ) {
-                HtmlContent(
-                    html = slot1Html.value,
-                    bridge = bridge1,
-                    fontSize = uiState.fontSize,
-                    theme = uiState.readerTheme,
-                    chapterIndex = chapterInSlot1,
-                    onWebViewCreated = { slot1WebView.value = it }
-                )
-            }
         }
 
-        // 同步：当 ViewModel 章节变化（TOC/Slider 跳转），更新活跃槽位
-        LaunchedEffect(uiState.currentChapterIndex) {
-            val activeChapter = if (activeSlot == 0) chapterInSlot0 else chapterInSlot1
-            if (activeChapter != uiState.currentChapterIndex && uiState.chapterHtml.isNotEmpty()) {
-                // 非边界跳转（TOC/Slider）：重载活跃槽位，清除隐藏槽位
-                if (activeSlot == 0) {
-                    slot0Html.value = uiState.chapterHtml
-                    chapterInSlot0 = uiState.currentChapterIndex
-                    slot0Ready = false
-                    slot1Html.value = ""
-                    chapterInSlot1 = -1
-                    slot1Ready = false
-                } else {
-                    slot1Html.value = uiState.chapterHtml
-                    chapterInSlot1 = uiState.currentChapterIndex
-                    slot1Ready = false
-                    slot0Html.value = ""
-                    chapterInSlot0 = -1
-                    slot0Ready = false
-                }
-                pendingTransitionDir = 0
-                android.util.Log.e("PG", "TOC jump: activeSlot=$activeSlot reset to chapter=${uiState.currentChapterIndex}, hidden cleared")
-            }
+        // ── 旧 WebView 路径（PDF） ──
+        if (!uiState.useNewEngine) {
+            LegacyWebViewContent(uiState, viewModel, composeBgColor)
         }
 
-        // 同步活跃槽位 HTML 来自 ViewModel 的首次加载
-        LaunchedEffect(uiState.chapterHtml) {
-            if (uiState.chapterHtml.isNotEmpty()) {
-                if (activeSlot == 0 && slot0Html.value.isEmpty()) {
-                    slot0Html.value = uiState.chapterHtml
-                    chapterInSlot0 = uiState.currentChapterIndex
-                } else if (activeSlot == 1 && slot1Html.value.isEmpty()) {
-                    slot1Html.value = uiState.chapterHtml
-                    chapterInSlot1 = uiState.currentChapterIndex
-                }
-            }
-        }
-        } // ── end EPUB/PDF else block ──
-
-        // 过渡页在 NavGraph 层处理，这里只显示阅读内容
+        // ── 覆盖层 UI（新旧引擎共享） ──
         if (!uiState.isLoading) {
-            // 顶部栏（渐变 + 返回 + 标题）—— 只有淡入淡出
+            // 顶部栏
             AnimatedVisibility(
                 visible = uiState.isMenuVisible,
                 enter = fadeIn(animationSpec = tween(300)),
@@ -963,13 +208,14 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 val bookTitle = uiState.book?.title ?: ""
                 ReaderTopBar(title = bookTitle, onBack = onNavigateBack, bgColor = menuBgColor)
             }
-            if (uiState.totalPages > 0) {
+
+            if (uiState.totalPages > 0 || uiState.useNewEngine) {
                 val chapterTitle = uiState.book?.title ?: ""
                 val chapterProgress = if (uiState.chapterCount > 0) {
                     ((uiState.currentChapterIndex.toFloat() / uiState.chapterCount) * 100).toInt()
                 } else 0
 
-                // 底部渐变遮罩（底层）
+                // 底部渐变遮罩
                 val menuAlpha = remember { Animatable(0f) }
                 val menuOffset = remember { Animatable(60f) }
                 val menuScope = rememberCoroutineScope()
@@ -1003,7 +249,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         )
                 )
 
-                // 胶囊菜单（上层，遮罩之上）
+                // 胶囊菜单
                 Box(modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer { alpha = menuAlpha.value; translationY = menuOffset.value }
@@ -1020,7 +266,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     )
                 }
 
-                // 页码（章节内，居中，菜单关闭时显示）
+                // 页码指示器
                 if (!uiState.isMenuVisible) {
                     Text(
                         text = "${uiState.currentPageIndex + 1} / ${uiState.totalPages}",
@@ -1034,21 +280,22 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 }
             }
 
-            // ── 目录覆盖层 ──
+            // 目录覆盖层
             if (showToc) {
                 TocOverlay(
                     chapterCount = uiState.chapterCount,
                     currentChapter = uiState.currentChapterIndex,
                     onChapterSelected = { idx ->
+                        isTocJump.value = true
                         viewModel.setChapter(idx)
                         showToc = false
-                        viewModel.toggleMenu() // 关闭菜单
+                        viewModel.toggleMenu()
                     },
                     onDismiss = { showToc = false }
                 )
             }
 
-            // ── 主题设置弹窗 ──
+            // 主题设置弹窗
             ThemeSettingsSheet(
                 visible = showThemeSheet,
                 currentFontSize = uiState.fontSize,
@@ -1061,15 +308,113 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     }
 }
 
+/**
+ * 旧 WebView 路径（PDF 格式保留使用）。
+ * 简化版：单 WebView，无跨章 conveyor。
+ */
+@Composable
+private fun LegacyWebViewContent(
+    uiState: ReaderUiState,
+    viewModel: ReaderViewModel,
+    bgColor: Color
+) {
+    if (uiState.chapterHtml.isEmpty()) return
+
+    val context = LocalContext.current
+    val currentFontSize = remember { mutableFloatStateOf(uiState.fontSize) }
+    val currentTheme = remember { mutableStateOf(uiState.readerTheme) }
+    var prevFontSize by remember { mutableFloatStateOf(uiState.fontSize) }
+    var prevTheme by remember { mutableStateOf(uiState.readerTheme) }
+    val webViewRef = remember { mutableStateOf<WebView?>(null) }
+
+    // JS bridge for PDF (simplified)
+    val bridge = remember {
+        object {
+            @android.webkit.JavascriptInterface
+            fun onPageChanged(page: Int, total: Int) {
+                viewModel.onPageChanged(page, total)
+            }
+            @android.webkit.JavascriptInterface
+            fun onCenterTap() { viewModel.toggleMenu() }
+            @android.webkit.JavascriptInterface
+            fun onPaginationComplete() { viewModel.onPaginationDone() }
+            @android.webkit.JavascriptInterface
+            fun onPageFlip(dir: Int) {}
+            @android.webkit.JavascriptInterface
+            fun onChapterFlipReady(dir: Int) {
+                if (dir > 0) viewModel.nextChapter() else viewModel.previousChapter()
+            }
+        }
+    }
+
+    AndroidView(
+        factory = { ctx ->
+            WebView(ctx).apply {
+                settings.apply {
+                    javaScriptEnabled = true
+                    loadWithOverviewMode = true
+                    useWideViewPort = true
+                    builtInZoomControls = false
+                    displayZoomControls = false
+                }
+                addJavascriptInterface(bridge, "AndroidBridge")
+                val bgJs = when (uiState.readerTheme) {
+                    "night" -> "#1a1a1a"; "sepia" -> "#f5e6d3"; "green" -> "#e8f5e9"; else -> "#ffffff"
+                }
+                val textJs = when (uiState.readerTheme) {
+                    "night" -> "#e0e0e0"; "sepia" -> "#3e2723"; "green" -> "#1b5e20"; else -> "#333333"
+                }
+                webViewClient = object : android.webkit.WebViewClient() {
+                    override fun onPageFinished(view: WebView?, url: String?) {
+                        val fs = currentFontSize.floatValue
+                        view?.postDelayed({
+                            val js = """
+(function(){
+var vw=innerWidth,vh=innerHeight;
+var b=document.body;b.style.margin='0';b.style.padding='0';b.style.overflow='hidden';
+b.style.width=vw+'px';b.style.height=vh+'px';
+b.style.visibility='visible';
+try{AndroidBridge.onPaginationComplete();}catch(e){}
+try{AndroidBridge.onPageChanged(0,1);}catch(e){}
+})();
+""".trimIndent()
+                            view.evaluateJavascript(js) {}
+                        }, 300)
+                    }
+                }
+                setBackgroundColor(android.graphics.Color.parseColor(bgJs))
+                webViewRef.value = this
+            }
+        },
+        update = { webView ->
+            currentFontSize.floatValue = uiState.fontSize
+            currentTheme.value = uiState.readerTheme
+            val html = viewModel.getChapterHtml(uiState.currentChapterIndex)
+            val tag = webView.tag as? String
+            if (html.isNotEmpty() && tag != html.hashCode().toString()) {
+                webView.tag = html.hashCode().toString()
+                webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+            }
+            val bgJs = when (uiState.readerTheme) {
+                "night" -> "#1a1a1a"; "sepia" -> "#f5e6d3"; "green" -> "#e8f5e9"; else -> "#ffffff"
+            }
+            val textJs = when (uiState.readerTheme) {
+                "night" -> "#e0e0e0"; "sepia" -> "#3e2723"; "green" -> "#1b5e20"; else -> "#333333"
+            }
+            webView.evaluateJavascript("document.body.style.background='$bgJs';document.body.style.color='$textJs';document.body.style.fontSize='${uiState.fontSize}px';") {}
+        },
+        modifier = Modifier.fillMaxSize()
+    )
+}
+
 @Composable
 private fun ReaderTopBar(title: String, onBack: () -> Unit, bgColor: Color = Color.White) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 8.dp) // 沉浸模式下状态栏已隐藏，不需要 statusBarsPadding
-            .height(140.dp) // 避开摄像头 + 遮罩向下延伸虚化背景
+            .padding(top = 8.dp)
+            .height(140.dp)
     ) {
-        // 底层：渐变遮罩（背景色 → 透明，从上往下，有实际遮罩效果）
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -1085,15 +430,12 @@ private fun ReaderTopBar(title: String, onBack: () -> Unit, bgColor: Color = Col
                     )
                 )
         )
-
-        // 顶层：按钮 + 标题
         Row(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 28.dp, vertical = 20.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 左侧：返回按钮（胶囊 + 按压反馈）
             Box(
                 modifier = Modifier
                     .size(36.dp)
@@ -1113,10 +455,7 @@ private fun ReaderTopBar(title: String, onBack: () -> Unit, bgColor: Color = Col
                     modifier = Modifier.size(18.dp)
                 )
             }
-
             Spacer(Modifier.weight(1f))
-
-            // 右侧：书名（小字、淡色）
             Text(
                 text = title,
                 fontSize = 12.sp,
@@ -1149,7 +488,6 @@ private fun FloatingReaderMenu(
     val alpha3 = remember { Animatable(0f) }
     val offset3 = remember { Animatable(40f) }
 
-    // visible 变为 true 时重置并播放交错动画
     LaunchedEffect(visible) {
         if (visible) {
             alpha0.snapTo(0f); offset0.snapTo(40f)
@@ -1164,7 +502,6 @@ private fun FloatingReaderMenu(
             kotlinx.coroutines.delay(100)
             launch { alpha3.animateTo(1f, tween(250)); offset3.animateTo(0f, tween(250, easing = AppEasing.Smooth)) }
         } else {
-            // 关闭时快速重置
             alpha0.snapTo(0f); offset0.snapTo(40f)
             alpha1.snapTo(0f); offset1.snapTo(40f)
             alpha2.snapTo(0f); offset2.snapTo(40f)
@@ -1179,15 +516,12 @@ private fun FloatingReaderMenu(
             .padding(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // 目录胶囊
         Box(modifier = Modifier.graphicsLayer {
             alpha = alpha0.value
             translationY = offset0.value
         }) {
             CatalogCapsule(chapterTitle, chapterProgress, onCatalogClick)
         }
-
-        // 三个功能胶囊
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -1222,7 +556,6 @@ private fun CatalogCapsule(title: String, progress: Int, onClick: () -> Unit) {
             .cardPressEffect()
             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() }
     ) {
-        // 进度条填充（主题色，从左到右）
         Box(
             modifier = Modifier
                 .fillMaxHeight()
@@ -1230,7 +563,6 @@ private fun CatalogCapsule(title: String, progress: Int, onClick: () -> Unit) {
                 .clip(RoundedCornerShape(24.dp))
                 .background(AppColors.Accent.copy(alpha = 0.8f))
         )
-        // 文字内容（进度条下方的文字变浅色）
         val leftColor = if (progress > 5) Color.White else AppColors.TextPrimary
         val rightColor = if (progress > 70) Color.White.copy(alpha = 0.9f) else AppColors.TextSecondary
         Row(
@@ -1268,201 +600,12 @@ private fun ActionCapsule(icon: ImageVector, label: String, modifier: Modifier =
 }
 
 @Composable
-private fun ReaderMenuOverlay(uiState: ReaderUiState, onDismiss: () -> Unit, onSetChapter: (Int) -> Unit, onAddBookmark: () -> Unit) {
-    val pp = if (uiState.totalPages > 0) ((uiState.currentPageIndex + 1).toFloat() / uiState.totalPages * 100).toInt() else 0
-
-    // 背景遮罩（淡入）
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.35f))
-            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onDismiss() }
-    ) {
-        // 底部菜单（从底部滑入 + 淡入）
-        Column(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .graphicsLayer {
-                    // 动画由外部 AnimatedVisibility 控制，这里设置样式
-                }
-                .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-                .background(AppColors.CardBg)
-                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {}
-                .navigationBarsPadding()
-                .padding(bottom = 8.dp)
-        ) {
-            MenuItemRow("目录", "· ${pp}%", { Icon(Icons.Default.List, null, tint = AppColors.TextPrimary, modifier = Modifier.size(20.dp)) }) {}
-            HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = AppColors.Divider)
-            MenuItemRow("书签与高亮标记", null, { Text("${uiState.currentPageIndex}", color = AppColors.TextSecondary, fontSize = 15.sp) }) { onAddBookmark() }
-            HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = AppColors.Divider)
-            MenuItemRow("在图书中搜索", null, { Icon(Icons.Default.Search, null, tint = AppColors.TextPrimary, modifier = Modifier.size(20.dp)) }) {}
-            HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = AppColors.Divider)
-            MenuItemRow("主题与设置", null, { Text("大小", color = AppColors.TextSecondary, fontSize = 15.sp) }) {}
-            Spacer(Modifier.height(8.dp))
-            HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = AppColors.Divider)
-            Row(Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                IconButton(onClick = {}) { Icon(Icons.Default.Share, "分享", tint = AppColors.TextPrimary, modifier = Modifier.size(22.dp)) }
-                IconButton(onClick = {}) { Icon(Icons.Default.Settings, "设置", tint = AppColors.TextPrimary, modifier = Modifier.size(22.dp)) }
-                IconButton(onClick = onAddBookmark) { Icon(Icons.Default.Bookmark, "书签", tint = AppColors.TextPrimary, modifier = Modifier.size(22.dp)) }
-            }
-        }
-    }
-}
-
-@Composable
-private fun MenuItemRow(title: String, subtitle: String?, trailing: @Composable () -> Unit, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(title, color = Color(0xFF1C1C1E), fontSize = 16.sp, modifier = Modifier.weight(1f))
-        if (subtitle != null) { Text(subtitle, color = Color(0xFF999999), fontSize = 15.sp); Spacer(Modifier.width(8.dp)) }
-        trailing()
-    }
-}
-
-@SuppressLint("SetJavaScriptEnabled")
-@Composable
-private fun HtmlContent(html: String, bridge: ReaderJsBridge, fontSize: Float = 16f, theme: String = "day", chapterIndex: Int = 0, modifier: Modifier = Modifier, onWebViewCreated: (WebView) -> Unit = {}) {
-    // 用 remember 存储可变引用，让 onPageFinished 能读取最新值（而不是闭包捕获的旧值）
-    val currentFontSize = remember { mutableFloatStateOf(fontSize) }
-    val currentTheme = remember { mutableStateOf(theme) }
-    var prevFontSize by remember { mutableFloatStateOf(fontSize) }
-    var prevTheme by remember { mutableStateOf(theme) }
-    AndroidView(
-        modifier = modifier,
-        factory = { ctx ->
-            WebView(ctx).apply {
-                layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-                settings.apply {
-                    javaScriptEnabled = true; loadWithOverviewMode = true; useWideViewPort = true
-                    builtInZoomControls = false; displayZoomControls = false
-                    defaultTextEncodingName = "UTF-8"; mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                }
-                addJavascriptInterface(bridge, "AndroidBridge")
-                var lastHtmlLen = 0
-                webViewClient = object : WebViewClient() {
-                    override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
-                        super.onPageStarted(view, url, favicon)
-                        // 页面开始加载时立即设置背景色，避免闪白
-                        val th = currentTheme.value
-                        val bgColor = when (th) {
-                            "night" -> "#1a1a1a"
-                            "sepia" -> "#f5e6d3"
-                            "green" -> "#e8f5e9"
-                            else -> "#ffffff"
-                        }
-                        view?.setBackgroundColor(android.graphics.Color.parseColor(bgColor))
-                    }
-                    override fun onPageFinished(view: WebView?, url: String?) {
-                        super.onPageFinished(view, url)
-                        android.util.Log.e("PG", "onPageFinished")
-                        // 从 remember 变量读取最新值（不是闭包捕获的旧值）
-                        val fs = currentFontSize.floatValue
-                        val th = currentTheme.value
-                        val bgColor = when (th) {
-                            "night" -> "#1a1a1a"
-                            "sepia" -> "#f5e6d3"
-                            "green" -> "#e8f5e9"
-                            else -> "#ffffff"
-                        }
-                        val textColor = when (th) {
-                            "night" -> "#e0e0e0"
-                            "sepia" -> "#3e2723"
-                            "green" -> "#1b5e20"
-                            else -> "#333333"
-                        }
-                        // 注入 CSS 和分页 JS（150ms 延迟确保大章节 DOM layout 完成）
-                        view?.postDelayed({
-                            val css = "body{font-size:${fs}px !important;background:$bgColor !important;color:$textColor !important;}p,h1,h2,h3,h4,h5,h6,li,blockquote,pre{color:$textColor !important;}"
-                            // 使用 _theme id 创建样式表，确保 updateTheme 能更新它
-                            view.evaluateJavascript("(function(){var s=document.getElementById('_theme');if(!s){s=document.createElement('style');s.id='_theme';document.head.appendChild(s);}s.textContent='$css';})()") {
-                                // 字体 CSS 生效后再运行分页 JS（用正确的字体和背景色计算页数）
-                                val paginationJsCode = buildPaginationJs(bgColor, chapterIndex)
-                                view.evaluateJavascript(paginationJsCode) {
-                                    // 2 秒后检查 JS 层分页是否成功，用于诊断
-                                    view.postDelayed({
-                                        view.evaluateJavascript("JSON.stringify({ready:window.__paginationReady,dbg:window.__paginateDebug||''})") { result ->
-                                            android.util.Log.e("PG", "Pagination diagnostic: $result")
-                                        }
-                                    }, 2000)
-                                }
-                            }
-                        }, 150)
-                    }
-                    override fun onReceivedError(view: WebView?, errorCode: Int, desc: String?, url: String?) {
-                        android.util.Log.e("PG", "WebView error: $errorCode $desc")
-                    }
-                }
-                // 设置初始背景色为主题色（避免切换章节时闪白）
-                val initBgColor = when (currentTheme.value) {
-                    "night" -> "#1a1a1a"
-                    "sepia" -> "#f5e6d3"
-                    "green" -> "#e8f5e9"
-                    else -> "#ffffff"
-                }
-                setBackgroundColor(android.graphics.Color.parseColor(initBgColor))
-                onWebViewCreated(this)
-            }
-        },
-        update = { webView ->
-            // 每次重组时更新 remember 变量，确保 onPageFinished 能读到最新值
-            currentFontSize.floatValue = fontSize
-            currentTheme.value = theme
-            // 计算当前主题的颜色
-            val bgColor = when (theme) { "night" -> "#1a1a1a"; "sepia" -> "#f5e6d3"; "green" -> "#e8f5e9"; else -> "#ffffff" }
-            val textColor = when (theme) { "night" -> "#e0e0e0"; "sepia" -> "#3e2723"; "green" -> "#1b5e20"; else -> "#333333" }
-            android.util.Log.d("THEME", "update called: theme=$theme bgColor=$bgColor textColor=$textColor")
-            val bgColorInt = android.graphics.Color.parseColor(bgColor)
-            val tag = webView.tag as? String
-            if (html.isNotEmpty() && tag != html.hashCode().toString()) {
-                webView.tag = html.hashCode().toString()
-                // 加载 HTML 前先设置 WebView 背景色，避免闪白
-                webView.setBackgroundColor(bgColorInt)
-                // 将背景色注入 body 标签，确保页面从渲染第一帧起就是正确的背景色
-                val htmlWithBg = html.replace("<body", "<body style=\"background:$bgColor\"", ignoreCase = true)
-                webView.loadDataWithBaseURL(null, htmlWithBg, "text/html", "UTF-8", null)
-                // 设置当前章节索引供 JS 边界拖拽和预渲染命中检测
-                webView.evaluateJavascript("window.__currentChapterIdx = $chapterIndex", null)
-            }
-            val css = "body{font-size:${fontSize}px !important;background:$bgColor !important;color:$textColor !important;}p,h1,h2,h3,h4,h5,h6,li,blockquote,pre{color:$textColor !important;}"
-            // 检测字体大小变化，变化后需要重新分页
-            val fontChanged = prevFontSize != fontSize
-            if (fontChanged) prevFontSize = fontSize
-            // 检测主题变化，变化后更新背景色和文字色
-            val themeChanged = prevTheme != theme
-            if (themeChanged) prevTheme = theme
-            // 主题变化时同步更新 WebView 背景色和 CSS
-            if (themeChanged) {
-                webView.setBackgroundColor(bgColorInt)
-            }
-            // 合并 CSS 注入和主题更新到一个 JS 调用，确保同步
-            val js = buildString {
-                append("(function(){")
-                // 更新 CSS 样式
-                append("var s=document.getElementById('_theme');if(!s){s=document.createElement('style');s.id='_theme';document.head.appendChild(s);}s.textContent='$css';")
-                // 始终调用 updateTheme 确保所有层同步
-                append("if(window.updateTheme)window.updateTheme('$bgColor','$textColor','$fontSize');")
-                append("})()")
-            }
-            webView.evaluateJavascript(js) {
-                if (fontChanged) {
-                    // 字体变化后重新分页
-                    webView.evaluateJavascript("window.repaginate(true)") {}
-                }
-            }
-        }
-    )
-}
-
-// ─── 目录覆盖层 ────────────────────────────────────────────────
-
-@Composable
 private fun TocOverlay(
     chapterCount: Int,
     currentChapter: Int,
     onChapterSelected: (Int) -> Unit,
     onDismiss: () -> Unit
 ) {
-    // 淡入动画
     val alpha = remember { Animatable(0f) }
     LaunchedEffect(Unit) { alpha.animateTo(1f, tween(200)) }
 
@@ -1482,7 +625,6 @@ private fun TocOverlay(
                 .background(AppColors.CardBg)
                 .padding(AppSpace.lg)
         ) {
-            // 标题
             Text(
                 text = "目录",
                 fontSize = AppType.Section,
@@ -1492,7 +634,6 @@ private fun TocOverlay(
             )
             Spacer(Modifier.height(AppSpace.md))
 
-            // 章节列表
             LazyColumn(modifier = Modifier.weight(1f)) {
                 items(chapterCount) { index ->
                     val isCurrent = index == currentChapter
@@ -1514,7 +655,6 @@ private fun TocOverlay(
                 }
             }
 
-            // 关闭按钮
             Spacer(Modifier.height(AppSpace.md))
             Box(
                 modifier = Modifier
