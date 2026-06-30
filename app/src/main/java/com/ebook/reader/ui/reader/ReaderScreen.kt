@@ -72,8 +72,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import com.ebook.reader.ui.animation.AppEasing
-import com.ebook.reader.ui.animation.SimpleSlideAnimation
-import com.ebook.reader.ui.animation.SlideCoverAnimation
 import com.ebook.reader.ui.animation.cardPressEffect
 import com.ebook.reader.ui.components.ImmersiveMode
 import com.ebook.reader.ui.theme.AppColors
@@ -115,16 +113,22 @@ private suspend fun WebView.evaluateJavascriptSuspend(script: String): String {
     }
 }
 
-private fun buildPaginationJs(isPdf: Boolean = false, bgColor: String = "#ffffff", chapterIndex: Int = 0): String {
-    val anim = if (isPdf) SimpleSlideAnimation else SlideCoverAnimation
-    val animationJs = anim.buildAnimationJs(bgColor)
+/**
+ * Phase 1 修复版：恢复原始 SlideCoverAnimation 章内翻页逻辑（topLayer/botLayer 双层视差）。
+ * 仅删除跨章相关代码（preRendered、chapterFlipTo、animateChapterSwap、
+ * completeChapterSwap、onPreRenderReady、bounceBack 跨章检测）。
+ * 跨章动画移到 Compose 层（双 WebView slide，后续 Phase 实现）。
+ */
+private fun buildPaginationJs(bgColor: String = "#ffffff", chapterIndex: Int = 0): String {
     return """
 (function() {
     var cur = 0, total = 1, vw, vh, PAD_H, PAD_V = 70;
     var wrap = null, outer = null, animId = null;
     var BG = '$bgColor';
     window.__paginationReady = false;
+    window.__currentChapterIdx = $chapterIndex;
     var dg = { on: false, x0: 0, y0: 0, t0: 0, cx: 0, moved: false };
+    var topLayer = null, botLayer = null, edgeShadow = null;
 
     function eo(t) { return 1 - Math.pow(1 - t, 3); }
     function eb(t) { return 1 - Math.pow(1 - t, 4); }
@@ -135,141 +139,95 @@ private fun buildPaginationJs(isPdf: Boolean = false, bgColor: String = "#ffffff
         return m ? +m[1] : 0;
     }
 
-    // ── 动画模块（可替换）──
-    """ + animationJs + """
+    // ── Layer management ──
+    function resetLayer(el) {
+        el.style.transform = 'none';
+        el.style.boxShadow = 'none';
+        el.style.borderRadius = '0';
+        el.style.zIndex = '';
+    }
+    function cleanupLayers() {
+        if (topLayer) { resetLayer(topLayer); topLayer.innerHTML = ''; topLayer.style.display = 'none'; }
+        if (botLayer) { resetLayer(botLayer); botLayer.innerHTML = ''; botLayer.style.display = 'none'; }
+        if (edgeShadow) edgeShadow.style.opacity = '0';
+        if (outer) outer.style.visibility = 'visible';
+    }
+    function initLayers(b) {
+        topLayer = document.createElement('div');
+        topLayer.setAttribute('data-pg', '1');
+        topLayer.style.cssText = 'position:absolute;top:0;left:0;width:' + vw + 'px;height:' + vh + 'px;overflow:hidden;background:' + BG + ';transition:none;z-index:10;display:none;';
+        botLayer = document.createElement('div');
+        botLayer.setAttribute('data-pg', '1');
+        botLayer.style.cssText = 'position:absolute;top:0;left:0;width:' + vw + 'px;height:' + vh + 'px;overflow:hidden;background:' + BG + ';transition:none;display:none;z-index:9;';
+        edgeShadow = document.createElement('div');
+        edgeShadow.setAttribute('data-pg', '1');
+        edgeShadow.style.cssText = 'position:absolute;top:0;width:80px;height:100%;pointer-events:none;z-index:11;opacity:0;';
+        b.appendChild(topLayer);
+        b.appendChild(botLayer);
+        b.appendChild(edgeShadow);
+    }
 
-    // ── 初始化（防止重复执行）──
+    // ── Init ──
     var __initRunning = false;
     function init() {
-    if (__initRunning) return;
-    __initRunning = true;
-    window.__currentChapterIdx = $chapterIndex;
-    try {
-        vw = innerWidth; vh = innerHeight;
-        PAD_H = Math.round(vw * 0.12);
-        window.__paginationReady = false;
-
-        var b = document.body;
-        // 单独设置属性，避免 style.cssText 覆盖已注入的字体 CSS
-        b.style.margin = '0';
-        b.style.padding = '0';
-        b.style.overflow = 'hidden';
-        b.style.width = vw + 'px';
-        b.style.height = vh + 'px';
-        b.style.position = 'relative';
-
-        // 清理旧元素
-        var old = b.querySelectorAll('[data-pg]');
-        for (var i = 0; i < old.length; i++) old[i].remove();
-
-        // CSS：内容边距
-        if (!document.getElementById('_pg')) {
-            var s = document.createElement('style'); s.id = '_pg';
-            s.textContent = 'p,h1,h2,h3,h4,h5,h6,li,blockquote,pre{margin-left:' + PAD_H + 'px !important;margin-right:' + PAD_H + 'px !important;margin-bottom:12px !important;}h1,h2,h3{margin-top:' + PAD_V + 'px !important;}img{max-width:100%;height:auto;display:block;margin:8px auto;}';
-            document.head.appendChild(s);
-        }
-
-        // 创建 wrapper（CSS column）
-        wrap = document.createElement('div');
-        wrap.setAttribute('data-pg', '1');
-        wrap.style.cssText = 'position:absolute;top:0;left:0;height:' + vh + 'px;padding:' + PAD_V + 'px 0;box-sizing:border-box;column-width:' + vw + 'px;column-gap:0;column-fill:auto;overflow:hidden;background:' + BG + ';';
-        var kids = [];
-        for (var i = 0; i < b.children.length; i++) {
-            var c = b.children[i], t = c.tagName.toLowerCase();
-            if (t !== 'script' && t !== 'style' && t !== 'link' && !c.getAttribute('data-pg')) kids.push(c);
-        }
-        for (var i = 0; i < kids.length; i++) wrap.appendChild(kids[i]);
-        b.appendChild(wrap);
-
-        // 计算页数
-        var tw = wrap.scrollWidth;
-        total = Math.max(1, Math.ceil(tw / vw));
-        wrap.style.width = (total * vw) + 'px';
-
-        // outer + 动画层
-        outer = document.createElement('div');
-        outer.setAttribute('data-pg', '1');
-        outer.style.cssText = 'position:absolute;top:0;left:0;width:' + vw + 'px;height:' + vh + 'px;overflow:hidden;background:' + BG + ';z-index:0;';
-        outer.appendChild(wrap);
-        b.appendChild(outer);
-        initLayers(b);
-
-        cur = 0;
-        wrap.style.transform = 'none';
-        // 显示 body（章节切换期间由 Kotlin 控制可见性，避免动画中途露出内容）
-        if (!window.__chapterTransition) b.style.visibility = 'visible';
-        window.__paginateDebug = 'OK:' + total + ' tw=' + tw + ' sw=' + wrap.scrollWidth;
-        window.__paginationReady = true;
-        try { AndroidBridge.onPageChanged(0, total); } catch(e) {}
-        try { AndroidBridge.onPaginationComplete(); } catch(e) {}
-    } catch(e) {
-        window.__paginateDebug = 'ERR:' + e.message;
-        // 出错时也要确保 body 可见（但章节切换期间例外）
-        if (!window.__chapterTransition) try { document.body.style.visibility = 'visible'; } catch(e2) {}
-    }
-    }
-
-    // ── 预渲染系统 ──
-    var preRendered = {};  // {chapterIndex: {wrapper, total}}
-    window.preRendered = preRendered;  // 🔥 暴露到 window 供诊断查询
-
-    window.preRenderChapter = function(chapterIndex, htmlB64) {
-        if (preRendered[chapterIndex]) return;
+        if (__initRunning) return;
+        __initRunning = true;
+        window.__currentChapterIdx = $chapterIndex;
         try {
-            // UTF-8 安全解码：atob → Uint8Array → TextDecoder
-            var bin = atob(htmlB64);
-            var bytes = new Uint8Array(bin.length);
-            for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-            var html = new TextDecoder('utf-8').decode(bytes);
-            var w = document.createElement('div');
-            w.setAttribute('data-pg', '1');
-            w.style.cssText = 'position:absolute;top:0;left:0;height:' + vh + 'px;padding:' + PAD_V + 'px 0;box-sizing:border-box;column-width:' + vw + 'px;column-gap:0;column-fill:auto;overflow:hidden;background:' + BG + ';visibility:hidden;';
-            w.innerHTML = html;
-            // 保留 _wrap 结构
-            var wrapDiv = w.querySelector('#_wrap');
-            if (!wrapDiv) {
-                wrapDiv = document.createElement('div');
-                wrapDiv.id = '_wrap';
-                while (w.firstChild) wrapDiv.appendChild(w.firstChild);
-                w.appendChild(wrapDiv);
+            vw = innerWidth; vh = innerHeight;
+            PAD_H = Math.round(vw * 0.12);
+            window.__paginationReady = false;
+
+            var b = document.body;
+            b.style.margin = '0'; b.style.padding = '0'; b.style.overflow = 'hidden';
+            b.style.width = vw + 'px'; b.style.height = vh + 'px';
+            b.style.position = 'relative';
+
+            var old = b.querySelectorAll('[data-pg]');
+            for (var i = 0; i < old.length; i++) old[i].remove();
+
+            if (!document.getElementById('_pg')) {
+                var s = document.createElement('style'); s.id = '_pg';
+                s.textContent = 'p,h1,h2,h3,h4,h5,h6,li,blockquote,pre{margin-left:' + PAD_H + 'px !important;margin-right:' + PAD_H + 'px !important;margin-bottom:12px !important;}h1,h2,h3{margin-top:' + PAD_V + 'px !important;}img{max-width:100%;height:auto;display:block;margin:8px auto;}';
+                document.head.appendChild(s);
             }
-            document.body.appendChild(w);
-            var tw = w.scrollWidth;
-            var t = Math.max(1, Math.ceil(tw / vw));
-            w.style.width = (t * vw) + 'px';
-            preRendered[chapterIndex] = { wrapper: w, total: t };
-            window.__preRenderInvoked = (window.__preRenderInvoked || '') + chapterIndex + ':ok;';
-        } catch(e) { window.__preRenderError = 'ch' + chapterIndex + ':' + e.message; window.__preRenderInvoked = (window.__preRenderInvoked || '') + chapterIndex + ':err;'; }
-    };
 
-    window.usePreRendered = function(chapterIndex) {
-        var pr = preRendered[chapterIndex];
-        if (!pr) return false;
-        // 用预渲染的 wrapper 替换当前 wrapper
-        if (wrap) wrap.remove();
-        wrap = pr.wrapper;
-        wrap.style.visibility = 'visible';
-        wrap.style.transform = 'none';
-        total = pr.total;
-        outer.appendChild(wrap);
-        cur = 0;
-        window.__currentChapterIdx = chapterIndex;
-        delete preRendered[chapterIndex];
-        // 清理其他预渲染
-        for (var k in preRendered) {
-            if (preRendered[k]) preRendered[k].wrapper.remove();
-            delete preRendered[k];
+            wrap = document.createElement('div');
+            wrap.setAttribute('data-pg', '1');
+            wrap.style.cssText = 'position:absolute;top:0;left:0;height:' + vh + 'px;padding:' + PAD_V + 'px 0;box-sizing:border-box;column-width:' + vw + 'px;column-gap:0;column-fill:auto;overflow:hidden;background:' + BG + ';';
+            var kids = [];
+            for (var i = 0; i < b.children.length; i++) {
+                var c = b.children[i], t = c.tagName.toLowerCase();
+                if (t !== 'script' && t !== 'style' && t !== 'link' && !c.getAttribute('data-pg')) kids.push(c);
+            }
+            for (var i = 0; i < kids.length; i++) wrap.appendChild(kids[i]);
+            b.appendChild(wrap);
+
+            var tw = wrap.scrollWidth;
+            total = Math.max(1, Math.ceil(tw / vw));
+            wrap.style.width = (total * vw) + 'px';
+
+            outer = document.createElement('div');
+            outer.setAttribute('data-pg', '1');
+            outer.style.cssText = 'position:absolute;top:0;left:0;width:' + vw + 'px;height:' + vh + 'px;overflow:hidden;background:' + BG + ';z-index:0;';
+            outer.appendChild(wrap);
+            b.appendChild(outer);
+            initLayers(b);
+
+            cur = 0;
+            wrap.style.transform = 'none';
+            b.style.visibility = 'visible';
+            window.__paginateDebug = 'OK:' + total + ' tw=' + tw;
+            window.__paginationReady = true;
+            try { AndroidBridge.onPageChanged(0, total); } catch(e) {}
+            try { AndroidBridge.onPaginationComplete(); } catch(e) {}
+        } catch(e) {
+            window.__paginateDebug = 'ERR:' + e.message;
+            try { document.body.style.visibility = 'visible'; } catch(e2) {}
         }
-        try { AndroidBridge.onPageChanged(0, total); } catch(e) {}
-        return true;
-    };
+    }
 
-    window.checkPreRender = function() {
-        // 告诉 Kotlin 当前页码，让它决定是否预渲染
-        try { AndroidBridge.onPageChanged(cur, total); } catch(e) {}
-    };
-
-    // ── 设置页 ──
+    // ── Page navigation (within-chapter) ──
     function setP(p) {
         if (p < 0 || p >= total) return;
         cur = p;
@@ -279,35 +237,28 @@ private fun buildPaginationJs(isPdf: Boolean = false, bgColor: String = "#ffffff
     }
     window.setPageImmediate = setP;
     window.flipToLastPage = function() {
-        if (!window.__paginationReady || total <= 0) { setTimeout(flipToLastPage, 50); return; }
+        if (!window.__paginationReady || total <= 0) { setTimeout(window.flipToLastPage, 50); return; }
         setP(total - 1);
     };
 
-    // ── 重新分页（字体/主题变化后调用）──
+    // ── Repaginate (font/theme change) ──
     window.repaginate = function(keepPage) {
         if (!wrap || !outer) return;
         vw = innerWidth; vh = innerHeight;
-        // 先重置宽度，强制浏览器 reflow
         wrap.style.width = 'auto';
         wrap.style.columnWidth = vw + 'px';
-        // 强制 reflow 后再计算 scrollWidth
         void wrap.offsetHeight;
         var tw = wrap.scrollWidth;
         var newTotal = Math.max(1, Math.ceil(tw / vw));
-        var oldTotal = total;
-        var oldCur = cur;
-        // 更新页数和宽度
         total = newTotal;
         wrap.style.width = (total * vw) + 'px';
-        // 确保当前页在有效范围内
-        if (cur < 0) cur = 0;
         if (cur >= total) cur = total - 1;
-        console.log('repaginate: oldTotal=' + oldTotal + ' newTotal=' + total + ' oldCur=' + oldCur + ' newCur=' + cur + ' tw=' + tw);
+        if (cur < 0) cur = 0;
         wrap.style.transform = 'translateX(' + (-cur * vw) + 'px)';
         try { AndroidBridge.onPageChanged(cur, total); } catch(e) {}
     };
 
-    // ── 更新主题（背景色+文字色+字体大小，主题变化时调用）──
+    // ── Update theme ──
     window.updateTheme = function(bg, textColor, fontSize) {
         BG = bg;
         try { document.body.style.background = bg; } catch(e) {}
@@ -315,71 +266,186 @@ private fun buildPaginationJs(isPdf: Boolean = false, bgColor: String = "#ffffff
         try { if (wrap) wrap.style.background = bg; } catch(e) {}
         try { if (topLayer) topLayer.style.backgroundColor = bg; } catch(e) {}
         try { if (botLayer) botLayer.style.backgroundColor = bg; } catch(e) {}
-        // 更新或创建 _theme style（CSS !important 覆盖行内样式）
         try {
             var s = document.getElementById('_theme');
-            if (!s) {
-                s = document.createElement('style');
-                s.id = '_theme';
-                document.head.appendChild(s);
-            }
-            var fs = fontSize || '16';
-            var cssText = 'body{font-size:' + fs + 'px !important;background:' + bg + ' !important;color:' + textColor + ' !important;}p,h1,h2,h3,h4,h5,h6,li,blockquote,pre{color:' + textColor + ' !important;}';
-            s.textContent = cssText;
+            if (!s) { s = document.createElement('style'); s.id = '_theme'; document.head.appendChild(s); }
+            s.textContent = 'body{font-size:' + (fontSize||16) + 'px !important;background:' + bg + ' !important;color:' + textColor + ' !important;}p,h1,h2,h3,h4,h5,h6,li,blockquote,pre{color:' + textColor + ' !important;}';
         } catch(e) {}
     };
 
-    // ── 诊断函数（供 Kotlin 查询闭包变量，避免 window.preRendered/window.flipping 假阴性）──
-    window.__getDiag = function(adjIdx) {
-        return JSON.stringify({
-            err: window.__preRenderError || 'none',
-            pr: preRendered[adjIdx] ? 1 : 0,
-            pf: window.__pendingFlip,
-            fl: typeof flipping !== 'undefined' ? flipping : null,
-            cci: window.__currentChapterIdx,
-            prk: Object.keys(preRendered).join(','),
-            inv: window.__preRenderInvoked || '',
-            // 🔥 Round 8: 追踪 bounceBack→chapterFlipTo→completeChapterSwap 链
-            bb: window.__bbDone || 0,
-            bbt: window.__bbTriggeredFlip,
-            bbn: window.__bbNoPr,
-            bbp: window.__bbPendingIdx,
-            cft: window.__cftCalled,
-            cfb: window.__cftBlocked,
-            cfn: window.__cftNoPr,
-            ccs: window.__ccsCalled
-        });
+    // ── Simplified diag ──
+    window.__getDiag = function() {
+        return JSON.stringify({ cur: cur, total: total, cci: window.__currentChapterIdx, ready: window.__paginationReady });
     };
 
-    // ── 触摸事件 ──
+    // ── Within-chapter animated flip (original SlideCoverAnimation, cross-chapter removed) ──
+    function flipTo(p, dur) {
+        if (p < 0 || p >= total || p === cur) return;
+        if (animId) { cancelAnimationFrame(animId); animId = null; }
+        var dir = p > cur ? 1 : -1;
+        if (outer) outer.style.visibility = 'hidden';
+        if (!topLayer.firstChild) {
+            var cw = wrap.cloneNode(true);
+            cw.style.transform = 'translateX(' + (-cur * vw) + 'px)';
+            topLayer.appendChild(cw);
+        }
+        topLayer.style.display = '';
+        topLayer.style.backgroundColor = BG;
+        var startTop = gx(topLayer);
+        if (!botLayer.firstChild) {
+            var bw = wrap.cloneNode(true);
+            bw.style.transform = 'translateX(' + (-p * vw) + 'px)';
+            botLayer.innerHTML = '';
+            botLayer.appendChild(bw);
+        }
+        botLayer.style.display = '';
+        topLayer.style.zIndex = dir > 0 ? '10' : '9';
+        botLayer.style.zIndex = dir > 0 ? '9' : '10';
+        var upper = dir > 0 ? topLayer : botLayer;
+        upper.style.boxShadow = '0 0 48px rgba(0,0,0,0.15), 4px 0 16px rgba(0,0,0,0.08)';
+        upper.style.borderRadius = '0 36px 36px 0';
+        upper.style.backgroundColor = BG;
+        var startBot = gx(botLayer);
+        var endTop, endBot;
+        if (dir > 0) { endTop = -vw; endBot = 0; if (startBot === 0) startBot = vw * 0.7; }
+        else { endBot = 0; endTop = startTop + vw * 0.2; if (startBot === 0) startBot = -vw * 0.5; }
+        botLayer.style.transform = 'translateX(' + startBot + 'px)';
+        var d = dur || 450, t0 = performance.now();
+        (function go(now) {
+            var el = now - t0, pg = Math.min(el / d, 1), t = eo(pg);
+            var topX = startTop + (endTop - startTop) * t;
+            var botX = dir > 0 ? startBot + (endBot - startBot) * (t * 0.3 + 0.7) : startBot + (endBot - startBot) * t;
+            topLayer.style.transform = 'translateX(' + Math.round(topX) + 'px)';
+            botLayer.style.transform = 'translateX(' + Math.round(botX) + 'px)';
+            if (pg < 1) { animId = requestAnimationFrame(go); return; }
+            animId = null;
+            cleanupLayers();
+            wrap.style.transition = 'none';
+            wrap.style.transform = 'translateX(' + (-p * vw) + 'px)';
+            cur = p;
+            try { AndroidBridge.onPageChanged(cur, total); } catch(e) {}
+        })(performance.now());
+    }
+
+    // ── Bounce back (spring-back when drag released within threshold or at boundary) ──
+    function bounceBack(dur) {
+        if (animId) { cancelAnimationFrame(animId); animId = null; }
+        var x0 = gx(topLayer), d = dur || 350, t0 = performance.now();
+        var botX0 = gx(botLayer);
+        var botTarget = (botX0 > 0) ? vw : -vw;
+        (function go(now) {
+            var el = now - t0, pg = Math.min(el / d, 1), t = eb(pg);
+            topLayer.style.transform = 'translateX(' + Math.round(x0 * (1 - t)) + 'px)';
+            botLayer.style.transform = 'translateX(' + Math.round(botX0 + (botTarget - botX0) * t) + 'px)';
+            if (edgeShadow && pg > 0.5) edgeShadow.style.opacity = Math.max(0, (1 - pg) / 0.5 * 0.5);
+            if (pg < 1) { animId = requestAnimationFrame(go); return; }
+            animId = null;
+            cleanupLayers();
+        })(performance.now());
+    }
+
+    // ── Drag: within-chapter with layer parallax, rubber-band at boundaries ──
+    function aDrag(dx) {
+        var c = dx;
+        var isF = c < 0;
+        var target = isF ? cur + 1 : cur - 1;
+        var atBoundary = (isF && cur >= total - 1) || (!isF && cur <= 0);
+
+        if (atBoundary) {
+            // Chapter boundary: rubber-band effect + notify Kotlin once
+            c = c * 0.25;
+            if (!dg._boundaryNotified) {
+                dg._boundaryNotified = true;
+                try { AndroidBridge.onChapterFlipReady(isF ? 1 : -1); } catch(e) {}
+            }
+        } else {
+            dg._boundaryNotified = false;
+        }
+
+        // Show layers for drag (original SlideCoverAnimation within-chapter behavior)
+        if (outer) outer.style.visibility = 'hidden';
+        if (!topLayer.firstChild) {
+            var cw = wrap.cloneNode(true);
+            cw.style.transform = 'translateX(' + (-cur * vw) + 'px)';
+            topLayer.appendChild(cw);
+        }
+        topLayer.style.display = '';
+        topLayer.style.backgroundColor = BG;
+
+        if (!botLayer.firstChild || botLayer.firstChild._t !== target) {
+            var bw = wrap.cloneNode(true);
+            bw._t = target;
+            bw.style.transform = 'translateX(' + (-target * vw) + 'px)';
+            botLayer.innerHTML = '';
+            botLayer.appendChild(bw);
+        }
+        botLayer.style.display = '';
+
+        if (isF) {
+            topLayer.style.zIndex = '10'; botLayer.style.zIndex = '9';
+            topLayer.style.boxShadow = '0 0 48px rgba(0,0,0,0.15), 4px 0 16px rgba(0,0,0,0.08)';
+            topLayer.style.borderRadius = '0 36px 36px 0';
+            botLayer.style.boxShadow = 'none'; botLayer.style.borderRadius = '0';
+            topLayer.style.transform = 'translateX(' + c + 'px)';
+            botLayer.style.transform = 'translateX(' + Math.round(vw * 0.7 + c * 0.3) + 'px)';
+        } else {
+            botLayer.style.zIndex = '10'; topLayer.style.zIndex = '9';
+            botLayer.style.boxShadow = '0 0 48px rgba(0,0,0,0.15), 4px 0 16px rgba(0,0,0,0.08)';
+            botLayer.style.borderRadius = '0 36px 36px 0';
+            topLayer.style.boxShadow = 'none'; topLayer.style.borderRadius = '0';
+            botLayer.style.transform = 'translateX(' + Math.round(-vw + c) + 'px)';
+            topLayer.style.transform = 'translateX(' + Math.round(c * 0.2) + 'px)';
+        }
+    }
+
+    function dEnd(dx, vel) {
+        if (Math.abs(dx) / vw > 0.25 || Math.abs(vel) > 350) {
+            var dir = dx < 0 ? 1 : -1, np = cur + dir;
+            if (np >= 0 && np < total) {
+                // Within-chapter flip
+                try { AndroidBridge.onPageFlip(dir); } catch(e) {}
+                flipTo(np, 450); return;
+            }
+            // Chapter boundary: bounceBack (cross-chapter transition handled by Compose in later phases)
+        }
+        bounceBack(350);
+    }
+
+    // ── Tap flip ──
+    function tapFlip(dir) {
+        var np = cur + dir;
+        if (np < 0 || np >= total) {
+            // Chapter boundary → notify Kotlin (Compose handles transition in later phases)
+            try { AndroidBridge.onChapterFlipReady(dir); } catch(e) {}
+            return;
+        }
+        try { AndroidBridge.onPageFlip(dir); } catch(e) {}
+        flipTo(np, 450);
+    }
+
+    // ── Touch events ──
     document.addEventListener('touchstart', function(e) {
-        if (window.__animating) return;
+        if (animId) return;
         var t = e.touches[0]; dg.x0 = t.clientX; dg.y0 = t.clientY; dg.cx = t.clientX;
-        dg.t0 = Date.now(); dg.on = false; dg.moved = false;
+        dg.t0 = Date.now(); dg.on = false; dg.moved = false; dg._boundaryNotified = false;
     }, {passive: true});
 
     document.addEventListener('touchmove', function(e) {
-        if (window.__animating) return;
+        if (animId) return;
         var t = e.touches[0], dx = t.clientX - dg.x0, dy = Math.abs(t.clientY - dg.y0);
         if (!dg.moved && Math.abs(dx) > 8 && Math.abs(dx) > dy) { dg.moved = true; dg.on = true; }
         if (dg.on) { e.preventDefault(); dg.cx = t.clientX; aDrag(dg.cx - dg.x0); }
     }, {passive: false});
 
     document.addEventListener('touchend', function(e) {
-        if (window.__animating) return;
+        if (animId) return;
         var t = e.changedTouches[0], dx = t.clientX - dg.x0, dy = Math.abs(t.clientY - dg.y0), el = Date.now() - dg.t0;
-        if (dg.on) {
-            dEnd(dx, el > 0 ? dx / (el / 1000) : 0);
-            dg.on = false; dg.moved = false; return;
-        }
+        if (dg.on) { dEnd(dx, el > 0 ? dx / (el / 1000) : 0); dg.on = false; dg.moved = false; return; }
         if (el < 300 && dy < 20) {
             var x = t.clientX;
             if (x > vw * 0.3 && x < vw * 0.7) { try { AndroidBridge.onCenterTap(); } catch(e) {} }
-            else if (x <= vw * 0.3) {
-                tapFlip(-1);
-            } else {
-                tapFlip(1);
-            }
+            else if (x <= vw * 0.3) { tapFlip(-1); }
+            else { tapFlip(1); }
         }
     }, {passive: true});
 
@@ -442,52 +508,11 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             handlePageChanged = { page, total -> viewModel.onPageChanged(page, total) },
             handleChapterFlip = { },
             handleChapterFlipReady = { direction ->
-                // 🔥 简化 Miss Path：JS 已展示 loading 占位 + 1:1 跟手拖拽
-                // Kotlin 侧仅负责异步获取相邻章节 HTML 并注入 JS 完成预渲染
-                // 不再使用 Compose flipOffset 动画，不再调用 loadDataWithBaseURL
-                val canFlip = if (direction > 0) viewModel.uiState.value.currentChapterIndex < viewModel.uiState.value.chapterCount - 1
-                else viewModel.uiState.value.currentChapterIndex > 0
-                if (!canFlip) return@ReaderJsBridge
-                val wv = webViewRef.value ?: return@ReaderJsBridge
-                // 🔥 Round 8：从 JS 读取 __pendingFlip（JS 侧的权威 adjIdx），避免 ViewModel/WebView 状态不同步
-                // ViewModel.currentChapterIndex 可能与 WebView.__currentChapterIdx 不一致
-                wv.evaluateJavascript("window.__pendingFlip") { pending ->
-                    val jsAdjIdx = pending?.removeSurrounding("\"")?.toIntOrNull()
-                    // 优先用 JS 侧的 adjIdx，回退到 ViewModel 计算
-                    val adjIdx = jsAdjIdx ?: (viewModel.uiState.value.currentChapterIndex + direction)
-                    android.util.Log.e("PG", "Emergency: jsAdjIdx=$jsAdjIdx fallback=${viewModel.uiState.value.currentChapterIndex + direction} final=$adjIdx")
-                    if (adjIdx !in 0 until viewModel.uiState.value.chapterCount) return@evaluateJavascript
-                    scope.launch {
-                        val html = viewModel.getAdjacentChapterHtml(adjIdx)
-                        if (html != null) {
-                            val b64 = android.util.Base64.encodeToString(
-                                html.toByteArray(), android.util.Base64.NO_WRAP
-                            )
-                            // 注入预渲染 + 触发 onPreRenderReady（如果用户还在拖拽中则无缝替换 loading 占位）
-                            wv.evaluateJavascript(
-                                "window.preRenderChapter && preRenderChapter($adjIdx, '$b64');window.onPreRenderReady && onPreRenderReady($adjIdx);"
-                            ) { result ->
-                                android.util.Log.e("PG", "Emergency preRender result: $result (chapter $adjIdx)")
-                                // 🔥 延迟 100ms 查询诊断状态（使用闭包内 __getDiag，避免 window.preRendered 假阴性）
-                                wv.postDelayed({
-                                    wv.evaluateJavascript(
-                                        "window.__getDiag && __getDiag($adjIdx) || JSON.stringify({err:'no_diag_fn'})"
-                                    ) { diag ->
-                                        android.util.Log.e("PG", "Emergency DIAG(100ms): $diag")
-                                    }
-                                }, 100)
-                                // 🔥 Round 8: 500ms 后二次查询，确认 bounceBack→chapterFlipTo→completeChapterSwap 是否完成
-                                wv.postDelayed({
-                                    wv.evaluateJavascript(
-                                        "window.__getDiag && __getDiag($adjIdx) || JSON.stringify({err:'no_diag_fn'})"
-                                    ) { diag ->
-                                        android.util.Log.e("PG", "Emergency DIAG(500ms): $diag")
-                                    }
-                                }, 500)
-                            }
-                        }
-                    }
-                }
+                // Phase 1: 章节边界通知，跨章切换由 Compose 双 WebView 实现（后续 Phase）
+                // 当前仅记录日志，JS 侧已执行 snapBack()
+                val cci = viewModel.uiState.value.currentChapterIndex
+                val adj = cci + direction
+                android.util.Log.e("PG", "Chapter boundary: cci=$cci dir=$direction adj=$adj (cross-chapter not implemented yet)")
             },
             handleChapterSwapped = { direction -> viewModel.onChapterSwapped(direction) },
             handleCenterTap = { viewModel.toggleMenu() },
@@ -515,26 +540,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 } else {
                     viewModel.onPaginationDone()
                 }
-                // 🔥 分页完成后立即 JS 预渲染相邻章节（绕过 Compose 重组延迟）
-                val chapterIdx = viewModel.uiState.value.currentChapterIndex
-                val chapterCount = viewModel.uiState.value.chapterCount
-                val isPdf = viewModel.uiState.value.book?.format?.name == "PDF"
-                val windowSize = if (isPdf) 5 else 2
-                ((chapterIdx - windowSize)..(chapterIdx + windowSize))
-                    .filter { it != chapterIdx && it in 0 until chapterCount }
-                    .forEach { adjIdx ->
-                        val html = viewModel.getAdjacentChapterHtml(adjIdx)
-                        if (html != null) {
-                            val b64 = android.util.Base64.encodeToString(
-                                html.toByteArray(), android.util.Base64.NO_WRAP
-                            )
-                            webViewRef.value?.evaluateJavascript(
-                                "window.preRenderChapter && preRenderChapter($adjIdx, '$b64')"
-                            ) { result ->
-                                if (result != "null") android.util.Log.e("PG", "preRender chapter $adjIdx failed: $result")
-                            }
-                        }
-                    }
+                // Phase 1: JS 预渲染已删除，跨章预加载由 Compose 双 WebView 实现（后续 Phase）
             }
         )
     }
@@ -542,45 +548,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     // 全屏沉浸：隐藏状态栏和手势条
     ImmersiveMode()
 
-    // 🔥 预渲染相邻章节（激进策略：距边界 8 页就开始预渲染，短章节也能覆盖）
-    LaunchedEffect(uiState.currentPageIndex, uiState.totalPages) {
-        if (uiState.totalPages <= 0) return@LaunchedEffect
-        val page = uiState.currentPageIndex
-        val total = uiState.totalPages
-        val chapterIdx = uiState.currentChapterIndex
-        // 🔥 最后 8 页 → 预渲染下一章（原来 5 页，更激进）
-        if (page >= total - 8) {
-            val nextIdx = chapterIdx + 1
-            val html = viewModel.getAdjacentChapterHtml(nextIdx)
-            if (html != null) {
-                webViewRef.value?.evaluateJavascript("window.preRenderChapter && preRenderChapter($nextIdx, '${android.util.Base64.encodeToString(html.toByteArray(), android.util.Base64.NO_WRAP)}')") { r -> if (r != "null") android.util.Log.e("PG", "preRender chapter $nextIdx failed: $r") }
-            }
-            // 🔥 最后 3 页 → 预渲染下下章（原来 2 页）
-            if (page >= total - 3) {
-                val next2 = chapterIdx + 2
-                val html2 = viewModel.getAdjacentChapterHtml(next2)
-                if (html2 != null) {
-                    webViewRef.value?.evaluateJavascript("window.preRenderChapter && preRenderChapter($next2, '${android.util.Base64.encodeToString(html2.toByteArray(), android.util.Base64.NO_WRAP)}')") { r -> if (r != "null") android.util.Log.e("PG", "preRender chapter $next2 failed: $r") }
-                }
-            }
-        }
-        // 🔥 前 5 页 → 预渲染上一章（原来 3 页）
-        if (page <= 5) {
-            val prevIdx = chapterIdx - 1
-            val html = viewModel.getAdjacentChapterHtml(prevIdx)
-            if (html != null) {
-                webViewRef.value?.evaluateJavascript("window.preRenderChapter && preRenderChapter($prevIdx, '${android.util.Base64.encodeToString(html.toByteArray(), android.util.Base64.NO_WRAP)}')") { r -> if (r != "null") android.util.Log.e("PG", "preRender chapter $prevIdx failed: $r") }
-            }
-            // 🔥 前 2 页 → 预渲染上上章（原来 1 页）
-            if (page <= 2) {
-                val prev2 = chapterIdx - 2
-                val html2 = viewModel.getAdjacentChapterHtml(prev2)
-                if (html2 != null) {
-                    webViewRef.value?.evaluateJavascript("window.preRenderChapter && preRenderChapter($prev2, '${android.util.Base64.encodeToString(html2.toByteArray(), android.util.Base64.NO_WRAP)}')") { r -> if (r != "null") android.util.Log.e("PG", "preRender chapter $prev2 failed: $r") }
-                }
-            }
-        }
-    }
+    // Phase 1: JS 预渲染已删除，跨章预加载由 Compose 双 WebView 实现（后续 Phase）
 
     var displayedHtml = uiState.chapterHtml
     // 根据主题计算 Compose 层背景色
@@ -594,8 +562,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     Box(Modifier.fillMaxSize().background(composeBgColor)) {
         // WebView 始终在组合中（加载时也创建，确保 HTML 能加载）
         Box(Modifier.fillMaxSize().graphicsLayer { translationX = flipOffset.value * size.width }) {
-            val isPdf = uiState.book?.format?.name == "PDF"
-            HtmlContent(html = displayedHtml, bridge = bridge, isPdf = isPdf, fontSize = uiState.fontSize, theme = uiState.readerTheme, chapterIndex = uiState.currentChapterIndex, onWebViewCreated = { webViewRef.value = it })
+            HtmlContent(html = displayedHtml, bridge = bridge, fontSize = uiState.fontSize, theme = uiState.readerTheme, chapterIndex = uiState.currentChapterIndex, onWebViewCreated = { webViewRef.value = it })
         }
 
         // 过渡页在 NavGraph 层处理，这里只显示阅读内容
@@ -968,7 +935,7 @@ private fun MenuItemRow(title: String, subtitle: String?, trailing: @Composable 
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun HtmlContent(html: String, bridge: ReaderJsBridge, isPdf: Boolean = false, fontSize: Float = 16f, theme: String = "day", chapterIndex: Int = 0, onWebViewCreated: (WebView) -> Unit = {}) {
+private fun HtmlContent(html: String, bridge: ReaderJsBridge, fontSize: Float = 16f, theme: String = "day", chapterIndex: Int = 0, onWebViewCreated: (WebView) -> Unit = {}) {
     // 用 remember 存储可变引用，让 onPageFinished 能读取最新值（而不是闭包捕获的旧值）
     val currentFontSize = remember { mutableFloatStateOf(fontSize) }
     val currentTheme = remember { mutableStateOf(theme) }
@@ -1022,7 +989,7 @@ private fun HtmlContent(html: String, bridge: ReaderJsBridge, isPdf: Boolean = f
                             // 使用 _theme id 创建样式表，确保 updateTheme 能更新它
                             view.evaluateJavascript("(function(){var s=document.getElementById('_theme');if(!s){s=document.createElement('style');s.id='_theme';document.head.appendChild(s);}s.textContent='$css';})()") {
                                 // 字体 CSS 生效后再运行分页 JS（用正确的字体和背景色计算页数）
-                                val paginationJsCode = buildPaginationJs(isPdf, bgColor, chapterIndex)
+                                val paginationJsCode = buildPaginationJs(bgColor, chapterIndex)
                                 view.evaluateJavascript(paginationJsCode) {
                                     // 2 秒后检查 JS 层分页是否成功，用于诊断
                                     view.postDelayed({
