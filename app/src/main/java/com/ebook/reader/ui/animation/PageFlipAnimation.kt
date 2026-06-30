@@ -258,13 +258,12 @@ object SlideCoverAnimation : PageFlipAnimation {
     // 2. 用户已松手但有 __pendingFlip → 自动完成章节切换动画
     // 3. 用户已松手无 pending → 清除 loading 标记，preRendered 已就绪，下次拖拽走 Hit Path
     window.onPreRenderReady = function(chapterIndex) {
-        // 🔥 守卫：__currentChapterIdx 可能因 WebView evaluateJavascript 执行顺序尚未初始化
         var cci = window.__currentChapterIdx;
         if (cci !== undefined) {
             var dir = chapterIndex > cci ? 1 : -1;
-            if (chapterIndex !== (dir > 0 ? cci + 1 : cci - 1)) return;
+            if (chapterIndex !== (dir > 0 ? cci + 1 : cci - 1)) return 'guard_adj';
         }
-        if (!preRendered[chapterIndex]) return;
+        if (!preRendered[chapterIndex]) return 'guard_nopr';
 
         // ── 场景 1：用户仍在拖拽中 ──
         if (typeof dg !== 'undefined' && dg.on) {
@@ -282,7 +281,7 @@ object SlideCoverAnimation : PageFlipAnimation {
                 delete botLayer._loadingIdx;
                 window.__pendingFlip = undefined;
             }
-            return;
+            return 'scene1';
         }
 
         // ── 清理 loading 标记 ──
@@ -292,18 +291,18 @@ object SlideCoverAnimation : PageFlipAnimation {
         }
 
         // ── 场景 2：有 pending 标记 → 自动完成章节切换动画 ──
-        // 🔥 若 flipping 为 true（bounceBack 仍在动画中），保留 pending，
-        // bounceBack 动画完成后会检查并自动触发 chapterFlipTo
         if (window.__pendingFlip === chapterIndex) {
             if (!flipping) {
                 window.__pendingFlip = undefined;
                 chapterFlipTo(dir);
+                return 'scene2_flip';
             }
-            return;
+            return 'scene2_defer';
         }
 
         // ── 场景 3：无 pending → preRendered 已缓存，下次拖拽/点击走 Hit Path ──
         window.__pendingFlip = undefined;
+        return 'scene3_nop';
     };
 
     function aDrag(dx) {
@@ -727,10 +726,10 @@ object SimpleSlideAnimation : PageFlipAnimation {
         var cci = window.__currentChapterIdx;
         if (cci !== undefined) {
             var dir = chapterIndex > cci ? 1 : -1;
-            if (chapterIndex !== (dir > 0 ? cci + 1 : cci - 1)) return;
+            if (chapterIndex !== (dir > 0 ? cci + 1 : cci - 1)) return 'guard_adj';
         }
-        if (!preRendered[chapterIndex]) return;
-        if (window.__pendingFlip !== chapterIndex || flipping) return;
+        if (!preRendered[chapterIndex]) return 'guard_nopr';
+        if (window.__pendingFlip !== chapterIndex || flipping) return 'pf_skip';
         window.__pendingFlip = undefined;
         // 自动完成章节切换（简单滑入动画）
         var pr = preRendered[chapterIndex];
