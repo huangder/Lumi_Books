@@ -471,17 +471,17 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
 
     @IdentifierNameString
     private static final class LazyClassKeyProvider {
-      static String com_ebook_reader_ui_statistics_StatisticsViewModel = "com.ebook.reader.ui.statistics.StatisticsViewModel";
-
       static String com_ebook_reader_ui_home_HomeViewModel = "com.ebook.reader.ui.home.HomeViewModel";
+
+      static String com_ebook_reader_ui_statistics_StatisticsViewModel = "com.ebook.reader.ui.statistics.StatisticsViewModel";
 
       static String com_ebook_reader_ui_reader_ReaderViewModel = "com.ebook.reader.ui.reader.ReaderViewModel";
 
       @KeepFieldType
-      StatisticsViewModel com_ebook_reader_ui_statistics_StatisticsViewModel2;
+      HomeViewModel com_ebook_reader_ui_home_HomeViewModel2;
 
       @KeepFieldType
-      HomeViewModel com_ebook_reader_ui_home_HomeViewModel2;
+      StatisticsViewModel com_ebook_reader_ui_statistics_StatisticsViewModel2;
 
       @KeepFieldType
       ReaderViewModel com_ebook_reader_ui_reader_ReaderViewModel2;
