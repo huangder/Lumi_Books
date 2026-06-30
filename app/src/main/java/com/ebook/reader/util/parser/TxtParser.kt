@@ -1,14 +1,52 @@
 package com.ebook.reader.util.parser
 
 import java.io.File
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.Charset
+import java.nio.charset.CodingErrorAction
 
 class TxtParser : BookParser {
     private var content: String = ""
     private var chapters: List<Chapter> = emptyList()
 
+    /**
+     * 按优先级尝试多种编码读取文件。
+     * 使用 CharsetDecoder + REPORT 模式，避免 UTF-8 静默产生乱码。
+     * （String(bytes, UTF_8) 对无效字节用 � 替换，不抛异常，导致 GBK fallback 永远不执行）
+     */
+    private fun readFileWithEncoding(file: File): String {
+        val bytes = file.readBytes()
+        // BOM 检测
+        if (bytes.size >= 3 && bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte()) {
+            return String(bytes, 3, bytes.size - 3, Charsets.UTF_8)
+        }
+        if (bytes.size >= 2) {
+            if (bytes[0] == 0xFE.toByte() && bytes[1] == 0xFF.toByte())
+                return String(bytes, 2, bytes.size - 2, Charsets.UTF_16BE)
+            if (bytes[0] == 0xFF.toByte() && bytes[1] == 0xFE.toByte())
+                return String(bytes, 2, bytes.size - 2, Charsets.UTF_16LE)
+        }
+        // 无 BOM：用 REPORT 模式检测 UTF-8 有效性
+        val utf8Decoder = Charsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+        return try {
+            utf8Decoder.decode(ByteBuffer.wrap(bytes)).toString()
+        } catch (_: CharacterCodingException) {
+            // UTF-8 无效 → 回退到 GBK（中文 TXT 最常见编码）
+            try {
+                String(bytes, Charset.forName("GBK"))
+            } catch (_: Exception) {
+                // 最后兜底：UTF-8 REPLACE 模式（至少能显示部分字符）
+                String(bytes, Charsets.UTF_8)
+            }
+        }
+    }
+
     override fun parse(filePath: String): BookContent {
         val file = File(filePath)
-        content = file.readText()
+        content = readFileWithEncoding(file)
 
         val fileName = file.nameWithoutExtension
         chapters = splitChapters(content)

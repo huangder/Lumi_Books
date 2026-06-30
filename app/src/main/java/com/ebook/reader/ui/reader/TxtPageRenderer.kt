@@ -40,6 +40,8 @@ class TxtPageRenderer(
     private var _lineSpacingPx: Float = 0f
     private var _bgColor: Int = Color.WHITE
     private var _textColor: Int = Color.BLACK
+    private var _marginX: Float = 32f   // 水平边距 (px)
+    private var _marginY: Float = 24f   // 垂直边距 (px)
 
     private val textPaint: TextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         typeface = Typeface.DEFAULT
@@ -53,7 +55,8 @@ class TxtPageRenderer(
         width: Int, height: Int,
         fontSizePx: Float, lineSpacingPx: Float,
         bgColor: Int, textColor: Int,
-        isNightMode: Boolean
+        isNightMode: Boolean,
+        density: Float
     ) {
         val changed = width != _pageWidth || height != _pageHeight ||
                 fontSizePx != _fontSizePx || lineSpacingPx != _lineSpacingPx ||
@@ -67,6 +70,9 @@ class TxtPageRenderer(
         textPaint.textSize = fontSizePx
         textPaint.color = textColor
         bgPaint.color = bgColor
+        // 边距：与 EPUB 一致 — PAD_H=视口12%, PAD_V=70dp
+        _marginX = width * 0.12f
+        _marginY = 70f * density
         if (changed) {
             layoutCache.clear()
         }
@@ -87,11 +93,14 @@ class TxtPageRenderer(
         // 绘制背景
         canvas.drawColor(_bgColor)
 
+        // 保存后平移画布，留出边距
+        canvas.save()
+        canvas.translate(_marginX, _marginY)
+
         // 仅绘制该页的行范围
         val range = layout.pages[pageIndex]
         val sl = layout.layout
         var y = 0f
-        canvas.save()
         for (line in range.startLine until range.endLine) {
             val lineStart = sl.getLineStart(line)
             val lineEnd = sl.getLineEnd(line)
@@ -118,13 +127,18 @@ class TxtPageRenderer(
         val text = contentProvider(chapterIndex) ?: return null
         if (text.isEmpty()) return null
 
-        val sl = StaticLayout.Builder.obtain(text, 0, text.length, textPaint, _pageWidth)
-            .setAlignment(Layout.Alignment.ALIGN_NORMAL)
-            .setLineSpacing(_lineSpacingPx, 1f)
-            .setIncludePad(false)
-            .build()
+        val textWidth = (_pageWidth - 2 * _marginX).coerceAtLeast(100f)
+        val textHeight = (_pageHeight - 2 * _marginY).coerceAtLeast(100f)
 
-        // 按页面高度切分行
+        val sl = StaticLayout(
+            text, 0, text.length,
+            textPaint, textWidth.toInt(),
+            Layout.Alignment.ALIGN_NORMAL,
+            1f, _lineSpacingPx,
+            false
+        )
+
+        // 按页面高度（减上下边距）切分行
         val pages = mutableListOf<PageRange>()
         var pageStart = 0
         while (pageStart < sl.lineCount) {
@@ -132,7 +146,7 @@ class TxtPageRenderer(
             var line = pageStart
             while (line < sl.lineCount) {
                 val lineH = sl.getLineBottom(line) - sl.getLineTop(line) + _lineSpacingPx
-                if (y + lineH > _pageHeight && line > pageStart) break
+                if (y + lineH > textHeight && line > pageStart) break
                 y += lineH
                 line++
             }
