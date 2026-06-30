@@ -22,7 +22,7 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
 
     companion object {
         private const val SHADOW_WIDTH_PX = 250
-        private const val CORNER_RADIUS_PX = 80f
+        private const val CORNER_RADIUS_PX = 40f
         /** 下层页面速度比 = 上层速度 * PARALLAX_RATIO */
         private const val PARALLAX_RATIO = 0.3f
     }
@@ -67,35 +67,24 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
         }
     }
 
-    /** 上层：右侧 R 角（saveLayer + drawCircle DST_OUT 打孔）+ 外阴影 */
+    /** 上层：右侧 R 角（saveLayer + 圆孔裁剪 + 阴影跟随圆角）+ 外阴影 */
     private fun drawUpperPage(
         canvas: Canvas, bitmap: android.graphics.Bitmap?,
         x: Float, y: Float, vw: Float, vh: Float
     ) {
         if (bitmap == null || bitmap.isRecycled) return
         val r = cornerRadius
+        val right = x + vw
+        val shEnd = (right + shadowWidth).coerceAtMost(readView.width.toFloat())
 
-        // saveLayer → drawBitmap 画页面 → drawCircle DST_OUT 打掉右侧直角
-        // drawCircle 是 GPU 原生操作，DST_OUT 在离屏层内可靠生效
+        // saveLayer → 画页面 → 画阴影 → DST_OUT 同时打孔页面+阴影 → restore
         canvas.saveLayer(x, y, x + vw, y + vh, null)
+
+        // 1. 页面内容
         canvas.drawBitmap(bitmap, x, y, null)
 
-        val clearPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
-        }
-        canvas.drawCircle(x + vw, y, r, clearPaint)          // 右上角
-        canvas.drawCircle(x + vw, y + vh, r, clearPaint)      // 右下角
-
-        canvas.restore()
-
-        // 外阴影：从上层右边缘向右延伸
-        val right = x + vw
-        val shStart = right
-        val shEnd = (right + shadowWidth).coerceAtMost(readView.width.toFloat())
-        if (shStart < readView.width.toFloat() && shEnd > shStart + 2f) {
-            canvas.save()
-            canvas.clipRect(shStart, y, readView.width.toFloat(), y + vh)
-
+        // 2. 阴影（在 DST_OUT 之前画，让打孔同时作用于阴影）
+        if (right < readView.width.toFloat() && shEnd > right + 2f) {
             val colors = intArrayOf(
                 0x26000000.toInt(),
                 0x18000000.toInt(),
@@ -105,11 +94,19 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
             )
             val stops = floatArrayOf(0.0f, 0.2f, 0.5f, 0.75f, 1.0f)
             val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                shader = LinearGradient(shStart, 0f, shEnd, 0f, colors, stops, Shader.TileMode.CLAMP)
+                shader = LinearGradient(right, 0f, shEnd, 0f, colors, stops, Shader.TileMode.CLAMP)
             }
-            canvas.drawRect(shStart, y, shEnd, y + vh, shadowPaint)
-            canvas.restore()
+            canvas.drawRect(right, y, shEnd, y + vh, shadowPaint)
         }
+
+        // 3. DST_OUT 打孔：页面 + 阴影一起切，阴影跟随圆角
+        val clearPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
+        }
+        canvas.drawCircle(right, y, r, clearPaint)          // 右上角
+        canvas.drawCircle(right, y + vh, r, clearPaint)      // 右下角
+
+        canvas.restore()
     }
 
     private fun drawLowerPage(
