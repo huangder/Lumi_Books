@@ -1,4 +1,4 @@
-#Tue Jun 30 16:20:38 CST 2026
+#Tue Jun 30 16:57:48 CST 2026
 base.0=D\:\\vibe_coding\\android_books\\app\\build\\intermediates\\dex\\debug\\mergeExtDexDebug\\classes.dex
 base.1=D\:\\vibe_coding\\android_books\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\0\\classes.dex
 base.10=D\:\\vibe_coding\\android_books\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\6\\classes.dex
