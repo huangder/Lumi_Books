@@ -356,10 +356,10 @@ private fun buildPaginationJs(bgColor: String = "#ffffff", chapterIndex: Int = 0
         var atBoundary = (isF && cur >= total - 1) || (!isF && cur <= 0);
 
         if (atBoundary) {
-            // Chapter boundary: moderate rubber-band + real-time Compose tracking
-            // 0.5 resistance (was 0.25) → closer to within-chapter feel
+            // Chapter boundary: light rubber-band + real-time Compose tracking
+            // 0.7 resistance (was 0.25) → near within-chapter feel
             // Compose slot position provides the main visual of adjacent chapter sliding in
-            c = c * 0.5;
+            c = c * 0.7;
             try { AndroidBridge.onDragAtBoundary(dx); } catch(e) {}
         } else {
             dg._boundaryNotified = false;
@@ -623,6 +623,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             slot1Ready = false
             viewModel.onChapterSwapped(dir)
             slideAnim.snapTo(0f)
+            dragFraction = 0f  // 重置拖拽偏移，避免残留值污染后续动画
             isChapterAnimating.value = false
             pendingTransitionDir = 0  // 防御纵深：动画完成后清除残留的 transition 状态
             // Preload next adjacent chapter into the now-hidden slot (setPending=false: 后台预加载不触发 transition)
@@ -662,20 +663,39 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     android.util.Log.e("PG", "Bridge0 handleChapterFlipReady BLOCKED: animating")
                     return@ReaderJsBridge
                 }
-                isDraggingAtBoundary = false
+                // 捕获拖拽状态：只有从拖拽触发时才从手指位置继续动画
+                // (tap 触发的翻章应从 slideAnim=0 开始，避免残留 dragFraction 污染)
+                val continueFromDrag = isDraggingAtBoundary
+                val captureDragFraction = dragFraction
                 val cci = if (activeSlot == 0) chapterInSlot0 else chapterInSlot1
                 val adj = cci + direction
-                android.util.Log.e("PG", "Bridge0 handleChapterFlipReady: cci=$cci dir=$direction adj=$adj dragFrac=$dragFraction")
+                android.util.Log.e("PG", "Bridge0 handleChapterFlipReady: cci=$cci dir=$direction adj=$adj continueFromDrag=$continueFromDrag dragFrac=$captureDragFraction")
                 if (adj in 0 until viewModel.uiState.value.chapterCount) {
                     preloadHiddenSlot(adj, direction, setPending = true)
                     scope.launch {
-                        slideAnim.snapTo(dragFraction)
+                        if (continueFromDrag) {
+                            slideAnim.snapTo(captureDragFraction)
+                        }
+                        // 在 snapTo 之后切换，消除 dragFraction→slideAnim 的帧间跳变
+                        isDraggingAtBoundary = false
                         checkAndAnimate()
                     }
                 }
             },
             handleChapterSwapped = { direction -> viewModel.onChapterSwapped(direction) },
             handleCenterTap = { viewModel.toggleMenu() },
+            handleDragCancel = {
+                if (isDraggingAtBoundary) {
+                    val lastDragFraction = dragFraction
+                    scope.launch {
+                        slideAnim.snapTo(lastDragFraction)
+                        // 在 snapTo 之后切换，消除拖拽→回弹的帧间跳变
+                        isDraggingAtBoundary = false
+                        slideAnim.animateTo(0f, tween(200, easing = FastOutSlowInEasing))
+                        dragFraction = 0f  // 回弹完成后重置
+                    }
+                }
+            },
             handleDragAtBoundary = { offsetPx ->
                 isDraggingAtBoundary = true
                 val hiddenReady = if (activeSlot == 0) slot1Ready else slot0Ready
@@ -690,18 +710,9 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         android.util.Log.e("PG", "Bridge0 lazy preload: adj=$adj dir=$dir")
                     }
                 }
-                // Dynamic range: 0.7 when preloaded (hidden slot ~70% visible), 0.35 when not
-                val maxDrag = if (hiddenReady) 0.7f else 0.35f
+                // Dynamic range: 0.85 when preloaded (hidden slot slides in sooner), 0.35 when not
+                val maxDrag = if (hiddenReady) 0.85f else 0.35f
                 dragFraction = (offsetPx / screenWidthPx).coerceIn(-maxDrag, maxDrag)
-            },
-            handleDragCancel = {
-                if (isDraggingAtBoundary) {
-                    isDraggingAtBoundary = false
-                    scope.launch {
-                        slideAnim.snapTo(dragFraction)
-                        slideAnim.animateTo(0f, tween(200, easing = FastOutSlowInEasing))
-                    }
-                }
             },
             handlePaginationComplete = {
                 android.util.Log.e("PG", "onPaginationComplete Slot0 CALLED activeSlot=$activeSlot")
@@ -757,14 +768,21 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     android.util.Log.e("PG", "Bridge1 handleChapterFlipReady BLOCKED: animating")
                     return@ReaderJsBridge
                 }
-                isDraggingAtBoundary = false
+                // 捕获拖拽状态：只有从拖拽触发时才从手指位置继续动画
+                // (tap 触发的翻章应从 slideAnim=0 开始，避免残留 dragFraction 污染)
+                val continueFromDrag = isDraggingAtBoundary
+                val captureDragFraction = dragFraction
                 val cci = if (activeSlot == 1) chapterInSlot1 else chapterInSlot0
                 val adj = cci + direction
-                android.util.Log.e("PG", "Bridge1 handleChapterFlipReady: cci=$cci dir=$direction adj=$adj dragFrac=$dragFraction")
+                android.util.Log.e("PG", "Bridge1 handleChapterFlipReady: cci=$cci dir=$direction adj=$adj continueFromDrag=$continueFromDrag dragFrac=$captureDragFraction")
                 if (adj in 0 until viewModel.uiState.value.chapterCount) {
                     preloadHiddenSlot(adj, direction, setPending = true)
                     scope.launch {
-                        slideAnim.snapTo(dragFraction)
+                        if (continueFromDrag) {
+                            slideAnim.snapTo(captureDragFraction)
+                        }
+                        // 在 snapTo 之后切换，消除 dragFraction→slideAnim 的帧间跳变
+                        isDraggingAtBoundary = false
                         checkAndAnimate()
                     }
                 }
@@ -785,16 +803,19 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         android.util.Log.e("PG", "Bridge1 lazy preload: adj=$adj dir=$dir")
                     }
                 }
-                // Dynamic range: 0.7 when preloaded (hidden slot ~70% visible), 0.35 when not
-                val maxDrag = if (hiddenReady) 0.7f else 0.35f
+                // Dynamic range: 0.85 when preloaded (hidden slot slides in sooner), 0.35 when not
+                val maxDrag = if (hiddenReady) 0.85f else 0.35f
                 dragFraction = (offsetPx / screenWidthPx).coerceIn(-maxDrag, maxDrag)
             },
             handleDragCancel = {
                 if (isDraggingAtBoundary) {
-                    isDraggingAtBoundary = false
+                    val lastDragFraction = dragFraction
                     scope.launch {
-                        slideAnim.snapTo(dragFraction)
+                        slideAnim.snapTo(lastDragFraction)
+                        // 在 snapTo 之后切换，消除拖拽→回弹的帧间跳变
+                        isDraggingAtBoundary = false
                         slideAnim.animateTo(0f, tween(200, easing = FastOutSlowInEasing))
+                        dragFraction = 0f  // 回弹完成后重置
                     }
                 }
             },
