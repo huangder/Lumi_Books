@@ -22,7 +22,8 @@ interface PageRenderer {
         width: Int, height: Int,
         fontSizePx: Float, lineSpacingPx: Float,
         bgColor: Int = Color.WHITE, textColor: Int = Color.BLACK,
-        isNightMode: Boolean = false
+        isNightMode: Boolean = false,
+        density: Float = 2.75f  // 用于 dp→px 转换
     )
 
     /** 获取页面宽度（configure 后可用） */

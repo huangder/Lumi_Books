@@ -213,6 +213,19 @@ class ReaderViewModel @Inject constructor(
     }
 
     /**
+     * 🔥 仅更新章节索引（不加载 HTML）。TXT Bitmap 引擎跨章翻页时用。
+     */
+    fun updatePosition(chapterIndex: Int, pageIndex: Int, totalPages: Int) {
+        _uiState.value = _uiState.value.copy(
+            currentChapterIndex = chapterIndex,
+            currentPageIndex = pageIndex,
+            totalPages = totalPages,
+            pageReady = true
+        )
+        saveProgress()
+    }
+
+    /**
      * JS回调：更新当前页码和总页数
      */
     fun onPageChanged(page: Int, total: Int) {
@@ -336,6 +349,11 @@ class ReaderViewModel @Inject constructor(
             if (html != null) preloadCache[index] = html
             html
         } catch (_: Exception) { null }
+    }
+
+    /** 获取章节纯文本（TXT 格式用，用于 StaticLayout 排版） */
+    fun getChapterText(index: Int): String? {
+        return try { parser?.getChapterContent(index) } catch (_: Exception) { null }
     }
 
     /**

@@ -859,25 +859,37 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         else -> Color(0xFFFBFBFC)
     }
 
+    // ── 格式分支：TXT 走新 Bitmap+Canvas 引擎，EPUB/PDF 保持 WebView ──
+    val isTxtFormat = uiState.book?.format?.name == "TXT"
+
     Box(Modifier.fillMaxSize().background(composeBgColor)) {
-        // ── Slot 0 ──
-        Box(Modifier
-            .fillMaxSize()
-            .graphicsLayer {
-                val offset = if (isDraggingAtBoundary) dragFraction else slideAnim.value
-                translationX = if (activeSlot == 0) offset * screenWidthPx
-                               else hiddenSlotSide * screenWidthPx + offset * screenWidthPx
-            }
-        ) {
-            HtmlContent(
-                html = slot0Html.value,
-                bridge = bridge0,
-                fontSize = uiState.fontSize,
-                theme = uiState.readerTheme,
-                chapterIndex = chapterInSlot0,
-                onWebViewCreated = { slot0WebView.value = it }
+        if (isTxtFormat) {
+            // ── TXT: Bitmap + Canvas 翻页引擎 ──
+            TxtReaderContent(
+                viewModel = viewModel,
+                uiState = uiState,
+                onMenuToggle = { viewModel.toggleMenu() }
             )
-        }
+        } else {
+            // ── EPUB/PDF: 原有双 WebView 方案 ──
+            // ── Slot 0 ──
+            Box(Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    val offset = if (isDraggingAtBoundary) dragFraction else slideAnim.value
+                    translationX = if (activeSlot == 0) offset * screenWidthPx
+                                   else hiddenSlotSide * screenWidthPx + offset * screenWidthPx
+                }
+            ) {
+                HtmlContent(
+                    html = slot0Html.value,
+                    bridge = bridge0,
+                    fontSize = uiState.fontSize,
+                    theme = uiState.readerTheme,
+                    chapterIndex = chapterInSlot0,
+                    onWebViewCreated = { slot0WebView.value = it }
+                )
+            }
 
         // ── Slot 1 ──
         if (slot1Html.value.isNotEmpty()) {
@@ -937,6 +949,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 }
             }
         }
+        } // ── end EPUB/PDF else block ──
 
         // 过渡页在 NavGraph 层处理，这里只显示阅读内容
         if (!uiState.isLoading) {
@@ -1053,7 +1066,7 @@ private fun ReaderTopBar(title: String, onBack: () -> Unit, bgColor: Color = Col
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .statusBarsPadding()
+            .padding(top = 8.dp) // 沉浸模式下状态栏已隐藏，不需要 statusBarsPadding
             .height(140.dp) // 避开摄像头 + 遮罩向下延伸虚化背景
     ) {
         // 底层：渐变遮罩（背景色 → 透明，从上往下，有实际遮罩效果）
