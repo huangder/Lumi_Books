@@ -24,27 +24,24 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
         if (viewWidth <= 0 || viewHeight <= 0) return
 
         val offsetX = touchX - startX
-
-        // 根据方向获取页面 Bitmap
         val curBitmap = readView.getCurBitmap()
-        val targetBitmap = when {
-            direction == Direction.NEXT && offsetX < 0 -> readView.getNextBitmap()
-            direction == Direction.PREV && offsetX > 0 -> readView.getPrevBitmap()
-            direction == Direction.NEXT -> readView.getNextBitmap()
-            direction == Direction.PREV -> readView.getPrevBitmap()
-            else -> null
-        }
 
-        // 计算两个页面在屏幕上的位置
-        // 统一的 slide 模式：两个页面一起滑动
         when {
+            // ── 正向翻页（下一页） ──
             direction == Direction.NEXT -> {
-                // 当前页左移：x = offsetX
-                drawPageBitmap(canvas, curBitmap, offsetX, 0f, viewWidth, viewHeight)
-                // 下一页从右边滑入：x = viewWidth + offsetX
-                drawPageBitmap(canvas, targetBitmap, viewWidth + offsetX, 0f, viewWidth, viewHeight)
+                val targetBitmap = readView.getNextBitmap()
+                // progress: 0（起始）→ 1（完成）
+                val progress = (-offsetX / viewWidth).coerceIn(0f, 1f)
+                // 目标页用 quadratic ease-out：先快后慢，营造"从底层滑入"的层级感
+                val eased = 1f - (1f - progress) * (1f - progress)
+                val nextX = viewWidth * (1f - eased)
 
-                // 在当前页右边缘画阴影（页面之间的分界线）
+                // 目标页（底层，轻微移动）
+                drawPageBitmap(canvas, targetBitmap, nextX, 0f, viewWidth, viewHeight)
+                // 当前页（顶层，全速左移）
+                drawPageBitmap(canvas, curBitmap, offsetX, 0f, viewWidth, viewHeight)
+
+                // 阴影：当前页右边缘，模拟"页面抬起"的光影
                 val shadowX = viewWidth + offsetX
                 if (shadowX > 0 && shadowX < viewWidth) {
                     canvas.drawRect(
@@ -55,13 +52,19 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
                 }
             }
 
+            // ── 反向翻页（上一页） ──
             direction == Direction.PREV -> {
-                // 上一页从左边滑入：x = -viewWidth + offsetX
-                drawPageBitmap(canvas, targetBitmap, -viewWidth + offsetX, 0f, viewWidth, viewHeight)
-                // 当前页右移：x = offsetX
+                val targetBitmap = readView.getPrevBitmap()
+                val progress = (offsetX / viewWidth).coerceIn(0f, 1f)
+                val eased = 1f - (1f - progress) * (1f - progress)
+                val prevX = -viewWidth * (1f - eased)
+
+                // 目标页（底层，轻微移动）
+                drawPageBitmap(canvas, targetBitmap, prevX, 0f, viewWidth, viewHeight)
+                // 当前页（顶层，全速右移）
                 drawPageBitmap(canvas, curBitmap, offsetX, 0f, viewWidth, viewHeight)
 
-                // 在当前页左边缘画阴影
+                // 阴影：当前页左边缘
                 val shadowX = offsetX
                 if (shadowX > 0 && shadowX < viewWidth) {
                     canvas.drawRect(
@@ -72,8 +75,8 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
                 }
             }
 
+            // ── 空闲 ──
             else -> {
-                // 没有方向，只画当前页
                 drawPageBitmap(canvas, curBitmap, 0f, 0f, viewWidth, viewHeight)
             }
         }

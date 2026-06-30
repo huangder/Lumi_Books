@@ -70,6 +70,15 @@ class ReadView(context: Context) : FrameLayout(context) {
         // 初始化动画控制器
         animationController = SlidePageAnim(this)
 
+        // 翻页前校验：目标槽位未加载则阻止翻页动画
+        animationController.onCanFlip = { dir ->
+            when (dir) {
+                PageAnimationController.Direction.NEXT -> slotManager.getNextSlot().isLoaded
+                PageAnimationController.Direction.PREV -> slotManager.getPrevSlot().isLoaded
+                else -> false
+            }
+        }
+
         // 动画完成回调
         animationController.onAnimationComplete = {
             when (animationController.currentDirection) {

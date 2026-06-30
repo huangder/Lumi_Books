@@ -57,21 +57,27 @@ class PageSlotManager(
 
     /**
      * 初始化：加载起始页到 CUR 槽位，预加载 PREV 和 NEXT。
+     * 每次调用都强制清空旧槽位，确保主题/字体变更时重渲染。
      */
     fun initialize(startChapter: Int, startPageInChapter: Int) {
+        // 🔥 关键：先清空所有槽位的 isLoaded 标志和旧 Bitmap
+        // 否则 loadSlot 的 early-return（same chapter+page+isLoaded）会阻止重渲染
+        for (i in 0..2) {
+            slots[i].surfaceView.getPageBitmap()?.let { renderer.releaseBitmap(it) }
+            slots[i].chapterIndex = -1
+            slots[i].pageIndex = -1
+            slots[i].globalPageIndex = -1
+            slots[i].isLoaded = false
+            slots[i].surfaceView.setPageBitmap(null)
+        }
+
         currentChapterIndex = startChapter
-        // 先用简单方式计算全局页码
         currentGlobalPage = layoutEngine.localToGlobal(startChapter, startPageInChapter)
 
-        // 加载 CUR 槽位
+        // 加载 CUR 槽位（现在 isLoaded=false，不会 early-return）
         loadSlot(SLOT_CUR, currentChapterIndex, startPageInChapter)
 
-        // 预加载 PREV 和 NEXT
-        val (prevCh, prevPg) = resolvePrevPage()
-        if (prevCh >= 0 && prevPg >= 0) loadSlot(SLOT_PREV, prevCh, prevPg)
-
-        val (nextCh, nextPg) = resolveNextPage()
-        if (nextCh >= 0 && nextPg >= 0) loadSlot(SLOT_NEXT, nextCh, nextPg)
+        // PREV / NEXT 由 CUR 加载完成后的回调自动预加载
     }
 
     /**
@@ -102,10 +108,21 @@ class PageSlotManager(
                 val text = contentProvider?.invoke(chapterIndex)
                 if (text.isNullOrEmpty()) {
                     Log.w(TAG, "Empty text for slot $slotIdx ch=$chapterIndex")
+                    // 🔥 不标记 isLoaded，避免空白 bitmap 被当作有效页
+                    slot.isLoaded = false
                     if (slotIdx == SLOT_CUR) notifyPageChanged()
                     return@launch
                 }
                 val chapterLayout = layoutEngine.layout(chapterIndex, text)
+
+                // 🔥 边界检查：目标页必须存在
+                if (pageInChapter < 0 || pageInChapter >= chapterLayout.totalPages) {
+                    Log.w(TAG, "Page out of bounds: slot=$slotIdx ch=$chapterIndex pg=$pageInChapter total=${chapterLayout.totalPages}")
+                    slot.isLoaded = false
+                    if (slotIdx == SLOT_CUR) notifyPageChanged()
+                    return@launch
+                }
+
                 val bitmap = renderer.renderPage(chapterLayout, pageInChapter)
 
                 // 确认该槽位没有被重新加载覆盖
@@ -130,6 +147,7 @@ class PageSlotManager(
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to load slot $slotIdx ch=$chapterIndex pg=$pageInChapter", e)
+                slot.isLoaded = false
                 // 加载失败也通知页面变化，避免 loading 卡死
                 if (slotIdx == SLOT_CUR) notifyPageChanged()
             }
@@ -143,6 +161,17 @@ class PageSlotManager(
      * CUR → PREV, NEXT → CUR, 加载新 NEXT。
      */
     fun shiftForward() {
+        val nextSlot = slots[SLOT_NEXT]
+        // 🔥 防护：NEXT 必须有有效 bitmap 才能转移，否则回退到当前页
+        if (!nextSlot.isLoaded || nextSlot.surfaceView.getPageBitmap() == null) {
+            Log.w(TAG, "shiftForward blocked: NEXT slot not loaded")
+            // 尝试重新加载 NEXT，当前页保持不变
+            val (nextCh, nextPg) = resolveNextPage()
+            if (nextCh >= 0 && nextPg >= 0) loadSlot(SLOT_NEXT, nextCh, nextPg)
+            notifyPageChanged()
+            return
+        }
+
         // PREV 回收
         recycleSlot(SLOT_PREV)
 
@@ -170,6 +199,17 @@ class PageSlotManager(
      * NEXT 回收, CUR → NEXT, PREV → CUR, 加载新 PREV。
      */
     fun shiftBackward() {
+        val prevSlot = slots[SLOT_PREV]
+        // 🔥 防护：PREV 必须有有效 bitmap 才能转移，否则回退到当前页
+        if (!prevSlot.isLoaded || prevSlot.surfaceView.getPageBitmap() == null) {
+            Log.w(TAG, "shiftBackward blocked: PREV slot not loaded")
+            // 尝试重新加载 PREV，当前页保持不变
+            val (prevCh, prevPg) = resolvePrevPage()
+            if (prevCh >= 0 && prevPg >= 0) loadSlot(SLOT_PREV, prevCh, prevPg)
+            notifyPageChanged()
+            return
+        }
+
         // NEXT 回收
         recycleSlot(SLOT_NEXT)
 

@@ -56,6 +56,8 @@ abstract class PageAnimationController(
     var onTapLeft: (() -> Unit)? = null
     var onTapCenter: (() -> Unit)? = null
     var onTapRight: (() -> Unit)? = null
+    /** 🔥 翻页前校验：目标方向是否允许翻页（目标槽位已加载？） */
+    var onCanFlip: ((Direction) -> Boolean)? = null
 
     // ── 抽象方法 ──
 
@@ -132,8 +134,12 @@ abstract class PageAnimationController(
                     val fraction = Math.abs(dx) / viewWidth
 
                     if (fraction >= FLIP_THRESHOLD) {
-                        // 力度足够，执行翻页
-                        startAnim(fromDrag = true)
+                        // 🔥 翻页前校验：目标槽位已加载才能翻，否则回弹
+                        if (onCanFlip?.invoke(direction) == true) {
+                            startAnim(fromDrag = true)
+                        } else {
+                            startBounceBack()
+                        }
                     } else {
                         // 力度不足，回弹
                         startBounceBack()
