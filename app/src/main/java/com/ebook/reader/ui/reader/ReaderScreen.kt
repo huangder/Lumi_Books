@@ -215,7 +215,11 @@ private fun buildPaginationJs(isPdf: Boolean = false, bgColor: String = "#ffffff
     window.preRenderChapter = function(chapterIndex, htmlB64) {
         if (preRendered[chapterIndex]) return;
         try {
-            var html = atob(htmlB64);
+            // UTF-8 安全解码：atob → Uint8Array → TextDecoder
+            var bin = atob(htmlB64);
+            var bytes = new Uint8Array(bin.length);
+            for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            var html = new TextDecoder('utf-8').decode(bytes);
             var w = document.createElement('div');
             w.setAttribute('data-pg', '1');
             w.style.cssText = 'position:absolute;top:0;left:0;height:' + vh + 'px;padding:' + PAD_V + 'px 0;box-sizing:border-box;column-width:' + vw + 'px;column-gap:0;column-fill:auto;overflow:hidden;background:' + BG + ';visibility:hidden;';
@@ -432,7 +436,19 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         wv?.evaluateJavascript(
                             "window.preRenderChapter && preRenderChapter($adjIdx, '$b64');window.onPreRenderReady && onPreRenderReady($adjIdx);"
                         ) { result ->
-                            android.util.Log.d("PG", "Emergency preRender result: $result (chapter $adjIdx)")
+                            android.util.Log.e("PG", "Emergency preRender result: $result (chapter $adjIdx)")
+                            // 🔥 延迟 100ms 查询诊断状态，区分成功和静默失败
+                            wv?.postDelayed({
+                                wv?.evaluateJavascript(
+                                    "JSON.stringify({err:window.__preRenderError||'none',pr:" +
+                                    "(window.preRendered&&preRendered[$adjIdx]?1:0)," +
+                                    "pf:window.__pendingFlip,fl:window.flipping," +
+                                    "cci:window.__currentChapterIdx," +
+                                    "prk:Object.keys(window.preRendered||{}).join(',')})"
+                                ) { diag ->
+                                    android.util.Log.e("PG", "Emergency DIAG: $diag")
+                                }
+                            }, 100)
                         }
                     }
                 }
