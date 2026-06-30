@@ -1,7 +1,9 @@
 package com.ebook.reader.ui.reader.engine
 
+import android.graphics.BitmapShader
 import android.graphics.Canvas
 import android.graphics.LinearGradient
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Shader
@@ -59,34 +61,35 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
         }
     }
 
-    /** 上层：R 角裁剪 + 外阴影（向右延伸到下层页面） */
+    /** 上层：右侧 R 角（BitmapShader 方案）+ 外阴影 */
     private fun drawUpperPage(
         canvas: Canvas, bitmap: android.graphics.Bitmap?,
         x: Float, y: Float, vw: Float, vh: Float
     ) {
         if (bitmap == null || bitmap.isRecycled) return
         val r = cornerRadius
-        val left = x; val top = y; val right = x + vw; val bottom = y + vh
 
-        val radii = floatArrayOf(0f, 0f, r, r, r, r, 0f, 0f)
-        val pagePath = Path().apply {
-            addRoundRect(left, top, right, bottom, radii, Path.Direction.CW)
+        // BitmapShader：用页面 bitmap 作为纹理源，偏移到 (x, y)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+            val matrix = Matrix()
+            matrix.postTranslate(x, y)
+            shader?.setLocalMatrix(matrix)
         }
 
-        // 1. 绘制上层 Bitmap（R 角裁剪）
-        // 🔥 saveLayer 创建离屏缓冲，确保 clipPath 在硬件加速下正确执行
-        canvas.saveLayer(0f, 0f, readView.width.toFloat(), readView.height.toFloat(), null)
-        canvas.clipPath(pagePath)
-        canvas.drawBitmap(bitmap, x, y, null)
-        canvas.restore()
+        // 1. 绘制四个角都圆角的矩形（GPU 原生支持 drawRoundRect）
+        canvas.drawRoundRect(x, y, x + vw, y + vh, r, r, paint)
+        // 2. 覆盖左侧圆角恢复直角（着色器从相同位图采样，无缝拼接）
+        canvas.drawRect(x, y, x + r, y + r, paint)           // 左上角
+        canvas.drawRect(x, y + vh - r, x + r, y + vh, paint) // 左下角
 
-        // 2. 外阴影：从上层右边缘向右延伸，在下层页面上可见
+        // 3. 外阴影：从上层右边缘向右延伸，在下层页面上可见
+        val right = x + vw
         val shStart = right
         val shEnd = (right + shadowWidth).coerceAtMost(readView.width.toFloat())
         if (shStart < readView.width.toFloat() && shEnd > shStart + 2f) {
             canvas.save()
-            // 只在屏幕范围内、上层页面右边的区域绘制
-            canvas.clipRect(shStart, top, readView.width.toFloat(), bottom)
+            canvas.clipRect(shStart, y, readView.width.toFloat(), y + vh)
 
             val colors = intArrayOf(
                 0x26000000.toInt(),
@@ -96,10 +99,10 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
                 0x00000000
             )
             val stops = floatArrayOf(0.0f, 0.2f, 0.5f, 0.75f, 1.0f)
-            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 shader = LinearGradient(shStart, 0f, shEnd, 0f, colors, stops, Shader.TileMode.CLAMP)
             }
-            canvas.drawRect(shStart, top, shEnd, bottom, paint)
+            canvas.drawRect(shStart, y, shEnd, y + vh, shadowPaint)
             canvas.restore()
         }
     }

@@ -2,6 +2,9 @@ package com.ebook.reader.util.parser
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import android.text.Html
 import android.text.Spanned
 import android.util.Base64
@@ -89,7 +92,7 @@ class EpubParser(private val context: Context? = null) : BookParser {
                 if (entry != null) {
                     val rawHtml = zipFile.getInputStream(entry).bufferedReader().readText()
                     val processedHtml = processHtml(zipFile, rawHtml)
-                    val formattedText = htmlToSpanned(rawHtml)
+                    val formattedText = htmlToSpanned(rawHtml, zipFile)
 
                     result.add(
                         Chapter(
@@ -114,7 +117,7 @@ class EpubParser(private val context: Context? = null) : BookParser {
                 try {
                     val rawHtml = zipFile.getInputStream(entry).bufferedReader().readText()
                     val processedHtml = processHtml(zipFile, rawHtml)
-                    val formattedText = htmlToSpanned(rawHtml)
+                    val formattedText = htmlToSpanned(rawHtml, zipFile)
                     if (formattedText.isNotBlank()) {
                         result.add(
                             Chapter(
@@ -291,20 +294,53 @@ class EpubParser(private val context: Context? = null) : BookParser {
 
     /**
      * 将 HTML 转换为 Spanned，保留段落、标题、粗体、斜体、链接等格式。
-     * StaticLayout 原生支持所有标准 Android Span 类型。
+     * StaticLayout 原生支持所有标准 Android Span 类型（含 ImageSpan）。
      */
-    private fun htmlToSpanned(html: String): Spanned {
+    private fun htmlToSpanned(html: String, zipFile: ZipFile): Spanned {
         // 提取 <body> 内容，避免 <head>/<title> 等标签内容泄漏为正文
         val bodyContent = extractBody(html) ?: html
 
         // 移除无法在 StaticLayout 中渲染的标签
         val cleaned = bodyContent
-            .replace(Regex("""<img[^>]*/?>""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""<svg[^>]*>.*?</svg>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
             .replace(Regex("""<script[^>]*>.*?</script>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
             .replace(Regex("""<style[^>]*>.*?</style>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
 
-        return Html.fromHtml(cleaned, Html.FROM_HTML_MODE_LEGACY)
+        // 图片前后插入换行，使其独占一行（块级效果）
+        val withImageBreaks = cleaned.replace(
+            Regex("""(<img[^>]*/?>)""", RegexOption.IGNORE_CASE), "\n$1\n"
+        )
+
+        val imageGetter = EpubImageGetter(zipFile)
+        return Html.fromHtml(withImageBreaks, Html.FROM_HTML_MODE_LEGACY, imageGetter, null)
+    }
+
+    /** 从 EPUB ZIP 中加载图片并解码为 Drawable（用于 Html.ImageGetter） */
+    private inner class EpubImageGetter(
+        private val zipFile: ZipFile
+    ) : Html.ImageGetter {
+        override fun getDrawable(source: String): Drawable? {
+            return try {
+                val entryPath = resolveImagePath(source) ?: return null
+                val entry = findEntry(zipFile, entryPath) ?: return null
+
+                val bytes = zipFile.getInputStream(entry).readBytes()
+                val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+
+                // 缩放适配屏幕宽度（过大图片会撑破 StaticLayout）
+                val maxWidth = 800
+                val scaled = if (bitmap.width > maxWidth) {
+                    val ratio = maxWidth.toFloat() / bitmap.width
+                    Bitmap.createScaledBitmap(bitmap, maxWidth, (bitmap.height * ratio).toInt(), true)
+                } else bitmap
+
+                val drawable = BitmapDrawable(null, scaled)
+                drawable.setBounds(0, 0, scaled.width, scaled.height)
+                drawable
+            } catch (e: Exception) {
+                null
+            }
+        }
     }
 
     /** 从 HTML 中提取 <body> 标签内的内容 */
