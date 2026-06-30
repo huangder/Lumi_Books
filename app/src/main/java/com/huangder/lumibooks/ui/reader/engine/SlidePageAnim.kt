@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.reader.engine
 
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.LinearGradient
 import android.graphics.Paint
@@ -28,6 +29,10 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
     private val density: Float get() = readView.resources.displayMetrics.density
     private val shadowWidth: Float get() = SHADOW_WIDTH_PX * density.coerceAtLeast(1f)
     private val cornerRadius: Float get() = CORNER_RADIUS_PX * density.coerceAtLeast(1f)
+
+    /** 软件离屏 Bitmap（复用，避免每帧分配），clipPath 100% 可靠 */
+    private var softBitmap: Bitmap? = null
+    private var softW: Int = 0; private var softH: Int = 0
 
     override fun onDraw(canvas: Canvas) {
         val vw = readView.width.toFloat()
@@ -62,23 +67,34 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
         }
     }
 
-    /** 上层：clipPath 裁剪右侧 R 角（软件 Canvas 100% 可靠）+ 外阴影 */
+    /** 上层：显式软件 Canvas + clipPath 裁剪右侧 R 角 + 外阴影 */
     private fun drawUpperPage(
         canvas: Canvas, bitmap: android.graphics.Bitmap?,
         x: Float, y: Float, vw: Float, vh: Float
     ) {
         if (bitmap == null || bitmap.isRecycled) return
         val r = cornerRadius
+        val pageW = vw.toInt(); val pageH = vh.toInt()
 
-        // clipPath 裁剪右侧 R 角 — ReadView 已设为软件渲染，clipPath 100% 可靠
-        canvas.save()
+        // 复用软件离屏 Bitmap，clipPath 在软件 Canvas 上 100% 可靠
+        if (softBitmap == null || softW != pageW || softH != pageH) {
+            softBitmap?.recycle()
+            softBitmap = Bitmap.createBitmap(pageW, pageH, Bitmap.Config.ARGB_8888)
+            softW = pageW; softH = pageH
+        }
+        val sb = softBitmap!!
+        sb.eraseColor(0)  // 透明背景
+
+        val swCanvas = Canvas(sb)  // 显式软件 Canvas
         val radii = floatArrayOf(0f, 0f, r, r, r, r, 0f, 0f)
         val pagePath = Path().apply {
-            addRoundRect(x, y, x + vw, y + vh, radii, Path.Direction.CW)
+            addRoundRect(0f, 0f, pageW.toFloat(), pageH.toFloat(), radii, Path.Direction.CW)
         }
-        canvas.clipPath(pagePath)
-        canvas.drawBitmap(bitmap, x, y, null)
-        canvas.restore()
+        swCanvas.clipPath(pagePath)
+        swCanvas.drawBitmap(bitmap, 0f, 0f, null)
+
+        // 将裁剪结果画回主 Canvas（位置 x,y）
+        canvas.drawBitmap(sb, x, y, null)
 
         // 外阴影：从上层右边缘向右延伸
         val right = x + vw
