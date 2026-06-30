@@ -71,9 +71,12 @@ class PageRenderer {
         canvas.translate(marginLeft, marginTop)
         // 🔥 clipRect 必须在 T2（-pageStartY）之前执行！
         // 否则 T2 会把裁剪区域也偏移 -pageStartY，导致 page 1+ 的裁剪飞到 bitmap 上方变成空白页
-        canvas.clipRect(0f, 0f, sl.width.toFloat(), visibleHeight)
-        // 偏移到本页的起始行（仅影响 sl.draw，不影响 clip 位置）
         val pageStartY = sl.getLineTop(pageLayout.startLine)
+        // 裁剪到本页最后一行实际底部（而非固定 visibleHeight），防止下一页首行泄漏
+        val contentEndY = sl.getLineBottom(pageLayout.endLine - 1).toFloat()
+        val clipHeight = (contentEndY - pageStartY).coerceAtMost(visibleHeight)
+        canvas.clipRect(0f, 0f, sl.width.toFloat(), clipHeight)
+        // 偏移到本页的起始行（仅影响 sl.draw，不影响 clip 位置）
         canvas.translate(0f, -pageStartY.toFloat())
         sl.draw(canvas)
         canvas.restore()
