@@ -1,11 +1,8 @@
 package com.ebook.reader.ui.reader.engine
 
-import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.LinearGradient
 import android.graphics.Paint
-import android.graphics.PorterDuff
-import android.graphics.PorterDuffXfermode
 import android.graphics.Shader
 
 /**
@@ -16,20 +13,18 @@ import android.graphics.Shader
  * - 下层：恒定速度比视差（上层速度 * PARALLAX_RATIO），从偏移位出发到达终点
  *   - NEXT: nextX = (vw + ox) * ratio，start=0.3*vw(右侧) → end=0(中央)
  *   - PREV: curX = ox * ratio，start=0(中央) → end=0.3*vw(右侧)
- * - 上层：右侧 R 角（软件离屏裁剪 + 缓存） + 外阴影
+ * - 上层：直角 + 外阴影
  */
 class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
 
     companion object {
         private const val SHADOW_WIDTH_PX = 250
-        private const val CORNER_RADIUS_PX = 80f
         /** 下层页面速度比 = 上层速度 * PARALLAX_RATIO */
         private const val PARALLAX_RATIO = 0.3f
     }
 
     private val density: Float get() = readView.resources.displayMetrics.density
     private val shadowWidth: Float get() = SHADOW_WIDTH_PX * density.coerceAtLeast(1f)
-    private val cornerRadius: Float get() = CORNER_RADIUS_PX * density.coerceAtLeast(1f)
 
     override fun onDraw(canvas: Canvas) {
         val vw = readView.width.toFloat()
@@ -67,28 +62,14 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
         }
     }
 
-    /** 上层：右侧 R 角（saveLayer + drawCircle DST_OUT 打孔）+ 外阴影 */
+    /** 上层：页面内容 + 外阴影 */
     private fun drawUpperPage(
         canvas: Canvas, bitmap: android.graphics.Bitmap?,
         x: Float, y: Float, vw: Float, vh: Float
     ) {
-        if (bitmap == null || bitmap.isRecycled) return
-        val r = cornerRadius
+        drawPageBitmap(canvas, bitmap, x, y, vw, vh)
 
-        // saveLayer → drawBitmap 画页面 → drawCircle DST_OUT 打掉右侧直角
-        // drawCircle 是 GPU 原生操作，DST_OUT 在离屏层内可靠生效
-        canvas.saveLayer(x, y, x + vw, y + vh, null)
-        canvas.drawBitmap(bitmap, x, y, null)
-
-        val clearPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
-        }
-        canvas.drawCircle(x + vw, y, r, clearPaint)          // 右上角
-        canvas.drawCircle(x + vw, y + vh, r, clearPaint)      // 右下角
-
-        canvas.restore()
-
-        // 外阴影：从上层右边缘向右延伸
+        // 外阴影：从上层右边缘向右延伸，在下层页面上可见
         val right = x + vw
         val shStart = right
         val shEnd = (right + shadowWidth).coerceAtMost(readView.width.toFloat())
