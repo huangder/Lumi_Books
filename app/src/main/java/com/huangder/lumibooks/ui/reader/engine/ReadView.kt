@@ -55,32 +55,85 @@ class ReadView(context: Context) : FrameLayout(context) {
     var selEnd: Int = -1
         private set
 
+    // 手柄拖拽
+    private var draggingHandle: Int = 0  // 0=none, 1=start, 2=end
+    private val handleTouchRadius = 36f  // dp * density 后的触控热区
+
     /** 清除选择并重绘 */
     fun clearSelection() {
         selChapter = -1; selStart = -1; selEnd = -1
-        // 重新渲染当前页（清除高亮）
+        draggingHandle = 0
         val curSlot = slotManager.getCurSlot()
         if (curSlot.isLoaded) {
-            highlightPage(curSlot.chapterIndex, curSlot.pageIndex, curSlot.surfaceView)
+            val cl = layoutEngine.getChapterLayout(curSlot.chapterIndex)
+            val bm = curSlot.surfaceView.getPageBitmap()
+            if (cl != null && bm != null) {
+                renderer.renderPage(cl, curSlot.pageIndex, bm)
+            }
         }
         invalidate()
     }
 
-    /** 在当前页上应用选择高亮 */
+    /** 供外部调用的选区更新 */
+    fun updateSelection(newStart: Int, newEnd: Int) {
+        selStart = newStart; selEnd = newEnd
+        applyHighlightOnCurrentPage()
+    }
+
+    /** 检测触摸点是否在手柄区域内，返回手柄编号（0=无, 1=起始, 2=结束） */
+    private fun hitTestHandle(x: Float, y: Float): Int {
+        if (selChapter < 0 || selStart < 0 || selEnd <= selStart) return 0
+        val curSlot = slotManager.getCurSlot()
+        if (curSlot.chapterIndex != selChapter) return 0
+        val cl = layoutEngine.getChapterLayout(selChapter) ?: return 0
+        val sl = cl.staticLayout
+        val pageLayout = cl.pages.getOrNull(curSlot.pageIndex) ?: return 0
+        val pageStartY = sl.getLineTop(pageLayout.startLine)
+        val density = resources.displayMetrics.density
+        val hRad = 10f * density
+
+        // 计算起始手柄位置
+        if (selStart in pageLayout.startCharOffset until pageLayout.endCharOffset) {
+            val sx = marginLeft(sl, selStart)
+            val sy = marginTop(sl, selStart, pageStartY.toFloat(), hRad)
+            if (Math.hypot((x - sx).toDouble(), (y - sy).toDouble()) < handleTouchRadius) return 1
+        }
+        // 计算结束手柄位置
+        val endPos = (selEnd - 1).coerceAtLeast(0)
+        if (endPos in pageLayout.startCharOffset until pageLayout.endCharOffset) {
+            val ex = marginLeft(sl, endPos)
+            val ey = marginTop(sl, endPos, pageStartY.toFloat(), hRad)
+            if (Math.hypot((x - ex).toDouble(), (y - ey).toDouble()) < handleTouchRadius) return 2
+        }
+        return 0
+    }
+
+    private fun marginLeft(sl: android.text.StaticLayout, offset: Int): Float {
+        val vw = (layoutEngine.visibleWidth).toFloat()
+        return layoutEngine.getChapterLayout(selChapter)?.let {
+            sl.getPrimaryHorizontal(offset).coerceIn(0f, vw)
+        }?.plus(resources.displayMetrics.density * 44f) ?: 0f  // marginLeft
+    }
+
+    private fun marginTop(sl: android.text.StaticLayout, offset: Int, pageStartY: Float, hRad: Float): Float {
+        val line = sl.getLineForOffset(offset)
+        return (resources.displayMetrics.density * 72f) + sl.getLineBottom(line) - pageStartY + hRad * 0.5f
+    }
+
+    /** 在当前页上应用选择高亮 + 手柄 */
     private fun applyHighlightOnCurrentPage() {
         val curSlot = slotManager.getCurSlot()
         if (curSlot.isLoaded && selChapter == curSlot.chapterIndex) {
-            highlightPage(curSlot.chapterIndex, curSlot.pageIndex, curSlot.surfaceView)
+            val cl = layoutEngine.getChapterLayout(curSlot.chapterIndex) ?: return
+            val bm = curSlot.surfaceView.getPageBitmap() ?: return
+            // 先重渲染清除旧状态，再画高亮和手柄
+            renderer.renderPage(cl, curSlot.pageIndex, bm)
+            if (selStart >= 0 && selEnd > selStart) {
+                renderer.drawSelectionHighlight(bm, cl, curSlot.pageIndex, selStart, selEnd)
+                renderer.drawSelectionHandles(bm, cl, curSlot.pageIndex, selStart, selEnd)
+            }
         }
         invalidate()
-    }
-
-    private fun highlightPage(chapterIndex: Int, pageIndex: Int, surfaceView: PageSurfaceView) {
-        val cl = layoutEngine.getChapterLayout(chapterIndex) ?: return
-        val bitmap = surfaceView.getPageBitmap() ?: return
-        if (selChapter == chapterIndex && selStart >= 0 && selEnd > selStart) {
-            renderer.drawSelectionHighlight(bitmap, cl, pageIndex, selStart, selEnd)
-        }
     }
 
     // ── 配置状态 ──
@@ -164,18 +217,18 @@ class ReadView(context: Context) : FrameLayout(context) {
                 val rawText = runBlocking { contentProvider?.invoke(chIdx) }
                 val text = rawText?.toString() ?: ""
                 if (text.isNotEmpty()) {
-                // 从点击位置向外扩展选取一个词（以空格/标点为界）
+                // 从点按位置向外扩展选词：CJK 左右各 2-3 字，英文到词边界
                 var start = charOffset
                 var end = charOffset
-                // 从点按位置向外扩展到词边界
-                fun isWordSep(c: Char): Boolean {
-                    if (c.isWhitespace()) return true
-                    val code = c.code
-                    // CJK标点范围、ASCII标点、以及其他非字母数字字符
-                    return !c.isLetterOrDigit() && code != 0x2018 && code != 0x2019 && code != 0x201C && code != 0x201D
+                val isCJK = text[charOffset].code in 0x4E00..0x9FFF || text[charOffset].code in 0x3400..0x4DBF
+                if (isCJK) {
+                    start = (charOffset - 2).coerceAtLeast(0)
+                    end = (charOffset + 3).coerceAtMost(text.length)
+                } else {
+                    fun isWordSep(c: Char): Boolean = c.isWhitespace() || (!c.isLetterOrDigit() && c != '\'' && c != '-')
+                    while (start > 0 && !isWordSep(text[start - 1])) start--
+                    while (end < text.length && !isWordSep(text[end])) end++
                 }
-                while (start > 0 && !isWordSep(text[start - 1])) start--
-                while (end < text.length && !isWordSep(text[end])) end++
                 if (end > start) {
                     val selected = text.substring(start, end)
                     // 存储选择状态并绘制高亮
@@ -342,6 +395,48 @@ class ReadView(context: Context) : FrameLayout(context) {
     // ── 触摸 ──
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        // 如果有活跃选择，先检测手柄拖拽
+        if (selChapter >= 0 && selStart >= 0 && selEnd > selStart) {
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    val handle = hitTestHandle(event.x, event.y)
+                    if (handle != 0) {
+                        draggingHandle = handle
+                        return true
+                    }
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (draggingHandle != 0) {
+                        val curSlot = slotManager.getCurSlot()
+                        val charOff = layoutEngine.getCharOffsetAtPoint(curSlot.chapterIndex, curSlot.pageIndex, event.x, event.y)
+                        if (charOff != null) {
+                            if (draggingHandle == 1) {
+                                selStart = charOff.coerceIn(0, selEnd - 1)
+                            } else {
+                                selEnd = (charOff + 1).coerceAtMost(selStart + 1)
+                            }
+                            applyHighlightOnCurrentPage()
+                        }
+                        return true
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (draggingHandle != 0) {
+                        draggingHandle = 0
+                        // 拖拽结束后通知 ReaderScreen 更新菜单
+                        val curSlot = slotManager.getCurSlot()
+                        callbacks?.let { cb ->
+                            val text = kotlinx.coroutines.runBlocking { contentProvider?.invoke(curSlot.chapterIndex) }?.toString() ?: ""
+                            if (selStart < text.length && selEnd <= text.length && selEnd > selStart) {
+                                val sel = text.substring(selStart, selEnd)
+                                cb.onTextSelected(curSlot.chapterIndex, curSlot.pageIndex, selStart, selEnd, sel, event.x, event.y)
+                            }
+                        }
+                        return true
+                    }
+                }
+            }
+        }
         return animationController.onTouchEvent(event)
     }
 

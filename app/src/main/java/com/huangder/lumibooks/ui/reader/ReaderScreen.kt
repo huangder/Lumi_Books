@@ -5,6 +5,7 @@ import android.webkit.WebView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -866,12 +867,15 @@ private fun TocSheet(
     }
 
     var isClosing by remember { mutableStateOf(false) }
+    var pendingJumpIndex by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(isClosing) {
         if (isClosing) {
             coroutineScope {
                 launch { sheetAlpha.animateTo(0f, tween(200)) }
                 launch { sheetOffset.animateTo(1f, tween(200, easing = AppEasing.Accelerate)) }
             }
+            pendingJumpIndex?.let { onChapterSelected(it) }
+            pendingJumpIndex = null
             onDismiss()
         }
     }
@@ -921,7 +925,8 @@ private fun TocSheet(
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(if (isCurrent) AppColors.Accent.copy(alpha = 0.1f) else Color.Transparent)
                                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                                    onChapterSelected(index)
+                                    pendingJumpIndex = index
+                                    isClosing = true
                                 }
                                 .padding(horizontal = 16.dp, vertical = 12.dp)
                         ) {
@@ -1199,7 +1204,7 @@ private fun SelectionMenuOverlay(
         Row(
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .offset { IntOffset(0, (if (state.touchY > 800f) state.touchY - 140f else state.touchY + 40f).toInt()) }
+                .offset { IntOffset(0, (state.touchY - 160f).coerceAtLeast(40f).toInt()) }
                 .clip(RoundedCornerShape(20.dp))
                 .background(menuBg)
                 .padding(horizontal = 4.dp, vertical = 6.dp),
@@ -1335,12 +1340,15 @@ private fun NotesListSheet(
     }
 
     var isClosing by remember { mutableStateOf(false) }
+    var pendingJumpNote by remember { mutableStateOf<com.huangder.lumibooks.domain.model.Note?>(null) }
     LaunchedEffect(isClosing) {
         if (isClosing) {
             coroutineScope {
                 launch { sheetAlpha.animateTo(0f, tween(200)) }
                 launch { sheetOffset.animateTo(1f, tween(200, easing = AppEasing.Accelerate)) }
             }
+            pendingJumpNote?.let { onNoteClick(it) }
+            pendingJumpNote = null
             onDismiss()
         }
     }
@@ -1400,7 +1408,10 @@ private fun NotesListSheet(
                             val item = items[idx]
                             NoteItem(
                                 item = item,
-                                onNoteClick = { onNoteClick(item) },
+                                onNoteClick = {
+                                    pendingJumpNote = item
+                                    isClosing = true
+                                },
                                 onDelete = { onDeleteNote(item) }
                             )
                             if (idx < items.size - 1) {
@@ -1438,8 +1449,17 @@ private fun NoteItem(
     onNoteClick: () -> Unit,
     onDelete: () -> Unit
 ) {
-    var swipeOffset by remember { mutableFloatStateOf(0f) }
-    val dismissThreshold = 120f
+    val swipeAnim = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+    val dismissThreshold = 100f
+    val trashSize = 44f
+    var isDragging by remember { mutableStateOf(false) }
+
+    val trashAlpha = remember { Animatable(0f) }
+    LaunchedEffect(swipeAnim.value) {
+        val fraction = (-swipeAnim.value / dismissThreshold).coerceIn(0f, 1f)
+        trashAlpha.snapTo(fraction)
+    }
 
     Box(
         modifier = Modifier
@@ -1447,40 +1467,64 @@ private fun NoteItem(
             .clip(RoundedCornerShape(12.dp))
             .background(AppColors.BgGray.copy(alpha = 0.5f))
     ) {
-        // 滑动后显露的删除区域
+        // 红色垃圾桶（右侧滑入）
         Box(
             modifier = Modifier
                 .matchParentSize()
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color(0xFFE53935).copy(alpha = (-swipeOffset / dismissThreshold).coerceIn(0f, 0.9f))),
+                .padding(end = 12.dp),
             contentAlignment = Alignment.CenterEnd
         ) {
-            if (swipeOffset < -20f) {
+            Box(
+                modifier = Modifier
+                    .graphicsLayer { alpha = trashAlpha.value }
+                    .size(trashSize.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFE53935))
+                    .clickable { onDelete() },
+                contentAlignment = Alignment.Center
+            ) {
                 Icon(
                     Icons.Default.Close, "删除",
                     tint = Color.White,
-                    modifier = Modifier.padding(end = 20.dp).size(20.dp)
+                    modifier = Modifier.size(20.dp)
                 )
             }
         }
 
-        // 内容（可滑动）
+        // 内容（手势滑动层）
         Box(
             modifier = Modifier
-                .offset { IntOffset(swipeOffset.toInt(), 0) }
+                .offset { IntOffset(swipeAnim.value.toInt(), 0) }
                 .clip(RoundedCornerShape(12.dp))
                 .background(AppColors.BgGray)
                 .pointerInput(Unit) {
                     detectHorizontalDragGestures(
+                        onDragStart = { isDragging = true },
                         onDragEnd = {
-                            if (-swipeOffset > dismissThreshold) {
-                                onDelete()
+                            isDragging = false
+                            scope.launch {
+                                if (-swipeAnim.value > dismissThreshold * 1.5f) {
+                                    // 惯性滑出 → 删除
+                                    swipeAnim.animateTo(-600f, tween(200))
+                                    onDelete()
+                                } else if (-swipeAnim.value > dismissThreshold * 0.7f) {
+                                    // 超过阈值 → 吸附到垃圾桶位置
+                                    swipeAnim.animateTo(-dismissThreshold, spring(dampingRatio = 0.6f))
+                                } else {
+                                    // 回弹
+                                    swipeAnim.animateTo(0f, spring(dampingRatio = 0.6f))
+                                }
                             }
-                            swipeOffset = 0f
                         },
-                        onDragCancel = { swipeOffset = 0f },
+                        onDragCancel = {
+                            isDragging = false
+                            scope.launch { swipeAnim.animateTo(0f, spring(dampingRatio = 0.6f)) }
+                        },
                         onHorizontalDrag = { _, dragAmount ->
-                            swipeOffset = (swipeOffset + dragAmount).coerceIn(-dismissThreshold * 2, 0f)
+                            scope.launch {
+                                val newVal = (swipeAnim.value + dragAmount).coerceIn(-dismissThreshold * 2, 0f)
+                                swipeAnim.snapTo(newVal)
+                            }
                         }
                     )
                 }
