@@ -58,10 +58,10 @@ class ReadView(context: Context) : FrameLayout(context) {
     // 手柄拖拽
     private var draggingHandle: Int = 0  // 0=none, 1=start, 2=end
 
-    /** 手柄绘制半径（px），必须和 PageRenderer.drawHandle 的 radius 一致 */
-    private val handleRadiusPx: Float get() = 12f * resources.displayMetrics.density
-    /** 触控热区半径（px），比手柄大一圈方便手指操作 */
-    private val handleTouchRadius: Float get() = 28f * resources.displayMetrics.density
+    /** 手柄绘制半径，和 PageRenderer.drawHandle 的 radius 一致 */
+    private val handleRadiusPx: Float get() = 9f * resources.displayMetrics.density
+    /** 触控热区半径，比手柄大一圈 */
+    private val handleTouchRadius: Float get() = 24f * resources.displayMetrics.density
 
     /** 清除选择并重绘 */
     fun clearSelection() {
@@ -84,14 +84,12 @@ class ReadView(context: Context) : FrameLayout(context) {
         applyHighlightOnCurrentPage()
     }
 
-    /** 获取手柄圆心坐标（和 PageRenderer.drawHandle 完全一致的公式） */
+    /** 手柄圆心坐标（直接用 renderer 的真实 margin 值，保证和绘制位置一致） */
     private fun getHandleCenter(sl: android.text.StaticLayout, charOffset: Int, pageStartY: Float): Pair<Float, Float>? {
         if (charOffset < 0 || charOffset >= sl.text.length) return null
-        val ml = currentMarginHorizDp * resources.displayMetrics.density
-        val mt = currentMarginVertDp * resources.displayMetrics.density
         val line = sl.getLineForOffset(charOffset)
-        val cx = ml + sl.getPrimaryHorizontal(charOffset)
-        val cy = mt + sl.getLineBottom(line) - pageStartY + handleRadiusPx * 0.5f
+        val cx = renderer.renderMarginLeft + sl.getPrimaryHorizontal(charOffset)
+        val cy = renderer.renderMarginTop + sl.getLineBottom(line) - pageStartY + handleRadiusPx * 0.5f
         return cx to cy
     }
 

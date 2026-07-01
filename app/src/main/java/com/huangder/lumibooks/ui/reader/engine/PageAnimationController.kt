@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.ui.reader.engine
 
 import android.graphics.Canvas
+import android.view.GestureDetector
 import android.view.animation.PathInterpolator
 import android.view.MotionEvent
 import android.view.animation.Interpolator
@@ -51,10 +52,20 @@ abstract class PageAnimationController(
     protected var hasMoved: Boolean = false
     /** 是否触发了长按 */
     private var isLongPressed: Boolean = false
-    /** 长按检测 Runnable */
-    private var longPressRunnable: Runnable? = null
     /** 触摸按下时间 */
     protected var downTime: Long = 0L
+
+    /** 系统 GestureDetector 处理长按（比手动 postDelayed 更可靠） */
+    private val gestureDetector = GestureDetector(readView.context, object : GestureDetector.SimpleOnGestureListener() {
+        override fun onLongPress(e: MotionEvent) {
+            if (!hasMoved && isDragging) {
+                isLongPressed = true
+                isDragging = false
+                onLongPress?.invoke(e.x, e.y)
+            }
+        }
+        override fun onSingleTapUp(e: MotionEvent): Boolean = false  // 我们自己处理 tap
+    })
     /** 本次动画是翻页（true）还是回弹（false） */
     private var isFlipAnim: Boolean = false
     /** 翻页完成后阴影渐隐 alpha（供子类 onDraw 读取） */
@@ -83,6 +94,9 @@ abstract class PageAnimationController(
     // ── 触摸处理 ──
 
     fun onTouchEvent(event: MotionEvent): Boolean {
+        // 🔥 GestureDetector 处理长按（系统级，更可靠）
+        gestureDetector.onTouchEvent(event)
+
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
                 abortAnim()
@@ -96,26 +110,10 @@ abstract class PageAnimationController(
                 downTime = System.currentTimeMillis()
                 direction = Direction.NONE
                 isDragging = true
-
-                // 长按检测（500ms）
-                val lpX = event.x; val lpY = event.y
-                longPressRunnable = Runnable {
-                    if (!hasMoved && isDragging && !isLongPressed) {
-                        isLongPressed = true
-                        isDragging = false
-                        onLongPress?.invoke(lpX, lpY)
-                    }
-                }
-                longPressRunnable?.let { readView.postDelayed(it, 500) }
                 return true
             }
 
             MotionEvent.ACTION_MOVE -> {
-                // 移动后取消长按
-                if (hasMoved && longPressRunnable != null) {
-                    readView.removeCallbacks(longPressRunnable)
-                    longPressRunnable = null
-                }
                 if (!isDragging && !isLongPressed) return false
 
                 val dx = event.x - lastX
@@ -140,10 +138,6 @@ abstract class PageAnimationController(
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                // 取消长按检测
-                longPressRunnable?.let { readView.removeCallbacks(it) }
-                longPressRunnable = null
-
                 // 长按已触发，跳过点击逻辑
                 if (isLongPressed) {
                     isLongPressed = false

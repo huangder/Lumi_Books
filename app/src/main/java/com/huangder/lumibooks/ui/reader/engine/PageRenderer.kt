@@ -16,8 +16,8 @@ class PageRenderer {
     // ── 渲染参数 ──
     private var bgColor: Int = 0xFFFBFBFC.toInt()
     private var textColor: Int = 0xFF333333.toInt()
-    private var marginLeft: Float = 48f
-    private var marginTop: Float = 32f
+    internal var renderMarginLeft: Float = 48f   // ReadView 手柄坐标同步用
+    internal var renderMarginTop: Float = 32f
     private var visibleHeight: Float = 1856f
     private var canvasWidth: Int = 1080
     private var canvasHeight: Int = 1920
@@ -41,8 +41,8 @@ class PageRenderer {
         visibleHeight = visibleHeightPx
         bgColor = backgroundColor
         this.textColor = textColor
-        marginLeft = marginLeftPx
-        marginTop = marginTopPx
+        renderMarginLeft = marginLeftPx
+        renderMarginTop = marginTopPx
 
         if (sizeChanged) {
             clearPool()
@@ -70,7 +70,7 @@ class PageRenderer {
 
         // 绘制文本行：用 StaticLayout.draw() 比逐行 drawText 更可靠
         canvas.save()
-        canvas.translate(marginLeft, marginTop)
+        canvas.translate(renderMarginLeft, renderMarginTop)
         // 🔥 clipRect 必须在 T2（-pageStartY）之前执行！
         // 否则 T2 会把裁剪区域也偏移 -pageStartY，导致 page 1+ 的裁剪飞到 bitmap 上方变成空白页
         val pageStartY = sl.getLineTop(pageLayout.startLine)
@@ -143,7 +143,7 @@ class PageRenderer {
         pageIndex: Int,
         selectionStart: Int,
         selectionEnd: Int,
-        highlightColor: Int = 0x50D4B896,
+        highlightColor: Int = 0x70FFE082,
         cornerRadius: Float = 6f
     ) {
         val pageLayout = chapterLayout.pages.getOrNull(pageIndex) ?: return
@@ -169,14 +169,14 @@ class PageRenderer {
             val lineStart = if (line == startLine) selStart else sl.getLineStart(line)
             val lineEnd = if (line == endLine) selEnd - 1 else sl.getLineStart(line + 1) - 1
 
-            val left = marginLeft + sl.getPrimaryHorizontal(lineStart).coerceAtMost(sl.getPrimaryHorizontal(lineEnd + 1))
-            val right = marginLeft + sl.getPrimaryHorizontal(lineStart).coerceAtLeast(sl.getPrimaryHorizontal(lineEnd + 1))
-            val top = marginTop + sl.getLineTop(line) - pageStartY
-            val bottom = marginTop + sl.getLineBottom(line) - pageStartY
+            val left = renderMarginLeft + sl.getPrimaryHorizontal(lineStart).coerceAtMost(sl.getPrimaryHorizontal(lineEnd + 1))
+            val right = renderMarginLeft + sl.getPrimaryHorizontal(lineStart).coerceAtLeast(sl.getPrimaryHorizontal(lineEnd + 1))
+            val top = renderMarginTop + sl.getLineTop(line) - pageStartY
+            val bottom = renderMarginTop + sl.getLineBottom(line) - pageStartY
 
             // 扩展左右边界确保可见
-            val adjustedLeft = (left - 2f).coerceAtLeast(marginLeft)
-            val adjustedRight = (right + 2f).coerceAtMost((canvasWidth - marginLeft * 2).toFloat() + marginLeft)
+            val adjustedLeft = (left - 2f).coerceAtLeast(renderMarginLeft)
+            val adjustedRight = (right + 2f).coerceAtMost((canvasWidth - renderMarginLeft * 2).toFloat() + renderMarginLeft)
             val adjustedTop = top - 1f
             val adjustedBottom = bottom + 1f
 
@@ -205,19 +205,19 @@ class PageRenderer {
         val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt(); style = Paint.Style.STROKE; strokeWidth = 3f }
 
         // 起始手柄
-        drawHandle(canvas, sl, selStart, marginLeft, marginTop, pageStartY.toFloat(), handleRadius, paint, borderPaint)
+        drawHandle(canvas, sl, selStart, renderMarginLeft, renderMarginTop, pageStartY.toFloat(), handleRadius, paint, borderPaint)
         // 结束手柄
-        drawHandle(canvas, sl, selEnd - 1, marginLeft, marginTop, pageStartY.toFloat(), handleRadius, paint, borderPaint)
+        drawHandle(canvas, sl, selEnd - 1, renderMarginLeft, renderMarginTop, pageStartY.toFloat(), handleRadius, paint, borderPaint)
     }
 
     private fun drawHandle(
         canvas: Canvas, sl: android.text.StaticLayout, charOffset: Int,
-        marginLeft: Float, marginTop: Float, pageStartY: Float,
+        renderMarginLeft: Float, marginTop: Float, pageStartY: Float,
         radius: Float, fill: Paint, border: Paint
     ) {
         if (charOffset < 0 || charOffset >= sl.text.length) return
         val line = sl.getLineForOffset(charOffset)
-        val cx = marginLeft + sl.getPrimaryHorizontal(charOffset)
+        val cx = renderMarginLeft + sl.getPrimaryHorizontal(charOffset)
         val cy = marginTop + sl.getLineBottom(line) - pageStartY + radius * 0.5f
         canvas.drawCircle(cx, cy, radius, fill)
         canvas.drawCircle(cx, cy, radius, border)
