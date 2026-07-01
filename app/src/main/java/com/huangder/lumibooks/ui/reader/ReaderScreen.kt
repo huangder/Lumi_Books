@@ -55,6 +55,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,10 +63,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.Canvas
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
@@ -102,6 +108,13 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     // ReadView 引用
     val readViewRef = remember { mutableStateOf<ReadView?>(null) }
 
+    // 选择手柄屏幕位置（独立追踪，拖拽期间不经过字符偏移反算，避免抽搐）
+    var startHandlePos by remember { mutableStateOf(Offset.Zero) }
+    var endHandlePos by remember { mutableStateOf(Offset.Zero) }
+    var showHandles by remember { mutableStateOf(false) }
+    // 高亮保存后延迟清除选区标志（Bug 3 修复）
+    var pendingClearSelection by remember { mutableStateOf(false) }
+
     // TOC 跳转标记（区分用户点击 TOC 和正常翻页带来的章节变化）
     val isTocJump = remember { mutableStateOf(false) }
 
@@ -115,6 +128,25 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     // 监听 loading 状态，完成后通知 NavGraph 关闭过渡页
     LaunchedEffect(uiState.isLoading) {
         if (!uiState.isLoading) onLoadingComplete()
+    }
+
+    // 文本选择状态
+    var selectionState by remember { mutableStateOf<SelectionState?>(null) }
+    var showNoteInput by remember { mutableStateOf(false) }
+    var showNotesList by remember { mutableStateOf(false) }
+    var noteInputText by remember { mutableStateOf("") }
+
+    // 🔥 Bug 3 修复：notes 更新后清除临时选区，确保持久化高亮可见
+    LaunchedEffect(notes.size) {
+        if (pendingClearSelection) {
+            pendingClearSelection = false
+            // readView.setSavedNotes 已在 AndroidView.update 中调用
+            // 延迟一帧确保 bitmap 已重绘
+            kotlinx.coroutines.delay(50)
+            selectionState = null
+            showHandles = false
+            readViewRef.value?.clearSelection()
+        }
     }
 
     // TOC 跳转：当 currentChapterIndex 变化且是 TOC 触发时，跳转 ReadView
@@ -135,12 +167,6 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     var searchResults by remember { mutableStateOf<List<ReaderViewModel.SearchResult>>(emptyList()) }
     var isSearching by remember { mutableStateOf(false) }
     var hasSearched by remember { mutableStateOf(false) }
-
-    // 文本选择状态
-    var selectionState by remember { mutableStateOf<SelectionState?>(null) }
-    var showNoteInput by remember { mutableStateOf(false) }
-    var showNotesList by remember { mutableStateOf(false) }
-    var noteInputText by remember { mutableStateOf("") }
 
     val menuBgColor = when (uiState.readerTheme) {
         "night" -> Color(0xFF1a1a1a)
@@ -246,10 +272,24 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                     hasNote = existingNotes.any { it.note.isNotEmpty() },
                                     existingNote = existingNotes.firstOrNull { it.note.isNotEmpty() }
                                 )
+                                // 初始化手柄位置（仅在选择开始时，不经过 onSelectionChanged 反馈）
+                                readViewRef.value?.getSelectionHandleCenters()?.let { hc ->
+                                    startHandlePos = Offset(hc.startCx, hc.startCy)
+                                    endHandlePos = Offset(hc.endCx, hc.endCy)
+                                    showHandles = true
+                                }
                             }
                         })
                         setContentProvider { chapterIndex ->
                             viewModel.getChapterText(chapterIndex)
+                        }
+                        // 🔥 选择变化回调（更新 Compose 手柄位置）
+                        onSelectionChanged = { chIdx, pageIdx, start, end, text ->
+                            // 手柄位置由 startHandlePos/endHandlePos 独立追踪
+                            // 此处仅处理清除选区的通知（来自 ReadView.clearSelection）
+                            if (start < 0 || end <= start) {
+                                showHandles = false
+                            }
                         }
                         readViewRef.value = this
                     }
@@ -277,6 +317,42 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         // ── 旧 WebView 路径（PDF） ──
         if (!uiState.useNewEngine) {
             LegacyWebViewContent(uiState, viewModel, composeBgColor)
+        }
+
+        // ── 选择手柄覆盖层（Compose 层，仅新引擎 + 活跃选择时显示）──
+        if (uiState.useNewEngine && showHandles && selectionState != null) {
+            SelectionHandle(
+                centerX = startHandlePos.x,
+                centerY = startHandlePos.y,
+                onDrag = { newCx, newCy ->
+                    // 直接更新手柄位置（不经过字符偏移反算，避免抽搐）
+                    startHandlePos = Offset(newCx, newCy)
+                    readViewRef.value?.moveSelectionHandle(1, newCx, newCy)
+                },
+                onDragEnd = {
+                    // 松手后从字符偏移同步一次，修正漂移
+                    readViewRef.value?.getSelectionHandleCenters()?.let { hc ->
+                        startHandlePos = Offset(hc.startCx, hc.startCy)
+                        endHandlePos = Offset(hc.endCx, hc.endCy)
+                    }
+                }
+            )
+            SelectionHandle(
+                centerX = endHandlePos.x,
+                centerY = endHandlePos.y,
+                onDrag = { newCx, newCy ->
+                    // 直接更新手柄位置（不经过字符偏移反算，避免抽搐）
+                    endHandlePos = Offset(newCx, newCy)
+                    readViewRef.value?.moveSelectionHandle(2, newCx, newCy)
+                },
+                onDragEnd = {
+                    // 松手后从字符偏移同步一次，修正漂移
+                    readViewRef.value?.getSelectionHandleCenters()?.let { hc ->
+                        startHandlePos = Offset(hc.startCx, hc.startCy)
+                        endHandlePos = Offset(hc.endCx, hc.endCy)
+                    }
+                }
+            )
         }
 
         // ── 覆盖层 UI（新旧引擎共享） ──
@@ -479,7 +555,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         onHighlight = {
             val s = selectionState ?: return@SelectionMenuOverlay
             viewModel.addNote(s.selectedText, "", s.chapterIndex, s.charStart, s.charEnd, "#FFEB3B")
-            selectionState = null
+            // 🔥 Bug 3 修复：延迟清除选区，等 notes 更新后 ReadView.setSavedNotes 再清除
+            pendingClearSelection = true
         },
         onNote = {
             showNoteInput = true
@@ -1592,5 +1669,62 @@ private fun parseNoteColor(colorString: String): Color {
         Color(android.graphics.Color.parseColor(colorString))
     } catch (_: IllegalArgumentException) {
         Color(0xFFEBB700)
+    }
+}
+
+// ── 选择手柄 Composable ──
+
+/**
+ * 文本选择手柄（圆形，深红棕色 + 白色边框）。
+ * 在 Compose 层渲染，通过 [ReadView.moveSelectionHandle] 驱动选择范围变更。
+ */
+@Composable
+private fun SelectionHandle(
+    centerX: Float,
+    centerY: Float,
+    handleColor: Color = Color(0xFF6C231D),
+    onDrag: (newCenterX: Float, newCenterY: Float) -> Unit,
+    onDragEnd: () -> Unit = {}
+) {
+    val density = LocalDensity.current
+    val handleSizeDp = 24.dp
+    val handleRadiusPx = with(density) { handleSizeDp.toPx() / 2f }
+
+    // 🔥 确保 pointerInput 内部捕获最新的值（避免 recompose 后使用旧 lambda）
+    val currentCenterX by rememberUpdatedState(centerX)
+    val currentCenterY by rememberUpdatedState(centerY)
+    val currentOnDrag by rememberUpdatedState(onDrag)
+    val currentOnDragEnd by rememberUpdatedState(onDragEnd)
+
+    Box(
+        Modifier
+            .offset {
+                IntOffset(
+                    (currentCenterX - handleRadiusPx).toInt(),
+                    (currentCenterY - handleRadiusPx).toInt()
+                )
+            }
+            .size(handleSizeDp)
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragEnd = { currentOnDragEnd() },
+                    onDragCancel = { },
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        currentOnDrag(
+                            currentCenterX + dragAmount.x,
+                            currentCenterY + dragAmount.y
+                        )
+                    }
+                )
+            }
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            val cx = size.width / 2f
+            val cy = size.height / 2f
+            val r = size.minDimension / 2f
+            drawCircle(handleColor, r, Offset(cx, cy))
+            drawCircle(Color.White, r, Offset(cx, cy), style = Stroke(3.dp.toPx()))
+        }
     }
 }
