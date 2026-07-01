@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.ui.reader.engine
 
 import android.graphics.Paint
+import android.graphics.Typeface
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
@@ -27,6 +28,7 @@ class PageLayoutEngine {
     private var marginBottom: Float = 32f
     private var lineSpacingExtra: Float = 8f
     private var lineSpacingMultiplier: Float = 1.0f
+    private var letterSpacing: Float = 0f
 
     private val textPaint: TextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = 56f  // 默认 16sp * 3.5 density → 56px
@@ -62,6 +64,9 @@ class PageLayoutEngine {
         fontSizePx: Float,
         lineSpacingPx: Float = 8f,
         lineSpacingMult: Float = 1.0f,
+        letterSpacingPx: Float = 0f,
+        fontType: String = "system",
+        customTypeface: android.graphics.Typeface? = null,
         marginLeftPx: Float = 48f,
         marginRightPx: Float = 48f,
         marginTopPx: Float = 32f,
@@ -71,9 +76,10 @@ class PageLayoutEngine {
     ) {
         val changed = textWidth != width || textHeight != height ||
                 textPaint.textSize != fontSizePx || lineSpacingExtra != lineSpacingPx ||
-                lineSpacingMultiplier != lineSpacingMult || marginLeft != marginLeftPx ||
-                marginRight != marginRightPx || marginTop != marginTopPx ||
-                marginBottom != marginBottomPx
+                lineSpacingMultiplier != lineSpacingMult ||
+                this.letterSpacing != letterSpacingPx ||
+                marginLeft != marginLeftPx || marginRight != marginRightPx ||
+                marginTop != marginTopPx || marginBottom != marginBottomPx
 
         textWidth = width
         textHeight = height
@@ -83,9 +89,21 @@ class PageLayoutEngine {
         marginBottom = marginBottomPx
         lineSpacingExtra = lineSpacingPx
         lineSpacingMultiplier = lineSpacingMult
+        this.letterSpacing = letterSpacingPx
         textPaint.textSize = fontSizePx
+        textPaint.letterSpacing = letterSpacingPx / fontSizePx  // StaticLayout 使用比例值
         textPaint.color = textColor
         textPaint.linkColor = textColor   // 🔥 同步：避免主题切换后 URLSpan 颜色不同步
+
+        // 字体
+        val tf = when (fontType) {
+            "serif" -> Typeface.SERIF
+            "sans_serif" -> Typeface.SANS_SERIF
+            "monospace" -> Typeface.MONOSPACE
+            "dingli_song" -> customTypeface ?: Typeface.DEFAULT
+            else -> Typeface.DEFAULT
+        }
+        textPaint.typeface = tf
         this.chapterCount = chapterCount
 
         if (changed) {
@@ -236,6 +254,43 @@ class PageLayoutEngine {
      */
     fun getPageLayout(chapterIndex: Int, pageInChapter: Int): PageLayout? {
         return layoutCache[chapterIndex]?.pages?.getOrNull(pageInChapter)
+    }
+
+    /**
+     * 将画布坐标 (x, y) 转换为章节内的字符偏移量。
+     * @return 字符偏移量，如果坐标不在文本区域则返回 null
+     */
+    fun getCharOffsetAtPoint(chapterIndex: Int, pageInChapter: Int, x: Float, y: Float): Int? {
+        val chapterLayout = layoutCache[chapterIndex] ?: return null
+        val pageLayout = chapterLayout.pages.getOrNull(pageInChapter) ?: return null
+        val sl = chapterLayout.staticLayout
+
+        // 转换坐标：Canvas绘制时translate了marginLeft/marginTop和页偏移
+        val textX = x - marginLeft
+        val textY = y - marginTop + sl.getLineTop(pageLayout.startLine)
+
+        if (textX < 0 || textY < 0) return null
+
+        val line = sl.getLineForVertical(textY.toInt())
+        if (line < pageLayout.startLine || line >= pageLayout.endLine) return null
+
+        val offset = sl.getOffsetForHorizontal(line, textX)
+        return offset.coerceIn(pageLayout.startCharOffset, pageLayout.endCharOffset - 1)
+    }
+
+    /**
+     * 根据字符偏移量获取该字符所在行的视觉边界（用于高亮绘制）。
+     * @return (left, top, right, bottom) 或 null
+     */
+    fun getCharBounds(chapterIndex: Int, charOffset: Int): android.graphics.Rect? {
+        val chapterLayout = layoutCache[chapterIndex] ?: return null
+        val sl = chapterLayout.staticLayout
+        if (charOffset < 0 || charOffset > sl.text.length) return null
+        val line = sl.getLineForOffset(charOffset)
+        val left = sl.getPrimaryHorizontal(charOffset)
+        val top = sl.getLineTop(line).toFloat()
+        val bottom = sl.getLineBottom(line).toFloat()
+        return android.graphics.Rect(left.toInt(), top.toInt(), (left + 1).toInt(), bottom.toInt())
     }
 
     // ── 缓存管理 ──

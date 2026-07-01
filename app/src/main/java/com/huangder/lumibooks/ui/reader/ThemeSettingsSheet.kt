@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.reader
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -8,8 +9,11 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -39,9 +43,11 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.ui.animation.AppEasing
+import com.huangder.lumibooks.ui.animation.cardPressEffect
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import kotlinx.coroutines.coroutineScope
@@ -52,7 +58,7 @@ import com.huangder.lumibooks.ui.theme.DingliSong
 import com.huangder.lumibooks.ui.theme.ReaderColors
 
 /**
- * 主题设置弹窗（字体大小 + 主题切换）
+ * 主题设置弹窗（字体大小 + 主题切换 + 高级设置入口）
  */
 @Composable
 fun ThemeSettingsSheet(
@@ -61,6 +67,7 @@ fun ThemeSettingsSheet(
     currentTheme: String,
     onFontSizeChange: (Float) -> Unit,
     onThemeChange: (String) -> Unit,
+    onOpenAdvanced: () -> Unit,
     onDismiss: () -> Unit
 ) {
     if (!visible) return
@@ -109,11 +116,17 @@ fun ThemeSettingsSheet(
                 .padding(AppSpace.lg)
         ) {
             Column {
-                // 标题栏
+                // 标题栏：❌ 标题 ✅
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("主题与设置", fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = DingliSong, color = AppColors.TextPrimary)
-                    Spacer(Modifier.weight(1f))
-                    Icon(Icons.Outlined.Close, "关闭", tint = AppColors.TextSecondary, modifier = Modifier.size(24.dp).clickable { isClosing = true })
+                    Box(
+                        modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.BgGray).clickable { isClosing = true },
+                        contentAlignment = Alignment.Center
+                    ) { Icon(Icons.Outlined.Close, "关闭", tint = AppColors.TextSecondary, modifier = Modifier.size(18.dp)) }
+                    Text("主题与设置", fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = DingliSong, color = AppColors.TextPrimary, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
+                    Box(
+                        modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.CardBg).clickable { isClosing = true },
+                        contentAlignment = Alignment.Center
+                    ) { Text("✓", fontSize = 16.sp, color = AppColors.Accent) }
                 }
 
                 Spacer(Modifier.height(AppSpace.xl))
@@ -129,6 +142,24 @@ fun ThemeSettingsSheet(
                 Text("阅读主题", fontSize = AppType.Body, fontWeight = FontWeight.SemiBold, color = AppColors.TextPrimary)
                 Spacer(Modifier.height(AppSpace.md))
                 ThemeSelector(currentTheme = currentTheme, onThemeChange = onThemeChange)
+
+                Spacer(Modifier.height(AppSpace.lg))
+
+                // 高级设置入口
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(AppColors.BgGray)
+                        .cardPressEffect()
+                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                            onOpenAdvanced()
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("高级设置", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = AppColors.TextPrimary)
+                }
             }
         }
     }
@@ -204,3 +235,289 @@ private fun ThemeSelector(currentTheme: String, onThemeChange: (String) -> Unit)
 }
 
 private data class ThemeOption(val key: String, val label: String, val bgColor: Color, val textColor: Color)
+
+/**
+ * 高级排版设置弹窗——比主题设置更高的底部弹出容器。
+ * 布局（从上到下）：预览框 → 行距 → 字间距 → 页边距 → 字体选择
+ */
+@Composable
+fun AdvancedSettingsSheet(
+    visible: Boolean,
+    previewText: String,
+    currentLineHeight: Float,
+    currentLetterSpacing: Float,
+    currentFontType: String,
+    currentMarginHoriz: Float,
+    currentMarginVert: Float,
+    currentBgColor: Color,
+    currentTextColor: Color,
+    currentFontSizeSp: Float,
+    onLineHeightChange: (Float) -> Unit,
+    onLetterSpacingChange: (Float) -> Unit,
+    onFontTypeChange: (String) -> Unit,
+    onMarginHorizChange: (Float) -> Unit,
+    onMarginVertChange: (Float) -> Unit,
+    onDismiss: () -> Unit
+) {
+    if (!visible) return
+
+    val sheetAlpha = remember { Animatable(0f) }
+    val sheetOffset = remember { Animatable(1f) }
+
+    LaunchedEffect(visible) {
+        if (visible) {
+            coroutineScope {
+                launch { sheetAlpha.animateTo(1f, tween(250)) }
+                launch { sheetOffset.snapTo(1f); sheetOffset.animateTo(0f, tween(300, easing = AppEasing.Smooth)) }
+            }
+        }
+    }
+
+    var isClosing by remember { mutableStateOf(false) }
+    LaunchedEffect(isClosing) {
+        if (isClosing) {
+            coroutineScope {
+                launch { sheetAlpha.animateTo(0f, tween(200)) }
+                launch { sheetOffset.animateTo(1f, tween(200, easing = AppEasing.Accelerate)) }
+            }
+            onDismiss()
+        }
+    }
+
+    // 预览文本用的字体
+    val previewFont = when (currentFontType) {
+        "serif" -> androidx.compose.ui.text.font.FontFamily.Serif
+        "sans_serif" -> androidx.compose.ui.text.font.FontFamily.SansSerif
+        "monospace" -> androidx.compose.ui.text.font.FontFamily.Monospace
+        else -> DingliSong
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        // 遮罩
+        Box(
+            Modifier.fillMaxSize()
+                .graphicsLayer { alpha = sheetAlpha.value }
+                .background(Color.Black.copy(alpha = 0.1f))
+                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { isClosing = true }
+        )
+
+        // 底部弹出（更高容器）
+        Box(
+            Modifier.align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .fillMaxHeight(0.82f)
+                .graphicsLayer { translationY = sheetOffset.value * size.height; alpha = sheetAlpha.value }
+                .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .background(AppColors.CardBg)
+                .navigationBarsPadding()
+                .padding(AppSpace.lg)
+        ) {
+            Column {
+                // 标题栏：❌ 标题 ✅
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.BgGray).clickable { isClosing = true },
+                        contentAlignment = Alignment.Center
+                    ) { Icon(Icons.Outlined.Close, "取消", tint = AppColors.TextSecondary, modifier = Modifier.size(18.dp)) }
+                    Text("高级设置", fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = DingliSong, color = AppColors.TextPrimary, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
+                    Box(
+                        modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.CardBg).clickable { isClosing = true },
+                        contentAlignment = Alignment.Center
+                    ) { Text("✓", fontSize = 16.sp, color = AppColors.Accent) }
+                }
+
+                Spacer(Modifier.height(AppSpace.md))
+
+                // ── 预览框 ──
+                Text("预览", fontSize = AppType.Body, fontWeight = FontWeight.SemiBold, color = AppColors.TextPrimary)
+                Spacer(Modifier.height(AppSpace.sm))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(120.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(currentBgColor)
+                        .padding(horizontal = (currentMarginHoriz / 3).dp, vertical = (currentMarginVert / 5).dp)
+                ) {
+                    Text(
+                        text = previewText.ifBlank { "落霞与孤鹜齐飞，秋水共长天一色。渔舟唱晚，响穷彭蠡之滨；雁阵惊寒，声断衡阳之浦。" },
+                        fontSize = currentFontSizeSp.sp,
+                        color = currentTextColor.copy(alpha = 0.7f),
+                        fontFamily = previewFont,
+                        lineHeight = (currentFontSizeSp * currentLineHeight).sp,
+                        letterSpacing = currentLetterSpacing.sp,
+                        maxLines = 4,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Spacer(Modifier.height(AppSpace.md))
+
+                // 可滚动调节区
+                LazyColumn(modifier = Modifier.weight(1f)) {
+                    // ── 行距 ──
+                    item {
+                        Text("行距", fontSize = AppType.Body, fontWeight = FontWeight.SemiBold, color = AppColors.TextPrimary)
+                        Spacer(Modifier.height(AppSpace.xs))
+                        TypoSlider(
+                            value = currentLineHeight,
+                            range = 1.0f..2.5f,
+                            step = 0.1f,
+                            format = { String.format("%.1fx", it) },
+                            onChange = onLineHeightChange
+                        )
+                        Spacer(Modifier.height(AppSpace.lg))
+                    }
+
+                    // ── 字间距 ──
+                    item {
+                        Text("字间距", fontSize = AppType.Body, fontWeight = FontWeight.SemiBold, color = AppColors.TextPrimary)
+                        Spacer(Modifier.height(AppSpace.xs))
+                        TypoSlider(
+                            value = currentLetterSpacing,
+                            range = 0f..10f,
+                            step = 0.5f,
+                            format = { String.format("%.1f sp", it) },
+                            onChange = onLetterSpacingChange
+                        )
+                        Spacer(Modifier.height(AppSpace.lg))
+                    }
+
+                    // ── 左右边距 ──
+                    item {
+                        Text("左右边距", fontSize = AppType.Body, fontWeight = FontWeight.SemiBold, color = AppColors.TextPrimary)
+                        Spacer(Modifier.height(AppSpace.xs))
+                        TypoSlider(
+                            value = currentMarginHoriz,
+                            range = 20f..80f,
+                            step = 2f,
+                            format = { "${it.toInt()} dp" },
+                            onChange = onMarginHorizChange
+                        )
+                        Spacer(Modifier.height(AppSpace.lg))
+                    }
+
+                    // ── 上下边距 ──
+                    item {
+                        Text("上下边距", fontSize = AppType.Body, fontWeight = FontWeight.SemiBold, color = AppColors.TextPrimary)
+                        Spacer(Modifier.height(AppSpace.xs))
+                        TypoSlider(
+                            value = currentMarginVert,
+                            range = 32f..120f,
+                            step = 2f,
+                            format = { "${it.toInt()} dp" },
+                            onChange = onMarginVertChange
+                        )
+                        Spacer(Modifier.height(AppSpace.lg))
+                    }
+
+                    // ── 字体选择 ──
+                    item {
+                        Text("字体", fontSize = AppType.Body, fontWeight = FontWeight.SemiBold, color = AppColors.TextPrimary)
+                        Spacer(Modifier.height(AppSpace.md))
+                        FontSelector(currentFont = currentFontType, onFontChange = onFontTypeChange)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TypoSlider(
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    step: Float,
+    format: (Float) -> String,
+    onChange: (Float) -> Unit
+) {
+    var sliderValue by remember(value) { mutableFloatStateOf(value) }
+
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Slider(
+            value = sliderValue,
+            onValueChange = { sliderValue = it },
+            onValueChangeFinished = { onChange(sliderValue) },
+            valueRange = range,
+            steps = ((range.endInclusive - range.start) / step).toInt() - 1,
+            modifier = Modifier.weight(1f),
+            colors = SliderDefaults.colors(
+                thumbColor = AppColors.Accent,
+                activeTrackColor = AppColors.Accent,
+                inactiveTrackColor = AppColors.Divider
+            )
+        )
+        Spacer(Modifier.width(AppSpace.sm))
+        Text(
+            text = format(sliderValue),
+            fontSize = AppType.Caption,
+            color = AppColors.TextSecondary,
+            modifier = Modifier.width(56.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.End
+        )
+    }
+}
+
+@Composable
+private fun FontSelector(currentFont: String, onFontChange: (String) -> Unit) {
+    val fonts = listOf(
+        FontOption("system", "系统", androidx.compose.ui.text.font.FontFamily.Default),
+        FontOption("serif", "衬线", androidx.compose.ui.text.font.FontFamily.Serif),
+        FontOption("dingli_song", "鼎力宋", DingliSong),
+    )
+
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+        fonts.forEach { font ->
+            val isSelected = currentFont == font.key
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onFontChange(font.key) }
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .then(
+                            if (isSelected) Modifier.border(2.dp, AppColors.Accent, CircleShape)
+                            else Modifier
+                        )
+                        .clip(CircleShape)
+                        .background(if (isSelected) AppColors.Accent.copy(alpha = 0.1f) else AppColors.BgGray),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "A文",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (isSelected) AppColors.Accent else AppColors.TextPrimary,
+                        fontFamily = font.family
+                    )
+                }
+                Spacer(Modifier.height(AppSpace.xs))
+                Text(font.label, fontSize = AppType.Caption, color = if (isSelected) AppColors.Accent else AppColors.TextSecondary)
+            }
+        }
+
+        // "+" 按钮 —— 自定义字体导入
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                // TODO: 后续支持用户导入字体
+            }
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(AppColors.BgGray),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("+", fontSize = 22.sp, color = AppColors.TextSecondary)
+            }
+            Spacer(Modifier.height(AppSpace.xs))
+            Text("导入", fontSize = AppType.Caption, color = AppColors.TextSecondary)
+        }
+    }
+}
+
+private data class FontOption(val key: String, val label: String, val family: androidx.compose.ui.text.font.FontFamily)

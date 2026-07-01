@@ -1,10 +1,8 @@
 package com.huangder.lumibooks.ui.reader.engine
 
-import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.LinearGradient
 import android.graphics.Paint
-import android.graphics.Path
 import android.graphics.Shader
 
 /**
@@ -15,24 +13,18 @@ import android.graphics.Shader
  * - 下层：恒定速度比视差（上层速度 * PARALLAX_RATIO），从偏移位出发到达终点
  *   - NEXT: nextX = (vw + ox) * ratio，start=0.3*vw(右侧) → end=0(中央)
  *   - PREV: curX = ox * ratio，start=0(中央) → end=0.3*vw(右侧)
- * - 上层：clipPath 裁剪右侧 R 角（ReadView 软件渲染，100% 可靠）+ 外阴影
+ * - 上层：外阴影（直角）
  */
 class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
 
     companion object {
         private const val SHADOW_WIDTH_PX = 250
-        private const val CORNER_RADIUS_PX = 48f
         /** 下层页面速度比 = 上层速度 * PARALLAX_RATIO */
         private const val PARALLAX_RATIO = 0.3f
     }
 
     private val density: Float get() = readView.resources.displayMetrics.density
     private val shadowWidth: Float get() = SHADOW_WIDTH_PX * density.coerceAtLeast(1f)
-    private val cornerRadius: Float get() = CORNER_RADIUS_PX * density.coerceAtLeast(1f)
-
-    /** 软件离屏 Bitmap（复用，避免每帧分配），clipPath 100% 可靠 */
-    private var softBitmap: Bitmap? = null
-    private var softW: Int = 0; private var softH: Int = 0
 
     override fun onDraw(canvas: Canvas) {
         val vw = readView.width.toFloat()
@@ -67,36 +59,14 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
         }
     }
 
-    /** 上层：显式软件 Canvas + clipPath 裁剪右侧 R 角 + 外阴影 */
+    /** 上层：页面内容 + 外阴影 */
     private fun drawUpperPage(
         canvas: Canvas, bitmap: android.graphics.Bitmap?,
         x: Float, y: Float, vw: Float, vh: Float
     ) {
-        if (bitmap == null || bitmap.isRecycled) return
-        val r = cornerRadius
-        val pageW = vw.toInt(); val pageH = vh.toInt()
+        drawPageBitmap(canvas, bitmap, x, y, vw, vh)
 
-        // 复用软件离屏 Bitmap，clipPath 在软件 Canvas 上 100% 可靠
-        if (softBitmap == null || softW != pageW || softH != pageH) {
-            softBitmap?.recycle()
-            softBitmap = Bitmap.createBitmap(pageW, pageH, Bitmap.Config.ARGB_8888)
-            softW = pageW; softH = pageH
-        }
-        val sb = softBitmap!!
-        sb.eraseColor(0)  // 透明背景
-
-        val swCanvas = Canvas(sb)  // 显式软件 Canvas
-        val radii = floatArrayOf(0f, 0f, r, r, r, r, 0f, 0f)
-        val pagePath = Path().apply {
-            addRoundRect(0f, 0f, pageW.toFloat(), pageH.toFloat(), radii, Path.Direction.CW)
-        }
-        swCanvas.clipPath(pagePath)
-        swCanvas.drawBitmap(bitmap, 0f, 0f, null)
-
-        // 将裁剪结果画回主 Canvas（位置 x,y）
-        canvas.drawBitmap(sb, x, y, null)
-
-        // 外阴影：从上层右边缘向右延伸
+        // 外阴影：从上层右边缘向右延伸，在下层页面上可见
         val right = x + vw
         val shStart = right
         val shEnd = (right + shadowWidth).coerceAtMost(readView.width.toFloat())

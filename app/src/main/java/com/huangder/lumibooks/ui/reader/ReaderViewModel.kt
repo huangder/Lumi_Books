@@ -31,6 +31,7 @@ import javax.inject.Inject
 data class ReaderUiState(
     val book: Book? = null,
     val chapterCount: Int = 0,
+    val chapterTitles: List<String> = emptyList(),
     val currentChapterIndex: Int = 0,
     val currentPageIndex: Int = 0,
     val totalPages: Int = 0,
@@ -40,6 +41,11 @@ data class ReaderUiState(
     val pageReady: Boolean = false,
     val pendingPageFraction: Float = 0f,
     val fontSize: Float = 16f,
+    val lineHeight: Float = 1.5f,
+    val letterSpacing: Float = 0f,
+    val fontType: String = "system",
+    val marginHorizDp: Float = 44f,
+    val marginVertDp: Float = 72f,
     val readerTheme: String = "day",
     val error: String? = null,
     /** 全局页码（跨所有章节），新引擎用 */
@@ -87,11 +93,61 @@ class ReaderViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(readerTheme = theme)
             }
         }
+        viewModelScope.launch {
+            dataStoreManager.lineHeight.collectLatest { lh ->
+                _uiState.value = _uiState.value.copy(lineHeight = lh)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.letterSpacing.collectLatest { ls ->
+                _uiState.value = _uiState.value.copy(letterSpacing = ls)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.fontType.collectLatest { ft ->
+                _uiState.value = _uiState.value.copy(fontType = ft)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.marginHoriz.collectLatest { mh ->
+                _uiState.value = _uiState.value.copy(marginHorizDp = mh)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.marginVert.collectLatest { mv ->
+                _uiState.value = _uiState.value.copy(marginVertDp = mv)
+            }
+        }
     }
 
     fun saveFontSize(size: Float) {
         _uiState.value = _uiState.value.copy(fontSize = size)
         viewModelScope.launch { dataStoreManager.saveFontSize(size) }
+    }
+
+    fun saveLineHeight(lh: Float) {
+        _uiState.value = _uiState.value.copy(lineHeight = lh)
+        viewModelScope.launch { dataStoreManager.saveLineHeight(lh) }
+    }
+
+    fun saveLetterSpacing(ls: Float) {
+        _uiState.value = _uiState.value.copy(letterSpacing = ls)
+        viewModelScope.launch { dataStoreManager.saveLetterSpacing(ls) }
+    }
+
+    fun saveFontType(ft: String) {
+        _uiState.value = _uiState.value.copy(fontType = ft)
+        viewModelScope.launch { dataStoreManager.saveFontType(ft) }
+    }
+
+    fun saveMarginHoriz(mh: Float) {
+        _uiState.value = _uiState.value.copy(marginHorizDp = mh)
+        viewModelScope.launch { dataStoreManager.saveMarginHoriz(mh) }
+    }
+
+    fun saveMarginVert(mv: Float) {
+        _uiState.value = _uiState.value.copy(marginVertDp = mv)
+        viewModelScope.launch { dataStoreManager.saveMarginVert(mv) }
     }
 
     fun saveReaderTheme(theme: String) {
@@ -114,6 +170,7 @@ class ReaderViewModel @Inject constructor(
                     val content = parser!!.parse(book.filePath)
 
                     val chapterCount = content.chapters.size
+                    val chapterTitles = content.chapters.map { it.title }
                     val progressFraction = book.readingProgress * chapterCount
                     val startChapter = progressFraction.toInt().coerceIn(0, chapterCount - 1)
                     val pageFraction = (progressFraction - startChapter).coerceIn(0f, 1f)
@@ -122,6 +179,7 @@ class ReaderViewModel @Inject constructor(
                     _uiState.value = _uiState.value.copy(
                         book = book,
                         chapterCount = chapterCount,
+                        chapterTitles = chapterTitles,
                         currentChapterIndex = startChapter,
                         pendingPageFraction = pageFraction,
                         useNewEngine = !isPdf  // TXT/EPUB 用新 Canvas 引擎，PDF 保留 WebView
@@ -454,17 +512,24 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch { readingRepository.deleteBookmark(bookmark) }
     }
 
-    fun addNote(selectedText: String, noteText: String) {
+    fun addNote(
+        selectedText: String,
+        noteText: String,
+        chapterIndex: Int = -1,
+        startPosition: Int = 0,
+        endPosition: Int = 0,
+        color: String = "#FFEB3B"
+    ) {
         val state = _uiState.value
         val book = state.book ?: return
         val note = Note(
             bookId = book.id,
-            chapterIndex = state.currentChapterIndex,
-            startPosition = 0,
-            endPosition = selectedText.length,
+            chapterIndex = if (chapterIndex >= 0) chapterIndex else state.currentChapterIndex,
+            startPosition = if (startPosition > 0 || chapterIndex >= 0) startPosition else 0,
+            endPosition = if (endPosition > 0 || chapterIndex >= 0) endPosition else selectedText.length,
             selectedText = selectedText,
             note = noteText,
-            color = "#FFEB3B",
+            color = color,
             createdAt = System.currentTimeMillis()
         )
         viewModelScope.launch { readingRepository.insertNote(note) }
@@ -509,6 +574,71 @@ class ReaderViewModel @Inject constructor(
 
     fun clearError() {
         _uiState.value = _uiState.value.copy(error = null)
+    }
+
+    // ── 全文搜索 ──
+
+    data class SearchResult(
+        val chapterIndex: Int,
+        val chapterTitle: String,
+        val charOffset: Int,
+        val context: String,       // 匹配位置前后文本片段
+        val matchLength: Int       // 匹配文本长度
+    )
+
+    /**
+     * 全书搜索关键词，返回匹配列表（章节索引 + 字符偏移 + 上下文）。
+     * 搜索范围限制在前 [maxChapters] 章内（默认200章），防止大书超时。
+     */
+    fun searchAllChapters(query: String, maxChapters: Int = 200): List<SearchResult> {
+        if (query.isEmpty()) return emptyList()
+
+        val p = parser ?: return emptyList()
+        val totalChapters = _uiState.value.chapterCount.coerceAtMost(maxChapters)
+        val titles = _uiState.value.chapterTitles
+        val results = mutableListOf<SearchResult>()
+
+        for (chIdx in 0 until totalChapters) {
+            val text = try {
+                p.getChapterContent(chIdx).toString()
+            } catch (_: Exception) { continue }
+
+            var searchStart = 0
+            while (true) {
+                val foundIdx = text.indexOf(query, searchStart, ignoreCase = true)
+                if (foundIdx == -1) break
+
+                val ctxStart = (foundIdx - 12).coerceAtLeast(0)
+                val ctxEnd = (foundIdx + query.length + 20).coerceAtMost(text.length)
+                val context = text.substring(ctxStart, ctxEnd)
+                    .replace('\n', ' ')
+                    .replace('\r', ' ')
+
+                val title = titles.getOrElse(chIdx) { "第${chIdx + 1}章" }.ifBlank { "第${chIdx + 1}章" }
+                results.add(
+                    SearchResult(
+                        chapterIndex = chIdx,
+                        chapterTitle = title,
+                        charOffset = foundIdx,
+                        context = context,
+                        matchLength = query.length
+                    )
+                )
+                searchStart = foundIdx + query.length
+                if (results.size >= 200) break  // 最多200条结果
+            }
+            if (results.size >= 200) break
+        }
+        return results
+    }
+
+    /**
+     * 获取章节文本长度（用于估算搜索结果的页码位置）。
+     */
+    fun getChapterTextLength(chapterIndex: Int): Int {
+        return try {
+            parser?.getChapterContent(chapterIndex)?.length ?: 0
+        } catch (_: Exception) { 0 }
     }
 
     private fun saveReadingSession() {

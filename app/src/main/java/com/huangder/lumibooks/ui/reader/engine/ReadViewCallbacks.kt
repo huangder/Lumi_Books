@@ -23,4 +23,24 @@ interface ReadViewCallbacks {
 
     /** 正在加载内容变化 */
     fun onLoadingChanged(isLoading: Boolean)
+
+    /**
+     * 长按文本选择回调。
+     * @param chapterIndex 章节索引
+     * @param pageInChapter 章内页码
+     * @param charStart 选中起始字符偏移
+     * @param charEnd 选中结束字符偏移
+     * @param selectedText 选中的文本
+     * @param touchX 触摸位置 X（用于菜单定位）
+     * @param touchY 触摸位置 Y
+     */
+    fun onTextSelected(
+        chapterIndex: Int,
+        pageInChapter: Int,
+        charStart: Int,
+        charEnd: Int,
+        selectedText: String,
+        touchX: Float,
+        touchY: Float
+    ) {}
 }

@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.util.Log
 import android.view.MotionEvent
 import android.widget.FrameLayout
+import kotlinx.coroutines.runBlocking
 
 /**
  * 核心阅读视图。
@@ -51,6 +52,11 @@ class ReadView(context: Context) : FrameLayout(context) {
     private var currentFontSizePx: Float = 56f
     private var currentTheme: String = "day"
     private var currentChapterCount: Int = 0
+    private var currentLineHeightMult: Float = 1.5f
+    private var currentLetterSpacingDp: Float = 0f
+    private var currentFontType: String = "system"
+    private var currentMarginHorizDp: Float = 44f
+    private var currentMarginVertDp: Float = 72f
     private var pendingStartChapter: Int = 0
     private var pendingStartPage: Int = 0
 
@@ -110,6 +116,36 @@ class ReadView(context: Context) : FrameLayout(context) {
             }
         }
 
+        // 长按文本选择回调
+        animationController.onLongPress = { x, y ->
+            val curSlot = slotManager.getCurSlot()
+            val chIdx = curSlot.chapterIndex
+            val pageIdx = curSlot.pageIndex
+            val charOffset = layoutEngine.getCharOffsetAtPoint(chIdx, pageIdx, x, y)
+            if (charOffset != null) {
+                val rawText = runBlocking { contentProvider?.invoke(chIdx) }
+                val text = rawText?.toString() ?: ""
+                if (text.isNotEmpty()) {
+                // 从点击位置向外扩展选取一个词（以空格/标点为界）
+                var start = charOffset
+                var end = charOffset
+                // 从点按位置向外扩展到词边界
+                fun isWordSep(c: Char): Boolean {
+                    if (c.isWhitespace()) return true
+                    val code = c.code
+                    // CJK标点范围、ASCII标点、以及其他非字母数字字符
+                    return !c.isLetterOrDigit() && code != 0x2018 && code != 0x2019 && code != 0x201C && code != 0x201D
+                }
+                while (start > 0 && !isWordSep(text[start - 1])) start--
+                while (end < text.length && !isWordSep(text[end])) end++
+                if (end > start) {
+                    val selected = text.substring(start, end)
+                    callbacks?.onTextSelected(chIdx, pageIdx, start, end, selected, x, y)
+                }
+                }
+            }
+        }
+
         // 页面变化回调
         slotManager.onPageChangedCallback = { globalPage, chapterIdx, pageInChapter, chapterTotal ->
             callbacks?.onPageChanged(globalPage, chapterIdx, pageInChapter, chapterTotal)
@@ -140,6 +176,11 @@ class ReadView(context: Context) : FrameLayout(context) {
         chapterCount: Int,
         startChapter: Int,
         startPage: Int,
+        lineHeightMult: Float = 1.5f,
+        letterSpacingDp: Float = 0f,
+        fontType: String = "system",
+        marginHorizDp: Float = 44f,
+        marginVertDp: Float = 72f,
         width: Int = this.width,
         height: Int = this.height
     ) {
@@ -155,21 +196,40 @@ class ReadView(context: Context) : FrameLayout(context) {
 
         val themeChanged = currentTheme != theme
         val fontSizeChanged = Math.abs(currentFontSizePx - fontSizePx) > 0.5f
+        val lineHeightChanged = Math.abs(currentLineHeightMult - lineHeightMult) > 0.01f
+        val letterSpacingChanged = Math.abs(currentLetterSpacingDp - letterSpacingDp) > 0.05f
+        val fontTypeChanged = currentFontType != fontType
+        val marginHorizChanged = Math.abs(currentMarginHorizDp - marginHorizDp) > 0.5f
+        val marginVertChanged = Math.abs(currentMarginVertDp - marginVertDp) > 0.5f
         val sizeChanged = !isConfigured
-        val needsRelayout = themeChanged || fontSizeChanged || sizeChanged
+        val needsRelayout = themeChanged || fontSizeChanged || lineHeightChanged ||
+                letterSpacingChanged || fontTypeChanged || marginHorizChanged ||
+                marginVertChanged || sizeChanged
 
         currentFontSizePx = fontSizePx
         currentTheme = theme
         currentChapterCount = chapterCount
+        currentLineHeightMult = lineHeightMult
+        currentLetterSpacingDp = letterSpacingDp
+        currentFontType = fontType
+        currentMarginHorizDp = marginHorizDp
+        currentMarginVertDp = marginVertDp
 
         // 主题颜色
         val (bgColor, textColor) = getThemeColors(theme)
 
-        // 边距：上下 ≈ 1.78x 左右
+        // 边距 + 字间距 dp → px
         val density = resources.displayMetrics.density
-        val marginHoriz = 44f * density
-        val marginVert = 72f * density
+        val marginHoriz = marginHorizDp * density
+        val marginVert = marginVertDp * density
         val lineSpacing = 2.5f * density
+        val lsPx = letterSpacingDp * density
+
+        // 自定义字体 Typeface
+        val customTypeface = if (fontType == "dingli_song") {
+            try { android.graphics.Typeface.createFromAsset(context.assets, "fonts/dingli_song.ttf") }
+            catch (_: Exception) { null }
+        } else null
 
         // 配置布局引擎
         layoutEngine.configure(
@@ -177,7 +237,10 @@ class ReadView(context: Context) : FrameLayout(context) {
             height = height,
             fontSizePx = fontSizePx,
             lineSpacingPx = lineSpacing,
-            lineSpacingMult = 1.1f,
+            lineSpacingMult = lineHeightMult,
+            letterSpacingPx = lsPx,
+            fontType = fontType,
+            customTypeface = customTypeface,
             marginLeftPx = marginHoriz,
             marginRightPx = marginHoriz,
             marginTopPx = marginVert,
