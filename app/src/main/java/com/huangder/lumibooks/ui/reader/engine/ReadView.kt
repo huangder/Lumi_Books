@@ -56,26 +56,25 @@ class ReadView(context: Context) : FrameLayout(context) {
     var selEnd: Int = -1
         private set
 
-    // 手柄拖拽
-    private var draggingHandle: Int = 0  // 0=none, 1=start, 2=end
     private var savedNotes: List<Note> = emptyList()
-
-    /** 手柄绘制半径，和 PageRenderer.drawHandle 的 radius 一致 */
-    private val handleRadiusPx: Float get() = 9f * resources.displayMetrics.density
-    /** 触控热区半径，比手柄大一圈 */
-    private val handleTouchRadius: Float get() = 24f * resources.displayMetrics.density
 
     /** 清除选择并重绘 */
     fun clearSelection() {
         selChapter = -1; selStart = -1; selEnd = -1
-        draggingHandle = 0
         refreshCurrentPageAnnotations(includeSelection = false)
+        onSelectionChanged?.invoke(-1, -1, -1, -1, "")
     }
 
-    /** 供外部调用的选区更新 */
+    /** 供外部调用的选区更新（菜单调整范围时使用） */
     fun updateSelection(newStart: Int, newEnd: Int) {
         selStart = newStart; selEnd = newEnd
-        applyHighlightOnCurrentPage()
+        refreshCurrentPageAnnotations(includeSelection = true)
+        val curSlot = slotManager.getCurSlot()
+        val text = kotlinx.coroutines.runBlocking { contentProvider?.invoke(curSlot.chapterIndex) }?.toString() ?: ""
+        if (selStart in 0 until text.length && selEnd in selStart..text.length) {
+            val sel = text.substring(selStart, selEnd)
+            onSelectionChanged?.invoke(curSlot.chapterIndex, curSlot.pageIndex, selStart, selEnd, sel)
+        }
     }
 
     /** 设置已保存的笔记/高亮并刷新当前页。 */
@@ -99,7 +98,6 @@ class ReadView(context: Context) : FrameLayout(context) {
 
         if (includeSelection && selChapter == curSlot.chapterIndex && selStart >= 0 && selEnd > selStart) {
             renderer.drawSelectionHighlight(bm, cl, curSlot.pageIndex, selStart, selEnd)
-            renderer.drawSelectionHandles(bm, cl, curSlot.pageIndex, selStart, selEnd, handleRadius = handleRadiusPx)
         }
 
         invalidate()
@@ -130,8 +128,11 @@ class ReadView(context: Context) : FrameLayout(context) {
             }
     }
 
-    /** 手柄圆心坐标（直接用 renderer 的真实 margin 值，保证和绘制位置一致） */
-    private fun getHandleCenter(sl: android.text.StaticLayout, charOffset: Int, pageStartY: Float): Pair<Float, Float>? {
+    /** Composed 手柄半径 dp → px，和之前 PageRenderer.drawHandle 保持一致 */
+    val handleRadiusPx: Float get() = 9f * resources.displayMetrics.density
+
+    /** 计算某个字符偏移对应的屏幕坐标（handle 圆心） */
+    private fun charOffsetToScreenPos(sl: android.text.StaticLayout, charOffset: Int, pageStartY: Float): Pair<Float, Float>? {
         if (charOffset < 0 || charOffset >= sl.text.length) return null
         val line = sl.getLineForOffset(charOffset)
         val cx = renderer.renderMarginLeft + sl.getPrimaryHorizontal(charOffset)
@@ -139,29 +140,83 @@ class ReadView(context: Context) : FrameLayout(context) {
         return cx to cy
     }
 
-    /** 检测触摸点是否在手柄区域内，返回手柄编号（0=无, 1=起始, 2=结束） */
-    private fun hitTestHandle(x: Float, y: Float): Int {
-        if (selChapter < 0 || selStart < 0 || selEnd <= selStart) return 0
+    /** 手柄坐标数据类 */
+    data class HandleCenters(val startCx: Float, val startCy: Float, val endCx: Float, val endCy: Float)
+
+    /** 获取两个手柄的屏幕坐标（圆心），供 Compose 覆盖层使用 */
+    fun getSelectionHandleCenters(): HandleCenters? {
+        if (selChapter < 0 || selStart < 0 || selEnd <= selStart) return null
         val curSlot = slotManager.getCurSlot()
-        if (curSlot.chapterIndex != selChapter) return 0
-        val cl = layoutEngine.getChapterLayout(selChapter) ?: return 0
-        val sl = cl.staticLayout
-        val pageLayout = cl.pages.getOrNull(curSlot.pageIndex) ?: return 0
+        if (curSlot.chapterIndex != selChapter) return null
+        val sl = layoutEngine.getChapterLayout(selChapter)?.staticLayout ?: return null
+        val pages = layoutEngine.getChapterLayout(selChapter)?.pages ?: return null
+        val pageLayout = pages.getOrNull(curSlot.pageIndex) ?: return null
         val pageStartY = sl.getLineTop(pageLayout.startLine).toFloat()
 
-        // 起始手柄
-        val sc = getHandleCenter(sl, selStart, pageStartY)
-        if (sc != null && Math.hypot((x - sc.first).toDouble(), (y - sc.second).toDouble()) < handleTouchRadius) return 1
-        // 结束手柄
-        val ec = getHandleCenter(sl, selEnd - 1, pageStartY)
-        if (ec != null && Math.hypot((x - ec.first).toDouble(), (y - ec.second).toDouble()) < handleTouchRadius) return 2
-        return 0
+        val sc = charOffsetToScreenPos(sl, selStart, pageStartY) ?: return null
+        val ec = charOffsetToScreenPos(sl, (selEnd - 1).coerceIn(0, sl.text.length - 1), pageStartY) ?: return null
+
+        return HandleCenters(sc.first, sc.second, ec.first, ec.second)
     }
 
-    /** 在当前页上应用选择高亮 + 手柄 */
-    private fun applyHighlightOnCurrentPage() {
-        refreshCurrentPageAnnotations(includeSelection = true)
+    /** 容错版坐标→字符偏移，拖拽手柄时使用。X 超出列范围时返回最近列，Y 超出页面时钳制。 */
+    fun getCharOffsetAtPointRough(x: Float, y: Float): Int? {
+        val curSlot = slotManager.getCurSlot()
+        val chIdx = curSlot.chapterIndex
+        val pageIdx = curSlot.pageIndex
+        val cl = layoutEngine.getChapterLayout(chIdx) ?: return null
+        val pageLayout = cl.pages.getOrNull(pageIdx) ?: return null
+        val sl = cl.staticLayout
+
+        val textX = (x - renderer.renderMarginLeft).coerceIn(0f, sl.width.toFloat())
+        val textY = y - renderer.renderMarginTop + sl.getLineTop(pageLayout.startLine)
+
+        val line = sl.getLineForVertical(textY.toInt().coerceIn(0, sl.height - 1))
+            .coerceIn(pageLayout.startLine, (pageLayout.endLine - 1).coerceAtLeast(pageLayout.startLine))
+        val offset = sl.getOffsetForHorizontal(line, textX)
+        return offset.coerceIn(pageLayout.startCharOffset, (pageLayout.endCharOffset - 1).coerceAtLeast(pageLayout.startCharOffset))
     }
+
+    /**
+     * Compose 手柄拖拽时调用。
+     * @param handleIndex 1=起始手柄, 2=结束手柄
+     * @param screenX 当前触摸位置 X（ReadView 坐标系）
+     * @param screenY 当前触摸位置 Y
+     */
+    fun moveSelectionHandle(handleIndex: Int, screenX: Float, screenY: Float) {
+        val charOff = getCharOffsetAtPointRough(screenX, screenY) ?: return
+        if (handleIndex == 1) {
+            // 拖拽起始手柄
+            if (charOff >= selEnd) {
+                // 交叉！交换角色：原 start 变 end，新位置变 start
+                val oldEnd = selEnd
+                selEnd = oldEnd
+                selStart = (oldEnd - 1).coerceAtLeast(0)
+            } else {
+                selStart = charOff
+            }
+        } else {
+            // 拖拽结束手柄
+            if (charOff + 1 <= selStart) {
+                // 交叉！交换角色：原 end 变 start，新位置变 end
+                selEnd = selStart + 1
+                selStart = charOff
+            } else {
+                selEnd = charOff + 1
+            }
+        }
+        refreshCurrentPageAnnotations(includeSelection = true)
+        // 通知菜单更新选区范围（不更新手柄坐标，避免反馈环导致抽搐）
+        val curSlot = slotManager.getCurSlot()
+        val text = kotlinx.coroutines.runBlocking { contentProvider?.invoke(curSlot.chapterIndex) }?.toString() ?: ""
+        if (selStart in 0 until text.length && selEnd in selStart..text.length) {
+            val sel = text.substring(selStart, selEnd)
+            callbacks?.onTextSelected(curSlot.chapterIndex, curSlot.pageIndex, selStart, selEnd, sel, screenX, screenY)
+        }
+    }
+
+    /** 选择变化回调（通知 Compose 层更新手柄位置和菜单） */
+    var onSelectionChanged: ((chapterIndex: Int, pageIndex: Int, selStart: Int, selEnd: Int, selectedText: String) -> Unit)? = null
 
     // ── 配置状态 ──
     private var isConfigured = false
@@ -262,7 +317,9 @@ class ReadView(context: Context) : FrameLayout(context) {
                     selChapter = chIdx
                     selStart = start
                     selEnd = end
-                    applyHighlightOnCurrentPage()
+                    refreshCurrentPageAnnotations(includeSelection = true)
+                    // 通知 Compose 层更新手柄位置 + 显示菜单
+                    onSelectionChanged?.invoke(chIdx, pageIdx, start, end, selected)
                     callbacks?.onTextSelected(chIdx, pageIdx, start, end, selected, x, y)
                 }
                 }
@@ -424,48 +481,6 @@ class ReadView(context: Context) : FrameLayout(context) {
     // ── 触摸 ──
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        // 如果有活跃选择，先检测手柄拖拽
-        if (selChapter >= 0 && selStart >= 0 && selEnd > selStart) {
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    val handle = hitTestHandle(event.x, event.y)
-                    if (handle != 0) {
-                        draggingHandle = handle
-                        return true
-                    }
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    if (draggingHandle != 0) {
-                        val curSlot = slotManager.getCurSlot()
-                        val charOff = layoutEngine.getCharOffsetAtPoint(curSlot.chapterIndex, curSlot.pageIndex, event.x, event.y)
-                        if (charOff != null) {
-                            if (draggingHandle == 1) {
-                                selStart = charOff.coerceIn(0, selEnd - 1)
-                            } else {
-                                selEnd = (charOff + 1).coerceAtLeast(selStart + 1)
-                            }
-                            applyHighlightOnCurrentPage()
-                        }
-                        return true
-                    }
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    if (draggingHandle != 0) {
-                        draggingHandle = 0
-                        // 拖拽结束后通知 ReaderScreen 更新菜单
-                        val curSlot = slotManager.getCurSlot()
-                        callbacks?.let { cb ->
-                            val text = kotlinx.coroutines.runBlocking { contentProvider?.invoke(curSlot.chapterIndex) }?.toString() ?: ""
-                            if (selStart < text.length && selEnd <= text.length && selEnd > selStart) {
-                                val sel = text.substring(selStart, selEnd)
-                                cb.onTextSelected(curSlot.chapterIndex, curSlot.pageIndex, selStart, selEnd, sel, event.x, event.y)
-                            }
-                        }
-                        return true
-                    }
-                }
-            }
-        }
         return animationController.onTouchEvent(event)
     }
 

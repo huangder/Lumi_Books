@@ -1,7 +1,6 @@
 package com.huangder.lumibooks.ui.reader.engine
 
 import android.graphics.Canvas
-import android.view.GestureDetector
 import android.view.animation.PathInterpolator
 import android.view.MotionEvent
 import android.view.animation.Interpolator
@@ -54,20 +53,17 @@ abstract class PageAnimationController(
     private var isLongPressed: Boolean = false
     /** 触摸按下时间 */
     protected var downTime: Long = 0L
+    /** 长按触发阈值（超过此距离取消长按） */
+    private val longPressSlopPx: Float = 16f
 
-    /** 系统 GestureDetector 处理长按（比手动 postDelayed 更可靠） */
-    private val gestureDetector = GestureDetector(readView.context, object : GestureDetector.SimpleOnGestureListener() {
-        override fun onDown(e: MotionEvent): Boolean = true
-
-        override fun onLongPress(e: MotionEvent) {
-            if (!hasMoved && isDragging) {
-                isLongPressed = true
-                isDragging = false
-                onLongPress?.invoke(e.x, e.y)
-            }
+    /** 长按检测 Runnable（替代 GestureDetector，更可靠） */
+    private val longPressRunnable = Runnable {
+        if (!hasMoved && isDragging) {
+            isLongPressed = true
+            isDragging = false
+            onLongPress?.invoke(startX, startY)
         }
-        override fun onSingleTapUp(e: MotionEvent): Boolean = false  // 我们自己处理 tap
-    })
+    }
     /** 本次动画是翻页（true）还是回弹（false） */
     private var isFlipAnim: Boolean = false
     /** 翻页完成后阴影渐隐 alpha（供子类 onDraw 读取） */
@@ -96,9 +92,6 @@ abstract class PageAnimationController(
     // ── 触摸处理 ──
 
     fun onTouchEvent(event: MotionEvent): Boolean {
-        // 🔥 GestureDetector 处理长按（系统级，更可靠）
-        gestureDetector.onTouchEvent(event)
-
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
                 abortAnim()
@@ -112,6 +105,8 @@ abstract class PageAnimationController(
                 downTime = System.currentTimeMillis()
                 direction = Direction.NONE
                 isDragging = true
+                // 🔥 用 postDelayed 替代 GestureDetector，更简单可靠
+                readView.postDelayed(longPressRunnable, 600L)
                 return true
             }
 
@@ -123,8 +118,9 @@ abstract class PageAnimationController(
                 touchY = event.y
                 lastX = event.x
 
-                if (!hasMoved && Math.abs(event.x - startX) > 8f) {
+                if (!hasMoved && Math.abs(event.x - startX) > longPressSlopPx) {
                     hasMoved = true
+                    readView.removeCallbacks(longPressRunnable)  // 移动超过阈值，取消长按
                 }
 
                 if (hasMoved) {
@@ -140,6 +136,8 @@ abstract class PageAnimationController(
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                readView.removeCallbacks(longPressRunnable)
+
                 // 长按已触发，跳过点击逻辑
                 if (isLongPressed) {
                     isLongPressed = false
