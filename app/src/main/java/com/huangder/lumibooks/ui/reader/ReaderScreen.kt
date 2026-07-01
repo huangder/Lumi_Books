@@ -465,7 +465,11 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     // ── 选择菜单 ──
     SelectionMenuOverlay(
         state = selectionState,
-        onDismiss = { selectionState = null },
+        readerTheme = uiState.readerTheme,
+        onDismiss = {
+            selectionState = null
+            readViewRef.value?.clearSelection()
+        },
         onHighlight = {
             val s = selectionState ?: return@SelectionMenuOverlay
             viewModel.addNote(s.selectedText, "", s.chapterIndex, s.charStart, s.charEnd, "#FFEB3B")
@@ -479,17 +483,20 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             searchQuery = s.selectedText
             showSearch = true
             selectionState = null
+            readViewRef.value?.clearSelection()
         },
         onCopy = {
             val s = selectionState ?: return@SelectionMenuOverlay
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
             clipboard.setPrimaryClip(android.content.ClipData.newPlainText("selected", s.selectedText))
             selectionState = null
+            readViewRef.value?.clearSelection()
         },
         onRemoveHighlight = {
             val s = selectionState ?: return@SelectionMenuOverlay
             s.existingNote?.let { viewModel.deleteNote(it) }
             selectionState = null
+            readViewRef.value?.clearSelection()
         },
         onViewNote = {
             // TODO: 查看/修改已有笔记
@@ -885,7 +892,7 @@ private fun TocSheet(
                 .graphicsLayer { translationY = sheetOffset.value * size.height; alpha = sheetAlpha.value }
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(AppColors.CardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .navigationBarsPadding()
+                .padding(bottom = 16.dp)
                 .padding(AppSpace.lg)
         ) {
             Column {
@@ -1169,6 +1176,7 @@ private data class SelectionState(
 @Composable
 private fun SelectionMenuOverlay(
     state: SelectionState?,
+    readerTheme: String,
     onDismiss: () -> Unit,
     onHighlight: () -> Unit,
     onNote: () -> Unit,
@@ -1179,42 +1187,46 @@ private fun SelectionMenuOverlay(
 ) {
     if (state == null) return
 
+    // 根据阅读背景深浅选菜单颜色
+    val isDarkTheme = readerTheme == "night"
+    val menuBg = if (isDarkTheme) Color(0xFFEAEAEA) else Color(0xFF2C2C2E)
+    val menuText = if (isDarkTheme) Color(0xFF1C1C1E) else Color.White
+
     Box(
         Modifier.fillMaxSize()
             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onDismiss() }
     ) {
-        // 菜单定位：触摸点在上半→菜单在下方，触摸在下半→菜单在上方
         Row(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .offset { IntOffset(0, (if (state.touchY > 800f) state.touchY - 140f else state.touchY + 40f).toInt()) }
                 .clip(RoundedCornerShape(20.dp))
-                .background(Color(0xFF2C2C2E))
+                .background(menuBg)
                 .padding(horizontal = 4.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (state.hasHighlight || state.hasNote) {
-                MenuChip("移除高亮", onRemoveHighlight)
+                MenuChip("移除高亮", menuText, onRemoveHighlight)
                 if (state.hasNote) {
-                    MenuChip("查看笔记", onViewNote)
-                    MenuChip("移除笔记", onRemoveHighlight)
+                    MenuChip("查看笔记", menuText, onViewNote)
+                    MenuChip("移除笔记", menuText, onRemoveHighlight)
                 }
             } else {
-                MenuChip("高亮", onHighlight)
-                MenuChip("笔记", onNote)
+                MenuChip("高亮", menuText, onHighlight)
+                MenuChip("笔记", menuText, onNote)
             }
-            MenuChip("搜索", onSearch)
-            MenuChip("复制", onCopy)
+            MenuChip("搜索", menuText, onSearch)
+            MenuChip("复制", menuText, onCopy)
         }
     }
 }
 
 @Composable
-private fun MenuChip(label: String, onClick: () -> Unit) {
+private fun MenuChip(label: String, textColor: Color, onClick: () -> Unit) {
     Text(
         text = label,
         fontSize = 13.sp,
-        color = Color.White,
+        color = textColor,
         modifier = Modifier
             .clip(RoundedCornerShape(16.dp))
             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() }
@@ -1261,7 +1273,7 @@ private fun NoteInputSheet(
                 .graphicsLayer { translationY = sheetOffset.value * size.height; alpha = sheetAlpha.value }
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(AppColors.CardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .navigationBarsPadding()
+                .padding(bottom = 16.dp)
                 .padding(AppSpace.lg)
         ) {
             Column {
@@ -1352,7 +1364,7 @@ private fun NotesListSheet(
                 .graphicsLayer { translationY = sheetOffset.value * size.height; alpha = sheetAlpha.value }
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(AppColors.CardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .navigationBarsPadding()
+                .padding(bottom = 16.dp)
                 .padding(AppSpace.lg)
         ) {
             Column {

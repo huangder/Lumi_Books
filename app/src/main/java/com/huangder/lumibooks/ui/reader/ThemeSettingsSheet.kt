@@ -111,7 +111,7 @@ fun ThemeSettingsSheet(
                 .graphicsLayer { translationY = sheetOffset.value * size.height; alpha = sheetAlpha.value }
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(AppColors.CardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .navigationBarsPadding()
+                .padding(bottom = 16.dp)
                 .padding(AppSpace.lg)
         ) {
             Column {
@@ -309,7 +309,7 @@ fun AdvancedSettingsSheet(
                 .graphicsLayer { translationY = sheetOffset.value * size.height; alpha = sheetAlpha.value }
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(AppColors.CardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .navigationBarsPadding()
+                .padding(bottom = 16.dp)
                 .padding(AppSpace.lg)
         ) {
             Column {
