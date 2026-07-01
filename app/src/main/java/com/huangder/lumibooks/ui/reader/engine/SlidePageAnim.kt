@@ -52,6 +52,9 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
             // 空闲
             else -> {
                 drawPageBitmap(canvas, cur, 0f, 0f, vw, vh)
+                // 叠加标注层（高亮/选区）
+                val annotation = readView.getCurAnnotationBitmap()
+                drawPageBitmap(canvas, annotation, 0f, 0f, vw, vh)
                 if (shadowFadeAlpha > 0f) {
                     drawFadeOutShadow(canvas, vw, vh)
                 }
