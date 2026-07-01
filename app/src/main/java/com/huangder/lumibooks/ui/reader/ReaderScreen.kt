@@ -75,6 +75,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import com.huangder.lumibooks.ui.animation.AppEasing
 import com.huangder.lumibooks.ui.animation.cardPressEffect
 import com.huangder.lumibooks.ui.components.ImmersiveMode
@@ -91,6 +94,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> Unit = {}, onLoadingComplete: () -> Unit = {}, viewModel: ReaderViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsState()
+    val notes by viewModel.notes.collectAsState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -264,6 +268,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         marginHorizDp = uiState.marginHorizDp,
                         marginVertDp = uiState.marginVertDp
                     )
+                    readView.setSavedNotes(notes)
                 },
                 modifier = Modifier.fillMaxSize()
             )
@@ -1196,15 +1201,30 @@ private fun SelectionMenuOverlay(
     val isDarkTheme = readerTheme == "night"
     val menuBg = if (isDarkTheme) Color(0xFFEAEAEA) else Color(0xFF2C2C2E)
     val menuText = if (isDarkTheme) Color(0xFF1C1C1E) else Color.White
+    val configuration = LocalConfiguration.current
+    val screenWidthPx = with(LocalDensity.current) { configuration.screenWidthDp.dp.toPx() }
+    val screenHeightPx = with(LocalDensity.current) { configuration.screenHeightDp.dp.toPx() }
+    val menuWidthPx = with(LocalDensity.current) { 280.dp.toPx() }
+    val menuHeightPx = with(LocalDensity.current) { 56.dp.toPx() }
 
-    Box(
-        Modifier.fillMaxSize()
-            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onDismiss() }
+    val menuX = (state.touchX - menuWidthPx / 2f).coerceIn(12f, (screenWidthPx - menuWidthPx - 12f).coerceAtLeast(12f))
+    val menuY = if (state.touchY > screenHeightPx * 0.55f) {
+        (state.touchY - menuHeightPx - 20f).coerceAtLeast(12f)
+    } else {
+        (state.touchY + 28f).coerceAtMost((screenHeightPx - menuHeightPx - 12f).coerceAtLeast(12f))
+    }
+
+    Popup(
+        alignment = Alignment.TopStart,
+        offset = IntOffset(menuX.toInt(), menuY.toInt()),
+        properties = PopupProperties(
+            focusable = false,
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false
+        )
     ) {
         Row(
             modifier = Modifier
-                .align(Alignment.TopCenter)
-                .offset { IntOffset(0, (state.touchY - 200f).coerceAtLeast(10f).toInt()) }
                 .clip(RoundedCornerShape(20.dp))
                 .background(menuBg)
                 .padding(horizontal = 4.dp, vertical = 6.dp),
@@ -1449,6 +1469,7 @@ private fun NoteItem(
     onNoteClick: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val accentColor = remember(item.color) { parseNoteColor(item.color) }
     // 🔥 拖拽期间用 rawOffset（直接赋值，跟手无延迟），松手后 Animatable 驱动惯性动画
     var rawOffset by remember { mutableFloatStateOf(0f) }
     val animOffset = remember { Animatable(0f) }
@@ -1490,7 +1511,7 @@ private fun NoteItem(
             modifier = Modifier
                 .offset { IntOffset(displayOffset.toInt(), 0) }
                 .clip(RoundedCornerShape(16.dp))
-                .background(AppColors.BgGray)
+                .background(accentColor.copy(alpha = 0.08f))
                 .pointerInput(Unit) {
                     detectHorizontalDragGestures(
                         onDragStart = { isDragging = true },
@@ -1522,8 +1543,32 @@ private fun NoteItem(
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onNoteClick() }
                 .padding(horizontal = 14.dp, vertical = 14.dp)
         ) {
-            Column {
-                Text(item.selectedText, fontSize = 14.sp, color = AppColors.TextPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .padding(start = 0.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .fillMaxHeight()
+                        .width(4.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(accentColor.copy(alpha = 0.95f))
+                )
+            }
+
+            Column(modifier = Modifier.padding(start = 10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(accentColor)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(item.selectedText, fontSize = 14.sp, color = AppColors.TextPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
                 if (item.note.isNotEmpty()) {
                     Spacer(Modifier.height(4.dp))
                     Text(item.note, fontSize = 13.sp, color = AppColors.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -1539,5 +1584,13 @@ private fun NoteItem(
                 }
             }
         }
+    }
+}
+
+private fun parseNoteColor(colorString: String): Color {
+    return try {
+        Color(android.graphics.Color.parseColor(colorString))
+    } catch (_: IllegalArgumentException) {
+        Color(0xFFEBB700)
     }
 }
