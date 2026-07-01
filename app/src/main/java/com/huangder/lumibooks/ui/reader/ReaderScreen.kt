@@ -260,6 +260,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                         it.startPosition <= charEnd &&
                                         it.endPosition >= charStart
                                 }
+                                // 获取选区边界框用于菜单定位
+                                val bounds = readViewRef.value?.getSelectionBounds()
                                 selectionState = SelectionState(
                                     chapterIndex = chapterIndex,
                                     pageInChapter = pageInChapter,
@@ -270,13 +272,19 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                     touchY = touchY,
                                     hasHighlight = existingNotes.any { it.note.isEmpty() },
                                     hasNote = existingNotes.any { it.note.isNotEmpty() },
-                                    existingNote = existingNotes.firstOrNull { it.note.isNotEmpty() }
+                                    existingNote = existingNotes.firstOrNull { it.note.isNotEmpty() },
+                                    selTopY = bounds?.topY ?: touchY,
+                                    selBottomY = bounds?.bottomY ?: touchY,
+                                    selStartX = bounds?.startX ?: touchX,
+                                    selEndX = bounds?.endX ?: touchX
                                 )
-                                // 初始化手柄位置（仅在选择开始时，不经过 onSelectionChanged 反馈）
-                                readViewRef.value?.getSelectionHandleCenters()?.let { hc ->
-                                    startHandlePos = Offset(hc.startCx, hc.startCy)
-                                    endHandlePos = Offset(hc.endCx, hc.endCy)
-                                    showHandles = true
+                                // 🔥 仅在初始选中时设置手柄位置，拖动时不重算（避免反馈环导致手柄飞走）
+                                if (!showHandles) {
+                                    readViewRef.value?.getSelectionHandleCenters()?.let { hc ->
+                                        startHandlePos = Offset(hc.startCx, hc.startCy)
+                                        endHandlePos = Offset(hc.endCx, hc.endCy)
+                                        showHandles = true
+                                    }
                                 }
                             }
                         })
@@ -1255,7 +1263,12 @@ private data class SelectionState(
     val touchY: Float,
     val hasHighlight: Boolean = false,
     val hasNote: Boolean = false,
-    val existingNote: com.huangder.lumibooks.domain.model.Note? = null
+    val existingNote: com.huangder.lumibooks.domain.model.Note? = null,
+    // 选区边界框（屏幕像素坐标），用于菜单定位
+    val selTopY: Float = 0f,
+    val selBottomY: Float = 0f,
+    val selStartX: Float = 0f,
+    val selEndX: Float = 0f
 )
 
 // ── 选择菜单覆盖层 ──
@@ -1284,11 +1297,17 @@ private fun SelectionMenuOverlay(
     val menuWidthPx = with(LocalDensity.current) { 280.dp.toPx() }
     val menuHeightPx = with(LocalDensity.current) { 56.dp.toPx() }
 
-    val menuX = (state.touchX - menuWidthPx / 2f).coerceIn(12f, (screenWidthPx - menuWidthPx - 12f).coerceAtLeast(12f))
-    val menuY = if (state.touchY > screenHeightPx * 0.55f) {
-        (state.touchY - menuHeightPx - 20f).coerceAtLeast(12f)
+    // 基于选区边界框定位菜单（非触摸点）
+    val selCenterX = (state.selStartX + state.selEndX) / 2f
+    val menuX = (selCenterX - menuWidthPx / 2f).coerceIn(12f, (screenWidthPx - menuWidthPx - 12f).coerceAtLeast(12f))
+    // 选区中点在屏幕上半部分 → 菜单在选区下方；下半部分 → 菜单在选区上方
+    val selCenterY = (state.selTopY + state.selBottomY) / 2f
+    val menuY = if (selCenterY > screenHeightPx * 0.5f) {
+        // 选区偏下，菜单显示在选区上方
+        (state.selTopY - menuHeightPx - 16f).coerceAtLeast(12f)
     } else {
-        (state.touchY + 28f).coerceAtMost((screenHeightPx - menuHeightPx - 12f).coerceAtLeast(12f))
+        // 选区偏上，菜单显示在选区下方
+        (state.selBottomY + 16f).coerceAtMost((screenHeightPx - menuHeightPx - 12f).coerceAtLeast(12f))
     }
 
     Popup(

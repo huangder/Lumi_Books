@@ -61,14 +61,14 @@ class ReadView(context: Context) : FrameLayout(context) {
     /** 清除选择并重绘 */
     fun clearSelection() {
         selChapter = -1; selStart = -1; selEnd = -1
-        refreshCurrentPageAnnotations(includeSelection = false)
+        refreshAnnotationLayer(includeSelection = false)
         onSelectionChanged?.invoke(-1, -1, -1, -1, "")
     }
 
     /** 供外部调用的选区更新（菜单调整范围时使用） */
     fun updateSelection(newStart: Int, newEnd: Int) {
         selStart = newStart; selEnd = newEnd
-        refreshCurrentPageAnnotations(includeSelection = true)
+        refreshAnnotationLayer(includeSelection = true)
         val curSlot = slotManager.getCurSlot()
         val text = kotlinx.coroutines.runBlocking { contentProvider?.invoke(curSlot.chapterIndex) }?.toString() ?: ""
         if (selStart in 0 until text.length && selEnd in selStart..text.length) {
@@ -80,10 +80,13 @@ class ReadView(context: Context) : FrameLayout(context) {
     /** 设置已保存的笔记/高亮并刷新当前页。 */
     fun setSavedNotes(notes: List<Note>) {
         savedNotes = notes
-        refreshCurrentPageAnnotations(includeSelection = selChapter >= 0 && selStart >= 0 && selEnd > selStart)
+        refreshAnnotationLayer(includeSelection = selChapter >= 0 && selStart >= 0 && selEnd > selStart)
     }
 
-    /** 刷新当前页的所有已保存高亮和可选的临时选区。 */
+    /**
+     * 完整刷新：重绘文字层 + 标注层。
+     * 仅在翻页、配置变更时调用（重量级）。
+     */
     private fun refreshCurrentPageAnnotations(includeSelection: Boolean) {
         val curSlot = slotManager.getCurSlot()
         if (!curSlot.isLoaded) {
@@ -91,41 +94,49 @@ class ReadView(context: Context) : FrameLayout(context) {
             return
         }
         val cl = layoutEngine.getChapterLayout(curSlot.chapterIndex) ?: return
+
+        // 文字层：重新渲染文字到 pageBitmap
         val bm = curSlot.surfaceView.getPageBitmap() ?: return
-
         renderer.renderPage(cl, curSlot.pageIndex, bm)
-        drawSavedNotesOnCurrentPage(cl, curSlot.pageIndex, bm)
+        curSlot.surfaceView.setPageBitmap(bm)
 
-        if (includeSelection && selChapter == curSlot.chapterIndex && selStart >= 0 && selEnd > selStart) {
-            renderer.drawSelectionHighlight(bm, cl, curSlot.pageIndex, selStart, selEnd)
-        }
-
-        invalidate()
+        // 标注层：渲染到独立的透明 Bitmap
+        refreshAnnotationLayer(includeSelection)
     }
 
-    private fun drawSavedNotesOnCurrentPage(chapterLayout: ChapterLayout, pageIndex: Int, bitmap: android.graphics.Bitmap) {
-        val pageLayout = chapterLayout.pages.getOrNull(pageIndex) ?: return
-        val chapterIndex = slotManager.getCurSlot().chapterIndex
+    /**
+     * 快速刷新：仅重绘标注层（高亮/选区）。
+     * 拖动手柄时调用（轻量级），文字层不动。
+     */
+    private fun refreshAnnotationLayer(includeSelection: Boolean) {
+        val curSlot = slotManager.getCurSlot()
+        if (!curSlot.isLoaded) return
+        val cl = layoutEngine.getChapterLayout(curSlot.chapterIndex) ?: return
+
+        // 收集本页的已保存标注
+        val pageLayout = cl.pages.getOrNull(curSlot.pageIndex) ?: return
+        val chapterIndex = curSlot.chapterIndex
         val pageStart = pageLayout.startCharOffset
         val pageEnd = pageLayout.endCharOffset
 
-        savedNotes.asSequence()
+        val annotations = savedNotes
             .filter { it.chapterIndex == chapterIndex && it.endPosition > pageStart && it.startPosition < pageEnd }
-            .forEach { note ->
-                val highlightColor = try {
+            .map { note ->
+                val color = try {
                     android.graphics.Color.parseColor(note.color)
                 } catch (_: IllegalArgumentException) {
-                    0xCCFFEB3B.toInt()
+                    0x40FFEB3B.toInt()
                 }
-                renderer.drawSelectionHighlight(
-                    bitmap = bitmap,
-                    chapterLayout = chapterLayout,
-                    pageIndex = pageIndex,
-                    selectionStart = note.startPosition,
-                    selectionEnd = note.endPosition,
-                    highlightColor = highlightColor
-                )
+                PageRenderer.AnnotationSpec(note.startPosition, note.endPosition, color)
             }
+
+        val selStart = if (includeSelection && selChapter == chapterIndex && selStart >= 0 && selEnd > selStart) selStart else -1
+        val selEnd = if (selStart >= 0) selEnd else -1
+
+        val annotationBm = renderer.renderAnnotationLayer(cl, curSlot.pageIndex, annotations, selStart, selEnd)
+        curSlot.surfaceView.setAnnotationBitmap(annotationBm)
+
+        invalidate()
     }
 
     /** Composed 手柄半径 dp → px，和之前 PageRenderer.drawHandle 保持一致 */
@@ -142,6 +153,32 @@ class ReadView(context: Context) : FrameLayout(context) {
 
     /** 手柄坐标数据类 */
     data class HandleCenters(val startCx: Float, val startCy: Float, val endCx: Float, val endCy: Float)
+
+    /** 选区边界框数据类（屏幕坐标） */
+    data class SelectionBounds(val topY: Float, val bottomY: Float, val startX: Float, val endX: Float)
+
+    /** 获取选区的屏幕边界框，供菜单定位使用 */
+    fun getSelectionBounds(): SelectionBounds? {
+        if (selChapter < 0 || selStart < 0 || selEnd <= selStart) return null
+        val curSlot = slotManager.getCurSlot()
+        if (curSlot.chapterIndex != selChapter) return null
+        val cl = layoutEngine.getChapterLayout(selChapter) ?: return null
+        val sl = cl.staticLayout
+        val pages = cl.pages
+        val pageLayout = pages.getOrNull(curSlot.pageIndex) ?: return null
+        val pageStartY = sl.getLineTop(pageLayout.startLine).toFloat()
+
+        val startLine = sl.getLineForOffset(selStart)
+        val endLine = sl.getLineForOffset((selEnd - 1).coerceIn(0, sl.text.length - 1))
+
+        val topY = renderer.renderMarginTop + sl.getLineTop(startLine) - pageStartY
+        val bottomY = renderer.renderMarginTop + sl.getLineBottom(endLine) - pageStartY
+        val startX = renderer.renderMarginLeft + sl.getPrimaryHorizontal(selStart)
+        val endOffset = (selEnd - 1).coerceIn(0, sl.text.length - 1)
+        val endX = renderer.renderMarginLeft + sl.getPrimaryHorizontal(endOffset)
+
+        return SelectionBounds(topY, bottomY, startX.coerceAtMost(endX), startX.coerceAtLeast(endX))
+    }
 
     /** 获取两个手柄的屏幕坐标（圆心），供 Compose 覆盖层使用 */
     fun getSelectionHandleCenters(): HandleCenters? {
@@ -205,7 +242,8 @@ class ReadView(context: Context) : FrameLayout(context) {
                 selEnd = charOff + 1
             }
         }
-        refreshCurrentPageAnnotations(includeSelection = true)
+        // 拖动时只重绘标注层（轻量），不重绘文字层
+        refreshAnnotationLayer(includeSelection = true)
         // 通知菜单更新选区范围（不更新手柄坐标，避免反馈环导致抽搐）
         val curSlot = slotManager.getCurSlot()
         val text = kotlinx.coroutines.runBlocking { contentProvider?.invoke(curSlot.chapterIndex) }?.toString() ?: ""
@@ -466,6 +504,9 @@ class ReadView(context: Context) : FrameLayout(context) {
     fun getCurBitmap() = curPageView.getPageBitmap()
     fun getPrevBitmap() = prevPageView.getPageBitmap()
     fun getNextBitmap() = nextPageView.getPageBitmap()
+
+    /** 获取当前页标注层 Bitmap（供动画控制器叠加绘制） */
+    fun getCurAnnotationBitmap() = curPageView.getAnnotationBitmap()
 
     // ── 绘制 ──
 

@@ -143,7 +143,7 @@ class PageRenderer {
         pageIndex: Int,
         selectionStart: Int,
         selectionEnd: Int,
-        highlightColor: Int = 0xCCFFEB3B.toInt(),
+        highlightColor: Int = 0x40FFEB3B.toInt(),
         cornerRadius: Float = 6f
     ) {
         val pageLayout = chapterLayout.pages.getOrNull(pageIndex) ?: return
@@ -163,18 +163,27 @@ class PageRenderer {
             style = Paint.Style.FILL
         }
         val innerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0x66FFFFFF
+            color = 0x10FFFFFF
             style = Paint.Style.FILL
         }
 
         val pageStartY = sl.getLineTop(pageLayout.startLine)
 
         for (line in startLine..endLine) {
-            val lineStart = if (line == startLine) selStart else sl.getLineStart(line)
-            val lineEnd = if (line == endLine) selEnd - 1 else sl.getLineStart(line + 1) - 1
+            val isFirstLine = line == startLine
+            val isLastLine = line == endLine
 
-            val left = renderMarginLeft + sl.getPrimaryHorizontal(lineStart).coerceAtMost(sl.getPrimaryHorizontal(lineEnd + 1))
-            val right = renderMarginLeft + sl.getPrimaryHorizontal(lineStart).coerceAtLeast(sl.getPrimaryHorizontal(lineEnd + 1))
+            // 左右边界：首行从 selStart 开始，末行到 selEnd 结束，中间行横跨整行
+            val left = if (isFirstLine) {
+                renderMarginLeft + sl.getPrimaryHorizontal(selStart)
+            } else {
+                renderMarginLeft
+            }
+            val right = if (isLastLine) {
+                renderMarginLeft + sl.getPrimaryHorizontal(selEnd)
+            } else {
+                renderMarginLeft + sl.width.toFloat()
+            }
             val top = renderMarginTop + sl.getLineTop(line) - pageStartY
             val bottom = renderMarginTop + sl.getLineBottom(line) - pageStartY
 
@@ -188,6 +197,49 @@ class PageRenderer {
             canvas.drawRoundRect(RectF(adjustedLeft + 1f, adjustedTop + 1f, adjustedRight - 1f, adjustedBottom - 1f), cornerRadius - 1f, cornerRadius - 1f, innerPaint)
         }
     }
+
+    /**
+     * 渲染标注层（高亮/选区）到透明 Bitmap。
+     * 用于分层渲染：文字层不变，仅重绘标注层，提升拖动流畅性。
+     */
+    fun renderAnnotationLayer(
+        chapterLayout: ChapterLayout,
+        pageIndex: Int,
+        annotations: List<AnnotationSpec>,
+        selectionStart: Int = -1,
+        selectionEnd: Int = -1
+    ): Bitmap {
+        val bitmap = Bitmap.createBitmap(canvasWidth, canvasHeight, Bitmap.Config.ARGB_8888)
+        // 透明背景（不擦除）
+
+        // 绘制已保存的高亮/笔记
+        for (ann in annotations) {
+            drawSelectionHighlight(
+                bitmap = bitmap,
+                chapterLayout = chapterLayout,
+                pageIndex = pageIndex,
+                selectionStart = ann.startOffset,
+                selectionEnd = ann.endOffset,
+                highlightColor = ann.color
+            )
+        }
+
+        // 绘制临时选区
+        if (selectionStart >= 0 && selectionEnd > selectionStart) {
+            drawSelectionHighlight(
+                bitmap = bitmap,
+                chapterLayout = chapterLayout,
+                pageIndex = pageIndex,
+                selectionStart = selectionStart,
+                selectionEnd = selectionEnd
+            )
+        }
+
+        return bitmap
+    }
+
+    /** 标注规格数据类 */
+    data class AnnotationSpec(val startOffset: Int, val endOffset: Int, val color: Int)
 
     fun destroy() {
         clearPool()
