@@ -122,7 +122,7 @@ class EpubParser(private val context: Context? = null) : BookParser {
                         result.add(
                             Chapter(
                                 index = index,
-                                title = "第${index + 1}章",
+                                title = extractTitle(rawHtml) ?: "第${index + 1}章",
                                 content = formattedText,
                                 htmlContent = processedHtml
                             )
@@ -353,8 +353,27 @@ class EpubParser(private val context: Context? = null) : BookParser {
     }
 
     private fun extractTitle(html: String): String? {
+        // 1. <title> 标签（通常在 <head> 中）
         val titleRegex = """<title[^>]*>([^<]+)</title>""".toRegex(RegexOption.IGNORE_CASE)
-        return titleRegex.find(html)?.groupValues?.get(1)
+        val titleTag = titleRegex.find(html)?.groupValues?.get(1)?.trim()
+        if (!titleTag.isNullOrBlank() && !titleTag.matches(Regex("^\\s*(第?[\\d一二三四五六七八九十百千零]+[章节回卷部篇]|Chapter|CH\\s*\\d|\\d+[\\.、])\\s*$"))) {
+            // 如果 title 标签内容不是纯章节编号（如"第一章"），直接使用
+            return titleTag
+        }
+
+        // 2. 尝试 <h1>~<h6> 标题标签（正文中的真实标题）
+        for (level in 1..6) {
+            val headingRegex = """<h$level[^>]*>([^<]+)</h$level>""".toRegex(RegexOption.IGNORE_CASE)
+            val heading = headingRegex.find(html)?.groupValues?.get(1)?.trim()
+            if (!heading.isNullOrBlank()) {
+                return heading
+            }
+        }
+
+        // 3. 如果 <title> 是章节编号格式，也接受（比"第X章"好）
+        if (!titleTag.isNullOrBlank()) return titleTag
+
+        return null
     }
 
     /**

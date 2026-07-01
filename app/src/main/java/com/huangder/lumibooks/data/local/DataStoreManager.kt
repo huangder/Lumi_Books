@@ -28,6 +28,8 @@ class DataStoreManager @Inject constructor(
         private val LETTER_SPACING = floatPreferencesKey("letter_spacing")
         private val FONT_TYPE = stringPreferencesKey("font_type")
         private val READER_THEME = stringPreferencesKey("reader_theme")
+        private val MARGIN_HORIZ = floatPreferencesKey("margin_horiz")
+        private val MARGIN_VERT = floatPreferencesKey("margin_vert")
 
         // 统计设置
         private val DAILY_GOAL = intPreferencesKey("daily_goal")
@@ -52,6 +54,14 @@ class DataStoreManager @Inject constructor(
 
     val fontType: Flow<String> = context.dataStore.data.map { preferences ->
         preferences[FONT_TYPE] ?: "system"
+    }
+
+    val marginHoriz: Flow<Float> = context.dataStore.data.map { preferences ->
+        preferences[MARGIN_HORIZ] ?: 44f
+    }
+
+    val marginVert: Flow<Float> = context.dataStore.data.map { preferences ->
+        preferences[MARGIN_VERT] ?: 72f
     }
 
     val readerTheme: Flow<String> = context.dataStore.data.map { preferences ->
@@ -94,6 +104,18 @@ class DataStoreManager @Inject constructor(
     suspend fun saveFontType(fontType: String) {
         context.dataStore.edit { preferences ->
             preferences[FONT_TYPE] = fontType
+        }
+    }
+
+    suspend fun saveMarginHoriz(marginHoriz: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[MARGIN_HORIZ] = marginHoriz
+        }
+    }
+
+    suspend fun saveMarginVert(marginVert: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[MARGIN_VERT] = marginVert
         }
     }
 

@@ -63,6 +63,8 @@ abstract class PageAnimationController(
     var onTapLeft: (() -> Unit)? = null
     var onTapCenter: (() -> Unit)? = null
     var onTapRight: (() -> Unit)? = null
+    /** 长按回调：传入触摸坐标 (x, y) 用于文本选择定位 */
+    var onLongPress: ((Float, Float) -> Unit)? = null
     /** 🔥 翻页前校验：目标方向是否允许翻页（目标槽位已加载？） */
     var onCanFlip: ((Direction) -> Boolean)? = null
 
@@ -77,6 +79,8 @@ abstract class PageAnimationController(
     // ── 触摸处理 ──
 
     fun onTouchEvent(event: MotionEvent): Boolean {
+        // 长按检测：ACTION_DOWN 时 postDelayed，MOVE/UP 取消
+        val longPressRunnable: Runnable? = null
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
                 abortAnim()
@@ -89,6 +93,15 @@ abstract class PageAnimationController(
                 downTime = System.currentTimeMillis()
                 direction = Direction.NONE
                 isDragging = true
+
+                // 长按检测（500ms）
+                val lpX = event.x; val lpY = event.y
+                readView.postDelayed({
+                    if (!hasMoved && isDragging) {
+                        isDragging = false
+                        onLongPress?.invoke(lpX, lpY)
+                    }
+                }, 500)
                 return true
             }
 
@@ -118,6 +131,9 @@ abstract class PageAnimationController(
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                // 取消任何待处理的长按
+                readView.removeCallbacks(null)
+
                 if (!isDragging) return false
                 isDragging = false
 
