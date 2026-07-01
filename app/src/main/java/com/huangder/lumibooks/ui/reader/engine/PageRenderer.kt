@@ -143,7 +143,7 @@ class PageRenderer {
         pageIndex: Int,
         selectionStart: Int,
         selectionEnd: Int,
-        highlightColor: Int = 0x70FFE082,
+        highlightColor: Int = 0xCCFFEB3B.toInt(),
         cornerRadius: Float = 6f
     ) {
         val pageLayout = chapterLayout.pages.getOrNull(pageIndex) ?: return
@@ -160,6 +160,10 @@ class PageRenderer {
         val canvas = Canvas(bitmap)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = highlightColor
+            style = Paint.Style.FILL
+        }
+        val innerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0x66FFFFFF
             style = Paint.Style.FILL
         }
 
@@ -181,6 +185,7 @@ class PageRenderer {
             val adjustedBottom = bottom + 1f
 
             canvas.drawRoundRect(RectF(adjustedLeft, adjustedTop, adjustedRight, adjustedBottom), cornerRadius, cornerRadius, paint)
+            canvas.drawRoundRect(RectF(adjustedLeft + 1f, adjustedTop + 1f, adjustedRight - 1f, adjustedBottom - 1f), cornerRadius - 1f, cornerRadius - 1f, innerPaint)
         }
     }
 

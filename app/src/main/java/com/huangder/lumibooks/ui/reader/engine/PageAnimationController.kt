@@ -57,6 +57,8 @@ abstract class PageAnimationController(
 
     /** 系统 GestureDetector 处理长按（比手动 postDelayed 更可靠） */
     private val gestureDetector = GestureDetector(readView.context, object : GestureDetector.SimpleOnGestureListener() {
+        override fun onDown(e: MotionEvent): Boolean = true
+
         override fun onLongPress(e: MotionEvent) {
             if (!hasMoved && isDragging) {
                 isLongPressed = true

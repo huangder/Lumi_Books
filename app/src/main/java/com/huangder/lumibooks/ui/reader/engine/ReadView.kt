@@ -6,6 +6,7 @@ import android.util.Log
 import android.view.MotionEvent
 import android.widget.FrameLayout
 import kotlinx.coroutines.runBlocking
+import com.huangder.lumibooks.domain.model.Note
 
 /**
  * 核心阅读视图。
@@ -57,6 +58,7 @@ class ReadView(context: Context) : FrameLayout(context) {
 
     // 手柄拖拽
     private var draggingHandle: Int = 0  // 0=none, 1=start, 2=end
+    private var savedNotes: List<Note> = emptyList()
 
     /** 手柄绘制半径，和 PageRenderer.drawHandle 的 radius 一致 */
     private val handleRadiusPx: Float get() = 9f * resources.displayMetrics.density
@@ -67,21 +69,65 @@ class ReadView(context: Context) : FrameLayout(context) {
     fun clearSelection() {
         selChapter = -1; selStart = -1; selEnd = -1
         draggingHandle = 0
-        val curSlot = slotManager.getCurSlot()
-        if (curSlot.isLoaded) {
-            val cl = layoutEngine.getChapterLayout(curSlot.chapterIndex)
-            val bm = curSlot.surfaceView.getPageBitmap()
-            if (cl != null && bm != null) {
-                renderer.renderPage(cl, curSlot.pageIndex, bm)
-            }
-        }
-        invalidate()
+        refreshCurrentPageAnnotations(includeSelection = false)
     }
 
     /** 供外部调用的选区更新 */
     fun updateSelection(newStart: Int, newEnd: Int) {
         selStart = newStart; selEnd = newEnd
         applyHighlightOnCurrentPage()
+    }
+
+    /** 设置已保存的笔记/高亮并刷新当前页。 */
+    fun setSavedNotes(notes: List<Note>) {
+        savedNotes = notes
+        refreshCurrentPageAnnotations(includeSelection = selChapter >= 0 && selStart >= 0 && selEnd > selStart)
+    }
+
+    /** 刷新当前页的所有已保存高亮和可选的临时选区。 */
+    private fun refreshCurrentPageAnnotations(includeSelection: Boolean) {
+        val curSlot = slotManager.getCurSlot()
+        if (!curSlot.isLoaded) {
+            invalidate()
+            return
+        }
+        val cl = layoutEngine.getChapterLayout(curSlot.chapterIndex) ?: return
+        val bm = curSlot.surfaceView.getPageBitmap() ?: return
+
+        renderer.renderPage(cl, curSlot.pageIndex, bm)
+        drawSavedNotesOnCurrentPage(cl, curSlot.pageIndex, bm)
+
+        if (includeSelection && selChapter == curSlot.chapterIndex && selStart >= 0 && selEnd > selStart) {
+            renderer.drawSelectionHighlight(bm, cl, curSlot.pageIndex, selStart, selEnd)
+            renderer.drawSelectionHandles(bm, cl, curSlot.pageIndex, selStart, selEnd, handleRadius = handleRadiusPx)
+        }
+
+        invalidate()
+    }
+
+    private fun drawSavedNotesOnCurrentPage(chapterLayout: ChapterLayout, pageIndex: Int, bitmap: android.graphics.Bitmap) {
+        val pageLayout = chapterLayout.pages.getOrNull(pageIndex) ?: return
+        val chapterIndex = slotManager.getCurSlot().chapterIndex
+        val pageStart = pageLayout.startCharOffset
+        val pageEnd = pageLayout.endCharOffset
+
+        savedNotes.asSequence()
+            .filter { it.chapterIndex == chapterIndex && it.endPosition > pageStart && it.startPosition < pageEnd }
+            .forEach { note ->
+                val highlightColor = try {
+                    android.graphics.Color.parseColor(note.color)
+                } catch (_: IllegalArgumentException) {
+                    0xCCFFEB3B.toInt()
+                }
+                renderer.drawSelectionHighlight(
+                    bitmap = bitmap,
+                    chapterLayout = chapterLayout,
+                    pageIndex = pageIndex,
+                    selectionStart = note.startPosition,
+                    selectionEnd = note.endPosition,
+                    highlightColor = highlightColor
+                )
+            }
     }
 
     /** 手柄圆心坐标（直接用 renderer 的真实 margin 值，保证和绘制位置一致） */
@@ -114,18 +160,7 @@ class ReadView(context: Context) : FrameLayout(context) {
 
     /** 在当前页上应用选择高亮 + 手柄 */
     private fun applyHighlightOnCurrentPage() {
-        val curSlot = slotManager.getCurSlot()
-        if (curSlot.isLoaded && selChapter == curSlot.chapterIndex) {
-            val cl = layoutEngine.getChapterLayout(curSlot.chapterIndex) ?: return
-            val bm = curSlot.surfaceView.getPageBitmap() ?: return
-            // 先重渲染清除旧状态，再画高亮和手柄
-            renderer.renderPage(cl, curSlot.pageIndex, bm)
-            if (selStart >= 0 && selEnd > selStart) {
-                renderer.drawSelectionHighlight(bm, cl, curSlot.pageIndex, selStart, selEnd)
-                renderer.drawSelectionHandles(bm, cl, curSlot.pageIndex, selStart, selEnd, handleRadius = handleRadiusPx)
-            }
-        }
-        invalidate()
+        refreshCurrentPageAnnotations(includeSelection = true)
     }
 
     // ── 配置状态 ──
@@ -237,6 +272,7 @@ class ReadView(context: Context) : FrameLayout(context) {
         // 页面变化回调
         slotManager.onPageChangedCallback = { globalPage, chapterIdx, pageInChapter, chapterTotal ->
             callbacks?.onPageChanged(globalPage, chapterIdx, pageInChapter, chapterTotal)
+            refreshCurrentPageAnnotations(includeSelection = selChapter == chapterIdx && selStart >= 0 && selEnd > selStart)
             // 🔥 确保 ReadView 重绘（dispatchDraw 不经过子 View 的 invalidate 路径）
             invalidate()
         }
@@ -359,6 +395,7 @@ class ReadView(context: Context) : FrameLayout(context) {
             slotManager.initialize(startChapter, startPage)
             isConfigured = true
         }
+        refreshCurrentPageAnnotations(includeSelection = selChapter >= 0 && selStart >= 0 && selEnd > selStart)
     }
 
     /** 跳转到指定章节指定页 */
