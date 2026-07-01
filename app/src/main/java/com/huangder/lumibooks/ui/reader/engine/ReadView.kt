@@ -57,7 +57,11 @@ class ReadView(context: Context) : FrameLayout(context) {
 
     // 手柄拖拽
     private var draggingHandle: Int = 0  // 0=none, 1=start, 2=end
-    private val handleTouchRadius = 36f  // dp * density 后的触控热区
+
+    /** 手柄绘制半径（px），必须和 PageRenderer.drawHandle 的 radius 一致 */
+    private val handleRadiusPx: Float get() = 12f * resources.displayMetrics.density
+    /** 触控热区半径（px），比手柄大一圈方便手指操作 */
+    private val handleTouchRadius: Float get() = 28f * resources.displayMetrics.density
 
     /** 清除选择并重绘 */
     fun clearSelection() {
@@ -80,6 +84,17 @@ class ReadView(context: Context) : FrameLayout(context) {
         applyHighlightOnCurrentPage()
     }
 
+    /** 获取手柄圆心坐标（和 PageRenderer.drawHandle 完全一致的公式） */
+    private fun getHandleCenter(sl: android.text.StaticLayout, charOffset: Int, pageStartY: Float): Pair<Float, Float>? {
+        if (charOffset < 0 || charOffset >= sl.text.length) return null
+        val ml = currentMarginHorizDp * resources.displayMetrics.density
+        val mt = currentMarginVertDp * resources.displayMetrics.density
+        val line = sl.getLineForOffset(charOffset)
+        val cx = ml + sl.getPrimaryHorizontal(charOffset)
+        val cy = mt + sl.getLineBottom(line) - pageStartY + handleRadiusPx * 0.5f
+        return cx to cy
+    }
+
     /** 检测触摸点是否在手柄区域内，返回手柄编号（0=无, 1=起始, 2=结束） */
     private fun hitTestHandle(x: Float, y: Float): Int {
         if (selChapter < 0 || selStart < 0 || selEnd <= selStart) return 0
@@ -88,36 +103,15 @@ class ReadView(context: Context) : FrameLayout(context) {
         val cl = layoutEngine.getChapterLayout(selChapter) ?: return 0
         val sl = cl.staticLayout
         val pageLayout = cl.pages.getOrNull(curSlot.pageIndex) ?: return 0
-        val pageStartY = sl.getLineTop(pageLayout.startLine)
-        val density = resources.displayMetrics.density
-        val hRad = 10f * density
+        val pageStartY = sl.getLineTop(pageLayout.startLine).toFloat()
 
-        // 计算起始手柄位置
-        if (selStart in pageLayout.startCharOffset until pageLayout.endCharOffset) {
-            val sx = marginLeft(sl, selStart)
-            val sy = marginTop(sl, selStart, pageStartY.toFloat(), hRad)
-            if (Math.hypot((x - sx).toDouble(), (y - sy).toDouble()) < handleTouchRadius) return 1
-        }
-        // 计算结束手柄位置
-        val endPos = (selEnd - 1).coerceAtLeast(0)
-        if (endPos in pageLayout.startCharOffset until pageLayout.endCharOffset) {
-            val ex = marginLeft(sl, endPos)
-            val ey = marginTop(sl, endPos, pageStartY.toFloat(), hRad)
-            if (Math.hypot((x - ex).toDouble(), (y - ey).toDouble()) < handleTouchRadius) return 2
-        }
+        // 起始手柄
+        val sc = getHandleCenter(sl, selStart, pageStartY)
+        if (sc != null && Math.hypot((x - sc.first).toDouble(), (y - sc.second).toDouble()) < handleTouchRadius) return 1
+        // 结束手柄
+        val ec = getHandleCenter(sl, selEnd - 1, pageStartY)
+        if (ec != null && Math.hypot((x - ec.first).toDouble(), (y - ec.second).toDouble()) < handleTouchRadius) return 2
         return 0
-    }
-
-    private fun marginLeft(sl: android.text.StaticLayout, offset: Int): Float {
-        val vw = (layoutEngine.visibleWidth).toFloat()
-        return layoutEngine.getChapterLayout(selChapter)?.let {
-            sl.getPrimaryHorizontal(offset).coerceIn(0f, vw)
-        }?.plus(resources.displayMetrics.density * 44f) ?: 0f  // marginLeft
-    }
-
-    private fun marginTop(sl: android.text.StaticLayout, offset: Int, pageStartY: Float, hRad: Float): Float {
-        val line = sl.getLineForOffset(offset)
-        return (resources.displayMetrics.density * 72f) + sl.getLineBottom(line) - pageStartY + hRad * 0.5f
     }
 
     /** 在当前页上应用选择高亮 + 手柄 */
@@ -130,7 +124,7 @@ class ReadView(context: Context) : FrameLayout(context) {
             renderer.renderPage(cl, curSlot.pageIndex, bm)
             if (selStart >= 0 && selEnd > selStart) {
                 renderer.drawSelectionHighlight(bm, cl, curSlot.pageIndex, selStart, selEnd)
-                renderer.drawSelectionHandles(bm, cl, curSlot.pageIndex, selStart, selEnd)
+                renderer.drawSelectionHandles(bm, cl, curSlot.pageIndex, selStart, selEnd, handleRadius = handleRadiusPx)
             }
         }
         invalidate()
@@ -413,7 +407,7 @@ class ReadView(context: Context) : FrameLayout(context) {
                             if (draggingHandle == 1) {
                                 selStart = charOff.coerceIn(0, selEnd - 1)
                             } else {
-                                selEnd = (charOff + 1).coerceAtMost(selStart + 1)
+                                selEnd = (charOff + 1).coerceAtLeast(selStart + 1)
                             }
                             applyHighlightOnCurrentPage()
                         }

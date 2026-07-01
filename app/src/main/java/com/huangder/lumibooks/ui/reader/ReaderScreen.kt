@@ -1204,7 +1204,7 @@ private fun SelectionMenuOverlay(
         Row(
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .offset { IntOffset(0, (state.touchY - 160f).coerceAtLeast(40f).toInt()) }
+                .offset { IntOffset(0, (state.touchY - 200f).coerceAtLeast(10f).toInt()) }
                 .clip(RoundedCornerShape(20.dp))
                 .background(menuBg)
                 .padding(horizontal = 4.dp, vertical = 6.dp),
@@ -1449,25 +1449,23 @@ private fun NoteItem(
     onNoteClick: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val swipeAnim = remember { Animatable(0f) }
+    // 🔥 拖拽期间用 rawOffset（直接赋值，跟手无延迟），松手后 Animatable 驱动惯性动画
+    var rawOffset by remember { mutableFloatStateOf(0f) }
+    val animOffset = remember { Animatable(0f) }
+    var isDragging by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val dismissThreshold = 100f
     val trashSize = 44f
-    var isDragging by remember { mutableStateOf(false) }
 
-    val trashAlpha = remember { Animatable(0f) }
-    LaunchedEffect(swipeAnim.value) {
-        val fraction = (-swipeAnim.value / dismissThreshold).coerceIn(0f, 1f)
-        trashAlpha.snapTo(fraction)
-    }
+    val displayOffset = if (isDragging) rawOffset else animOffset.value
+    val trashAlpha = (-displayOffset / dismissThreshold).coerceIn(0f, 1f)
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(AppColors.BgGray.copy(alpha = 0.5f))
+            .clip(RoundedCornerShape(16.dp))
     ) {
-        // 红色垃圾桶（右侧滑入）
+        // 红色垃圾桶（右侧，随滑动跟手滑入）
         Box(
             modifier = Modifier
                 .matchParentSize()
@@ -1476,26 +1474,22 @@ private fun NoteItem(
         ) {
             Box(
                 modifier = Modifier
-                    .graphicsLayer { alpha = trashAlpha.value }
+                    .graphicsLayer { alpha = trashAlpha }
                     .size(trashSize.dp)
                     .clip(CircleShape)
                     .background(Color(0xFFE53935))
                     .clickable { onDelete() },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    Icons.Default.Close, "删除",
-                    tint = Color.White,
-                    modifier = Modifier.size(20.dp)
-                )
+                Icon(Icons.Default.Close, "删除", tint = Color.White, modifier = Modifier.size(20.dp))
             }
         }
 
-        // 内容（手势滑动层）
+        // 内容层
         Box(
             modifier = Modifier
-                .offset { IntOffset(swipeAnim.value.toInt(), 0) }
-                .clip(RoundedCornerShape(12.dp))
+                .offset { IntOffset(displayOffset.toInt(), 0) }
+                .clip(RoundedCornerShape(16.dp))
                 .background(AppColors.BgGray)
                 .pointerInput(Unit) {
                     detectHorizontalDragGestures(
@@ -1503,33 +1497,30 @@ private fun NoteItem(
                         onDragEnd = {
                             isDragging = false
                             scope.launch {
-                                if (-swipeAnim.value > dismissThreshold * 1.5f) {
-                                    // 惯性滑出 → 删除
-                                    swipeAnim.animateTo(-600f, tween(200))
-                                    onDelete()
-                                } else if (-swipeAnim.value > dismissThreshold * 0.7f) {
-                                    // 超过阈值 → 吸附到垃圾桶位置
-                                    swipeAnim.animateTo(-dismissThreshold, spring(dampingRatio = 0.6f))
+                                val from = rawOffset
+                                animOffset.snapTo(from)
+                                if (-from > dismissThreshold * 1.5f) {
+                                    animOffset.animateTo(-600f, tween(200)); onDelete()
+                                } else if (-from > dismissThreshold * 0.7f) {
+                                    animOffset.animateTo(-dismissThreshold, spring(dampingRatio = 0.5f, stiffness = 400f))
                                 } else {
-                                    // 回弹
-                                    swipeAnim.animateTo(0f, spring(dampingRatio = 0.6f))
+                                    animOffset.animateTo(0f, spring(dampingRatio = 0.5f, stiffness = 400f))
                                 }
+                                rawOffset = 0f
                             }
                         },
                         onDragCancel = {
                             isDragging = false
-                            scope.launch { swipeAnim.animateTo(0f, spring(dampingRatio = 0.6f)) }
+                            scope.launch { animOffset.snapTo(rawOffset); animOffset.animateTo(0f, spring(dampingRatio = 0.5f, stiffness = 400f)) }
+                            rawOffset = 0f
                         },
                         onHorizontalDrag = { _, dragAmount ->
-                            scope.launch {
-                                val newVal = (swipeAnim.value + dragAmount).coerceIn(-dismissThreshold * 2, 0f)
-                                swipeAnim.snapTo(newVal)
-                            }
+                            rawOffset = (rawOffset + dragAmount).coerceIn(-dismissThreshold * 2.5f, 0f)
                         }
                     )
                 }
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onNoteClick() }
-                .padding(horizontal = 12.dp, vertical = 10.dp)
+                .padding(horizontal = 14.dp, vertical = 14.dp)
         ) {
             Column {
                 Text(item.selectedText, fontSize = 14.sp, color = AppColors.TextPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
