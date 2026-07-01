@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -58,12 +59,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -151,6 +155,13 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         "sepia" -> Color(0xFF4A3728)
         "green" -> Color(0xFF2E7D32)
         else -> AppColors.TextPrimary
+    }
+    // 目录进度条颜色：比文字深，跟随阅读主题
+    val catalogProgressColor = when (uiState.readerTheme) {
+        "night" -> Color(0xFF555555)
+        "sepia" -> Color(0xFFC4A88C)
+        "green" -> Color(0xFFA5D6A7)
+        else -> Color(0xFFD0D0D0)
     }
 
     // 全屏沉浸
@@ -326,6 +337,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         chapterProgress = chapterProgress,
                         capsuleBgColor = capsuleBgColor,
                         capsuleContentColor = capsuleContentColor,
+                        catalogProgressColor = catalogProgressColor,
                         onCatalogClick = { showToc = true },
                         onBookmarkClick = { showNotesList = true },
                         onSearchClick = { showSearch = true },
@@ -683,6 +695,7 @@ private fun FloatingReaderMenu(
     chapterProgress: Int,
     capsuleBgColor: Color,
     capsuleContentColor: Color,
+    catalogProgressColor: Color,
     onCatalogClick: () -> Unit,
     onBookmarkClick: () -> Unit,
     onSearchClick: () -> Unit,
@@ -730,7 +743,7 @@ private fun FloatingReaderMenu(
             alpha = alpha0.value
             translationY = offset0.value
         }) {
-            CatalogCapsule(chapterTitle, chapterProgress, capsuleBgColor, capsuleContentColor, onCatalogClick)
+            CatalogCapsule(chapterTitle, chapterProgress, capsuleBgColor, capsuleContentColor, catalogProgressColor, onCatalogClick)
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -761,6 +774,7 @@ private fun CatalogCapsule(
     progress: Int,
     bgColor: Color,
     contentColor: Color,
+    progressColor: Color,
     onClick: () -> Unit
 ) {
     Box(
@@ -777,7 +791,7 @@ private fun CatalogCapsule(
                 .fillMaxHeight()
                 .fillMaxWidth((progress / 100f).coerceIn(0f, 1f))
                 .clip(RoundedCornerShape(24.dp))
-                .background(AppColors.Accent.copy(alpha = 0.8f))
+                .background(progressColor)
         )
         val leftColor = if (progress > 5) Color.White else contentColor
         val rightColor = if (progress > 70) Color.White.copy(alpha = 0.9f) else contentColor.copy(alpha = 0.5f)
@@ -870,8 +884,7 @@ private fun TocSheet(
                 .fillMaxWidth()
                 .graphicsLayer { translationY = sheetOffset.value * size.height; alpha = sheetAlpha.value }
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .background(AppColors.CardBg)
+                .background(AppColors.CardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .navigationBarsPadding()
                 .padding(AppSpace.lg)
         ) {
@@ -884,7 +897,7 @@ private fun TocSheet(
                     ) { Icon(Icons.Default.Close, "关闭", tint = AppColors.TextSecondary, modifier = Modifier.size(18.dp)) }
                     Text("目录", fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = DingliSong, color = AppColors.TextPrimary, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
                     Box(
-                        modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.CardBg).clickable { isClosing = true },
+                        modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.Accent.copy(alpha = 0.15f)).clickable { isClosing = true },
                         contentAlignment = Alignment.Center
                     ) { Text("✓", fontSize = 16.sp, color = AppColors.Accent) }
                 }
@@ -1002,8 +1015,7 @@ private fun SearchSheet(
                 .fillMaxWidth()
                 .graphicsLayer { translationY = sheetOffset.value * size.height; alpha = sheetAlpha.value }
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .background(AppColors.CardBg)
+                .background(AppColors.CardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .imePadding()
                 .navigationBarsPadding()
                 .padding(AppSpace.lg)
@@ -1017,7 +1029,7 @@ private fun SearchSheet(
                     ) { Icon(Icons.Default.Close, "关闭", tint = AppColors.TextSecondary, modifier = Modifier.size(18.dp)) }
                     Text("搜索", fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = DingliSong, color = AppColors.TextPrimary, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
                     Box(
-                        modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.CardBg).clickable { isClosing = true },
+                        modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.Accent.copy(alpha = 0.15f)).clickable { isClosing = true },
                         contentAlignment = Alignment.Center
                     ) { Text("✓", fontSize = 16.sp, color = AppColors.Accent) }
                 }
@@ -1166,14 +1178,16 @@ private fun SelectionMenuOverlay(
     onViewNote: () -> Unit
 ) {
     if (state == null) return
+
     Box(
         Modifier.fillMaxSize()
             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onDismiss() }
     ) {
+        // 菜单定位：触摸点在上半→菜单在下方，触摸在下半→菜单在上方
         Row(
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 80.dp)
+                .offset { IntOffset(0, (if (state.touchY > 800f) state.touchY - 140f else state.touchY + 40f).toInt()) }
                 .clip(RoundedCornerShape(20.dp))
                 .background(Color(0xFF2C2C2E))
                 .padding(horizontal = 4.dp, vertical = 6.dp),
@@ -1243,12 +1257,10 @@ private fun NoteInputSheet(
         Box(
             Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .fillMaxHeight(0.55f)
+                .fillMaxHeight(0.6f)
                 .graphicsLayer { translationY = sheetOffset.value * size.height; alpha = sheetAlpha.value }
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .background(AppColors.CardBg)
-                .imePadding()
+                .background(AppColors.CardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .navigationBarsPadding()
                 .padding(AppSpace.lg)
         ) {
@@ -1260,7 +1272,7 @@ private fun NoteInputSheet(
                     ) { Icon(Icons.Default.Close, "取消", tint = AppColors.TextSecondary, modifier = Modifier.size(18.dp)) }
                     Text("笔记", fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = DingliSong, color = AppColors.TextPrimary, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
                     Box(
-                        modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.CardBg).clickable { onConfirm() },
+                        modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.Accent.copy(alpha = 0.15f)).clickable { onConfirm() },
                         contentAlignment = Alignment.Center
                     ) { Text("✓", fontSize = 16.sp, color = AppColors.Accent) }
                 }
@@ -1339,8 +1351,7 @@ private fun NotesListSheet(
                 .fillMaxHeight(0.6f)
                 .graphicsLayer { translationY = sheetOffset.value * size.height; alpha = sheetAlpha.value }
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .background(AppColors.CardBg)
+                .background(AppColors.CardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .navigationBarsPadding()
                 .padding(AppSpace.lg)
         ) {
@@ -1352,7 +1363,7 @@ private fun NotesListSheet(
                     ) { Icon(Icons.Default.Close, "关闭", tint = AppColors.TextSecondary, modifier = Modifier.size(18.dp)) }
                     Text("笔记", fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = DingliSong, color = AppColors.TextPrimary, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
                     Box(
-                        modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.CardBg).clickable { isClosing = true },
+                        modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.Accent.copy(alpha = 0.15f)).clickable { isClosing = true },
                         contentAlignment = Alignment.Center
                     ) { Text("✓", fontSize = 16.sp, color = AppColors.Accent) }
                 }
@@ -1375,32 +1386,13 @@ private fun NotesListSheet(
                     LazyColumn(modifier = Modifier.weight(1f)) {
                         items(items.size) { idx ->
                             val item = items[idx]
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onNoteClick(item) }
-                                    .padding(horizontal = 12.dp, vertical = 10.dp)
-                            ) {
-                                Column {
-                                    Text(item.selectedText, fontSize = 14.sp, color = AppColors.TextPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                    if (item.note.isNotEmpty()) {
-                                        Spacer(Modifier.height(4.dp))
-                                        Text(item.note, fontSize = 13.sp, color = AppColors.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    }
-                                    Spacer(Modifier.height(4.dp))
-                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text("第${item.chapterIndex + 1}章", fontSize = AppType.Caption, color = AppColors.Accent)
-                                        Text(
-                                            java.text.SimpleDateFormat("MM/dd", java.util.Locale.getDefault()).format(java.util.Date(item.createdAt)),
-                                            fontSize = AppType.Caption,
-                                            color = AppColors.TextSecondary
-                                        )
-                                    }
-                                }
-                            }
+                            NoteItem(
+                                item = item,
+                                onNoteClick = { onNoteClick(item) },
+                                onDelete = { onDeleteNote(item) }
+                            )
                             if (idx < items.size - 1) {
-                                HorizontalDivider(color = AppColors.Divider.copy(alpha = 0.3f), thickness = 0.5.dp)
+                                Spacer(Modifier.height(8.dp))
                             }
                         }
                     }
@@ -1425,5 +1417,80 @@ private fun TagChip(label: String, count: Int, active: Boolean, onClick: () -> U
             fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
             color = if (active) Color.White else AppColors.TextSecondary
         )
+    }
+}
+
+@Composable
+private fun NoteItem(
+    item: com.huangder.lumibooks.domain.model.Note,
+    onNoteClick: () -> Unit,
+    onDelete: () -> Unit
+) {
+    var swipeOffset by remember { mutableFloatStateOf(0f) }
+    val dismissThreshold = 120f
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(AppColors.BgGray.copy(alpha = 0.5f))
+    ) {
+        // 滑动后显露的删除区域
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFFE53935).copy(alpha = (-swipeOffset / dismissThreshold).coerceIn(0f, 0.9f))),
+            contentAlignment = Alignment.CenterEnd
+        ) {
+            if (swipeOffset < -20f) {
+                Icon(
+                    Icons.Default.Close, "删除",
+                    tint = Color.White,
+                    modifier = Modifier.padding(end = 20.dp).size(20.dp)
+                )
+            }
+        }
+
+        // 内容（可滑动）
+        Box(
+            modifier = Modifier
+                .offset { IntOffset(swipeOffset.toInt(), 0) }
+                .clip(RoundedCornerShape(12.dp))
+                .background(AppColors.BgGray)
+                .pointerInput(Unit) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            if (-swipeOffset > dismissThreshold) {
+                                onDelete()
+                            }
+                            swipeOffset = 0f
+                        },
+                        onDragCancel = { swipeOffset = 0f },
+                        onHorizontalDrag = { _, dragAmount ->
+                            swipeOffset = (swipeOffset + dragAmount).coerceIn(-dismissThreshold * 2, 0f)
+                        }
+                    )
+                }
+                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onNoteClick() }
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+        ) {
+            Column {
+                Text(item.selectedText, fontSize = 14.sp, color = AppColors.TextPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (item.note.isNotEmpty()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(item.note, fontSize = 13.sp, color = AppColors.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Spacer(Modifier.height(4.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("第${item.chapterIndex + 1}章", fontSize = AppType.Caption, color = AppColors.Accent)
+                    Text(
+                        java.text.SimpleDateFormat("MM/dd", java.util.Locale.getDefault()).format(java.util.Date(item.createdAt)),
+                        fontSize = AppType.Caption,
+                        color = AppColors.TextSecondary
+                    )
+                }
+            }
+        }
     }
 }

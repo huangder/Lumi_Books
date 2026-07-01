@@ -110,8 +110,7 @@ fun ThemeSettingsSheet(
                 .fillMaxWidth()
                 .graphicsLayer { translationY = sheetOffset.value * size.height; alpha = sheetAlpha.value }
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .background(AppColors.CardBg)
+                .background(AppColors.CardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .navigationBarsPadding()
                 .padding(AppSpace.lg)
         ) {
@@ -124,7 +123,7 @@ fun ThemeSettingsSheet(
                     ) { Icon(Icons.Outlined.Close, "关闭", tint = AppColors.TextSecondary, modifier = Modifier.size(18.dp)) }
                     Text("主题与设置", fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = DingliSong, color = AppColors.TextPrimary, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
                     Box(
-                        modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.CardBg).clickable { isClosing = true },
+                        modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.Accent.copy(alpha = 0.15f)).clickable { isClosing = true },
                         contentAlignment = Alignment.Center
                     ) { Text("✓", fontSize = 16.sp, color = AppColors.Accent) }
                 }
@@ -289,7 +288,8 @@ fun AdvancedSettingsSheet(
         "serif" -> androidx.compose.ui.text.font.FontFamily.Serif
         "sans_serif" -> androidx.compose.ui.text.font.FontFamily.SansSerif
         "monospace" -> androidx.compose.ui.text.font.FontFamily.Monospace
-        else -> DingliSong
+        "dingli_song" -> DingliSong
+        else -> androidx.compose.ui.text.font.FontFamily.Default
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -308,8 +308,7 @@ fun AdvancedSettingsSheet(
                 .fillMaxHeight(0.82f)
                 .graphicsLayer { translationY = sheetOffset.value * size.height; alpha = sheetAlpha.value }
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .background(AppColors.CardBg)
+                .background(AppColors.CardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .navigationBarsPadding()
                 .padding(AppSpace.lg)
         ) {
@@ -322,7 +321,7 @@ fun AdvancedSettingsSheet(
                     ) { Icon(Icons.Outlined.Close, "取消", tint = AppColors.TextSecondary, modifier = Modifier.size(18.dp)) }
                     Text("高级设置", fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = DingliSong, color = AppColors.TextPrimary, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
                     Box(
-                        modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.CardBg).clickable { isClosing = true },
+                        modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.Accent.copy(alpha = 0.15f)).clickable { isClosing = true },
                         contentAlignment = Alignment.Center
                     ) { Text("✓", fontSize = 16.sp, color = AppColors.Accent) }
                 }
