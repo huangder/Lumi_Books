@@ -47,6 +47,42 @@ class ReadView(context: Context) : FrameLayout(context) {
     private var callbacks: ReadViewCallbacks? = null
     private var contentProvider: (suspend (Int) -> CharSequence?)? = null
 
+    // ── 选择状态 ──
+    var selChapter: Int = -1
+        private set
+    var selStart: Int = -1
+        private set
+    var selEnd: Int = -1
+        private set
+
+    /** 清除选择并重绘 */
+    fun clearSelection() {
+        selChapter = -1; selStart = -1; selEnd = -1
+        // 重新渲染当前页（清除高亮）
+        val curSlot = slotManager.getCurSlot()
+        if (curSlot.isLoaded) {
+            highlightPage(curSlot.chapterIndex, curSlot.pageIndex, curSlot.surfaceView)
+        }
+        invalidate()
+    }
+
+    /** 在当前页上应用选择高亮 */
+    private fun applyHighlightOnCurrentPage() {
+        val curSlot = slotManager.getCurSlot()
+        if (curSlot.isLoaded && selChapter == curSlot.chapterIndex) {
+            highlightPage(curSlot.chapterIndex, curSlot.pageIndex, curSlot.surfaceView)
+        }
+        invalidate()
+    }
+
+    private fun highlightPage(chapterIndex: Int, pageIndex: Int, surfaceView: PageSurfaceView) {
+        val cl = layoutEngine.getChapterLayout(chapterIndex) ?: return
+        val bitmap = surfaceView.getPageBitmap() ?: return
+        if (selChapter == chapterIndex && selStart >= 0 && selEnd > selStart) {
+            renderer.drawSelectionHighlight(bitmap, cl, pageIndex, selStart, selEnd)
+        }
+    }
+
     // ── 配置状态 ──
     private var isConfigured = false
     private var currentFontSizePx: Float = 56f
@@ -99,6 +135,7 @@ class ReadView(context: Context) : FrameLayout(context) {
 
         // 点击回调
         animationController.onTapLeft = {
+            clearSelection()
             slotManager.getPrevSlot().let { slot ->
                 if (slot.isLoaded) {
                     startTapAnimation(PageAnimationController.Direction.PREV)
@@ -109,6 +146,7 @@ class ReadView(context: Context) : FrameLayout(context) {
             callbacks?.onMenuToggle()
         }
         animationController.onTapRight = {
+            clearSelection()
             slotManager.getNextSlot().let { slot ->
                 if (slot.isLoaded) {
                     startTapAnimation(PageAnimationController.Direction.NEXT)
@@ -140,6 +178,11 @@ class ReadView(context: Context) : FrameLayout(context) {
                 while (end < text.length && !isWordSep(text[end])) end++
                 if (end > start) {
                     val selected = text.substring(start, end)
+                    // 存储选择状态并绘制高亮
+                    selChapter = chIdx
+                    selStart = start
+                    selEnd = end
+                    applyHighlightOnCurrentPage()
                     callbacks?.onTextSelected(chIdx, pageIdx, start, end, selected, x, y)
                 }
                 }

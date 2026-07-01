@@ -2,6 +2,8 @@ package com.huangder.lumibooks.ui.reader.engine
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.RectF
 import java.util.LinkedList
 
 /**
@@ -128,6 +130,58 @@ class PageRenderer {
     fun clearPool() {
         bitmapPool.forEach { if (!it.isRecycled) it.recycle() }
         bitmapPool.clear()
+    }
+
+    /**
+     * 在 bitmap 上绘制文本选择高亮。
+     * @param highlightColor 高亮颜色（如 0x40FFEB3B）
+     * @param cornerRadius 高亮矩形圆角半径
+     */
+    fun drawSelectionHighlight(
+        bitmap: Bitmap,
+        chapterLayout: ChapterLayout,
+        pageIndex: Int,
+        selectionStart: Int,
+        selectionEnd: Int,
+        highlightColor: Int = 0x60FFEB3B,
+        cornerRadius: Float = 6f
+    ) {
+        val pageLayout = chapterLayout.pages.getOrNull(pageIndex) ?: return
+        val sl = chapterLayout.staticLayout
+
+        // 计算选择范围与本页的交集
+        val selStart = selectionStart.coerceIn(pageLayout.startCharOffset, pageLayout.endCharOffset)
+        val selEnd = selectionEnd.coerceIn(pageLayout.startCharOffset, pageLayout.endCharOffset)
+        if (selStart >= selEnd) return
+
+        val startLine = sl.getLineForOffset(selStart)
+        val endLine = sl.getLineForOffset(selEnd - 1)
+
+        val canvas = Canvas(bitmap)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = highlightColor
+            style = Paint.Style.FILL
+        }
+
+        val pageStartY = sl.getLineTop(pageLayout.startLine)
+
+        for (line in startLine..endLine) {
+            val lineStart = if (line == startLine) selStart else sl.getLineStart(line)
+            val lineEnd = if (line == endLine) selEnd - 1 else sl.getLineStart(line + 1) - 1
+
+            val left = marginLeft + sl.getPrimaryHorizontal(lineStart).coerceAtMost(sl.getPrimaryHorizontal(lineEnd + 1))
+            val right = marginLeft + sl.getPrimaryHorizontal(lineStart).coerceAtLeast(sl.getPrimaryHorizontal(lineEnd + 1))
+            val top = marginTop + sl.getLineTop(line) - pageStartY
+            val bottom = marginTop + sl.getLineBottom(line) - pageStartY
+
+            // 扩展左右边界确保可见
+            val adjustedLeft = (left - 2f).coerceAtLeast(marginLeft)
+            val adjustedRight = (right + 2f).coerceAtMost((canvasWidth - marginLeft * 2).toFloat() + marginLeft)
+            val adjustedTop = top - 1f
+            val adjustedBottom = bottom + 1f
+
+            canvas.drawRoundRect(RectF(adjustedLeft, adjustedTop, adjustedRight, adjustedBottom), cornerRadius, cornerRadius, paint)
+        }
     }
 
     fun destroy() {
