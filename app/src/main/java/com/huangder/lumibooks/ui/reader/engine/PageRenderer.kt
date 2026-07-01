@@ -143,7 +143,7 @@ class PageRenderer {
         pageIndex: Int,
         selectionStart: Int,
         selectionEnd: Int,
-        highlightColor: Int = 0x60FFEB3B,
+        highlightColor: Int = 0x50D4B896,
         cornerRadius: Float = 6f
     ) {
         val pageLayout = chapterLayout.pages.getOrNull(pageIndex) ?: return
@@ -182,6 +182,45 @@ class PageRenderer {
 
             canvas.drawRoundRect(RectF(adjustedLeft, adjustedTop, adjustedRight, adjustedBottom), cornerRadius, cornerRadius, paint)
         }
+    }
+
+    /**
+     * 在 bitmap 上绘制选择手柄（两个圆点）。
+     */
+    fun drawSelectionHandles(
+        bitmap: Bitmap,
+        chapterLayout: ChapterLayout,
+        pageIndex: Int,
+        selStart: Int,
+        selEnd: Int,
+        handleColor: Int = 0xFF6C231D.toInt(),
+        handleRadius: Float = 16f
+    ) {
+        val pageLayout = chapterLayout.pages.getOrNull(pageIndex) ?: return
+        val sl = chapterLayout.staticLayout
+        val pageStartY = sl.getLineTop(pageLayout.startLine)
+
+        val canvas = Canvas(bitmap)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = handleColor; style = Paint.Style.FILL }
+        val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt(); style = Paint.Style.STROKE; strokeWidth = 3f }
+
+        // 起始手柄
+        drawHandle(canvas, sl, selStart, marginLeft, marginTop, pageStartY.toFloat(), handleRadius, paint, borderPaint)
+        // 结束手柄
+        drawHandle(canvas, sl, selEnd - 1, marginLeft, marginTop, pageStartY.toFloat(), handleRadius, paint, borderPaint)
+    }
+
+    private fun drawHandle(
+        canvas: Canvas, sl: android.text.StaticLayout, charOffset: Int,
+        marginLeft: Float, marginTop: Float, pageStartY: Float,
+        radius: Float, fill: Paint, border: Paint
+    ) {
+        if (charOffset < 0 || charOffset >= sl.text.length) return
+        val line = sl.getLineForOffset(charOffset)
+        val cx = marginLeft + sl.getPrimaryHorizontal(charOffset)
+        val cy = marginTop + sl.getLineBottom(line) - pageStartY + radius * 0.5f
+        canvas.drawCircle(cx, cy, radius, fill)
+        canvas.drawCircle(cx, cy, radius, border)
     }
 
     fun destroy() {
