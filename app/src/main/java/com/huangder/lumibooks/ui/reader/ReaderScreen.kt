@@ -125,11 +125,10 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
 
     var showNotesList by remember { mutableStateOf(false) }
 
-    // 文字选择状态
-    var selectedText by remember { mutableStateOf("") }
-    var selectionMenuX by remember { mutableFloatStateOf(0f) }
-    var selectionMenuY by remember { mutableFloatStateOf(0f) }
-    var showSelectionMenu by remember { mutableStateOf(false) }
+    // 🔥 原生选择 ActionMode 回调 → 等待笔记输入
+    var pendingSelection by remember { mutableStateOf<PendingSelection?>(null) }
+    var showNoteInput by remember { mutableStateOf(false) }
+    var noteInputText by remember { mutableStateOf("") }
 
     // TOC 跳转：当 currentChapterIndex 变化且是 TOC 触发时，跳转 ReadView
     LaunchedEffect(uiState.currentChapterIndex) {
@@ -225,11 +224,48 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
 
                             override fun onLoadingChanged(isLoading: Boolean) {}
 
-                            override fun onTextSelected(text: String, screenX: Float, screenY: Float) {
-                                selectedText = text
-                                selectionMenuX = screenX
-                                selectionMenuY = screenY
-                                showSelectionMenu = true
+                            override fun onSelectionAction(
+                                action: String,
+                                selectedText: String,
+                                chapterIndex: Int,
+                                startPosition: Int,
+                                endPosition: Int,
+                                pageStart: Int,
+                                pageEnd: Int
+                            ) {
+                                when (action) {
+                                    "highlight" -> {
+                                        viewModel.addNote(
+                                            selectedText = selectedText,
+                                            noteText = "",
+                                            chapterIndex = chapterIndex,
+                                            startPosition = startPosition,
+                                            endPosition = endPosition,
+                                            color = "#40FFEB3B"
+                                        )
+                                    }
+                                    "note" -> {
+                                        // 保存当前选区信息，打开笔记输入
+                                        pendingSelection = PendingSelection(
+                                            selectedText, chapterIndex, startPosition, endPosition
+                                        )
+                                        showNoteInput = true
+                                    }
+                                    "search" -> {
+                                        showSearch = true
+                                        searchQuery = selectedText
+                                        isSearching = true
+                                        hasSearched = true
+                                        searchResults = emptyList()
+                                        scope.launch {
+                                            searchResults = viewModel.searchAllChapters(selectedText)
+                                            isSearching = false
+                                        }
+                                    }
+                                    "dismiss" -> {
+                                        // 选区被清除
+                                    }
+                                }
                             }
                         })
                         setContentProvider { chapterIndex ->
@@ -464,49 +500,32 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         onDismiss = { showNotesList = false }
     )
 
-    // ── 文字选择浮动菜单 ──
-    if (showSelectionMenu && selectedText.isNotEmpty()) {
-        val isDarkTheme = uiState.readerTheme == "night"
-        val menuBg = if (isDarkTheme) Color(0xFFEAEAEA) else Color(0xFF2C2C2E)
-        val menuText = if (isDarkTheme) Color(0xFF1C1C1E) else Color.White
-        val screenWidthPx = with(LocalDensity.current) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
-        val menuWidthPx = with(LocalDensity.current) { 280.dp.toPx() }
-
-        val menuX = (selectionMenuX - menuWidthPx / 2f).coerceIn(12f, (screenWidthPx - menuWidthPx - 12f).coerceAtLeast(12f))
-        val menuY = if (selectionMenuY > with(LocalDensity.current) { LocalConfiguration.current.screenHeightDp.dp.toPx() * 0.5f }) {
-            selectionMenuY - with(LocalDensity.current) { 56.dp.toPx() } - 20f
-        } else {
-            selectionMenuY + 28f
+    // ── 文字选择框架（完整版） ──
+    // 选择菜单覆盖层
+    // 🔥 笔记输入弹窗（原生选择 ActionMode 触发"笔记"时弹出）
+    NoteInputSheet(
+        visible = showNoteInput,
+        initialText = noteInputText,
+        onTextChange = { noteInputText = it },
+        onConfirm = {
+            val ps = pendingSelection ?: return@NoteInputSheet
+            viewModel.addNote(
+                selectedText = ps.selectedText,
+                noteText = noteInputText,
+                chapterIndex = ps.chapterIndex,
+                startPosition = ps.startPosition,
+                endPosition = ps.endPosition,
+                color = "#40FFEB3B"
+            )
+            showNoteInput = false
+            pendingSelection = null
+            readViewRef.value?.curPageView?.clearSelection()
+        },
+        onCancel = {
+            showNoteInput = false
+            pendingSelection = null
         }
-
-        Popup(
-            alignment = Alignment.TopStart,
-            offset = IntOffset(menuX.toInt(), menuY.toInt()),
-            properties = PopupProperties(focusable = false, dismissOnBackPress = false, dismissOnClickOutside = false)
-        ) {
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(menuBg)
-                    .padding(horizontal = 4.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("复制", fontSize = 13.sp, color = menuText,
-                    modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("selected", selectedText))
-                        showSelectionMenu = false
-                        readViewRef.value?.curPageView?.clearSelection()
-                    }.padding(horizontal = 12.dp, vertical = 8.dp))
-                Text("高亮", fontSize = 13.sp, color = menuText,
-                    modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable {
-                        // TODO: 高亮功能
-                        showSelectionMenu = false
-                        readViewRef.value?.curPageView?.clearSelection()
-                    }.padding(horizontal = 12.dp, vertical = 8.dp))
-            }
-        }
-    }
+    )
 }
 
 /**
@@ -1135,6 +1154,14 @@ private fun SearchSheet(
 }
 
 // ── 文本选择数据 ──
+
+/** 🔥 原生选择 ActionMode 触发的待处理操作 */
+private data class PendingSelection(
+    val selectedText: String,
+    val chapterIndex: Int,
+    val startPosition: Int,
+    val endPosition: Int
+)
 
 private data class SelectionState(
     val chapterIndex: Int,

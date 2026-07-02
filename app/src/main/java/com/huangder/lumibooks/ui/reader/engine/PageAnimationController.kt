@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.ui.reader.engine
 
 import android.graphics.Canvas
+import android.util.Log
 import android.view.animation.PathInterpolator
 import android.view.MotionEvent
 import android.view.animation.Interpolator
@@ -26,6 +27,7 @@ abstract class PageAnimationController(
         const val FLIP_THRESHOLD = 0.12f
         /** 阴影渐隐时长 ms */
         private const val SHADOW_FADE_DURATION = 200
+        private const val TAG = "PageAnim"
     }
 
     enum class Direction { NONE, NEXT, PREV }
@@ -54,16 +56,9 @@ abstract class PageAnimationController(
     /** 触摸按下时间 */
     protected var downTime: Long = 0L
     /** 长按触发阈值（超过此距离取消长按） */
-    private val longPressSlopPx: Float = 16f
-
-    /** 长按检测 Runnable（替代 GestureDetector，更可靠） */
-    private val longPressRunnable = Runnable {
-        if (!hasMoved && isDragging) {
-            isLongPressed = true
-            isDragging = false
-            onLongPress?.invoke(startX, startY)
-        }
-    }
+    private val longPressSlopPx: Float = 32f
+    /** 长按触发时间（ms） */
+    private val longPressTimeMs: Long = 500L
     /** 本次动画是翻页（true）还是回弹（false） */
     private var isFlipAnim: Boolean = false
     /** 翻页完成后阴影渐隐 alpha（供子类 onDraw 读取） */
@@ -105,13 +100,25 @@ abstract class PageAnimationController(
                 downTime = System.currentTimeMillis()
                 direction = Direction.NONE
                 isDragging = true
-                // 🔥 用 postDelayed 替代 GestureDetector，更简单可靠
-                readView.postDelayed(longPressRunnable, 600L)
+                Log.d(TAG, "ACTION_DOWN: x=$startX y=$startY")
                 return true
             }
 
             MotionEvent.ACTION_MOVE -> {
-                if (!isDragging && !isLongPressed) return false
+                // 🔥 延迟初始化：当 PageContentView 中途拦截滑动时，
+                // 动画控制器收到 MOVE 但没有前置 DOWN，在此初始化状态
+                if (!isDragging && !isLongPressed) {
+                    startX = event.x
+                    startY = event.y
+                    lastX = event.x
+                    touchX = event.x
+                    touchY = event.y
+                    hasMoved = true
+                    isDragging = true
+                    downTime = System.currentTimeMillis() - 500 // 跳过长按检测
+                    Log.d(TAG, "Late intercept: starting drag at (${event.x}, ${event.y})")
+                    return true
+                }
 
                 val dx = event.x - lastX
                 touchX = event.x
@@ -120,14 +127,22 @@ abstract class PageAnimationController(
 
                 if (!hasMoved && Math.abs(event.x - startX) > longPressSlopPx) {
                     hasMoved = true
-                    readView.removeCallbacks(longPressRunnable)  // 移动超过阈值，取消长按
+                }
+
+                // 🔥 时间检测长按：仅当没有边缘拦截且保持不动时触发
+                if (!hasMoved && !isLongPressed && isDragging &&
+                    System.currentTimeMillis() - downTime >= longPressTimeMs) {
+                    isLongPressed = true
+                    isDragging = false
+                    Log.d(TAG, "LongPress triggered at (${startX}, ${startY})")
+                    onLongPress?.invoke(startX, startY)
                 }
 
                 if (hasMoved) {
                     val cumulativeDx = event.x - startX
                     direction = when {
-                        cumulativeDx > 8f -> Direction.PREV
-                        cumulativeDx < -8f -> Direction.NEXT
+                        cumulativeDx > 12f -> Direction.PREV
+                        cumulativeDx < -12f -> Direction.NEXT
                         else -> Direction.NONE
                     }
                     readView.invalidate()
@@ -136,8 +151,6 @@ abstract class PageAnimationController(
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                readView.removeCallbacks(longPressRunnable)
-
                 // 长按已触发，跳过点击逻辑
                 if (isLongPressed) {
                     isLongPressed = false
@@ -173,8 +186,8 @@ abstract class PageAnimationController(
 
                     // 🔥 根据最终累计偏移重算方向（支持手势反悔）
                     direction = when {
-                        dx > 8f -> Direction.PREV
-                        dx < -8f -> Direction.NEXT
+                        dx > 12f -> Direction.PREV
+                        dx < -12f -> Direction.NEXT
                         else -> Direction.NONE
                     }
 

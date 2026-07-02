@@ -21,10 +21,22 @@ interface ReadViewCallbacks {
     fun onLoadingChanged(isLoading: Boolean)
 
     /**
-     * 长按选中文本回调。
+     * 🔥 原生选择 ActionMode 触发动作。
+     * @param action "highlight" | "note" | "search" | "copy"
      * @param selectedText 选中的文本
-     * @param screenX 触摸位置 X（用于菜单定位）
-     * @param screenY 触摸位置 Y
+     * @param chapterIndex 所在章节索引
+     * @param startPosition 章节级起始字符偏移
+     * @param endPosition 章节级结束字符偏移
+     * @param pageStart 页面内起始偏移（用于渲染高亮定位）
+     * @param pageEnd 页面内结束偏移
      */
-    fun onTextSelected(selectedText: String, screenX: Float, screenY: Float) {}
+    fun onSelectionAction(
+        action: String,
+        selectedText: String,
+        chapterIndex: Int,
+        startPosition: Int,
+        endPosition: Int,
+        pageStart: Int = 0,
+        pageEnd: Int = 0
+    ) {}
 }
