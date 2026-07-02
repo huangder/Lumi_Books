@@ -8,5 +8,5 @@ data class SlotState(
     var pageIndex: Int = -1,
     var globalPageIndex: Int = -1,
     var isLoaded: Boolean = false,
-    val surfaceView: PageSurfaceView
+    val contentView: PageContentView
 )
