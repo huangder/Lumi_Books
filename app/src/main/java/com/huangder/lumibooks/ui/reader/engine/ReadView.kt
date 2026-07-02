@@ -1,10 +1,16 @@
 package com.huangder.lumibooks.ui.reader.engine
 
 import android.content.Context
+import android.text.Selection
+import android.text.Spannable
 import android.util.Log
+import android.view.ActionMode
+import android.view.Menu
+import android.view.MenuItem
 import android.view.MotionEvent
 import android.widget.FrameLayout
 import com.huangder.lumibooks.domain.model.Note
+import kotlin.math.abs
 
 /**
  * 核心阅读视图。
@@ -16,6 +22,10 @@ class ReadView(context: Context) : FrameLayout(context) {
 
     companion object {
         private const val TAG = "ReadView"
+        // ActionMode 菜单 ID
+        private const val MENU_HIGHLIGHT = 1
+        private const val MENU_NOTE = 2
+        private const val MENU_SEARCH = 3
     }
 
     // ── 子组件 ──
@@ -41,6 +51,13 @@ class ReadView(context: Context) : FrameLayout(context) {
         savedNotes = notes
         slotManager.refreshCurrentHighlights()
     }
+
+    // ── 触摸分类追踪（ReadView 层统一拦截） ──
+    private var rvTouchStartX = 0f
+    private var rvTouchStartY = 0f
+    private var rvTouchDownTime = 0L
+    private var rvHasMoved = false
+    private var rvIsEdgeTouch = false
 
     // ── 配置状态 ──
     private var isConfigured = false
@@ -93,7 +110,7 @@ class ReadView(context: Context) : FrameLayout(context) {
         }
 
         animationController.onTapLeft = {
-            curPageView.clearSelection()
+            clearCurrentSelection()
             slotManager.getPrevSlot().let { slot ->
                 if (slot.isLoaded) {
                     startTapAnimation(PageAnimationController.Direction.PREV)
@@ -101,11 +118,11 @@ class ReadView(context: Context) : FrameLayout(context) {
             }
         }
         animationController.onTapCenter = {
-            curPageView.clearSelection()
+            clearCurrentSelection()
             callbacks?.onMenuToggle()
         }
         animationController.onTapRight = {
-            curPageView.clearSelection()
+            clearCurrentSelection()
             slotManager.getNextSlot().let { slot ->
                 if (slot.isLoaded) {
                     startTapAnimation(PageAnimationController.Direction.NEXT)
@@ -113,12 +130,22 @@ class ReadView(context: Context) : FrameLayout(context) {
             }
         }
 
-        // 长按选词
+        // 🔥 长按回调保留（边缘长按时触发），执行程序化选词
         animationController.onLongPress = { x, y ->
+            Log.d(TAG, "onLongPress triggered at x=$x y=$y")
             val result = curPageView.selectWordAt(x, y)
-            val text = result?.third ?: ""
-            callbacks?.onTextSelected(text, x, y)
+            if (result != null) {
+                val (pageStart, pageEnd, text) = result
+                Log.d(TAG, "selected text=\"$text\" pageOffsets=($pageStart, $pageEnd)")
+            } else {
+                Log.w(TAG, "selectWordAt returned null at x=$x y=$y")
+            }
         }
+
+        // 🔥 为三个页面槽位设置原生选择 ActionMode 回调
+        setupNativeSelectionActionMode(prevPageView)
+        setupNativeSelectionActionMode(curPageView)
+        setupNativeSelectionActionMode(nextPageView)
 
         // 翻页后刷新高亮
         slotManager.onPageChangedCallback = { globalPage, chapterIdx, pageInChapter, chapterTotal ->
@@ -280,9 +307,93 @@ class ReadView(context: Context) : FrameLayout(context) {
 
     // ── 触摸 ──
 
-    // 拦截所有触摸事件，不让子 View（PageContentView）处理
-    override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
-        return true
+    /**
+     * 🔥 统一触摸分类器（在所有子 View 之前执行）。
+     *
+     * 解决 setTextIsSelectable(true) 导致的触摸事件分发问题：
+     * - TextView 消费触摸 → ReadView.onTouchEvent 不触发 → 菜单/翻页失效
+     * - PageContentView 拦截后事件丢失 → PageAnimationController late-init 死代码
+     *
+     * 分类逻辑：
+     * - 全区域 DOWN → 不拦截，穿透给 TextView（支持任意位置长按选词）
+     * - 水平 MOVE（500ms内）→ 拦截，PageAnimationController late-init 处理翻页
+     * - 边缘短 UP → 触发 animationController.onTapLeft/Right（点击翻页）
+     * - 中间短 UP → 触发 callbacks.onMenuToggle（菜单切换）
+     * - 长按（>500ms 或无明显移动）→ 不拦截，TextView 原生触发选词
+     */
+    override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                rvTouchStartX = ev.x
+                rvTouchStartY = ev.y
+                rvTouchDownTime = System.currentTimeMillis()
+                rvHasMoved = false
+                val w = width.toFloat()
+                rvIsEdgeTouch = w > 0 && (ev.x / w < 0.3f || ev.x / w > 0.7f)
+                // 🔥 不拦截任何 DOWN，全部穿透给 TextView（支持全区域长按选词）
+                return false
+            }
+
+            MotionEvent.ACTION_MOVE -> {
+                val dx = abs(ev.x - rvTouchStartX)
+                val dy = abs(ev.y - rvTouchStartY)
+                val dt = System.currentTimeMillis() - rvTouchDownTime
+
+                if (dx > 24f || dy > 24f) rvHasMoved = true
+
+                // 仅在 500ms 窗口内拦截水平滑动（超过 500ms 视为选择扩展，不拦截）
+                // 放宽条件：dx > 16f && dx > dy * 0.5f（允许一定垂直分量）
+                if (dt < 500L && dx > 16f && dx > dy * 0.5f) {
+                    Log.d(TAG, "Intercept swipe at dx=$dx dy=$dy dt=$dt")
+                    return true
+                }
+                return false
+            }
+
+            MotionEvent.ACTION_UP -> {
+                if (!rvHasMoved && System.currentTimeMillis() - rvTouchDownTime < 300L) {
+                    if (rvIsEdgeTouch) {
+                        // 边缘短按 → 点击翻页（复用 animationController 回调）
+                        Log.d(TAG, "Edge tap at x=${ev.x} → page turn")
+                        if (rvTouchStartX / width < 0.3f) {
+                            animationController.onTapLeft?.invoke()
+                        } else {
+                            animationController.onTapRight?.invoke()
+                        }
+                    } else {
+                        // 中间短按 → 菜单切换
+                        Log.d(TAG, "Center tap detected → toggle menu")
+                        clearCurrentSelection()
+                        callbacks?.onMenuToggle()
+                    }
+                }
+                return false
+            }
+
+            MotionEvent.ACTION_CANCEL -> {
+                return false
+            }
+        }
+        return false
+    }
+
+    /**
+     * 🔥 忽略触摸开始 500ms 内的 disallow 请求。
+     *
+     * setTextIsSelectable(true) 的 TextView 可能在触摸后很快通过 Editor
+     * 调用 requestDisallowInterceptTouchEvent(true)，阻止父 View 拦截滑动。
+     * 我们在 500ms 窗口内忽略此请求，确保滑动翻页正常；
+     * 500ms 后（长按已触发），允许 disallow 以支持选择拖拽。
+     */
+    override fun requestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {
+        if (disallowIntercept) {
+            val dt = System.currentTimeMillis() - rvTouchDownTime
+            if (dt < 500L) {
+                // 忽略早期的 disallow 请求（插入点光标控制器可能触发）
+                return
+            }
+        }
+        super.requestDisallowInterceptTouchEvent(disallowIntercept)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -345,4 +456,109 @@ class ReadView(context: Context) : FrameLayout(context) {
             )
         }
     }
+
+    // ── 选区工具方法 ──
+
+    /**
+     * 获取当前页选区的屏幕像素边界框（供 Compose 层读取）。
+     * @return (topY, bottomY, startX, endX) 或 null（无选区时）
+     */
+    fun getSelectionBounds(): Quadruple<Float, Float, Float, Float>? {
+        val tv = curPageView.textView
+        val layout = tv.layout ?: return null
+        val spannable = tv.text as? android.text.Spannable ?: return null
+        val selStart = android.text.Selection.getSelectionStart(spannable)
+        val selEnd = android.text.Selection.getSelectionEnd(spannable)
+        if (selStart < 0 || selEnd <= selStart) return null
+
+        val startLine = layout.getLineForOffset(selStart)
+        val endLine = layout.getLineForOffset(selEnd.coerceAtMost(spannable.length - 1))
+
+        val topY = (tv.top + tv.paddingTop + layout.getLineTop(startLine)).toFloat()
+        val bottomY = (tv.top + tv.paddingTop + layout.getLineBottom(endLine)).toFloat()
+        val startX = tv.left + tv.paddingLeft + layout.getPrimaryHorizontal(selStart)
+        val endX = tv.left + tv.paddingLeft + layout.getPrimaryHorizontal(selEnd)
+
+        return Quadruple(topY, bottomY, startX, endX)
+    }
+
+    /** 清除当前页的选区 */
+    private fun clearCurrentSelection() {
+        curPageView.clearSelection()
+    }
+
+    // ── 原生选择 ActionMode ──
+
+    /**
+     * 🔥 为 PageContentView 的 TextView 设置原生选择 ActionMode 回调。
+     * 系统自动提供泪滴手柄 + 浮动工具栏；我们添加：高亮、笔记、搜索。
+     */
+    private fun setupNativeSelectionActionMode(pageView: PageContentView) {
+        pageView.textView.customSelectionActionModeCallback = object : ActionMode.Callback {
+            override fun onCreateActionMode(mode: ActionMode?, menu: Menu?): Boolean {
+                if (menu == null || mode == null) return false
+                menu.add(0, MENU_HIGHLIGHT, 0, "高亮")
+                menu.add(0, MENU_NOTE, 1, "笔记")
+                menu.add(0, MENU_SEARCH, 2, "搜索")
+                mode.title = "选择文字"
+                return true
+            }
+
+            override fun onPrepareActionMode(mode: ActionMode?, menu: Menu?): Boolean = false
+
+            override fun onActionItemClicked(mode: ActionMode?, item: MenuItem?): Boolean {
+                if (item == null) return false
+                val tv = pageView.textView
+                val spannable = tv.text as? Spannable ?: return false
+                val pageStart = Selection.getSelectionStart(spannable)
+                val pageEnd = Selection.getSelectionEnd(spannable)
+                if (pageStart < 0 || pageEnd <= pageStart) return false
+
+                val selectedText = spannable.toString().substring(pageStart, pageEnd)
+
+                // 页面偏移 → 章节偏移转换
+                val curSlot = slotManager.getCurSlot()
+                val chapterIdx = curSlot.chapterIndex
+                val chapterStartOffset = pageView.chapterStartOffset
+                val chapStart = chapterStartOffset + pageStart
+                val chapEnd = chapterStartOffset + pageEnd
+
+                val action = when (item.itemId) {
+                    MENU_HIGHLIGHT -> "highlight"
+                    MENU_NOTE -> "note"
+                    MENU_SEARCH -> "search"
+                    else -> return false
+                }
+
+                Log.d(TAG, "ActionMode: action=$action text=\"$selectedText\" chapter=$chapterIdx offsets=($chapStart, $chapEnd)")
+
+                callbacks?.onSelectionAction(
+                    action = action,
+                    selectedText = selectedText,
+                    chapterIndex = chapterIdx,
+                    startPosition = chapStart,
+                    endPosition = chapEnd,
+                    pageStart = pageStart,
+                    pageEnd = pageEnd
+                )
+
+                mode?.finish()
+                return true
+            }
+
+            override fun onDestroyActionMode(mode: ActionMode?) {
+                callbacks?.onSelectionAction(
+                    action = "dismiss",
+                    selectedText = "",
+                    chapterIndex = -1,
+                    startPosition = 0,
+                    endPosition = 0
+                )
+            }
+        }
+    }
+
 }
+
+/** 简单的四元组（避免依赖 kotlin Pair 的三元组包装） */
+data class Quadruple<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)

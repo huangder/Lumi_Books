@@ -4,30 +4,34 @@ import android.content.Context
 import android.graphics.Typeface
 import android.text.Selection
 import android.text.Spannable
-import android.text.SpannableString
 import android.text.SpannableStringBuilder
 import android.text.style.BackgroundColorSpan
+import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.MotionEvent
 import android.widget.FrameLayout
 import android.widget.TextView
+import kotlin.math.abs
 
 /**
  * 单页内容 View，替代 PageSurfaceView（Bitmap 容器）。
  *
  * 内部持有 TextView，支持：
- * - 系统文字选择（setTextIsSelectable）
+ * - **系统原生文字选择**（setTextIsSelectable → 泪滴手柄 + 浮动工具栏）
  * - BackgroundColorSpan 高亮
  * - 字体/字号/边距配置
+ * - **条件触摸拦截**：仅拦截水平滑动（翻页），点击/长按传递给 TextView 原生处理
  */
 class PageContentView(context: Context) : FrameLayout(context) {
 
+    companion object {
+        private const val TAG = "PageContentView"
+    }
+
     val textView: TextView = TextView(context).apply {
-        // 禁止 TextView 拦截任何触摸事件（翻页/点击手势由 ReadView 处理）
-        movementMethod = null
-        isClickable = false
-        isFocusable = false
-        isLongClickable = false
+        // 🔥 启用 Android 原生文字选择（泪滴手柄 + 系统浮动工具栏）
+        setTextIsSelectable(true)
         gravity = Gravity.TOP
         includeFontPadding = false
         // 默认样式
@@ -36,18 +40,26 @@ class PageContentView(context: Context) : FrameLayout(context) {
     }
 
     init {
-        // 确保 PageContentView 不拦截触摸事件，让事件传递到 ReadView
+        // PageContentView 自身不消耗事件，让触摸穿透到 ReadView
         isClickable = false
         isFocusable = false
         isLongClickable = false
         addView(textView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     }
 
+    // ── 触摸拦截策略 ──
+    // 🔥 ReadView.onInterceptTouchEvent 统一处理所有触摸分类
+    // PageContentView 不再拦截任何事件，全部穿透给 TextView 原生处理
+    // （长按选词由 TextView setTextIsSelectable(true) 原生支持；
+    //   翻页/菜单/点击由 ReadView 层统一拦截处理）
+
+    override fun onInterceptTouchEvent(ev: MotionEvent): Boolean = false
+
 
     /**
      * 设置页面文本内容。
      * @param fullText 完整章节文本
-     * @param startChar 起始字符偏移（含）
+     * @param startChar 起始字符偏移（含），即本章节中的全局起始位置
      * @param endChar 结束字符偏移（不含）
      * @param highlights 高亮列表 (start, end, color)，偏移相对于 fullText
      */
@@ -57,6 +69,9 @@ class PageContentView(context: Context) : FrameLayout(context) {
         endChar: Int,
         highlights: List<Triple<Int, Int, Int>> = emptyList()
     ) {
+        // 🔥 缓存章节级起始偏移，供 selectWordAt 返回值转换使用
+        chapterStartOffset = startChar
+
         if (startChar < 0 || endChar > fullText.length || startChar >= endChar) {
             textView.text = ""
             return
@@ -111,19 +126,40 @@ class PageContentView(context: Context) : FrameLayout(context) {
     /** 获取当前 TextView 的 Spannable（用于读取选区等） */
     fun getTextSpannable(): Spannable? = textView.text as? Spannable
 
+    /** 缓存当前页在章节中的起始字符偏移（用于选区偏移转换） */
+    var chapterStartOffset: Int = 0
+        private set
+
     /**
      * 在指定屏幕坐标处选词并高亮。
      * @return Triple(start, end, selectedText) 或 null
+     *   start/end 是**页面内偏移量**，需加 chapterStartOffset 转换为章节偏移量
      */
     fun selectWordAt(x: Float, y: Float): Triple<Int, Int, String>? {
-        val spannable = textView.text as? Spannable ?: return null
-        val layout = textView.layout ?: return null
+        val spannable = textView.text as? Spannable
+        if (spannable == null) {
+            Log.w(TAG, "selectWordAt: textView.text is not Spannable, type=${textView.text?.javaClass?.simpleName}")
+            return null
+        }
+        if (spannable.isEmpty()) {
+            Log.w(TAG, "selectWordAt: spannable is empty")
+            return null
+        }
 
-        // 屏幕坐标 → TextView 内坐标
+        val layout = textView.layout
+        if (layout == null) {
+            Log.w(TAG, "selectWordAt: textView.layout is null (view not laid out?)")
+            return null
+        }
+
+        // 屏幕坐标（ReadView 坐标系）→ TextView 内坐标
         val tx = x - textView.left - textView.paddingLeft
         val ty = y - textView.top - textView.paddingTop
 
-        if (tx < 0 || ty < 0) return null
+        if (tx < 0 || ty < 0) {
+            Log.d(TAG, "selectWordAt: touch outside text area tx=$tx ty=$ty paddingLeft=${textView.paddingLeft} paddingTop=${textView.paddingTop}")
+            return null
+        }
 
         val line = layout.getLineForVertical(ty.toInt())
         val offset = layout.getOffsetForHorizontal(line, tx).coerceIn(0, spannable.length - 1)
@@ -132,7 +168,8 @@ class PageContentView(context: Context) : FrameLayout(context) {
         val text = spannable.toString()
         var start = offset
         var end = offset
-        val isCJK = text[offset].code in 0x4E00..0x9FFF || text[offset].code in 0x3400..0x4DBF
+        val charCode = text[offset].code
+        val isCJK = charCode in 0x4E00..0x9FFF || charCode in 0x3400..0x4DBF
         if (isCJK) {
             start = (offset - 2).coerceAtLeast(0)
             end = (offset + 3).coerceAtMost(text.length)
@@ -142,17 +179,24 @@ class PageContentView(context: Context) : FrameLayout(context) {
             while (end < text.length && !isWordSep(text[end])) end++
         }
 
-        if (end <= start) return null
+        if (end <= start) {
+            Log.d(TAG, "selectWordAt: word range invalid start=$start end=$end")
+            return null
+        }
 
         // 设置选区高亮
         Selection.setSelection(spannable, start, end)
-        return Triple(start, end, text.substring(start, end))
+        val selected = text.substring(start, end)
+        Log.d(TAG, "selectWordAt: success! text=\"$selected\" offset=$offset line=$line x=$tx y=$ty")
+        return Triple(start, end, selected)
     }
 
     /** 清除选区 */
     fun clearSelection() {
-        val spannable = textView.text as? Spannable ?: return
-        Selection.setSelection(spannable, 0, 0)
+        val spannable = textView.text as? Spannable
+        if (spannable != null && Selection.getSelectionEnd(spannable) > Selection.getSelectionStart(spannable)) {
+            Selection.removeSelection(spannable)
+        }
     }
 
     /** 获取选区范围，无选区返回 null */

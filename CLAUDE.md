@@ -96,8 +96,7 @@ UI (Compose) ← ViewModel ← Repository ← Room DAO / DataStore
 - `devlog/2026-06-29-plan-chapter-transition-optimization.md` — 章节切换卡顿分析与优化计划
 - `devlog/2026-06-29-chapter-white-screen-fix.md` — 🔥 白屏回归修复 + HiReader参考架构分析
 - `devlog/2026-06-29-chapter-stutter-fix.md` — 🔥 章节切换主线程阻塞修复 + 异步化
-- `docs/handoff-text-selection.md` — 🔥 **文字选择功能AI交接文档**（问题分析+修复计划+架构对比）
-- `docs/plan-text-selection-fix.md` — 文字选择修复计划（4个Phase，含代码改动点）
+
 
 ## 开发规范
 
