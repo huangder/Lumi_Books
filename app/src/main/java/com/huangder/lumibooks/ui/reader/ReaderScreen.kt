@@ -279,7 +279,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                     selEndX = bounds?.endX ?: touchX
                                 )
                                 // 🔥 仅在初始选中时设置手柄位置，拖动时不重算（避免反馈环导致手柄飞走）
-                                if (!showHandles) {
+                                if (readViewRef.value?.isDraggingSelection != true) {
                                     readViewRef.value?.getSelectionHandleCenters()?.let { hc ->
                                         startHandlePos = Offset(hc.startCx, hc.startCy)
                                         endHandlePos = Offset(hc.endCx, hc.endCy)
@@ -333,12 +333,19 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 centerX = startHandlePos.x,
                 centerY = startHandlePos.y,
                 onDrag = { newCx, newCy ->
-                    // 直接更新手柄位置（不经过字符偏移反算，避免抽搐）
                     startHandlePos = Offset(newCx, newCy)
                     readViewRef.value?.moveSelectionHandle(1, newCx, newCy)
+                    // 交叉时同步手柄位置（仅一帧，不经过 onTextSelected 避免重组）
+                    if (readViewRef.value?.lastHandleSwapped == true) {
+                        readViewRef.value?.getSelectionHandleCenters()?.let { hc ->
+                            startHandlePos = Offset(hc.startCx, hc.startCy)
+                            endHandlePos = Offset(hc.endCx, hc.endCy)
+                        }
+                        readViewRef.value?.lastHandleSwapped = false
+                    }
                 },
                 onDragEnd = {
-                    // 松手后从字符偏移同步一次，修正漂移
+                    readViewRef.value?.isDraggingSelection = false
                     readViewRef.value?.getSelectionHandleCenters()?.let { hc ->
                         startHandlePos = Offset(hc.startCx, hc.startCy)
                         endHandlePos = Offset(hc.endCx, hc.endCy)
@@ -349,12 +356,19 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 centerX = endHandlePos.x,
                 centerY = endHandlePos.y,
                 onDrag = { newCx, newCy ->
-                    // 直接更新手柄位置（不经过字符偏移反算，避免抽搐）
                     endHandlePos = Offset(newCx, newCy)
                     readViewRef.value?.moveSelectionHandle(2, newCx, newCy)
+                    // 交叉时同步手柄位置（仅一帧，不经过 onTextSelected 避免重组）
+                    if (readViewRef.value?.lastHandleSwapped == true) {
+                        readViewRef.value?.getSelectionHandleCenters()?.let { hc ->
+                            startHandlePos = Offset(hc.startCx, hc.startCy)
+                            endHandlePos = Offset(hc.endCx, hc.endCy)
+                        }
+                        readViewRef.value?.lastHandleSwapped = false
+                    }
                 },
                 onDragEnd = {
-                    // 松手后从字符偏移同步一次，修正漂移
+                    readViewRef.value?.isDraggingSelection = false
                     readViewRef.value?.getSelectionHandleCenters()?.let { hc ->
                         startHandlePos = Offset(hc.startCx, hc.startCy)
                         endHandlePos = Offset(hc.endCx, hc.endCy)

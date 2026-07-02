@@ -56,11 +56,17 @@ class ReadView(context: Context) : FrameLayout(context) {
     var selEnd: Int = -1
         private set
 
+    /** 是否正在拖动手柄（用于区分拖动更新和初始选中） */
+    var isDraggingSelection: Boolean = false
+    /** 上一次 moveSelectionHandle 是否发生了交叉（供 Compose 层同步手柄位置，仅生效一次） */
+    var lastHandleSwapped: Boolean = false
+
     private var savedNotes: List<Note> = emptyList()
 
     /** 清除选择并重绘 */
     fun clearSelection() {
         selChapter = -1; selStart = -1; selEnd = -1
+        isDraggingSelection = false
         refreshAnnotationLayer(includeSelection = false)
         onSelectionChanged?.invoke(-1, -1, -1, -1, "")
     }
@@ -221,36 +227,35 @@ class ReadView(context: Context) : FrameLayout(context) {
      * @param screenY 当前触摸位置 Y
      */
     fun moveSelectionHandle(handleIndex: Int, screenX: Float, screenY: Float) {
+        isDraggingSelection = true
         val charOff = getCharOffsetAtPointRough(screenX, screenY) ?: return
+        lastHandleSwapped = false
         if (handleIndex == 1) {
             // 拖拽起始手柄
             if (charOff >= selEnd) {
-                // 交叉！交换角色：原 start 变 end，新位置变 start
-                val oldEnd = selEnd
-                selEnd = oldEnd
-                selStart = (oldEnd - 1).coerceAtLeast(0)
+                // 交叉！不动的手柄保持原位变 start，拖动的手柄变 end
+                val unmovedPos = selEnd
+                selStart = unmovedPos
+                selEnd = charOff + 1
+                lastHandleSwapped = true
             } else {
                 selStart = charOff
             }
         } else {
             // 拖拽结束手柄
             if (charOff + 1 <= selStart) {
-                // 交叉！交换角色：原 end 变 start，新位置变 end
-                selEnd = selStart + 1
+                // 交叉！不动的手柄保持原位变 end，拖动的手柄变 start
+                val unmovedPos = selStart
+                selEnd = unmovedPos + 1
                 selStart = charOff
+                lastHandleSwapped = true
             } else {
                 selEnd = charOff + 1
             }
         }
         // 拖动时只重绘标注层（轻量），不重绘文字层
         refreshAnnotationLayer(includeSelection = true)
-        // 通知菜单更新选区范围（不更新手柄坐标，避免反馈环导致抽搐）
-        val curSlot = slotManager.getCurSlot()
-        val text = kotlinx.coroutines.runBlocking { contentProvider?.invoke(curSlot.chapterIndex) }?.toString() ?: ""
-        if (selStart in 0 until text.length && selEnd in selStart..text.length) {
-            val sel = text.substring(selStart, selEnd)
-            callbacks?.onTextSelected(curSlot.chapterIndex, curSlot.pageIndex, selStart, selEnd, sel, screenX, screenY)
-        }
+        // 拖拽期间不通知 Compose 层（避免手柄位置被重算），松手后由 onDragEnd 同步
     }
 
     /** 选择变化回调（通知 Compose 层更新手柄位置和菜单） */
