@@ -8,18 +8,15 @@ import android.graphics.Shader
 /**
  * 水平视差滑动翻页动画。
  *
- * - PREV：上一页在上层从左侧全速滑入，覆盖下层当前页
- * - NEXT：当前页在上层全速左滑出，揭示下层下一页
- * - 下层：恒定速度比视差（上层速度 * PARALLAX_RATIO），从偏移位出发到达终点
- *   - NEXT: nextX = (vw + ox) * ratio，start=0.3*vw(右侧) → end=0(中央)
- *   - PREV: curX = ox * ratio，start=0(中央) → end=0.3*vw(右侧)
- * - 上层：外阴影（直角）
+ * 通过 translationX 平移 PageContentView 实现翻页效果。
+ * - PREV：上一页从左侧全速滑入，当前页 30% 视差右移
+ * - NEXT：当前页全速左滑，下一页 30% 视差滑入
+ * - 阴影在 dispatchDraw 中绘制
  */
 class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
 
     companion object {
         private const val SHADOW_WIDTH_PX = 250
-        /** 下层页面速度比 = 上层速度 * PARALLAX_RATIO */
         private const val PARALLAX_RATIO = 0.3f
     }
 
@@ -28,90 +25,82 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
 
     override fun onDraw(canvas: Canvas) {
         val vw = readView.width.toFloat()
+        if (vw <= 0) return
+
+        val ox = touchX - startX
+
+        when {
+            direction == Direction.NEXT -> {
+                // cur 在上层全速左滑，next 在下层 30% 视差滑入
+                readView.nextPageView.translationX = (vw + ox) * PARALLAX_RATIO
+                readView.curPageView.translationX = ox
+                readView.prevPageView.translationX = -vw
+                // z-order: cur 在上层
+                readView.curPageView.translationZ = 2f
+                readView.nextPageView.translationZ = 1f
+                readView.prevPageView.translationZ = 0f
+            }
+            direction == Direction.PREV -> {
+                // prev 在上层全速滑入，cur 在下层 30% 视差右移
+                readView.curPageView.translationX = ox * PARALLAX_RATIO
+                readView.prevPageView.translationX = -vw + ox
+                readView.nextPageView.translationX = vw
+                // z-order: prev 在上层
+                readView.prevPageView.translationZ = 2f
+                readView.curPageView.translationZ = 1f
+                readView.nextPageView.translationZ = 0f
+            }
+            else -> {
+                readView.curPageView.translationX = 0f
+                readView.prevPageView.translationX = -vw
+                readView.nextPageView.translationX = vw
+                // z-order: cur 在上层
+                readView.curPageView.translationZ = 2f
+                readView.prevPageView.translationZ = 0f
+                readView.nextPageView.translationZ = 0f
+            }
+        }
+    }
+
+    /** 在 dispatchDraw 的 super 之后调用，绘制阴影叠加层 */
+    fun drawOverlay(canvas: Canvas) {
+        val vw = readView.width.toFloat()
         val vh = readView.height.toFloat()
         if (vw <= 0 || vh <= 0) return
 
         val ox = touchX - startX
-        val cur = readView.getCurBitmap()
 
         when {
-            // NEXT：上层 cur 全速左滑，下层 next 从右侧偏移位慢速滑入
-            direction == Direction.NEXT -> {
-                val next = readView.getNextBitmap()
-                val lowerX = (vw + ox) * PARALLAX_RATIO
-                drawLowerPage(canvas, next, lowerX, 0f, vw, vh)
-                drawUpperPage(canvas, cur, ox, 0f, vw, vh)
-            }
-            // PREV：上层 prev 从左侧全速滑入，下层 cur 向右慢速偏移
-            direction == Direction.PREV -> {
-                val prev = readView.getPrevBitmap()
-                val lowerX = ox * PARALLAX_RATIO
-                drawLowerPage(canvas, cur, lowerX, 0f, vw, vh)
-                drawUpperPage(canvas, prev, -vw + ox, 0f, vw, vh)
-            }
-            // 空闲
-            else -> {
-                drawPageBitmap(canvas, cur, 0f, 0f, vw, vh)
-                // 叠加标注层（高亮/选区）
-                val annotation = readView.getCurAnnotationBitmap()
-                drawPageBitmap(canvas, annotation, 0f, 0f, vw, vh)
-                if (shadowFadeAlpha > 0f) {
-                    drawFadeOutShadow(canvas, vw, vh)
-                }
-            }
+            direction == Direction.NEXT -> drawShadow(canvas, ox + vw, vw, vh)
+            direction == Direction.PREV -> drawShadow(canvas, ox, vw, vh)
+            else -> if (shadowFadeAlpha > 0f) drawFadeOutShadow(canvas, vw, vh)
         }
     }
 
-    /** 上层：页面内容 + 外阴影 */
-    private fun drawUpperPage(
-        canvas: Canvas, bitmap: android.graphics.Bitmap?,
-        x: Float, y: Float, vw: Float, vh: Float
-    ) {
-        drawPageBitmap(canvas, bitmap, x, y, vw, vh)
+    /** 翻页时的阴影 */
+    private fun drawShadow(canvas: Canvas, edgeX: Float, vw: Float, vh: Float) {
+        val shStart = edgeX.coerceIn(0f, vw)
+        val shEnd = (edgeX + shadowWidth).coerceAtMost(vw)
+        if (shEnd <= shStart + 2f) return
 
-        // 外阴影：从上层右边缘向右延伸，在下层页面上可见
-        val right = x + vw
-        val shStart = right
-        val shEnd = (right + shadowWidth).coerceAtMost(readView.width.toFloat())
-        if (shStart < readView.width.toFloat() && shEnd > shStart + 2f) {
-            canvas.save()
-            canvas.clipRect(shStart, y, readView.width.toFloat(), y + vh)
-            val colors = intArrayOf(
-                0x26000000.toInt(),
-                0x18000000.toInt(),
-                0x08000000.toInt(),
-                0x02000000.toInt(),
-                0x00000000
-            )
-            val stops = floatArrayOf(0.0f, 0.2f, 0.5f, 0.75f, 1.0f)
-            val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                shader = LinearGradient(shStart, 0f, shEnd, 0f, colors, stops, Shader.TileMode.CLAMP)
-            }
-            canvas.drawRect(shStart, y, shEnd, y + vh, shadowPaint)
-            canvas.restore()
+        canvas.save()
+        canvas.clipRect(shStart, 0f, shEnd, vh)
+        val colors = intArrayOf(
+            0x26000000.toInt(),
+            0x18000000.toInt(),
+            0x08000000.toInt(),
+            0x02000000.toInt(),
+            0x00000000
+        )
+        val stops = floatArrayOf(0.0f, 0.2f, 0.5f, 0.75f, 1.0f)
+        val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = LinearGradient(shStart, 0f, shEnd, 0f, colors, stops, Shader.TileMode.CLAMP)
         }
+        canvas.drawRect(shStart, 0f, shEnd, vh, shadowPaint)
+        canvas.restore()
     }
 
-    private fun drawLowerPage(
-        canvas: Canvas, bitmap: android.graphics.Bitmap?,
-        x: Float, y: Float, vw: Float, vh: Float
-    ) {
-        drawPageBitmap(canvas, bitmap, x, y, vw, vh)
-    }
-
-    private fun drawPageBitmap(
-        canvas: Canvas, bitmap: android.graphics.Bitmap?,
-        x: Float, y: Float, vw: Float, vh: Float
-    ) {
-        if (bitmap != null && !bitmap.isRecycled) {
-            canvas.save()
-            canvas.clipRect(0f, 0f, vw, vh)
-            canvas.drawBitmap(bitmap, x, y, null)
-            canvas.restore()
-        }
-    }
-
-    /** 翻页完成后的阴影渐隐叠加层 */
+    /** 翻页完成后的阴影渐隐 */
     private fun drawFadeOutShadow(canvas: Canvas, vw: Float, vh: Float) {
         val shEnd = shadowWidth.coerceAtMost(vw)
         if (shEnd < 2f) return

@@ -108,13 +108,6 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     // ReadView 引用
     val readViewRef = remember { mutableStateOf<ReadView?>(null) }
 
-    // 选择手柄屏幕位置（独立追踪，拖拽期间不经过字符偏移反算，避免抽搐）
-    var startHandlePos by remember { mutableStateOf(Offset.Zero) }
-    var endHandlePos by remember { mutableStateOf(Offset.Zero) }
-    var showHandles by remember { mutableStateOf(false) }
-    // 高亮保存后延迟清除选区标志（Bug 3 修复）
-    var pendingClearSelection by remember { mutableStateOf(false) }
-
     // TOC 跳转标记（区分用户点击 TOC 和正常翻页带来的章节变化）
     val isTocJump = remember { mutableStateOf(false) }
 
@@ -130,24 +123,13 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         if (!uiState.isLoading) onLoadingComplete()
     }
 
-    // 文本选择状态
-    var selectionState by remember { mutableStateOf<SelectionState?>(null) }
-    var showNoteInput by remember { mutableStateOf(false) }
     var showNotesList by remember { mutableStateOf(false) }
-    var noteInputText by remember { mutableStateOf("") }
 
-    // 🔥 Bug 3 修复：notes 更新后清除临时选区，确保持久化高亮可见
-    LaunchedEffect(notes.size) {
-        if (pendingClearSelection) {
-            pendingClearSelection = false
-            // readView.setSavedNotes 已在 AndroidView.update 中调用
-            // 延迟一帧确保 bitmap 已重绘
-            kotlinx.coroutines.delay(50)
-            selectionState = null
-            showHandles = false
-            readViewRef.value?.clearSelection()
-        }
-    }
+    // 文字选择状态
+    var selectedText by remember { mutableStateOf("") }
+    var selectionMenuX by remember { mutableFloatStateOf(0f) }
+    var selectionMenuY by remember { mutableFloatStateOf(0f) }
+    var showSelectionMenu by remember { mutableStateOf(false) }
 
     // TOC 跳转：当 currentChapterIndex 变化且是 TOC 触发时，跳转 ReadView
     LaunchedEffect(uiState.currentChapterIndex) {
@@ -241,63 +223,17 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                 viewModel.toggleMenu()
                             }
 
-                            override fun onLoadingChanged(isLoading: Boolean) {
-                                // 新引擎的加载状态通过 onPageChanged 首次回调来结束
-                            }
+                            override fun onLoadingChanged(isLoading: Boolean) {}
 
-                            override fun onTextSelected(
-                                chapterIndex: Int,
-                                pageInChapter: Int,
-                                charStart: Int,
-                                charEnd: Int,
-                                selectedText: String,
-                                touchX: Float,
-                                touchY: Float
-                            ) {
-                                // 检查该位置是否已有笔记/高亮
-                                val existingNotes = viewModel.notes.value.filter {
-                                    it.chapterIndex == chapterIndex &&
-                                        it.startPosition <= charEnd &&
-                                        it.endPosition >= charStart
-                                }
-                                // 获取选区边界框用于菜单定位
-                                val bounds = readViewRef.value?.getSelectionBounds()
-                                selectionState = SelectionState(
-                                    chapterIndex = chapterIndex,
-                                    pageInChapter = pageInChapter,
-                                    charStart = charStart,
-                                    charEnd = charEnd,
-                                    selectedText = selectedText,
-                                    touchX = touchX,
-                                    touchY = touchY,
-                                    hasHighlight = existingNotes.any { it.note.isEmpty() },
-                                    hasNote = existingNotes.any { it.note.isNotEmpty() },
-                                    existingNote = existingNotes.firstOrNull { it.note.isNotEmpty() },
-                                    selTopY = bounds?.topY ?: touchY,
-                                    selBottomY = bounds?.bottomY ?: touchY,
-                                    selStartX = bounds?.startX ?: touchX,
-                                    selEndX = bounds?.endX ?: touchX
-                                )
-                                // 🔥 仅在初始选中时设置手柄位置，拖动时不重算（避免反馈环导致手柄飞走）
-                                if (readViewRef.value?.isDraggingSelection != true) {
-                                    readViewRef.value?.getSelectionHandleCenters()?.let { hc ->
-                                        startHandlePos = Offset(hc.startCx, hc.startCy)
-                                        endHandlePos = Offset(hc.endCx, hc.endCy)
-                                        showHandles = true
-                                    }
-                                }
+                            override fun onTextSelected(text: String, screenX: Float, screenY: Float) {
+                                selectedText = text
+                                selectionMenuX = screenX
+                                selectionMenuY = screenY
+                                showSelectionMenu = true
                             }
                         })
                         setContentProvider { chapterIndex ->
                             viewModel.getChapterText(chapterIndex)
-                        }
-                        // 🔥 选择变化回调（更新 Compose 手柄位置）
-                        onSelectionChanged = { chIdx, pageIdx, start, end, text ->
-                            // 手柄位置由 startHandlePos/endHandlePos 独立追踪
-                            // 此处仅处理清除选区的通知（来自 ReadView.clearSelection）
-                            if (start < 0 || end <= start) {
-                                showHandles = false
-                            }
                         }
                         readViewRef.value = this
                     }
@@ -325,56 +261,6 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         // ── 旧 WebView 路径（PDF） ──
         if (!uiState.useNewEngine) {
             LegacyWebViewContent(uiState, viewModel, composeBgColor)
-        }
-
-        // ── 选择手柄覆盖层（Compose 层，仅新引擎 + 活跃选择时显示）──
-        if (uiState.useNewEngine && showHandles && selectionState != null) {
-            SelectionHandle(
-                centerX = startHandlePos.x,
-                centerY = startHandlePos.y,
-                onDrag = { newCx, newCy ->
-                    startHandlePos = Offset(newCx, newCy)
-                    readViewRef.value?.moveSelectionHandle(1, newCx, newCy)
-                    // 交叉时同步手柄位置（仅一帧，不经过 onTextSelected 避免重组）
-                    if (readViewRef.value?.lastHandleSwapped == true) {
-                        readViewRef.value?.getSelectionHandleCenters()?.let { hc ->
-                            startHandlePos = Offset(hc.startCx, hc.startCy)
-                            endHandlePos = Offset(hc.endCx, hc.endCy)
-                        }
-                        readViewRef.value?.lastHandleSwapped = false
-                    }
-                },
-                onDragEnd = {
-                    readViewRef.value?.isDraggingSelection = false
-                    readViewRef.value?.getSelectionHandleCenters()?.let { hc ->
-                        startHandlePos = Offset(hc.startCx, hc.startCy)
-                        endHandlePos = Offset(hc.endCx, hc.endCy)
-                    }
-                }
-            )
-            SelectionHandle(
-                centerX = endHandlePos.x,
-                centerY = endHandlePos.y,
-                onDrag = { newCx, newCy ->
-                    endHandlePos = Offset(newCx, newCy)
-                    readViewRef.value?.moveSelectionHandle(2, newCx, newCy)
-                    // 交叉时同步手柄位置（仅一帧，不经过 onTextSelected 避免重组）
-                    if (readViewRef.value?.lastHandleSwapped == true) {
-                        readViewRef.value?.getSelectionHandleCenters()?.let { hc ->
-                            startHandlePos = Offset(hc.startCx, hc.startCy)
-                            endHandlePos = Offset(hc.endCx, hc.endCy)
-                        }
-                        readViewRef.value?.lastHandleSwapped = false
-                    }
-                },
-                onDragEnd = {
-                    readViewRef.value?.isDraggingSelection = false
-                    readViewRef.value?.getSelectionHandleCenters()?.let { hc ->
-                        startHandlePos = Offset(hc.startCx, hc.startCy)
-                        endHandlePos = Offset(hc.endCx, hc.endCy)
-                    }
-                }
-            )
         }
 
         // ── 覆盖层 UI（新旧引擎共享） ──
@@ -566,67 +452,6 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         }
     }
 
-    // ── 选择菜单 ──
-    SelectionMenuOverlay(
-        state = selectionState,
-        readerTheme = uiState.readerTheme,
-        onDismiss = {
-            selectionState = null
-            readViewRef.value?.clearSelection()
-        },
-        onHighlight = {
-            val s = selectionState ?: return@SelectionMenuOverlay
-            viewModel.addNote(s.selectedText, "", s.chapterIndex, s.charStart, s.charEnd, "#FFEB3B")
-            // 🔥 Bug 3 修复：延迟清除选区，等 notes 更新后 ReadView.setSavedNotes 再清除
-            pendingClearSelection = true
-        },
-        onNote = {
-            showNoteInput = true
-        },
-        onSearch = {
-            val s = selectionState ?: return@SelectionMenuOverlay
-            searchQuery = s.selectedText
-            showSearch = true
-            selectionState = null
-            readViewRef.value?.clearSelection()
-        },
-        onCopy = {
-            val s = selectionState ?: return@SelectionMenuOverlay
-            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("selected", s.selectedText))
-            selectionState = null
-            readViewRef.value?.clearSelection()
-        },
-        onRemoveHighlight = {
-            val s = selectionState ?: return@SelectionMenuOverlay
-            s.existingNote?.let { viewModel.deleteNote(it) }
-            selectionState = null
-            readViewRef.value?.clearSelection()
-        },
-        onViewNote = {
-            // TODO: 查看/修改已有笔记
-        }
-    )
-
-    // ── 笔记输入容器 ──
-    NoteInputSheet(
-        visible = showNoteInput,
-        initialText = noteInputText,
-        onTextChange = { noteInputText = it },
-        onConfirm = {
-            val s = selectionState ?: return@NoteInputSheet
-            viewModel.addNote(s.selectedText, noteInputText, s.chapterIndex, s.charStart, s.charEnd, "#FFEB3B")
-            noteInputText = ""
-            selectionState = null
-            showNoteInput = false
-        },
-        onCancel = {
-            noteInputText = ""
-            showNoteInput = false
-            selectionState = null
-        }
-    )
-
     // ── 笔记/高亮列表 ──
     NotesListSheet(
         visible = showNotesList,
@@ -638,6 +463,50 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         onDeleteNote = { note -> viewModel.deleteNote(note) },
         onDismiss = { showNotesList = false }
     )
+
+    // ── 文字选择浮动菜单 ──
+    if (showSelectionMenu && selectedText.isNotEmpty()) {
+        val isDarkTheme = uiState.readerTheme == "night"
+        val menuBg = if (isDarkTheme) Color(0xFFEAEAEA) else Color(0xFF2C2C2E)
+        val menuText = if (isDarkTheme) Color(0xFF1C1C1E) else Color.White
+        val screenWidthPx = with(LocalDensity.current) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
+        val menuWidthPx = with(LocalDensity.current) { 280.dp.toPx() }
+
+        val menuX = (selectionMenuX - menuWidthPx / 2f).coerceIn(12f, (screenWidthPx - menuWidthPx - 12f).coerceAtLeast(12f))
+        val menuY = if (selectionMenuY > with(LocalDensity.current) { LocalConfiguration.current.screenHeightDp.dp.toPx() * 0.5f }) {
+            selectionMenuY - with(LocalDensity.current) { 56.dp.toPx() } - 20f
+        } else {
+            selectionMenuY + 28f
+        }
+
+        Popup(
+            alignment = Alignment.TopStart,
+            offset = IntOffset(menuX.toInt(), menuY.toInt()),
+            properties = PopupProperties(focusable = false, dismissOnBackPress = false, dismissOnClickOutside = false)
+        ) {
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(menuBg)
+                    .padding(horizontal = 4.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("复制", fontSize = 13.sp, color = menuText,
+                    modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("selected", selectedText))
+                        showSelectionMenu = false
+                        readViewRef.value?.curPageView?.clearSelection()
+                    }.padding(horizontal = 12.dp, vertical = 8.dp))
+                Text("高亮", fontSize = 13.sp, color = menuText,
+                    modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable {
+                        // TODO: 高亮功能
+                        showSelectionMenu = false
+                        readViewRef.value?.curPageView?.clearSelection()
+                    }.padding(horizontal = 12.dp, vertical = 8.dp))
+            }
+        }
+    }
 }
 
 /**
