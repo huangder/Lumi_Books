@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,6 +34,8 @@ import com.huangder.lumibooks.ui.reader.ReaderScreen
 import com.huangder.lumibooks.ui.reader.PdfViewerScreen
 import com.huangder.lumibooks.ui.reader.ReaderViewModel
 import com.huangder.lumibooks.ui.statistics.StatisticsScreen
+import com.huangder.lumibooks.ui.welcome.WelcomeScreen
+import com.huangder.lumibooks.ui.welcome.WelcomeViewModel
 import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.LocalReaderColors
@@ -70,6 +73,8 @@ private fun ReaderRouter(
 
 @Composable
 fun MainNavGraph(navController: NavHostController) {
+    val welcomeViewModel: WelcomeViewModel = hiltViewModel()
+    val hasSeenWelcome by welcomeViewModel.hasSeenWelcome.collectAsState()
     var selectedTab by remember { mutableIntStateOf(0) }
     var showTransition by remember { mutableStateOf(false) }
     var transitionCover by remember { mutableStateOf<String?>(null) }
@@ -83,7 +88,7 @@ fun MainNavGraph(navController: NavHostController) {
     val currentEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentEntry?.destination?.route
     LaunchedEffect(currentRoute, showTransition) {
-        if (currentRoute == Screen.Reader.route || showTransition) {
+        if (currentRoute == Screen.Reader.route || currentRoute == Screen.Welcome.route || showTransition) {
             tabBarVisible = false
         } else {
             delay(800)
@@ -111,8 +116,28 @@ fun MainNavGraph(navController: NavHostController) {
         ) {
         NavHost(
             navController = navController,
-            startDestination = Screen.Home.route
+            startDestination = when (hasSeenWelcome) {
+                null -> Screen.Home.route // 加载中，先显示 Home
+                true -> Screen.Home.route
+                false -> Screen.Welcome.route
+            }
         ) {
+            composable(Screen.Welcome.route) {
+                WelcomeScreen(
+                    onContinue = {
+                        welcomeViewModel.saveHasSeenWelcome(true)
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(Screen.Welcome.route) { inclusive = true }
+                        }
+                    },
+                    onExit = {
+                        // 退出应用
+                        val activity = (navController.context as? android.app.Activity)
+                        activity?.finish()
+                    }
+                )
+            }
+
             composable(Screen.Home.route) {
                 HomeScreen(
                     onNavigateToReader = { bookId, coverPath, title ->
@@ -177,11 +202,11 @@ fun MainNavGraph(navController: NavHostController) {
         }
         } // contentScale Box 结束
 
-        // 浮动导航栏（延迟淡入）
+        // 浮动导航栏（渐隐渐显）
         AnimatedVisibility(
             visible = tabBarVisible,
-            enter = fadeIn(animationSpec = tween(400)) +
-                    slideInVertically(animationSpec = tween(400)) { it / 2 },
+            enter = fadeIn(animationSpec = tween(400)),
+            exit = fadeOut(animationSpec = tween(300)),
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             FloatingTabBar(

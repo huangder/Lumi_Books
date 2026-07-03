@@ -4,8 +4,10 @@ color black
 color primary
 color primary_dark
 color white
+drawable app_icon
 drawable ic_launcher_background
 drawable ic_launcher_foreground
+drawable share_poster_bg
 drawable splash_background
 font dingli_song
 mipmap ic_launcher
