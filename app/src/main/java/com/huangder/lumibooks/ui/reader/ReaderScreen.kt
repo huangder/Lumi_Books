@@ -2,6 +2,7 @@ package com.huangder.lumibooks.ui.reader
 
 import android.content.Context
 import android.webkit.WebView
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -147,6 +148,19 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
 
     // 搜索状态
     var showSearch by remember { mutableStateOf(false) }
+
+    // 处理返回键：关闭当前打开的容器，而不是退出书籍
+    val isAnySheetOpen = showNotesList || showNoteInput || showToc || showThemeSheet || showAdvancedSheet || showSearch
+    BackHandler(enabled = isAnySheetOpen) {
+        when {
+            showNotesList -> showNotesList = false
+            showNoteInput -> showNoteInput = false
+            showToc -> showToc = false
+            showThemeSheet -> showThemeSheet = false
+            showAdvancedSheet -> showAdvancedSheet = false
+            showSearch -> showSearch = false
+        }
+    }
     var searchQuery by remember { mutableStateOf("") }
     var searchResults by remember { mutableStateOf<List<ReaderViewModel.SearchResult>>(emptyList()) }
     var isSearching by remember { mutableStateOf(false) }
