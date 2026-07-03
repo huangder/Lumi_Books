@@ -849,15 +849,12 @@ private fun TocSheet(
 ) {
     if (!visible) return
 
-    val sheetAlpha = remember { Animatable(0f) }
     val sheetOffset = remember { Animatable(1f) }
 
     LaunchedEffect(visible) {
         if (visible) {
-            coroutineScope {
-                launch { sheetAlpha.animateTo(1f, tween(250)) }
-                launch { sheetOffset.snapTo(1f); sheetOffset.animateTo(0f, tween(300, easing = AppEasing.Smooth)) }
-            }
+            sheetOffset.snapTo(1f)
+            sheetOffset.animateTo(0f, tween(300, easing = FastOutSlowInEasing))
         }
     }
 
@@ -865,10 +862,7 @@ private fun TocSheet(
     var pendingJumpIndex by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(isClosing) {
         if (isClosing) {
-            coroutineScope {
-                launch { sheetAlpha.animateTo(0f, tween(200)) }
-                launch { sheetOffset.animateTo(1f, tween(200, easing = AppEasing.Accelerate)) }
-            }
+            sheetOffset.animateTo(1f, tween(250, easing = FastOutSlowInEasing))
             pendingJumpIndex?.let { onChapterSelected(it) }
             pendingJumpIndex = null
             onDismiss()
@@ -879,75 +873,73 @@ private fun TocSheet(
         // 遮罩
         Box(
             Modifier.fillMaxSize()
-                .graphicsLayer { alpha = sheetAlpha.value }
                 .background(Color.Black.copy(alpha = 0.1f))
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { isClosing = true }
         )
 
-        // 底部弹出
-        Box(
+        // 底部弹出（70% 屏幕高度）
+        Column(
             Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .graphicsLayer { translationY = sheetOffset.value * size.height; alpha = sheetAlpha.value }
+                .fillMaxHeight(0.7f)
+                .graphicsLayer { translationY = sheetOffset.value * size.height }
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .background(AppColors.CardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .padding(bottom = 16.dp)
-                .padding(AppSpace.lg)
+                .background(Color.White, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .navigationBarsPadding()
+                .padding(24.dp)
         ) {
-            Column {
-                // 标题栏 ❌ 目录 ✅
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.BgGray).clickable { isClosing = true },
-                        contentAlignment = Alignment.Center
-                    ) { Icon(Icons.Default.Close, "关闭", tint = AppColors.TextSecondary, modifier = Modifier.size(18.dp)) }
-                    Text("目录", fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = DingliSong, color = AppColors.TextPrimary, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
-                    Box(
-                        modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.Accent.copy(alpha = 0.15f)).clickable { isClosing = true },
-                        contentAlignment = Alignment.Center
-                    ) { Text("✓", fontSize = 16.sp, color = AppColors.Accent) }
-                }
-
-                Spacer(Modifier.height(AppSpace.md))
-
-                LazyColumn(modifier = Modifier.fillMaxHeight(0.7f)) {
-                    items(chapterTitles.size) { index ->
-                        val isCurrent = index == currentChapter
-                        val title = chapterTitles.getOrElse(index) { "" }.ifBlank { "第${index + 1}章" }
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(if (isCurrent) AppColors.Accent.copy(alpha = 0.1f) else Color.Transparent)
-                                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                                    pendingJumpIndex = index
-                                    isClosing = true
-                                }
-                                .padding(horizontal = 16.dp, vertical = 12.dp)
-                        ) {
-                            Text(
-                                text = title,
-                                fontSize = AppType.Body,
-                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isCurrent) AppColors.Accent else AppColors.TextPrimary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(AppSpace.md))
+            // 标题栏
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "目录",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = DingliSong,
+                    color = Color.Black
+                )
+                Spacer(Modifier.weight(1f))
+                // 关闭按钮
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(44.dp)
-                        .clip(RoundedCornerShape(22.dp))
-                        .background(AppColors.BgGray)
-                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { isClosing = true },
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(LightBgGray)
+                        .clickable { isClosing = true },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("关闭", fontSize = AppType.Body, color = AppColors.TextSecondary)
+                    Icon(Icons.Default.Close, "关闭", tint = LightTextSecondary, modifier = Modifier.size(18.dp))
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // 章节列表
+            LazyColumn(modifier = Modifier.weight(1f)) {
+                items(chapterTitles.size) { index ->
+                    val isCurrent = index == currentChapter
+                    val title = chapterTitles.getOrElse(index) { "" }.ifBlank { "第${index + 1}章" }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(LightBgGray)
+                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                pendingJumpIndex = index
+                                isClosing = true
+                            }
+                            .padding(horizontal = 16.dp, vertical = 14.dp)
+                    ) {
+                        Text(
+                            text = title,
+                            fontSize = 16.sp,
+                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isCurrent) AccentColor else Color.Black,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
         }
@@ -956,8 +948,6 @@ private fun TocSheet(
 
 /**
  * 全文搜索弹窗——底部弹出，可伸缩高度。
- * - 初始矮容器（搜索框+按钮）
- * - 有结果后平滑拉高至最多屏幕70%，超出滚动
  */
 @Composable
 private fun SearchSheet(
@@ -973,37 +963,21 @@ private fun SearchSheet(
 ) {
     if (!visible) return
 
-    val sheetAlpha = remember { Animatable(0f) }
     val sheetOffset = remember { Animatable(1f) }
     val hasResults = results.isNotEmpty()
 
     LaunchedEffect(visible) {
         if (visible) {
-            coroutineScope {
-                launch { sheetAlpha.animateTo(1f, tween(250)) }
-                launch { sheetOffset.snapTo(1f); sheetOffset.animateTo(0f, tween(300, easing = AppEasing.Smooth)) }
-            }
+            sheetOffset.snapTo(1f)
+            sheetOffset.animateTo(0f, tween(300, easing = FastOutSlowInEasing))
         }
     }
 
     var isClosing by remember { mutableStateOf(false) }
     LaunchedEffect(isClosing) {
         if (isClosing) {
-            coroutineScope {
-                launch { sheetAlpha.animateTo(0f, tween(200)) }
-                launch { sheetOffset.animateTo(1f, tween(200, easing = AppEasing.Accelerate)) }
-            }
+            sheetOffset.animateTo(1f, tween(250, easing = FastOutSlowInEasing))
             onDismiss()
-        }
-    }
-
-    // 搜索容器高度动画：矮 → 高
-    val contentAlpha = remember { Animatable(0f) }
-    LaunchedEffect(hasResults) {
-        if (hasResults) {
-            contentAlpha.animateTo(1f, tween(300, easing = AppEasing.Smooth))
-        } else {
-            contentAlpha.snapTo(0f)
         }
     }
 
@@ -1011,146 +985,145 @@ private fun SearchSheet(
         // 遮罩
         Box(
             Modifier.fillMaxSize()
-                .graphicsLayer { alpha = sheetAlpha.value }
                 .background(Color.Black.copy(alpha = 0.1f))
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { isClosing = true }
         )
 
         // 底部弹出容器
-        Box(
+        Column(
             Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .graphicsLayer { translationY = sheetOffset.value * size.height; alpha = sheetAlpha.value }
+                .graphicsLayer { translationY = sheetOffset.value * size.height }
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .background(AppColors.CardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .background(Color.White, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .imePadding()
                 .navigationBarsPadding()
-                .padding(AppSpace.lg)
+                .padding(24.dp)
         ) {
-            Column {
-                // 标题栏 ❌ 搜索 ✅
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.BgGray).clickable { isClosing = true },
-                        contentAlignment = Alignment.Center
-                    ) { Icon(Icons.Default.Close, "关闭", tint = AppColors.TextSecondary, modifier = Modifier.size(18.dp)) }
-                    Text("搜索", fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = DingliSong, color = AppColors.TextPrimary, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
-                    Box(
-                        modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.Accent.copy(alpha = 0.15f)).clickable { isClosing = true },
-                        contentAlignment = Alignment.Center
-                    ) { Text("✓", fontSize = 16.sp, color = AppColors.Accent) }
+            // 标题栏
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "搜索",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = DingliSong,
+                    color = Color.Black
+                )
+                Spacer(Modifier.weight(1f))
+                // 关闭按钮
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(LightBgGray)
+                        .clickable { isClosing = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Close, "关闭", tint = LightTextSecondary, modifier = Modifier.size(18.dp))
                 }
+            }
 
-                Spacer(Modifier.height(AppSpace.md))
+            Spacer(Modifier.height(16.dp))
 
-                // 搜索输入框 + 按钮
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(52.dp)
-                            .clip(RoundedCornerShape(26.dp))
-                            .background(AppColors.BgGray)
-                            .padding(horizontal = 16.dp),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        androidx.compose.material3.TextField(
-                            value = query,
-                            onValueChange = onQueryChange,
-                            placeholder = { Text("输入关键词", fontSize = 14.sp, color = AppColors.TextSecondary) },
-                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = AppColors.TextPrimary),
-                            singleLine = true,
-                            colors = androidx.compose.material3.TextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                    Spacer(Modifier.width(10.dp))
-                    Box(
-                        modifier = Modifier
-                            .height(44.dp)
-                            .clip(RoundedCornerShape(22.dp))
-                            .background(if (query.isNotBlank()) AppColors.Accent else AppColors.BgGray)
-                            .cardPressEffect()
-                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { if (query.isNotBlank()) onSearch() }
-                            .padding(horizontal = 20.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (isSearching) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = AppColors.TextPrimary)
-                        } else {
-                            Text("搜索", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = if (query.isNotBlank()) Color.White else AppColors.TextSecondary)
-                        }
+            // 搜索输入框 + 按钮
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(52.dp)
+                        .clip(RoundedCornerShape(26.dp))
+                        .background(LightBgGray)
+                        .padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    androidx.compose.material3.TextField(
+                        value = query,
+                        onValueChange = onQueryChange,
+                        placeholder = { Text("输入关键词", fontSize = 14.sp, color = LightTextSecondary) },
+                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = Color.Black),
+                        singleLine = true,
+                        colors = androidx.compose.material3.TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Box(
+                    modifier = Modifier
+                        .height(48.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(if (query.isNotBlank()) AccentColor else LightBgGray)
+                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { if (query.isNotBlank()) onSearch() }
+                        .padding(horizontal = 20.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isSearching) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
+                    } else {
+                        Text("搜索", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = if (query.isNotBlank()) Color.White else LightTextSecondary)
                     }
                 }
+            }
 
-                Spacer(Modifier.height(AppSpace.md))
+            Spacer(Modifier.height(16.dp))
 
-                // 结果区域：有结果时展开
-                if (hasResults) {
-                    HorizontalDivider(color = AppColors.Divider, thickness = 0.5.dp)
-                    Spacer(Modifier.height(AppSpace.sm))
+            // 结果区域
+            if (hasResults) {
+                Text(
+                    "找到 ${results.size} 条结果",
+                    fontSize = 12.sp,
+                    color = LightTextSecondary
+                )
+                Spacer(Modifier.height(8.dp))
 
-                    Column(
-                        modifier = Modifier
-                            .graphicsLayer { alpha = contentAlpha.value }
-                            .fillMaxHeight(if (results.size > 3) 0.7f else 0.35f)
-                    ) {
-                        Text(
-                            "找到 ${results.size} 条结果",
-                            fontSize = AppType.Caption,
-                            color = AppColors.TextSecondary,
-                            modifier = Modifier.padding(bottom = AppSpace.sm)
-                        )
-
-                        LazyColumn(modifier = Modifier.weight(1f)) {
-                            items(results.size) { idx ->
-                                val r = results[idx]
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                                            onResultClick(r)
-                                        }
-                                        .padding(horizontal = 12.dp, vertical = 10.dp)
-                                ) {
-                                    Column {
-                                        Text(
-                                            text = r.chapterTitle,
-                                            fontSize = AppType.Caption,
-                                            color = AppColors.Accent,
-                                            maxLines = 1
-                                        )
-                                        Spacer(Modifier.height(2.dp))
-                                        Text(
-                                            text = r.context,
-                                            fontSize = 13.sp,
-                                            color = AppColors.TextPrimary,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
+                LazyColumn(modifier = Modifier.weight(1f)) {
+                    items(results.size) { idx ->
+                        val r = results[idx]
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(LightBgGray)
+                                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                    onResultClick(r)
                                 }
-                                if (idx < results.size - 1) {
-                                    HorizontalDivider(color = AppColors.Divider.copy(alpha = 0.3f), thickness = 0.5.dp)
-                                }
+                                .padding(horizontal = 16.dp, vertical = 12.dp)
+                        ) {
+                            Column {
+                                Text(
+                                    text = r.chapterTitle,
+                                    fontSize = 12.sp,
+                                    color = AccentColor,
+                                    maxLines = 1
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = r.context,
+                                    fontSize = 14.sp,
+                                    color = Color.Black,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
                         }
                     }
-                } else if (!isSearching && hasSearched) {
-                    // 已搜索但无结果
-                    Box(
-                        Modifier.fillMaxWidth().padding(vertical = 24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("未找到匹配结果", fontSize = 14.sp, color = AppColors.TextSecondary)
-                    }
                 }
+            } else if (!isSearching && hasSearched) {
+                // 已搜索但无结果
+                Box(
+                    Modifier.fillMaxWidth().weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("未找到匹配结果", fontSize = 14.sp, color = LightTextSecondary)
+                }
+            } else {
+                // 初始状态
+                Spacer(Modifier.weight(1f))
             }
         }
     }
