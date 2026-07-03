@@ -1,0 +1,1169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lumi — 为阅读而生</title>
+    <style>
+        /* ═══════════════════════════════════════════════════════
+           Airbnb Design System Tokens
+           ═══════════════════════════════════════════════════════ */
+        :root {
+            /* Brand */
+            --primary: #ff385c;
+            --primary-active: #e00b41;
+            --primary-disabled: #ffd1da;
+            /* Surfaces */
+            --canvas: #ffffff;
+            --surface-soft: #f7f7f7;
+            --surface-strong: #f2f2f2;
+            /* Text */
+            --ink: #222222;
+            --body: #3f3f3f;
+            --muted: #6a6a6a;
+            --muted-soft: #929292;
+            --on-primary: #ffffff;
+            --on-dark: #ffffff;
+            --legal-link: #428bff;
+            /* Borders */
+            --hairline: #dddddd;
+            --hairline-soft: #ebebeb;
+            --border-strong: #c1c1c1;
+            /* Semantic */
+            --error-text: #c13515;
+            --scrim: #000000;
+            /* Spacing — 4px base */
+            --space-xxs: 2px;
+            --space-xs: 4px;
+            --space-sm: 8px;
+            --space-md: 12px;
+            --space-base: 16px;
+            --space-lg: 24px;
+            --space-xl: 32px;
+            --space-xxl: 48px;
+            --space-section: 64px;
+            /* Radius */
+            --radius-none: 0px;
+            --radius-xs: 4px;
+            --radius-sm: 8px;
+            --radius-md: 14px;
+            --radius-lg: 20px;
+            --radius-xl: 32px;
+            --radius-full: 9999px;
+            /* Shadow — single tier only */
+            --shadow-card: rgba(0,0,0,0.02) 0 0 0 1px,
+                          rgba(0,0,0,0.04) 0 2px 6px,
+                          rgba(0,0,0,0.10) 0 4px 8px;
+            /* Layout */
+            --max-width: 1280px;
+            --nav-height: 80px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: var(--canvas);
+            color: var(--ink);
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* ═══════════════════════════════════════════════════════
+           Typography — Airbnb Cereal scale
+           ═══════════════════════════════════════════════════════ */
+        .t-display-xl  { font-size: 28px; font-weight: 700; line-height: 1.43; letter-spacing: 0; }
+        .t-display-lg  { font-size: 22px; font-weight: 500; line-height: 1.18; letter-spacing: -0.44px; }
+        .t-display-md  { font-size: 21px; font-weight: 700; line-height: 1.43; letter-spacing: 0; }
+        .t-display-sm  { font-size: 20px; font-weight: 600; line-height: 1.20; letter-spacing: -0.18px; }
+        .t-title-md    { font-size: 16px; font-weight: 600; line-height: 1.25; letter-spacing: 0; }
+        .t-title-sm    { font-size: 16px; font-weight: 500; line-height: 1.25; letter-spacing: 0; }
+        .t-body-md     { font-size: 16px; font-weight: 400; line-height: 1.5;  letter-spacing: 0; }
+        .t-body-sm     { font-size: 14px; font-weight: 400; line-height: 1.43; letter-spacing: 0; }
+        .t-caption     { font-size: 14px; font-weight: 500; line-height: 1.29; letter-spacing: 0; }
+        .t-caption-sm  { font-size: 13px; font-weight: 400; line-height: 1.23; letter-spacing: 0; }
+        .t-badge       { font-size: 11px; font-weight: 600; line-height: 1.18; letter-spacing: 0; }
+        .t-micro-label { font-size: 12px; font-weight: 700; line-height: 1.33; letter-spacing: 0; }
+        .t-button-md   { font-size: 16px; font-weight: 500; line-height: 1.25; letter-spacing: 0; }
+        .t-button-sm   { font-size: 14px; font-weight: 500; line-height: 1.29; letter-spacing: 0; }
+        .t-nav-link    { font-size: 16px; font-weight: 600; line-height: 1.25; letter-spacing: 0; }
+        .t-uppercase   { font-size: 8px;  font-weight: 700; line-height: 1.25; letter-spacing: 0.32px; text-transform: uppercase; }
+
+        /* ═══════════════════════════════════════════════════════
+           Top Navigation
+           ═══════════════════════════════════════════════════════ */
+        .top-nav {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: var(--canvas);
+            height: var(--nav-height);
+            border-bottom: 1px solid var(--hairline);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 var(--space-xxl);
+            max-width: var(--max-width);
+            margin: 0 auto;
+        }
+        .nav-logo {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            text-decoration: none;
+            color: var(--primary);
+        }
+        .nav-logo .logo-icon {
+            width: 34px;
+            height: 34px;
+            background: var(--primary);
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--on-primary);
+            font-size: 18px;
+            font-weight: 700;
+        }
+        .nav-logo .logo-text {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--ink);
+        }
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: var(--space-xl);
+            list-style: none;
+        }
+        .nav-links a {
+            text-decoration: none;
+            color: var(--muted);
+            transition: color 0.15s;
+        }
+        .nav-links a:hover { color: var(--ink); }
+        .nav-links a.active {
+            color: var(--ink);
+            padding-bottom: 2px;
+            border-bottom: 2px solid var(--ink);
+        }
+        .nav-cta {
+            display: flex;
+            align-items: center;
+            gap: var(--space-base);
+        }
+        .btn-nav-download {
+            background: var(--primary);
+            color: var(--on-primary);
+            text-decoration: none;
+            padding: 10px 20px;
+            border-radius: var(--radius-full);
+            font-size: 14px;
+            font-weight: 500;
+            line-height: 1.29;
+            transition: background 0.15s;
+        }
+        .btn-nav-download:hover { background: var(--primary-active); }
+
+        /* ═══════════════════════════════════════════════════════
+           Sections — 64px vertical rhythm
+           ═══════════════════════════════════════════════════════ */
+        .section {
+            padding: var(--space-section) var(--space-xxl);
+            max-width: var(--max-width);
+            margin: 0 auto;
+        }
+        .section + .section {
+            border-top: 1px solid var(--hairline-soft);
+        }
+
+        /* ═══════════════════════════════════════════════════════
+           Hero — photography-led, modest type
+           ═══════════════════════════════════════════════════════ */
+        .hero {
+            padding: var(--space-section) var(--space-xxl) 48px;
+            max-width: var(--max-width);
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--space-xxl);
+            align-items: center;
+        }
+        .hero-content {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-base);
+        }
+        .hero-content h1 {
+            font-size: 28px;
+            font-weight: 700;
+            line-height: 1.43;
+            color: var(--ink);
+        }
+        .hero-content .hero-desc {
+            font-size: 16px;
+            font-weight: 400;
+            line-height: 1.5;
+            color: var(--body);
+        }
+        .hero-actions {
+            display: flex;
+            gap: var(--space-md);
+            margin-top: var(--space-sm);
+        }
+        /* button-primary */
+        .btn-primary {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--space-sm);
+            background: var(--primary);
+            color: var(--on-primary);
+            text-decoration: none;
+            padding: 14px 24px;
+            height: 48px;
+            border-radius: var(--radius-sm);
+            font-size: 16px;
+            font-weight: 500;
+            line-height: 1.25;
+            border: none;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .btn-primary:hover { background: var(--primary-active); }
+        .btn-primary:disabled {
+            background: var(--primary-disabled);
+            cursor: not-allowed;
+        }
+        /* button-secondary */
+        .btn-secondary {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--space-sm);
+            background: var(--canvas);
+            color: var(--ink);
+            text-decoration: none;
+            padding: 13px 23px;
+            height: 48px;
+            border-radius: var(--radius-sm);
+            font-size: 16px;
+            font-weight: 500;
+            line-height: 1.25;
+            border: 1px solid var(--ink);
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .btn-secondary:hover { background: var(--surface-soft); }
+
+        .hero-visual {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .hero-phone {
+            width: 260px;
+            height: 520px;
+            background: var(--surface-soft);
+            border-radius: var(--radius-xl);
+            border: 1px solid var(--hairline);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--muted);
+            position: relative;
+            overflow: hidden;
+            box-shadow: var(--shadow-card);
+        }
+        .hero-phone-inner {
+            text-align: center;
+            padding: var(--space-xl);
+        }
+        .hero-phone-inner .phone-icon {
+            font-size: 48px;
+            margin-bottom: var(--space-base);
+        }
+        .hero-phone-inner .phone-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--ink);
+            margin-bottom: var(--space-xs);
+        }
+        .hero-phone-inner .phone-sub {
+            font-size: 13px;
+            color: var(--muted);
+        }
+        /* Rating-style big number */
+        .hero-stat {
+            font-size: 64px;
+            font-weight: 700;
+            line-height: 1.1;
+            letter-spacing: -1px;
+            color: var(--ink);
+            margin-top: var(--space-base);
+        }
+        .hero-stat-label {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Pill badges row */
+        .pill-strip {
+            display: flex;
+            gap: var(--space-sm);
+            flex-wrap: wrap;
+            margin-top: var(--space-base);
+        }
+        .pill-badge {
+            padding: 8px 18px;
+            border-radius: var(--radius-full);
+            border: 1px solid var(--hairline);
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--muted);
+            background: var(--canvas);
+            white-space: nowrap;
+        }
+        .pill-badge .accent-dot {
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--primary);
+            margin-right: 6px;
+            vertical-align: middle;
+            margin-top: -1px;
+        }
+
+        /* ═══════════════════════════════════════════════════════
+           Feature Grid — dense marketplace-style cards
+           ═══════════════════════════════════════════════════════ */
+        .section-header {
+            margin-bottom: var(--space-xl);
+        }
+        .section-header .label {
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: var(--space-xs);
+        }
+        .section-header h2 {
+            font-size: 22px;
+            font-weight: 500;
+            line-height: 1.18;
+            letter-spacing: -0.44px;
+            color: var(--ink);
+            margin-bottom: var(--space-sm);
+        }
+        .section-header p {
+            font-size: 16px;
+            font-weight: 400;
+            line-height: 1.5;
+            color: var(--body);
+            max-width: 560px;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: var(--space-base);
+        }
+        .feature-card {
+            background: var(--canvas);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--hairline);
+            padding: var(--space-lg);
+            transition: box-shadow 0.2s ease;
+        }
+        .feature-card:hover {
+            box-shadow: var(--shadow-card);
+        }
+        .feature-card .fc-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: var(--radius-sm);
+            background: var(--surface-strong);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            margin-bottom: var(--space-md);
+        }
+        .feature-card h3 {
+            font-size: 16px;
+            font-weight: 600;
+            line-height: 1.25;
+            color: var(--ink);
+            margin-bottom: var(--space-xs);
+        }
+        .feature-card p {
+            font-size: 14px;
+            font-weight: 400;
+            line-height: 1.43;
+            color: var(--muted);
+        }
+
+        /* ═══════════════════════════════════════════════════════
+           Showcase Cards — photo-first Airbnb property-card style
+           ═══════════════════════════════════════════════════════ */
+        .showcase-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: var(--space-base);
+        }
+        .showcase-card {
+            background: var(--canvas);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            border: 1px solid var(--hairline);
+            transition: box-shadow 0.2s ease;
+        }
+        .showcase-card:hover {
+            box-shadow: var(--shadow-card);
+        }
+        .showcase-photo {
+            aspect-ratio: 16 / 10;
+            background: var(--surface-soft);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .showcase-photo .photo-content {
+            text-align: center;
+            color: var(--muted);
+        }
+        .showcase-photo .photo-icon {
+            font-size: 56px;
+            display: block;
+            margin-bottom: var(--space-sm);
+        }
+        /* Floating badge top-left */
+        .floating-badge {
+            position: absolute;
+            top: var(--space-md);
+            left: var(--space-md);
+            background: var(--canvas);
+            color: var(--ink);
+            padding: 4px 10px;
+            border-radius: var(--radius-full);
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1.18;
+            box-shadow: var(--shadow-card);
+        }
+        .showcase-meta {
+            padding: var(--space-base) var(--space-lg) var(--space-lg);
+        }
+        .showcase-meta h3 {
+            font-size: 16px;
+            font-weight: 600;
+            line-height: 1.25;
+            color: var(--ink);
+            margin-bottom: 2px;
+        }
+        .showcase-meta .sub {
+            font-size: 14px;
+            font-weight: 400;
+            line-height: 1.43;
+            color: var(--muted);
+            margin-bottom: var(--space-sm);
+        }
+        .showcase-meta .detail-row {
+            display: flex;
+            gap: var(--space-base);
+            flex-wrap: wrap;
+            margin-top: var(--space-md);
+        }
+        .detail-item .detail-label {
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1.33;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .detail-item .detail-value {
+            font-size: 16px;
+            font-weight: 600;
+            line-height: 1.25;
+            color: var(--ink);
+            margin-top: 2px;
+        }
+
+        /* ═══════════════════════════════════════════════════════
+           Reading Theme Swatches
+           ═══════════════════════════════════════════════════════ */
+        .theme-strip {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: var(--space-base);
+        }
+        .theme-swatch {
+            aspect-ratio: 4 / 3;
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: flex-end;
+            padding: var(--space-base);
+            border: 1px solid var(--hairline);
+            transition: box-shadow 0.2s ease;
+        }
+        .theme-swatch:hover {
+            box-shadow: var(--shadow-card);
+        }
+        .theme-swatch span {
+            font-size: 14px;
+            font-weight: 600;
+            line-height: 1.25;
+        }
+
+        /* ═══════════════════════════════════════════════════════
+           Privacy — editorial band, no card
+           ═══════════════════════════════════════════════════════ */
+        .privacy-band {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: var(--space-base);
+        }
+        .privacy-item {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-sm);
+            padding: var(--space-lg) 0;
+        }
+        .privacy-item .pi-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: var(--radius-full);
+            background: var(--surface-strong);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            margin-bottom: var(--space-xs);
+        }
+        .privacy-item h3 {
+            font-size: 16px;
+            font-weight: 600;
+            line-height: 1.25;
+            color: var(--ink);
+        }
+        .privacy-item p {
+            font-size: 14px;
+            font-weight: 400;
+            line-height: 1.43;
+            color: var(--muted);
+        }
+
+        /* Privacy hero banner */
+        .privacy-hero {
+            background: var(--surface-soft);
+            border-radius: var(--radius-md);
+            padding: var(--space-xxl) var(--space-xl);
+            text-align: center;
+            margin-bottom: var(--space-xl);
+        }
+        .privacy-hero .shield {
+            font-size: 40px;
+            margin-bottom: var(--space-md);
+        }
+        .privacy-hero h3 {
+            font-size: 22px;
+            font-weight: 500;
+            line-height: 1.18;
+            color: var(--ink);
+            margin-bottom: var(--space-sm);
+        }
+        .privacy-hero p {
+            font-size: 16px;
+            font-weight: 400;
+            line-height: 1.5;
+            color: var(--body);
+            max-width: 560px;
+            margin: 0 auto;
+        }
+
+        /* ═══════════════════════════════════════════════════════
+           Tech Spec — amenity-row style
+           ═══════════════════════════════════════════════════════ */
+        .tech-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0;
+            border-top: 1px solid var(--hairline);
+            border-left: 1px solid var(--hairline);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+        }
+        .tech-cell {
+            padding: var(--space-lg);
+            border-right: 1px solid var(--hairline);
+            border-bottom: 1px solid var(--hairline);
+            background: var(--canvas);
+        }
+        .tech-cell .tech-label {
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1.33;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            margin-bottom: var(--space-xs);
+        }
+        .tech-cell .tech-value {
+            font-size: 16px;
+            font-weight: 600;
+            line-height: 1.25;
+            color: var(--ink);
+        }
+
+        /* ═══════════════════════════════════════════════════════
+           Download CTA — search-orb style accent moment
+           ═══════════════════════════════════════════════════════ */
+        .download-band {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--ink);
+            border-radius: var(--radius-md);
+            padding: var(--space-xxl);
+            color: var(--on-dark);
+        }
+        .download-band .dl-info h3 {
+            font-size: 22px;
+            font-weight: 500;
+            line-height: 1.18;
+            color: var(--on-dark);
+            margin-bottom: var(--space-xs);
+        }
+        .download-band .dl-info p {
+            font-size: 16px;
+            font-weight: 400;
+            line-height: 1.5;
+            color: var(--muted);
+        }
+        .download-band .dl-info .version-tag {
+            font-size: 13px;
+            font-weight: 400;
+            line-height: 1.23;
+            color: var(--muted-soft);
+            margin-top: var(--space-sm);
+        }
+        .btn-download-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-sm);
+            background: var(--primary);
+            color: var(--on-primary);
+            text-decoration: none;
+            padding: 14px 32px;
+            height: 48px;
+            border-radius: var(--radius-full);
+            font-size: 16px;
+            font-weight: 500;
+            line-height: 1.25;
+            transition: background 0.15s, transform 0.15s;
+            white-space: nowrap;
+        }
+        .btn-download-pill:hover {
+            background: var(--primary-active);
+            transform: scale(1.04);
+        }
+
+        /* ═══════════════════════════════════════════════════════
+           Footer — Airbnb footer-light pattern
+           ═══════════════════════════════════════════════════════ */
+        .footer-light {
+            padding: var(--space-xxl) var(--space-xxl);
+            max-width: var(--max-width);
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: var(--space-lg);
+            border-top: 1px solid var(--hairline);
+        }
+        .footer-col h4 {
+            font-size: 16px;
+            font-weight: 500;
+            line-height: 1.25;
+            color: var(--ink);
+            margin-bottom: var(--space-md);
+        }
+        .footer-col ul {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-sm);
+        }
+        .footer-col a {
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 400;
+            line-height: 1.43;
+            color: var(--ink);
+            transition: color 0.15s;
+        }
+        .footer-col a:hover { color: var(--muted); }
+
+        .legal-band {
+            padding: var(--space-lg) var(--space-xxl);
+            max-width: var(--max-width);
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+            font-weight: 400;
+            line-height: 1.23;
+            color: var(--muted);
+            border-top: 1px solid var(--hairline-soft);
+        }
+        .legal-band a {
+            color: var(--muted);
+            text-decoration: none;
+            margin-left: var(--space-lg);
+        }
+        .legal-band a:hover { text-decoration: underline; }
+
+        /* ═══════════════════════════════════════════════════════
+           Responsive — Airbnb breakpoints
+           ═══════════════════════════════════════════════════════ */
+        @media (max-width: 1127px) {
+            .feature-grid { grid-template-columns: repeat(2, 1fr); }
+            .showcase-grid { grid-template-columns: 1fr; }
+            .privacy-band { grid-template-columns: repeat(2, 1fr); }
+            .tech-grid { grid-template-columns: repeat(2, 1fr); }
+            .hero {
+                grid-template-columns: 1fr;
+                gap: var(--space-xl);
+                padding: var(--space-xxl) var(--space-lg) var(--space-xl);
+            }
+            .hero-visual { order: -1; }
+            .hero-phone { width: 200px; height: 400px; }
+            .footer-light { grid-template-columns: repeat(2, 1fr); }
+        }
+
+        @media (max-width: 743px) {
+            .top-nav {
+                padding: 0 var(--space-base);
+                height: 64px;
+            }
+            .nav-links { display: none; }
+            .section {
+                padding: var(--space-xxl) var(--space-base);
+            }
+            .hero {
+                padding: var(--space-xl) var(--space-base);
+            }
+            .feature-grid { grid-template-columns: 1fr; }
+            .privacy-band { grid-template-columns: 1fr; }
+            .tech-grid { grid-template-columns: 1fr; }
+            .theme-strip { grid-template-columns: repeat(2, 1fr); }
+            .download-band {
+                flex-direction: column;
+                text-align: center;
+                gap: var(--space-lg);
+                padding: var(--space-xl);
+            }
+            .footer-light {
+                grid-template-columns: 1fr;
+                padding: var(--space-xl) var(--space-base);
+            }
+            .legal-band {
+                flex-direction: column;
+                gap: var(--space-sm);
+                text-align: center;
+            }
+            .hero-stat { font-size: 48px; }
+            .showcase-meta .detail-row { flex-direction: column; gap: var(--space-sm); }
+            .hero-phone { width: 180px; height: 360px; }
+        }
+
+        /* Utility */
+        .text-muted { color: var(--muted); }
+        .text-body { color: var(--body); }
+    </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════
+     Top Navigation
+     ═══════════════════════════════════════════════════════ -->
+<nav class="top-nav">
+    <a href="#" class="nav-logo">
+        <div class="logo-icon">L</div>
+        <span class="logo-text">Lumi</span>
+    </a>
+    <ul class="nav-links">
+        <li><a href="#features" class="active">功能</a></li>
+        <li><a href="#privacy">隐私</a></li>
+        <li><a href="#tech">技术</a></li>
+    </ul>
+    <div class="nav-cta">
+        <a href="#download" class="btn-nav-download">下载</a>
+    </div>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════════
+     Hero
+     ═══════════════════════════════════════════════════════ -->
+<header class="hero">
+    <div class="hero-content">
+        <h1 class="t-display-xl">一本好书的归宿，<br>是一个好的阅读器</h1>
+        <p class="hero-desc">
+            Lumi 为 Android 打造的本地电子书阅读器。没有广告，不需要网络，打开即读。
+        </p>
+        <div class="hero-actions">
+            <a href="#download" class="btn-primary">下载 Lumi</a>
+            <a href="#features" class="btn-secondary">了解更多</a>
+        </div>
+        <div class="pill-strip">
+            <span class="pill-badge"><span class="accent-dot"></span>EPUB · PDF · TXT</span>
+            <span class="pill-badge"><span class="accent-dot"></span>Android 8.0+</span>
+            <span class="pill-badge"><span class="accent-dot"></span>完全离线</span>
+        </div>
+    </div>
+    <div class="hero-visual">
+        <div class="hero-phone">
+            <div class="hero-phone-inner">
+                <div class="phone-icon">📖</div>
+                <div class="phone-title">Lumi</div>
+                <div class="phone-sub">你的随身图书馆</div>
+                <div class="hero-stat">4</div>
+                <div class="hero-stat-label">套阅读主题</div>
+            </div>
+        </div>
+    </div>
+</header>
+
+<!-- ═══════════════════════════════════════════════════════
+     Features
+     ═══════════════════════════════════════════════════════ -->
+<section class="section" id="features">
+    <div class="section-header">
+        <div class="label">功能亮点</div>
+        <h2>全能的阅读工具箱</h2>
+        <p>你所需要的一切阅读功能，都已经打磨好了。</p>
+    </div>
+    <div class="feature-grid">
+        <div class="feature-card">
+            <div class="fc-icon">📖</div>
+            <h3>多格式支持</h3>
+            <p>完美解析 EPUB、PDF、TXT 三种主流格式。EPUB 自动提取封面与目录，PDF 逐页高清渲染，TXT 智能分章。</p>
+        </div>
+        <div class="feature-card">
+            <div class="fc-icon">🖐️</div>
+            <h3>视差翻页</h3>
+            <p>Apple Books 风格手势——页面平整滑动无 3D 形变，下层页面视差渐显，松手后弹性吸附。</p>
+        </div>
+        <div class="feature-card">
+            <div class="fc-icon">🎨</div>
+            <h3>四套主题</h3>
+            <p>日间、夜间、护眼、绿色——精心调配的文字背景色，确保长时间阅读的舒适度。</p>
+        </div>
+        <div class="feature-card">
+            <div class="fc-icon">🔤</div>
+            <h3>精细排版</h3>
+            <p>字体类型、字号、行间距、字间距均可独立调节，支持系统字体、宋体、黑体、等宽字体。</p>
+        </div>
+        <div class="feature-card">
+            <div class="fc-icon">📝</div>
+            <h3>笔记与高亮</h3>
+            <p>长按选中文字，自由划选高亮标记，添加读书笔记。所有标注集中管理，一键跳转回顾。</p>
+        </div>
+        <div class="feature-card">
+            <div class="fc-icon">🔖</div>
+            <h3>书签与目录</h3>
+            <p>一键添加书签，章节目录快速导航。阅读进度自动保存，随时从上次离开处继续。</p>
+        </div>
+        <div class="feature-card">
+            <div class="fc-icon">🔍</div>
+            <h3>全文搜索</h3>
+            <p>跨章节全文检索，搜索结果高亮显示。快速定位书中的关键段落和角色。</p>
+        </div>
+        <div class="feature-card">
+            <div class="fc-icon">📊</div>
+            <h3>阅读统计</h3>
+            <p>自动记录每日阅读时长，柱状图可视化。设定每日目标，追踪完成进度。7 天 / 30 天视图。</p>
+        </div>
+    </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     Showcase — Photo-first cards
+     ═══════════════════════════════════════════════════════ -->
+<section class="section">
+    <div class="section-header">
+        <div class="label">阅读体验</div>
+        <h2>每一处细节都精心打磨</h2>
+        <p>从翻页手势到亮度调节，每个交互都经过反复推敲。</p>
+    </div>
+
+    <div class="showcase-grid">
+        <div class="showcase-card">
+            <div class="showcase-photo">
+                <span class="floating-badge">核心</span>
+                <div class="photo-content">
+                    <span class="photo-icon">🖐️</span>
+                </div>
+            </div>
+            <div class="showcase-meta">
+                <h3>智能手势系统</h3>
+                <p class="sub">单手势处理器统一响应拖拽和点击。拖拽时页面 100% 跟随手指，下层 25% 速度视差渐显。松手后根据距离和速度智能判断翻页或回弹。</p>
+                <div class="detail-row">
+                    <div class="detail-item">
+                        <div class="detail-label">翻页吸附</div>
+                        <div class="detail-value">350ms 缓动</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">翻页阈值</div>
+                        <div class="detail-value">25% 屏宽</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">速度阈值</div>
+                        <div class="detail-value">400 px/s</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">边界反馈</div>
+                        <div class="detail-value">橡皮筋阻尼</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="showcase-card">
+            <div class="showcase-photo" style="background: #faf9f7;">
+                <span class="floating-badge">舒适</span>
+                <div class="photo-content">
+                    <span class="photo-icon">💡</span>
+                </div>
+            </div>
+            <div class="showcase-meta">
+                <h3>应用内亮度调节</h3>
+                <p class="sub">独立于系统亮度的阅读亮度控制，退出阅读器后自动恢复。夜间阅读不再刺眼，自适应不同光线环境。</p>
+                <div class="detail-row">
+                    <div class="detail-item">
+                        <div class="detail-label">调节范围</div>
+                        <div class="detail-value">1% – 100%</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">自动恢复</div>
+                        <div class="detail-value">退出即还原</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">独立控制</div>
+                        <div class="detail-value">不影响系统</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">记忆偏好</div>
+                        <div class="detail-value">按书独立</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reading Themes -->
+    <div style="margin-top: var(--space-base);">
+        <div class="showcase-card">
+            <div class="showcase-meta">
+                <h3>四套阅读主题</h3>
+                <p class="sub">文字与背景色经过精心调配，确保长时间阅读的舒适度。</p>
+            </div>
+            <div style="padding: 0 var(--space-lg) var(--space-lg);">
+                <div class="theme-strip">
+                    <div class="theme-swatch" style="background:#ffffff; color:var(--ink);">
+                        <span>☀️ 日间</span>
+                    </div>
+                    <div class="theme-swatch" style="background:#1c1c1e; color:#ebebf5;">
+                        <span>🌙 夜间</span>
+                    </div>
+                    <div class="theme-swatch" style="background:#f5e6d3; color:#3e2723;">
+                        <span>🍂 护眼</span>
+                    </div>
+                    <div class="theme-swatch" style="background:#e8f5e9; color:#1b5e20;">
+                        <span>🌿 绿色</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     Privacy
+     ═══════════════════════════════════════════════════════ -->
+<section class="section" id="privacy">
+    <div class="section-header">
+        <div class="label">隐私保护</div>
+        <h2>你的数据，只在你的设备上</h2>
+        <p>Lumi 的核心承诺——永远不做你不喜欢的事。</p>
+    </div>
+
+    <div class="privacy-hero">
+        <div class="shield">🛡️</div>
+        <h3>100% 本地 · 零网络 · 零追踪</h3>
+        <p>
+            Lumi <strong>不申请网络权限</strong>，不上传任何数据，不使用任何第三方分析或广告 SDK。
+            你的书架、阅读进度、笔记、书签——所有数据都安全地存储在设备本地沙盒中。卸载即彻底清除，不留痕迹。
+        </p>
+    </div>
+
+    <div class="privacy-band">
+        <div class="privacy-item">
+            <div class="pi-icon">🚫</div>
+            <h3>无网络权限</h3>
+            <p>应用不声明 INTERNET 权限，阅读行为永远不会离开设备。</p>
+        </div>
+        <div class="privacy-item">
+            <div class="pi-icon">📵</div>
+            <h3>无第三方 SDK</h3>
+            <p>无 Firebase、无分析、无广告——任何第三方服务都没有。</p>
+        </div>
+        <div class="privacy-item">
+            <div class="pi-icon">🗄️</div>
+            <h3>沙盒存储</h3>
+            <p>所有数据存储在应用私有沙盒中，系统级隔离保护。</p>
+        </div>
+        <div class="privacy-item">
+            <div class="pi-icon">🧹</div>
+            <h3>一键清除</h3>
+            <p>应用内随时清除数据。卸载自动删除全部数据，源文件不受影响。</p>
+        </div>
+    </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     Tech Specs
+     ═══════════════════════════════════════════════════════ -->
+<section class="section" id="tech">
+    <div class="section-header">
+        <div class="label">技术规格</div>
+        <h2>现代 Android 技术栈</h2>
+        <p>采用 Google 推荐的最新技术体系，确保流畅的性能和良好的可维护性。</p>
+    </div>
+
+    <div class="tech-grid">
+        <div class="tech-cell">
+            <div class="tech-label">开发语言</div>
+            <div class="tech-value">Kotlin 2.0</div>
+        </div>
+        <div class="tech-cell">
+            <div class="tech-label">UI 框架</div>
+            <div class="tech-value">Jetpack Compose</div>
+        </div>
+        <div class="tech-cell">
+            <div class="tech-label">架构模式</div>
+            <div class="tech-value">MVVM</div>
+        </div>
+        <div class="tech-cell">
+            <div class="tech-label">依赖注入</div>
+            <div class="tech-value">Hilt</div>
+        </div>
+        <div class="tech-cell">
+            <div class="tech-label">数据库</div>
+            <div class="tech-value">Room</div>
+        </div>
+        <div class="tech-cell">
+            <div class="tech-label">偏好存储</div>
+            <div class="tech-value">DataStore</div>
+        </div>
+        <div class="tech-cell">
+            <div class="tech-label">最低版本</div>
+            <div class="tech-value">Android 8.0</div>
+        </div>
+        <div class="tech-cell">
+            <div class="tech-label">目标版本</div>
+            <div class="tech-value">Android 15</div>
+        </div>
+    </div>
+
+    <!-- Parser engine showcase card -->
+    <div class="showcase-card" style="margin-top: var(--space-base);">
+        <div class="showcase-meta">
+            <h3>电子书解析引擎</h3>
+            <p class="sub">自实现的轻量解析器，不依赖第三方解析库，每个格式都经过深度优化。</p>
+            <div class="detail-row">
+                <div class="detail-item">
+                    <div class="detail-label">EPUB</div>
+                    <div class="detail-value">ZIP + XML 自实现</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">图片方案</div>
+                    <div class="detail-value">Base64 内嵌 HTML</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">PDF</div>
+                    <div class="detail-value">PdfRenderer · LRU 3页</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">TXT</div>
+                    <div class="detail-value">智能分章 · HTML 排版</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     Download CTA
+     ═══════════════════════════════════════════════════════ -->
+<section class="section" id="download">
+    <div class="download-band">
+        <div class="dl-info">
+            <h3>准备好开始阅读了？</h3>
+            <p>最新版本 v1.0.3 · 约 15 MB · Android 8.0 及以上</p>
+            <div class="version-tag">即将上架应用商店</div>
+        </div>
+        <a class="btn-download-pill" href="app-debug.apk" download>
+            <span>⬇</span> 下载 APK
+        </a>
+    </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     Footer
+     ═══════════════════════════════════════════════════════ -->
+<footer>
+    <div class="footer-light">
+        <div class="footer-col">
+            <h4>Lumi</h4>
+            <ul>
+                <li><a href="#features">功能介绍</a></li>
+                <li><a href="#download">下载应用</a></li>
+                <li><a href="#">更新日志</a></li>
+            </ul>
+        </div>
+        <div class="footer-col">
+            <h4>法律</h4>
+            <ul>
+                <li><a href="privacy.html">隐私政策</a></li>
+                <li><a href="terms.html">用户协议</a></li>
+            </ul>
+        </div>
+        <div class="footer-col">
+            <h4>联系方式</h4>
+            <ul>
+                <li><a href="mailto:hyf2917737053@gmail.com">邮件联系</a></li>
+                <li><span class="text-muted">包名 com.huangder.lumibooks</span></li>
+            </ul>
+        </div>
+    </div>
+    <div class="legal-band">
+        <span>© 2026 Huangder</span>
+        <span>
+            <a href="privacy.html">隐私</a>
+            <a href="terms.html">条款</a>
+        </span>
+    </div>
+</footer>
+
+</body>
+</html>
