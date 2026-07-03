@@ -173,10 +173,13 @@ class ReadView(context: Context) : FrameLayout(context) {
 
     /** 配置所有 PageContentView 的 TextView 样式（防止翻页错版） */
     private fun configureCurrentPageView() {
-        val (bgColor, textColor) = getThemeColors(currentTheme)
+        val (bgColor, textColor, accentColor) = getThemeColors(currentTheme)
         val density = resources.displayMetrics.density
         val marginHoriz = currentMarginHorizDp * density
         val marginVert = currentMarginVertDp * density
+
+        // 选择高亮色 = accent + 25% alpha
+        val highlightColor = (accentColor and 0x00FFFFFF) or 0x40000000.toInt()
 
         val customTypeface = if (currentFontType == "dingli_song") {
             try { android.graphics.Typeface.createFromAsset(context.assets, "fonts/dingli_song.ttf") }
@@ -194,7 +197,9 @@ class ReadView(context: Context) : FrameLayout(context) {
                 marginLeftPx = marginHoriz,
                 marginTopPx = marginVert,
                 marginRightPx = marginHoriz,
-                marginBottomPx = marginVert
+                marginBottomPx = marginVert,
+                highlightColor = highlightColor,
+                accentColor = accentColor
             )
             view.setBackgroundColor(bgColor)
         }
@@ -256,7 +261,7 @@ class ReadView(context: Context) : FrameLayout(context) {
         currentMarginHorizDp = marginHorizDp
         currentMarginVertDp = marginVertDp
 
-        val (_, textColor) = getThemeColors(theme)
+        val (_, textColor, _) = getThemeColors(theme)
         val density = resources.displayMetrics.density
         val marginHoriz = marginHorizDp * density
         val marginVert = marginVertDp * density
@@ -433,12 +438,13 @@ class ReadView(context: Context) : FrameLayout(context) {
         (animationController as? SlidePageAnim)?.startFromTap(dir)
     }
 
-    private fun getThemeColors(theme: String): Pair<Int, Int> {
+    /** @return Triple(backgroundColor, textColor, accentColor) */
+    private fun getThemeColors(theme: String): Triple<Int, Int, Int> {
         return when (theme) {
-            "night" -> 0xFF1a1a1a.toInt() to 0xFFCCCCCC.toInt()
-            "sepia" -> 0xFFf5e6d3.toInt() to 0xFF4a3728.toInt()
-            "green" -> 0xFFe8f5e9.toInt() to 0xFF2e7d32.toInt()
-            else -> 0xFFFBFBFC.toInt() to 0xFF333333.toInt()
+            "night" -> Triple(0xFF1a1a1a.toInt(), 0xFFCCCCCC.toInt(), 0xFF4A90D9.toInt())
+            "sepia" -> Triple(0xFFf5e6d3.toInt(), 0xFF4a3728.toInt(), 0xFFC77826.toInt())
+            "green" -> Triple(0xFFe8f5e9.toInt(), 0xFF2e7d32.toInt(), 0xFF2E7D32.toInt())
+            else   -> Triple(0xFFFBFBFC.toInt(), 0xFF333333.toInt(), 0xFF007AFF.toInt())
         }
     }
 
