@@ -2,6 +2,7 @@ package com.huangder.lumibooks.ui.reader.engine
 
 import android.content.Context
 import android.graphics.Typeface
+import android.text.Layout
 import android.text.Selection
 import android.text.Spannable
 import android.text.SpannableStringBuilder
@@ -33,7 +34,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
         // 🔥 启用 Android 原生文字选择（泪滴手柄 + 系统浮动工具栏）
         setTextIsSelectable(true)
         gravity = Gravity.TOP
-        includeFontPadding = false
+        includeFontPadding = true
         // 默认样式
         setTextColor(0xFF333333.toInt())
         setTextSize(TypedValue.COMPLEX_UNIT_PX, 56f)
@@ -103,6 +104,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
         fontSizePx: Float,
         textColor: Int,
         lineHeightMult: Float = 1.5f,
+        lineSpacingExtraPx: Float = 0f,
         letterSpacingPx: Float = 0f,
         typeface: Typeface = Typeface.DEFAULT,
         marginLeftPx: Float = 48f,
@@ -115,8 +117,13 @@ class PageContentView(context: Context) : FrameLayout(context) {
         textView.setTextSize(TypedValue.COMPLEX_UNIT_PX, fontSizePx)
         textView.setTextColor(textColor)
         textView.typeface = typeface
-        textView.setLineSpacing(0f, lineHeightMult)
+        textView.setLineSpacing(lineSpacingExtraPx, lineHeightMult)
         textView.letterSpacing = if (fontSizePx > 0) letterSpacingPx / fontSizePx else 0f
+        // 断行策略：与 PageLayoutEngine 保持一致，防止分页边界与渲染不匹配
+        textView.breakStrategy = Layout.BREAK_STRATEGY_HIGH_QUALITY
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            textView.hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NONE  // CJK 文本不需要断字
+        }
         textView.setPadding(
             marginLeftPx.toInt(),
             marginTopPx.toInt(),

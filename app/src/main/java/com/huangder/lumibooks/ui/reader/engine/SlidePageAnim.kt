@@ -137,6 +137,6 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
     }
 
     fun startFromTap(dir: Direction) {
-        direction = dir; touchX = startX; startAnim(fromDrag = false)
+        direction = dir; touchX = startX; isFlipAnim = true; startAnim(fromDrag = false)
     }
 }

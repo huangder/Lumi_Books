@@ -60,7 +60,7 @@ abstract class PageAnimationController(
     /** 长按触发时间（ms） */
     private val longPressTimeMs: Long = 500L
     /** 本次动画是翻页（true）还是回弹（false） */
-    private var isFlipAnim: Boolean = false
+    @JvmField protected var isFlipAnim: Boolean = false
     /** 翻页完成后阴影渐隐 alpha（供子类 onDraw 读取） */
     protected var shadowFadeAlpha: Float = 0f
     private var isShadowFading: Boolean = false

@@ -30,18 +30,28 @@ class PageLayoutEngine {
     private var lineSpacingMultiplier: Float = 1.0f
     private var letterSpacing: Float = 0f
 
-    private val textPaint: TextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-        textSize = 56f  // 默认 16sp * 3.5 density → 56px
+    /**
+     * 引擎自己的 TextPaint（当没有外部共用 Paint 时使用）。
+     * 如果设置了 [sharedTextPaint]，则优先使用外部 Paint 以与 TextView 保持字体度量一致。
+     */
+    private val ownTextPaint: TextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = 56f
         color = 0xFF333333.toInt()
-        linkColor = color   // 🔥 防止 URLSpan 将链接文字绘制为透明色（默认 linkColor=0）
+        linkColor = color
         isSubpixelText = true
     }
 
-    /** 可视区域宽度（减去边距） */
-    val visibleWidth: Int get() = (textWidth - marginLeft - marginRight).toInt().coerceAtLeast(1)
+    /** 外部共用的 TextPaint（来自 TextView.getPaint()），消除两个引擎的字体度量差异 */
+    var sharedTextPaint: TextPaint? = null
 
-    /** 可视区域高度（减去边距） */
-    val visibleHeight: Int get() = (textHeight - marginTop - marginBottom).toInt().coerceAtLeast(1)
+    /** 当前实际使用的 TextPaint */
+    private val activeTextPaint: TextPaint get() = sharedTextPaint ?: ownTextPaint
+
+    /** 可视区域宽度（减去边距），用 truncate 与 TextView padding 的 .toInt() 保持一致 */
+    val visibleWidth: Int get() = (textWidth - marginLeft.toInt() - marginRight.toInt()).coerceAtLeast(1)
+
+    /** 可视区域高度（减去边距），用 truncate 与 TextView padding 的 .toInt() 保持一致 */
+    val visibleHeight: Int get() = (textHeight - marginTop.toInt() - marginBottom.toInt()).coerceAtLeast(1)
 
     // ── 缓存 ──
     private val layoutCache = object : LinkedHashMap<Int, ChapterLayout>(5, 0.75f, true) {
@@ -75,7 +85,7 @@ class PageLayoutEngine {
         chapterCount: Int = 0
     ) {
         val changed = textWidth != width || textHeight != height ||
-                textPaint.textSize != fontSizePx || lineSpacingExtra != lineSpacingPx ||
+                ownTextPaint.textSize != fontSizePx || lineSpacingExtra != lineSpacingPx ||
                 lineSpacingMultiplier != lineSpacingMult ||
                 this.letterSpacing != letterSpacingPx ||
                 marginLeft != marginLeftPx || marginRight != marginRightPx ||
@@ -90,10 +100,10 @@ class PageLayoutEngine {
         lineSpacingExtra = lineSpacingPx
         lineSpacingMultiplier = lineSpacingMult
         this.letterSpacing = letterSpacingPx
-        textPaint.textSize = fontSizePx
-        textPaint.letterSpacing = letterSpacingPx / fontSizePx  // StaticLayout 使用比例值
-        textPaint.color = textColor
-        textPaint.linkColor = textColor   // 🔥 同步：避免主题切换后 URLSpan 颜色不同步
+        ownTextPaint.textSize = fontSizePx
+        ownTextPaint.letterSpacing = letterSpacingPx / fontSizePx  // StaticLayout 使用比例值
+        ownTextPaint.color = textColor
+        ownTextPaint.linkColor = textColor   // 🔥 同步：避免主题切换后 URLSpan 颜色不同步
 
         // 字体
         val tf = when (fontType) {
@@ -103,7 +113,7 @@ class PageLayoutEngine {
             "dingli_song" -> customTypeface ?: Typeface.DEFAULT
             else -> Typeface.DEFAULT
         }
-        textPaint.typeface = tf
+        ownTextPaint.typeface = tf
         this.chapterCount = chapterCount
 
         if (changed) {
@@ -125,14 +135,18 @@ class PageLayoutEngine {
         layoutCache[chapterIndex]?.let { return@withContext it }
 
         val vw = visibleWidth
-        val sl = StaticLayout.Builder.obtain(text, 0, text.length, textPaint, vw)
+        val sl = StaticLayout.Builder.obtain(text, 0, text.length, activeTextPaint, vw)
             .setAlignment(Layout.Alignment.ALIGN_NORMAL)
             .setLineSpacing(lineSpacingExtra, lineSpacingMultiplier)
-            .setIncludePad(false)
+            .setIncludePad(true)
+            .setBreakStrategy(Layout.BREAK_STRATEGY_HIGH_QUALITY)  // 与 TextView 默认值一致，消除断行差异
+            .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)  // CJK 文本不需要断字
             .build()
 
         val pages = mutableListOf<PageLayout>()
         val vh = visibleHeight
+        // 🔥 保留 2px 安全边距防止浮点累积误差（breakStrategy 已对齐，不再需要大额缓冲）
+        val effectiveVh = (vh - 2).coerceAtLeast(vh / 2).toFloat()
         var pageStartLine = 0
         var pageIdx = 0
         var globalCharOffset = 0
@@ -145,7 +159,7 @@ class PageLayoutEngine {
                 val lineBottom = sl.getLineBottom(pageEndLine)
                 val lineTop = sl.getLineTop(pageEndLine)
                 val lineHeight = (lineBottom - lineTop).toFloat()
-                if (accumulatedHeight + lineHeight > vh && pageEndLine > pageStartLine) {
+                if (accumulatedHeight + lineHeight > effectiveVh && pageEndLine > pageStartLine) {
                     break
                 }
                 accumulatedHeight += lineHeight
