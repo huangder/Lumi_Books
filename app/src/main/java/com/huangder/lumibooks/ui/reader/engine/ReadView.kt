@@ -177,6 +177,7 @@ class ReadView(context: Context) : FrameLayout(context) {
         val density = resources.displayMetrics.density
         val marginHoriz = currentMarginHorizDp * density
         val marginVert = currentMarginVertDp * density
+        val lineSpacingExtra = 2.5f * density
 
         // 选择高亮色 = accent + 25% alpha
         val highlightColor = (accentColor and 0x00FFFFFF) or 0x40000000.toInt()
@@ -192,6 +193,7 @@ class ReadView(context: Context) : FrameLayout(context) {
                 fontSizePx = currentFontSizePx,
                 textColor = textColor,
                 lineHeightMult = currentLineHeightMult,
+                lineSpacingExtraPx = lineSpacingExtra,
                 letterSpacingPx = currentLetterSpacingDp * density,
                 typeface = customTypeface,
                 marginLeftPx = marginHoriz,
@@ -291,6 +293,10 @@ class ReadView(context: Context) : FrameLayout(context) {
         )
 
         configureCurrentPageView()
+
+        // 🔥 共用 TextPaint：让 PageLayoutEngine 的 StaticLayout 使用与 TextView 完全相同的 Paint
+        // 对象，消除两个引擎的字体度量（font metrics）差异。这是根除分页不一致的关键。
+        layoutEngine.sharedTextPaint = curPageView.textView.paint
 
         if (needsRelayout) {
             layoutEngine.invalidateAll()
