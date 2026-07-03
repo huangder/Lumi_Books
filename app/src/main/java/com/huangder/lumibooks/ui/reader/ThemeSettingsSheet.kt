@@ -74,6 +74,7 @@ private val ReaderGreenText = Color(0xFF1B5E20)
 @Composable
 fun ThemeSettingsSheet(
     visible: Boolean,
+    requestClose: Boolean = false,
     currentFontSize: Float,
     currentTheme: String,
     onFontSizeChange: (Float) -> Unit,
@@ -93,6 +94,14 @@ fun ThemeSettingsSheet(
     }
 
     var isClosing by remember { mutableStateOf(false) }
+
+    // 监听 requestClose 状态，触发动画关闭
+    LaunchedEffect(requestClose) {
+        if (requestClose && !isClosing) {
+            isClosing = true
+        }
+    }
+
     LaunchedEffect(isClosing) {
         if (isClosing) {
             sheetOffset.animateTo(1f, tween(250, easing = FastOutSlowInEasing))
@@ -319,6 +328,7 @@ private fun ThemeButton(
 @Composable
 fun AdvancedSettingsSheet(
     visible: Boolean,
+    requestClose: Boolean = false,
     previewText: String,
     currentLineHeight: Float,
     currentLetterSpacing: Float,
@@ -347,6 +357,14 @@ fun AdvancedSettingsSheet(
     }
 
     var isClosing by remember { mutableStateOf(false) }
+
+    // 监听 requestClose 状态，触发动画关闭
+    LaunchedEffect(requestClose) {
+        if (requestClose && !isClosing) {
+            isClosing = true
+        }
+    }
+
     LaunchedEffect(isClosing) {
         if (isClosing) {
             sheetOffset.animateTo(1f, tween(250, easing = FastOutSlowInEasing))

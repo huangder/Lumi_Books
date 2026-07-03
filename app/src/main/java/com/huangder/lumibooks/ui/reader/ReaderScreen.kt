@@ -149,16 +149,24 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     // 搜索状态
     var showSearch by remember { mutableStateOf(false) }
 
-    // 处理返回键：关闭当前打开的容器，而不是退出书籍
+    // 请求关闭状态（用于触发退出动画）
+    var requestCloseNotesList by remember { mutableStateOf(false) }
+    var requestCloseNoteInput by remember { mutableStateOf(false) }
+    var requestCloseToc by remember { mutableStateOf(false) }
+    var requestCloseTheme by remember { mutableStateOf(false) }
+    var requestCloseAdvanced by remember { mutableStateOf(false) }
+    var requestCloseSearch by remember { mutableStateOf(false) }
+
+    // 处理返回键：触发退出动画，而不是直接关闭
     val isAnySheetOpen = showNotesList || showNoteInput || showToc || showThemeSheet || showAdvancedSheet || showSearch
     BackHandler(enabled = isAnySheetOpen) {
         when {
-            showNotesList -> showNotesList = false
-            showNoteInput -> showNoteInput = false
-            showToc -> showToc = false
-            showThemeSheet -> showThemeSheet = false
-            showAdvancedSheet -> showAdvancedSheet = false
-            showSearch -> showSearch = false
+            showNotesList -> requestCloseNotesList = true
+            showNoteInput -> showNoteInput = false  // 笔记输入没有动画，直接关闭
+            showToc -> requestCloseToc = true
+            showThemeSheet -> requestCloseTheme = true
+            showAdvancedSheet -> requestCloseAdvanced = true
+            showSearch -> requestCloseSearch = true
         }
     }
     var searchQuery by remember { mutableStateOf("") }
@@ -406,20 +414,23 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             // 目录底部弹出
             TocSheet(
                 visible = showToc,
+                requestClose = requestCloseToc,
                 chapterTitles = uiState.chapterTitles,
                 currentChapter = uiState.currentChapterIndex,
                 onChapterSelected = { idx ->
                     isTocJump.value = true
                     viewModel.setChapter(idx)
                     showToc = false
+                    requestCloseToc = false
                     viewModel.toggleMenu()
                 },
-                onDismiss = { showToc = false }
+                onDismiss = { showToc = false; requestCloseToc = false }
             )
 
             // 主题设置弹窗
             ThemeSettingsSheet(
                 visible = showThemeSheet,
+                requestClose = requestCloseTheme,
                 currentFontSize = uiState.fontSize,
                 currentTheme = uiState.readerTheme,
                 onFontSizeChange = { viewModel.saveFontSize(it) },
@@ -427,12 +438,13 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 onOpenAdvanced = {
                     showAdvancedSheet = true
                 },
-                onDismiss = { showThemeSheet = false }
+                onDismiss = { showThemeSheet = false; requestCloseTheme = false }
             )
 
             // 搜索弹窗
             SearchSheet(
                 visible = showSearch,
+                requestClose = requestCloseSearch,
                 query = searchQuery,
                 results = searchResults,
                 isSearching = isSearching,
@@ -454,12 +466,14 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     } else 0
                     readViewRef.value?.jumpToChapter(result.chapterIndex, estimatedPage)
                     showSearch = false
+                    requestCloseSearch = false
                     searchQuery = ""
                     searchResults = emptyList()
                     hasSearched = false
                 },
                 onDismiss = {
                     showSearch = false
+                    requestCloseSearch = false
                     searchQuery = ""
                     searchResults = emptyList()
                     hasSearched = false
@@ -486,6 +500,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             }
             AdvancedSettingsSheet(
                 visible = showAdvancedSheet,
+                requestClose = requestCloseAdvanced,
                 previewText = previewText,
                 currentLineHeight = uiState.lineHeight,
                 currentLetterSpacing = uiState.letterSpacing,
@@ -500,7 +515,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 onFontTypeChange = { viewModel.saveFontType(it) },
                 onMarginHorizChange = { viewModel.saveMarginHoriz(it) },
                 onMarginVertChange = { viewModel.saveMarginVert(it) },
-                onDismiss = { showAdvancedSheet = false }
+                onDismiss = { showAdvancedSheet = false; requestCloseAdvanced = false }
             )
         }
     }
@@ -508,13 +523,15 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     // ── 笔记/高亮列表 ──
     NotesListSheet(
         visible = showNotesList,
+        requestClose = requestCloseNotesList,
         notes = viewModel.notes.collectAsState().value,
         onNoteClick = { note ->
             readViewRef.value?.jumpToChapter(note.chapterIndex, 0)
             showNotesList = false
+            requestCloseNotesList = false
         },
         onDeleteNote = { note -> viewModel.deleteNote(note) },
-        onDismiss = { showNotesList = false }
+        onDismiss = { showNotesList = false; requestCloseNotesList = false }
     )
 
     // ── 文字选择框架（完整版） ──
@@ -856,6 +873,7 @@ private fun ActionCapsule(
 @Composable
 private fun TocSheet(
     visible: Boolean,
+    requestClose: Boolean = false,
     chapterTitles: List<String>,
     currentChapter: Int,
     onChapterSelected: (Int) -> Unit,
@@ -874,6 +892,14 @@ private fun TocSheet(
 
     var isClosing by remember { mutableStateOf(false) }
     var pendingJumpIndex by remember { mutableStateOf<Int?>(null) }
+
+    // 监听 requestClose 状态，触发动画关闭
+    LaunchedEffect(requestClose) {
+        if (requestClose && !isClosing) {
+            isClosing = true
+        }
+    }
+
     LaunchedEffect(isClosing) {
         if (isClosing) {
             sheetOffset.animateTo(1f, tween(250, easing = FastOutSlowInEasing))
@@ -966,6 +992,7 @@ private fun TocSheet(
 @Composable
 private fun SearchSheet(
     visible: Boolean,
+    requestClose: Boolean = false,
     query: String,
     results: List<ReaderViewModel.SearchResult>,
     isSearching: Boolean,
@@ -988,6 +1015,14 @@ private fun SearchSheet(
     }
 
     var isClosing by remember { mutableStateOf(false) }
+
+    // 监听 requestClose 状态，触发动画关闭
+    LaunchedEffect(requestClose) {
+        if (requestClose && !isClosing) {
+            isClosing = true
+        }
+    }
+
     LaunchedEffect(isClosing) {
         if (isClosing) {
             sheetOffset.animateTo(1f, tween(250, easing = FastOutSlowInEasing))
@@ -1349,6 +1384,7 @@ private val LightCardBg = Color.White
 @Composable
 private fun NotesListSheet(
     visible: Boolean,
+    requestClose: Boolean = false,
     notes: List<com.huangder.lumibooks.domain.model.Note>,
     onNoteClick: (com.huangder.lumibooks.domain.model.Note) -> Unit,
     onDeleteNote: (com.huangder.lumibooks.domain.model.Note) -> Unit,
@@ -1367,6 +1403,14 @@ private fun NotesListSheet(
 
     var isClosing by remember { mutableStateOf(false) }
     var pendingJumpNote by remember { mutableStateOf<com.huangder.lumibooks.domain.model.Note?>(null) }
+
+    // 监听 requestClose 状态，触发动画关闭
+    LaunchedEffect(requestClose) {
+        if (requestClose && !isClosing) {
+            isClosing = true
+        }
+    }
+
     LaunchedEffect(isClosing) {
         if (isClosing) {
             sheetOffset.animateTo(1f, tween(250, easing = FastOutSlowInEasing))
