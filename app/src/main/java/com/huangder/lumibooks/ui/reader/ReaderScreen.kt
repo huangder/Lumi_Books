@@ -989,8 +989,8 @@ private fun SearchSheet(
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { isClosing = true }
         )
 
-        // 底部弹出容器
-        Column(
+        // 底部弹出容器（自适应高度）
+        Box(
             Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .graphicsLayer { translationY = sheetOffset.value * size.height }
@@ -1000,130 +1000,135 @@ private fun SearchSheet(
                 .navigationBarsPadding()
                 .padding(24.dp)
         ) {
-            // 标题栏
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "搜索",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = DingliSong,
-                    color = Color.Black
-                )
-                Spacer(Modifier.weight(1f))
-                // 关闭按钮
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(LightBgGray)
-                        .clickable { isClosing = true },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.Close, "关闭", tint = LightTextSecondary, modifier = Modifier.size(18.dp))
-                }
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            // 搜索输入框 + 按钮
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(52.dp)
-                        .clip(RoundedCornerShape(26.dp))
-                        .background(LightBgGray)
-                        .padding(horizontal = 16.dp),
-                    contentAlignment = Alignment.CenterStart
-                ) {
-                    androidx.compose.material3.TextField(
-                        value = query,
-                        onValueChange = onQueryChange,
-                        placeholder = { Text("输入关键词", fontSize = 14.sp, color = LightTextSecondary) },
-                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = Color.Black),
-                        singleLine = true,
-                        colors = androidx.compose.material3.TextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent
-                        ),
-                        modifier = Modifier.fillMaxWidth()
+            Column {
+                // 标题栏
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "搜索",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = DingliSong,
+                        color = Color.Black
                     )
-                }
-                Spacer(Modifier.width(12.dp))
-                Box(
-                    modifier = Modifier
-                        .height(48.dp)
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(if (query.isNotBlank()) AccentColor else LightBgGray)
-                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { if (query.isNotBlank()) onSearch() }
-                        .padding(horizontal = 20.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (isSearching) {
-                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
-                    } else {
-                        Text("搜索", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = if (query.isNotBlank()) Color.White else LightTextSecondary)
+                    Spacer(Modifier.weight(1f))
+                    // 关闭按钮
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(LightBgGray)
+                            .clickable { isClosing = true },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Close, "关闭", tint = LightTextSecondary, modifier = Modifier.size(18.dp))
                     }
                 }
-            }
 
-            Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(16.dp))
 
-            // 结果区域
-            if (hasResults) {
-                Text(
-                    "找到 ${results.size} 条结果",
-                    fontSize = 12.sp,
-                    color = LightTextSecondary
-                )
-                Spacer(Modifier.height(8.dp))
-
-                LazyColumn(modifier = Modifier.weight(1f)) {
-                    items(results.size) { idx ->
-                        val r = results[idx]
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(LightBgGray)
-                                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                                    onResultClick(r)
-                                }
-                                .padding(horizontal = 16.dp, vertical = 12.dp)
-                        ) {
-                            Column {
-                                Text(
-                                    text = r.chapterTitle,
-                                    fontSize = 12.sp,
-                                    color = AccentColor,
-                                    maxLines = 1
-                                )
-                                Spacer(Modifier.height(4.dp))
-                                Text(
-                                    text = r.context,
-                                    fontSize = 14.sp,
-                                    color = Color.Black,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
+                // 搜索输入框 + 按钮
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(52.dp)
+                            .clip(RoundedCornerShape(26.dp))
+                            .background(LightBgGray)
+                            .padding(horizontal = 16.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        androidx.compose.material3.TextField(
+                            value = query,
+                            onValueChange = onQueryChange,
+                            placeholder = { Text("输入关键词", fontSize = 14.sp, color = LightTextSecondary) },
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = Color.Black),
+                            singleLine = true,
+                            colors = androidx.compose.material3.TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Box(
+                        modifier = Modifier
+                            .height(48.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(if (query.isNotBlank()) AccentColor else LightBgGray)
+                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { if (query.isNotBlank()) onSearch() }
+                            .padding(horizontal = 20.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (isSearching) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
+                        } else {
+                            Text("搜索", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = if (query.isNotBlank()) Color.White else LightTextSecondary)
                         }
                     }
                 }
-            } else if (!isSearching && hasSearched) {
-                // 已搜索但无结果
-                Box(
-                    Modifier.fillMaxWidth().weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("未找到匹配结果", fontSize = 14.sp, color = LightTextSecondary)
+
+                // 结果区域（有结果时显示，自适应高度）
+                if (hasResults) {
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        "找到 ${results.size} 条结果",
+                        fontSize = 12.sp,
+                        color = LightTextSecondary
+                    )
+                    Spacer(Modifier.height(8.dp))
+
+                    // 结果列表
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(250.dp)
+                    ) {
+                        items(results.size) { idx ->
+                            val r = results[idx]
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(LightBgGray)
+                                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                        onResultClick(r)
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                            ) {
+                                Column {
+                                    Text(
+                                        text = r.chapterTitle,
+                                        fontSize = 12.sp,
+                                        color = AccentColor,
+                                        maxLines = 1
+                                    )
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        text = r.context,
+                                        fontSize = 14.sp,
+                                        color = Color.Black,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else if (!isSearching && hasSearched) {
+                    // 已搜索但无结果
+                    Spacer(Modifier.height(24.dp))
+                    Box(
+                        Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("未找到匹配结果", fontSize = 14.sp, color = LightTextSecondary)
+                    }
+                    Spacer(Modifier.height(8.dp))
                 }
-            } else {
-                // 初始状态
-                Spacer(Modifier.weight(1f))
             }
         }
     }
