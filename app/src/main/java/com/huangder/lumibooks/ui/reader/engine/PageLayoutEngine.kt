@@ -145,8 +145,8 @@ class PageLayoutEngine {
 
         val pages = mutableListOf<PageLayout>()
         val vh = visibleHeight
-        // 🔥 保留 2px 安全边距防止浮点累积误差（breakStrategy 已对齐，不再需要大额缓冲）
-        val effectiveVh = (vh - 2).coerceAtLeast(vh / 2).toFloat()
+        // 🔥 TextPaint 已共享，字体度量完全一致，无需安全边距
+        val effectiveVh = vh.toFloat()
         var pageStartLine = 0
         var pageIdx = 0
         var globalCharOffset = 0
