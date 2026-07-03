@@ -177,6 +177,7 @@ class ReadView(context: Context) : FrameLayout(context) {
         val density = resources.displayMetrics.density
         val marginHoriz = currentMarginHorizDp * density
         val marginVert = currentMarginVertDp * density
+        val marginTop = marginVert + 6f * density   // 顶部微调
         val lineSpacingExtra = 2.5f * density
 
         // 选择高亮色 = accent + 25% alpha
@@ -197,7 +198,7 @@ class ReadView(context: Context) : FrameLayout(context) {
                 letterSpacingPx = currentLetterSpacingDp * density,
                 typeface = customTypeface,
                 marginLeftPx = marginHoriz,
-                marginTopPx = marginVert,
+                marginTopPx = marginTop,
                 marginRightPx = marginHoriz,
                 marginBottomPx = marginVert,
                 highlightColor = highlightColor,
@@ -267,6 +268,7 @@ class ReadView(context: Context) : FrameLayout(context) {
         val density = resources.displayMetrics.density
         val marginHoriz = marginHorizDp * density
         val marginVert = marginVertDp * density
+        val marginTop = marginVert + 6f * density   // 顶部微调：补偿 includeFontPadding 的视觉不对称
         val lineSpacing = 2.5f * density
         val lsPx = letterSpacingDp * density
 
@@ -286,7 +288,7 @@ class ReadView(context: Context) : FrameLayout(context) {
             customTypeface = customTypeface,
             marginLeftPx = marginHoriz,
             marginRightPx = marginHoriz,
-            marginTopPx = marginVert,
+            marginTopPx = marginTop,
             marginBottomPx = marginVert,
             textColor = textColor,
             chapterCount = chapterCount
