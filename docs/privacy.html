@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>隐私政策 — Lumi</title>
+    <style>
+        :root {
+            --primary: #ff385c;
+            --canvas: #ffffff;
+            --surface-soft: #f7f7f7;
+            --ink: #222222;
+            --body: #3f3f3f;
+            --muted: #6a6a6a;
+            --muted-soft: #929292;
+            --hairline: #dddddd;
+            --hairline-soft: #ebebeb;
+            --radius-sm: 8px;
+            --radius-md: 14px;
+            --radius-full: 9999px;
+            --space-xs: 4px;
+            --space-sm: 8px;
+            --space-md: 12px;
+            --space-base: 16px;
+            --space-lg: 24px;
+            --space-xl: 32px;
+            --space-xxl: 48px;
+            --space-section: 64px;
+            --max-width: 780px;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: var(--canvas);
+            color: var(--ink);
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Top bar */
+        .top-bar {
+            border-bottom: 1px solid var(--hairline);
+            padding: 0 var(--space-xxl);
+            height: 80px;
+            display: flex;
+            align-items: center;
+            max-width: 100%;
+        }
+        .top-bar a {
+            text-decoration: none;
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--ink);
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+        }
+        .top-bar a span { font-size: 20px; }
+
+        /* Content */
+        .container {
+            max-width: var(--max-width);
+            margin: 0 auto;
+            padding: var(--space-section) var(--space-xxl);
+        }
+        h1 {
+            font-size: 28px;
+            font-weight: 700;
+            line-height: 1.43;
+            margin-bottom: var(--space-xs);
+        }
+        .meta {
+            font-size: 14px;
+            color: var(--muted);
+            margin-bottom: var(--space-xxl);
+        }
+        h2 {
+            font-size: 20px;
+            font-weight: 600;
+            line-height: 1.20;
+            letter-spacing: -0.18px;
+            margin: var(--space-xxl) 0 var(--space-md);
+            padding-top: var(--space-lg);
+            border-top: 1px solid var(--hairline-soft);
+        }
+        h2:first-of-type { border-top: none; padding-top: 0; }
+        p {
+            font-size: 16px;
+            font-weight: 400;
+            line-height: 1.5;
+            color: var(--body);
+            margin-bottom: var(--space-md);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: var(--space-base) 0;
+            font-size: 14px;
+        }
+        th, td {
+            text-align: left;
+            padding: var(--space-md) var(--space-base);
+            border-bottom: 1px solid var(--hairline);
+        }
+        th {
+            font-weight: 600;
+            color: var(--ink);
+            background: var(--surface-soft);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        td { color: var(--body); }
+        ul {
+            list-style: none;
+            padding: 0;
+            margin-bottom: var(--space-base);
+        }
+        ul li {
+            padding: var(--space-xs) 0;
+            font-size: 15px;
+            color: var(--body);
+        }
+        ul li::before { content: "·  "; color: var(--primary); font-weight: bold; }
+        .cross { color: #c13515; margin-right: 6px; }
+        a { color: var(--ink); text-decoration: underline; }
+
+        /* Footer */
+        .footer-light {
+            padding: var(--space-xl) var(--space-xxl);
+            max-width: var(--max-width);
+            margin: 0 auto;
+            border-top: 1px solid var(--hairline);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+            color: var(--muted);
+        }
+        .footer-light a {
+            color: var(--muted);
+            text-decoration: none;
+            margin-left: var(--space-lg);
+        }
+        .footer-light a:hover { text-decoration: underline; }
+
+        @media (max-width: 743px) {
+            .top-bar { padding: 0 var(--space-base); height: 64px; }
+            .container { padding: var(--space-xl) var(--space-base); }
+            h1 { font-size: 24px; }
+            .footer-light { flex-direction: column; gap: var(--space-sm); }
+        }
+    </style>
+</head>
+<body>
+
+<div class="top-bar">
+    <a href="index.html"><span>←</span> Lumi</a>
+</div>
+
+<div class="container">
+    <h1>隐私政策</h1>
+    <p class="meta">生效日期：2026年6月29日 · 最近更新：2026年6月29日</p>
+
+    <h2>一、引言</h2>
+    <p>Lumi（包名 com.huangder.lumibooks）是一款本地电子书阅读器。本隐私政策旨在向您说明我们如何处理您的个人信息。</p>
+    <p><strong>核心原则：本应用不收集、不传输、不存储任何个人信息至外部服务器。</strong></p>
+
+    <h2>二、权限说明</h2>
+    <p>本应用仅申请以下 Android 系统权限：</p>
+    <table>
+        <tr><th>权限</th><th>用途</th><th>是否必要</th></tr>
+        <tr><td>READ_EXTERNAL_STORAGE（Android 12 及以下）</td><td>读取您设备上的电子书文件（EPUB、TXT、PDF）</td><td>是</td></tr>
+        <tr><td>READ_MEDIA_IMAGES（Android 13 及以上）</td><td>读取电子书中的封面图片资源</td><td>是</td></tr>
+    </table>
+    <p><strong>本应用不申请以下权限：</strong></p>
+    <ul>
+        <li><span class="cross">✕</span> 网络访问权限（INTERNET）</li>
+        <li><span class="cross">✕</span> 位置信息权限</li>
+        <li><span class="cross">✕</span> 相机/麦克风权限</li>
+        <li><span class="cross">✕</span> 通讯录权限</li>
+        <li><span class="cross">✕</span> 电话状态权限</li>
+        <li><span class="cross">✕</span> 写入外部存储权限</li>
+    </ul>
+
+    <h2>三、数据处理说明</h2>
+    <p>以下数据仅存储在您的本地设备上：</p>
+    <table>
+        <tr><th>数据类型</th><th>说明</th><th>存储方式</th></tr>
+        <tr><td>电子书文件</td><td>您主动选择打开的 EPUB、TXT、PDF 文件</td><td>本地文件</td></tr>
+        <tr><td>阅读进度</td><td>当前阅读章节和页码位置</td><td>Room/SQLite</td></tr>
+        <tr><td>书签记录</td><td>您手动添加的书签</td><td>Room/SQLite</td></tr>
+        <tr><td>阅读时长</td><td>每次阅读的开始/结束时间、持续时长</td><td>Room/SQLite</td></tr>
+        <tr><td>阅读偏好</td><td>字号、主题、行距等显示设置</td><td>DataStore</td></tr>
+        <tr><td>最近阅读</td><td>最近打开的书籍列表及时间</td><td>Room/SQLite</td></tr>
+    </table>
+    <p><strong>本应用不处理的数据：</strong></p>
+    <ul>
+        <li>不收集个人身份信息（姓名、邮箱、电话等）</li>
+        <li>不收集设备标识信息（IMEI、Android ID、MAC 地址等）</li>
+        <li>不收集阅读内容或阅读行为数据</li>
+        <li>不使用任何分析或追踪工具</li>
+        <li>不使用任何广告 SDK</li>
+        <li>不进行任何数据上传或同步</li>
+    </ul>
+
+    <h2>四、数据存储与安全</h2>
+    <p>所有数据均存储在应用的私有沙盒目录中，遵循 Android 系统的应用隔离机制。其他应用无法直接访问本应用的私有数据。应用不连接互联网，不存在网络传输风险。卸载应用将自动删除所有应用数据。电子书源文件由您自行管理，本应用不会修改或删除您的原始文件。</p>
+
+    <h2>五、第三方服务</h2>
+    <p>本应用不集成任何第三方服务：无第三方分析服务、无第三方广告服务、无第三方推送服务、无云同步服务、无崩溃报告服务。</p>
+
+    <h2>六、联系我们</h2>
+    <p>如有疑问，请邮件联系：<a href="mailto:hyf2917737053@gmail.com">hyf2917737053@gmail.com</a></p>
+
+    <p style="font-size:13px; color:var(--muted-soft); margin-top: var(--space-xxl);">本隐私政策最后更新于 2026年6月29日。</p>
+</div>
+
+<div class="footer-light">
+    <span>© 2026 Huangder</span>
+    <span>
+        <a href="index.html">首页</a>
+        <a href="terms.html">用户协议</a>
+    </span>
+</div>
+
+</body>
+</html>
