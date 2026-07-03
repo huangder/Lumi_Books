@@ -411,25 +411,25 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
 
     @IdentifierNameString
     private static final class LazyClassKeyProvider {
-      static String com_huangder_lumibooks_ui_reader_ReaderViewModel = "com.huangder.lumibooks.ui.reader.ReaderViewModel";
-
       static String com_huangder_lumibooks_ui_statistics_StatisticsViewModel = "com.huangder.lumibooks.ui.statistics.StatisticsViewModel";
-
-      static String com_huangder_lumibooks_ui_welcome_WelcomeViewModel = "com.huangder.lumibooks.ui.welcome.WelcomeViewModel";
 
       static String com_huangder_lumibooks_ui_home_HomeViewModel = "com.huangder.lumibooks.ui.home.HomeViewModel";
 
-      @KeepFieldType
-      ReaderViewModel com_huangder_lumibooks_ui_reader_ReaderViewModel2;
+      static String com_huangder_lumibooks_ui_welcome_WelcomeViewModel = "com.huangder.lumibooks.ui.welcome.WelcomeViewModel";
+
+      static String com_huangder_lumibooks_ui_reader_ReaderViewModel = "com.huangder.lumibooks.ui.reader.ReaderViewModel";
 
       @KeepFieldType
       StatisticsViewModel com_huangder_lumibooks_ui_statistics_StatisticsViewModel2;
 
       @KeepFieldType
+      HomeViewModel com_huangder_lumibooks_ui_home_HomeViewModel2;
+
+      @KeepFieldType
       WelcomeViewModel com_huangder_lumibooks_ui_welcome_WelcomeViewModel2;
 
       @KeepFieldType
-      HomeViewModel com_huangder_lumibooks_ui_home_HomeViewModel2;
+      ReaderViewModel com_huangder_lumibooks_ui_reader_ReaderViewModel2;
     }
   }
 
@@ -483,23 +483,23 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
     private static final class LazyClassKeyProvider {
       static String com_huangder_lumibooks_ui_welcome_WelcomeViewModel = "com.huangder.lumibooks.ui.welcome.WelcomeViewModel";
 
-      static String com_huangder_lumibooks_ui_statistics_StatisticsViewModel = "com.huangder.lumibooks.ui.statistics.StatisticsViewModel";
+      static String com_huangder_lumibooks_ui_reader_ReaderViewModel = "com.huangder.lumibooks.ui.reader.ReaderViewModel";
 
       static String com_huangder_lumibooks_ui_home_HomeViewModel = "com.huangder.lumibooks.ui.home.HomeViewModel";
 
-      static String com_huangder_lumibooks_ui_reader_ReaderViewModel = "com.huangder.lumibooks.ui.reader.ReaderViewModel";
+      static String com_huangder_lumibooks_ui_statistics_StatisticsViewModel = "com.huangder.lumibooks.ui.statistics.StatisticsViewModel";
 
       @KeepFieldType
       WelcomeViewModel com_huangder_lumibooks_ui_welcome_WelcomeViewModel2;
 
       @KeepFieldType
-      StatisticsViewModel com_huangder_lumibooks_ui_statistics_StatisticsViewModel2;
+      ReaderViewModel com_huangder_lumibooks_ui_reader_ReaderViewModel2;
 
       @KeepFieldType
       HomeViewModel com_huangder_lumibooks_ui_home_HomeViewModel2;
 
       @KeepFieldType
-      ReaderViewModel com_huangder_lumibooks_ui_reader_ReaderViewModel2;
+      StatisticsViewModel com_huangder_lumibooks_ui_statistics_StatisticsViewModel2;
     }
 
     private static final class SwitchingProvider<T> implements Provider<T> {
