@@ -10,8 +10,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 
 /**
  * 阅读页沉浸模式（隐藏状态栏 + 导航栏）
- * 不使用全屏模式，只隐藏系统栏
- * 离开时恢复系统栏
+ * 使用 BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE 实现平滑过渡
  */
 @Composable
 fun ImmersiveMode() {
@@ -22,16 +21,15 @@ fun ImmersiveMode() {
         val window = (view.context as? Activity)?.window ?: return@DisposableEffect onDispose {}
         val controller = WindowCompat.getInsetsController(window, view)
 
-        // 隐藏状态栏和导航栏（不使用全屏模式）
-        controller.hide(WindowInsetsCompat.Type.statusBars())
-        controller.hide(WindowInsetsCompat.Type.navigationBars())
+        // 隐藏系统栏，使用滑动临时显示的方式
+        controller.hide(WindowInsetsCompat.Type.systemBars())
         controller.systemBarsBehavior =
-            WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
 
         onDispose {
             // 恢复系统栏
-            controller.show(WindowInsetsCompat.Type.statusBars())
-            controller.show(WindowInsetsCompat.Type.navigationBars())
+            controller.show(WindowInsetsCompat.Type.systemBars())
+            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
         }
     }
 }
