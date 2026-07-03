@@ -5,6 +5,7 @@ import android.webkit.WebView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -15,8 +16,10 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -1341,7 +1344,15 @@ private fun NoteInputSheet(
     }
 }
 
-// ── 笔记/高亮列表弹窗 ──
+// ── 笔记/高亮列表弹窗（Page5 设计规范）──
+
+// 设计规范颜色
+private val AccentColor = Color(0xFFE85D5D)
+private val HighlightYellow = Color(0xFFFFEB3B)
+private val HighlightBg = Color(0xFFFFFBF0)
+private val LightTextSecondary = Color(0xFF6E6E73)
+private val LightBgGray = Color(0xFFF2F2F7)
+private val LightCardBg = Color.White
 
 @Composable
 private fun NotesListSheet(
@@ -1353,15 +1364,12 @@ private fun NotesListSheet(
 ) {
     if (!visible) return
 
-    val sheetAlpha = remember { Animatable(0f) }
     val sheetOffset = remember { Animatable(1f) }
 
     LaunchedEffect(visible) {
         if (visible) {
-            coroutineScope {
-                launch { sheetAlpha.animateTo(1f, tween(250)) }
-                launch { sheetOffset.snapTo(1f); sheetOffset.animateTo(0f, tween(300, easing = AppEasing.Smooth)) }
-            }
+            sheetOffset.snapTo(1f)
+            sheetOffset.animateTo(0f, tween(300, easing = FastOutSlowInEasing))
         }
     }
 
@@ -1369,10 +1377,7 @@ private fun NotesListSheet(
     var pendingJumpNote by remember { mutableStateOf<com.huangder.lumibooks.domain.model.Note?>(null) }
     LaunchedEffect(isClosing) {
         if (isClosing) {
-            coroutineScope {
-                launch { sheetAlpha.animateTo(0f, tween(200)) }
-                launch { sheetOffset.animateTo(1f, tween(200, easing = AppEasing.Accelerate)) }
-            }
+            sheetOffset.animateTo(1f, tween(250, easing = FastOutSlowInEasing))
             pendingJumpNote?.let { onNoteClick(it) }
             pendingJumpNote = null
             onDismiss()
@@ -1384,65 +1389,83 @@ private fun NotesListSheet(
     val noteList = notes.filter { it.note.isNotEmpty() }
 
     Box(Modifier.fillMaxSize()) {
+        // 遮罩层
         Box(
             Modifier.fillMaxSize()
-                .graphicsLayer { alpha = sheetAlpha.value }
                 .background(Color.Black.copy(alpha = 0.1f))
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { isClosing = true }
         )
 
-        Box(
+        // 容器层（60% 屏幕高度）
+        Column(
             Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .fillMaxHeight(0.6f)
-                .graphicsLayer { translationY = sheetOffset.value * size.height; alpha = sheetAlpha.value }
+                .graphicsLayer { translationY = sheetOffset.value * size.height }
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .background(AppColors.CardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .padding(bottom = 16.dp)
-                .padding(AppSpace.lg)
+                .background(LightCardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .navigationBarsPadding()
+                .padding(24.dp)
         ) {
-            Column {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.BgGray).clickable { isClosing = true },
-                        contentAlignment = Alignment.Center
-                    ) { Icon(Icons.Default.Close, "关闭", tint = AppColors.TextSecondary, modifier = Modifier.size(18.dp)) }
-                    Text("笔记", fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = DingliSong, color = AppColors.TextPrimary, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
-                    Box(
-                        modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.Accent.copy(alpha = 0.15f)).clickable { isClosing = true },
-                        contentAlignment = Alignment.Center
-                    ) { Text("✓", fontSize = 16.sp, color = AppColors.Accent) }
+            // 标题栏
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "高亮与笔记",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = DingliSong,
+                    color = Color.Black
+                )
+                Spacer(Modifier.weight(1f))
+                // 关闭按钮
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(LightBgGray)
+                        .clickable { isClosing = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Close, "关闭", tint = LightTextSecondary, modifier = Modifier.size(18.dp))
                 }
+            }
 
-                Spacer(Modifier.height(AppSpace.md))
+            Spacer(Modifier.height(16.dp))
 
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AppSpace.sm)) {
-                    TagChip("高亮", highlights.size, activeTag == "highlight") { activeTag = "highlight" }
-                    TagChip("笔记", noteList.size, activeTag == "note") { activeTag = "note" }
+            // Tab 切换器（平滑动画）
+            HighlightNoteTabSwitcher(
+                activeTag = activeTag,
+                highlightCount = highlights.size,
+                noteCount = noteList.size,
+                onTagChange = { activeTag = it }
+            )
+
+            Spacer(Modifier.height(16.dp))
+
+            // 列表
+            val items = if (activeTag == "highlight") highlights else noteList
+            if (items.isEmpty()) {
+                Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    Text(
+                        "暂无${if (activeTag == "highlight") "高亮" else "笔记"}",
+                        fontSize = 14.sp,
+                        color = LightTextSecondary
+                    )
                 }
-
-                Spacer(Modifier.height(AppSpace.md))
-
-                val items = if (activeTag == "highlight") highlights else noteList
-                if (items.isEmpty()) {
-                    Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                        Text("暂无${if (activeTag == "highlight") "高亮" else "笔记"}", fontSize = 14.sp, color = AppColors.TextSecondary)
-                    }
-                } else {
-                    LazyColumn(modifier = Modifier.weight(1f)) {
-                        items(items.size) { idx ->
-                            val item = items[idx]
-                            NoteItem(
-                                item = item,
-                                onNoteClick = {
-                                    pendingJumpNote = item
-                                    isClosing = true
-                                },
-                                onDelete = { onDeleteNote(item) }
-                            )
-                            if (idx < items.size - 1) {
-                                Spacer(Modifier.height(8.dp))
-                            }
+            } else {
+                LazyColumn(modifier = Modifier.weight(1f)) {
+                    items(items.size) { idx ->
+                        val item = items[idx]
+                        HighlightNoteItem(
+                            item = item,
+                            onClick = {
+                                pendingJumpNote = item
+                                isClosing = true
+                            },
+                            onDelete = { onDeleteNote(item) }
+                        )
+                        if (idx < items.size - 1) {
+                            Spacer(Modifier.height(8.dp))
                         }
                     }
                 }
@@ -1452,72 +1475,120 @@ private fun NotesListSheet(
 }
 
 @Composable
-private fun TagChip(label: String, count: Int, active: Boolean, onClick: () -> Unit) {
-    Box(
+private fun HighlightNoteTabSwitcher(
+    activeTag: String,
+    highlightCount: Int,
+    noteCount: Int,
+    onTagChange: (String) -> Unit
+) {
+    // 动画：白色背景指示器的位置（0f = 高亮，1f = 笔记）
+    val indicatorProgress by animateFloatAsState(
+        targetValue = if (activeTag == "highlight") 0f else 1f,
+        animationSpec = tween(300, easing = FastOutSlowInEasing),
+        label = "tabIndicator"
+    )
+
+    BoxWithConstraints(
         modifier = Modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(if (active) AppColors.Accent else AppColors.BgGray)
-            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() }
-            .padding(horizontal = 14.dp, vertical = 6.dp)
+            .fillMaxWidth()
+            .height(40.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(LightBgGray)
+            .padding(2.dp)
     ) {
-        Text(
-            "$label ($count)",
-            fontSize = 13.sp,
-            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (active) Color.White else AppColors.TextSecondary
+        val tabWidth = maxWidth / 2
+        val indicatorOffset = tabWidth * indicatorProgress
+
+        // 白色背景指示器（平滑移动）
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(tabWidth)
+                .offset(x = indicatorOffset)
+                .clip(RoundedCornerShape(18.dp))
+                .background(Color.White)
         )
+
+        // Tab 文字
+        Row(Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onTagChange("highlight") },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "高亮 ($highlightCount)",
+                    fontSize = 14.sp,
+                    fontWeight = if (activeTag == "highlight") FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (activeTag == "highlight") Color.Black else LightTextSecondary
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onTagChange("note") },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "笔记 ($noteCount)",
+                    fontSize = 14.sp,
+                    fontWeight = if (activeTag == "note") FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (activeTag == "note") Color.Black else LightTextSecondary
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun NoteItem(
+private fun HighlightNoteItem(
     item: com.huangder.lumibooks.domain.model.Note,
-    onNoteClick: () -> Unit,
+    onClick: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val accentColor = remember(item.color) { parseNoteColor(item.color) }
-    // 🔥 拖拽期间用 rawOffset（直接赋值，跟手无延迟），松手后 Animatable 驱动惯性动画
+    // 滑动删除
     var rawOffset by remember { mutableFloatStateOf(0f) }
     val animOffset = remember { Animatable(0f) }
     var isDragging by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val dismissThreshold = 100f
-    val trashSize = 44f
 
     val displayOffset = if (isDragging) rawOffset else animOffset.value
-    val trashAlpha = (-displayOffset / dismissThreshold).coerceIn(0f, 1f)
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(12.dp))
     ) {
-        // 红色垃圾桶（右侧，随滑动跟手滑入）
+        // 删除背景
         Box(
             modifier = Modifier
                 .matchParentSize()
-                .padding(end = 12.dp),
+                .padding(end = 16.dp),
             contentAlignment = Alignment.CenterEnd
         ) {
             Box(
                 modifier = Modifier
-                    .graphicsLayer { alpha = trashAlpha }
-                    .size(trashSize.dp)
+                    .graphicsLayer { alpha = (-displayOffset / dismissThreshold).coerceIn(0f, 1f) }
+                    .size(40.dp)
                     .clip(CircleShape)
                     .background(Color(0xFFE53935))
                     .clickable { onDelete() },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.Close, "删除", tint = Color.White, modifier = Modifier.size(20.dp))
+                Icon(Icons.Default.Close, "删除", tint = Color.White, modifier = Modifier.size(18.dp))
             }
         }
 
         // 内容层
-        Box(
+        Row(
             modifier = Modifier
                 .offset { IntOffset(displayOffset.toInt(), 0) }
-                .clip(RoundedCornerShape(16.dp))
-                .background(accentColor.copy(alpha = 0.08f))
+                .clip(RoundedCornerShape(12.dp))
+                .background(HighlightBg)
                 .pointerInput(Unit) {
                     detectHorizontalDragGestures(
                         onDragStart = { isDragging = true },
@@ -1528,8 +1599,6 @@ private fun NoteItem(
                                 animOffset.snapTo(from)
                                 if (-from > dismissThreshold * 1.5f) {
                                     animOffset.animateTo(-600f, tween(200)); onDelete()
-                                } else if (-from > dismissThreshold * 0.7f) {
-                                    animOffset.animateTo(-dismissThreshold, spring(dampingRatio = 0.5f, stiffness = 400f))
                                 } else {
                                     animOffset.animateTo(0f, spring(dampingRatio = 0.5f, stiffness = 400f))
                                 }
@@ -1542,50 +1611,48 @@ private fun NoteItem(
                             rawOffset = 0f
                         },
                         onHorizontalDrag = { _, dragAmount ->
-                            rawOffset = (rawOffset + dragAmount).coerceIn(-dismissThreshold * 2.5f, 0f)
+                            rawOffset = (rawOffset + dragAmount).coerceIn(-dismissThreshold * 2f, 0f)
                         }
                     )
                 }
-                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onNoteClick() }
-                .padding(horizontal = 14.dp, vertical = 14.dp)
+                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() }
+                .padding(16.dp)
         ) {
+            // 左侧黄色竖条
             Box(
                 modifier = Modifier
-                    .matchParentSize()
-                    .padding(start = 0.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .fillMaxHeight()
-                        .width(4.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(accentColor.copy(alpha = 0.95f))
-                )
-            }
+                    .width(4.dp)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(HighlightYellow)
+            )
 
-            Column(modifier = Modifier.padding(start = 10.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(accentColor)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(item.selectedText, fontSize = 14.sp, color = AppColors.TextPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                }
+            Spacer(Modifier.width(12.dp))
+
+            // 内容
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    item.selectedText,
+                    fontSize = 14.sp,
+                    color = Color.Black,
+                    maxLines = 2
+                )
                 if (item.note.isNotEmpty()) {
                     Spacer(Modifier.height(4.dp))
-                    Text(item.note, fontSize = 13.sp, color = AppColors.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        item.note,
+                        fontSize = 13.sp,
+                        color = LightTextSecondary,
+                        maxLines = 1
+                    )
                 }
                 Spacer(Modifier.height(4.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("第${item.chapterIndex + 1}章", fontSize = AppType.Caption, color = AppColors.Accent)
+                    Text("第${item.chapterIndex + 1}章", fontSize = 12.sp, color = AccentColor)
                     Text(
                         java.text.SimpleDateFormat("MM/dd", java.util.Locale.getDefault()).format(java.util.Date(item.createdAt)),
-                        fontSize = AppType.Caption,
-                        color = AppColors.TextSecondary
+                        fontSize = 12.sp,
+                        color = AccentColor
                     )
                 }
             }
