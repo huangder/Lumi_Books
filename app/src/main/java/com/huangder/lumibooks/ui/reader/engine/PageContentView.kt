@@ -108,7 +108,9 @@ class PageContentView(context: Context) : FrameLayout(context) {
         marginLeftPx: Float = 48f,
         marginTopPx: Float = 32f,
         marginRightPx: Float = 48f,
-        marginBottomPx: Float = 32f
+        marginBottomPx: Float = 32f,
+        highlightColor: Int = 0x40007AFF.toInt(),
+        accentColor: Int = 0xFF007AFF.toInt()
     ) {
         textView.setTextSize(TypedValue.COMPLEX_UNIT_PX, fontSizePx)
         textView.setTextColor(textColor)
@@ -121,6 +123,20 @@ class PageContentView(context: Context) : FrameLayout(context) {
             marginRightPx.toInt(),
             marginBottomPx.toInt()
         )
+        // 🔥 选择高亮色跟随主题
+        textView.highlightColor = highlightColor
+        // 🔥 API 29+ 选择手柄颜色跟随主题
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            val density = textView.resources.displayMetrics.density
+            val handle = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(accentColor)
+                setSize((14 * density).toInt(), (18 * density).toInt())
+            }
+            textView.setTextSelectHandle(handle)
+            textView.setTextSelectHandleLeft(handle)
+            textView.setTextSelectHandleRight(handle)
+        }
     }
 
     /** 获取当前 TextView 的 Spannable（用于读取选区等） */
