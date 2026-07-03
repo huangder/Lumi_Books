@@ -114,17 +114,10 @@
             text-decoration: none;
             color: var(--primary);
         }
-        .nav-logo .logo-icon {
+        .nav-logo .logo-icon-img {
             width: 34px;
             height: 34px;
-            background: var(--primary);
             border-radius: var(--radius-sm);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: var(--on-primary);
-            font-size: 18px;
-            font-weight: 700;
         }
         .nav-logo .logo-text {
             font-size: 22px;
@@ -276,39 +269,18 @@
             overflow: hidden;
             box-shadow: var(--shadow-card);
         }
-        .hero-phone-inner {
-            text-align: center;
-            padding: var(--space-xl);
+        .hero-phone img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
         }
-        .hero-phone-inner .phone-icon {
-            font-size: 48px;
-            margin-bottom: var(--space-base);
-        }
-        .hero-phone-inner .phone-title {
-            font-size: 16px;
-            font-weight: 600;
-            color: var(--ink);
-            margin-bottom: var(--space-xs);
-        }
-        .hero-phone-inner .phone-sub {
-            font-size: 13px;
-            color: var(--muted);
-        }
-        /* Rating-style big number */
+        /* Rating-style big number — kept for potential reuse */
         .hero-stat {
             font-size: 64px;
             font-weight: 700;
             line-height: 1.1;
             letter-spacing: -1px;
             color: var(--ink);
-            margin-top: var(--space-base);
-        }
-        .hero-stat-label {
-            font-size: 12px;
-            font-weight: 700;
-            color: var(--muted);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
         }
 
         /* Pill badges row */
@@ -436,14 +408,10 @@
             position: relative;
             overflow: hidden;
         }
-        .showcase-photo .photo-content {
-            text-align: center;
-            color: var(--muted);
-        }
-        .showcase-photo .photo-icon {
-            font-size: 56px;
-            display: block;
-            margin-bottom: var(--space-sm);
+        .showcase-photo img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
         }
         /* Floating badge top-left */
         .floating-badge {
@@ -522,6 +490,30 @@
             font-size: 14px;
             font-weight: 600;
             line-height: 1.25;
+        }
+
+        /* Screenshot gallery */
+        .screenshot-strip {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: var(--space-base);
+            margin-top: var(--space-base);
+        }
+        .screenshot-frame {
+            aspect-ratio: 9 / 19;
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            border: 1px solid var(--hairline);
+            box-shadow: var(--shadow-card);
+            transition: transform 0.2s ease;
+        }
+        .screenshot-frame:hover {
+            transform: scale(1.03);
+        }
+        .screenshot-frame img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
         }
 
         /* ═══════════════════════════════════════════════════════
@@ -766,6 +758,7 @@
             .privacy-band { grid-template-columns: 1fr; }
             .tech-grid { grid-template-columns: 1fr; }
             .theme-strip { grid-template-columns: repeat(2, 1fr); }
+            .screenshot-strip { grid-template-columns: repeat(2, 1fr); }
             .download-band {
                 flex-direction: column;
                 text-align: center;
@@ -781,7 +774,6 @@
                 gap: var(--space-sm);
                 text-align: center;
             }
-            .hero-stat { font-size: 48px; }
             .showcase-meta .detail-row { flex-direction: column; gap: var(--space-sm); }
             .hero-phone { width: 180px; height: 360px; }
         }
@@ -798,7 +790,7 @@
      ═══════════════════════════════════════════════════════ -->
 <nav class="top-nav">
     <a href="#" class="nav-logo">
-        <div class="logo-icon">L</div>
+        <img src="icon.png" class="logo-icon-img" alt="Lumi">
         <span class="logo-text">Lumi</span>
     </a>
     <ul class="nav-links">
@@ -832,13 +824,7 @@
     </div>
     <div class="hero-visual">
         <div class="hero-phone">
-            <div class="hero-phone-inner">
-                <div class="phone-icon">📖</div>
-                <div class="phone-title">Lumi</div>
-                <div class="phone-sub">你的随身图书馆</div>
-                <div class="hero-stat">4</div>
-                <div class="hero-stat-label">套阅读主题</div>
-            </div>
+            <img src="2026-07-04_02-47-18_478.png" alt="Lumi 阅读界面截图">
         </div>
     </div>
 </header>
@@ -897,6 +883,26 @@
 </section>
 
 <!-- ═══════════════════════════════════════════════════════
+     Screenshot Gallery
+     ═══════════════════════════════════════════════════════ -->
+<section class="section" style="padding-top:0;">
+    <div class="screenshot-strip">
+        <div class="screenshot-frame">
+            <img src="2026-07-04_02-47-18_478.png" alt="Lumi 首页截图" loading="lazy">
+        </div>
+        <div class="screenshot-frame">
+            <img src="2026-07-04_02-47-18_488.png" alt="Lumi 阅读界面截图" loading="lazy">
+        </div>
+        <div class="screenshot-frame">
+            <img src="2026-07-04_02-47-18_496.png" alt="Lumi 阅读主题截图" loading="lazy">
+        </div>
+        <div class="screenshot-frame">
+            <img src="2026-07-04_02-47-18_504.png" alt="Lumi 统计界面截图" loading="lazy">
+        </div>
+    </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
      Showcase — Photo-first cards
      ═══════════════════════════════════════════════════════ -->
 <section class="section">
@@ -910,9 +916,7 @@
         <div class="showcase-card">
             <div class="showcase-photo">
                 <span class="floating-badge">核心</span>
-                <div class="photo-content">
-                    <span class="photo-icon">🖐️</span>
-                </div>
+                <img src="2026-07-04_02-47-18_488.png" alt="阅读手势翻页截图">
             </div>
             <div class="showcase-meta">
                 <h3>智能手势系统</h3>
@@ -939,11 +943,9 @@
         </div>
 
         <div class="showcase-card">
-            <div class="showcase-photo" style="background: #faf9f7;">
+            <div class="showcase-photo">
                 <span class="floating-badge">舒适</span>
-                <div class="photo-content">
-                    <span class="photo-icon">💡</span>
-                </div>
+                <img src="2026-07-04_02-47-18_496.png" alt="阅读设置截图">
             </div>
             <div class="showcase-meta">
                 <h3>应用内亮度调节</h3>
