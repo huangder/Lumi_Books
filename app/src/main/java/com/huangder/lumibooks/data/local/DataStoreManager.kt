@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
@@ -37,6 +38,7 @@ class DataStoreManager @Inject constructor(
         // 应用设置
         private val DARK_MODE = stringPreferencesKey("dark_mode")
         private val LAST_READ_BOOK = stringPreferencesKey("last_read_book")
+        private val HAS_SEEN_WELCOME = booleanPreferencesKey("has_seen_welcome")
     }
 
     // 阅读设置
@@ -80,6 +82,10 @@ class DataStoreManager @Inject constructor(
 
     val lastReadBook: Flow<String?> = context.dataStore.data.map { preferences ->
         preferences[LAST_READ_BOOK]
+    }
+
+    val hasSeenWelcome: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[HAS_SEEN_WELCOME] ?: false
     }
 
     // 保存方法
@@ -140,6 +146,12 @@ class DataStoreManager @Inject constructor(
     suspend fun saveLastReadBook(bookId: String) {
         context.dataStore.edit { preferences ->
             preferences[LAST_READ_BOOK] = bookId
+        }
+    }
+
+    suspend fun saveHasSeenWelcome(seen: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[HAS_SEEN_WELCOME] = seen
         }
     }
 }

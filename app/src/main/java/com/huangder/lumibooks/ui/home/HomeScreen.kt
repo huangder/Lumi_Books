@@ -206,19 +206,21 @@ fun HomeScreen(
             onTabBarVisibleChange = onTabBarVisibleChange
         )
 
-        // 导入 FAB
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 24.dp, bottom = 100.dp)
-                .size(56.dp)
-                .shadow(8.dp, CircleShape, ambientColor = AppColors.Shadow)
-                .clip(CircleShape)
-                .background(Color.Black)
-                .clickable { launcher.launch("*/*") },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(Icons.Default.Add, "导入", tint = Color.White, modifier = Modifier.size(24.dp))
+        // 导入 FAB（打开 sheet 时隐藏）
+        if (!showGoalSheet) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 24.dp, bottom = 100.dp)
+                    .size(56.dp)
+                    .shadow(8.dp, CircleShape, ambientColor = AppColors.Shadow)
+                    .clip(CircleShape)
+                    .background(Color.Black)
+                    .clickable { launcher.launch("*/*") },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Add, "导入", tint = Color.White, modifier = Modifier.size(24.dp))
+            }
         }
     } // 外层 Box 结束
 }

@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.ui.navigation
 
 sealed class Screen(val route: String) {
+    object Welcome : Screen("welcome")
     object Home : Screen("home")
     object Bookshelf : Screen("bookshelf")
     object Statistics : Screen("statistics")
