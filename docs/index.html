@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" href="icon.png">
     <title>Lumi — 为阅读而生</title>
     <style>
         /* ═══════════════════════════════════════════════════════
@@ -353,7 +354,7 @@
         .hero-phone img {
             width: 100%;
             height: 100%;
-            object-fit: cover;
+            object-fit: contain;
         }
 
         .pill-strip {
@@ -620,9 +621,17 @@
         @media (max-width: 743px) {
             .top-nav {
                 padding: 0 var(--space-base);
-                height: 64px;
+                height: 56px;
+                gap: var(--space-sm);
             }
-            .nav-links { display: none; }
+            .nav-links {
+                gap: var(--space-base);
+            }
+            .nav-links a {
+                font-size: 14px;
+            }
+            .nav-logo .logo-text { display: none; }
+            .btn-nav-download { padding: 8px 14px; font-size: 13px; }
             .hero {
                 padding: var(--space-xl) var(--space-base);
             }
