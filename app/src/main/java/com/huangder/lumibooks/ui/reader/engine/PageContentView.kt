@@ -98,7 +98,10 @@ class PageContentView(context: Context) : FrameLayout(context) {
         }
 
         textView.text = spannable
-        onTextSet?.invoke(spannable)
+        // 🔥 setTextIsSelectable(true) 时 Android 内部通过 Editable.Factory.newEditable() 创建副本
+        // 必须从 textView.text 取实际存储的 Spannable，否则 SpanWatcher 注册在死对象上
+        val actualSpannable = textView.text as? Spannable ?: spannable
+        onTextSet?.invoke(actualSpannable)
     }
 
     /**
