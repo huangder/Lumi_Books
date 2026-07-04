@@ -18,14 +18,35 @@ import kotlin.math.abs
  * FrameLayout 包含 3 个 [PageContentView] 槽位，使用 [PageAnimationController]
  * 管理翻页动画。文字选择由系统 TextView 原生处理。
  */
+/**
+ * 选区信息快照，供 Compose 层自定义菜单使用。
+ *
+ * @param selectedText        选中的文本
+ * @param chapterIndex        所在章节索引
+ * @param chapterStartOffset  本页在章节中的字符起始偏移（用于计算章节级坐标）
+ * @param pageStart           页面内选区起始字符偏移
+ * @param pageEnd             页面内选区结束字符偏移
+ * @param selTopY             选区顶边屏幕 Y 坐标（px）
+ * @param selBottomY          选区底边屏幕 Y 坐标（px）
+ * @param selStartX           选区起点屏幕 X 坐标（px）
+ * @param selEndX             选区终点屏幕 X 坐标（px）
+ */
+data class SelectionInfo(
+    val selectedText: String,
+    val chapterIndex: Int,
+    val chapterStartOffset: Int,
+    val pageStart: Int,
+    val pageEnd: Int,
+    val selTopY: Float,
+    val selBottomY: Float,
+    val selStartX: Float,
+    val selEndX: Float
+)
+
 class ReadView(context: Context) : FrameLayout(context) {
 
     companion object {
         private const val TAG = "ReadView"
-        // ActionMode 菜单 ID
-        private const val MENU_HIGHLIGHT = 1
-        private const val MENU_NOTE = 2
-        private const val MENU_SEARCH = 3
     }
 
     // ── 子组件 ──
@@ -46,10 +67,43 @@ class ReadView(context: Context) : FrameLayout(context) {
 
     private var savedNotes: List<Note> = emptyList()
 
+    /** 手柄拖拽信号是否已发出（防止重复触发） */
+    private var selectionDragActive = false
+
     /** 设置已保存的笔记/高亮并刷新当前页。 */
     fun setSavedNotes(notes: List<Note>) {
         savedNotes = notes
         slotManager.refreshCurrentHighlights()
+    }
+
+    /**
+     * 在有活跃选区时拦截触摸事件，通知 Compose 层驱动菜单拖拽动画。
+     * DOWN → onSelectionDrag(true)（菜单缩小淡出）
+     * UP/CANCEL → onSelectionDrag(false)（菜单放大淡入）
+     * 不消费事件，仅旁观，交给子 View 正常处理。
+     */
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        val hasSelection = run {
+            val sp = curPageView.textView.text as? Spannable ?: return@run false
+            val start = Selection.getSelectionStart(sp)
+            val end = Selection.getSelectionEnd(sp)
+            start >= 0 && end > start
+        }
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                if (hasSelection && !selectionDragActive) {
+                    selectionDragActive = true
+                    callbacks?.onSelectionDrag(true)
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (selectionDragActive) {
+                    selectionDragActive = false
+                    callbacks?.onSelectionDrag(false)
+                }
+            }
+        }
+        return super.dispatchTouchEvent(ev)
     }
 
     // ── 触摸分类追踪（ReadView 层统一拦截） ──
@@ -474,10 +528,10 @@ class ReadView(context: Context) : FrameLayout(context) {
     // ── 选区工具方法 ──
 
     /**
-     * 获取当前页选区的屏幕像素边界框（供 Compose 层读取）。
-     * @return (topY, bottomY, startX, endX) 或 null（无选区时）
+     * 获取当前页选区的完整信息（供 Compose 层自定义菜单使用）。
+     * @return null 表示当前无选区
      */
-    fun getSelectionBounds(): Quadruple<Float, Float, Float, Float>? {
+    fun getSelectionInfo(): SelectionInfo? {
         val tv = curPageView.textView
         val layout = tv.layout ?: return null
         val spannable = tv.text as? android.text.Spannable ?: return null
@@ -485,15 +539,29 @@ class ReadView(context: Context) : FrameLayout(context) {
         val selEnd = android.text.Selection.getSelectionEnd(spannable)
         if (selStart < 0 || selEnd <= selStart) return null
 
+        val text = spannable.toString().substring(selStart, selEnd)
+        val curSlot = slotManager.getCurSlot()
+        val chapterIdx = curSlot.chapterIndex
+        val chapterStartOffset = curPageView.chapterStartOffset
+
         val startLine = layout.getLineForOffset(selStart)
         val endLine = layout.getLineForOffset(selEnd.coerceAtMost(spannable.length - 1))
-
         val topY = (tv.top + tv.paddingTop + layout.getLineTop(startLine)).toFloat()
         val bottomY = (tv.top + tv.paddingTop + layout.getLineBottom(endLine)).toFloat()
         val startX = tv.left + tv.paddingLeft + layout.getPrimaryHorizontal(selStart)
         val endX = tv.left + tv.paddingLeft + layout.getPrimaryHorizontal(selEnd)
 
-        return Quadruple(topY, bottomY, startX, endX)
+        return SelectionInfo(
+            selectedText = text,
+            chapterIndex = chapterIdx,
+            chapterStartOffset = chapterStartOffset,
+            pageStart = selStart,
+            pageEnd = selEnd,
+            selTopY = topY,
+            selBottomY = bottomY,
+            selStartX = startX,
+            selEndX = endX
+        )
     }
 
     /** 清除当前页的选区 */
@@ -504,70 +572,24 @@ class ReadView(context: Context) : FrameLayout(context) {
     // ── 原生选择 ActionMode ──
 
     /**
-     * 🔥 为 PageContentView 的 TextView 设置原生选择 ActionMode 回调。
-     * 系统自动提供泪滴手柄 + 浮动工具栏；我们添加：高亮、笔记、搜索。
+     * 为 PageContentView 的 TextView 设置 customSelectionActionModeCallback。
+     * MainActivity 的 onActionModeStarted 会拦截 TYPE_PRIMARY 并调用 finish()，
+     * 因此系统浮动工具栏不会显示。这里只保留 onDestroyActionMode 以通知 Compose
+     * 层在选区被清除时隐藏自定义菜单。
      */
     private fun setupNativeSelectionActionMode(pageView: PageContentView) {
         pageView.textView.customSelectionActionModeCallback = object : ActionMode.Callback {
-            override fun onCreateActionMode(mode: ActionMode?, menu: Menu?): Boolean {
-                if (menu == null || mode == null) return false
-                menu.add(0, MENU_HIGHLIGHT, 0, "高亮")
-                menu.add(0, MENU_NOTE, 1, "笔记")
-                menu.add(0, MENU_SEARCH, 2, "搜索")
-                mode.title = "选择文字"
-                return true
-            }
-
+            // 不添加任何菜单项；返回 true 表示我们接管了 ActionMode
+            // 实际上 MainActivity 会在 onActionModeStarted 里调用 finish()，
+            // 所以这里的菜单永远不会呈现给用户
+            override fun onCreateActionMode(mode: ActionMode?, menu: Menu?): Boolean = true
             override fun onPrepareActionMode(mode: ActionMode?, menu: Menu?): Boolean = false
-
-            override fun onActionItemClicked(mode: ActionMode?, item: MenuItem?): Boolean {
-                if (item == null) return false
-                val tv = pageView.textView
-                val spannable = tv.text as? Spannable ?: return false
-                val pageStart = Selection.getSelectionStart(spannable)
-                val pageEnd = Selection.getSelectionEnd(spannable)
-                if (pageStart < 0 || pageEnd <= pageStart) return false
-
-                val selectedText = spannable.toString().substring(pageStart, pageEnd)
-
-                // 页面偏移 → 章节偏移转换
-                val curSlot = slotManager.getCurSlot()
-                val chapterIdx = curSlot.chapterIndex
-                val chapterStartOffset = pageView.chapterStartOffset
-                val chapStart = chapterStartOffset + pageStart
-                val chapEnd = chapterStartOffset + pageEnd
-
-                val action = when (item.itemId) {
-                    MENU_HIGHLIGHT -> "highlight"
-                    MENU_NOTE -> "note"
-                    MENU_SEARCH -> "search"
-                    else -> return false
-                }
-
-                Log.d(TAG, "ActionMode: action=$action text=\"$selectedText\" chapter=$chapterIdx offsets=($chapStart, $chapEnd)")
-
-                callbacks?.onSelectionAction(
-                    action = action,
-                    selectedText = selectedText,
-                    chapterIndex = chapterIdx,
-                    startPosition = chapStart,
-                    endPosition = chapEnd,
-                    pageStart = pageStart,
-                    pageEnd = pageEnd
-                )
-
-                mode?.finish()
-                return true
-            }
+            override fun onActionItemClicked(mode: ActionMode?, item: MenuItem?): Boolean = false
 
             override fun onDestroyActionMode(mode: ActionMode?) {
-                callbacks?.onSelectionAction(
-                    action = "dismiss",
-                    selectedText = "",
-                    chapterIndex = -1,
-                    startPosition = 0,
-                    endPosition = 0
-                )
+                // 这里不发 "dismiss"：onDestroyActionMode 是由我们自己在
+                // MainActivity.onActionModeStarted 里调用 mode.finish() 触发的，
+                // 并不代表用户真正退出了选择。真正的退出通过 onMenuToggle / onPageChanged 处理。
             }
         }
     }

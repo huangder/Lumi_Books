@@ -39,4 +39,11 @@ interface ReadViewCallbacks {
         pageStart: Int = 0,
         pageEnd: Int = 0
     ) {}
+
+    /**
+     * 用户在有活跃选区时触摸屏幕（可能拖拽手柄）。
+     * [isDragging] = true：手指按下；false：手指抬起。
+     * Compose 层用此信号驱动菜单缩放/淡出动画。
+     */
+    fun onSelectionDrag(isDragging: Boolean) {}
 }

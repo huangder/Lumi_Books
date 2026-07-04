@@ -97,6 +97,7 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
+import com.huangder.lumibooks.MainActivity
 import com.huangder.lumibooks.ui.theme.DingliSong
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -112,11 +113,18 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     // ReadView 引用
     val readViewRef = remember { mutableStateOf<ReadView?>(null) }
 
+    // MainActivity 引用（用于注册 ActionMode 拦截回调）
+    val activity = context as? MainActivity
+
     // TOC 跳转标记（区分用户点击 TOC 和正常翻页带来的章节变化）
     val isTocJump = remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
+        // 进入阅读页时开启 ActionMode 拦截，离开时恢复
+        activity?.isInReaderScreen = true
         onDispose {
+            activity?.isInReaderScreen = false
+            activity?.onSelectionActionModeStarted = null
             viewModel.saveAndPause()
             viewModel.clearError()
         }
@@ -133,6 +141,36 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     var pendingSelection by remember { mutableStateOf<PendingSelection?>(null) }
     var showNoteInput by remember { mutableStateOf(false) }
     var noteInputText by remember { mutableStateOf("") }
+
+    // 自定义选择菜单状态（null = 不显示）
+    var selectionState by remember { mutableStateOf<SelectionState?>(null) }
+    // 手柄拖拽中：驱动菜单缩小/淡出动画
+    var isSelectionDragging by remember { mutableStateOf(false) }
+
+    // 注册 MainActivity ActionMode 拦截回调：长按选词后弹出自定义菜单
+    DisposableEffect(activity) {
+        activity?.onSelectionActionModeStarted = {
+            val info = readViewRef.value?.getSelectionInfo()
+            if (info != null) {
+                selectionState = SelectionState(
+                    chapterIndex = info.chapterIndex,
+                    pageInChapter = 0,
+                    charStart = info.chapterStartOffset + info.pageStart,
+                    charEnd = info.chapterStartOffset + info.pageEnd,
+                    selectedText = info.selectedText,
+                    touchX = info.selStartX,
+                    touchY = info.selTopY,
+                    selTopY = info.selTopY,
+                    selBottomY = info.selBottomY,
+                    selStartX = info.selStartX,
+                    selEndX = info.selEndX
+                )
+            }
+        }
+        onDispose {
+            activity?.onSelectionActionModeStarted = null
+        }
+    }
 
     // TOC 跳转：当 currentChapterIndex 变化且是 TOC 触发时，跳转 ReadView
     LaunchedEffect(uiState.currentChapterIndex) {
@@ -238,16 +276,25 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                 pageInChapter: Int,
                                 chapterTotalPages: Int
                             ) {
+                                // 翻页时关闭选择菜单（选区已随页面切换失效）
+                                selectionState = null
                                 viewModel.onNewEnginePageChanged(
                                     globalPage, chapterIndex, pageInChapter, chapterTotalPages
                                 )
                             }
 
                             override fun onMenuToggle() {
+                                // 用户点击屏幕中心区域，关闭选择菜单
+                                selectionState = null
+                                isSelectionDragging = false
                                 viewModel.toggleMenu()
                             }
 
                             override fun onLoadingChanged(isLoading: Boolean) {}
+
+                            override fun onSelectionDrag(isDragging: Boolean) {
+                                isSelectionDragging = isDragging
+                            }
 
                             override fun onSelectionAction(
                                 action: String,
@@ -288,7 +335,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                         }
                                     }
                                     "dismiss" -> {
-                                        // 选区被清除
+                                        // 选区被清除 → 隐藏自定义菜单
+                                        selectionState = null
                                     }
                                 }
                             }
@@ -534,9 +582,64 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         onDismiss = { showNotesList = false; requestCloseNotesList = false }
     )
 
-    // ── 文字选择框架（完整版） ──
-    // 选择菜单覆盖层
-    // 🔥 笔记输入弹窗（原生选择 ActionMode 触发"笔记"时弹出）
+    // ── 文字选择自定义菜单 ──
+    SelectionMenuOverlay(
+        state = selectionState,
+        readerTheme = uiState.readerTheme,
+        isDragging = isSelectionDragging,
+        onDismiss = {
+            selectionState = null
+            readViewRef.value?.curPageView?.clearSelection()
+        },
+        onHighlight = {
+            val s = selectionState ?: return@SelectionMenuOverlay
+            viewModel.addNote(
+                selectedText = s.selectedText,
+                noteText = "",
+                chapterIndex = s.chapterIndex,
+                startPosition = s.charStart,
+                endPosition = s.charEnd,
+                color = "#40FFEB3B"
+            )
+            selectionState = null
+            readViewRef.value?.curPageView?.clearSelection()
+        },
+        onNote = {
+            val s = selectionState ?: return@SelectionMenuOverlay
+            pendingSelection = PendingSelection(s.selectedText, s.chapterIndex, s.charStart, s.charEnd)
+            showNoteInput = true
+            selectionState = null
+        },
+        onSearch = {
+            val s = selectionState ?: return@SelectionMenuOverlay
+            showSearch = true
+            searchQuery = s.selectedText
+            isSearching = true
+            hasSearched = true
+            searchResults = emptyList()
+            scope.launch {
+                searchResults = viewModel.searchAllChapters(s.selectedText)
+                isSearching = false
+            }
+            selectionState = null
+        },
+        onCopy = {
+            val s = selectionState ?: return@SelectionMenuOverlay
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("selected", s.selectedText))
+            selectionState = null
+            readViewRef.value?.curPageView?.clearSelection()
+        },
+        onRemoveHighlight = {
+            selectionState = null
+            readViewRef.value?.curPageView?.clearSelection()
+        },
+        onViewNote = {
+            selectionState = null
+        }
+    )
+
+    // 🔥 笔记输入弹窗（自定义菜单触发"笔记"时弹出）
     NoteInputSheet(
         visible = showNoteInput,
         initialText = noteInputText,
@@ -1217,6 +1320,7 @@ private data class SelectionState(
 private fun SelectionMenuOverlay(
     state: SelectionState?,
     readerTheme: String,
+    isDragging: Boolean,
     onDismiss: () -> Unit,
     onHighlight: () -> Unit,
     onNote: () -> Unit,
@@ -1227,28 +1331,58 @@ private fun SelectionMenuOverlay(
 ) {
     if (state == null) return
 
-    // 根据阅读背景深浅选菜单颜色
-    val isDarkTheme = readerTheme == "night"
-    val menuBg = if (isDarkTheme) Color(0xFFEAEAEA) else Color(0xFF2C2C2E)
-    val menuText = if (isDarkTheme) Color(0xFF1C1C1E) else Color.White
-    val configuration = LocalConfiguration.current
-    val screenWidthPx = with(LocalDensity.current) { configuration.screenWidthDp.dp.toPx() }
-    val screenHeightPx = with(LocalDensity.current) { configuration.screenHeightDp.dp.toPx() }
-    val menuWidthPx = with(LocalDensity.current) { 280.dp.toPx() }
-    val menuHeightPx = with(LocalDensity.current) { 56.dp.toPx() }
+    // 颜色跟随阅读背景：深色背景→深色菜单，浅色背景→浅色菜单
+    val menuBg = when (readerTheme) {
+        "night"  -> Color(0xFF2C2C2E)       // 深灰，与夜间背景 #1a1a1a 近似
+        "sepia"  -> Color(0xFFE8D5BF)       // 暖米色，比 sepia 背景深一档
+        "green"  -> Color(0xFFCEE8CE)       // 浅绿，比 green 背景深一档
+        else     -> Color(0xFFEEEEEE)       // 浅灰，与白天背景协调
+    }
+    val menuText = when (readerTheme) {
+        "night"  -> Color(0xFFE5E5E5)
+        "sepia"  -> Color(0xFF4A3728)
+        "green"  -> Color(0xFF2E7D32)
+        else     -> Color(0xFF1C1C1E)
+    }
+    val dividerColor = menuText.copy(alpha = 0.15f)
 
-    // 基于选区边界框定位菜单（非触摸点）
+    val density = LocalDensity.current
+    val configuration = LocalConfiguration.current
+    val screenWidthPx  = with(density) { configuration.screenWidthDp.dp.toPx() }
+    val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
+    val menuWidthPx    = with(density) { 320.dp.toPx() }
+    val menuHeightPx   = with(density) { 52.dp.toPx() }
+
+    // 菜单定位：水平居中于选区，上下由选区位置决定
     val selCenterX = (state.selStartX + state.selEndX) / 2f
-    val menuX = (selCenterX - menuWidthPx / 2f).coerceIn(12f, (screenWidthPx - menuWidthPx - 12f).coerceAtLeast(12f))
-    // 选区中点在屏幕上半部分 → 菜单在选区下方；下半部分 → 菜单在选区上方
+    val menuX = (selCenterX - menuWidthPx / 2f)
+        .coerceIn(12f, (screenWidthPx - menuWidthPx - 12f).coerceAtLeast(12f))
     val selCenterY = (state.selTopY + state.selBottomY) / 2f
     val menuY = if (selCenterY > screenHeightPx * 0.5f) {
-        // 选区偏下，菜单显示在选区上方
         (state.selTopY - menuHeightPx - 16f).coerceAtLeast(12f)
     } else {
-        // 选区偏上，菜单显示在选区下方
         (state.selBottomY + 16f).coerceAtMost((screenHeightPx - menuHeightPx - 12f).coerceAtLeast(12f))
     }
+
+    // ── 动画 ──
+    // 进入动画（首次显示：放大淡入）
+    val enterAlpha = remember { Animatable(0f) }
+    val enterScale = remember { Animatable(0.88f) }
+    LaunchedEffect(Unit) {
+        launch { enterAlpha.animateTo(1f, tween(180)) }
+        launch { enterScale.animateTo(1f, spring(dampingRatio = 0.65f, stiffness = 380f)) }
+    }
+    // 拖拽动画（手柄拖动中：缩小淡出）
+    val dragScale by animateFloatAsState(
+        targetValue = if (isDragging) 0.82f else 1f,
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = 500f),
+        label = "dragScale"
+    )
+    val dragAlpha by animateFloatAsState(
+        targetValue = if (isDragging) 0.22f else 1f,
+        animationSpec = tween(if (isDragging) 120 else 200),
+        label = "dragAlpha"
+    )
 
     Popup(
         alignment = Alignment.TopStart,
@@ -1261,25 +1395,47 @@ private fun SelectionMenuOverlay(
     ) {
         Row(
             modifier = Modifier
-                .clip(RoundedCornerShape(20.dp))
+                .graphicsLayer {
+                    val s = enterScale.value * dragScale
+                    scaleX = s; scaleY = s
+                    alpha = enterAlpha.value * dragAlpha
+                    transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
+                }
+                .clip(RoundedCornerShape(22.dp))
                 .background(menuBg)
-                .padding(horizontal = 4.dp, vertical = 6.dp),
+                .padding(horizontal = 2.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (state.hasHighlight || state.hasNote) {
                 MenuChip("移除高亮", menuText, onRemoveHighlight)
+                MenuDivider(dividerColor)
                 if (state.hasNote) {
                     MenuChip("查看笔记", menuText, onViewNote)
+                    MenuDivider(dividerColor)
                     MenuChip("移除笔记", menuText, onRemoveHighlight)
+                    MenuDivider(dividerColor)
                 }
             } else {
                 MenuChip("高亮", menuText, onHighlight)
+                MenuDivider(dividerColor)
                 MenuChip("笔记", menuText, onNote)
+                MenuDivider(dividerColor)
             }
             MenuChip("搜索", menuText, onSearch)
+            MenuDivider(dividerColor)
             MenuChip("复制", menuText, onCopy)
         }
     }
+}
+
+@Composable
+private fun MenuDivider(color: Color) {
+    Box(
+        modifier = Modifier
+            .width(0.5.dp)
+            .height(18.dp)
+            .background(color)
+    )
 }
 
 @Composable
