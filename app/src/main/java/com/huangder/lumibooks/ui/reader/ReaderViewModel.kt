@@ -49,6 +49,8 @@ data class ReaderUiState(
     val readerTheme: String = "day",
     /** 亮度 0f~1f，-1f 跟随系统 */
     val brightness: Float = -1f,
+    /** 自定义导入字体文件路径 */
+    val customFontPath: String? = null,
     val error: String? = null,
     /** 全局页码（跨所有章节），新引擎用 */
     val globalPageIndex: Int = 0,
@@ -125,6 +127,11 @@ class ReaderViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(brightness = b)
             }
         }
+        viewModelScope.launch {
+            dataStoreManager.customFontPath.collectLatest { path ->
+                _uiState.value = _uiState.value.copy(customFontPath = path)
+            }
+        }
     }
 
     fun saveFontSize(size: Float) {
@@ -165,6 +172,25 @@ class ReaderViewModel @Inject constructor(
     fun saveBrightness(value: Float) {
         _uiState.value = _uiState.value.copy(brightness = value)
         viewModelScope.launch { dataStoreManager.saveBrightness(value) }
+    }
+
+    fun saveCustomFontPath(path: String?) {
+        _uiState.value = _uiState.value.copy(customFontPath = path)
+        viewModelScope.launch { dataStoreManager.saveCustomFontPath(path) }
+    }
+
+    /** 从 URI 导入字体文件到内部存储，返回文件路径 */
+    suspend fun importFont(context: android.content.Context, uri: android.net.Uri): String? {
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val fontDir = java.io.File(context.filesDir, "fonts").apply { mkdirs() }
+                val target = java.io.File(fontDir, "custom_font.ttf")
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    target.outputStream().use { output -> input.copyTo(output) }
+                }
+                if (target.exists() && target.length() > 0) target.absolutePath else null
+            } catch (_: Exception) { null }
+        }
     }
 
     /** 用户离开阅读页时调用（DisposableEffect.onDispose） */

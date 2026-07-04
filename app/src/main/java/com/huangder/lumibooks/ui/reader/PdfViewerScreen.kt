@@ -69,7 +69,7 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppType
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import com.huangder.lumibooks.ui.theme.DingliSong
+import androidx.compose.ui.text.font.FontFamily
 import java.io.File
 
 @Composable

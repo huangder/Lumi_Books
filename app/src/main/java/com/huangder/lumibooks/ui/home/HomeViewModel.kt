@@ -19,6 +19,7 @@ data class HomeUiState(
     val books: List<Book> = emptyList(),
     val todayReadingTime: Long = 0,
     val dailyGoal: Int = 30, // 分钟
+    val avatarUri: String? = null,
     val searchQuery: String = "",
     val isSearchActive: Boolean = false,
     val sortBy: SortBy = SortBy.LAST_READ,
@@ -44,6 +45,7 @@ class HomeViewModel @Inject constructor(
         loadBooks()
         loadTodayReadingTime()
         loadDailyGoal()
+        loadAvatar()
     }
 
     private fun loadBooks() {
@@ -82,6 +84,14 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.dailyGoal.collectLatest { goal ->
                 _uiState.value = _uiState.value.copy(dailyGoal = goal)
+            }
+        }
+    }
+
+    private fun loadAvatar() {
+        viewModelScope.launch {
+            dataStoreManager.avatarUri.collectLatest { uri ->
+                _uiState.value = _uiState.value.copy(avatarUri = uri)
             }
         }
     }

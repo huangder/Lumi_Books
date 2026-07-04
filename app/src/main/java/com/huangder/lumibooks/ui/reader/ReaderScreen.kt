@@ -107,7 +107,7 @@ import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.MainActivity
-import com.huangder.lumibooks.ui.theme.DingliSong
+import com.huangder.lumibooks.ui.theme.KaiTi
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
@@ -469,6 +469,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         lineHeightMult = uiState.lineHeight,
                         letterSpacingDp = uiState.letterSpacing,
                         fontType = uiState.fontType,
+                        customFontPath = uiState.customFontPath,
                         marginHorizDp = uiState.marginHorizDp,
                         marginVertDp = uiState.marginVertDp
                     )
@@ -666,6 +667,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 currentLineHeight = uiState.lineHeight,
                 currentLetterSpacing = uiState.letterSpacing,
                 currentFontType = uiState.fontType,
+                customFontPath = uiState.customFontPath,
                 currentMarginHoriz = uiState.marginHorizDp,
                 currentMarginVert = uiState.marginVertDp,
                 currentBgColor = sheetBg,
@@ -674,6 +676,15 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 onLineHeightChange = { viewModel.saveLineHeight(it) },
                 onLetterSpacingChange = { viewModel.saveLetterSpacing(it) },
                 onFontTypeChange = { viewModel.saveFontType(it) },
+                onImportFont = { uri ->
+                    scope.launch {
+                        val path = viewModel.importFont(context, uri)
+                        if (path != null) {
+                            viewModel.saveCustomFontPath(path)
+                            viewModel.saveFontType("custom")
+                        }
+                    }
+                },
                 onMarginHorizChange = { viewModel.saveMarginHoriz(it) },
                 onMarginVertChange = { viewModel.saveMarginVert(it) },
                 onDismiss = { showAdvancedSheet = false; requestCloseAdvanced = false }
@@ -1210,7 +1221,7 @@ private fun TocSheet(
                     "目录",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    fontFamily = DingliSong,
+                    fontFamily = KaiTi,
                     color = Color.Black
                 )
                 Spacer(Modifier.weight(1f))
@@ -1332,7 +1343,7 @@ private fun SearchSheet(
                         "搜索",
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
-                        fontFamily = DingliSong,
+                        fontFamily = KaiTi,
                         color = Color.Black
                     )
                     Spacer(Modifier.weight(1f))
@@ -1769,7 +1780,7 @@ private fun NoteInputSheet(
                         modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.BgGray).clickable { onCancel() },
                         contentAlignment = Alignment.Center
                     ) { Icon(Icons.Default.Close, "取消", tint = AppColors.TextSecondary, modifier = Modifier.size(18.dp)) }
-                    Text("笔记", fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = DingliSong, color = AppColors.TextPrimary, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
+                    Text("笔记", fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = KaiTi, color = AppColors.TextPrimary, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
                     Box(
                         modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.Accent.copy(alpha = 0.15f)).clickable { onConfirm() },
                         contentAlignment = Alignment.Center
@@ -1875,7 +1886,7 @@ private fun NotesListSheet(
                     "高亮与笔记",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    fontFamily = DingliSong,
+                    fontFamily = KaiTi,
                     color = Color.Black
                 )
                 Spacer(Modifier.weight(1f))
