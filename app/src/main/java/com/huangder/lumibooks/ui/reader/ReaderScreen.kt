@@ -11,6 +11,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -153,6 +154,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     var isSelectionDragging by remember { mutableStateOf(false) }
     // 每次拖拽结束后自增，触发 SelectionMenuOverlay 重置入场动画
     var menuReappearKey by remember { mutableStateOf(0) }
+    // 高亮颜色选择器：true → 菜单从操作按钮切换为6色圆点
+    var showHighlightColorPicker by remember { mutableStateOf(false) }
 
     // 注册 MainActivity ActionMode 拦截回调：长按选词后弹出自定义菜单
     // 同时延迟添加 SpanWatcher 检测选区变化（手柄拖拽）
@@ -163,6 +166,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         var spanWatcher: SpanWatcher? = null
 
         activity?.onSelectionActionModeStarted = {
+            showHighlightColorPicker = false  // 每次新选词重置为操作菜单
             val info = readViewRef.value?.getSelectionInfo()
             if (info != null) {
                 selectionState = SelectionState(
@@ -654,12 +658,13 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         readerTheme = uiState.readerTheme,
         isDragging = isSelectionDragging,
         reappearKey = menuReappearKey,
+        showColorPicker = showHighlightColorPicker,
         onDismiss = {
             selectionState = null
+            showHighlightColorPicker = false
             readViewRef.value?.curPageView?.clearSelection()
         },
-        onHighlight = {
-            // 读取最新选区信息（手柄拖拽后 selectionState 可能过时）
+        onColorPicked = { hexColor ->
             val fresh = readViewRef.value?.getSelectionInfo()
             if (fresh != null) {
                 viewModel.addNote(
@@ -668,11 +673,16 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     chapterIndex = fresh.chapterIndex,
                     startPosition = fresh.chapterStartOffset + fresh.pageStart,
                     endPosition = fresh.chapterStartOffset + fresh.pageEnd,
-                    color = "#40FFEB3B"
+                    color = hexColor
                 )
             }
             selectionState = null
+            showHighlightColorPicker = false
             readViewRef.value?.curPageView?.clearSelection()
+        },
+        onHighlight = {
+            // 切换到颜色选择子菜单
+            showHighlightColorPicker = true
         },
         onNote = {
             val fresh = readViewRef.value?.getSelectionInfo()
@@ -685,6 +695,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 showNoteInput = true
             }
             selectionState = null
+            showHighlightColorPicker = false
         },
         onSearch = {
             val fresh = readViewRef.value?.getSelectionInfo()
@@ -699,6 +710,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 isSearching = false
             }
             selectionState = null
+            showHighlightColorPicker = false
         },
         onCopy = {
             val fresh = readViewRef.value?.getSelectionInfo()
@@ -706,14 +718,17 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
             clipboard.setPrimaryClip(android.content.ClipData.newPlainText("selected", text))
             selectionState = null
+            showHighlightColorPicker = false
             readViewRef.value?.curPageView?.clearSelection()
         },
         onRemoveHighlight = {
             selectionState = null
+            showHighlightColorPicker = false
             readViewRef.value?.curPageView?.clearSelection()
         },
         onViewNote = {
             selectionState = null
+            showHighlightColorPicker = false
         }
     )
 
@@ -1400,39 +1415,54 @@ private fun SelectionMenuOverlay(
     readerTheme: String,
     isDragging: Boolean,
     reappearKey: Int,
+    showColorPicker: Boolean = false,
     onDismiss: () -> Unit,
     onHighlight: () -> Unit,
     onNote: () -> Unit,
     onSearch: () -> Unit,
     onCopy: () -> Unit,
     onRemoveHighlight: () -> Unit,
-    onViewNote: () -> Unit
+    onViewNote: () -> Unit,
+    onColorPicked: (String) -> Unit = {}
 ) {
     if (state == null) return
     // 拖拽手柄期间完全隐藏菜单，抬手后以新坐标重新弹出
     if (isDragging) return
 
+    // 高亮颜色列表（来自 ui-design-spec.md）
+    val highlightColors = listOf(
+        "#FFEB3B" to Color(0xFFFFEB3B),  // 黄色
+        "#FF8A80" to Color(0xFFFF8A80),  // 粉色
+        "#69F0AE" to Color(0xFF69F0AE),  // 绿色
+        "#82B1FF" to Color(0xFF82B1FF),  // 蓝色
+        "#BCAAA4" to Color(0xFFBCAAA4),  // 棕色
+        "#BDBDBD" to Color(0xFFBDBDBD)   // 灰色
+    )
+
     // 颜色跟随阅读背景：深色背景→深色菜单，浅色背景→浅色菜单
     val menuBg = when (readerTheme) {
-        "night"  -> Color(0xFF2C2C2E)       // 深灰，与夜间背景 #1a1a1a 近似
-        "sepia"  -> Color(0xFFE8D5BF)       // 暖米色，比 sepia 背景深一档
-        "green"  -> Color(0xFFCEE8CE)       // 浅绿，比 green 背景深一档
-        else     -> Color(0xFFEEEEEE)       // 浅灰，与白天背景协调
+        "night"  -> Color.Black
+        else     -> Color.White
     }
     val menuText = when (readerTheme) {
-        "night"  -> Color(0xFFE5E5E5)
-        "sepia"  -> Color(0xFF4A3728)
-        "green"  -> Color(0xFF2E7D32)
-        else     -> Color(0xFF1C1C1E)
+        "night"  -> Color.White
+        else     -> Color.Black
     }
     val dividerColor = menuText.copy(alpha = 0.15f)
+
+    // ── 宽度动画：操作菜单 360dp ↔ 颜色选择器 460dp ──
+    val animMenuWidthDp by animateDpAsState(
+        targetValue = if (showColorPicker) 380.dp else 360.dp,
+        animationSpec = tween(200, easing = FastOutSlowInEasing),
+        label = "menuWidth"
+    )
 
     val density = LocalDensity.current
     val configuration = LocalConfiguration.current
     val screenWidthPx  = with(density) { configuration.screenWidthDp.dp.toPx() }
     val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
-    val menuWidthPx    = with(density) { 320.dp.toPx() }
-    val menuHeightPx   = with(density) { 52.dp.toPx() }
+    val menuWidthPx    = with(density) { animMenuWidthDp.toPx() }
+    val menuHeightPx   = with(density) { 60.dp.toPx() }
 
     // 菜单定位：水平居中于选区，上下由选区位置决定
     val selCenterX = (state.selStartX + state.selEndX) / 2f
@@ -1445,13 +1475,20 @@ private fun SelectionMenuOverlay(
         (state.selBottomY + 16f).coerceAtMost((screenHeightPx - menuHeightPx - 12f).coerceAtLeast(12f))
     }
 
-    // ── 动画 ──
-    // 每次 reappearKey 变化（首次显示 / 拖拽结束重新弹出）时重置并重跑入场动画
+    // ── 入场动画（首次显示 / 拖拽结束重新弹出） ──
     val enterAlpha = remember(reappearKey) { Animatable(0f) }
     val enterScale = remember(reappearKey) { Animatable(0.88f) }
     LaunchedEffect(reappearKey) {
         launch { enterAlpha.animateTo(1f, tween(180)) }
         launch { enterScale.animateTo(1f, spring(dampingRatio = 0.65f, stiffness = 380f)) }
+    }
+
+    // ── 内容切换交叉淡出淡入 ──
+    val contentAlpha = remember { Animatable(1f) }
+    LaunchedEffect(showColorPicker) {
+        // 淡出 → 切换 → 淡入
+        contentAlpha.animateTo(0f, tween(100))
+        contentAlpha.animateTo(1f, tween(150))
     }
 
     Popup(
@@ -1468,15 +1505,34 @@ private fun SelectionMenuOverlay(
                 .graphicsLayer {
                     scaleX = enterScale.value
                     scaleY = enterScale.value
-                    alpha = enterAlpha.value
+                    alpha = enterAlpha.value * contentAlpha.value
                     transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
                 }
                 .clip(RoundedCornerShape(22.dp))
                 .background(menuBg)
-                .padding(horizontal = 2.dp, vertical = 7.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(
+                    horizontal = if (showColorPicker) 12.dp else 4.dp,
+                    vertical = 12.dp
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = if (showColorPicker) Arrangement.Center else Arrangement.Start
         ) {
-            if (state.hasHighlight || state.hasNote) {
+            if (showColorPicker) {
+                // 颜色选择子菜单：6个色块圆点，手动 Spacer 控制间距
+                highlightColors.forEachIndexed { index, (hex, color) ->
+                    if (index > 0) Spacer(Modifier.width(14.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(20.dp)
+                            .clip(CircleShape)
+                            .background(color)
+                            .clickable(
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() }
+                            ) { onColorPicked(hex) }
+                    )
+                }
+            } else if (state.hasHighlight || state.hasNote) {
                 MenuChip("移除高亮", menuText, onRemoveHighlight)
                 MenuDivider(dividerColor)
                 if (state.hasNote) {
@@ -1485,15 +1541,18 @@ private fun SelectionMenuOverlay(
                     MenuChip("移除笔记", menuText, onRemoveHighlight)
                     MenuDivider(dividerColor)
                 }
+                MenuChip("搜索", menuText, onSearch)
+                MenuDivider(dividerColor)
+                MenuChip("复制", menuText, onCopy)
             } else {
                 MenuChip("高亮", menuText, onHighlight)
                 MenuDivider(dividerColor)
                 MenuChip("笔记", menuText, onNote)
                 MenuDivider(dividerColor)
+                MenuChip("搜索", menuText, onSearch)
+                MenuDivider(dividerColor)
+                MenuChip("复制", menuText, onCopy)
             }
-            MenuChip("搜索", menuText, onSearch)
-            MenuDivider(dividerColor)
-            MenuChip("复制", menuText, onCopy)
         }
     }
 }
@@ -1517,7 +1576,7 @@ private fun MenuChip(label: String, textColor: Color, onClick: () -> Unit) {
         modifier = Modifier
             .clip(RoundedCornerShape(16.dp))
             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() }
-            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
     )
 }
 
