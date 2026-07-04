@@ -645,6 +645,17 @@ class ReaderViewModel @Inject constructor(
         } catch (_: Exception) { 0 }
     }
 
+    /**
+     * 根据章内字符偏移估算页码（与搜索结果跳转相同的算法）。
+     */
+    fun estimatePageFromCharOffset(chapterIndex: Int, charOffset: Int): Int {
+        val chapterLen = getChapterTextLength(chapterIndex)
+        val totalPages = _uiState.value.totalPages
+        return if (chapterLen > 0 && totalPages > 0) {
+            (charOffset.toFloat() / chapterLen * totalPages).toInt().coerceIn(0, totalPages - 1)
+        } else 0
+    }
+
     private fun saveReadingSession() {
         val endTime = System.currentTimeMillis()
         val duration = endTime - sessionStartTime

@@ -344,6 +344,11 @@ class ReadView(context: Context) : FrameLayout(context) {
         slotManager.jumpTo(chapterIndex, pageInChapter)
     }
 
+    /** 获取指定章节的页数（需已布局） */
+    fun getChapterPageCount(chapterIndex: Int): Int {
+        return layoutEngine.getChapterPageCount(chapterIndex)
+    }
+
     // ── 触摸 ──
 
     /**

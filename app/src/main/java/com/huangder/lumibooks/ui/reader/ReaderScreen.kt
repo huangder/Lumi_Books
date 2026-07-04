@@ -141,6 +141,21 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         if (!uiState.isLoading) onLoadingComplete()
     }
 
+    // 恢复阅读进度：pendingPageFraction > 0 时跳转到目标页
+    LaunchedEffect(uiState.pageReady, uiState.pendingPageFraction) {
+        if (uiState.pageReady && uiState.pendingPageFraction > 0f && readViewRef.value != null) {
+            val totalPages = readViewRef.value!!.getChapterPageCount(uiState.currentChapterIndex)
+            if (totalPages > 0) {
+                val targetPage = (totalPages * uiState.pendingPageFraction).toInt()
+                    .coerceIn(0, totalPages - 1)
+                if (targetPage > 0) {
+                    readViewRef.value!!.jumpToChapter(uiState.currentChapterIndex, targetPage)
+                }
+                viewModel.clearPendingPageFraction()
+            }
+        }
+    }
+
     var showNotesList by remember { mutableStateOf(false) }
 
     // 🔥 原生选择 ActionMode 回调 → 等待笔记输入
@@ -643,7 +658,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         requestClose = requestCloseNotesList,
         notes = viewModel.notes.collectAsState().value,
         onNoteClick = { note ->
-            readViewRef.value?.jumpToChapter(note.chapterIndex, 0)
+            val estimatedPage = viewModel.estimatePageFromCharOffset(note.chapterIndex, note.startPosition)
+            readViewRef.value?.jumpToChapter(note.chapterIndex, estimatedPage)
             showNotesList = false
             requestCloseNotesList = false
         },
