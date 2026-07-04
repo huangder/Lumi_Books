@@ -43,6 +43,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -544,6 +545,17 @@ private fun FontSelector(currentFont: String, customFontPath: String? = null, on
         }
     }
 
+    // 自定义字体的 FontFamily（从文件路径加载）
+    val customFontFamily = remember(customFontPath) {
+        if (customFontPath != null) {
+            try {
+                val file = java.io.File(customFontPath)
+                if (file.exists()) FontFamily(android.graphics.Typeface.createFromFile(file))
+                else FontFamily.Default
+            } catch (_: Exception) { FontFamily.Default }
+        } else FontFamily.Default
+    }
+
     // 第一行：系统、衬线、仿宋
     // 第二行：楷体、导入
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -556,18 +568,21 @@ private fun FontSelector(currentFont: String, customFontPath: String? = null, on
                 label = "系统",
                 isSelected = currentFont == "system",
                 onClick = { onFontChange("system") },
+                fontFamily = FontFamily.Default,
                 modifier = Modifier.weight(1f)
             )
             FontButton(
-                label = "衬线",
+                label = "Serif",
                 isSelected = currentFont == "serif",
                 onClick = { onFontChange("serif") },
+                fontFamily = FontFamily.Serif,
                 modifier = Modifier.weight(1f)
             )
             FontButton(
                 label = "仿宋",
                 isSelected = currentFont == "fangsong",
                 onClick = { onFontChange("fangsong") },
+                fontFamily = FangSong,
                 modifier = Modifier.weight(1f)
             )
         }
@@ -580,6 +595,7 @@ private fun FontSelector(currentFont: String, customFontPath: String? = null, on
                 label = "楷体",
                 isSelected = currentFont == "kaiti",
                 onClick = { onFontChange("kaiti") },
+                fontFamily = KaiTi,
                 modifier = Modifier.weight(1f)
             )
             // 导入字体按钮
@@ -606,7 +622,12 @@ private fun FontSelector(currentFont: String, customFontPath: String? = null, on
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Text(label, fontSize = 14.sp, color = if (hasCustomFont && currentFont == "custom") AccentColor else LightTextSecondary)
+                Text(
+                    label,
+                    fontSize = 14.sp,
+                    fontFamily = if (hasCustomFont) customFontFamily else FontFamily.Default,
+                    color = if (hasCustomFont && currentFont == "custom") AccentColor else LightTextSecondary
+                )
             }
             Spacer(Modifier.weight(1f)) // 占位，保持第二行左对齐
         }
@@ -618,6 +639,7 @@ private fun FontButton(
     label: String,
     isSelected: Boolean,
     onClick: () -> Unit,
+    fontFamily: FontFamily = FontFamily.Default,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -639,6 +661,7 @@ private fun FontButton(
             label,
             fontSize = 14.sp,
             fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+            fontFamily = fontFamily,
             color = Color.Black
         )
     }
