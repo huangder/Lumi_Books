@@ -205,7 +205,8 @@ class ReadView(context: Context) : FrameLayout(context) {
         val marginTop = marginVert + 6f * density   // 顶部微调
         val lineSpacingExtra = 2.5f * density
 
-        // 选择高亮色jian = accent + 25% alpha
+        // 选择高亮色jian
+        // = accent + 25% alpha
         val highlightColor = (accentColor and 0x00FFFFFF) or 0x40000000.toInt()
 
         val customTypeface = if (currentFontType == "dingli_song") {
@@ -550,10 +551,22 @@ class ReadView(context: Context) : FrameLayout(context) {
      */
     private fun setupNativeSelectionActionMode(pageView: PageContentView) {
         pageView.textView.customSelectionActionModeCallback = object : ActionMode.Callback {
-            override fun onCreateActionMode(mode: ActionMode?, menu: Menu?): Boolean = true
+            override fun onCreateActionMode(mode: ActionMode?, menu: Menu?): Boolean {
+                // 🔥 返回 true → 系统创建 ActionMode → 选区保留（MIUI 在 false 时会清除选区）
+                // 立即永久隐藏工具栏 UI（API 23+），选区手柄和高亮不受影响
+                mode?.hide(Long.MAX_VALUE)
+                return true
+            }
             override fun onPrepareActionMode(mode: ActionMode?, menu: Menu?): Boolean {
+                // 🔥 拖拽结束时系统重新调用 onPrepareActionMode（刷新工具栏）
+                // 同步立即隐藏一次，再异步 post 隐藏一次：
+                // 某些 MIUI 版本会在同步 hide 之后异步重新显示 toolbar，需双重保险
+                mode?.hide(Long.MAX_VALUE)
                 menu?.clear()
-                return false
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    mode?.hide(Long.MAX_VALUE)
+                }
+                return true  // 已修改菜单（clear），返回 true 通知系统
             }
             override fun onActionItemClicked(mode: ActionMode?, item: MenuItem?): Boolean = false
             override fun onDestroyActionMode(mode: ActionMode?) {}

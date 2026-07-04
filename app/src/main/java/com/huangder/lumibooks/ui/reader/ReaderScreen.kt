@@ -281,6 +281,9 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                             override fun onLoadingChanged(isLoading: Boolean) {}
 
                             override fun onSelectionStarted() {
+                                // 🔥 拖拽进行中时跳过：primary SpanWatcher 每次 span 变化都触发此回调，
+                                // 若不 guard，会取消 dragHideRunnable（300ms 重弹计时器），导致菜单永不重弹
+                                if (isSelectionDragging) return
                                 showHighlightColorPicker = false
                                 val info = readViewRef.value?.getSelectionInfo() ?: return
                                 selectionState = SelectionState(
@@ -309,8 +312,10 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                     val watcher = object : SpanWatcher {
                                         override fun onSpanChanged(s: Spannable, what: Any, ostart: Int, oend: Int, nstart: Int, nend: Int) {
                                             if (what !== Selection.SELECTION_START && what !== Selection.SELECTION_END) return
-                                            if (selectionState == null) return
-                                            selectionState = null
+                                            // 🔥 移除 "if (selectionState == null) return" 保护：
+                                            // 拖拽中第一次触发后 selectionState 被清空，后续每次 span 变化都会命中该保护
+                                            // 导致防抖计时器无法在持续拖拽时正确重置
+                                            if (selectionState != null) selectionState = null
                                             isSelectionDragging = true
                                             dragHideRunnable?.let { dragHandler.removeCallbacks(it) }
                                             val r = Runnable {
@@ -1455,10 +1460,13 @@ private fun SelectionMenuOverlay(
 
     // ── 入场动画（首次显示 / 拖拽结束重新弹出） ──
     val enterAlpha = remember(reappearKey) { Animatable(0f) }
-    val enterScale = remember(reappearKey) { Animatable(0.88f) }
+    val enterScale = remember(reappearKey) { Animatable(0.75f) }
+    // 向上浮入：从菜单下方12dp处向上移动到原位
+    val enterTranslateY = remember(reappearKey) { Animatable(12f) }
     LaunchedEffect(reappearKey) {
-        launch { enterAlpha.animateTo(1f, tween(180)) }
-        launch { enterScale.animateTo(1f, spring(dampingRatio = 0.65f, stiffness = 380f)) }
+        launch { enterAlpha.animateTo(1f, tween(250)) }
+        launch { enterScale.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = 320f)) }
+        launch { enterTranslateY.animateTo(0f, tween(220, easing = FastOutSlowInEasing)) }
     }
 
     // ── 内容切换交叉淡出淡入 ──
@@ -1483,6 +1491,7 @@ private fun SelectionMenuOverlay(
                 .graphicsLayer {
                     scaleX = enterScale.value
                     scaleY = enterScale.value
+                    translationY = enterTranslateY.value
                     alpha = enterAlpha.value * contentAlpha.value
                     transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
                 }
