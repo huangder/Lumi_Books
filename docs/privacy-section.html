@@ -57,7 +57,7 @@
             background:rgba(255,255,255,0.72); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
             height:var(--nav-height); border-bottom:1px solid rgba(255,255,255,0.5);
             display:flex; align-items:center; justify-content:space-between;
-            padding:0 var(--space-xxl); max-width:var(--max-width); margin:0 auto;
+            padding:0 var(--space-xxl);
             transition: border-color 0.3s, box-shadow 0.3s, background 0.3s;
         }
         .top-nav.scrolled { border-bottom-color:var(--hairline); box-shadow:0 1px 0 rgba(0,0,0,0.04); background:rgba(255,255,255,0.88); }
@@ -68,6 +68,9 @@
         .nav-links { display:flex; align-items:center; gap:var(--space-xl); list-style:none; }
         .nav-links a { text-decoration:none; color:var(--muted); font-size:16px; font-weight:600; transition:color 0.15s; }
         .nav-links a:hover { color:var(--ink); }
+        .nav-cta { display:flex; align-items:center; gap:var(--space-base); }
+        .btn-nav-download { background:var(--primary); color:#fff; text-decoration:none; padding:10px 20px; border-radius:9999px; font-size:14px; font-weight:500; transition:background 0.2s, transform 0.2s; }
+        .btn-nav-download:hover { background:var(--primary-active); transform:scale(1.04); }
 
         /* Section */
         .section { padding:var(--space-section) var(--space-xxl); max-width:var(--max-width); margin:0 auto; }
@@ -150,6 +153,9 @@
         <li><a href="privacy-section.html" style="color:var(--ink);border-bottom:2px solid var(--ink);padding-bottom:2px;">隐私</a></li>
         <li><a href="tech.html">技术</a></li>
     </ul>
+    <div class="nav-cta">
+        <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-nav-download">获取 Lumi</a>
+    </div>
 </nav>
 
 <section class="section">

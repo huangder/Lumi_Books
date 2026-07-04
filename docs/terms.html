@@ -41,12 +41,13 @@
             line-height: 1.5;
             -webkit-font-smoothing: antialiased;
         }
-        .top-bar {
+        .top-nav {
             border-bottom: 1px solid rgba(255,255,255,0.5);
             padding: 0 var(--space-xxl);
             height: 80px;
             display: flex;
             align-items: center;
+            justify-content: space-between;
             background: rgba(255,255,255,0.72);
             backdrop-filter: blur(16px);
             -webkit-backdrop-filter: blur(16px);
@@ -54,16 +55,18 @@
             top: 0;
             z-index: 100;
         }
-        .top-bar a {
-            text-decoration: none;
-            font-size: 16px;
-            font-weight: 600;
-            color: var(--ink);
+        .nav-logo {
             display: flex;
             align-items: center;
             gap: var(--space-sm);
+            text-decoration: none;
+            color: var(--ink);
         }
-        .top-bar a span { font-size: 20px; }
+        .nav-logo img { width: 34px; height: 34px; border-radius: 8px; }
+        .nav-logo span { font-size: 22px; font-weight: 700; }
+        .nav-links { display: flex; gap: 32px; list-style: none; }
+        .nav-links a { text-decoration: none; font-size: 16px; font-weight: 600; color: var(--muted); transition: color 0.15s; }
+        .nav-links a:hover { color: var(--ink); }
 
         .container {
             max-width: var(--max-width);
@@ -153,9 +156,17 @@
 </head>
 <body>
 
-<div class="top-bar">
-    <a href="index.html"><span>←</span> Lumi</a>
-</div>
+<nav class="top-nav">
+    <a href="index.html" class="nav-logo">
+        <img src="icon.png" alt="Lumi">
+        <span>Lumi</span>
+    </a>
+    <ul class="nav-links">
+        <li><a href="features.html">功能</a></li>
+        <li><a href="privacy-section.html">隐私</a></li>
+        <li><a href="tech.html">技术</a></li>
+    </ul>
+</nav>
 
 <div class="container">
     <h1>用户协议</h1>

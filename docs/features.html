@@ -60,77 +60,26 @@
 
         /* ========== Glassmorphism Sticky Nav ========== */
         .top-nav {
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            background: rgba(255, 255, 255, 0.6);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.8);
-            padding: 0 24px;
+            position: sticky; top: 0; z-index: 100;
+            background: rgba(255,255,255,0.72);
+            backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+            height: 80px;
+            border-bottom: 1px solid rgba(255,255,255,0.5);
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 var(--space-xxl);
+            transition: border-color 0.3s, box-shadow 0.3s, background 0.3s;
         }
-
-        .top-nav-inner {
-            max-width: var(--max-width);
-            margin: 0 auto;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            height: 64px;
-        }
-
-        .logo {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 20px;
-            font-weight: 700;
-            color: var(--ink);
-            text-decoration: none;
-        }
-
-        .logo:hover {
-            opacity: 1;
-        }
-
-        .logo-icon {
-            width: 32px;
-            height: 32px;
-            background: linear-gradient(135deg, var(--primary), #e31c5f);
-            border-radius: var(--radius-sm);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 16px;
-            font-weight: 800;
-        }
-
-        .nav-links {
-            display: flex;
-            gap: 24px;
-            align-items: center;
-        }
-
-        .nav-links a {
-            color: var(--body);
-            font-size: 14px;
-            font-weight: 500;
-            padding: 6px 12px;
-            border-radius: var(--radius-sm);
-            transition: background 0.2s, color 0.2s;
-        }
-
-        .nav-links a:hover {
-            background: rgba(0, 0, 0, 0.04);
-            color: var(--ink);
-            opacity: 1;
-        }
-
-        .nav-links a.active {
-            color: var(--primary);
-            background: rgba(255, 56, 92, 0.08);
-        }
+        .top-nav.scrolled { border-bottom-color: var(--hairline); box-shadow: 0 1px 0 rgba(0,0,0,0.04); background: rgba(255,255,255,0.88); }
+        .nav-logo { display: flex; align-items: center; gap: 8px; text-decoration: none; color: var(--primary); }
+        .nav-logo img { width: 34px; height: 34px; border-radius: 8px; transition: transform 0.3s; }
+        .nav-logo:hover img { transform: scale(1.08); }
+        .nav-logo span { font-size: 22px; font-weight: 700; color: var(--ink); }
+        .nav-links { display: flex; gap: 32px; list-style: none; }
+        .nav-links a { text-decoration: none; font-size: 16px; font-weight: 600; color: var(--muted); transition: color 0.15s; }
+        .nav-links a:hover { color: var(--ink); }
+        .nav-cta { display: flex; align-items: center; gap: 16px; }
+        .btn-nav-download { background: var(--primary); color: #fff; text-decoration: none; padding: 10px 20px; border-radius: 9999px; font-size: 14px; font-weight: 500; transition: background 0.2s, transform 0.2s; }
+        .btn-nav-download:hover { background: var(--primary-active); transform: scale(1.04); }
 
         /* ========== Layout ========== */
         .container {
@@ -553,18 +502,18 @@
 </head>
 <body>
 
-    <!-- ========== Sticky Glassmorphism Nav ========== -->
     <nav class="top-nav">
-        <div class="top-nav-inner">
-            <a href="index.html" class="logo">
-                <span class="logo-icon">L</span>
-                Lumi
-            </a>
-            <div class="nav-links">
-                <a href="features.html" class="active">功能</a>
-                <a href="privacy-section.html">隐私</a>
-                <a href="tech.html">技术</a>
-            </div>
+        <a href="index.html" class="nav-logo">
+            <img src="icon.png" alt="Lumi">
+            <span>Lumi</span>
+        </a>
+        <ul class="nav-links">
+            <li><a href="features.html" style="color:var(--ink);border-bottom:2px solid var(--ink);padding-bottom:2px;">功能</a></li>
+            <li><a href="privacy-section.html">隐私</a></li>
+            <li><a href="tech.html">技术</a></li>
+        </ul>
+        <div class="nav-cta">
+            <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-nav-download">获取 Lumi</a>
         </div>
     </nav>
 
@@ -743,6 +692,15 @@
                 }
             });
         });
+
+        /* Nav scroll state */
+        var nav = document.querySelector('.top-nav');
+        window.addEventListener('scroll', function() {
+            requestAnimationFrame(function() {
+                if (window.scrollY > 10) { nav.classList.add('scrolled'); }
+                else { nav.classList.remove('scrolled'); }
+            });
+        }, { passive: true });
     </script>
 
 </body>
