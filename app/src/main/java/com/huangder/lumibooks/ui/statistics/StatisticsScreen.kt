@@ -49,7 +49,7 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
-import com.huangder.lumibooks.ui.theme.DingliSong
+import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.SansSerif
 import java.util.Calendar
 
@@ -82,7 +82,7 @@ fun StatisticsScreen(
             text = "阅读时长与书籍统计",
             fontSize = AppType.Title,
             fontWeight = FontWeight.Bold,
-            fontFamily = DingliSong,
+            fontFamily = KaiTi,
             letterSpacing = (-0.01).sp,
             color = AppColors.TextPrimary,
             modifier = Modifier.padding(horizontal = AppSpace.lg)
@@ -224,7 +224,7 @@ private fun MostReadBooks(books: List<MostReadBook>) {
             .cardPressEffect()
             .padding(AppSpace.md)
     ) {
-        Text("最常阅读的书籍", fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = DingliSong, color = AppColors.TextPrimary)
+        Text("最常阅读的书籍", fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = KaiTi, color = AppColors.TextPrimary)
         Spacer(Modifier.height(AppSpace.md))
 
         if (books.isEmpty()) {

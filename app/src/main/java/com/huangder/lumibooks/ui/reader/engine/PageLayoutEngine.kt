@@ -110,7 +110,7 @@ class PageLayoutEngine {
             "serif" -> Typeface.SERIF
             "sans_serif" -> Typeface.SANS_SERIF
             "monospace" -> Typeface.MONOSPACE
-            "dingli_song" -> customTypeface ?: Typeface.DEFAULT
+            "fangsong", "kaiti", "custom" -> customTypeface ?: Typeface.DEFAULT
             else -> Typeface.DEFAULT
         }
         ownTextPaint.typeface = tf

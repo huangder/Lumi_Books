@@ -9,7 +9,8 @@ drawable ic_launcher_background
 drawable ic_launcher_foreground
 drawable share_poster_bg
 drawable splash_background
-font dingli_song
+font fandol_fang
+font lxgw_wenkai
 mipmap ic_launcher
 string add_bookmark
 string app_name

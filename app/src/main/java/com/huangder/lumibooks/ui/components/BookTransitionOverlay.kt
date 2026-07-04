@@ -36,7 +36,7 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
-import com.huangder.lumibooks.ui.theme.DingliSong
+import com.huangder.lumibooks.ui.theme.KaiTi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -118,7 +118,7 @@ fun BookTransitionOverlay(
                     text = title,
                     fontSize = 22.sp,
                     fontWeight = FontWeight.SemiBold,
-                    fontFamily = DingliSong,
+                    fontFamily = KaiTi,
                     color = AppColors.TextPrimary,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.width(260.dp)

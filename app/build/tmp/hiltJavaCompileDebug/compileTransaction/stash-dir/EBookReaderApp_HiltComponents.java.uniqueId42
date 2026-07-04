@@ -3,6 +3,7 @@ package com.huangder.lumibooks;
 import com.huangder.lumibooks.di.AppModule;
 import com.huangder.lumibooks.ui.home.HomeViewModel_HiltModules;
 import com.huangder.lumibooks.ui.reader.ReaderViewModel_HiltModules;
+import com.huangder.lumibooks.ui.settings.SettingsViewModel_HiltModules;
 import com.huangder.lumibooks.ui.statistics.StatisticsViewModel_HiltModules;
 import com.huangder.lumibooks.ui.welcome.WelcomeViewModel_HiltModules;
 import dagger.Binds;
@@ -162,6 +163,7 @@ public final class EBookReaderApp_HiltComponents {
           HiltWrapper_SavedStateHandleModule.class,
           HomeViewModel_HiltModules.KeyModule.class,
           ReaderViewModel_HiltModules.KeyModule.class,
+          SettingsViewModel_HiltModules.KeyModule.class,
           StatisticsViewModel_HiltModules.KeyModule.class,
           WelcomeViewModel_HiltModules.KeyModule.class
       }
@@ -202,6 +204,7 @@ public final class EBookReaderApp_HiltComponents {
           HiltWrapper_HiltViewModelFactory_ViewModelModule.class,
           HomeViewModel_HiltModules.BindsModule.class,
           ReaderViewModel_HiltModules.BindsModule.class,
+          SettingsViewModel_HiltModules.BindsModule.class,
           StatisticsViewModel_HiltModules.BindsModule.class,
           WelcomeViewModel_HiltModules.BindsModule.class
       }

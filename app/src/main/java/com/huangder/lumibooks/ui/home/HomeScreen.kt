@@ -71,7 +71,7 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
-import com.huangder.lumibooks.ui.theme.DingliSong
+import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.SansSerif
 import com.huangder.lumibooks.util.FileUtils
 import com.huangder.lumibooks.util.TimeUtils
@@ -81,6 +81,7 @@ fun HomeScreen(
     onNavigateToReader: (bookId: String, coverPath: String?, title: String) -> Unit,
     onNavigateToStatistics: () -> Unit,
     onNavigateToBookshelf: () -> Unit,
+    onNavigateToSettings: () -> Unit = {},
     onTabBarVisibleChange: (Boolean) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
@@ -135,7 +136,10 @@ fun HomeScreen(
                 .verticalScroll(rememberScrollState())
         ) {
             Spacer(Modifier.height(AppSpace.md)) // 和状态栏/遮罩拉开距离
-            HomeHeader()
+            HomeHeader(
+                avatarUri = uiState.avatarUri,
+                onAvatarClick = onNavigateToSettings
+            )
             Spacer(Modifier.height(AppSpace.lg))
 
             ImportHint()
@@ -228,7 +232,10 @@ fun HomeScreen(
 // ─── Header ──────────────────────────────────────────────────────
 
 @Composable
-private fun HomeHeader() {
+private fun HomeHeader(
+    avatarUri: String? = null,
+    onAvatarClick: () -> Unit = {}
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -239,25 +246,40 @@ private fun HomeHeader() {
             text = "主页",
             fontSize = AppType.Display,
             fontWeight = FontWeight.Bold,
-            fontFamily = DingliSong,
+            fontFamily = KaiTi,
             letterSpacing = (-0.02).sp,
             color = AppColors.TextPrimary
         )
         Spacer(Modifier.weight(1f))
-        // 默认头像（以后支持用户换头像）
+        // 头像（点击进入设置页）
         Box(
             modifier = Modifier
                 .size(36.dp)
                 .clip(CircleShape)
-                .background(AppColors.BgGray),
+                .background(AppColors.BgGray)
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() }
+                ) { onAvatarClick() },
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = Icons.Outlined.AccountCircle,
-                contentDescription = "头像",
-                tint = AppColors.TextSecondary,
-                modifier = Modifier.size(36.dp)
-            )
+            if (avatarUri != null) {
+                AsyncImage(
+                    model = java.io.File(avatarUri),
+                    contentDescription = "头像",
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Outlined.AccountCircle,
+                    contentDescription = "设置",
+                    tint = AppColors.TextSecondary,
+                    modifier = Modifier.size(36.dp)
+                )
+            }
         }
     }
 }
@@ -324,7 +346,7 @@ private fun ContinueReadingCard(book: Book, onClick: () -> Unit) {
                 text = book.title,
                 fontSize = AppType.Body,
                 fontWeight = FontWeight.SemiBold,
-                fontFamily = DingliSong,
+                fontFamily = KaiTi,
                 color = AppColors.TextPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -357,7 +379,7 @@ private fun SectionHeader(title: String) {
         text = title,
         fontSize = AppType.Section,
         fontWeight = FontWeight.Bold,
-        fontFamily = DingliSong,
+        fontFamily = KaiTi,
         color = AppColors.TextPrimary,
         modifier = Modifier.padding(horizontal = AppSpace.lg)
     )

@@ -54,7 +54,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.domain.model.Book
-import com.huangder.lumibooks.ui.theme.DingliSong
+import com.huangder.lumibooks.ui.theme.KaiTi
 import kotlinx.coroutines.launch
 
 // 设计规范颜色 - 浅色模式
@@ -236,7 +236,7 @@ private fun TodayReadingContent(
         text = "今日阅读",
         fontSize = 20.sp,
         fontWeight = FontWeight.Bold,
-        fontFamily = DingliSong,
+        fontFamily = KaiTi,
         color = textPrimary
     )
 
@@ -416,7 +416,7 @@ private fun GoalPicker(
         text = "设置每日阅读目标",
         fontSize = 20.sp,
         fontWeight = FontWeight.Bold,
-        fontFamily = DingliSong,
+        fontFamily = KaiTi,
         color = textPrimary
     )
 

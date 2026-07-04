@@ -2,6 +2,7 @@ package com.huangder.lumibooks.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -10,11 +11,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.R
 
+/** 全局深色模式状态，由 MainActivity 根据 DataStore 设置注入 */
+val LocalIsDarkTheme = staticCompositionLocalOf { false }
+
 // ─── 字体 ───
-val DingliSong = FontFamily(
-    Font(R.font.dingli_song, FontWeight.Normal),
-    Font(R.font.dingli_song, FontWeight.Bold)
-)
+val FangSong = FontFamily(Font(R.font.fandol_fang, FontWeight.Normal))
+val KaiTi = FontFamily(Font(R.font.lxgw_wenkai, FontWeight.Normal))
 val SansSerif = FontFamily.Default
 
 // ─── 颜色（自动适配深色模式）───
@@ -38,16 +40,16 @@ object AppColors {
     // 强调色（深色模式用更柔和的暖红）
     private val LightAccent = Color(0xFF6C231D)
     private val DarkAccent = Color(0xFFD4736A)
-    val Accent: Color @Composable get() = if (isSystemInDarkTheme()) DarkAccent else LightAccent
+    val Accent: Color @Composable get() = if (LocalIsDarkTheme.current) DarkAccent else LightAccent
     val Shadow = Color(0x08000000)
 
-    // 动态颜色
-    val WindowBg: Color @Composable get() = if (isSystemInDarkTheme()) DarkWindowBg else LightWindowBg
-    val CardBg: Color @Composable get() = if (isSystemInDarkTheme()) DarkCardBg else LightCardBg
-    val TextPrimary: Color @Composable get() = if (isSystemInDarkTheme()) DarkTextPrimary else LightTextPrimary
-    val TextSecondary: Color @Composable get() = if (isSystemInDarkTheme()) DarkTextSecondary else LightTextSecondary
-    val BgGray: Color @Composable get() = if (isSystemInDarkTheme()) DarkBgGray else LightBgGray
-    val Divider: Color @Composable get() = if (isSystemInDarkTheme()) DarkDivider else LightDivider
+    // 动态颜色（跟随 DataStore 深色模式设置）
+    val WindowBg: Color @Composable get() = if (LocalIsDarkTheme.current) DarkWindowBg else LightWindowBg
+    val CardBg: Color @Composable get() = if (LocalIsDarkTheme.current) DarkCardBg else LightCardBg
+    val TextPrimary: Color @Composable get() = if (LocalIsDarkTheme.current) DarkTextPrimary else LightTextPrimary
+    val TextSecondary: Color @Composable get() = if (LocalIsDarkTheme.current) DarkTextSecondary else LightTextSecondary
+    val BgGray: Color @Composable get() = if (LocalIsDarkTheme.current) DarkBgGray else LightBgGray
+    val Divider: Color @Composable get() = if (LocalIsDarkTheme.current) DarkDivider else LightDivider
 }
 
 // ─── 字阶 ───

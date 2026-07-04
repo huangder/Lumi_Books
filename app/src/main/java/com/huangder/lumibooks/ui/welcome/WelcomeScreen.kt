@@ -62,7 +62,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.R
-import com.huangder.lumibooks.ui.theme.DingliSong
+import com.huangder.lumibooks.ui.theme.KaiTi
 
 // 设计规范颜色 - 浅色模式
 private val AccentColor = Color(0xFFE85D5D)
@@ -358,7 +358,7 @@ private fun PolicyBottomSheet(
                     text = title,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    fontFamily = DingliSong,
+                    fontFamily = KaiTi,
                     color = textPrimary
                 )
 

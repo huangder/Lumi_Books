@@ -47,7 +47,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.huangder.lumibooks.ui.theme.DingliSong
+import com.huangder.lumibooks.ui.theme.FangSong
+import com.huangder.lumibooks.ui.theme.KaiTi
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
@@ -139,7 +140,7 @@ fun ThemeSettingsSheet(
                     "主题与设置",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    fontFamily = DingliSong,
+                    fontFamily = KaiTi,
                     color = Color.Black
                 )
                 Spacer(Modifier.weight(1f))
@@ -339,6 +340,7 @@ fun AdvancedSettingsSheet(
     currentLineHeight: Float,
     currentLetterSpacing: Float,
     currentFontType: String,
+    customFontPath: String? = null,
     currentMarginHoriz: Float,
     currentMarginVert: Float,
     currentBgColor: Color,
@@ -347,6 +349,7 @@ fun AdvancedSettingsSheet(
     onLineHeightChange: (Float) -> Unit,
     onLetterSpacingChange: (Float) -> Unit,
     onFontTypeChange: (String) -> Unit,
+    onImportFont: (android.net.Uri) -> Unit = {},
     onMarginHorizChange: (Float) -> Unit,
     onMarginVertChange: (Float) -> Unit,
     onDismiss: () -> Unit
@@ -381,9 +384,8 @@ fun AdvancedSettingsSheet(
     // 预览文本用的字体
     val previewFont = when (currentFontType) {
         "serif" -> androidx.compose.ui.text.font.FontFamily.Serif
-        "sans_serif" -> androidx.compose.ui.text.font.FontFamily.SansSerif
-        "monospace" -> androidx.compose.ui.text.font.FontFamily.Monospace
-        "dingli_song" -> DingliSong
+        "fangsong" -> FangSong
+        "kaiti" -> KaiTi
         else -> androidx.compose.ui.text.font.FontFamily.Default
     }
 
@@ -424,7 +426,7 @@ fun AdvancedSettingsSheet(
                     "高级设置",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    fontFamily = DingliSong,
+                    fontFamily = KaiTi,
                     color = Color.Black
                 )
                 Spacer(Modifier.weight(1f))
@@ -492,7 +494,7 @@ fun AdvancedSettingsSheet(
                 // 字体选择
                 Text("字体", fontSize = 14.sp, color = LightTextSecondary)
                 Spacer(Modifier.height(12.dp))
-                FontSelector(currentFont = currentFontType, onFontChange = onFontTypeChange)
+                FontSelector(currentFont = currentFontType, customFontPath = customFontPath, onFontChange = onFontTypeChange, onImportFont = onImportFont)
             }
         }
     }
@@ -532,28 +534,42 @@ private fun SettingSlider(
 }
 
 @Composable
-private fun FontSelector(currentFont: String, onFontChange: (String) -> Unit) {
-    val fonts = listOf(
-        FontOption("system", "系统", androidx.compose.ui.text.font.FontFamily.Default),
-        FontOption("serif", "衬线", androidx.compose.ui.text.font.FontFamily.Serif),
-        FontOption("dingli_song", "鼎力宋", DingliSong),
-    )
+private fun FontSelector(currentFont: String, customFontPath: String? = null, onFontChange: (String) -> Unit, onImportFont: (android.net.Uri) -> Unit = {}) {
+    val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            onImportFont(uri)
+            onFontChange("custom")
+        }
+    }
 
-    // 2行布局，每行3个
+    // 第一行：系统、衬线、仿宋
+    // 第二行：楷体、导入
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         // 第一行
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            fonts.take(3).forEach { font ->
-                FontButton(
-                    label = font.label,
-                    isSelected = currentFont == font.key,
-                    onClick = { onFontChange(font.key) },
-                    modifier = Modifier.weight(1f)
-                )
-            }
+            FontButton(
+                label = "系统",
+                isSelected = currentFont == "system",
+                onClick = { onFontChange("system") },
+                modifier = Modifier.weight(1f)
+            )
+            FontButton(
+                label = "衬线",
+                isSelected = currentFont == "serif",
+                onClick = { onFontChange("serif") },
+                modifier = Modifier.weight(1f)
+            )
+            FontButton(
+                label = "仿宋",
+                isSelected = currentFont == "fangsong",
+                onClick = { onFontChange("fangsong") },
+                modifier = Modifier.weight(1f)
+            )
         }
         // 第二行
         Row(
@@ -561,32 +577,38 @@ private fun FontSelector(currentFont: String, onFontChange: (String) -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             FontButton(
-                label = "仿宋",
-                isSelected = currentFont == "fangsong",
-                onClick = { onFontChange("fangsong") },
-                modifier = Modifier.weight(1f)
-            )
-            FontButton(
                 label = "楷体",
                 isSelected = currentFont == "kaiti",
                 onClick = { onFontChange("kaiti") },
                 modifier = Modifier.weight(1f)
             )
-            // 导入字体按钮（虚线边框）
+            // 导入字体按钮
+            val hasCustomFont = customFontPath != null
+            val label = if (hasCustomFont) "自定义" else "导入"
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .height(48.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .border(1.dp, LightTextSecondary, RoundedCornerShape(12.dp))
+                    .then(
+                        if (hasCustomFont && currentFont == "custom")
+                            Modifier.border(2.dp, AccentColor, RoundedCornerShape(12.dp))
+                        else
+                            Modifier.border(1.dp, LightTextSecondary, RoundedCornerShape(12.dp))
+                    )
                     .background(Color.White)
                     .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                        // TODO: 导入字体
+                        if (hasCustomFont) {
+                            onFontChange("custom")
+                        } else {
+                            launcher.launch(arrayOf("font/ttf", "font/otf", "application/octet-stream"))
+                        }
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Text("导入", fontSize = 14.sp, color = LightTextSecondary)
+                Text(label, fontSize = 14.sp, color = if (hasCustomFont && currentFont == "custom") AccentColor else LightTextSecondary)
             }
+            Spacer(Modifier.weight(1f)) // 占位，保持第二行左对齐
         }
     }
 }

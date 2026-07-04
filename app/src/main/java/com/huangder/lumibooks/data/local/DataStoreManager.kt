@@ -32,6 +32,7 @@ class DataStoreManager @Inject constructor(
         private val MARGIN_HORIZ = floatPreferencesKey("margin_horiz")
         private val MARGIN_VERT = floatPreferencesKey("margin_vert")
         private val BRIGHTNESS = floatPreferencesKey("brightness")
+        private val CUSTOM_FONT_PATH = stringPreferencesKey("custom_font_path")
 
         // 统计设置
         private val DAILY_GOAL = intPreferencesKey("daily_goal")
@@ -40,6 +41,10 @@ class DataStoreManager @Inject constructor(
         private val DARK_MODE = stringPreferencesKey("dark_mode")
         private val LAST_READ_BOOK = stringPreferencesKey("last_read_book")
         private val HAS_SEEN_WELCOME = booleanPreferencesKey("has_seen_welcome")
+
+        // 个人信息
+        private val AVATAR_URI = stringPreferencesKey("avatar_uri")
+        private val NICKNAME = stringPreferencesKey("nickname")
     }
 
     // 阅读设置
@@ -76,6 +81,11 @@ class DataStoreManager @Inject constructor(
         preferences[BRIGHTNESS] ?: -1f
     }
 
+    /** 自定义导入字体文件路径 */
+    val customFontPath: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[CUSTOM_FONT_PATH]
+    }
+
     // 统计设置
     val dailyGoal: Flow<Int> = context.dataStore.data.map { preferences ->
         preferences[DAILY_GOAL] ?: 30
@@ -92,6 +102,15 @@ class DataStoreManager @Inject constructor(
 
     val hasSeenWelcome: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[HAS_SEEN_WELCOME] ?: false
+    }
+
+    // 个人信息
+    val avatarUri: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[AVATAR_URI]
+    }
+
+    val nickname: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[NICKNAME] ?: "读者"
     }
 
     // 保存方法
@@ -143,6 +162,13 @@ class DataStoreManager @Inject constructor(
         }
     }
 
+    suspend fun saveCustomFontPath(path: String?) {
+        context.dataStore.edit { preferences ->
+            if (path != null) preferences[CUSTOM_FONT_PATH] = path
+            else preferences.remove(CUSTOM_FONT_PATH)
+        }
+    }
+
     suspend fun saveDailyGoal(goal: Int) {
         context.dataStore.edit { preferences ->
             preferences[DAILY_GOAL] = goal
@@ -165,5 +191,22 @@ class DataStoreManager @Inject constructor(
         context.dataStore.edit { preferences ->
             preferences[HAS_SEEN_WELCOME] = seen
         }
+    }
+
+    suspend fun saveAvatarUri(uri: String) {
+        context.dataStore.edit { preferences ->
+            preferences[AVATAR_URI] = uri
+        }
+    }
+
+    suspend fun saveNickname(name: String) {
+        context.dataStore.edit { preferences ->
+            preferences[NICKNAME] = name
+        }
+    }
+
+    /** 清除所有偏好设置 */
+    suspend fun clearAll() {
+        context.dataStore.edit { it.clear() }
     }
 }

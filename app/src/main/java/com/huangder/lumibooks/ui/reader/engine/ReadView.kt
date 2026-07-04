@@ -88,6 +88,7 @@ class ReadView(context: Context) : FrameLayout(context) {
     private var currentLineHeightMult: Float = 1.5f
     private var currentLetterSpacingDp: Float = 0f
     private var currentFontType: String = "system"
+    private var currentCustomFontPath: String? = null
     private var currentMarginHorizDp: Float = 44f
     private var currentMarginVertDp: Float = 72f
     private var pendingStartChapter: Int = 0
@@ -209,10 +210,20 @@ class ReadView(context: Context) : FrameLayout(context) {
         // = accent + 25% alpha
         val highlightColor = (accentColor and 0x00FFFFFF) or 0x40000000.toInt()
 
-        val customTypeface = if (currentFontType == "dingli_song") {
-            try { android.graphics.Typeface.createFromAsset(context.assets, "fonts/dingli_song.ttf") }
-            catch (_: Exception) { android.graphics.Typeface.DEFAULT }
-        } else android.graphics.Typeface.DEFAULT
+        val customTypeface = when (currentFontType) {
+            "serif" -> android.graphics.Typeface.SERIF
+            "fangsong" -> try { androidx.core.content.res.ResourcesCompat.getFont(context, com.huangder.lumibooks.R.font.fandol_fang) }
+                catch (_: Exception) { null } ?: android.graphics.Typeface.DEFAULT
+            "kaiti" -> try { androidx.core.content.res.ResourcesCompat.getFont(context, com.huangder.lumibooks.R.font.lxgw_wenkai) }
+                catch (_: Exception) { null } ?: android.graphics.Typeface.DEFAULT
+            "custom" -> {
+                val path = currentCustomFontPath
+                if (path != null) try { android.graphics.Typeface.createFromFile(java.io.File(path)) }
+                    catch (_: Exception) { android.graphics.Typeface.DEFAULT }
+                else android.graphics.Typeface.DEFAULT
+            }
+            else -> android.graphics.Typeface.DEFAULT
+        }
 
         // 三个槽位都配置，确保翻页时样式一致
         for (view in listOf(prevPageView, curPageView, nextPageView)) {
@@ -255,6 +266,7 @@ class ReadView(context: Context) : FrameLayout(context) {
         lineHeightMult: Float = 1.5f,
         letterSpacingDp: Float = 0f,
         fontType: String = "system",
+        customFontPath: String? = null,
         marginHorizDp: Float = 44f,
         marginVertDp: Float = 72f,
         width: Int = this.width,
@@ -287,6 +299,7 @@ class ReadView(context: Context) : FrameLayout(context) {
         currentLineHeightMult = lineHeightMult
         currentLetterSpacingDp = letterSpacingDp
         currentFontType = fontType
+        currentCustomFontPath = customFontPath
         currentMarginHorizDp = marginHorizDp
         currentMarginVertDp = marginVertDp
 
@@ -298,10 +311,19 @@ class ReadView(context: Context) : FrameLayout(context) {
         val lineSpacing = 2.5f * density
         val lsPx = letterSpacingDp * density
 
-        val customTypeface = if (fontType == "dingli_song") {
-            try { android.graphics.Typeface.createFromAsset(context.assets, "fonts/dingli_song.ttf") }
-            catch (_: Exception) { null }
-        } else null
+        val customTypeface = when (fontType) {
+            "fangsong" -> try { androidx.core.content.res.ResourcesCompat.getFont(context, com.huangder.lumibooks.R.font.fandol_fang) }
+                catch (_: Exception) { null }
+            "kaiti" -> try { androidx.core.content.res.ResourcesCompat.getFont(context, com.huangder.lumibooks.R.font.lxgw_wenkai) }
+                catch (_: Exception) { null }
+            "custom" -> {
+                val path = customFontPath
+                if (path != null) try { android.graphics.Typeface.createFromFile(java.io.File(path)) }
+                    catch (_: Exception) { null }
+                else null
+            }
+            else -> null
+        }
 
         layoutEngine.configure(
             width = width,

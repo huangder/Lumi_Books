@@ -34,6 +34,7 @@ import com.huangder.lumibooks.ui.reader.ReaderScreen
 import com.huangder.lumibooks.ui.reader.PdfViewerScreen
 import com.huangder.lumibooks.ui.reader.ReaderViewModel
 import com.huangder.lumibooks.ui.statistics.StatisticsScreen
+import com.huangder.lumibooks.ui.settings.SettingsScreen
 import com.huangder.lumibooks.ui.welcome.WelcomeScreen
 import com.huangder.lumibooks.ui.welcome.WelcomeViewModel
 import com.huangder.lumibooks.domain.model.BookFormat
@@ -84,11 +85,11 @@ fun MainNavGraph(navController: NavHostController) {
     var tabBarVisible by remember { mutableStateOf(true) }
     val contentScale = remember { Animatable(1f) }
 
-    // 监听路由变化，从阅读页返回时延迟显示 TabBar
+    // 监听路由变化，从阅读页/设置页返回时延迟显示 TabBar
     val currentEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentEntry?.destination?.route
     LaunchedEffect(currentRoute, showTransition) {
-        if (currentRoute == Screen.Reader.route || currentRoute == Screen.Welcome.route || showTransition) {
+        if (currentRoute == Screen.Reader.route || currentRoute == Screen.Welcome.route || currentRoute == Screen.Settings.route || showTransition) {
             tabBarVisible = false
         } else {
             delay(800)
@@ -163,6 +164,9 @@ fun MainNavGraph(navController: NavHostController) {
                             launchSingleTop = true
                             restoreState = true
                         }
+                    },
+                    onNavigateToSettings = {
+                        navController.navigate(Screen.Settings.route)
                     }
                 )
             }
@@ -197,6 +201,14 @@ fun MainNavGraph(navController: NavHostController) {
                         navController.popBackStack()
                     },
                     onLoadingComplete = { readerReady = true }
+                )
+            }
+
+            composable(Screen.Settings.route) {
+                SettingsScreen(
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    }
                 )
             }
         }

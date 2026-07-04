@@ -67,7 +67,7 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
-import com.huangder.lumibooks.ui.theme.DingliSong
+import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.util.FileUtils
 
 private val filterTabs = listOf("全部图书", "下载内容", "PDF", "收藏")
@@ -136,7 +136,7 @@ fun BookshelfScreen(
                 text = "书库",
             fontSize = AppType.Display,
             fontWeight = FontWeight.Bold,
-            fontFamily = DingliSong,
+            fontFamily = KaiTi,
             letterSpacing = (-0.02).sp,
             color = AppColors.TextPrimary,
             modifier = Modifier.padding(horizontal = AppSpace.lg, vertical = AppSpace.md)

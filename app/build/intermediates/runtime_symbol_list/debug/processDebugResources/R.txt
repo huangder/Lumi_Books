@@ -104,7 +104,8 @@ int drawable notification_tile_bg 0x7f060015
 int drawable notify_panel_notification_icon_bg 0x7f060016
 int drawable share_poster_bg 0x7f060017
 int drawable splash_background 0x7f060018
-int font dingli_song 0x7f070000
+int font fandol_fang 0x7f070000
+int font lxgw_wenkai 0x7f070001
 int id accessibility_action_clickable_span 0x7f080000
 int id accessibility_custom_action_0 0x7f080001
 int id accessibility_custom_action_1 0x7f080002

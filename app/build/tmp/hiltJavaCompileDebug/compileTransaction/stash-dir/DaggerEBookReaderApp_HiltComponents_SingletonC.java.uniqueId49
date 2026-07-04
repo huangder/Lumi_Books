@@ -26,6 +26,8 @@ import com.huangder.lumibooks.ui.home.HomeViewModel;
 import com.huangder.lumibooks.ui.home.HomeViewModel_HiltModules;
 import com.huangder.lumibooks.ui.reader.ReaderViewModel;
 import com.huangder.lumibooks.ui.reader.ReaderViewModel_HiltModules;
+import com.huangder.lumibooks.ui.settings.SettingsViewModel;
+import com.huangder.lumibooks.ui.settings.SettingsViewModel_HiltModules;
 import com.huangder.lumibooks.ui.statistics.StatisticsViewModel;
 import com.huangder.lumibooks.ui.statistics.StatisticsViewModel_HiltModules;
 import com.huangder.lumibooks.ui.welcome.WelcomeViewModel;
@@ -382,6 +384,7 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
 
     @Override
     public void injectMainActivity(MainActivity mainActivity) {
+      injectMainActivity2(mainActivity);
     }
 
     @Override
@@ -391,7 +394,7 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
 
     @Override
     public Map<Class<?>, Boolean> getViewModelKeys() {
-      return LazyClassKeyMap.<Boolean>of(MapBuilder.<String, Boolean>newMapBuilder(4).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_home_HomeViewModel, HomeViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_reader_ReaderViewModel, ReaderViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_statistics_StatisticsViewModel, StatisticsViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_welcome_WelcomeViewModel, WelcomeViewModel_HiltModules.KeyModule.provide()).build());
+      return LazyClassKeyMap.<Boolean>of(MapBuilder.<String, Boolean>newMapBuilder(5).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_home_HomeViewModel, HomeViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_reader_ReaderViewModel, ReaderViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_settings_SettingsViewModel, SettingsViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_statistics_StatisticsViewModel, StatisticsViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_welcome_WelcomeViewModel, WelcomeViewModel_HiltModules.KeyModule.provide()).build());
     }
 
     @Override
@@ -409,18 +412,22 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
       return new ViewCBuilder(singletonCImpl, activityRetainedCImpl, activityCImpl);
     }
 
+    private MainActivity injectMainActivity2(MainActivity instance) {
+      MainActivity_MembersInjector.injectDataStoreManager(instance, singletonCImpl.provideDataStoreManagerProvider.get());
+      return instance;
+    }
+
     @IdentifierNameString
     private static final class LazyClassKeyProvider {
-      static String com_huangder_lumibooks_ui_statistics_StatisticsViewModel = "com.huangder.lumibooks.ui.statistics.StatisticsViewModel";
-
       static String com_huangder_lumibooks_ui_welcome_WelcomeViewModel = "com.huangder.lumibooks.ui.welcome.WelcomeViewModel";
 
       static String com_huangder_lumibooks_ui_reader_ReaderViewModel = "com.huangder.lumibooks.ui.reader.ReaderViewModel";
 
+      static String com_huangder_lumibooks_ui_statistics_StatisticsViewModel = "com.huangder.lumibooks.ui.statistics.StatisticsViewModel";
+
       static String com_huangder_lumibooks_ui_home_HomeViewModel = "com.huangder.lumibooks.ui.home.HomeViewModel";
 
-      @KeepFieldType
-      StatisticsViewModel com_huangder_lumibooks_ui_statistics_StatisticsViewModel2;
+      static String com_huangder_lumibooks_ui_settings_SettingsViewModel = "com.huangder.lumibooks.ui.settings.SettingsViewModel";
 
       @KeepFieldType
       WelcomeViewModel com_huangder_lumibooks_ui_welcome_WelcomeViewModel2;
@@ -429,7 +436,13 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
       ReaderViewModel com_huangder_lumibooks_ui_reader_ReaderViewModel2;
 
       @KeepFieldType
+      StatisticsViewModel com_huangder_lumibooks_ui_statistics_StatisticsViewModel2;
+
+      @KeepFieldType
       HomeViewModel com_huangder_lumibooks_ui_home_HomeViewModel2;
+
+      @KeepFieldType
+      SettingsViewModel com_huangder_lumibooks_ui_settings_SettingsViewModel2;
     }
   }
 
@@ -445,6 +458,8 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
     private Provider<HomeViewModel> homeViewModelProvider;
 
     private Provider<ReaderViewModel> readerViewModelProvider;
+
+    private Provider<SettingsViewModel> settingsViewModelProvider;
 
     private Provider<StatisticsViewModel> statisticsViewModelProvider;
 
@@ -465,13 +480,14 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
         final ViewModelLifecycle viewModelLifecycleParam) {
       this.homeViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 0);
       this.readerViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 1);
-      this.statisticsViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 2);
-      this.welcomeViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 3);
+      this.settingsViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 2);
+      this.statisticsViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 3);
+      this.welcomeViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 4);
     }
 
     @Override
     public Map<Class<?>, javax.inject.Provider<ViewModel>> getHiltViewModelMap() {
-      return LazyClassKeyMap.<javax.inject.Provider<ViewModel>>of(MapBuilder.<String, javax.inject.Provider<ViewModel>>newMapBuilder(4).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_home_HomeViewModel, ((Provider) homeViewModelProvider)).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_reader_ReaderViewModel, ((Provider) readerViewModelProvider)).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_statistics_StatisticsViewModel, ((Provider) statisticsViewModelProvider)).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_welcome_WelcomeViewModel, ((Provider) welcomeViewModelProvider)).build());
+      return LazyClassKeyMap.<javax.inject.Provider<ViewModel>>of(MapBuilder.<String, javax.inject.Provider<ViewModel>>newMapBuilder(5).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_home_HomeViewModel, ((Provider) homeViewModelProvider)).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_reader_ReaderViewModel, ((Provider) readerViewModelProvider)).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_settings_SettingsViewModel, ((Provider) settingsViewModelProvider)).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_statistics_StatisticsViewModel, ((Provider) statisticsViewModelProvider)).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_welcome_WelcomeViewModel, ((Provider) welcomeViewModelProvider)).build());
     }
 
     @Override
@@ -483,9 +499,11 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
     private static final class LazyClassKeyProvider {
       static String com_huangder_lumibooks_ui_welcome_WelcomeViewModel = "com.huangder.lumibooks.ui.welcome.WelcomeViewModel";
 
+      static String com_huangder_lumibooks_ui_statistics_StatisticsViewModel = "com.huangder.lumibooks.ui.statistics.StatisticsViewModel";
+
       static String com_huangder_lumibooks_ui_reader_ReaderViewModel = "com.huangder.lumibooks.ui.reader.ReaderViewModel";
 
-      static String com_huangder_lumibooks_ui_statistics_StatisticsViewModel = "com.huangder.lumibooks.ui.statistics.StatisticsViewModel";
+      static String com_huangder_lumibooks_ui_settings_SettingsViewModel = "com.huangder.lumibooks.ui.settings.SettingsViewModel";
 
       static String com_huangder_lumibooks_ui_home_HomeViewModel = "com.huangder.lumibooks.ui.home.HomeViewModel";
 
@@ -493,10 +511,13 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
       WelcomeViewModel com_huangder_lumibooks_ui_welcome_WelcomeViewModel2;
 
       @KeepFieldType
+      StatisticsViewModel com_huangder_lumibooks_ui_statistics_StatisticsViewModel2;
+
+      @KeepFieldType
       ReaderViewModel com_huangder_lumibooks_ui_reader_ReaderViewModel2;
 
       @KeepFieldType
-      StatisticsViewModel com_huangder_lumibooks_ui_statistics_StatisticsViewModel2;
+      SettingsViewModel com_huangder_lumibooks_ui_settings_SettingsViewModel2;
 
       @KeepFieldType
       HomeViewModel com_huangder_lumibooks_ui_home_HomeViewModel2;
@@ -529,10 +550,13 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
           case 1: // com.huangder.lumibooks.ui.reader.ReaderViewModel 
           return (T) new ReaderViewModel(viewModelCImpl.savedStateHandle, ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule), singletonCImpl.provideBookRepositoryProvider.get(), singletonCImpl.provideReadingRepositoryProvider.get(), singletonCImpl.provideDataStoreManagerProvider.get());
 
-          case 2: // com.huangder.lumibooks.ui.statistics.StatisticsViewModel 
+          case 2: // com.huangder.lumibooks.ui.settings.SettingsViewModel 
+          return (T) new SettingsViewModel(singletonCImpl.provideDataStoreManagerProvider.get(), ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
+
+          case 3: // com.huangder.lumibooks.ui.statistics.StatisticsViewModel 
           return (T) new StatisticsViewModel(singletonCImpl.provideReadingRepositoryProvider.get(), singletonCImpl.provideBookRepositoryProvider.get(), singletonCImpl.provideDataStoreManagerProvider.get());
 
-          case 3: // com.huangder.lumibooks.ui.welcome.WelcomeViewModel 
+          case 4: // com.huangder.lumibooks.ui.welcome.WelcomeViewModel 
           return (T) new WelcomeViewModel(singletonCImpl.provideDataStoreManagerProvider.get());
 
           default: throw new AssertionError(id);
@@ -615,6 +639,8 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
 
     private final SingletonCImpl singletonCImpl = this;
 
+    private Provider<DataStoreManager> provideDataStoreManagerProvider;
+
     private Provider<AppDatabase> provideAppDatabaseProvider;
 
     private Provider<BookDao> provideBookDaoProvider;
@@ -629,8 +655,6 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
 
     private Provider<ReadingRepository> provideReadingRepositoryProvider;
 
-    private Provider<DataStoreManager> provideDataStoreManagerProvider;
-
     private SingletonCImpl(ApplicationContextModule applicationContextModuleParam) {
       this.applicationContextModule = applicationContextModuleParam;
       initialize(applicationContextModuleParam);
@@ -639,14 +663,14 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
 
     @SuppressWarnings("unchecked")
     private void initialize(final ApplicationContextModule applicationContextModuleParam) {
-      this.provideAppDatabaseProvider = DoubleCheck.provider(new SwitchingProvider<AppDatabase>(singletonCImpl, 2));
-      this.provideBookDaoProvider = DoubleCheck.provider(new SwitchingProvider<BookDao>(singletonCImpl, 1));
-      this.provideBookRepositoryProvider = DoubleCheck.provider(new SwitchingProvider<BookRepository>(singletonCImpl, 0));
-      this.provideReadingRecordDaoProvider = DoubleCheck.provider(new SwitchingProvider<ReadingRecordDao>(singletonCImpl, 4));
-      this.provideBookmarkDaoProvider = DoubleCheck.provider(new SwitchingProvider<BookmarkDao>(singletonCImpl, 5));
-      this.provideNoteDaoProvider = DoubleCheck.provider(new SwitchingProvider<NoteDao>(singletonCImpl, 6));
-      this.provideReadingRepositoryProvider = DoubleCheck.provider(new SwitchingProvider<ReadingRepository>(singletonCImpl, 3));
-      this.provideDataStoreManagerProvider = DoubleCheck.provider(new SwitchingProvider<DataStoreManager>(singletonCImpl, 7));
+      this.provideDataStoreManagerProvider = DoubleCheck.provider(new SwitchingProvider<DataStoreManager>(singletonCImpl, 0));
+      this.provideAppDatabaseProvider = DoubleCheck.provider(new SwitchingProvider<AppDatabase>(singletonCImpl, 3));
+      this.provideBookDaoProvider = DoubleCheck.provider(new SwitchingProvider<BookDao>(singletonCImpl, 2));
+      this.provideBookRepositoryProvider = DoubleCheck.provider(new SwitchingProvider<BookRepository>(singletonCImpl, 1));
+      this.provideReadingRecordDaoProvider = DoubleCheck.provider(new SwitchingProvider<ReadingRecordDao>(singletonCImpl, 5));
+      this.provideBookmarkDaoProvider = DoubleCheck.provider(new SwitchingProvider<BookmarkDao>(singletonCImpl, 6));
+      this.provideNoteDaoProvider = DoubleCheck.provider(new SwitchingProvider<NoteDao>(singletonCImpl, 7));
+      this.provideReadingRepositoryProvider = DoubleCheck.provider(new SwitchingProvider<ReadingRepository>(singletonCImpl, 4));
     }
 
     @Override
@@ -682,29 +706,29 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
       @Override
       public T get() {
         switch (id) {
-          case 0: // com.huangder.lumibooks.domain.repository.BookRepository 
+          case 0: // com.huangder.lumibooks.data.local.DataStoreManager 
+          return (T) AppModule_ProvideDataStoreManagerFactory.provideDataStoreManager(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
+
+          case 1: // com.huangder.lumibooks.domain.repository.BookRepository 
           return (T) AppModule_ProvideBookRepositoryFactory.provideBookRepository(singletonCImpl.provideBookDaoProvider.get());
 
-          case 1: // com.huangder.lumibooks.data.local.dao.BookDao 
+          case 2: // com.huangder.lumibooks.data.local.dao.BookDao 
           return (T) AppModule_ProvideBookDaoFactory.provideBookDao(singletonCImpl.provideAppDatabaseProvider.get());
 
-          case 2: // com.huangder.lumibooks.data.local.database.AppDatabase 
+          case 3: // com.huangder.lumibooks.data.local.database.AppDatabase 
           return (T) AppModule_ProvideAppDatabaseFactory.provideAppDatabase(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
 
-          case 3: // com.huangder.lumibooks.domain.repository.ReadingRepository 
+          case 4: // com.huangder.lumibooks.domain.repository.ReadingRepository 
           return (T) AppModule_ProvideReadingRepositoryFactory.provideReadingRepository(singletonCImpl.provideReadingRecordDaoProvider.get(), singletonCImpl.provideBookmarkDaoProvider.get(), singletonCImpl.provideNoteDaoProvider.get());
 
-          case 4: // com.huangder.lumibooks.data.local.dao.ReadingRecordDao 
+          case 5: // com.huangder.lumibooks.data.local.dao.ReadingRecordDao 
           return (T) AppModule_ProvideReadingRecordDaoFactory.provideReadingRecordDao(singletonCImpl.provideAppDatabaseProvider.get());
 
-          case 5: // com.huangder.lumibooks.data.local.dao.BookmarkDao 
+          case 6: // com.huangder.lumibooks.data.local.dao.BookmarkDao 
           return (T) AppModule_ProvideBookmarkDaoFactory.provideBookmarkDao(singletonCImpl.provideAppDatabaseProvider.get());
 
-          case 6: // com.huangder.lumibooks.data.local.dao.NoteDao 
+          case 7: // com.huangder.lumibooks.data.local.dao.NoteDao 
           return (T) AppModule_ProvideNoteDaoFactory.provideNoteDao(singletonCImpl.provideAppDatabaseProvider.get());
-
-          case 7: // com.huangder.lumibooks.data.local.DataStoreManager 
-          return (T) AppModule_ProvideDataStoreManagerFactory.provideDataStoreManager(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
 
           default: throw new AssertionError(id);
         }
