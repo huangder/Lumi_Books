@@ -45,6 +45,10 @@ class ReadingRepositoryImpl @Inject constructor(
         readingRecordDao.insertRecord(record.toEntity())
     }
 
+    override suspend fun getRecordByBookAndDate(bookId: String, date: String): ReadingRecord? {
+        return readingRecordDao.getRecordByBookAndDate(bookId, date)?.toDomain()
+    }
+
     override suspend fun updateRecordDuration(recordId: Long, additionalDuration: Long, endTime: Long) {
         readingRecordDao.updateRecordDuration(recordId, additionalDuration, endTime)
     }

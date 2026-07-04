@@ -5,6 +5,8 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -204,7 +206,13 @@ fun MainNavGraph(navController: NavHostController) {
                 )
             }
 
-            composable(Screen.Settings.route) {
+            composable(
+                Screen.Settings.route,
+                enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300)) },
+                exitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300)) },
+                popEnterTransition = { slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(300)) },
+                popExitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300)) }
+            ) {
                 SettingsScreen(
                     onNavigateBack = {
                         navController.popBackStack()

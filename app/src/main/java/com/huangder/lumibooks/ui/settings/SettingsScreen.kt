@@ -4,6 +4,12 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -86,6 +92,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var showClearDataDialog by remember { mutableStateOf(false) }
+    var activeSubScreen by remember { mutableStateOf<String?>(null) }
 
     // 头像选择
     val photoPicker = rememberLauncherForActivityResult(
@@ -111,78 +118,131 @@ fun SettingsScreen(
             .fillMaxSize()
             .background(AppColors.WindowBg)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .verticalScroll(rememberScrollState())
-        ) {
-            // 顶栏
-            SettingsTopBar(onNavigateBack = onNavigateBack)
+        androidx.compose.animation.AnimatedContent(
+            targetState = activeSubScreen,
+            transitionSpec = {
+                if (targetState != null) {
+                    // 进入子菜单：从右滑入
+                    slideInHorizontally(initialOffsetX = { it }) + fadeIn() togetherWith
+                        slideOutHorizontally(targetOffsetX = { -it / 3 }) + fadeOut()
+                } else {
+                    // 返回主菜单：从左滑入
+                    slideInHorizontally(initialOffsetX = { -it / 3 }) + fadeIn() togetherWith
+                        slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
+                }
+            },
+            modifier = Modifier.fillMaxSize(),
+            label = "settings_nav"
+        ) { subScreen ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .verticalScroll(rememberScrollState())
+            ) {
+                if (subScreen == null) {
+                    // ─── 主设置页 ───
+                    SettingsTopBar(onNavigateBack = onNavigateBack)
 
-            // 1. 个人信息
-            PersonalInfoSection(
-                avatarUri = uiState.avatarUri,
-                nickname = uiState.nickname,
-                onAvatarClick = {
-                    photoPicker.launch(
-                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                    // 1. 个人信息
+                    PersonalInfoSection(
+                        avatarUri = uiState.avatarUri,
+                        nickname = uiState.nickname,
+                        onAvatarClick = {
+                            photoPicker.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        },
+                        onNicknameChange = { viewModel.saveNickname(it) }
                     )
-                },
-                onNicknameChange = { viewModel.saveNickname(it) }
-            )
 
-            Spacer(Modifier.height(AppSpace.lg))
+                    Spacer(Modifier.height(AppSpace.lg))
 
-            // 2. 阅读设置
-            ReadingSettingsSection(
-                fontSize = uiState.fontSize,
-                lineHeight = uiState.lineHeight,
-                letterSpacing = uiState.letterSpacing,
-                fontType = uiState.fontType,
-                marginHoriz = uiState.marginHoriz,
-                marginVert = uiState.marginVert,
-                onFontSizeChange = { viewModel.saveFontSize(it) },
-                onLineHeightChange = { viewModel.saveLineHeight(it) },
-                onLetterSpacingChange = { viewModel.saveLetterSpacing(it) },
-                onFontTypeChange = { viewModel.saveFontType(it) },
-                onMarginHorizChange = { viewModel.saveMarginHoriz(it) },
-                onMarginVertChange = { viewModel.saveMarginVert(it) }
-            )
+                    // 2. 阅读设置（可点击进入子菜单）
+                    SectionTitle("阅读设置")
+                    Spacer(Modifier.height(AppSpace.sm))
+                    SettingsCard {
+                        SettingsActionRow(
+                            icon = Icons.Outlined.FormatSize,
+                            label = "阅读排版",
+                            subtitle = "字号、行距、字体、边距",
+                            onClick = { activeSubScreen = "reading" }
+                        )
+                    }
 
-            Spacer(Modifier.height(AppSpace.lg))
+                    Spacer(Modifier.height(AppSpace.lg))
 
-            // 3. 显示与外观
-            DisplaySection(
-                darkMode = uiState.darkMode,
-                readerTheme = uiState.readerTheme,
-                onDarkModeChange = { viewModel.saveDarkMode(it) },
-                onReaderThemeChange = { viewModel.saveReaderTheme(it) }
-            )
+                    // 3. 显示与外观（可点击进入子菜单）
+                    SectionTitle("显示与外观")
+                    Spacer(Modifier.height(AppSpace.sm))
+                    SettingsCard {
+                        SettingsActionRow(
+                            icon = Icons.Outlined.Brightness6,
+                            label = "主题与显示",
+                            subtitle = "深色模式、阅读主题",
+                            onClick = { activeSubScreen = "display" }
+                        )
+                    }
 
-            Spacer(Modifier.height(AppSpace.lg))
+                    Spacer(Modifier.height(AppSpace.lg))
 
-            // 4. 阅读目标
-            ReadingGoalSection(
-                dailyGoal = uiState.dailyGoal,
-                onDailyGoalChange = { viewModel.saveDailyGoal(it) }
-            )
+                    // 4. 阅读目标
+                    ReadingGoalSection(
+                        dailyGoal = uiState.dailyGoal,
+                        onDailyGoalChange = { viewModel.saveDailyGoal(it) }
+                    )
 
-            Spacer(Modifier.height(AppSpace.lg))
+                    Spacer(Modifier.height(AppSpace.lg))
 
-            // 5. 存储管理
-            StorageSection(
-                cacheSize = uiState.cacheSize,
-                onClearCache = { viewModel.clearCache() },
-                onClearAllData = { showClearDataDialog = true }
-            )
+                    // 5. 存储管理
+                    StorageSection(
+                        cacheSize = uiState.cacheSize,
+                        onClearCache = { viewModel.clearCache() },
+                        onClearAllData = { showClearDataDialog = true }
+                    )
 
-            Spacer(Modifier.height(AppSpace.lg))
+                    Spacer(Modifier.height(AppSpace.lg))
 
-            // 6. 关于应用
-            AboutSection()
+                    // 6. 关于应用
+                    AboutSection()
 
-            Spacer(Modifier.height(120.dp))
+                    Spacer(Modifier.height(120.dp))
+
+                } else if (subScreen == "reading") {
+                    // ─── 阅读设置子菜单 ───
+                    SubScreenTopBar(title = "阅读排版", onBack = { activeSubScreen = null })
+
+                    ReadingSettingsSection(
+                        fontSize = uiState.fontSize,
+                        lineHeight = uiState.lineHeight,
+                        letterSpacing = uiState.letterSpacing,
+                        fontType = uiState.fontType,
+                        marginHoriz = uiState.marginHoriz,
+                        marginVert = uiState.marginVert,
+                        onFontSizeChange = { viewModel.saveFontSize(it) },
+                        onLineHeightChange = { viewModel.saveLineHeight(it) },
+                        onLetterSpacingChange = { viewModel.saveLetterSpacing(it) },
+                        onFontTypeChange = { viewModel.saveFontType(it) },
+                        onMarginHorizChange = { viewModel.saveMarginHoriz(it) },
+                        onMarginVertChange = { viewModel.saveMarginVert(it) }
+                    )
+
+                    Spacer(Modifier.height(120.dp))
+
+                } else if (subScreen == "display") {
+                    // ─── 显示与外观子菜单 ───
+                    SubScreenTopBar(title = "主题与显示", onBack = { activeSubScreen = null })
+
+                    DisplaySection(
+                        darkMode = uiState.darkMode,
+                        readerTheme = uiState.readerTheme,
+                        onDarkModeChange = { viewModel.saveDarkMode(it) },
+                        onReaderThemeChange = { viewModel.saveReaderTheme(it) }
+                    )
+
+                    Spacer(Modifier.height(120.dp))
+                }
+            }
         }
     }
 
@@ -796,6 +856,7 @@ private fun SettingsOptionRow(
 private fun SettingsActionRow(
     icon: ImageVector,
     label: String,
+    subtitle: String? = null,
     labelColor: Color = AppColors.TextPrimary,
     onClick: () -> Unit
 ) {
@@ -816,11 +877,51 @@ private fun SettingsActionRow(
             modifier = Modifier.size(22.dp)
         )
         Spacer(Modifier.width(AppSpace.md))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label,
+                fontSize = AppType.Body,
+                color = labelColor
+            )
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    fontSize = AppType.Caption,
+                    color = AppColors.TextSecondary
+                )
+            }
+        }
+        Icon(
+            imageVector = Icons.Outlined.ChevronRight,
+            contentDescription = null,
+            tint = AppColors.TextSecondary,
+            modifier = Modifier.size(20.dp)
+        )
+    }
+}
+
+@Composable
+private fun SubScreenTopBar(title: String, onBack: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AppSpace.md, vertical = AppSpace.md),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(onClick = onBack) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                contentDescription = "返回",
+                tint = AppColors.TextPrimary
+            )
+        }
+        Spacer(Modifier.width(AppSpace.sm))
         Text(
-            text = label,
-            fontSize = AppType.Body,
-            color = labelColor,
-            modifier = Modifier.weight(1f)
+            text = title,
+            fontSize = AppType.Section,
+            fontWeight = FontWeight.Bold,
+            fontFamily = KaiTi,
+            color = AppColors.TextPrimary
         )
     }
 }
