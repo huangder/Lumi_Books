@@ -33,12 +33,19 @@
             line-height: 1.5;
             -webkit-font-smoothing: antialiased;
         }
+        body { background: linear-gradient(135deg, #faf5ff 0%, #f0f9ff 30%, #fff7ed 60%, #f0fdf4 100%); }
         .top-bar {
-            border-bottom: 1px solid var(--hairline);
+            border-bottom: 1px solid rgba(255,255,255,0.5);
             padding: 0 var(--space-xxl);
             height: 80px;
             display: flex;
             align-items: center;
+            background: rgba(255,255,255,0.72);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            position: sticky;
+            top: 0;
+            z-index: 100;
         }
         .top-bar a {
             text-decoration: none;
@@ -55,6 +62,13 @@
             max-width: var(--max-width);
             margin: 0 auto;
             padding: var(--space-section) var(--space-xxl);
+            background: rgba(255,255,255,0.55);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.7);
+            border-radius: var(--radius-md, 14px);
+            margin-top: var(--space-xl, 32px);
+            margin-bottom: var(--space-xl, 32px);
         }
         h1 {
             font-size: 28px;
@@ -164,6 +178,7 @@
     <h2>一、引言</h2>
     <p>Lumi（以下简称"本应用"）是一款本地电子书阅读器。我们深知隐私对您的重要性，本隐私政策旨在向您说明我们如何处理您的个人信息。</p>
     <p><strong>核心原则：本应用不收集、不传输、不存储任何个人信息至外部服务器。</strong></p>
+    <p><strong>开源透明：本应用为开源项目，完整源代码公开可审查。</strong>您可以随时查阅源代码，验证本隐私政策所述内容的真实性。我们相信，代码透明是最好的隐私保障。</p>
 
     <h2>二、权限说明</h2>
     <p>本应用仅申请以下 Android 系统权限，且每项权限均有明确的用途说明：</p>
@@ -246,8 +261,10 @@
     <p>如果您对本隐私政策有任何疑问、意见或建议，请通过以下方式联系我们：</p>
     <ul>
         <li>应用内反馈：通过应用设置页面提交反馈</li>
-        <li>电子邮件：<a href="mailto:hyf2917737053@gmail.com">hyf2917737053@gmail.com</a></li>
+        <li>电子邮件：<a href="mailto:huangder0104@126.com">huangder0104@126.com</a></li>
+        <li>开源社区：在代码仓库提交 Issue 反馈问题或建议</li>
     </ul>
+    <p><strong>隐私验证：</strong>作为开源项目，我们鼓励您通过审查源代码来验证本隐私政策的真实性。所有数据处理逻辑均可在代码中查阅。</p>
 
     <h2>九、适用范围</h2>
     <p>本隐私政策仅适用于 Lumi 应用（com.huangder.lumibooks）在 Android 平台上的功能。不适用于通过其他方式获取您信息的第三方服务。</p>

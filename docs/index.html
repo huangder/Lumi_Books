@@ -9,30 +9,23 @@
            Airbnb Design System Tokens
            ═══════════════════════════════════════════════════════ */
         :root {
-            /* Brand */
             --primary: #ff385c;
             --primary-active: #e00b41;
             --primary-disabled: #ffd1da;
-            /* Surfaces */
             --canvas: #ffffff;
             --surface-soft: #f7f7f7;
             --surface-strong: #f2f2f2;
-            /* Text */
             --ink: #222222;
             --body: #3f3f3f;
             --muted: #6a6a6a;
             --muted-soft: #929292;
             --on-primary: #ffffff;
             --on-dark: #ffffff;
-            --legal-link: #428bff;
-            /* Borders */
             --hairline: #dddddd;
             --hairline-soft: #ebebeb;
             --border-strong: #c1c1c1;
-            /* Semantic */
             --error-text: #c13515;
             --scrim: #000000;
-            /* Spacing — 4px base */
             --space-xxs: 2px;
             --space-xs: 4px;
             --space-sm: 8px;
@@ -42,7 +35,6 @@
             --space-xl: 32px;
             --space-xxl: 48px;
             --space-section: 64px;
-            /* Radius */
             --radius-none: 0px;
             --radius-xs: 4px;
             --radius-sm: 8px;
@@ -50,11 +42,9 @@
             --radius-lg: 20px;
             --radius-xl: 32px;
             --radius-full: 9999px;
-            /* Shadow — single tier only */
             --shadow-card: rgba(0,0,0,0.02) 0 0 0 1px,
                           rgba(0,0,0,0.04) 0 2px 6px,
                           rgba(0,0,0,0.10) 0 4px 8px;
-            /* Layout */
             --max-width: 1280px;
             --nav-height: 80px;
         }
@@ -62,6 +52,19 @@
         html { scroll-behavior: smooth; }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        /* ═══════════════════════════════════════════════════════
+           Background & Glassmorphism
+           ═══════════════════════════════════════════════════════ */
+        body {
+            font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #faf5ff 0%, #f0f9ff 30%, #fff7ed 60%, #f0fdf4 100%);
+            color: var(--ink);
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            min-height: 100vh;
+        }
 
         /* ═══════════════════════════════════════════════════════
            Keyframe Animations
@@ -78,52 +81,12 @@
             from { opacity: 0; transform: scale(0.94); }
             to   { opacity: 1; transform: scale(1); }
         }
-        @keyframes shimmer {
-            0%   { background-position: -200% 0; }
-            100% { background-position: 200% 0; }
-        }
         @keyframes float {
             0%, 100% { transform: translateY(0); }
-            50%      { transform: translateY(-6px); }
+            50%      { transform: translateY(-8px); }
         }
 
-        /* ═══════════════════════════════════════════════════════
-           Scroll-triggered Animation Classes
-           ═══════════════════════════════════════════════════════ */
-        .animate-on-scroll {
-            opacity: 0;
-            transform: translateY(24px);
-            transition: opacity 0.6s cubic-bezier(0.22, 0.61, 0.36, 1),
-                        transform 0.6s cubic-bezier(0.22, 0.61, 0.36, 1);
-        }
-        .animate-on-scroll.animated {
-            opacity: 1;
-            transform: translateY(0);
-        }
-        .animate-on-scroll.fade-in-only {
-            transform: none;
-            transition: opacity 0.5s ease;
-        }
-        .animate-on-scroll.scale-in {
-            transform: scale(0.94);
-            transition: opacity 0.5s cubic-bezier(0.22, 0.61, 0.36, 1),
-                        transform 0.5s cubic-bezier(0.22, 0.61, 0.36, 1);
-        }
-        .animate-on-scroll.scale-in.animated {
-            transform: scale(1);
-        }
-
-        /* Stagger delays */
-        .stagger-1 { transition-delay: 0.05s; }
-        .stagger-2 { transition-delay: 0.10s; }
-        .stagger-3 { transition-delay: 0.15s; }
-        .stagger-4 { transition-delay: 0.20s; }
-        .stagger-5 { transition-delay: 0.25s; }
-        .stagger-6 { transition-delay: 0.30s; }
-        .stagger-7 { transition-delay: 0.35s; }
-        .stagger-8 { transition-delay: 0.40s; }
-
-        /* Hero entrance — runs on load without scroll trigger */
+        /* Hero entrance — runs on load */
         @keyframes heroFadeIn {
             from { opacity: 0; transform: translateY(18px); }
             to   { opacity: 1; transform: translateY(0); }
@@ -136,47 +99,41 @@
         .hero-entrance-3 { animation-delay: 0.35s; }
         .hero-entrance-4 { animation-delay: 0.50s; }
 
-        body {
-            font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-            background: var(--canvas);
-            color: var(--ink);
-            line-height: 1.5;
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
+        /* Scroll-triggered */
+        .animate-on-scroll {
+            opacity: 0;
+            transform: translateY(24px);
+            transition: opacity 0.6s cubic-bezier(0.22, 0.61, 0.36, 1),
+                        transform 0.6s cubic-bezier(0.22, 0.61, 0.36, 1);
         }
+        .animate-on-scroll.animated {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .animate-on-scroll.scale-in {
+            transform: scale(0.94);
+            transition: opacity 0.5s cubic-bezier(0.22, 0.61, 0.36, 1),
+                        transform 0.5s cubic-bezier(0.22, 0.61, 0.36, 1);
+        }
+        .animate-on-scroll.scale-in.animated {
+            transform: scale(1);
+        }
+        .stagger-1 { transition-delay: 0.05s; }
+        .stagger-2 { transition-delay: 0.12s; }
+        .stagger-3 { transition-delay: 0.19s; }
 
         /* ═══════════════════════════════════════════════════════
-           Typography — Airbnb Cereal scale
-           ═══════════════════════════════════════════════════════ */
-        .t-display-xl  { font-size: 28px; font-weight: 700; line-height: 1.43; letter-spacing: 0; }
-        .t-display-lg  { font-size: 22px; font-weight: 500; line-height: 1.18; letter-spacing: -0.44px; }
-        .t-display-md  { font-size: 21px; font-weight: 700; line-height: 1.43; letter-spacing: 0; }
-        .t-display-sm  { font-size: 20px; font-weight: 600; line-height: 1.20; letter-spacing: -0.18px; }
-        .t-title-md    { font-size: 16px; font-weight: 600; line-height: 1.25; letter-spacing: 0; }
-        .t-title-sm    { font-size: 16px; font-weight: 500; line-height: 1.25; letter-spacing: 0; }
-        .t-body-md     { font-size: 16px; font-weight: 400; line-height: 1.5;  letter-spacing: 0; }
-        .t-body-sm     { font-size: 14px; font-weight: 400; line-height: 1.43; letter-spacing: 0; }
-        .t-caption     { font-size: 14px; font-weight: 500; line-height: 1.29; letter-spacing: 0; }
-        .t-caption-sm  { font-size: 13px; font-weight: 400; line-height: 1.23; letter-spacing: 0; }
-        .t-badge       { font-size: 11px; font-weight: 600; line-height: 1.18; letter-spacing: 0; }
-        .t-micro-label { font-size: 12px; font-weight: 700; line-height: 1.33; letter-spacing: 0; }
-        .t-button-md   { font-size: 16px; font-weight: 500; line-height: 1.25; letter-spacing: 0; }
-        .t-button-sm   { font-size: 14px; font-weight: 500; line-height: 1.29; letter-spacing: 0; }
-        .t-nav-link    { font-size: 16px; font-weight: 600; line-height: 1.25; letter-spacing: 0; }
-        .t-uppercase   { font-size: 8px;  font-weight: 700; line-height: 1.25; letter-spacing: 0.32px; text-transform: uppercase; }
-
-        /* ═══════════════════════════════════════════════════════
-           Top Navigation
+           Top Navigation — Glassmorphism
            ═══════════════════════════════════════════════════════ */
         .top-nav {
             position: sticky;
             top: 0;
             z-index: 100;
-            background: rgba(255,255,255,0.92);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
+            background: rgba(255,255,255,0.72);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
             height: var(--nav-height);
-            border-bottom: 1px solid transparent;
+            border-bottom: 1px solid rgba(255,255,255,0.5);
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -188,7 +145,7 @@
         .top-nav.scrolled {
             border-bottom-color: var(--hairline);
             box-shadow: 0 1px 0 rgba(0,0,0,0.04);
-            background: rgba(255,255,255,0.97);
+            background: rgba(255,255,255,0.88);
         }
         .nav-logo {
             display: flex;
@@ -201,6 +158,10 @@
             width: 34px;
             height: 34px;
             border-radius: var(--radius-sm);
+            transition: transform 0.3s ease;
+        }
+        .nav-logo:hover .logo-icon-img {
+            transform: scale(1.08);
         }
         .nav-logo .logo-text {
             font-size: 22px;
@@ -216,14 +177,12 @@
         .nav-links a {
             text-decoration: none;
             color: var(--muted);
+            font-size: 16px;
+            font-weight: 600;
+            line-height: 1.25;
             transition: color 0.15s;
         }
         .nav-links a:hover { color: var(--ink); }
-        .nav-links a.active {
-            color: var(--ink);
-            padding-bottom: 2px;
-            border-bottom: 2px solid var(--ink);
-        }
         .nav-cta {
             display: flex;
             align-items: center;
@@ -238,24 +197,12 @@
             font-size: 14px;
             font-weight: 500;
             line-height: 1.29;
-            transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+            transition: background 0.2s ease, transform 0.2s ease;
         }
         .btn-nav-download:hover { background: var(--primary-active); transform: scale(1.04); }
 
         /* ═══════════════════════════════════════════════════════
-           Sections — 64px vertical rhythm
-           ═══════════════════════════════════════════════════════ */
-        .section {
-            padding: var(--space-section) var(--space-xxl);
-            max-width: var(--max-width);
-            margin: 0 auto;
-        }
-        .section + .section {
-            border-top: 1px solid var(--hairline-soft);
-        }
-
-        /* ═══════════════════════════════════════════════════════
-           Hero — photography-led, modest type
+           Hero — no rounded corners, big soft shadow
            ═══════════════════════════════════════════════════════ */
         .hero {
             padding: var(--space-section) var(--space-xxl) 48px;
@@ -288,7 +235,6 @@
             gap: var(--space-md);
             margin-top: var(--space-sm);
         }
-        /* button-primary */
         .btn-primary {
             display: inline-flex;
             align-items: center;
@@ -305,21 +251,18 @@
             line-height: 1.25;
             border: none;
             cursor: pointer;
-            transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+            transition: background 0.2s ease, transform 0.2s ease;
         }
         .btn-primary:hover { background: var(--primary-active); transform: scale(1.03); }
-        .btn-primary:disabled {
-            background: var(--primary-disabled);
-            cursor: not-allowed;
-            transform: none;
-        }
-        /* button-secondary */
+        .btn-primary:disabled { background: var(--primary-disabled); cursor: not-allowed; transform: none; }
         .btn-secondary {
             display: inline-flex;
             align-items: center;
             justify-content: center;
             gap: var(--space-sm);
-            background: var(--canvas);
+            background: rgba(255,255,255,0.6);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
             color: var(--ink);
             text-decoration: none;
             padding: 13px 23px;
@@ -328,46 +271,40 @@
             font-size: 16px;
             font-weight: 500;
             line-height: 1.25;
-            border: 1px solid var(--ink);
+            border: 1px solid var(--hairline);
             cursor: pointer;
             transition: background 0.2s ease, transform 0.2s ease;
         }
-        .btn-secondary:hover { background: var(--surface-soft); transform: scale(1.03); }
+        .btn-secondary:hover { background: rgba(255,255,255,0.85); transform: scale(1.03); }
 
         .hero-visual {
             display: flex;
             align-items: center;
             justify-content: center;
         }
+        /* Hero phone — NO rounded corners, big soft shadow, float animation */
         .hero-phone {
-            width: 260px;
-            height: 520px;
-            background: var(--surface-soft);
-            border-radius: var(--radius-xl);
-            border: 1px solid var(--hairline);
+            width: 280px;
+            height: 560px;
+            background: var(--canvas);
+            border-radius: 0;
             display: flex;
             align-items: center;
             justify-content: center;
             color: var(--muted);
             position: relative;
             overflow: hidden;
-            box-shadow: var(--shadow-card);
+            /* Big soft diffused shadow */
+            box-shadow: 0 8px 40px rgba(0,0,0,0.08),
+                        0 2px 12px rgba(0,0,0,0.04);
+            animation: float 4s ease-in-out infinite;
         }
         .hero-phone img {
             width: 100%;
             height: 100%;
             object-fit: cover;
         }
-        /* Rating-style big number — kept for potential reuse */
-        .hero-stat {
-            font-size: 64px;
-            font-weight: 700;
-            line-height: 1.1;
-            letter-spacing: -1px;
-            color: var(--ink);
-        }
 
-        /* Pill badges row */
         .pill-strip {
             display: flex;
             gap: var(--space-sm);
@@ -377,12 +314,19 @@
         .pill-badge {
             padding: 8px 18px;
             border-radius: var(--radius-full);
-            border: 1px solid var(--hairline);
+            border: 1px solid rgba(255,255,255,0.6);
             font-size: 14px;
             font-weight: 500;
             color: var(--muted);
-            background: var(--canvas);
+            background: rgba(255,255,255,0.5);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
             white-space: nowrap;
+            transition: transform 0.2s ease, background 0.2s ease;
+        }
+        .pill-badge:hover {
+            transform: translateY(-2px);
+            background: rgba(255,255,255,0.8);
         }
         .pill-badge .accent-dot {
             display: inline-block;
@@ -396,12 +340,18 @@
         }
 
         /* ═══════════════════════════════════════════════════════
-           Feature Grid — dense marketplace-style cards
+           Explore Cards — glassmorphism link cards
            ═══════════════════════════════════════════════════════ */
-        .section-header {
+        .explore-section {
+            padding: var(--space-section) var(--space-xxl);
+            max-width: var(--max-width);
+            margin: 0 auto;
+        }
+        .explore-header {
+            text-align: center;
             margin-bottom: var(--space-xl);
         }
-        .section-header .label {
+        .explore-header .label {
             font-size: 12px;
             font-weight: 700;
             letter-spacing: 0.5px;
@@ -409,326 +359,95 @@
             color: var(--muted);
             margin-bottom: var(--space-xs);
         }
-        .section-header h2 {
+        .explore-header h2 {
             font-size: 22px;
             font-weight: 500;
             line-height: 1.18;
             letter-spacing: -0.44px;
             color: var(--ink);
-            margin-bottom: var(--space-sm);
         }
-        .section-header p {
-            font-size: 16px;
-            font-weight: 400;
-            line-height: 1.5;
-            color: var(--body);
-            max-width: 560px;
-        }
-
-        .feature-grid {
+        .explore-grid {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(3, 1fr);
             gap: var(--space-base);
         }
-        .feature-card {
-            background: var(--canvas);
+        .explore-card {
+            background: rgba(255,255,255,0.55);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.7);
             border-radius: var(--radius-md);
-            border: 1px solid var(--hairline);
-            padding: var(--space-lg);
-            transition: transform 0.25s cubic-bezier(0.22, 0.61, 0.36, 1),
-                        box-shadow 0.25s cubic-bezier(0.22, 0.61, 0.36, 1),
-                        border-color 0.25s ease;
-        }
-        .feature-card:hover {
-            transform: translateY(-4px);
-            box-shadow: var(--shadow-card);
-            border-color: transparent;
-        }
-        .feature-card .fc-icon {
-            width: 40px;
-            height: 40px;
-            border-radius: var(--radius-sm);
-            background: var(--surface-strong);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-            margin-bottom: var(--space-md);
-        }
-        .feature-card h3 {
-            font-size: 16px;
-            font-weight: 600;
-            line-height: 1.25;
+            padding: var(--space-xl) var(--space-lg);
+            text-decoration: none;
             color: var(--ink);
-            margin-bottom: var(--space-xs);
-        }
-        .feature-card p {
-            font-size: 14px;
-            font-weight: 400;
-            line-height: 1.43;
-            color: var(--muted);
-        }
-
-        /* ═══════════════════════════════════════════════════════
-           Showcase Cards — photo-first Airbnb property-card style
-           ═══════════════════════════════════════════════════════ */
-        .showcase-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: var(--space-base);
-        }
-        .showcase-card {
-            background: var(--canvas);
-            border-radius: var(--radius-md);
-            overflow: hidden;
-            border: 1px solid var(--hairline);
-            transition: transform 0.3s cubic-bezier(0.22, 0.61, 0.36, 1),
-                        box-shadow 0.3s cubic-bezier(0.22, 0.61, 0.36, 1),
-                        border-color 0.3s ease;
-        }
-        .showcase-card:hover {
-            transform: translateY(-4px);
-            box-shadow: var(--shadow-card);
-            border-color: transparent;
-        }
-        .showcase-card:hover .showcase-photo img {
-            transform: scale(1.04);
-        }
-        .showcase-photo {
-            aspect-ratio: 16 / 10;
-            background: var(--surface-soft);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            overflow: hidden;
-        }
-        .showcase-photo img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            transition: transform 0.5s cubic-bezier(0.22, 0.61, 0.36, 1);
-        }
-        /* Floating badge top-left */
-        .floating-badge {
-            position: absolute;
-            top: var(--space-md);
-            left: var(--space-md);
-            background: var(--canvas);
-            color: var(--ink);
-            padding: 4px 10px;
-            border-radius: var(--radius-full);
-            font-size: 11px;
-            font-weight: 600;
-            line-height: 1.18;
-            box-shadow: var(--shadow-card);
-        }
-        .showcase-meta {
-            padding: var(--space-base) var(--space-lg) var(--space-lg);
-        }
-        .showcase-meta h3 {
-            font-size: 16px;
-            font-weight: 600;
-            line-height: 1.25;
-            color: var(--ink);
-            margin-bottom: 2px;
-        }
-        .showcase-meta .sub {
-            font-size: 14px;
-            font-weight: 400;
-            line-height: 1.43;
-            color: var(--muted);
-            margin-bottom: var(--space-sm);
-        }
-        .showcase-meta .detail-row {
-            display: flex;
-            gap: var(--space-base);
-            flex-wrap: wrap;
-            margin-top: var(--space-md);
-        }
-        .detail-item .detail-label {
-            font-size: 12px;
-            font-weight: 700;
-            line-height: 1.33;
-            color: var(--muted);
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-        }
-        .detail-item .detail-value {
-            font-size: 16px;
-            font-weight: 600;
-            line-height: 1.25;
-            color: var(--ink);
-            margin-top: 2px;
-        }
-
-        /* ═══════════════════════════════════════════════════════
-           Reading Theme Swatches
-           ═══════════════════════════════════════════════════════ */
-        .theme-strip {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: var(--space-base);
-        }
-        .theme-swatch {
-            aspect-ratio: 4 / 3;
-            border-radius: var(--radius-md);
-            display: flex;
-            align-items: flex-end;
-            padding: var(--space-base);
-            border: 1px solid var(--hairline);
-            transition: transform 0.25s cubic-bezier(0.22, 0.61, 0.36, 1),
-                        box-shadow 0.25s cubic-bezier(0.22, 0.61, 0.36, 1);
-        }
-        .theme-swatch:hover {
-            transform: translateY(-2px);
-            box-shadow: var(--shadow-card);
-        }
-        .theme-swatch span {
-            font-size: 14px;
-            font-weight: 600;
-            line-height: 1.25;
-        }
-
-        /* Screenshot gallery */
-        .screenshot-strip {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: var(--space-base);
-            margin-top: var(--space-base);
-        }
-        .screenshot-frame {
-            aspect-ratio: 9 / 19;
-            border-radius: var(--radius-lg);
-            overflow: hidden;
-            border: 1px solid var(--hairline);
-            box-shadow: var(--shadow-card);
-            transition: transform 0.35s cubic-bezier(0.22, 0.61, 0.36, 1),
-                        box-shadow 0.35s cubic-bezier(0.22, 0.61, 0.36, 1);
-        }
-        .screenshot-frame:hover {
-            transform: scale(1.04) translateY(-4px);
-            box-shadow: rgba(0,0,0,0.02) 0 0 0 1px,
-                        rgba(0,0,0,0.06) 0 4px 12px,
-                        rgba(0,0,0,0.14) 0 8px 20px;
-        }
-        .screenshot-frame img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-
-        /* ═══════════════════════════════════════════════════════
-           Privacy — editorial band, no card
-           ═══════════════════════════════════════════════════════ */
-        .privacy-band {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: var(--space-base);
-        }
-        .privacy-item {
             display: flex;
             flex-direction: column;
-            gap: var(--space-sm);
-            padding: var(--space-lg) 0;
+            gap: var(--space-md);
+            transition: transform 0.3s cubic-bezier(0.22, 0.61, 0.36, 1),
+                        box-shadow 0.3s cubic-bezier(0.22, 0.61, 0.36, 1),
+                        background 0.3s ease;
         }
-        .privacy-item .pi-icon {
-            width: 44px;
-            height: 44px;
-            border-radius: var(--radius-full);
-            background: var(--surface-strong);
+        .explore-card:hover {
+            transform: translateY(-6px);
+            box-shadow: rgba(0,0,0,0.02) 0 0 0 1px,
+                        rgba(0,0,0,0.06) 0 4px 16px,
+                        rgba(0,0,0,0.12) 0 8px 24px;
+            background: rgba(255,255,255,0.75);
+        }
+        .explore-card .ec-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: var(--radius-sm);
+            background: rgba(255,255,255,0.7);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 22px;
-            margin-bottom: var(--space-xs);
+            font-size: 24px;
         }
-        .privacy-item h3 {
+        .explore-card h3 {
             font-size: 16px;
             font-weight: 600;
             line-height: 1.25;
             color: var(--ink);
         }
-        .privacy-item p {
+        .explore-card p {
             font-size: 14px;
             font-weight: 400;
             line-height: 1.43;
             color: var(--muted);
         }
+        .explore-card .ec-arrow {
+            font-size: 18px;
+            color: var(--muted-soft);
+            transition: transform 0.2s ease, color 0.2s ease;
+            align-self: flex-start;
+        }
+        .explore-card:hover .ec-arrow {
+            transform: translateX(4px);
+            color: var(--primary);
+        }
 
-        /* Privacy hero banner */
-        .privacy-hero {
-            background: var(--surface-soft);
-            border-radius: var(--radius-md);
-            padding: var(--space-xxl) var(--space-xl);
-            text-align: center;
-            margin-bottom: var(--space-xl);
-        }
-        .privacy-hero .shield {
-            font-size: 40px;
-            margin-bottom: var(--space-md);
-        }
-        .privacy-hero h3 {
-            font-size: 22px;
-            font-weight: 500;
-            line-height: 1.18;
-            color: var(--ink);
-            margin-bottom: var(--space-sm);
-        }
-        .privacy-hero p {
-            font-size: 16px;
-            font-weight: 400;
-            line-height: 1.5;
-            color: var(--body);
-            max-width: 560px;
+        /* ═══════════════════════════════════════════════════════
+           Download CTA — glassmorphism band
+           ═══════════════════════════════════════════════════════ */
+        .download-section {
+            padding: 0 var(--space-xxl) var(--space-section);
+            max-width: var(--max-width);
             margin: 0 auto;
         }
-
-        /* ═══════════════════════════════════════════════════════
-           Tech Spec — amenity-row style
-           ═══════════════════════════════════════════════════════ */
-        .tech-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 0;
-            border-top: 1px solid var(--hairline);
-            border-left: 1px solid var(--hairline);
-            border-radius: var(--radius-md);
-            overflow: hidden;
-        }
-        .tech-cell {
-            padding: var(--space-lg);
-            border-right: 1px solid var(--hairline);
-            border-bottom: 1px solid var(--hairline);
-            background: var(--canvas);
-        }
-        .tech-cell .tech-label {
-            font-size: 12px;
-            font-weight: 700;
-            line-height: 1.33;
-            color: var(--muted);
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-            margin-bottom: var(--space-xs);
-        }
-        .tech-cell .tech-value {
-            font-size: 16px;
-            font-weight: 600;
-            line-height: 1.25;
-            color: var(--ink);
-        }
-
-        /* ═══════════════════════════════════════════════════════
-           Download CTA — search-orb style accent moment
-           ═══════════════════════════════════════════════════════ */
         .download-band {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            background: var(--ink);
+            background: rgba(34,34,34,0.92);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
             border-radius: var(--radius-md);
             padding: var(--space-xxl);
             color: var(--on-dark);
+            border: 1px solid rgba(255,255,255,0.08);
         }
         .download-band .dl-info h3 {
             font-size: 22px;
@@ -773,7 +492,7 @@
         }
 
         /* ═══════════════════════════════════════════════════════
-           Footer — Airbnb footer-light pattern
+           Footer — glassmorphism
            ═══════════════════════════════════════════════════════ */
         .footer-light {
             padding: var(--space-xxl) var(--space-xxl);
@@ -782,7 +501,11 @@
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             gap: var(--space-lg);
-            border-top: 1px solid var(--hairline);
+            border-top: 1px solid rgba(255,255,255,0.5);
+            background: rgba(255,255,255,0.3);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border-radius: var(--radius-md) var(--radius-md) 0 0;
         }
         .footer-col h4 {
             font-size: 16px;
@@ -806,6 +529,7 @@
             transition: color 0.15s;
         }
         .footer-col a:hover { color: var(--muted); }
+        .text-muted { color: var(--muted); }
 
         .legal-band {
             padding: var(--space-lg) var(--space-xxl);
@@ -818,7 +542,7 @@
             font-weight: 400;
             line-height: 1.23;
             color: var(--muted);
-            border-top: 1px solid var(--hairline-soft);
+            border-top: 1px solid rgba(255,255,255,0.3);
         }
         .legal-band a {
             color: var(--muted);
@@ -828,20 +552,17 @@
         .legal-band a:hover { text-decoration: underline; }
 
         /* ═══════════════════════════════════════════════════════
-           Responsive — Airbnb breakpoints
+           Responsive
            ═══════════════════════════════════════════════════════ */
         @media (max-width: 1127px) {
-            .feature-grid { grid-template-columns: repeat(2, 1fr); }
-            .showcase-grid { grid-template-columns: 1fr; }
-            .privacy-band { grid-template-columns: repeat(2, 1fr); }
-            .tech-grid { grid-template-columns: repeat(2, 1fr); }
             .hero {
                 grid-template-columns: 1fr;
                 gap: var(--space-xl);
                 padding: var(--space-xxl) var(--space-lg) var(--space-xl);
             }
             .hero-visual { order: -1; }
-            .hero-phone { width: 200px; height: 400px; }
+            .hero-phone { width: 220px; height: 440px; }
+            .explore-grid { grid-template-columns: repeat(2, 1fr); }
             .footer-light { grid-template-columns: repeat(2, 1fr); }
         }
 
@@ -851,17 +572,12 @@
                 height: 64px;
             }
             .nav-links { display: none; }
-            .section {
-                padding: var(--space-xxl) var(--space-base);
-            }
             .hero {
                 padding: var(--space-xl) var(--space-base);
             }
-            .feature-grid { grid-template-columns: 1fr; }
-            .privacy-band { grid-template-columns: 1fr; }
-            .tech-grid { grid-template-columns: 1fr; }
-            .theme-strip { grid-template-columns: repeat(2, 1fr); }
-            .screenshot-strip { grid-template-columns: repeat(2, 1fr); }
+            .explore-section { padding: var(--space-xxl) var(--space-base); }
+            .explore-grid { grid-template-columns: 1fr; }
+            .download-section { padding: 0 var(--space-base) var(--space-section); }
             .download-band {
                 flex-direction: column;
                 text-align: center;
@@ -877,19 +593,14 @@
                 gap: var(--space-sm);
                 text-align: center;
             }
-            .showcase-meta .detail-row { flex-direction: column; gap: var(--space-sm); }
             .hero-phone { width: 180px; height: 360px; }
         }
-
-        /* Utility */
-        .text-muted { color: var(--muted); }
-        .text-body { color: var(--body); }
     </style>
 </head>
 <body>
 
 <!-- ═══════════════════════════════════════════════════════
-     Top Navigation
+     Top Navigation — Glassmorphism
      ═══════════════════════════════════════════════════════ -->
 <nav class="top-nav">
     <a href="#" class="nav-logo">
@@ -897,9 +608,9 @@
         <span class="logo-text">Lumi</span>
     </a>
     <ul class="nav-links">
-        <li><a href="#features" class="active">功能</a></li>
-        <li><a href="#privacy">隐私</a></li>
-        <li><a href="#tech">技术</a></li>
+        <li><a href="features.html">功能</a></li>
+        <li><a href="privacy-section.html">隐私</a></li>
+        <li><a href="tech.html">技术</a></li>
     </ul>
     <div class="nav-cta">
         <span class="btn-nav-download" style="cursor:default;opacity:0.7;">即将上架</span>
@@ -907,17 +618,17 @@
 </nav>
 
 <!-- ═══════════════════════════════════════════════════════
-     Hero
+     Hero — no rounded corners, big soft shadow, float
      ═══════════════════════════════════════════════════════ -->
 <header class="hero">
     <div class="hero-content">
-        <h1 class="t-display-xl hero-entrance hero-entrance-1">一本好书的归宿，<br>是一个好的阅读器</h1>
+        <h1 class="hero-entrance hero-entrance-1">一本好书的归宿，<br>是一个好的阅读器</h1>
         <p class="hero-desc hero-entrance hero-entrance-2">
             Lumi 为 Android 打造的本地电子书阅读器。没有广告，不需要网络，打开即读。
         </p>
         <div class="hero-actions hero-entrance hero-entrance-3">
             <span class="btn-primary" style="cursor:default;opacity:0.85;">即将上架，敬请期待</span>
-            <a href="#features" class="btn-secondary">了解更多</a>
+            <a href="features.html" class="btn-secondary">了解更多</a>
         </div>
         <div class="pill-strip hero-entrance hero-entrance-4">
             <span class="pill-badge"><span class="accent-dot"></span>EPUB · PDF · TXT</span>
@@ -933,294 +644,39 @@
 </header>
 
 <!-- ═══════════════════════════════════════════════════════
-     Features
+     Explore — glassmorphism link cards
      ═══════════════════════════════════════════════════════ -->
-<section class="section" id="features">
-    <div class="section-header animate-on-scroll">
-        <div class="label">功能亮点</div>
-        <h2>全能的阅读工具箱</h2>
-        <p>你所需要的一切阅读功能，都已经打磨好了。</p>
+<section class="explore-section">
+    <div class="explore-header animate-on-scroll">
+        <div class="label">探索 Lumi</div>
+        <h2>了解更多</h2>
     </div>
-    <div class="feature-grid">
-        <div class="feature-card animate-on-scroll stagger-1">
-            <div class="fc-icon">📖</div>
-            <h3>多格式支持</h3>
-            <p>完美解析 EPUB、PDF、TXT 三种主流格式。EPUB 自动提取封面与目录，PDF 逐页高清渲染，TXT 智能分章。</p>
-        </div>
-        <div class="feature-card animate-on-scroll stagger-2">
-            <div class="fc-icon">🖐️</div>
-            <h3>视差翻页</h3>
-            <p>Apple Books 风格手势——页面平整滑动无 3D 形变，下层页面视差渐显，松手后弹性吸附。</p>
-        </div>
-        <div class="feature-card animate-on-scroll stagger-3">
-            <div class="fc-icon">🎨</div>
-            <h3>四套主题</h3>
-            <p>日间、夜间、护眼、绿色——精心调配的文字背景色，确保长时间阅读的舒适度。</p>
-        </div>
-        <div class="feature-card animate-on-scroll stagger-4">
-            <div class="fc-icon">🔤</div>
-            <h3>精细排版</h3>
-            <p>字体类型、字号、行间距、字间距均可独立调节，支持系统字体、宋体、黑体、等宽字体。</p>
-        </div>
-        <div class="feature-card animate-on-scroll stagger-5">
-            <div class="fc-icon">📝</div>
-            <h3>笔记与高亮</h3>
-            <p>长按选中文字，自由划选高亮标记，添加读书笔记。所有标注集中管理，一键跳转回顾。</p>
-        </div>
-        <div class="feature-card animate-on-scroll stagger-6">
-            <div class="fc-icon">🔖</div>
-            <h3>书签与目录</h3>
-            <p>一键添加书签，章节目录快速导航。阅读进度自动保存，随时从上次离开处继续。</p>
-        </div>
-        <div class="feature-card animate-on-scroll stagger-7">
-            <div class="fc-icon">🔍</div>
-            <h3>全文搜索</h3>
-            <p>跨章节全文检索，搜索结果高亮显示。快速定位书中的关键段落和角色。</p>
-        </div>
-        <div class="feature-card animate-on-scroll stagger-8">
-            <div class="fc-icon">📊</div>
-            <h3>阅读统计</h3>
-            <p>自动记录每日阅读时长，柱状图可视化。设定每日目标，追踪完成进度。7 天 / 30 天视图。</p>
-        </div>
-    </div>
-</section>
-
-<!-- ═══════════════════════════════════════════════════════
-     Screenshot Gallery
-     ═══════════════════════════════════════════════════════ -->
-<section class="section" style="padding-top:0;">
-    <div class="screenshot-strip">
-        <div class="screenshot-frame animate-on-scroll scale-in stagger-1">
-            <img src="2026-07-04_02-47-18_478.png" alt="Lumi 首页截图" loading="lazy">
-        </div>
-        <div class="screenshot-frame animate-on-scroll scale-in stagger-2">
-            <img src="2026-07-04_02-47-18_488.png" alt="Lumi 阅读界面截图" loading="lazy">
-        </div>
-        <div class="screenshot-frame animate-on-scroll scale-in stagger-3">
-            <img src="2026-07-04_02-47-18_496.png" alt="Lumi 阅读主题截图" loading="lazy">
-        </div>
-        <div class="screenshot-frame animate-on-scroll scale-in stagger-4">
-            <img src="2026-07-04_02-47-18_504.png" alt="Lumi 统计界面截图" loading="lazy">
-        </div>
-    </div>
-</section>
-
-<!-- ═══════════════════════════════════════════════════════
-     Showcase — Photo-first cards
-     ═══════════════════════════════════════════════════════ -->
-<section class="section">
-    <div class="section-header animate-on-scroll">
-        <div class="label">阅读体验</div>
-        <h2>每一处细节都精心打磨</h2>
-        <p>从翻页手势到亮度调节，每个交互都经过反复推敲。</p>
-    </div>
-
-    <div class="showcase-grid">
-        <div class="showcase-card animate-on-scroll stagger-1">
-            <div class="showcase-photo">
-                <span class="floating-badge">核心</span>
-                <img src="2026-07-04_02-47-18_488.png" alt="阅读手势翻页截图">
-            </div>
-            <div class="showcase-meta">
-                <h3>智能手势系统</h3>
-                <p class="sub">单手势处理器统一响应拖拽和点击。拖拽时页面 100% 跟随手指，下层 25% 速度视差渐显。松手后根据距离和速度智能判断翻页或回弹。</p>
-                <div class="detail-row">
-                    <div class="detail-item">
-                        <div class="detail-label">翻页吸附</div>
-                        <div class="detail-value">350ms 缓动</div>
-                    </div>
-                    <div class="detail-item">
-                        <div class="detail-label">翻页阈值</div>
-                        <div class="detail-value">25% 屏宽</div>
-                    </div>
-                    <div class="detail-item">
-                        <div class="detail-label">速度阈值</div>
-                        <div class="detail-value">400 px/s</div>
-                    </div>
-                    <div class="detail-item">
-                        <div class="detail-label">边界反馈</div>
-                        <div class="detail-value">橡皮筋阻尼</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="showcase-card animate-on-scroll stagger-2">
-            <div class="showcase-photo">
-                <span class="floating-badge">舒适</span>
-                <img src="2026-07-04_02-47-18_496.png" alt="阅读设置截图">
-            </div>
-            <div class="showcase-meta">
-                <h3>应用内亮度调节</h3>
-                <p class="sub">独立于系统亮度的阅读亮度控制，退出阅读器后自动恢复。夜间阅读不再刺眼，自适应不同光线环境。</p>
-                <div class="detail-row">
-                    <div class="detail-item">
-                        <div class="detail-label">调节范围</div>
-                        <div class="detail-value">1% – 100%</div>
-                    </div>
-                    <div class="detail-item">
-                        <div class="detail-label">自动恢复</div>
-                        <div class="detail-value">退出即还原</div>
-                    </div>
-                    <div class="detail-item">
-                        <div class="detail-label">独立控制</div>
-                        <div class="detail-value">不影响系统</div>
-                    </div>
-                    <div class="detail-item">
-                        <div class="detail-label">记忆偏好</div>
-                        <div class="detail-value">按书独立</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Reading Themes -->
-    <div style="margin-top: var(--space-base);" class="animate-on-scroll stagger-3">
-        <div class="showcase-card">
-            <div class="showcase-meta">
-                <h3>四套阅读主题</h3>
-                <p class="sub">文字与背景色经过精心调配，确保长时间阅读的舒适度。</p>
-            </div>
-            <div style="padding: 0 var(--space-lg) var(--space-lg);">
-                <div class="theme-strip">
-                    <div class="theme-swatch" style="background:#ffffff; color:var(--ink);">
-                        <span>☀️ 日间</span>
-                    </div>
-                    <div class="theme-swatch" style="background:#1c1c1e; color:#ebebf5;">
-                        <span>🌙 夜间</span>
-                    </div>
-                    <div class="theme-swatch" style="background:#f5e6d3; color:#3e2723;">
-                        <span>🍂 护眼</span>
-                    </div>
-                    <div class="theme-swatch" style="background:#e8f5e9; color:#1b5e20;">
-                        <span>🌿 绿色</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- ═══════════════════════════════════════════════════════
-     Privacy
-     ═══════════════════════════════════════════════════════ -->
-<section class="section" id="privacy">
-    <div class="section-header animate-on-scroll">
-        <div class="label">隐私保护</div>
-        <h2>你的数据，只在你的设备上</h2>
-        <p>Lumi 的核心承诺——永远不做你不喜欢的事。</p>
-    </div>
-
-    <div class="privacy-hero animate-on-scroll fade-in-only stagger-1">
-        <div class="shield">🛡️</div>
-        <h3>100% 本地 · 零网络 · 零追踪</h3>
-        <p>
-            Lumi <strong>不申请网络权限</strong>，不上传任何数据，不使用任何第三方分析或广告 SDK。
-            你的书架、阅读进度、笔记、书签——所有数据都安全地存储在设备本地沙盒中。卸载即彻底清除，不留痕迹。
-        </p>
-    </div>
-
-    <div class="privacy-band">
-        <div class="privacy-item animate-on-scroll stagger-2">
-            <div class="pi-icon">🚫</div>
-            <h3>无网络权限</h3>
-            <p>应用不声明 INTERNET 权限，阅读行为永远不会离开设备。</p>
-        </div>
-        <div class="privacy-item animate-on-scroll stagger-3">
-            <div class="pi-icon">📵</div>
-            <h3>无第三方 SDK</h3>
-            <p>无 Firebase、无分析、无广告——任何第三方服务都没有。</p>
-        </div>
-        <div class="privacy-item animate-on-scroll stagger-4">
-            <div class="pi-icon">🗄️</div>
-            <h3>沙盒存储</h3>
-            <p>所有数据存储在应用私有沙盒中，系统级隔离保护。</p>
-        </div>
-        <div class="privacy-item animate-on-scroll stagger-5">
-            <div class="pi-icon">🧹</div>
-            <h3>一键清除</h3>
-            <p>应用内随时清除数据。卸载自动删除全部数据，源文件不受影响。</p>
-        </div>
-    </div>
-</section>
-
-<!-- ═══════════════════════════════════════════════════════
-     Tech Specs
-     ═══════════════════════════════════════════════════════ -->
-<section class="section" id="tech">
-    <div class="section-header animate-on-scroll">
-        <div class="label">技术规格</div>
-        <h2>现代 Android 技术栈</h2>
-        <p>采用 Google 推荐的最新技术体系，确保流畅的性能和良好的可维护性。</p>
-    </div>
-
-    <div class="tech-grid animate-on-scroll fade-in-only stagger-1">
-        <div class="tech-cell">
-            <div class="tech-label">开发语言</div>
-            <div class="tech-value">Kotlin 2.0</div>
-        </div>
-        <div class="tech-cell">
-            <div class="tech-label">UI 框架</div>
-            <div class="tech-value">Jetpack Compose</div>
-        </div>
-        <div class="tech-cell">
-            <div class="tech-label">架构模式</div>
-            <div class="tech-value">MVVM</div>
-        </div>
-        <div class="tech-cell">
-            <div class="tech-label">依赖注入</div>
-            <div class="tech-value">Hilt</div>
-        </div>
-        <div class="tech-cell">
-            <div class="tech-label">数据库</div>
-            <div class="tech-value">Room</div>
-        </div>
-        <div class="tech-cell">
-            <div class="tech-label">偏好存储</div>
-            <div class="tech-value">DataStore</div>
-        </div>
-        <div class="tech-cell">
-            <div class="tech-label">最低版本</div>
-            <div class="tech-value">Android 8.0</div>
-        </div>
-        <div class="tech-cell">
-            <div class="tech-label">目标版本</div>
-            <div class="tech-value">Android 15</div>
-        </div>
-    </div>
-
-    <!-- Parser engine showcase card -->
-    <div class="showcase-card animate-on-scroll stagger-2" style="margin-top: var(--space-base);">
-        <div class="showcase-meta">
-            <h3>电子书解析引擎</h3>
-            <p class="sub">自实现的轻量解析器，不依赖第三方解析库，每个格式都经过深度优化。</p>
-            <div class="detail-row">
-                <div class="detail-item">
-                    <div class="detail-label">EPUB</div>
-                    <div class="detail-value">ZIP + XML 自实现</div>
-                </div>
-                <div class="detail-item">
-                    <div class="detail-label">图片方案</div>
-                    <div class="detail-value">Base64 内嵌 HTML</div>
-                </div>
-                <div class="detail-item">
-                    <div class="detail-label">PDF</div>
-                    <div class="detail-value">PdfRenderer · LRU 3页</div>
-                </div>
-                <div class="detail-item">
-                    <div class="detail-label">TXT</div>
-                    <div class="detail-value">智能分章 · HTML 排版</div>
-                </div>
-            </div>
-        </div>
+    <div class="explore-grid">
+        <a href="features.html" class="explore-card animate-on-scroll stagger-1">
+            <div class="ec-icon">✨</div>
+            <h3>功能介绍</h3>
+            <p>多格式支持、视差翻页、笔记高亮、阅读统计——你所需要的一切阅读功能。</p>
+            <span class="ec-arrow">→</span>
+        </a>
+        <a href="privacy.html" class="explore-card animate-on-scroll stagger-2">
+            <div class="ec-icon">🛡️</div>
+            <h3>隐私保护</h3>
+            <p>100% 本地、零网络、零追踪。开源透明，代码可审查，你的数据只在你的设备上。</p>
+            <span class="ec-arrow">→</span>
+        </a>
+        <a href="tech.html" class="explore-card animate-on-scroll stagger-3">
+            <div class="ec-icon">⚙️</div>
+            <h3>技术架构</h3>
+            <p>Kotlin + Jetpack Compose + MVVM，自实现解析引擎，现代 Android 技术栈。</p>
+            <span class="ec-arrow">→</span>
+        </a>
     </div>
 </section>
 
 <!-- ═══════════════════════════════════════════════════════
      Download CTA
      ═══════════════════════════════════════════════════════ -->
-<section class="section" id="download">
+<section class="download-section">
     <div class="download-band animate-on-scroll scale-in">
         <div class="dl-info">
             <h3>准备好开始阅读了？</h3>
@@ -1235,12 +691,12 @@
      Footer
      ═══════════════════════════════════════════════════════ -->
 <footer>
-    <div class="footer-light animate-on-scroll fade-in-only">
+    <div class="footer-light animate-on-scroll">
         <div class="footer-col">
             <h4>Lumi</h4>
             <ul>
-                <li><a href="#features">功能介绍</a></li>
-                <li><a href="#download">获取应用</a></li>
+                <li><a href="features.html">功能介绍</a></li>
+                <li><a href="tech.html">技术架构</a></li>
                 <li><a href="#">更新日志</a></li>
             </ul>
         </div>
@@ -1254,7 +710,7 @@
         <div class="footer-col">
             <h4>联系方式</h4>
             <ul>
-                <li><a href="mailto:hyf2917737053@gmail.com">邮件联系</a></li>
+                <li><a href="mailto:huangder0104@126.com">邮件联系</a></li>
                 <li><span class="text-muted">包名 com.huangder.lumibooks</span></li>
             </ul>
         </div>
@@ -1276,7 +732,7 @@
     'use strict';
 
     /* ── Intersection Observer: scroll-triggered animations ── */
-    const observer = new IntersectionObserver(function(entries) {
+    var observer = new IntersectionObserver(function(entries) {
         entries.forEach(function(entry) {
             if (entry.isIntersecting) {
                 entry.target.classList.add('animated');
@@ -1301,25 +757,12 @@
             nav.classList.remove('scrolled');
         }
         lastScroll = y;
-        requestAnimationFrame(function() {
-            if (window.scrollY !== lastScroll) updateNav();
-        });
     }
 
-    window.addEventListener('scroll', updateNav, { passive: true });
+    window.addEventListener('scroll', function() {
+        requestAnimationFrame(updateNav);
+    }, { passive: true });
     updateNav();
-
-    /* ── Smooth anchor links with nav offset ── */
-    document.querySelectorAll('a[href^="#"]').forEach(function(link) {
-        link.addEventListener('click', function(e) {
-            var target = document.querySelector(this.getAttribute('href'));
-            if (!target) return;
-            e.preventDefault();
-            var navHeight = nav ? nav.offsetHeight : 80;
-            var top = target.getBoundingClientRect().top + window.pageYOffset - navHeight - 16;
-            window.scrollTo({ top: top, behavior: 'smooth' });
-        });
-    });
 
 })();
 </script>
