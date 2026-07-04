@@ -54,10 +54,63 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         /* ═══════════════════════════════════════════════════════
+           Fonts — Product Sans (Western) + MiSans (CJK/Numbers)
+           ═══════════════════════════════════════════════════════ */
+        @font-face {
+            font-family: 'Product Sans';
+            src: url('fonts/ProductSans-Regular.ttf') format('truetype');
+            font-weight: 400;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'Product Sans';
+            src: url('fonts/ProductSans-Medium.ttf') format('truetype');
+            font-weight: 500;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'Product Sans';
+            src: url('fonts/ProductSans-Bold.ttf') format('truetype');
+            font-weight: 700;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'MiSans';
+            src: url('fonts/MiSans-Regular.ttf') format('truetype');
+            font-weight: 400;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'MiSans';
+            src: url('fonts/MiSans-Medium.ttf') format('truetype');
+            font-weight: 500;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'MiSans';
+            src: url('fonts/MiSans-Semibold.ttf') format('truetype');
+            font-weight: 600;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'MiSans';
+            src: url('fonts/MiSans-Bold.ttf') format('truetype');
+            font-weight: 700;
+            font-style: normal;
+            font-display: swap;
+        }
+
+        /* ═══════════════════════════════════════════════════════
            Background & Glassmorphism
            ═══════════════════════════════════════════════════════ */
         body {
-            font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            font-family: 'Product Sans', 'MiSans', -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
             background: linear-gradient(135deg, #faf5ff 0%, #f0f9ff 30%, #fff7ed 60%, #f0fdf4 100%);
             color: var(--ink);
             line-height: 1.5;
@@ -138,8 +191,6 @@
             align-items: center;
             justify-content: space-between;
             padding: 0 var(--space-xxl);
-            max-width: var(--max-width);
-            margin: 0 auto;
             transition: border-color 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
         }
         .top-nav.scrolled {
@@ -205,12 +256,12 @@
            Hero — no rounded corners, big soft shadow
            ═══════════════════════════════════════════════════════ */
         .hero {
-            padding: var(--space-section) var(--space-xxl) 48px;
+            padding: var(--space-xl) var(--space-xxl) var(--space-lg);
             max-width: var(--max-width);
             margin: 0 auto;
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: var(--space-xxl);
+            gap: var(--space-xl);
             align-items: center;
         }
         .hero-content {
@@ -284,8 +335,8 @@
         }
         /* Hero phone — NO rounded corners, big soft shadow, float animation */
         .hero-phone {
-            width: 280px;
-            height: 560px;
+            width: 220px;
+            height: 440px;
             background: var(--canvas);
             border-radius: 0;
             display: flex;
@@ -557,11 +608,11 @@
         @media (max-width: 1127px) {
             .hero {
                 grid-template-columns: 1fr;
-                gap: var(--space-xl);
-                padding: var(--space-xxl) var(--space-lg) var(--space-xl);
+                gap: var(--space-lg);
+                padding: var(--space-lg) var(--space-lg) var(--space-base);
             }
             .hero-visual { order: -1; }
-            .hero-phone { width: 220px; height: 440px; }
+            .hero-phone { width: 180px; height: 360px; }
             .explore-grid { grid-template-columns: repeat(2, 1fr); }
             .footer-light { grid-template-columns: repeat(2, 1fr); }
         }
@@ -593,7 +644,7 @@
                 gap: var(--space-sm);
                 text-align: center;
             }
-            .hero-phone { width: 180px; height: 360px; }
+            .hero-phone { width: 160px; height: 320px; }
         }
     </style>
 </head>
@@ -613,7 +664,7 @@
         <li><a href="tech.html">技术</a></li>
     </ul>
     <div class="nav-cta">
-        <span class="btn-nav-download" style="cursor:default;opacity:0.7;">即将上架</span>
+        <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-nav-download">获取 Lumi</a>
     </div>
 </nav>
 
@@ -627,8 +678,8 @@
             Lumi 为 Android 打造的本地电子书阅读器。没有广告，不需要网络，打开即读。
         </p>
         <div class="hero-actions hero-entrance hero-entrance-3">
-            <span class="btn-primary" style="cursor:default;opacity:0.85;">即将上架，敬请期待</span>
-            <a href="features.html" class="btn-secondary">了解更多</a>
+            <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-primary">获取 Lumi</a>
+            <a href="https://github.com/huangder/Lumi_Books" class="btn-secondary">了解更多</a>
         </div>
         <div class="pill-strip hero-entrance hero-entrance-4">
             <span class="pill-badge"><span class="accent-dot"></span>EPUB · PDF · TXT</span>
@@ -681,9 +732,9 @@
         <div class="dl-info">
             <h3>准备好开始阅读了？</h3>
             <p>最新版本 v1.0.3 · 约 15 MB · Android 8.0 及以上</p>
-            <div class="version-tag">即将上架应用商店</div>
+            <div class="version-tag">开源免费 · 持续更新</div>
         </div>
-        <span class="btn-download-pill" style="cursor:default;opacity:0.6;pointer-events:none;">即将上架</span>
+        <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-download-pill">获取 Lumi</a>
     </div>
 </section>
 
