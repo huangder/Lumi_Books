@@ -64,6 +64,9 @@ class PageContentView(context: Context) : FrameLayout(context) {
      * @param endChar 结束字符偏移（不含）
      * @param highlights 高亮列表 (start, end, color)，偏移相对于 fullText
      */
+    /** 文本设置完成后的回调（ReadView 用于注册 SpanWatcher） */
+    var onTextSet: ((Spannable) -> Unit)? = null
+
     fun setPageContent(
         fullText: CharSequence,
         startChar: Int,
@@ -95,6 +98,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
         }
 
         textView.text = spannable
+        onTextSet?.invoke(spannable)
     }
 
     /**
