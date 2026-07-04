@@ -77,8 +77,10 @@ fun ThemeSettingsSheet(
     requestClose: Boolean = false,
     currentFontSize: Float,
     currentTheme: String,
+    currentBrightness: Float = -1f,
     onFontSizeChange: (Float) -> Unit,
     onThemeChange: (String) -> Unit,
+    onBrightnessChange: (Float) -> Unit = {},
     onOpenAdvanced: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -109,8 +111,8 @@ fun ThemeSettingsSheet(
         }
     }
 
-    // 亮度状态（占位，实际功能待实现）
-    var brightness by remember { mutableFloatStateOf(80f) }
+    // 亮度值：-1f=跟随系统，0f~1f=自定义
+    val brightnessPercent = if (currentBrightness < 0f) 80f else currentBrightness * 100f
 
     Box(Modifier.fillMaxSize()) {
         // 遮罩
@@ -183,12 +185,16 @@ fun ThemeSettingsSheet(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("亮度", fontSize = 14.sp, color = LightTextSecondary)
                 Spacer(Modifier.weight(1f))
-                Text("${brightness.toInt()}%", fontSize = 14.sp, color = LightTextSecondary)
+                Text(
+                    if (currentBrightness < 0f) "自动" else "${(currentBrightness * 100).toInt()}%",
+                    fontSize = 14.sp,
+                    color = LightTextSecondary
+                )
             }
             Spacer(Modifier.height(4.dp))
             Slider(
-                value = brightness,
-                onValueChange = { brightness = it },
+                value = brightnessPercent,
+                onValueChange = { pct -> onBrightnessChange(pct / 100f) },
                 valueRange = 0f..100f,
                 modifier = Modifier
                     .fillMaxWidth()
