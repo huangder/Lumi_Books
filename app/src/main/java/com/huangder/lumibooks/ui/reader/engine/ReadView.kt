@@ -67,43 +67,10 @@ class ReadView(context: Context) : FrameLayout(context) {
 
     private var savedNotes: List<Note> = emptyList()
 
-    /** 手柄拖拽信号是否已发出（防止重复触发） */
-    private var selectionDragActive = false
-
     /** 设置已保存的笔记/高亮并刷新当前页。 */
     fun setSavedNotes(notes: List<Note>) {
         savedNotes = notes
         slotManager.refreshCurrentHighlights()
-    }
-
-    /**
-     * 在有活跃选区时拦截触摸事件，通知 Compose 层驱动菜单拖拽动画。
-     * DOWN → onSelectionDrag(true)（菜单缩小淡出）
-     * UP/CANCEL → onSelectionDrag(false)（菜单放大淡入）
-     * 不消费事件，仅旁观，交给子 View 正常处理。
-     */
-    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        val hasSelection = run {
-            val sp = curPageView.textView.text as? Spannable ?: return@run false
-            val start = Selection.getSelectionStart(sp)
-            val end = Selection.getSelectionEnd(sp)
-            start >= 0 && end > start
-        }
-        when (ev.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                if (hasSelection && !selectionDragActive) {
-                    selectionDragActive = true
-                    callbacks?.onSelectionDrag(true)
-                }
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                if (selectionDragActive) {
-                    selectionDragActive = false
-                    callbacks?.onSelectionDrag(false)
-                }
-            }
-        }
-        return super.dispatchTouchEvent(ev)
     }
 
     // ── 触摸分类追踪（ReadView 层统一拦截） ──
