@@ -1,6 +1,11 @@
 package com.huangder.lumibooks.ui.reader
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import android.text.Selection
+import android.text.SpanWatcher
+import android.text.Spannable
 import android.webkit.WebView
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -144,11 +149,19 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
 
     // 自定义选择菜单状态（null = 不显示）
     var selectionState by remember { mutableStateOf<SelectionState?>(null) }
-    // 手柄拖拽中：驱动菜单缩小/淡出动画
+    // 手柄拖拽中：true → 菜单立即隐藏；false → 以新坐标重新弹出
     var isSelectionDragging by remember { mutableStateOf(false) }
+    // 每次拖拽结束后自增，触发 SelectionMenuOverlay 重置入场动画
+    var menuReappearKey by remember { mutableStateOf(0) }
 
     // 注册 MainActivity ActionMode 拦截回调：长按选词后弹出自定义菜单
+    // 同时延迟添加 SpanWatcher 检测选区变化（手柄拖拽）
     DisposableEffect(activity) {
+        val handler = Handler(Looper.getMainLooper())
+        var hideMenuRunnable: Runnable? = null
+        var attachWatcherRunnable: Runnable? = null
+        var spanWatcher: SpanWatcher? = null
+
         activity?.onSelectionActionModeStarted = {
             val info = readViewRef.value?.getSelectionInfo()
             if (info != null) {
@@ -165,10 +178,67 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     selStartX = info.selStartX,
                     selEndX = info.selEndX
                 )
+
+                // 延迟100ms注册SpanWatcher，避免setSpan同步触发onSpanChanged清除selectionState
+                attachWatcherRunnable?.let { handler.removeCallbacks(it) }
+                attachWatcherRunnable = Runnable {
+                    val tv = readViewRef.value?.curPageView?.textView
+                    val sp = tv?.text as? Spannable ?: return@Runnable
+                    // 移除旧 watcher
+                    spanWatcher?.let { old ->
+                        sp.getSpans(0, sp.length, SpanWatcher::class.java)
+                            .filter { it === old }
+                            .forEach { sp.removeSpan(it) }
+                    }
+                    val watcher = object : SpanWatcher {
+                        override fun onSpanChanged(
+                            s: Spannable, what: Any,
+                            ostart: Int, oend: Int, nstart: Int, nend: Int
+                        ) {
+                            if (what !== Selection.SELECTION_START && what !== Selection.SELECTION_END) return
+                            if (selectionState == null) return
+                            // 立即隐藏菜单
+                            selectionState = null
+                            isSelectionDragging = true
+                            // 防抖：选区停止变化后以最终坐标重弹菜单
+                            hideMenuRunnable?.let { handler.removeCallbacks(it) }
+                            hideMenuRunnable = Runnable {
+                                val freshInfo = readViewRef.value?.getSelectionInfo()
+                                if (freshInfo != null) {
+                                    selectionState = SelectionState(
+                                        chapterIndex = freshInfo.chapterIndex,
+                                        pageInChapter = 0,
+                                        charStart = freshInfo.chapterStartOffset + freshInfo.pageStart,
+                                        charEnd = freshInfo.chapterStartOffset + freshInfo.pageEnd,
+                                        selectedText = freshInfo.selectedText,
+                                        touchX = freshInfo.selStartX,
+                                        touchY = freshInfo.selTopY,
+                                        selTopY = freshInfo.selTopY,
+                                        selBottomY = freshInfo.selBottomY,
+                                        selStartX = freshInfo.selStartX,
+                                        selEndX = freshInfo.selEndX
+                                    )
+                                    isSelectionDragging = false
+                                    menuReappearKey++
+                                } else {
+                                    isSelectionDragging = false
+                                }
+                            }
+                            handler.postDelayed(hideMenuRunnable!!, 300L)
+                        }
+                        override fun onSpanAdded(s: Spannable, what: Any, start: Int, end: Int) {}
+                        override fun onSpanRemoved(s: Spannable, what: Any, start: Int, end: Int) {}
+                    }
+                    spanWatcher = watcher
+                    sp.setSpan(watcher, 0, sp.length, Spannable.SPAN_INCLUSIVE_INCLUSIVE)
+                }
+                handler.postDelayed(attachWatcherRunnable!!, 100L)
             }
         }
         onDispose {
             activity?.onSelectionActionModeStarted = null
+            attachWatcherRunnable?.let { handler.removeCallbacks(it) }
+            hideMenuRunnable?.let { handler.removeCallbacks(it) }
         }
     }
 
@@ -291,10 +361,6 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                             }
 
                             override fun onLoadingChanged(isLoading: Boolean) {}
-
-                            override fun onSelectionDrag(isDragging: Boolean) {
-                                isSelectionDragging = isDragging
-                            }
 
                             override fun onSelectionAction(
                                 action: String,
@@ -587,46 +653,58 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         state = selectionState,
         readerTheme = uiState.readerTheme,
         isDragging = isSelectionDragging,
+        reappearKey = menuReappearKey,
         onDismiss = {
             selectionState = null
             readViewRef.value?.curPageView?.clearSelection()
         },
         onHighlight = {
-            val s = selectionState ?: return@SelectionMenuOverlay
-            viewModel.addNote(
-                selectedText = s.selectedText,
-                noteText = "",
-                chapterIndex = s.chapterIndex,
-                startPosition = s.charStart,
-                endPosition = s.charEnd,
-                color = "#40FFEB3B"
-            )
+            // 读取最新选区信息（手柄拖拽后 selectionState 可能过时）
+            val fresh = readViewRef.value?.getSelectionInfo()
+            if (fresh != null) {
+                viewModel.addNote(
+                    selectedText = fresh.selectedText,
+                    noteText = "",
+                    chapterIndex = fresh.chapterIndex,
+                    startPosition = fresh.chapterStartOffset + fresh.pageStart,
+                    endPosition = fresh.chapterStartOffset + fresh.pageEnd,
+                    color = "#40FFEB3B"
+                )
+            }
             selectionState = null
             readViewRef.value?.curPageView?.clearSelection()
         },
         onNote = {
-            val s = selectionState ?: return@SelectionMenuOverlay
-            pendingSelection = PendingSelection(s.selectedText, s.chapterIndex, s.charStart, s.charEnd)
-            showNoteInput = true
+            val fresh = readViewRef.value?.getSelectionInfo()
+            if (fresh != null) {
+                pendingSelection = PendingSelection(
+                    fresh.selectedText, fresh.chapterIndex,
+                    fresh.chapterStartOffset + fresh.pageStart,
+                    fresh.chapterStartOffset + fresh.pageEnd
+                )
+                showNoteInput = true
+            }
             selectionState = null
         },
         onSearch = {
-            val s = selectionState ?: return@SelectionMenuOverlay
+            val fresh = readViewRef.value?.getSelectionInfo()
+            val query = fresh?.selectedText ?: selectionState?.selectedText ?: return@SelectionMenuOverlay
             showSearch = true
-            searchQuery = s.selectedText
+            searchQuery = query
             isSearching = true
             hasSearched = true
             searchResults = emptyList()
             scope.launch {
-                searchResults = viewModel.searchAllChapters(s.selectedText)
+                searchResults = viewModel.searchAllChapters(query)
                 isSearching = false
             }
             selectionState = null
         },
         onCopy = {
-            val s = selectionState ?: return@SelectionMenuOverlay
+            val fresh = readViewRef.value?.getSelectionInfo()
+            val text = fresh?.selectedText ?: selectionState?.selectedText ?: return@SelectionMenuOverlay
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("selected", s.selectedText))
+            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("selected", text))
             selectionState = null
             readViewRef.value?.curPageView?.clearSelection()
         },
@@ -1321,6 +1399,7 @@ private fun SelectionMenuOverlay(
     state: SelectionState?,
     readerTheme: String,
     isDragging: Boolean,
+    reappearKey: Int,
     onDismiss: () -> Unit,
     onHighlight: () -> Unit,
     onNote: () -> Unit,
@@ -1330,6 +1409,8 @@ private fun SelectionMenuOverlay(
     onViewNote: () -> Unit
 ) {
     if (state == null) return
+    // 拖拽手柄期间完全隐藏菜单，抬手后以新坐标重新弹出
+    if (isDragging) return
 
     // 颜色跟随阅读背景：深色背景→深色菜单，浅色背景→浅色菜单
     val menuBg = when (readerTheme) {
@@ -1365,24 +1446,13 @@ private fun SelectionMenuOverlay(
     }
 
     // ── 动画 ──
-    // 进入动画（首次显示：放大淡入）
-    val enterAlpha = remember { Animatable(0f) }
-    val enterScale = remember { Animatable(0.88f) }
-    LaunchedEffect(Unit) {
+    // 每次 reappearKey 变化（首次显示 / 拖拽结束重新弹出）时重置并重跑入场动画
+    val enterAlpha = remember(reappearKey) { Animatable(0f) }
+    val enterScale = remember(reappearKey) { Animatable(0.88f) }
+    LaunchedEffect(reappearKey) {
         launch { enterAlpha.animateTo(1f, tween(180)) }
         launch { enterScale.animateTo(1f, spring(dampingRatio = 0.65f, stiffness = 380f)) }
     }
-    // 拖拽动画（手柄拖动中：缩小淡出）
-    val dragScale by animateFloatAsState(
-        targetValue = if (isDragging) 0.82f else 1f,
-        animationSpec = spring(dampingRatio = 0.8f, stiffness = 500f),
-        label = "dragScale"
-    )
-    val dragAlpha by animateFloatAsState(
-        targetValue = if (isDragging) 0.22f else 1f,
-        animationSpec = tween(if (isDragging) 120 else 200),
-        label = "dragAlpha"
-    )
 
     Popup(
         alignment = Alignment.TopStart,
@@ -1396,9 +1466,9 @@ private fun SelectionMenuOverlay(
         Row(
             modifier = Modifier
                 .graphicsLayer {
-                    val s = enterScale.value * dragScale
-                    scaleX = s; scaleY = s
-                    alpha = enterAlpha.value * dragAlpha
+                    scaleX = enterScale.value
+                    scaleY = enterScale.value
+                    alpha = enterAlpha.value
                     transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
                 }
                 .clip(RoundedCornerShape(22.dp))
