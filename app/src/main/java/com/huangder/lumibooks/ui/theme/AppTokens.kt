@@ -37,9 +37,9 @@ object AppColors {
     private val DarkBgGray = Color(0xFF2C2C2E)
     private val DarkDivider = Color(0xFF38383A)
 
-    // 强调色（深色模式用更柔和的暖红）
-    private val LightAccent = Color(0xFF6C231D)
-    private val DarkAccent = Color(0xFFD4736A)
+    // 强调色（粉红/珊瑚 #E85D5D）
+    private val LightAccent = Color(0xFFE85D5D)
+    private val DarkAccent = Color(0xFFFF8A80)
     val Accent: Color @Composable get() = if (LocalIsDarkTheme.current) DarkAccent else LightAccent
     val Shadow = Color(0x08000000)
 
