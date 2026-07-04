@@ -61,6 +61,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -127,12 +128,38 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     // TOC 跳转标记（区分用户点击 TOC 和正常翻页带来的章节变化）
     val isTocJump = remember { mutableStateOf(false) }
 
+    // 亮度控制：保存系统原始亮度，退出时恢复
+    val window = (context as? android.app.Activity)?.window
+    val savedBrightness = remember { mutableFloatStateOf(-1f) }
+
     DisposableEffect(Unit) {
         activity?.isInReaderScreen = true
+        // 保存系统原始亮度
+        savedBrightness.floatValue = window?.attributes?.screenBrightness ?: -1f
         onDispose {
             activity?.isInReaderScreen = false
             viewModel.saveAndPause()
             viewModel.clearError()
+            // 恢复系统亮度
+            window?.let { w ->
+                val attrs = w.attributes
+                attrs.screenBrightness = savedBrightness.floatValue
+                w.attributes = attrs
+            }
+        }
+    }
+
+    // 应用阅读器亮度
+    SideEffect {
+        window?.let { w ->
+            val targetBrightness = uiState.brightness
+            val attrs = w.attributes
+            attrs.screenBrightness = if (targetBrightness < 0f) {
+                savedBrightness.floatValue  // 跟随系统
+            } else {
+                targetBrightness.coerceIn(0.01f, 1f)  // 自定义亮度，最低 1% 防全黑
+            }
+            w.attributes = attrs
         }
     }
 
@@ -565,8 +592,10 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 requestClose = requestCloseTheme,
                 currentFontSize = uiState.fontSize,
                 currentTheme = uiState.readerTheme,
+                currentBrightness = uiState.brightness,
                 onFontSizeChange = { viewModel.saveFontSize(it) },
                 onThemeChange = { viewModel.saveReaderTheme(it) },
+                onBrightnessChange = { viewModel.saveBrightness(it) },
                 onOpenAdvanced = {
                     showAdvancedSheet = true
                 },

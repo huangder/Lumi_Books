@@ -47,6 +47,8 @@ data class ReaderUiState(
     val marginHorizDp: Float = 44f,
     val marginVertDp: Float = 72f,
     val readerTheme: String = "day",
+    /** 亮度 0f~1f，-1f 跟随系统 */
+    val brightness: Float = -1f,
     val error: String? = null,
     /** 全局页码（跨所有章节），新引擎用 */
     val globalPageIndex: Int = 0,
@@ -118,6 +120,11 @@ class ReaderViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(marginVertDp = mv)
             }
         }
+        viewModelScope.launch {
+            dataStoreManager.brightness.collectLatest { b ->
+                _uiState.value = _uiState.value.copy(brightness = b)
+            }
+        }
     }
 
     fun saveFontSize(size: Float) {
@@ -153,6 +160,11 @@ class ReaderViewModel @Inject constructor(
     fun saveReaderTheme(theme: String) {
         _uiState.value = _uiState.value.copy(readerTheme = theme)
         viewModelScope.launch { dataStoreManager.saveReaderTheme(theme) }
+    }
+
+    fun saveBrightness(value: Float) {
+        _uiState.value = _uiState.value.copy(brightness = value)
+        viewModelScope.launch { dataStoreManager.saveBrightness(value) }
     }
 
     /** 用户离开阅读页时调用（DisposableEffect.onDispose） */

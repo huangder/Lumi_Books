@@ -31,6 +31,7 @@ class DataStoreManager @Inject constructor(
         private val READER_THEME = stringPreferencesKey("reader_theme")
         private val MARGIN_HORIZ = floatPreferencesKey("margin_horiz")
         private val MARGIN_VERT = floatPreferencesKey("margin_vert")
+        private val BRIGHTNESS = floatPreferencesKey("brightness")
 
         // 统计设置
         private val DAILY_GOAL = intPreferencesKey("daily_goal")
@@ -68,6 +69,11 @@ class DataStoreManager @Inject constructor(
 
     val readerTheme: Flow<String> = context.dataStore.data.map { preferences ->
         preferences[READER_THEME] ?: "day"
+    }
+
+    /** 亮度值 0f~1f，-1f 表示跟随系统 */
+    val brightness: Flow<Float> = context.dataStore.data.map { preferences ->
+        preferences[BRIGHTNESS] ?: -1f
     }
 
     // 统计设置
@@ -128,6 +134,12 @@ class DataStoreManager @Inject constructor(
     suspend fun saveReaderTheme(theme: String) {
         context.dataStore.edit { preferences ->
             preferences[READER_THEME] = theme
+        }
+    }
+
+    suspend fun saveBrightness(value: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[BRIGHTNESS] = value
         }
     }
 
