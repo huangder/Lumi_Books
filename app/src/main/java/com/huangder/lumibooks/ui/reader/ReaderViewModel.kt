@@ -535,6 +535,10 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch { readingRepository.insertNote(note) }
     }
 
+    fun updateNote(note: Note) {
+        viewModelScope.launch { readingRepository.updateNote(note) }
+    }
+
     fun deleteNote(note: Note) {
         viewModelScope.launch { readingRepository.deleteNote(note) }
     }

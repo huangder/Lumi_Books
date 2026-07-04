@@ -36,6 +36,8 @@ public final class NoteDao_Impl implements NoteDao {
 
   private final EntityDeletionOrUpdateAdapter<NoteEntity> __deletionAdapterOfNoteEntity;
 
+  private final EntityDeletionOrUpdateAdapter<NoteEntity> __updateAdapterOfNoteEntity;
+
   private final SharedSQLiteStatement __preparedStmtOfDeleteAllNotesByBookId;
 
   public NoteDao_Impl(@NonNull final RoomDatabase __db) {
@@ -72,6 +74,28 @@ public final class NoteDao_Impl implements NoteDao {
       protected void bind(@NonNull final SupportSQLiteStatement statement,
           @NonNull final NoteEntity entity) {
         statement.bindLong(1, entity.getId());
+      }
+    };
+    this.__updateAdapterOfNoteEntity = new EntityDeletionOrUpdateAdapter<NoteEntity>(__db) {
+      @Override
+      @NonNull
+      protected String createQuery() {
+        return "UPDATE OR ABORT `notes` SET `id` = ?,`bookId` = ?,`chapterIndex` = ?,`startPosition` = ?,`endPosition` = ?,`selectedText` = ?,`note` = ?,`color` = ?,`createdAt` = ? WHERE `id` = ?";
+      }
+
+      @Override
+      protected void bind(@NonNull final SupportSQLiteStatement statement,
+          @NonNull final NoteEntity entity) {
+        statement.bindLong(1, entity.getId());
+        statement.bindString(2, entity.getBookId());
+        statement.bindLong(3, entity.getChapterIndex());
+        statement.bindLong(4, entity.getStartPosition());
+        statement.bindLong(5, entity.getEndPosition());
+        statement.bindString(6, entity.getSelectedText());
+        statement.bindString(7, entity.getNote());
+        statement.bindString(8, entity.getColor());
+        statement.bindLong(9, entity.getCreatedAt());
+        statement.bindLong(10, entity.getId());
       }
     };
     this.__preparedStmtOfDeleteAllNotesByBookId = new SharedSQLiteStatement(__db) {
@@ -111,6 +135,24 @@ public final class NoteDao_Impl implements NoteDao {
         __db.beginTransaction();
         try {
           __deletionAdapterOfNoteEntity.handle(note);
+          __db.setTransactionSuccessful();
+          return Unit.INSTANCE;
+        } finally {
+          __db.endTransaction();
+        }
+      }
+    }, $completion);
+  }
+
+  @Override
+  public Object updateNote(final NoteEntity note, final Continuation<? super Unit> $completion) {
+    return CoroutinesRoom.execute(__db, true, new Callable<Unit>() {
+      @Override
+      @NonNull
+      public Unit call() throws Exception {
+        __db.beginTransaction();
+        try {
+          __updateAdapterOfNoteEntity.handle(note);
           __db.setTransactionSuccessful();
           return Unit.INSTANCE;
         } finally {
