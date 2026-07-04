@@ -163,10 +163,14 @@ class ReadView(context: Context) : FrameLayout(context) {
             }
         }
 
-        // 🔥 为三个页面槽位设置原生选择 ActionMode 回调
+        // 🔥 为三个页面槽位设置原生选择 ActionMode 回调 + 选区检测
         setupNativeSelectionActionMode(prevPageView)
         setupNativeSelectionActionMode(curPageView)
         setupNativeSelectionActionMode(nextPageView)
+        // SpanWatcher 在每次文本设置后注册（因为 setPageContent 创建新 Spannable）
+        setupSelectionWatcher(prevPageView)
+        setupSelectionWatcher(curPageView)
+        setupSelectionWatcher(nextPageView)
 
         // 翻页后刷新高亮
         slotManager.onPageChangedCallback = { globalPage, chapterIdx, pageInChapter, chapterTotal ->
@@ -540,24 +544,50 @@ class ReadView(context: Context) : FrameLayout(context) {
 
     /**
      * 为 PageContentView 的 TextView 设置 customSelectionActionModeCallback。
-     * MainActivity 的 onActionModeStarted 会拦截 TYPE_PRIMARY 并调用 finish()，
-     * 因此系统浮动工具栏不会显示。这里只保留 onDestroyActionMode 以通知 Compose
-     * 层在选区被清除时隐藏自定义菜单。
+     * onCreateActionMode 返回 false → 系统不创建 ActionMode → 浮动工具栏不显示。
+     * 选区完全由系统原生管理，不受 ActionMode 生命周期干扰。
+     * Compose 层通过 SpanWatcher + onSelectionActionModeStarted 检测选区。
      */
     private fun setupNativeSelectionActionMode(pageView: PageContentView) {
         pageView.textView.customSelectionActionModeCallback = object : ActionMode.Callback {
-            // 不添加任何菜单项；返回 true 表示我们接管了 ActionMode
-            // 实际上 MainActivity 会在 onActionModeStarted 里调用 finish()，
-            // 所以这里的菜单永远不会呈现给用户
             override fun onCreateActionMode(mode: ActionMode?, menu: Menu?): Boolean = true
-            override fun onPrepareActionMode(mode: ActionMode?, menu: Menu?): Boolean = false
-            override fun onActionItemClicked(mode: ActionMode?, item: MenuItem?): Boolean = false
-
-            override fun onDestroyActionMode(mode: ActionMode?) {
-                // 这里不发 "dismiss"：onDestroyActionMode 是由我们自己在
-                // MainActivity.onActionModeStarted 里调用 mode.finish() 触发的，
-                // 并不代表用户真正退出了选择。真正的退出通过 onMenuToggle / onPageChanged 处理。
+            override fun onPrepareActionMode(mode: ActionMode?, menu: Menu?): Boolean {
+                menu?.clear()
+                return false
             }
+            override fun onActionItemClicked(mode: ActionMode?, item: MenuItem?): Boolean = false
+            override fun onDestroyActionMode(mode: ActionMode?) {}
+        }
+    }
+
+    /**
+     * 在每次文本设置后注册 SpanWatcher，检测选区变化。
+     * 因为 setPageContent 创建新的 SpannableStringBuilder，旧 watcher 会丢失。
+     */
+    private fun setupSelectionWatcher(pageView: PageContentView) {
+        pageView.onTextSet = { sp ->
+            sp.setSpan(object : android.text.SpanWatcher {
+                private fun checkSelection(s: android.text.Spannable) {
+                    val start = android.text.Selection.getSelectionStart(s)
+                    val end = android.text.Selection.getSelectionEnd(s)
+                    if (start >= 0 && end > start) {
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            callbacks?.onSelectionStarted()
+                        }
+                    }
+                }
+                override fun onSpanChanged(s: android.text.Spannable, what: Any, ostart: Int, oend: Int, nstart: Int, nend: Int) {
+                    if (what === android.text.Selection.SELECTION_START || what === android.text.Selection.SELECTION_END) {
+                        checkSelection(s)
+                    }
+                }
+                override fun onSpanAdded(s: android.text.Spannable, what: Any, start: Int, end: Int) {
+                    if (what === android.text.Selection.SELECTION_START || what === android.text.Selection.SELECTION_END) {
+                        checkSelection(s)
+                    }
+                }
+                override fun onSpanRemoved(s: android.text.Spannable, what: Any, start: Int, end: Int) {}
+            }, 0, sp.length, android.text.Spannable.SPAN_INCLUSIVE_INCLUSIVE)
         }
     }
 

@@ -126,11 +126,9 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     val isTocJump = remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
-        // 进入阅读页时开启 ActionMode 拦截，离开时恢复
         activity?.isInReaderScreen = true
         onDispose {
             activity?.isInReaderScreen = false
-            activity?.onSelectionActionModeStarted = null
             viewModel.saveAndPause()
             viewModel.clearError()
         }
@@ -157,94 +155,10 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     // 高亮颜色选择器：true → 菜单从操作按钮切换为6色圆点
     var showHighlightColorPicker by remember { mutableStateOf(false) }
 
-    // 注册 MainActivity ActionMode 拦截回调：长按选词后弹出自定义菜单
-    // 同时延迟添加 SpanWatcher 检测选区变化（手柄拖拽）
-    DisposableEffect(activity) {
-        val handler = Handler(Looper.getMainLooper())
-        var hideMenuRunnable: Runnable? = null
-        var attachWatcherRunnable: Runnable? = null
-        var spanWatcher: SpanWatcher? = null
-
-        activity?.onSelectionActionModeStarted = {
-            showHighlightColorPicker = false  // 每次新选词重置为操作菜单
-            val info = readViewRef.value?.getSelectionInfo()
-            if (info != null) {
-                selectionState = SelectionState(
-                    chapterIndex = info.chapterIndex,
-                    pageInChapter = 0,
-                    charStart = info.chapterStartOffset + info.pageStart,
-                    charEnd = info.chapterStartOffset + info.pageEnd,
-                    selectedText = info.selectedText,
-                    touchX = info.selStartX,
-                    touchY = info.selTopY,
-                    selTopY = info.selTopY,
-                    selBottomY = info.selBottomY,
-                    selStartX = info.selStartX,
-                    selEndX = info.selEndX
-                )
-
-                // 延迟100ms注册SpanWatcher，避免setSpan同步触发onSpanChanged清除selectionState
-                attachWatcherRunnable?.let { handler.removeCallbacks(it) }
-                attachWatcherRunnable = Runnable {
-                    val tv = readViewRef.value?.curPageView?.textView
-                    val sp = tv?.text as? Spannable ?: return@Runnable
-                    // 移除旧 watcher
-                    spanWatcher?.let { old ->
-                        sp.getSpans(0, sp.length, SpanWatcher::class.java)
-                            .filter { it === old }
-                            .forEach { sp.removeSpan(it) }
-                    }
-                    val watcher = object : SpanWatcher {
-                        override fun onSpanChanged(
-                            s: Spannable, what: Any,
-                            ostart: Int, oend: Int, nstart: Int, nend: Int
-                        ) {
-                            if (what !== Selection.SELECTION_START && what !== Selection.SELECTION_END) return
-                            if (selectionState == null) return
-                            // 立即隐藏菜单
-                            selectionState = null
-                            isSelectionDragging = true
-                            // 防抖：选区停止变化后以最终坐标重弹菜单
-                            hideMenuRunnable?.let { handler.removeCallbacks(it) }
-                            hideMenuRunnable = Runnable {
-                                val freshInfo = readViewRef.value?.getSelectionInfo()
-                                if (freshInfo != null) {
-                                    selectionState = SelectionState(
-                                        chapterIndex = freshInfo.chapterIndex,
-                                        pageInChapter = 0,
-                                        charStart = freshInfo.chapterStartOffset + freshInfo.pageStart,
-                                        charEnd = freshInfo.chapterStartOffset + freshInfo.pageEnd,
-                                        selectedText = freshInfo.selectedText,
-                                        touchX = freshInfo.selStartX,
-                                        touchY = freshInfo.selTopY,
-                                        selTopY = freshInfo.selTopY,
-                                        selBottomY = freshInfo.selBottomY,
-                                        selStartX = freshInfo.selStartX,
-                                        selEndX = freshInfo.selEndX
-                                    )
-                                    isSelectionDragging = false
-                                    menuReappearKey++
-                                } else {
-                                    isSelectionDragging = false
-                                }
-                            }
-                            handler.postDelayed(hideMenuRunnable!!, 300L)
-                        }
-                        override fun onSpanAdded(s: Spannable, what: Any, start: Int, end: Int) {}
-                        override fun onSpanRemoved(s: Spannable, what: Any, start: Int, end: Int) {}
-                    }
-                    spanWatcher = watcher
-                    sp.setSpan(watcher, 0, sp.length, Spannable.SPAN_INCLUSIVE_INCLUSIVE)
-                }
-                handler.postDelayed(attachWatcherRunnable!!, 100L)
-            }
-        }
-        onDispose {
-            activity?.onSelectionActionModeStarted = null
-            attachWatcherRunnable?.let { handler.removeCallbacks(it) }
-            hideMenuRunnable?.let { handler.removeCallbacks(it) }
-        }
-    }
+    // 拖拽检测：SpanWatcher + 防抖重弹（在 onSelectionStarted 中延迟注册）
+    val dragHandler = remember { Handler(Looper.getMainLooper()) }
+    var dragHideRunnable by remember { mutableStateOf<Runnable?>(null) }
+    var dragWatcher by remember { mutableStateOf<SpanWatcher?>(null) }
 
     // TOC 跳转：当 currentChapterIndex 变化且是 TOC 触发时，跳转 ReadView
     LaunchedEffect(uiState.currentChapterIndex) {
@@ -365,6 +279,70 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                             }
 
                             override fun onLoadingChanged(isLoading: Boolean) {}
+
+                            override fun onSelectionStarted() {
+                                showHighlightColorPicker = false
+                                val info = readViewRef.value?.getSelectionInfo() ?: return
+                                selectionState = SelectionState(
+                                    chapterIndex = info.chapterIndex,
+                                    pageInChapter = 0,
+                                    charStart = info.chapterStartOffset + info.pageStart,
+                                    charEnd = info.chapterStartOffset + info.pageEnd,
+                                    selectedText = info.selectedText,
+                                    touchX = info.selStartX,
+                                    touchY = info.selTopY,
+                                    selTopY = info.selTopY,
+                                    selBottomY = info.selBottomY,
+                                    selStartX = info.selStartX,
+                                    selEndX = info.selEndX
+                                )
+                                // 延迟注册拖拽检测 SpanWatcher
+                                dragHideRunnable?.let { dragHandler.removeCallbacks(it) }
+                                dragHandler.postDelayed({
+                                    val tv = readViewRef.value?.curPageView?.textView
+                                    val sp = tv?.text as? Spannable ?: return@postDelayed
+                                    dragWatcher?.let { old ->
+                                        sp.getSpans(0, sp.length, SpanWatcher::class.java)
+                                            .filter { it === old }
+                                            .forEach { sp.removeSpan(it) }
+                                    }
+                                    val watcher = object : SpanWatcher {
+                                        override fun onSpanChanged(s: Spannable, what: Any, ostart: Int, oend: Int, nstart: Int, nend: Int) {
+                                            if (what !== Selection.SELECTION_START && what !== Selection.SELECTION_END) return
+                                            if (selectionState == null) return
+                                            selectionState = null
+                                            isSelectionDragging = true
+                                            dragHideRunnable?.let { dragHandler.removeCallbacks(it) }
+                                            val r = Runnable {
+                                                val fresh = readViewRef.value?.getSelectionInfo()
+                                                if (fresh != null) {
+                                                    selectionState = SelectionState(
+                                                        chapterIndex = fresh.chapterIndex,
+                                                        pageInChapter = 0,
+                                                        charStart = fresh.chapterStartOffset + fresh.pageStart,
+                                                        charEnd = fresh.chapterStartOffset + fresh.pageEnd,
+                                                        selectedText = fresh.selectedText,
+                                                        touchX = fresh.selStartX,
+                                                        touchY = fresh.selTopY,
+                                                        selTopY = fresh.selTopY,
+                                                        selBottomY = fresh.selBottomY,
+                                                        selStartX = fresh.selStartX,
+                                                        selEndX = fresh.selEndX
+                                                    )
+                                                    menuReappearKey++
+                                                }
+                                                isSelectionDragging = false
+                                            }
+                                            dragHideRunnable = r
+                                            dragHandler.postDelayed(r, 300L)
+                                        }
+                                        override fun onSpanAdded(s: Spannable, what: Any, start: Int, end: Int) {}
+                                        override fun onSpanRemoved(s: Spannable, what: Any, start: Int, end: Int) {}
+                                    }
+                                    dragWatcher = watcher
+                                    sp.setSpan(watcher, 0, sp.length, Spannable.SPAN_INCLUSIVE_INCLUSIVE)
+                                }, 100L)
+                            }
 
                             override fun onSelectionAction(
                                 action: String,

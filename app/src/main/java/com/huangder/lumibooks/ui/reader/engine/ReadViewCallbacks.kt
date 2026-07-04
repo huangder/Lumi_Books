@@ -39,4 +39,7 @@ interface ReadViewCallbacks {
         pageStart: Int = 0,
         pageEnd: Int = 0
     ) {}
+
+    /** 文字选区建立时回调（SpanWatcher 检测到有效选区） */
+    fun onSelectionStarted() {}
 }
