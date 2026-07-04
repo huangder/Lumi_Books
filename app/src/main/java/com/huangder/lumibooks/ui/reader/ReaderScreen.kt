@@ -18,6 +18,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.shape.CircleShape
@@ -46,6 +47,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Search
@@ -154,6 +156,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     var menuReappearKey by remember { mutableStateOf(0) }
     // 高亮颜色选择器：true → 菜单从操作按钮切换为6色圆点
     var showHighlightColorPicker by remember { mutableStateOf(false) }
+    // 编辑笔记模式：非null时打开 NoteInputSheet 预填原笔记文字
+    var editingNote by remember { mutableStateOf<com.huangder.lumibooks.domain.model.Note?>(null) }
 
     // 拖拽检测：SpanWatcher + 防抖重弹（在 onSelectionStarted 中延迟注册）
     val dragHandler = remember { Handler(Looper.getMainLooper()) }
@@ -286,14 +290,20 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                 if (isSelectionDragging) return
                                 showHighlightColorPicker = false
                                 val info = readViewRef.value?.getSelectionInfo() ?: return
+                                val cStart = info.chapterStartOffset + info.pageStart
+                                val cEnd = info.chapterStartOffset + info.pageEnd
+                                val overlapping = findOverlappingNote(notes, info.chapterIndex, cStart, cEnd)
                                 selectionState = SelectionState(
                                     chapterIndex = info.chapterIndex,
                                     pageInChapter = 0,
-                                    charStart = info.chapterStartOffset + info.pageStart,
-                                    charEnd = info.chapterStartOffset + info.pageEnd,
+                                    charStart = cStart,
+                                    charEnd = cEnd,
                                     selectedText = info.selectedText,
                                     touchX = info.selStartX,
                                     touchY = info.selTopY,
+                                    hasHighlight = overlapping != null,
+                                    hasNote = overlapping?.note?.isNotEmpty() == true,
+                                    existingNote = overlapping,
                                     selTopY = info.selTopY,
                                     selBottomY = info.selBottomY,
                                     selStartX = info.selStartX,
@@ -321,14 +331,20 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                             val r = Runnable {
                                                 val fresh = readViewRef.value?.getSelectionInfo()
                                                 if (fresh != null) {
+                                                    val cs = fresh.chapterStartOffset + fresh.pageStart
+                                                    val ce = fresh.chapterStartOffset + fresh.pageEnd
+                                                    val ov = findOverlappingNote(notes, fresh.chapterIndex, cs, ce)
                                                     selectionState = SelectionState(
                                                         chapterIndex = fresh.chapterIndex,
                                                         pageInChapter = 0,
-                                                        charStart = fresh.chapterStartOffset + fresh.pageStart,
-                                                        charEnd = fresh.chapterStartOffset + fresh.pageEnd,
+                                                        charStart = cs,
+                                                        charEnd = ce,
                                                         selectedText = fresh.selectedText,
                                                         touchX = fresh.selStartX,
                                                         touchY = fresh.selTopY,
+                                                        hasHighlight = ov != null,
+                                                        hasNote = ov?.note?.isNotEmpty() == true,
+                                                        existingNote = ov,
                                                         selTopY = fresh.selTopY,
                                                         selBottomY = fresh.selBottomY,
                                                         selStartX = fresh.selStartX,
@@ -705,13 +721,38 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             readViewRef.value?.curPageView?.clearSelection()
         },
         onRemoveHighlight = {
+            // 移除高亮 = 删除该 Note（高亮和笔记共用同一条记录）
+            selectionState?.existingNote?.let { viewModel.deleteNote(it) }
             selectionState = null
             showHighlightColorPicker = false
             readViewRef.value?.curPageView?.clearSelection()
         },
         onViewNote = {
+            // 🔥 查看/修改笔记：打开 NoteInputSheet 预填原笔记文字
+            val existing = selectionState?.existingNote
+            if (existing != null) {
+                editingNote = existing
+                noteInputText = existing.note
+                showNoteInput = true
+            }
             selectionState = null
             showHighlightColorPicker = false
+            readViewRef.value?.curPageView?.clearSelection()
+        },
+        onChangeHighlightColor = { hexColor ->
+            // 修改已有高亮的颜色
+            val existing = selectionState?.existingNote
+            if (existing != null) {
+                viewModel.updateNote(existing.copy(color = hexColor))
+            }
+            selectionState = null
+            readViewRef.value?.curPageView?.clearSelection()
+        },
+        onDeleteHighlight = {
+            // 删除高亮
+            selectionState?.existingNote?.let { viewModel.deleteNote(it) }
+            selectionState = null
+            readViewRef.value?.curPageView?.clearSelection()
         }
     )
 
@@ -721,22 +762,33 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         initialText = noteInputText,
         onTextChange = { noteInputText = it },
         onConfirm = {
-            val ps = pendingSelection ?: return@NoteInputSheet
-            viewModel.addNote(
-                selectedText = ps.selectedText,
-                noteText = noteInputText,
-                chapterIndex = ps.chapterIndex,
-                startPosition = ps.startPosition,
-                endPosition = ps.endPosition,
-                color = "#40FFEB3B"
-            )
+            val editing = editingNote
+            if (editing != null) {
+                // 编辑模式：更新已有笔记
+                viewModel.updateNote(editing.copy(note = noteInputText))
+                editingNote = null
+            } else {
+                // 新建模式
+                val ps = pendingSelection ?: return@NoteInputSheet
+                viewModel.addNote(
+                    selectedText = ps.selectedText,
+                    noteText = noteInputText,
+                    chapterIndex = ps.chapterIndex,
+                    startPosition = ps.startPosition,
+                    endPosition = ps.endPosition,
+                    color = "#40FFEB3B"
+                )
+                pendingSelection = null
+            }
             showNoteInput = false
-            pendingSelection = null
+            noteInputText = ""
             readViewRef.value?.curPageView?.clearSelection()
         },
         onCancel = {
             showNoteInput = false
             pendingSelection = null
+            editingNote = null
+            noteInputText = ""
         }
     )
 }
@@ -1390,6 +1442,18 @@ private data class SelectionState(
     val selEndX: Float = 0f
 )
 
+/** 查找与选区重叠的 Note（chapterIndex 匹配 + 范围相交） */
+private fun findOverlappingNote(
+    notes: List<com.huangder.lumibooks.domain.model.Note>,
+    chapterIndex: Int,
+    selStart: Int,
+    selEnd: Int
+): com.huangder.lumibooks.domain.model.Note? {
+    return notes.firstOrNull { n ->
+        n.chapterIndex == chapterIndex && n.startPosition < selEnd && n.endPosition > selStart
+    }
+}
+
 // ── 选择菜单覆盖层 ──
 
 @Composable
@@ -1406,7 +1470,9 @@ private fun SelectionMenuOverlay(
     onCopy: () -> Unit,
     onRemoveHighlight: () -> Unit,
     onViewNote: () -> Unit,
-    onColorPicked: (String) -> Unit = {}
+    onColorPicked: (String) -> Unit = {},
+    onChangeHighlightColor: (String) -> Unit = {},
+    onDeleteHighlight: () -> Unit = {}
 ) {
     if (state == null) return
     // 拖拽手柄期间完全隐藏菜单，抬手后以新坐标重新弹出
@@ -1519,15 +1585,58 @@ private fun SelectionMenuOverlay(
                             ) { onColorPicked(hex) }
                     )
                 }
-            } else if (state.hasHighlight || state.hasNote) {
+            } else if (state.hasHighlight && !state.hasNote) {
+                // 🔥 纯高亮：色块改颜色 + 删除按钮（等高横向对齐）+ 搜索 + 复制
+                highlightColors.forEachIndexed { index, (hex, color) ->
+                    if (index > 0) Spacer(Modifier.width(10.dp))
+                    val isCurrentColor = state.existingNote?.color?.equals(hex, ignoreCase = true) == true
+                    Box(
+                        modifier = Modifier
+                            .size(22.dp)
+                            .then(
+                                if (isCurrentColor) Modifier.border(2.dp, menuText, CircleShape)
+                                else Modifier
+                            )
+                            .clip(CircleShape)
+                            .background(color)
+                            .clickable(
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() }
+                            ) { onChangeHighlightColor(hex) }
+                    )
+                }
+                Spacer(Modifier.width(6.dp))
+                MenuDivider(dividerColor)
+                Spacer(Modifier.width(6.dp))
+                // 删除按钮（垃圾桶图标，与色块等高）
+                Box(
+                    modifier = Modifier
+                        .size(22.dp)
+                        .clip(CircleShape)
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) { onDeleteHighlight() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = "删除高亮",
+                        tint = menuText.copy(alpha = 0.7f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Spacer(Modifier.width(6.dp))
+                MenuDivider(dividerColor)
+                MenuChip("搜索", menuText, onSearch)
+                MenuDivider(dividerColor)
+                MenuChip("复制", menuText, onCopy)
+            } else if (state.hasNote) {
+                // 🔥 有笔记：查看/修改笔记 + 移除高亮 + 搜索 + 复制
+                MenuChip("查看笔记", menuText, onViewNote)
+                MenuDivider(dividerColor)
                 MenuChip("移除高亮", menuText, onRemoveHighlight)
                 MenuDivider(dividerColor)
-                if (state.hasNote) {
-                    MenuChip("查看笔记", menuText, onViewNote)
-                    MenuDivider(dividerColor)
-                    MenuChip("移除笔记", menuText, onRemoveHighlight)
-                    MenuDivider(dividerColor)
-                }
                 MenuChip("搜索", menuText, onSearch)
                 MenuDivider(dividerColor)
                 MenuChip("复制", menuText, onCopy)

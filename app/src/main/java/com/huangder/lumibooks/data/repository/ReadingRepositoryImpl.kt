@@ -73,6 +73,10 @@ class ReadingRepositoryImpl @Inject constructor(
         noteDao.insertNote(note.toEntity())
     }
 
+    override suspend fun updateNote(note: Note) {
+        noteDao.updateNote(note.toEntity())
+    }
+
     override suspend fun deleteNote(note: Note) {
         noteDao.deleteNote(note.toEntity())
     }

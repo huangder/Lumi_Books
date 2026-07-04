@@ -18,6 +18,7 @@ interface ReadingRepository {
     suspend fun deleteBookmark(bookmark: Bookmark)
     fun getNotesByBookId(bookId: String): Flow<List<Note>>
     suspend fun insertNote(note: Note)
+    suspend fun updateNote(note: Note)
     suspend fun deleteNote(note: Note)
     fun getMostReadBooks(limit: Int = 5): Flow<List<BookDuration>>
 }
