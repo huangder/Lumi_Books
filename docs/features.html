@@ -29,8 +29,17 @@
             box-sizing: border-box;
         }
 
+        /* ========== Fonts: Product Sans (Western) + MiSans (CJK/Numbers) ========== */
+        @font-face { font-family: 'Product Sans'; src: url('fonts/ProductSans-Regular.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: swap; }
+        @font-face { font-family: 'Product Sans'; src: url('fonts/ProductSans-Medium.ttf') format('truetype'); font-weight: 500; font-style: normal; font-display: swap; }
+        @font-face { font-family: 'Product Sans'; src: url('fonts/ProductSans-Bold.ttf') format('truetype'); font-weight: 700; font-style: normal; font-display: swap; }
+        @font-face { font-family: 'MiSans'; src: url('fonts/MiSans-Regular.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: swap; }
+        @font-face { font-family: 'MiSans'; src: url('fonts/MiSans-Medium.ttf') format('truetype'); font-weight: 500; font-style: normal; font-display: swap; }
+        @font-face { font-family: 'MiSans'; src: url('fonts/MiSans-Semibold.ttf') format('truetype'); font-weight: 600; font-style: normal; font-display: swap; }
+        @font-face { font-family: 'MiSans'; src: url('fonts/MiSans-Bold.ttf') format('truetype'); font-weight: 700; font-style: normal; font-display: swap; }
+
         body {
-            font-family: "Noto Sans SC", "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+            font-family: 'Product Sans', 'MiSans', -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
             color: var(--body);
             line-height: 1.6;
             background: linear-gradient(135deg, #faf5ff 0%, #f0f9ff 30%, #fff7ed 60%, #f0fdf4 100%);
