@@ -81,6 +81,8 @@ fun ReadingGoalSheet(
     todayReadingTime: Long,
     dailyGoal: Int,
     currentBook: Book?,
+    weeklyData: List<DailyReading> = emptyList(),
+    streakDays: Int = 0,
     onDismiss: () -> Unit,
     onSaveGoal: (Int) -> Unit,
     onTabBarVisibleChange: (Boolean) -> Unit
@@ -128,10 +130,6 @@ fun ReadingGoalSheet(
     val goalMs = dailyGoal * 60 * 1000L
     val progress = (todayReadingTime.toFloat() / goalMs).coerceIn(0f, 1f)
     val remaining = ((goalMs - todayReadingTime) / 1000 / 60).coerceAtLeast(0).toInt()
-
-    // 占位数据：连续阅读打卡（模拟7天数据）
-    val streakData = remember { listOf(true, true, true, false, true, false, false) }
-    val streakDays = remember { streakData.count { it } }
 
     Box(modifier = Modifier.fillMaxSize()) {
         // 遮罩层（由外层 AnimatedVisibility 控制渐显/渐隐）
@@ -204,7 +202,7 @@ fun ReadingGoalSheet(
                     progress = progress,
                     remaining = remaining,
                     currentBook = currentBook,
-                    streakData = streakData,
+                    weeklyData = weeklyData,
                     streakDays = streakDays,
                     isDark = isDark,
                     onChangeGoal = { showGoalPicker = true }
@@ -221,7 +219,7 @@ private fun TodayReadingContent(
     progress: Float,
     remaining: Int,
     currentBook: Book?,
-    streakData: List<Boolean>,
+    weeklyData: List<DailyReading>,
     streakDays: Int,
     isDark: Boolean,
     onChangeGoal: () -> Unit
@@ -332,13 +330,19 @@ private fun TodayReadingContent(
     }
 
     // 连续阅读打卡区域
+    val goalMs = dailyGoal * 60 * 1000L
+    val todayIndex = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK) - 1
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 7 个圆圈（周日到周六）
-        val dayNames = listOf("日", "一", "二", "三", "四", "五", "六")
-        streakData.forEachIndexed { index, achieved ->
+        weeklyData.forEachIndexed { index, data ->
+            val isPast = index < todayIndex
+            val isToday = index == todayIndex
+            val goalMet = data.duration >= goalMs
+            val achieved = goalMet || isToday
+
             Box(
                 modifier = Modifier
                     .size(28.dp)
@@ -346,19 +350,19 @@ private fun TodayReadingContent(
                         if (achieved) {
                             Modifier.background(StreakBlue, CircleShape)
                         } else {
-                            Modifier.border(1.5.dp, dividerColor, CircleShape)
+                            Modifier.border(1.dp, dividerColor, CircleShape)
                         }
                     ),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = dayNames[index],
+                    text = data.dayLabel,
                     fontSize = 10.sp,
                     color = if (achieved) Color.White else textSecondary,
                     fontWeight = if (achieved) FontWeight.Bold else FontWeight.Normal
                 )
             }
-            if (index < streakData.size - 1) {
+            if (index < weeklyData.size - 1) {
                 Spacer(modifier = Modifier.weight(1f))
             }
         }

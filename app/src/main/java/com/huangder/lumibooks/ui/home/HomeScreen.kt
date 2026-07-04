@@ -175,6 +175,7 @@ fun HomeScreen(
             ReadingGoalCard(
                 readingTime = uiState.todayReadingTime,
                 dailyGoal = uiState.dailyGoal,
+                weeklyData = uiState.weeklyData,
                 onCardClick = { showGoalSheet = true },
                 onContinueClick = {
                     lastReadBook?.let { onNavigateToReader(it.id, it.coverPath, it.title) }
@@ -205,6 +206,8 @@ fun HomeScreen(
             todayReadingTime = uiState.todayReadingTime,
             dailyGoal = uiState.dailyGoal,
             currentBook = lastReadBook,
+            weeklyData = uiState.weeklyData,
+            streakDays = uiState.streakDays,
             onDismiss = { showGoalSheet = false },
             onSaveGoal = { minutes -> viewModel.saveDailyGoal(minutes) },
             onTabBarVisibleChange = onTabBarVisibleChange
@@ -440,6 +443,7 @@ private fun RecentBookCard(book: Book, onClick: () -> Unit) {
 private fun ReadingGoalCard(
     readingTime: Long,
     dailyGoal: Int,
+    weeklyData: List<DailyReading> = emptyList(),
     onCardClick: () -> Unit,
     onContinueClick: () -> Unit
 ) {
@@ -504,7 +508,7 @@ private fun ReadingGoalCard(
         Spacer(Modifier.height(AppSpace.lg))
 
         // 星期打卡
-        WeeklyCheckIn()
+        WeeklyCheckIn(weeklyData = weeklyData, dailyGoal = dailyGoal)
     }
 }
 
@@ -546,68 +550,58 @@ private fun ArcProgressBar(progress: Float, modifier: Modifier = Modifier) {
 // ─── 星期打卡 ──────────────────────────────────────────────────
 
 @Composable
-private fun WeeklyCheckIn() {
-    val days = listOf("日", "一", "二", "三", "四", "五", "六")
-    // Calendar.SUNDAY=1, MONDAY=2 ... SATURDAY=7
-    // 我们的索引: 0=日, 1=一 ... 6=六
+private fun WeeklyCheckIn(weeklyData: List<DailyReading> = emptyList(), dailyGoal: Int = 30) {
     val todayIndex = Calendar.getInstance().get(Calendar.DAY_OF_WEEK) - 1
+    val goalMs = dailyGoal * 60 * 1000L
     val accentColor = AppColors.Accent
 
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
-        days.forEachIndexed { index, day ->
+        weeklyData.forEachIndexed { index, data ->
             val isPast = index < todayIndex
             val isToday = index == todayIndex
             val isFuture = index > todayIndex
+            val goalMet = data.duration >= goalMs
 
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(
-                    modifier = Modifier.size(38.dp),
+                    modifier = Modifier.size(34.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    // 已过的日期：进度轮廓圆环
-                    if (isPast) {
-                        Canvas(modifier = Modifier.size(38.dp)) {
-                            val stroke = 2.dp.toPx()
-                            val r = (size.minDimension - stroke) / 2
-                            // 背景圆环
-                            drawCircle(
-                                color = Color(0xFFE5E5EA),
-                                radius = r,
-                                style = Stroke(width = stroke)
+                    if (isPast || isToday) {
+                        if (goalMet || isToday) {
+                            // 达标或今天：实心圆
+                            Box(
+                                modifier = Modifier
+                                    .size(30.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isToday) accentColor else accentColor.copy(alpha = 0.8f))
                             )
-                            // 进度弧（模拟已打卡）
-                            drawArc(
-                                color = accentColor,
-                                startAngle = -90f,
-                                sweepAngle = 360f,
-                                useCenter = false,
-                                topLeft = Offset(stroke / 2, stroke / 2),
-                                size = Size(r * 2, r * 2),
-                                style = Stroke(width = stroke, cap = StrokeCap.Round)
-                            )
+                        } else {
+                            // 未达标：空心圆
+                            Canvas(modifier = Modifier.size(30.dp)) {
+                                val stroke = 1.5.dp.toPx()
+                                val r = (size.minDimension - stroke) / 2
+                                drawCircle(
+                                    color = accentColor.copy(alpha = 0.4f),
+                                    radius = r,
+                                    style = Stroke(width = stroke)
+                                )
+                            }
                         }
                     }
-                    // 今天：高亮圆圈
-                    if (isToday) {
-                        Box(
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(CircleShape)
-                                .background(AppColors.Accent)
-                        )
-                    }
                     Text(
-                        text = day,
-                        fontSize = 12.sp,
+                        text = data.dayLabel,
+                        fontSize = 11.sp,
                         color = when {
                             isToday -> Color.White
-                            isPast -> AppColors.Accent
+                            goalMet && isPast -> Color.White
+                            isPast -> AppColors.TextSecondary
                             else -> AppColors.TextSecondary
                         },
-                        fontWeight = if (isToday || isPast) FontWeight.Bold else FontWeight.Normal
+                        fontWeight = if ((goalMet && isPast) || isToday) FontWeight.Bold else FontWeight.Normal
                     )
                 }
             }

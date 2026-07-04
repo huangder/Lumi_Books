@@ -12,8 +12,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
 import javax.inject.Inject
+
+/** 每日阅读数据 */
+data class DailyReading(val date: String, val duration: Long, val dayLabel: String)
 
 data class HomeUiState(
     val books: List<Book> = emptyList(),
@@ -24,7 +31,11 @@ data class HomeUiState(
     val isSearchActive: Boolean = false,
     val sortBy: SortBy = SortBy.LAST_READ,
     val isLoading: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    /** 过去7天的阅读数据（含今日） */
+    val weeklyData: List<DailyReading> = emptyList(),
+    /** 连胜天数 */
+    val streakDays: Int = 0
 )
 
 enum class SortBy {
@@ -41,11 +52,15 @@ class HomeViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
+    private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    private val dayLabels = listOf("日", "一", "二", "三", "四", "五", "六")
+
     init {
         loadBooks()
         loadTodayReadingTime()
         loadDailyGoal()
         loadAvatar()
+        loadWeeklyData()
     }
 
     private fun loadBooks() {
@@ -93,6 +108,38 @@ class HomeViewModel @Inject constructor(
             dataStoreManager.avatarUri.collectLatest { uri ->
                 _uiState.value = _uiState.value.copy(avatarUri = uri)
             }
+        }
+    }
+
+    private fun loadWeeklyData() {
+        viewModelScope.launch {
+            val calendar = Calendar.getInstance()
+            val goalMs = _uiState.value.dailyGoal * 60 * 1000L
+            val weeklyData = mutableListOf<DailyReading>()
+
+            // 从6天前到今天
+            for (i in 6 downTo 0) {
+                val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -i) }
+                val date = dateFormat.format(cal.time)
+                val dayOfWeek = cal.get(Calendar.DAY_OF_WEEK) - 1 // 0=Sunday
+                val duration = readingRepository.getTotalDurationByDate(date).first() ?: 0
+                weeklyData.add(DailyReading(date, duration, dayLabels[dayOfWeek]))
+            }
+
+            // 计算连胜天数：从今天往回数，连续达到目标的天数
+            var streak = 0
+            for (data in weeklyData.reversed()) {
+                if (data.duration >= goalMs) {
+                    streak++
+                } else {
+                    break
+                }
+            }
+
+            _uiState.value = _uiState.value.copy(
+                weeklyData = weeklyData,
+                streakDays = streak
+            )
         }
     }
 

@@ -80,6 +80,30 @@ class ReaderViewModel @Inject constructor(
 
     private var parser: BookParser? = null
     private var sessionStartTime: Long = System.currentTimeMillis()
+    private var pausedTime: Long = 0L  // 进入后台的时间戳
+    private var isPaused: Boolean = false
+
+    /** 应用进入后台：暂停计时 */
+    fun onAppBackgrounded() {
+        if (!isPaused) {
+            pausedTime = System.currentTimeMillis()
+            isPaused = true
+            // 保存当前会话，防止进程被杀丢失数据
+            saveReadingSession()
+            android.util.Log.e("READING", "App backgrounded, session saved")
+        }
+    }
+
+    /** 应用回到前台：恢复计时 */
+    fun onAppForegrounded() {
+        if (isPaused) {
+            // 重置会话起始时间，不计入后台时间
+            sessionStartTime = System.currentTimeMillis()
+            isPaused = false
+            pausedTime = 0L
+            android.util.Log.e("READING", "App foregrounded, timer reset")
+        }
+    }
 
     init {
         loadBook()
@@ -703,18 +727,29 @@ class ReaderViewModel @Inject constructor(
             return
         }
 
-        val record = ReadingRecord(
-            bookId = bookId,
-            date = TimeUtils.getCurrentDate(),
-            duration = duration,
-            startTime = sessionStartTime,
-            endTime = endTime
-        )
+        val today = TimeUtils.getCurrentDate()
         try {
             kotlinx.coroutines.runBlocking {
-                readingRepository.insertRecord(record)
+                val existing = readingRepository.getRecordByBookAndDate(bookId, today)
+                if (existing != null) {
+                    // 同一天同一本书：累加时长
+                    readingRepository.updateRecordDuration(existing.id, duration, endTime)
+                    android.util.Log.e("READING", "Record updated: +${duration}ms, total=${existing.duration + duration}ms")
+                } else {
+                    // 新记录
+                    val record = ReadingRecord(
+                        bookId = bookId,
+                        date = today,
+                        duration = duration,
+                        startTime = sessionStartTime,
+                        endTime = endTime
+                    )
+                    readingRepository.insertRecord(record)
+                    android.util.Log.e("READING", "Record inserted: ${record.date} ${record.duration}ms")
+                }
             }
-            android.util.Log.e("READING", "Record saved: ${record.date} ${record.duration}ms")
+            // 重置会话起始时间，为下一段阅读做准备
+            sessionStartTime = System.currentTimeMillis()
         } catch (e: Exception) {
             android.util.Log.e("READING", "Save failed: ${e.message}")
         }

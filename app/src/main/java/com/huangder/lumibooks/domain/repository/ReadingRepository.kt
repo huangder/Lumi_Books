@@ -12,6 +12,7 @@ interface ReadingRepository {
     fun getTotalDurationByDate(date: String): Flow<Long?>
     fun getTotalDurationBetweenDates(startDate: String, endDate: String): Flow<Long?>
     suspend fun insertRecord(record: ReadingRecord)
+    suspend fun getRecordByBookAndDate(bookId: String, date: String): ReadingRecord?
     suspend fun updateRecordDuration(recordId: Long, additionalDuration: Long, endTime: Long)
     fun getBookmarksByBookId(bookId: String): Flow<List<Bookmark>>
     suspend fun insertBookmark(bookmark: Bookmark)
