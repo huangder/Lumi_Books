@@ -59,7 +59,82 @@
             --nav-height: 80px;
         }
 
+        html { scroll-behavior: smooth; }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        /* ═══════════════════════════════════════════════════════
+           Keyframe Animations
+           ═══════════════════════════════════════════════════════ */
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(24px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to   { opacity: 1; }
+        }
+        @keyframes scaleIn {
+            from { opacity: 0; transform: scale(0.94); }
+            to   { opacity: 1; transform: scale(1); }
+        }
+        @keyframes shimmer {
+            0%   { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50%      { transform: translateY(-6px); }
+        }
+
+        /* ═══════════════════════════════════════════════════════
+           Scroll-triggered Animation Classes
+           ═══════════════════════════════════════════════════════ */
+        .animate-on-scroll {
+            opacity: 0;
+            transform: translateY(24px);
+            transition: opacity 0.6s cubic-bezier(0.22, 0.61, 0.36, 1),
+                        transform 0.6s cubic-bezier(0.22, 0.61, 0.36, 1);
+        }
+        .animate-on-scroll.animated {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .animate-on-scroll.fade-in-only {
+            transform: none;
+            transition: opacity 0.5s ease;
+        }
+        .animate-on-scroll.scale-in {
+            transform: scale(0.94);
+            transition: opacity 0.5s cubic-bezier(0.22, 0.61, 0.36, 1),
+                        transform 0.5s cubic-bezier(0.22, 0.61, 0.36, 1);
+        }
+        .animate-on-scroll.scale-in.animated {
+            transform: scale(1);
+        }
+
+        /* Stagger delays */
+        .stagger-1 { transition-delay: 0.05s; }
+        .stagger-2 { transition-delay: 0.10s; }
+        .stagger-3 { transition-delay: 0.15s; }
+        .stagger-4 { transition-delay: 0.20s; }
+        .stagger-5 { transition-delay: 0.25s; }
+        .stagger-6 { transition-delay: 0.30s; }
+        .stagger-7 { transition-delay: 0.35s; }
+        .stagger-8 { transition-delay: 0.40s; }
+
+        /* Hero entrance — runs on load without scroll trigger */
+        @keyframes heroFadeIn {
+            from { opacity: 0; transform: translateY(18px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .hero-entrance {
+            animation: heroFadeIn 0.7s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+        }
+        .hero-entrance-1 { animation-delay: 0.1s; }
+        .hero-entrance-2 { animation-delay: 0.2s; }
+        .hero-entrance-3 { animation-delay: 0.35s; }
+        .hero-entrance-4 { animation-delay: 0.50s; }
 
         body {
             font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', sans-serif;
@@ -97,15 +172,23 @@
             position: sticky;
             top: 0;
             z-index: 100;
-            background: var(--canvas);
+            background: rgba(255,255,255,0.92);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
             height: var(--nav-height);
-            border-bottom: 1px solid var(--hairline);
+            border-bottom: 1px solid transparent;
             display: flex;
             align-items: center;
             justify-content: space-between;
             padding: 0 var(--space-xxl);
             max-width: var(--max-width);
             margin: 0 auto;
+            transition: border-color 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
+        }
+        .top-nav.scrolled {
+            border-bottom-color: var(--hairline);
+            box-shadow: 0 1px 0 rgba(0,0,0,0.04);
+            background: rgba(255,255,255,0.97);
         }
         .nav-logo {
             display: flex;
@@ -155,9 +238,9 @@
             font-size: 14px;
             font-weight: 500;
             line-height: 1.29;
-            transition: background 0.15s;
+            transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
         }
-        .btn-nav-download:hover { background: var(--primary-active); }
+        .btn-nav-download:hover { background: var(--primary-active); transform: scale(1.04); }
 
         /* ═══════════════════════════════════════════════════════
            Sections — 64px vertical rhythm
@@ -222,12 +305,13 @@
             line-height: 1.25;
             border: none;
             cursor: pointer;
-            transition: background 0.15s;
+            transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
         }
-        .btn-primary:hover { background: var(--primary-active); }
+        .btn-primary:hover { background: var(--primary-active); transform: scale(1.03); }
         .btn-primary:disabled {
             background: var(--primary-disabled);
             cursor: not-allowed;
+            transform: none;
         }
         /* button-secondary */
         .btn-secondary {
@@ -246,9 +330,9 @@
             line-height: 1.25;
             border: 1px solid var(--ink);
             cursor: pointer;
-            transition: background 0.15s;
+            transition: background 0.2s ease, transform 0.2s ease;
         }
-        .btn-secondary:hover { background: var(--surface-soft); }
+        .btn-secondary:hover { background: var(--surface-soft); transform: scale(1.03); }
 
         .hero-visual {
             display: flex;
@@ -351,10 +435,14 @@
             border-radius: var(--radius-md);
             border: 1px solid var(--hairline);
             padding: var(--space-lg);
-            transition: box-shadow 0.2s ease;
+            transition: transform 0.25s cubic-bezier(0.22, 0.61, 0.36, 1),
+                        box-shadow 0.25s cubic-bezier(0.22, 0.61, 0.36, 1),
+                        border-color 0.25s ease;
         }
         .feature-card:hover {
+            transform: translateY(-4px);
             box-shadow: var(--shadow-card);
+            border-color: transparent;
         }
         .feature-card .fc-icon {
             width: 40px;
@@ -394,10 +482,17 @@
             border-radius: var(--radius-md);
             overflow: hidden;
             border: 1px solid var(--hairline);
-            transition: box-shadow 0.2s ease;
+            transition: transform 0.3s cubic-bezier(0.22, 0.61, 0.36, 1),
+                        box-shadow 0.3s cubic-bezier(0.22, 0.61, 0.36, 1),
+                        border-color 0.3s ease;
         }
         .showcase-card:hover {
+            transform: translateY(-4px);
             box-shadow: var(--shadow-card);
+            border-color: transparent;
+        }
+        .showcase-card:hover .showcase-photo img {
+            transform: scale(1.04);
         }
         .showcase-photo {
             aspect-ratio: 16 / 10;
@@ -412,6 +507,7 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
+            transition: transform 0.5s cubic-bezier(0.22, 0.61, 0.36, 1);
         }
         /* Floating badge top-left */
         .floating-badge {
@@ -481,9 +577,11 @@
             align-items: flex-end;
             padding: var(--space-base);
             border: 1px solid var(--hairline);
-            transition: box-shadow 0.2s ease;
+            transition: transform 0.25s cubic-bezier(0.22, 0.61, 0.36, 1),
+                        box-shadow 0.25s cubic-bezier(0.22, 0.61, 0.36, 1);
         }
         .theme-swatch:hover {
+            transform: translateY(-2px);
             box-shadow: var(--shadow-card);
         }
         .theme-swatch span {
@@ -505,10 +603,14 @@
             overflow: hidden;
             border: 1px solid var(--hairline);
             box-shadow: var(--shadow-card);
-            transition: transform 0.2s ease;
+            transition: transform 0.35s cubic-bezier(0.22, 0.61, 0.36, 1),
+                        box-shadow 0.35s cubic-bezier(0.22, 0.61, 0.36, 1);
         }
         .screenshot-frame:hover {
-            transform: scale(1.03);
+            transform: scale(1.04) translateY(-4px);
+            box-shadow: rgba(0,0,0,0.02) 0 0 0 1px,
+                        rgba(0,0,0,0.06) 0 4px 12px,
+                        rgba(0,0,0,0.14) 0 8px 20px;
         }
         .screenshot-frame img {
             width: 100%;
@@ -661,12 +763,13 @@
             font-size: 16px;
             font-weight: 500;
             line-height: 1.25;
-            transition: background 0.15s, transform 0.15s;
+            transition: background 0.25s ease, transform 0.25s cubic-bezier(0.22, 0.61, 0.36, 1), box-shadow 0.25s ease;
             white-space: nowrap;
         }
         .btn-download-pill:hover {
             background: var(--primary-active);
-            transform: scale(1.04);
+            transform: scale(1.05);
+            box-shadow: 0 4px 16px rgba(255,56,92,0.35);
         }
 
         /* ═══════════════════════════════════════════════════════
@@ -808,21 +911,21 @@
      ═══════════════════════════════════════════════════════ -->
 <header class="hero">
     <div class="hero-content">
-        <h1 class="t-display-xl">一本好书的归宿，<br>是一个好的阅读器</h1>
-        <p class="hero-desc">
+        <h1 class="t-display-xl hero-entrance hero-entrance-1">一本好书的归宿，<br>是一个好的阅读器</h1>
+        <p class="hero-desc hero-entrance hero-entrance-2">
             Lumi 为 Android 打造的本地电子书阅读器。没有广告，不需要网络，打开即读。
         </p>
-        <div class="hero-actions">
+        <div class="hero-actions hero-entrance hero-entrance-3">
             <span class="btn-primary" style="cursor:default;opacity:0.85;">即将上架，敬请期待</span>
             <a href="#features" class="btn-secondary">了解更多</a>
         </div>
-        <div class="pill-strip">
+        <div class="pill-strip hero-entrance hero-entrance-4">
             <span class="pill-badge"><span class="accent-dot"></span>EPUB · PDF · TXT</span>
             <span class="pill-badge"><span class="accent-dot"></span>Android 8.0+</span>
             <span class="pill-badge"><span class="accent-dot"></span>完全离线</span>
         </div>
     </div>
-    <div class="hero-visual">
+    <div class="hero-visual hero-entrance hero-entrance-3">
         <div class="hero-phone">
             <img src="2026-07-04_02-47-18_478.png" alt="Lumi 阅读界面截图">
         </div>
@@ -833,48 +936,48 @@
      Features
      ═══════════════════════════════════════════════════════ -->
 <section class="section" id="features">
-    <div class="section-header">
+    <div class="section-header animate-on-scroll">
         <div class="label">功能亮点</div>
         <h2>全能的阅读工具箱</h2>
         <p>你所需要的一切阅读功能，都已经打磨好了。</p>
     </div>
     <div class="feature-grid">
-        <div class="feature-card">
+        <div class="feature-card animate-on-scroll stagger-1">
             <div class="fc-icon">📖</div>
             <h3>多格式支持</h3>
             <p>完美解析 EPUB、PDF、TXT 三种主流格式。EPUB 自动提取封面与目录，PDF 逐页高清渲染，TXT 智能分章。</p>
         </div>
-        <div class="feature-card">
+        <div class="feature-card animate-on-scroll stagger-2">
             <div class="fc-icon">🖐️</div>
             <h3>视差翻页</h3>
             <p>Apple Books 风格手势——页面平整滑动无 3D 形变，下层页面视差渐显，松手后弹性吸附。</p>
         </div>
-        <div class="feature-card">
+        <div class="feature-card animate-on-scroll stagger-3">
             <div class="fc-icon">🎨</div>
             <h3>四套主题</h3>
             <p>日间、夜间、护眼、绿色——精心调配的文字背景色，确保长时间阅读的舒适度。</p>
         </div>
-        <div class="feature-card">
+        <div class="feature-card animate-on-scroll stagger-4">
             <div class="fc-icon">🔤</div>
             <h3>精细排版</h3>
             <p>字体类型、字号、行间距、字间距均可独立调节，支持系统字体、宋体、黑体、等宽字体。</p>
         </div>
-        <div class="feature-card">
+        <div class="feature-card animate-on-scroll stagger-5">
             <div class="fc-icon">📝</div>
             <h3>笔记与高亮</h3>
             <p>长按选中文字，自由划选高亮标记，添加读书笔记。所有标注集中管理，一键跳转回顾。</p>
         </div>
-        <div class="feature-card">
+        <div class="feature-card animate-on-scroll stagger-6">
             <div class="fc-icon">🔖</div>
             <h3>书签与目录</h3>
             <p>一键添加书签，章节目录快速导航。阅读进度自动保存，随时从上次离开处继续。</p>
         </div>
-        <div class="feature-card">
+        <div class="feature-card animate-on-scroll stagger-7">
             <div class="fc-icon">🔍</div>
             <h3>全文搜索</h3>
             <p>跨章节全文检索，搜索结果高亮显示。快速定位书中的关键段落和角色。</p>
         </div>
-        <div class="feature-card">
+        <div class="feature-card animate-on-scroll stagger-8">
             <div class="fc-icon">📊</div>
             <h3>阅读统计</h3>
             <p>自动记录每日阅读时长，柱状图可视化。设定每日目标，追踪完成进度。7 天 / 30 天视图。</p>
@@ -887,16 +990,16 @@
      ═══════════════════════════════════════════════════════ -->
 <section class="section" style="padding-top:0;">
     <div class="screenshot-strip">
-        <div class="screenshot-frame">
+        <div class="screenshot-frame animate-on-scroll scale-in stagger-1">
             <img src="2026-07-04_02-47-18_478.png" alt="Lumi 首页截图" loading="lazy">
         </div>
-        <div class="screenshot-frame">
+        <div class="screenshot-frame animate-on-scroll scale-in stagger-2">
             <img src="2026-07-04_02-47-18_488.png" alt="Lumi 阅读界面截图" loading="lazy">
         </div>
-        <div class="screenshot-frame">
+        <div class="screenshot-frame animate-on-scroll scale-in stagger-3">
             <img src="2026-07-04_02-47-18_496.png" alt="Lumi 阅读主题截图" loading="lazy">
         </div>
-        <div class="screenshot-frame">
+        <div class="screenshot-frame animate-on-scroll scale-in stagger-4">
             <img src="2026-07-04_02-47-18_504.png" alt="Lumi 统计界面截图" loading="lazy">
         </div>
     </div>
@@ -906,14 +1009,14 @@
      Showcase — Photo-first cards
      ═══════════════════════════════════════════════════════ -->
 <section class="section">
-    <div class="section-header">
+    <div class="section-header animate-on-scroll">
         <div class="label">阅读体验</div>
         <h2>每一处细节都精心打磨</h2>
         <p>从翻页手势到亮度调节，每个交互都经过反复推敲。</p>
     </div>
 
     <div class="showcase-grid">
-        <div class="showcase-card">
+        <div class="showcase-card animate-on-scroll stagger-1">
             <div class="showcase-photo">
                 <span class="floating-badge">核心</span>
                 <img src="2026-07-04_02-47-18_488.png" alt="阅读手势翻页截图">
@@ -942,7 +1045,7 @@
             </div>
         </div>
 
-        <div class="showcase-card">
+        <div class="showcase-card animate-on-scroll stagger-2">
             <div class="showcase-photo">
                 <span class="floating-badge">舒适</span>
                 <img src="2026-07-04_02-47-18_496.png" alt="阅读设置截图">
@@ -973,7 +1076,7 @@
     </div>
 
     <!-- Reading Themes -->
-    <div style="margin-top: var(--space-base);">
+    <div style="margin-top: var(--space-base);" class="animate-on-scroll stagger-3">
         <div class="showcase-card">
             <div class="showcase-meta">
                 <h3>四套阅读主题</h3>
@@ -1003,13 +1106,13 @@
      Privacy
      ═══════════════════════════════════════════════════════ -->
 <section class="section" id="privacy">
-    <div class="section-header">
+    <div class="section-header animate-on-scroll">
         <div class="label">隐私保护</div>
         <h2>你的数据，只在你的设备上</h2>
         <p>Lumi 的核心承诺——永远不做你不喜欢的事。</p>
     </div>
 
-    <div class="privacy-hero">
+    <div class="privacy-hero animate-on-scroll fade-in-only stagger-1">
         <div class="shield">🛡️</div>
         <h3>100% 本地 · 零网络 · 零追踪</h3>
         <p>
@@ -1019,22 +1122,22 @@
     </div>
 
     <div class="privacy-band">
-        <div class="privacy-item">
+        <div class="privacy-item animate-on-scroll stagger-2">
             <div class="pi-icon">🚫</div>
             <h3>无网络权限</h3>
             <p>应用不声明 INTERNET 权限，阅读行为永远不会离开设备。</p>
         </div>
-        <div class="privacy-item">
+        <div class="privacy-item animate-on-scroll stagger-3">
             <div class="pi-icon">📵</div>
             <h3>无第三方 SDK</h3>
             <p>无 Firebase、无分析、无广告——任何第三方服务都没有。</p>
         </div>
-        <div class="privacy-item">
+        <div class="privacy-item animate-on-scroll stagger-4">
             <div class="pi-icon">🗄️</div>
             <h3>沙盒存储</h3>
             <p>所有数据存储在应用私有沙盒中，系统级隔离保护。</p>
         </div>
-        <div class="privacy-item">
+        <div class="privacy-item animate-on-scroll stagger-5">
             <div class="pi-icon">🧹</div>
             <h3>一键清除</h3>
             <p>应用内随时清除数据。卸载自动删除全部数据，源文件不受影响。</p>
@@ -1046,13 +1149,13 @@
      Tech Specs
      ═══════════════════════════════════════════════════════ -->
 <section class="section" id="tech">
-    <div class="section-header">
+    <div class="section-header animate-on-scroll">
         <div class="label">技术规格</div>
         <h2>现代 Android 技术栈</h2>
         <p>采用 Google 推荐的最新技术体系，确保流畅的性能和良好的可维护性。</p>
     </div>
 
-    <div class="tech-grid">
+    <div class="tech-grid animate-on-scroll fade-in-only stagger-1">
         <div class="tech-cell">
             <div class="tech-label">开发语言</div>
             <div class="tech-value">Kotlin 2.0</div>
@@ -1088,7 +1191,7 @@
     </div>
 
     <!-- Parser engine showcase card -->
-    <div class="showcase-card" style="margin-top: var(--space-base);">
+    <div class="showcase-card animate-on-scroll stagger-2" style="margin-top: var(--space-base);">
         <div class="showcase-meta">
             <h3>电子书解析引擎</h3>
             <p class="sub">自实现的轻量解析器，不依赖第三方解析库，每个格式都经过深度优化。</p>
@@ -1118,7 +1221,7 @@
      Download CTA
      ═══════════════════════════════════════════════════════ -->
 <section class="section" id="download">
-    <div class="download-band">
+    <div class="download-band animate-on-scroll scale-in">
         <div class="dl-info">
             <h3>准备好开始阅读了？</h3>
             <p>最新版本 v1.0.3 · 约 15 MB · Android 8.0 及以上</p>
@@ -1132,7 +1235,7 @@
      Footer
      ═══════════════════════════════════════════════════════ -->
 <footer>
-    <div class="footer-light">
+    <div class="footer-light animate-on-scroll fade-in-only">
         <div class="footer-col">
             <h4>Lumi</h4>
             <ul>
@@ -1164,6 +1267,62 @@
         </span>
     </div>
 </footer>
+
+<!-- ═══════════════════════════════════════════════════════
+     JavaScript — scroll animations & nav state
+     ═══════════════════════════════════════════════════════ -->
+<script>
+(function() {
+    'use strict';
+
+    /* ── Intersection Observer: scroll-triggered animations ── */
+    const observer = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('animated');
+                observer.unobserve(entry.target);
+            }
+        });
+    }, { threshold: 0.15, rootMargin: '0px 0px -30px 0px' });
+
+    document.querySelectorAll('.animate-on-scroll').forEach(function(el) {
+        observer.observe(el);
+    });
+
+    /* ── Nav scroll state ── */
+    var nav = document.querySelector('.top-nav');
+    var lastScroll = 0;
+
+    function updateNav() {
+        var y = window.scrollY || window.pageYOffset;
+        if (y > 10) {
+            nav.classList.add('scrolled');
+        } else {
+            nav.classList.remove('scrolled');
+        }
+        lastScroll = y;
+        requestAnimationFrame(function() {
+            if (window.scrollY !== lastScroll) updateNav();
+        });
+    }
+
+    window.addEventListener('scroll', updateNav, { passive: true });
+    updateNav();
+
+    /* ── Smooth anchor links with nav offset ── */
+    document.querySelectorAll('a[href^="#"]').forEach(function(link) {
+        link.addEventListener('click', function(e) {
+            var target = document.querySelector(this.getAttribute('href'));
+            if (!target) return;
+            e.preventDefault();
+            var navHeight = nav ? nav.offsetHeight : 80;
+            var top = target.getBoundingClientRect().top + window.pageYOffset - navHeight - 16;
+            window.scrollTo({ top: top, behavior: 'smooth' });
+        });
+    });
+
+})();
+</script>
 
 </body>
 </html>
