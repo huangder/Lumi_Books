@@ -43,24 +43,27 @@ body{
 }
 
 /* ── Glassmorphism Top Nav ────────────────────────────── */
-.topnav{
+.top-nav{
   position:sticky;top:0;z-index:100;
+  background:rgba(255,255,255,0.72);
   backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
-  background:rgba(255,255,255,0.75);
+  height:80px;
   border-bottom:1px solid rgba(255,255,255,0.5);
+  display:flex;align-items:center;justify-content:space-between;
   padding:0 clamp(16px,4vw,48px);
-  height:56px;display:flex;align-items:center;justify-content:space-between;
+  transition:border-color .3s,box-shadow .3s,background .3s;
 }
-.topnav .logo{
-  font-size:1.25rem;font-weight:700;color:var(--ink);
-  text-decoration:none;letter-spacing:-0.02em;
-}
-.topnav .logo em{font-style:normal;color:var(--primary)}
-.topnav nav a{
-  font-size:.875rem;color:var(--muted);text-decoration:none;
-  margin-left:24px;transition:color .2s;
-}
-.topnav nav a:hover{color:var(--ink)}
+.top-nav.scrolled{border-bottom-color:var(--hairline);box-shadow:0 1px 0 rgba(0,0,0,.04);background:rgba(255,255,255,.88)}
+.nav-logo{display:flex;align-items:center;gap:8px;text-decoration:none;color:var(--primary)}
+.nav-logo img{width:34px;height:34px;border-radius:8px;transition:transform .3s}
+.nav-logo:hover img{transform:scale(1.08)}
+.nav-logo span{font-size:22px;font-weight:700;color:var(--ink)}
+.nav-links{display:flex;gap:32px;list-style:none}
+.nav-links a{text-decoration:none;font-size:16px;font-weight:600;color:var(--muted);transition:color .15s}
+.nav-links a:hover{color:var(--ink)}
+.nav-cta{display:flex;align-items:center;gap:16px}
+.btn-nav-download{background:var(--primary);color:#fff;text-decoration:none;padding:10px 20px;border-radius:9999px;font-size:14px;font-weight:500;transition:background .2s,transform .2s}
+.btn-nav-download:hover{background:var(--primary-active);transform:scale(1.04)}
 
 /* ── Glass Card ───────────────────────────────────────── */
 .glass{
@@ -233,14 +236,20 @@ body{
 <body>
 
 <!-- ═══ Top Nav ═══ -->
-<header class="topnav">
-  <a class="logo" href="index.html"><em>Lumi</em></a>
-  <nav>
-    <a href="features.html">功能</a>
-    <a href="privacy-section.html">隐私</a>
-    <a href="tech.html">技术</a>
-  </nav>
-</header>
+<nav class="top-nav">
+  <a href="index.html" class="nav-logo">
+    <img src="icon.png" alt="Lumi">
+    <span>Lumi</span>
+  </a>
+  <ul class="nav-links">
+    <li><a href="features.html">功能</a></li>
+    <li><a href="privacy-section.html">隐私</a></li>
+    <li><a href="tech.html" style="color:var(--ink);border-bottom:2px solid var(--ink);padding-bottom:2px;">技术</a></li>
+  </ul>
+  <div class="nav-cta">
+    <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-nav-download">获取 Lumi</a>
+  </div>
+</nav>
 
 <!-- ═══ Section: 技术规格 ═══ -->
 <section class="section reveal">
@@ -386,6 +395,17 @@ document.querySelectorAll('a[href^="#"]').forEach(a=>{
     if(t){e.preventDefault();t.scrollIntoView({behavior:'smooth'})}
   });
 });
+
+/* ── Nav scroll state ──────────────────────────────── */
+(function(){
+  var nav=document.querySelector('.top-nav');
+  window.addEventListener('scroll',function(){
+    requestAnimationFrame(function(){
+      if(window.scrollY>10){nav.classList.add('scrolled')}
+      else{nav.classList.remove('scrolled')}
+    });
+  },{passive:true});
+})();
 </script>
 </body>
 </html>
