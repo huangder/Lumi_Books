@@ -201,7 +201,7 @@ class ReadView(context: Context) : FrameLayout(context) {
         val marginTop = marginVert + 6f * density   // 顶部微调
         val lineSpacingExtra = 2.5f * density
 
-        // 选择高亮色 = accent + 25% alpha
+        // 选择高亮色jian = accent + 25% alpha
         val highlightColor = (accentColor and 0x00FFFFFF) or 0x40000000.toInt()
 
         val customTypeface = if (currentFontType == "dingli_song") {
