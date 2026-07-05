@@ -6,6 +6,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.foundation.clickable
@@ -80,6 +82,7 @@ private val filterTabs = listOf("全部图书", "下载内容", "PDF", "收藏")
 @Composable
 fun BookshelfScreen(
     onNavigateToReader: (bookId: String, coverPath: String?, title: String) -> Unit,
+    onNavigateToBookNotes: (bookId: String) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -87,6 +90,10 @@ fun BookshelfScreen(
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val contextMenuState = rememberBookContextMenuState()
+
+    // 编辑书本信息对话框状态
+    var showEditDialog by remember { mutableStateOf(false) }
+    var editingBook by remember { mutableStateOf<Book?>(null) }
 
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -128,7 +135,7 @@ fun BookshelfScreen(
     val filteredBooks = when (selectedFilter) {
         1 -> uiState.books // 下载内容
         2 -> uiState.books.filter { it.format == BookFormat.PDF }
-        3 -> uiState.books // 收藏功能待实现
+        3 -> uiState.books.filter { it.isFavorite }
         else -> uiState.books
     }
 
@@ -205,7 +212,28 @@ fun BookshelfScreen(
         } // 内容层 Box 结束
 
         // ── 长按上下文菜单覆盖层（在模糊内容之上） ──
-        BookContextMenuOverlay(state = contextMenuState)
+        BookContextMenuOverlay(
+            state = contextMenuState,
+            onDelete = { book -> viewModel.deleteBook(book) },
+            onFavorite = { book -> viewModel.updateBook(book.copy(isFavorite = !book.isFavorite)) },
+            onBookmarksNotes = { book -> onNavigateToBookNotes(book.id) },
+            onEditInfo = { book ->
+                editingBook = book
+                showEditDialog = true
+            }
+        )
+
+        // ── 编辑书本信息对话框 ──
+        if (showEditDialog && editingBook != null) {
+            EditBookInfoDialog(
+                book = editingBook!!,
+                onDismiss = { showEditDialog = false },
+                onConfirm = { updatedBook ->
+                    viewModel.updateBook(updatedBook)
+                    showEditDialog = false
+                }
+            )
+        }
     }
 }
 
@@ -361,4 +389,63 @@ private fun AddBookItem(onClick: () -> Unit) {
             color = AppColors.TextSecondary
         )
     }
+}
+
+// ─── 编辑书本信息对话框 ──────────────────────────────────────────
+
+@Composable
+private fun EditBookInfoDialog(
+    book: Book,
+    onDismiss: () -> Unit,
+    onConfirm: (Book) -> Unit
+) {
+    var title by remember { mutableStateOf(book.title) }
+    var author by remember { mutableStateOf(book.author) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "编辑书本信息",
+                fontWeight = FontWeight.Bold,
+                fontFamily = KaiTi
+            )
+        },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("书名") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(AppSpace.md))
+                OutlinedTextField(
+                    value = author,
+                    onValueChange = { author = it },
+                    label = { Text("作者") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Text(
+                text = "保存",
+                color = AppColors.Accent,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.clickable {
+                    onConfirm(book.copy(title = title, author = author))
+                }
+            )
+        },
+        dismissButton = {
+            Text(
+                text = "取消",
+                color = AppColors.TextSecondary,
+                modifier = Modifier.clickable(onClick = onDismiss)
+            )
+        }
+    )
 }

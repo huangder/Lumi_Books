@@ -9,7 +9,8 @@ data class Book(
     val format: BookFormat,
     val lastReadTime: Long,
     val readingProgress: Float,
-    val createdAt: Long
+    val createdAt: Long,
+    val isFavorite: Boolean = false
 )
 
 enum class BookFormat {
