@@ -38,8 +38,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,6 +65,7 @@ import java.io.File
 
 // ─── 设置主页（分类列表）────────────────────────────────────────
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     onNavigateBack: () -> Unit,
@@ -71,6 +74,9 @@ fun SettingsScreen(
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    // 昵称编辑对话框状态
+    var showNicknameDialog by remember { mutableStateOf(false) }
 
     // 头像选择
     val photoPicker = rememberLauncherForActivityResult(
@@ -153,7 +159,17 @@ fun SettingsScreen(
                 }
                 Spacer(Modifier.width(AppSpace.md))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(uiState.nickname, fontSize = AppType.Body, fontWeight = FontWeight.SemiBold, color = AppColors.TextPrimary)
+                    Text(
+                        uiState.nickname,
+                        fontSize = AppType.Body,
+                        fontWeight = FontWeight.SemiBold,
+                        color = AppColors.TextPrimary,
+                        modifier = Modifier.clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() },
+                            onClick = { showNicknameDialog = true }
+                        )
+                    )
                     Text("点击更换头像", fontSize = AppType.Caption, color = AppColors.TextSecondary)
                 }
                 Icon(Icons.Outlined.ChevronRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
@@ -179,6 +195,49 @@ fun SettingsScreen(
             }
 
             Spacer(Modifier.height(120.dp))
+        }
+    }
+
+    // ── 昵称编辑对话框（卡片风格） ──
+    if (showNicknameDialog) {
+        androidx.compose.material3.BasicAlertDialog(
+            onDismissRequest = { showNicknameDialog = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.4f))
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() },
+                        onClick = { showNicknameDialog = false }
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(AppSpace.lg)
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() },
+                            onClick = {}
+                        )
+                ) {
+                    com.huangder.lumibooks.ui.components.EditInputDialog(
+                        title = "修改昵称",
+                        fields = listOf(
+                            Triple("昵称", "显示原始昵称", uiState.nickname)
+                        ),
+                        onBack = { showNicknameDialog = false },
+                        onConfirm = { values ->
+                            viewModel.saveNickname(values[0])
+                            showNicknameDialog = false
+                        }
+                    )
+                }
+            }
         }
     }
 }
