@@ -1,5 +1,9 @@
 com.huangder.lumibooks
 anim fragment_fast_out_extra_slow_in
+anim slide_in_left
+anim slide_in_right
+anim slide_out_left
+anim slide_out_right
 animator fragment_close_enter
 animator fragment_close_exit
 animator fragment_fade_enter

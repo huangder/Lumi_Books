@@ -81,7 +81,6 @@ fun HomeScreen(
     onNavigateToReader: (bookId: String, coverPath: String?, title: String) -> Unit,
     onNavigateToStatistics: () -> Unit,
     onNavigateToBookshelf: () -> Unit,
-    onNavigateToSettings: () -> Unit = {},
     onTabBarVisibleChange: (Boolean) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
@@ -138,7 +137,11 @@ fun HomeScreen(
             Spacer(Modifier.height(AppSpace.md)) // 和状态栏/遮罩拉开距离
             HomeHeader(
                 avatarUri = uiState.avatarUri,
-                onAvatarClick = onNavigateToSettings
+                onAvatarClick = {
+                    context.startActivity(
+                        android.content.Intent(context, com.huangder.lumibooks.ui.settings.SettingsActivity::class.java)
+                    )
+                }
             )
             Spacer(Modifier.height(AppSpace.lg))
 

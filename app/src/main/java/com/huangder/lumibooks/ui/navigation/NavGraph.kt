@@ -36,7 +36,6 @@ import com.huangder.lumibooks.ui.reader.ReaderScreen
 import com.huangder.lumibooks.ui.reader.PdfViewerScreen
 import com.huangder.lumibooks.ui.reader.ReaderViewModel
 import com.huangder.lumibooks.ui.statistics.StatisticsScreen
-import com.huangder.lumibooks.ui.settings.SettingsScreen
 import com.huangder.lumibooks.ui.welcome.WelcomeScreen
 import com.huangder.lumibooks.ui.welcome.WelcomeViewModel
 import com.huangder.lumibooks.domain.model.BookFormat
@@ -91,7 +90,7 @@ fun MainNavGraph(navController: NavHostController) {
     val currentEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentEntry?.destination?.route
     LaunchedEffect(currentRoute, showTransition) {
-        if (currentRoute == Screen.Reader.route || currentRoute == Screen.Welcome.route || currentRoute == Screen.Settings.route || showTransition) {
+        if (currentRoute == Screen.Reader.route || currentRoute == Screen.Welcome.route || showTransition) {
             tabBarVisible = false
         } else {
             delay(800)
@@ -166,9 +165,6 @@ fun MainNavGraph(navController: NavHostController) {
                             launchSingleTop = true
                             restoreState = true
                         }
-                    },
-                    onNavigateToSettings = {
-                        navController.navigate(Screen.Settings.route)
                     }
                 )
             }
@@ -206,19 +202,6 @@ fun MainNavGraph(navController: NavHostController) {
                 )
             }
 
-            composable(
-                Screen.Settings.route,
-                enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300)) },
-                exitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300)) },
-                popEnterTransition = { slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(300)) },
-                popExitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300)) }
-            ) {
-                SettingsScreen(
-                    onNavigateBack = {
-                        navController.popBackStack()
-                    }
-                )
-            }
         }
         } // contentScale Box 结束
 
