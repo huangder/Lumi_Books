@@ -2140,7 +2140,11 @@ private fun HighlightNoteItem(
                 .background(highlightBg, RoundedCornerShape(12.dp))
                 .pointerInput(Unit) {
                     detectHorizontalDragGestures(
-                        onDragStart = { isDragging = true },
+                        onDragStart = {
+                            // 🔥 对齐到动画当前位置，消除动画→拖拽切换时的跳变
+                            rawOffset = animOffset.value
+                            isDragging = true
+                        },
                         onDragEnd = {
                             isDragging = false
                             scope.launch {
