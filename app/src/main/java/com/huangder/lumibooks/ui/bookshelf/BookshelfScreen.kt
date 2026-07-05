@@ -441,7 +441,7 @@ private fun BookGridItem(
                 AsyncImage(
                     model = ImageRequest.Builder(imgContext)
                         .data(book.coverPath)
-                        .memoryCacheKey(book.id) // 每本书独立缓存，避免同名书封面串位
+                        .memoryCacheKey("${book.id}_${book.coverPath}") // book.id 区分同名书，coverPath 变化时刷新
                         .build(),
                     contentDescription = book.title,
                     modifier = Modifier.fillMaxSize(),
