@@ -47,6 +47,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
@@ -133,10 +134,11 @@ fun BookshelfScreen(
 
     Box(modifier = Modifier.fillMaxSize().background(AppColors.WindowBg)) {
         // ── 内容层（长按时整体高斯模糊） ──
+        val blurRadius = (20 * contextMenuState.scrimAlpha.value).dp
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .contentBlur(contextMenuState.scrimAlpha.value)
+                .blur(blurRadius)
         ) {
             OverscrollBounce(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
                 Column(
