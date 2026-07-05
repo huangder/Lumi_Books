@@ -1,8 +1,5 @@
 package com.huangder.lumibooks.ui.bookshelf
 
-import android.graphics.RenderEffect
-import android.graphics.Shader
-import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -37,8 +34,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -65,29 +60,7 @@ sealed class ContextMenuAction {
 }
 
 /**
- * 内容层高斯模糊 Modifier
- *
- * 使用 CompositingStrategy.Offscreen 强制离屏渲染，
- * 确保 RenderEffect 模糊应用到整个内容层（包含所有子元素）。
- */
-fun Modifier.contentBlur(alpha: Float): Modifier {
-    if (alpha < 0.01f) return this
-    return this.graphicsLayer {
-        // 强制离屏渲染，确保模糊作用于所有子元素
-        compositingStrategy = CompositingStrategy.Offscreen
-        if (Build.VERSION.SDK_INT >= 31) {
-            renderEffect = RenderEffect
-                .createBlurEffect(20f * alpha, 20f * alpha, Shader.TileMode.CLAMP)
-                .asComposeRenderEffect()
-        }
-    }
-}
-
-/**
  * 书本长按上下文菜单全屏覆盖层
- *
- * 注意：模糊效果通过 contentBlur() 应用到 BookshelfScreen 的内容层，
- * 这里只负责渲染高亮封面和菜单。
  */
 @Composable
 fun BookContextMenuOverlay(state: BookContextMenuState) {
@@ -100,10 +73,11 @@ fun BookContextMenuOverlay(state: BookContextMenuState) {
     val scrimAlpha = state.scrimAlpha.value
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // ── 1. 透明点击层（点击关闭菜单） ──
+        // ── 1. 半透明背景 + 点击关闭 ──
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.15f * scrimAlpha))
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() }

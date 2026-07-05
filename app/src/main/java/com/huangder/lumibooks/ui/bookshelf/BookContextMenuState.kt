@@ -49,7 +49,7 @@ class BookContextMenuState(private val scope: CoroutineScope) {
     val coverScale = Animatable(1f)
     val scrimAlpha = Animatable(0f)
     val menuAlpha = Animatable(0f)
-    /** 原位书本的 alpha（dismiss 时从 0 渐变到 1） */
+    /** 原位书本的 alpha（长按确认时归 0，dismiss 最后阶段渐显到 1） */
     val itemAlpha = Animatable(1f)
 
     fun updateCoverBounds(bounds: Rect) {
@@ -97,7 +97,7 @@ class BookContextMenuState(private val scope: CoroutineScope) {
         coverBounds = bounds
         phase = ContextMenuPhase.Enlarging
 
-        // 隐藏原位书本
+        // 立即隐藏原位书本
         scope.launch { itemAlpha.snapTo(0f) }
 
         // 触发震动
@@ -144,6 +144,10 @@ class BookContextMenuState(private val scope: CoroutineScope) {
 
     /**
      * 关闭菜单 — 反向动画
+     *
+     * 时序：菜单消失 → 封面归位 + 遮罩消失 → 原位书本渐显 → phase=Idle
+     * 原位书本在封面归位完成后才渐显，避免两个封面重叠。
+     * phase 保持 Dismissing 直到所有动画完成，overlay 持续覆盖。
      */
     fun dismiss() {
         if (phase != ContextMenuPhase.Visible && phase != ContextMenuPhase.Enlarging) return
@@ -151,44 +155,41 @@ class BookContextMenuState(private val scope: CoroutineScope) {
 
         scope.launch {
             coroutineScope {
-                // 菜单先消失
+                // ① 菜单先消失
                 launch {
                     menuAlpha.animateTo(
                         targetValue = 0f,
                         animationSpec = tween(150, easing = AppEasing.Accelerate)
                     )
                 }
-                // 延迟后遮罩和封面恢复
+                // ② 封面归位 + 遮罩消失（并行）
                 launch {
-                    delay(50)
-                    scrimAlpha.animateTo(
-                        targetValue = 0f,
-                        animationSpec = tween(250, easing = AppEasing.Accelerate)
-                    )
-                }
-                launch {
-                    delay(80)
                     coverScale.animateTo(
                         targetValue = 1f,
                         animationSpec = tween(250, easing = AppEasing.Standard)
                     )
                 }
-                // 原位书本渐显（与封面缩小同步）
                 launch {
-                    delay(80)
+                    scrimAlpha.animateTo(
+                        targetValue = 0f,
+                        animationSpec = tween(250, easing = AppEasing.Accelerate)
+                    )
+                }
+                // ③ 等封面归位后，原位书本渐显（overlay 仍覆盖在上面）
+                launch {
+                    delay(260)
                     itemAlpha.animateTo(
                         targetValue = 1f,
-                        animationSpec = tween(250, easing = AppEasing.Decelerate)
+                        animationSpec = tween(200, easing = AppEasing.Decelerate)
                     )
                 }
             }
-            // 确保所有动画值回到初始状态
+            // 所有动画完成，切 Idle，overlay 消失，原位书本已完全可见
             pressScale.snapTo(1f)
             coverScale.snapTo(1f)
             scrimAlpha.snapTo(0f)
             menuAlpha.snapTo(0f)
             itemAlpha.snapTo(1f)
-            // 重置状态
             selectedBook = null
             phase = ContextMenuPhase.Idle
         }
