@@ -19,6 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
@@ -216,6 +217,7 @@ private fun ContextMenuLayout(
         MenuActionsPanel(
             modifier = Modifier.fillMaxWidth(),
             actionsAlpha = actionsAlpha,
+            isFavorite = book.isFavorite,
             onAction = onAction
         )
     }
@@ -296,6 +298,7 @@ private fun BookInfoPanel(
 private fun MenuActionsPanel(
     modifier: Modifier = Modifier,
     actionsAlpha: Float,
+    isFavorite: Boolean = false,
     onAction: (ContextMenuAction) -> Unit
 ) {
     Column(
@@ -306,10 +309,10 @@ private fun MenuActionsPanel(
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         // 从下到上：删除在最下，书签在最上
-        // staggerIndex 0 = 最先出现（删除），3 = 最后出现（书签）
+        val favoriteIcon = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder
         val items = listOf(
             Triple("删除", Icons.Outlined.Delete, ContextMenuAction.Delete) to 0,
-            Triple("收藏", Icons.Outlined.FavoriteBorder, ContextMenuAction.Favorite) to 1,
+            Triple("收藏", favoriteIcon, ContextMenuAction.Favorite) to 1,
             Triple("自定义封面", Icons.Outlined.Image, ContextMenuAction.CustomCover) to 2,
             Triple("书签高亮与笔记", Icons.Outlined.Bookmark, ContextMenuAction.BookmarksNotes) to 3,
         )

@@ -36,6 +36,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Icon
@@ -324,15 +325,28 @@ private fun BookGridItem(
 
         Spacer(Modifier.height(AppSpace.sm))
 
-        // 书名
-        Text(
-            text = book.title,
-            fontSize = AppType.BodySmall,
-            fontWeight = FontWeight.SemiBold,
-            color = AppColors.TextPrimary,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
+        // 书名（收藏时加心形）
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = book.title,
+                fontSize = AppType.BodySmall,
+                fontWeight = FontWeight.SemiBold,
+                color = AppColors.TextPrimary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+            if (book.isFavorite) {
+                Spacer(Modifier.width(4.dp))
+                Icon(
+                    imageVector = Icons.Filled.Favorite,
+                    contentDescription = "收藏",
+                    tint = AppColors.Accent,
+                    modifier = Modifier.size(12.dp)
+                )
+            }
+        }
+
         // 作者
         Text(
             text = book.author,

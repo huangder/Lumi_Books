@@ -194,7 +194,19 @@ fun MainNavGraph(navController: NavHostController) {
 
             composable(
                 route = Screen.Bookmarks.route,
-                arguments = listOf(navArgument("bookId") { type = NavType.StringType })
+                arguments = listOf(navArgument("bookId") { type = NavType.StringType }),
+                enterTransition = {
+                    slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300))
+                },
+                exitTransition = {
+                    slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300))
+                },
+                popEnterTransition = {
+                    slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(300))
+                },
+                popExitTransition = {
+                    slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300))
+                }
             ) {
                 BookNotesScreen(
                     onNavigateBack = { navController.popBackStack() }
