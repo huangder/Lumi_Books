@@ -46,6 +46,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.List
@@ -118,6 +119,7 @@ import kotlinx.coroutines.launch
 fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> Unit = {}, onLoadingComplete: () -> Unit = {}, viewModel: ReaderViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsState()
     val notes by viewModel.notes.collectAsState()
+    val bookmarks by viewModel.bookmarks.collectAsState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -513,7 +515,26 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 modifier = Modifier.align(Alignment.TopCenter)
             ) {
                 val bookTitle = uiState.book?.title ?: ""
-                ReaderTopBar(title = bookTitle, onBack = onNavigateBack, bgColor = menuBgColor)
+                val isCurrentPageBookmarked = bookmarks.any {
+                    it.chapterIndex == uiState.currentChapterIndex &&
+                    it.position.toInt() == uiState.currentPageIndex
+                }
+                ReaderTopBar(
+                    title = bookTitle,
+                    onBack = onNavigateBack,
+                    bgColor = menuBgColor,
+                    isBookmarked = isCurrentPageBookmarked,
+                    onBookmarkToggle = {
+                        if (isCurrentPageBookmarked) {
+                            bookmarks.firstOrNull {
+                                it.chapterIndex == uiState.currentChapterIndex &&
+                                it.position.toInt() == uiState.currentPageIndex
+                            }?.let { viewModel.deleteBookmark(it) }
+                        } else {
+                            viewModel.addBookmark()
+                        }
+                    }
+                )
             }
 
             if (uiState.totalPages > 0 || uiState.useNewEngine) {
@@ -716,6 +737,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         visible = showNotesList,
         requestClose = requestCloseNotesList,
         notes = viewModel.notes.collectAsState().value,
+        bookmarks = bookmarks,
         onNoteClick = { note ->
             val estimatedPage = viewModel.estimatePageFromCharOffset(note.chapterIndex, note.startPosition)
             readViewRef.value?.jumpToChapter(note.chapterIndex, estimatedPage)
@@ -723,6 +745,12 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             requestCloseNotesList = false
         },
         onDeleteNote = { note -> viewModel.deleteNote(note) },
+        onBookmarkClick = { bm ->
+            readViewRef.value?.jumpToChapter(bm.chapterIndex, bm.position.toInt())
+            showNotesList = false
+            requestCloseNotesList = false
+        },
+        onDeleteBookmark = { bm -> viewModel.deleteBookmark(bm) },
         onDismiss = { showNotesList = false; requestCloseNotesList = false }
     )
 
@@ -968,7 +996,13 @@ try{AndroidBridge.onPageChanged(0,1);}catch(e){}
 }
 
 @Composable
-private fun ReaderTopBar(title: String, onBack: () -> Unit, bgColor: Color = Color.White) {
+private fun ReaderTopBar(
+    title: String,
+    onBack: () -> Unit,
+    bgColor: Color = Color.White,
+    isBookmarked: Boolean = false,
+    onBookmarkToggle: () -> Unit = {}
+) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -996,6 +1030,7 @@ private fun ReaderTopBar(title: String, onBack: () -> Unit, bgColor: Color = Col
                 .padding(horizontal = 28.dp, vertical = 20.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // 左侧：返回按钮
             Box(
                 modifier = Modifier
                     .size(36.dp)
@@ -1016,6 +1051,7 @@ private fun ReaderTopBar(title: String, onBack: () -> Unit, bgColor: Color = Col
                 )
             }
             Spacer(Modifier.weight(1f))
+            // 中间：书名
             Text(
                 text = title,
                 fontSize = 12.sp,
@@ -1024,6 +1060,27 @@ private fun ReaderTopBar(title: String, onBack: () -> Unit, bgColor: Color = Col
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.width(180.dp)
             )
+            Spacer(Modifier.weight(1f))
+            // 右侧：书签按钮（与返回按钮对称）
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(AppColors.BgGray.copy(alpha = 0.8f))
+                    .cardPressEffect()
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { onBookmarkToggle() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    if (isBookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder,
+                    contentDescription = "书签",
+                    tint = if (isBookmarked) AppColors.Accent else AppColors.TextPrimary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
         }
     }
 }
@@ -1842,8 +1899,11 @@ private fun NotesListSheet(
     visible: Boolean,
     requestClose: Boolean = false,
     notes: List<com.huangder.lumibooks.domain.model.Note>,
+    bookmarks: List<com.huangder.lumibooks.domain.model.Bookmark> = emptyList(),
     onNoteClick: (com.huangder.lumibooks.domain.model.Note) -> Unit,
     onDeleteNote: (com.huangder.lumibooks.domain.model.Note) -> Unit,
+    onBookmarkClick: (com.huangder.lumibooks.domain.model.Bookmark) -> Unit = {},
+    onDeleteBookmark: (com.huangder.lumibooks.domain.model.Bookmark) -> Unit = {},
     onDismiss: () -> Unit
 ) {
     if (!visible) return
@@ -1934,38 +1994,64 @@ private fun NotesListSheet(
                 activeTag = activeTag,
                 highlightCount = highlights.size,
                 noteCount = noteList.size,
+                bookmarkCount = bookmarks.size,
                 onTagChange = { activeTag = it }
             )
 
             Spacer(Modifier.height(16.dp))
 
             // 列表
-            val items = if (activeTag == "highlight") highlights else noteList
-            if (items.isEmpty()) {
-                Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                    Text(
-                        "暂无${if (activeTag == "highlight") "高亮" else "笔记"}",
-                        fontSize = 14.sp,
-                        color = LightTextSecondary
-                    )
+            if (activeTag == "bookmark") {
+                // 书签列表
+                if (bookmarks.isEmpty()) {
+                    Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        Text("暂无书签", fontSize = 14.sp, color = LightTextSecondary)
+                    }
+                } else {
+                    LazyColumn(modifier = Modifier.weight(1f)) {
+                        items(bookmarks.size, key = { bookmarks[it].id }) { idx ->
+                            val bm = bookmarks[idx]
+                            BookmarkListItem(
+                                bookmark = bm,
+                                onClick = {
+                                    onBookmarkClick(bm)
+                                    isClosing = true
+                                },
+                                onDelete = { onDeleteBookmark(bm) },
+                                modifier = Modifier.animateItem()
+                            )
+                            if (idx < bookmarks.size - 1) Spacer(Modifier.height(8.dp))
+                        }
+                    }
                 }
             } else {
-                LazyColumn(modifier = Modifier.weight(1f)) {
-                    items(items.size, key = { items[it].id }) { idx ->
-                        val item = items[idx]
-                        HighlightNoteItem(
-                            item = item,
-                            onClick = {
-                                pendingJumpNote = item
-                                isClosing = true
-                            },
-                            onDelete = { onDeleteNote(item) },
-                            resetRevealedKey = resetRevealedKey,
-                            onRevealedChanged = { revealed -> anyItemRevealed = revealed },
-                            modifier = Modifier.animateItem()
+                val items = if (activeTag == "highlight") highlights else noteList
+                if (items.isEmpty()) {
+                    Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        Text(
+                            "暂无${if (activeTag == "highlight") "高亮" else "笔记"}",
+                            fontSize = 14.sp,
+                            color = LightTextSecondary
                         )
-                        if (idx < items.size - 1) {
-                            Spacer(Modifier.height(8.dp))
+                    }
+                } else {
+                    LazyColumn(modifier = Modifier.weight(1f)) {
+                        items(items.size, key = { items[it].id }) { idx ->
+                            val item = items[idx]
+                            HighlightNoteItem(
+                                item = item,
+                                onClick = {
+                                    pendingJumpNote = item
+                                    isClosing = true
+                                },
+                                onDelete = { onDeleteNote(item) },
+                                resetRevealedKey = resetRevealedKey,
+                                onRevealedChanged = { revealed -> anyItemRevealed = revealed },
+                                modifier = Modifier.animateItem()
+                            )
+                            if (idx < items.size - 1) {
+                                Spacer(Modifier.height(8.dp))
+                            }
                         }
                     }
                 }
@@ -1979,11 +2065,17 @@ private fun HighlightNoteTabSwitcher(
     activeTag: String,
     highlightCount: Int,
     noteCount: Int,
+    bookmarkCount: Int = 0,
     onTagChange: (String) -> Unit
 ) {
-    // 动画：白色背景指示器的位置（0f = 高亮，1f = 笔记）
+    // 动画：白色背景指示器的位置（0=高亮，1=笔记，2=书签）
+    val tabIndex = when (activeTag) {
+        "highlight" -> 0f
+        "note" -> 1f
+        else -> 2f
+    }
     val indicatorProgress by animateFloatAsState(
-        targetValue = if (activeTag == "highlight") 0f else 1f,
+        targetValue = tabIndex,
         animationSpec = tween(300, easing = FastOutSlowInEasing),
         label = "tabIndicator"
     )
@@ -1996,7 +2088,8 @@ private fun HighlightNoteTabSwitcher(
             .background(LightBgGray)
             .padding(2.dp)
     ) {
-        val tabWidth = maxWidth / 2
+        val tabCount = 3
+        val tabWidth = maxWidth / tabCount
         val indicatorOffset = tabWidth * indicatorProgress
 
         // 白色背景指示器（平滑移动）
@@ -2011,6 +2104,7 @@ private fun HighlightNoteTabSwitcher(
 
         // Tab 文字
         Row(Modifier.fillMaxSize()) {
+            // 高亮
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -2037,6 +2131,137 @@ private fun HighlightNoteTabSwitcher(
                     fontSize = 14.sp,
                     fontWeight = if (activeTag == "note") FontWeight.SemiBold else FontWeight.Normal,
                     color = if (activeTag == "note") Color.Black else LightTextSecondary
+                )
+            }
+            // 书签
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onTagChange("bookmark") },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "书签 ($bookmarkCount)",
+                    fontSize = 14.sp,
+                    fontWeight = if (activeTag == "bookmark") FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (activeTag == "bookmark") Color.Black else LightTextSecondary
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun BookmarkListItem(
+    bookmark: com.huangder.lumibooks.domain.model.Bookmark,
+    onClick: () -> Unit,
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val density = LocalDensity.current
+    val revealPx = with(density) { 72.dp.toPx() }
+    val deletePx = with(density) { 500.dp.toPx() }
+
+    var isRevealed by remember { mutableStateOf(false) }
+    var isDeleting by remember { mutableStateOf(false) }
+    var rawOffset by remember { mutableFloatStateOf(0f) }
+    val animOffset = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+    var isDragging by remember { mutableStateOf(false) }
+    val displayOffset = if (isDragging) rawOffset else animOffset.value
+    val progress = remember(displayOffset) { (-displayOffset / revealPx).coerceAtLeast(0f) }
+    val deleteIconAlpha = remember(progress) { progress.coerceIn(0f, 1f) }
+    val deleteIconTranslationX = remember(progress) { (1f - progress.coerceAtMost(1f)) * 24f }
+
+    fun dampedOverScroll(excess: Float): Float {
+        if (excess == 0f) return 0f
+        val d = density.density
+        val sign = if (excess > 0f) 1f else -1f
+        return 40f * d * (1f - Math.exp((-kotlin.math.abs(excess) / (80f * d)).toDouble())).toFloat() * sign
+    }
+
+    Box(modifier = modifier.fillMaxWidth()) {
+        // 删除按钮
+        Box(Modifier.matchParentSize().padding(end = 16.dp), contentAlignment = Alignment.CenterEnd) {
+            Box(
+                modifier = Modifier
+                    .graphicsLayer { alpha = deleteIconAlpha; translationX = deleteIconTranslationX }
+                    .size(40.dp).clip(CircleShape).background(Color(0xFFE53935))
+                    .clickable(enabled = isRevealed && !isDeleting) {
+                        isDeleting = true
+                        scope.launch {
+                            animOffset.animateTo(-deletePx, tween(250, easing = FastOutSlowInEasing))
+                            onDelete()
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) { Icon(Icons.Default.Delete, "删除", tint = Color.White, modifier = Modifier.size(20.dp)) }
+        }
+
+        // 书签卡片
+        Row(
+            modifier = Modifier
+                .offset { IntOffset(displayOffset.toInt(), 0) }
+                .graphicsLayer {
+                    if (isDeleting) alpha = 1f - (-displayOffset / deletePx).coerceIn(0f, 1f)
+                    if (progress > 1f) scaleX = 1f - (progress - 1f) * 0.01f
+                }
+                .background(Color(0xFFFFF8E1), RoundedCornerShape(12.dp))
+                .pointerInput(Unit) {
+                    detectHorizontalDragGestures(
+                        onDragStart = { rawOffset = animOffset.value; isDragging = true },
+                        onDragEnd = {
+                            isDragging = false
+                            scope.launch {
+                                val from = rawOffset; animOffset.snapTo(from)
+                                if (isRevealed) {
+                                    if (-from < revealPx * 0.3f) {
+                                        animOffset.animateTo(0f, spring(dampingRatio = 0.6f, stiffness = 300f)); isRevealed = false
+                                    } else {
+                                        animOffset.animateTo(-revealPx, spring(dampingRatio = 0.6f, stiffness = 300f))
+                                    }
+                                } else {
+                                    if (-from > revealPx * 0.4f) {
+                                        animOffset.animateTo(-revealPx, spring(dampingRatio = 0.6f, stiffness = 300f)); isRevealed = true
+                                    } else {
+                                        animOffset.animateTo(0f, spring(dampingRatio = 0.6f, stiffness = 300f))
+                                    }
+                                }
+                                rawOffset = 0f
+                            }
+                        },
+                        onDragCancel = {
+                            isDragging = false
+                            scope.launch {
+                                animOffset.snapTo(rawOffset)
+                                animOffset.animateTo(if (isRevealed) -revealPx else 0f, spring(dampingRatio = 0.6f, stiffness = 300f)); rawOffset = 0f
+                            }
+                        },
+                        onHorizontalDrag = { _, dragAmount ->
+                            val newRaw = rawOffset + dragAmount
+                            rawOffset = when {
+                                newRaw < -revealPx -> -revealPx - dampedOverScroll((-newRaw) - revealPx)
+                                newRaw > 0f -> dampedOverScroll(newRaw)
+                                else -> newRaw
+                            }
+                        }
+                    )
+                }
+                .clickable(enabled = !isRevealed, indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() }
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 左侧书签图标
+            Icon(Icons.Default.Bookmark, "书签", tint = Color(0xFFFFB300), modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(12.dp))
+            // 内容
+            Column(modifier = Modifier.weight(1f)) {
+                Text(bookmark.title, fontSize = 14.sp, color = Color.Black, maxLines = 1)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    java.text.SimpleDateFormat("MM/dd", java.util.Locale.getDefault()).format(java.util.Date(bookmark.createdAt)),
+                    fontSize = 12.sp, color = LightTextSecondary
                 )
             }
         }
