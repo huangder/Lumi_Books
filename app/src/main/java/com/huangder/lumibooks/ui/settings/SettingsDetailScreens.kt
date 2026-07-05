@@ -36,8 +36,6 @@ import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -232,10 +230,10 @@ private fun SettingsSliderItem(
             Text(label, fontSize = AppType.Body, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
             Text(valueText, fontSize = AppType.BodySmall, color = AppColors.Accent, fontWeight = FontWeight.Medium)
         }
-        Slider(
-            value = value, onValueChange = onChange, valueRange = range, steps = steps,
-            modifier = Modifier.fillMaxWidth(),
-            colors = SliderDefaults.colors(thumbColor = AppColors.Accent, activeTrackColor = AppColors.Accent, inactiveTrackColor = AppColors.BgGray)
+        com.huangder.lumibooks.ui.components.PillSlider(
+            value = value,
+            onValueChange = onChange,
+            valueRange = range
         )
     }
 }

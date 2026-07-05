@@ -27,8 +27,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -167,18 +165,10 @@ fun ThemeSettingsSheet(
                 Text("${currentFontSize.toInt()}sp", fontSize = 14.sp, color = LightTextSecondary)
             }
             Spacer(Modifier.height(4.dp))
-            Slider(
+            com.huangder.lumibooks.ui.components.PillSlider(
                 value = currentFontSize,
                 onValueChange = onFontSizeChange,
-                valueRange = 12f..28f,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 0.dp),
-                colors = SliderDefaults.colors(
-                    thumbColor = Color.Black,
-                    activeTrackColor = Color.Black,
-                    inactiveTrackColor = LightDivider
-                )
+                valueRange = 12f..28f
             )
 
             Spacer(Modifier.height(16.dp))
@@ -194,18 +184,10 @@ fun ThemeSettingsSheet(
                 )
             }
             Spacer(Modifier.height(4.dp))
-            Slider(
+            com.huangder.lumibooks.ui.components.PillSlider(
                 value = brightnessPercent,
                 onValueChange = { pct -> onBrightnessChange(pct / 100f) },
-                valueRange = 0f..100f,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 0.dp),
-                colors = SliderDefaults.colors(
-                    thumbColor = Color.Black,
-                    activeTrackColor = Color.Black,
-                    inactiveTrackColor = LightDivider
-                )
+                valueRange = 0f..100f
             )
 
             Spacer(Modifier.height(16.dp))
@@ -518,19 +500,10 @@ private fun SettingSlider(
         Text(format(sliderValue), fontSize = 14.sp, color = LightTextSecondary)
     }
     Spacer(Modifier.height(4.dp))
-    Slider(
+    com.huangder.lumibooks.ui.components.PillSlider(
         value = sliderValue,
-        onValueChange = { sliderValue = it },
-        onValueChangeFinished = { onChange(sliderValue) },
-        valueRange = range,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 0.dp),
-        colors = SliderDefaults.colors(
-            thumbColor = Color.Black,
-            activeTrackColor = Color.Black,
-            inactiveTrackColor = LightDivider
-        )
+        onValueChange = { sliderValue = it; onChange(it) },
+        valueRange = range
     )
 }
 
