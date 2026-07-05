@@ -42,7 +42,11 @@ import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -68,6 +72,7 @@ import coil.compose.AsyncImage
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.util.parser.BookParserFactory
+import com.huangder.lumibooks.ui.animation.AppEasing
 import com.huangder.lumibooks.ui.animation.OverscrollBounce
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
 import com.huangder.lumibooks.ui.home.HomeViewModel
@@ -98,6 +103,9 @@ fun BookshelfScreen(
 
     // 自定义封面：记录正在操作的书本
     var coverTargetBook by remember { mutableStateOf<Book?>(null) }
+
+    // 删除动画：记录正在删除的书本 ID
+    var deletingBookId by remember { mutableStateOf<String?>(null) }
 
     // 图片选择器（自定义封面）
     val coverPickerLauncher = rememberLauncherForActivityResult(
@@ -210,9 +218,14 @@ fun BookshelfScreen(
                         verticalArrangement = Arrangement.spacedBy(AppSpace.lg),
                         modifier = Modifier.weight(1f)
                     ) {
-                        items(filteredBooks) { book ->
-                            BookGridItem(
+                        items(filteredBooks, key = { it.id }) { book ->
+                            AnimatedBookGridItem(
                                 book = book,
+                                isDeleting = deletingBookId == book.id,
+                                onDeleteFinished = {
+                                    viewModel.deleteBook(book)
+                                    deletingBookId = null
+                                },
                                 contextMenuState = contextMenuState,
                                 onHaptic = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
                                 onClick = { onNavigateToReader(book.id, book.coverPath, book.title) }
@@ -232,7 +245,7 @@ fun BookshelfScreen(
         // ── 长按上下文菜单覆盖层（在模糊内容之上） ──
         BookContextMenuOverlay(
             state = contextMenuState,
-            onDelete = { book -> viewModel.deleteBook(book) },
+            onDelete = { book -> deletingBookId = book.id },
             onFavorite = { book -> viewModel.updateBook(book.copy(isFavorite = !book.isFavorite)) },
             onCustomCover = { book ->
                 coverTargetBook = book
@@ -240,10 +253,12 @@ fun BookshelfScreen(
             },
             onRemoveCustomCover = { book ->
                 FileUtils.deleteCustomCover(context, book.id)
-                // 恢复为原始封面（导入时提取的封面）
-                val originalCoverPath = File(FileUtils.getCoversDirectory(context), "cover_${book.id}.jpg").let {
-                    if (it.exists()) it.absolutePath else null
-                }
+                // 重新从书本文件提取原始封面
+                val originalCoverPath = try {
+                    val parser = BookParserFactory.createParser(book.format, context)
+                    val content = parser.parse(book.filePath)
+                    content.coverPath
+                } catch (_: Exception) { null }
                 viewModel.updateBook(book.copy(coverPath = originalCoverPath))
             },
             onBookmarksNotes = { book ->
@@ -271,6 +286,53 @@ fun BookshelfScreen(
     }
 }
 
+// ─── 带删除动画的书籍网格项 ──────────────────────────────────────
+
+@Composable
+private fun AnimatedBookGridItem(
+    book: Book,
+    isDeleting: Boolean,
+    onDeleteFinished: () -> Unit,
+    contextMenuState: BookContextMenuState,
+    onHaptic: () -> Unit,
+    onClick: () -> Unit
+) {
+    val deleteTransition = updateTransition(targetState = isDeleting, label = "delete")
+
+    val itemScale by deleteTransition.animateFloat(
+        transitionSpec = { tween(300, easing = AppEasing.Accelerate) },
+        label = "scale"
+    ) { deleting -> if (deleting) 0.8f else 1f }
+
+    val itemAlpha by deleteTransition.animateFloat(
+        transitionSpec = { tween(300, easing = AppEasing.Accelerate) },
+        label = "alpha"
+    ) { deleting -> if (deleting) 0f else 1f }
+
+    // 动画结束后执行实际删除
+    LaunchedEffect(deleteTransition.currentState, deleteTransition.isRunning) {
+        if (!deleteTransition.isRunning && deleteTransition.currentState && isDeleting) {
+            onDeleteFinished()
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .graphicsLayer {
+                scaleX = itemScale
+                scaleY = itemScale
+                alpha = itemAlpha
+            }
+    ) {
+        BookGridItem(
+            book = book,
+            contextMenuState = contextMenuState,
+            onHaptic = onHaptic,
+            onClick = onClick
+        )
+    }
+}
+
 // ─── 书籍网格项 ────────────────────────────────────────────────
 
 @Composable
@@ -280,18 +342,20 @@ private fun BookGridItem(
     onHaptic: () -> Unit,
     onClick: () -> Unit
 ) {
-    // 长按激活时，原位书本隐藏（由 overlay 接管显示）
-    val isOverlayActive = contextMenuState.phase != ContextMenuPhase.Idle
-            && contextMenuState.selectedBook?.id == book.id
+    // 是否为当前操作的目标书本
+    val isTarget = contextMenuState.selectedBook?.id == book.id
+    val isOverlayActive = contextMenuState.phase != ContextMenuPhase.Idle && isTarget
 
     Column(
         modifier = Modifier
             .graphicsLayer {
                 // alpha：使用 itemAlpha 实现平滑过渡（dismiss 时渐显）
                 alpha = if (isOverlayActive) contextMenuState.itemAlpha.value else 1f
-                // 按下缩小效果
-                scaleX = contextMenuState.pressScale.value
-                scaleY = contextMenuState.pressScale.value
+                // 按下缩小效果：仅目标书缩小
+                if (isTarget) {
+                    scaleX = contextMenuState.pressScale.value
+                    scaleY = contextMenuState.pressScale.value
+                }
             }
             .longPressBookEffect(
                 state = contextMenuState,
@@ -316,12 +380,33 @@ private fun BookGridItem(
                 .clip(RoundedCornerShape(AppRadius.sm))
                 .background(AppColors.BgGray)
         ) {
-            AsyncImage(
-                model = book.coverPath,
-                contentDescription = book.title,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
+            if (book.coverPath != null) {
+                AsyncImage(
+                    model = book.coverPath,
+                    contentDescription = book.title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                // 无封面：灰色背景 + 书名
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(AppColors.BgGray),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = book.title.take(8),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = AppColors.TextSecondary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(8.dp),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
             // 进度指示
             if (book.readingProgress > 0f) {
                 Box(

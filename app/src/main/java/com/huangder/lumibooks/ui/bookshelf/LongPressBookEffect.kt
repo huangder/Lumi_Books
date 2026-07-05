@@ -39,8 +39,8 @@ fun Modifier.longPressBookEffect(
             // 等待手指按下
             val down = awaitFirstDown(requireUnconsumed = false)
 
-            // 通知状态：按下开始
-            state.onPressDown()
+            // 通知状态：按下开始（传入当前书本，仅缩小目标书）
+            state.onPressDown(book())
 
             // 启动长按计时
             var isLongPress = false

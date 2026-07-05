@@ -58,12 +58,14 @@ class BookContextMenuState(private val scope: CoroutineScope) {
     }
 
     /**
-     * 手指按下 — 缩小书本
+     * 手指按下 — 缩小书本（仅缩小目标书）
      */
-    fun onPressDown() {
+    fun onPressDown(book: Book) {
         if (phase != ContextMenuPhase.Idle) return
+        selectedBook = book
         phase = ContextMenuPhase.Pressing
         scope.launch {
+            pressScale.snapTo(1f)
             pressScale.animateTo(
                 targetValue = 0.95f,
                 animationSpec = tween(100, easing = FastOutSlowInEasing)
