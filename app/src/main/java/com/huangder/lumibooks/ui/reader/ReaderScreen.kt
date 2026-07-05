@@ -1879,13 +1879,18 @@ private fun NotesListSheet(
     var activeTag by remember { mutableStateOf("highlight") }
     val highlights = notes.filter { it.note.isEmpty() }
     val noteList = notes.filter { it.note.isNotEmpty() }
+    // 追踪是否有笔记项处于"已滑开"状态，点空白处时先关闭滑开项而非关闭整个弹窗
+    var anyItemRevealed by remember { mutableStateOf(false) }
+    var resetRevealedKey by remember { mutableStateOf(0) }
 
     Box(Modifier.fillMaxSize()) {
-        // 遮罩层
+        // 遮罩层：有滑开项时先关闭滑开项，否则关闭整个弹窗
         Box(
             Modifier.fillMaxSize()
                 .background(Color.Black.copy(alpha = 0.1f))
-                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { isClosing = true }
+                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                    if (anyItemRevealed) resetRevealedKey = resetRevealedKey + 1 else isClosing = true
+                }
         )
 
         // 容器层（60% 屏幕高度）
@@ -1894,8 +1899,8 @@ private fun NotesListSheet(
                 .fillMaxWidth()
                 .fillMaxHeight(0.6f)
                 .graphicsLayer { translationY = sheetOffset.value * size.height }
-                .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(LightCardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .border(0.5.dp, Color.Black.copy(alpha = 0.06f), RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .navigationBarsPadding()
                 .padding(24.dp)
         ) {
@@ -1955,6 +1960,8 @@ private fun NotesListSheet(
                                 isClosing = true
                             },
                             onDelete = { onDeleteNote(item) },
+                            resetRevealedKey = resetRevealedKey,
+                            onRevealedChanged = { revealed -> anyItemRevealed = revealed },
                             modifier = Modifier.animateItem()
                         )
                         if (idx < items.size - 1) {
@@ -2041,6 +2048,8 @@ private fun HighlightNoteItem(
     item: com.huangder.lumibooks.domain.model.Note,
     onClick: () -> Unit,
     onDelete: () -> Unit,
+    resetRevealedKey: Int = 0,
+    onRevealedChanged: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     // 从 note.color 解析高亮颜色，生成浅色背景版本
@@ -2050,31 +2059,46 @@ private fun HighlightNoteItem(
     val highlightBg = remember(highlightColor) { highlightColor.copy(alpha = 0.12f) }
 
     val density = LocalDensity.current
-    val revealPx = with(density) { 72.dp.toPx() }   // 滑开距离（露出删除键）
+    val revealPx = with(density) { 72.dp.toPx() }   // 目标滑开距离（露出删除键）
     val deletePx = with(density) { 500.dp.toPx() }   // 删除动画滑出距离
 
     // 状态
-    var isRevealed by remember { mutableStateOf(false) }   // 删除键是否已露出
-    var isDeleting by remember { mutableStateOf(false) }   // 删除动画播放中
+    var isRevealed by remember { mutableStateOf(false) }
+    var isDeleting by remember { mutableStateOf(false) }
     var rawOffset by remember { mutableFloatStateOf(0f) }
     val animOffset = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
 
-    // 拖拽中跟随手指，否则由 animOffset 驱动
+    // 🔥 父级信号：点空白处时收起已滑开的卡片
+    LaunchedEffect(resetRevealedKey) {
+        if (resetRevealedKey > 0 && isRevealed) {
+            isRevealed = false
+            animOffset.animateTo(0f, spring(dampingRatio = 0.55f, stiffness = 280f))
+            rawOffset = 0f
+        }
+    }
+    // 通知父级当前展开状态
+    LaunchedEffect(isRevealed) { onRevealedChanged(isRevealed) }
+
     var isDragging by remember { mutableStateOf(false) }
     val displayOffset = if (isDragging) rawOffset else animOffset.value
 
-    // 删除键透明度：根据位移比例淡入
-    val deleteIconAlpha = remember(displayOffset) {
-        (-displayOffset / revealPx).coerceIn(0f, 1f)
+    // 进度 0→1（到达 revealPx 时为 1，可超出）
+    val progress = remember(displayOffset) { (-displayOffset / revealPx).coerceAtLeast(0f) }
+    // 删除图标：从右侧 24dp 滑入 + 淡入
+    val deleteIconAlpha = remember(progress) { progress.coerceIn(0f, 1f) }
+    val deleteIconTranslationX = remember(progress) { (1f - progress.coerceAtMost(1f)) * 24f }
+
+    /** 阻尼函数：超出部分按对数衰减 */
+    fun dampedOverScroll(excess: Float): Float {
+        if (excess == 0f) return 0f
+        val d = density.density
+        val sign = if (excess > 0f) 1f else -1f
+        return 40f * d * (1f - Math.exp((-kotlin.math.abs(excess) / (80f * d)).toDouble())).toFloat() * sign
     }
 
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-    ) {
-        // ── 底层：删除按钮（固定右侧，透明度随滑动距离渐变）──
+    Box(modifier = modifier.fillMaxWidth()) {
+        // ── 底层：删除按钮（固定右侧，滑入 + 淡入）──
         Box(
             modifier = Modifier
                 .matchParentSize()
@@ -2083,12 +2107,14 @@ private fun HighlightNoteItem(
         ) {
             Box(
                 modifier = Modifier
-                    .graphicsLayer { alpha = deleteIconAlpha }
+                    .graphicsLayer {
+                        alpha = deleteIconAlpha
+                        translationX = deleteIconTranslationX
+                    }
                     .size(40.dp)
                     .clip(CircleShape)
                     .background(Color(0xFFE53935))
                     .clickable(enabled = isRevealed && !isDeleting) {
-                        // 点击删除：卡片左滑淡出 → 触发 onDelete
                         isDeleting = true
                         scope.launch {
                             animOffset.animateTo(-deletePx, tween(250, easing = FastOutSlowInEasing))
@@ -2101,16 +2127,17 @@ private fun HighlightNoteItem(
             }
         }
 
-        // ── 顶层：笔记卡片（跟随拖拽 / 弹簧回弹）──
+        // ── 顶层：笔记卡片 ──
         Row(
             modifier = Modifier
                 .offset { IntOffset(displayOffset.toInt(), 0) }
                 .graphicsLayer {
                     // 删除动画中卡片淡出
                     if (isDeleting) alpha = 1f - (-displayOffset / deletePx).coerceIn(0f, 1f)
+                    // 超出时微缩，增加弹性手感
+                    if (progress > 1f) scaleX = 1f - (progress - 1f) * 0.01f
                 }
-                .clip(RoundedCornerShape(12.dp))
-                .background(highlightBg)
+                .background(highlightBg, RoundedCornerShape(12.dp))
                 .pointerInput(Unit) {
                     detectHorizontalDragGestures(
                         onDragStart = { isDragging = true },
@@ -2119,14 +2146,24 @@ private fun HighlightNoteItem(
                             scope.launch {
                                 val from = rawOffset
                                 animOffset.snapTo(from)
-                                if (-from > revealPx * 0.4f) {
-                                    // 超过阈值 → 弹到"已露出"位置
-                                    animOffset.animateTo(-revealPx, spring(dampingRatio = 0.7f, stiffness = 400f))
-                                    isRevealed = true
+                                if (isRevealed) {
+                                    // 已展开状态：根据位置决定
+                                    if (-from < revealPx * 0.3f) {
+                                        // 滑回超过 70% → 关闭
+                                        animOffset.animateTo(0f, spring(dampingRatio = 0.6f, stiffness = 300f))
+                                        isRevealed = false
+                                    } else {
+                                        // 还在删除区 → 弹回露出位置
+                                        animOffset.animateTo(-revealPx, spring(dampingRatio = 0.6f, stiffness = 300f))
+                                    }
                                 } else {
-                                    // 未超过 → 弹回关闭
-                                    animOffset.animateTo(0f, spring(dampingRatio = 0.7f, stiffness = 400f))
-                                    isRevealed = false
+                                    // 未展开状态
+                                    if (-from > revealPx * 0.4f) {
+                                        animOffset.animateTo(-revealPx, spring(dampingRatio = 0.6f, stiffness = 300f))
+                                        isRevealed = true
+                                    } else {
+                                        animOffset.animateTo(0f, spring(dampingRatio = 0.6f, stiffness = 300f))
+                                    }
                                 }
                                 rawOffset = 0f
                             }
@@ -2135,12 +2172,26 @@ private fun HighlightNoteItem(
                             isDragging = false
                             scope.launch {
                                 animOffset.snapTo(rawOffset)
-                                animOffset.animateTo(if (isRevealed) -revealPx else 0f, spring(dampingRatio = 0.7f, stiffness = 400f))
+                                animOffset.animateTo(
+                                    if (isRevealed) -revealPx else 0f,
+                                    spring(dampingRatio = 0.6f, stiffness = 300f)
+                                )
                                 rawOffset = 0f
                             }
                         },
                         onHorizontalDrag = { _, dragAmount ->
-                            rawOffset = (rawOffset + dragAmount).coerceIn(-revealPx, 0f)
+                            val newRaw = rawOffset + dragAmount
+                            rawOffset = when {
+                                // 向左拖拽：超出 revealPx 后施加阻尼
+                                newRaw < -revealPx -> {
+                                    val excess = (-newRaw) - revealPx
+                                    -revealPx - dampedOverScroll(excess)
+                                }
+                                // 向右拖拽超过原位（从展开状态滑回 + 超出）：施加阻尼
+                                newRaw > 0f -> dampedOverScroll(newRaw)
+                                // 正常范围：跟随手指
+                                else -> newRaw
+                            }
                         }
                     )
                 }
