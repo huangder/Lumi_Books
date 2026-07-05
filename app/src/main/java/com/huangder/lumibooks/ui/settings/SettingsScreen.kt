@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -132,18 +133,19 @@ fun SettingsScreen(
                     .shadow(8.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
                     .clip(RoundedCornerShape(AppRadius.lg))
                     .background(AppColors.CardBg)
-                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                        photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                    }
                     .padding(AppSpace.md),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // 头像——点击打开相册
                 Box(
                     modifier = Modifier
                         .size(56.dp)
                         .clip(CircleShape)
                         .background(AppColors.BgGray)
-                        .border(1.dp, AppColors.Divider, CircleShape),
+                        .border(1.dp, AppColors.Divider, CircleShape)
+                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                            photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     if (uiState.avatarUri != null) {
@@ -158,19 +160,18 @@ fun SettingsScreen(
                     }
                 }
                 Spacer(Modifier.width(AppSpace.md))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        uiState.nickname,
-                        fontSize = AppType.Body,
-                        fontWeight = FontWeight.SemiBold,
-                        color = AppColors.TextPrimary,
-                        modifier = Modifier.clickable(
+                // 昵称——点击编辑昵称
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable(
                             indication = null,
                             interactionSource = remember { MutableInteractionSource() },
                             onClick = { showNicknameDialog = true }
                         )
-                    )
-                    Text("点击更换头像", fontSize = AppType.Caption, color = AppColors.TextSecondary)
+                ) {
+                    Text(uiState.nickname, fontSize = AppType.Body, fontWeight = FontWeight.SemiBold, color = AppColors.TextPrimary)
+                    Text("点击修改昵称", fontSize = AppType.Caption, color = AppColors.TextSecondary)
                 }
                 Icon(Icons.Outlined.ChevronRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
             }
@@ -207,6 +208,7 @@ fun SettingsScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .imePadding()
                     .background(Color.Black.copy(alpha = 0.4f))
                     .clickable(
                         indication = null,
