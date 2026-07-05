@@ -70,6 +70,46 @@ object FileUtils {
         }
     }
 
+    /**
+     * 将用户选择的封面图片复制到 covers 目录
+     * 使用 custom_{bookId}_{timestamp}.jpg 命名，保留原始封面不被覆盖
+     * @return 复制后的文件路径，失败返回 null
+     */
+    fun copyCoverImage(context: Context, uri: Uri, bookId: String): String? {
+        return try {
+            val inputStream = context.contentResolver.openInputStream(uri) ?: return null
+            val coversDir = getCoversDirectory(context)
+            // 先删除该书之前的自定义封面
+            coversDir.listFiles()?.filter { it.name.startsWith("custom_${bookId}_") }?.forEach { it.delete() }
+            // 用时间戳命名，避免与原始封面冲突
+            val file = File(coversDir, "custom_${bookId}_${System.currentTimeMillis()}.jpg")
+            inputStream.use { input ->
+                FileOutputStream(file).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            file.absolutePath
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    /**
+     * 删除书本的自定义封面文件
+     */
+    fun deleteCustomCover(context: Context, bookId: String) {
+        val coversDir = getCoversDirectory(context)
+        coversDir.listFiles()?.filter { it.name.startsWith("custom_${bookId}_") }?.forEach { it.delete() }
+    }
+
+    /**
+     * 判断封面路径是否为用户自定义封面
+     */
+    fun isCustomCover(coverPath: String?): Boolean {
+        return coverPath?.contains("/custom_") == true || coverPath?.contains("\\custom_") == true
+    }
+
     fun deleteFile(file: File): Boolean {
         return try {
             if (file.exists()) {

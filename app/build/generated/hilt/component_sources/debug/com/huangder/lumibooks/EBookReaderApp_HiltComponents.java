@@ -1,6 +1,7 @@
 package com.huangder.lumibooks;
 
 import com.huangder.lumibooks.di.AppModule;
+import com.huangder.lumibooks.ui.bookshelf.BookNotesActivity_GeneratedInjector;
 import com.huangder.lumibooks.ui.bookshelf.BookNotesViewModel_HiltModules;
 import com.huangder.lumibooks.ui.home.HomeViewModel_HiltModules;
 import com.huangder.lumibooks.ui.reader.ReaderViewModel_HiltModules;
@@ -192,6 +193,7 @@ public final class EBookReaderApp_HiltComponents {
   )
   @ActivityScoped
   public abstract static class ActivityC implements MainActivity_GeneratedInjector,
+      BookNotesActivity_GeneratedInjector,
       DetailActivity_GeneratedInjector,
       SettingsActivity_GeneratedInjector,
       ActivityComponent,

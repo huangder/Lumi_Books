@@ -25,6 +25,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -56,6 +57,7 @@ sealed class ContextMenuAction {
     data object Delete : ContextMenuAction()
     data object Favorite : ContextMenuAction()
     data object CustomCover : ContextMenuAction()
+    data object RemoveCustomCover : ContextMenuAction()
     data object BookmarksNotes : ContextMenuAction()
     data object EditInfo : ContextMenuAction()
 }
@@ -69,6 +71,7 @@ fun BookContextMenuOverlay(
     onDelete: (Book) -> Unit = {},
     onFavorite: (Book) -> Unit = {},
     onCustomCover: (Book) -> Unit = {},
+    onRemoveCustomCover: (Book) -> Unit = {},
     onBookmarksNotes: (Book) -> Unit = {},
     onEditInfo: (Book) -> Unit = {}
 ) {
@@ -113,6 +116,7 @@ fun BookContextMenuOverlay(
                         is ContextMenuAction.Delete -> onDelete(book)
                         is ContextMenuAction.Favorite -> onFavorite(book)
                         is ContextMenuAction.CustomCover -> onCustomCover(book)
+                        is ContextMenuAction.RemoveCustomCover -> onRemoveCustomCover(book)
                         is ContextMenuAction.BookmarksNotes -> onBookmarksNotes(book)
                         is ContextMenuAction.EditInfo -> onEditInfo(book)
                     }
@@ -218,6 +222,7 @@ private fun ContextMenuLayout(
             modifier = Modifier.fillMaxWidth(),
             actionsAlpha = actionsAlpha,
             isFavorite = book.isFavorite,
+            hasCustomCover = com.huangder.lumibooks.util.FileUtils.isCustomCover(book.coverPath),
             onAction = onAction
         )
     }
@@ -299,6 +304,7 @@ private fun MenuActionsPanel(
     modifier: Modifier = Modifier,
     actionsAlpha: Float,
     isFavorite: Boolean = false,
+    hasCustomCover: Boolean = false,
     onAction: (ContextMenuAction) -> Unit
 ) {
     Column(
@@ -308,25 +314,31 @@ private fun MenuActionsPanel(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        // 从下到上：删除在最下，书签在最上
         val favoriteIcon = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder
-        val items = listOf(
-            Triple("删除", Icons.Outlined.Delete, ContextMenuAction.Delete) to 0,
-            Triple("收藏", favoriteIcon, ContextMenuAction.Favorite) to 1,
-            Triple("自定义封面", Icons.Outlined.Image, ContextMenuAction.CustomCover) to 2,
-            Triple("书签高亮与笔记", Icons.Outlined.Bookmark, ContextMenuAction.BookmarksNotes) to 3,
-        )
+        val favoriteLabel = if (isFavorite) "移除收藏" else "收藏"
 
-        items.forEach { (data, staggerIndex) ->
-            val (label, icon, action) = data
+        // 动态构建菜单项列表
+        data class MenuItem(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val action: ContextMenuAction)
+
+        val items = buildList {
+            add(MenuItem("删除", Icons.Outlined.Delete, ContextMenuAction.Delete))
+            add(MenuItem(favoriteLabel, favoriteIcon, ContextMenuAction.Favorite))
+            add(MenuItem("自定义封面", Icons.Outlined.Image, ContextMenuAction.CustomCover))
+            if (hasCustomCover) {
+                add(MenuItem("移除自定义封面", Icons.Outlined.Restore, ContextMenuAction.RemoveCustomCover))
+            }
+            add(MenuItem("书签高亮与笔记", Icons.Outlined.Bookmark, ContextMenuAction.BookmarksNotes))
+        }
+
+        items.forEachIndexed { index, item ->
             // 每项交错 0.1，渐显窗口 0.5 → 每项约 200ms 渐显
-            val itemDelay = staggerIndex * 0.1f // 0, 0.1, 0.2, 0.3
+            val itemDelay = index * 0.1f
             val delayedAlpha = ((actionsAlpha - itemDelay) / 0.5f).coerceIn(0f, 1f)
             MenuActionItem(
-                label = label,
-                icon = icon,
+                label = item.label,
+                icon = item.icon,
                 alpha = delayedAlpha,
-                onClick = { onAction(action) }
+                onClick = { onAction(item.action) }
             )
         }
     }

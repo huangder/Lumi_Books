@@ -77,13 +77,13 @@ import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.util.FileUtils
+import java.io.File
 
 private val filterTabs = listOf("全部图书", "下载内容", "PDF", "收藏")
 
 @Composable
 fun BookshelfScreen(
     onNavigateToReader: (bookId: String, coverPath: String?, title: String) -> Unit,
-    onNavigateToBookNotes: (bookId: String) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -95,6 +95,23 @@ fun BookshelfScreen(
     // 编辑书本信息对话框状态
     var showEditDialog by remember { mutableStateOf(false) }
     var editingBook by remember { mutableStateOf<Book?>(null) }
+
+    // 自定义封面：记录正在操作的书本
+    var coverTargetBook by remember { mutableStateOf<Book?>(null) }
+
+    // 图片选择器（自定义封面）
+    val coverPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let {
+            val book = coverTargetBook ?: return@let
+            val coverPath = FileUtils.copyCoverImage(context, it, book.id)
+            coverPath?.let { path ->
+                viewModel.updateBook(book.copy(coverPath = path))
+            }
+            coverTargetBook = null
+        }
+    }
 
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -217,7 +234,23 @@ fun BookshelfScreen(
             state = contextMenuState,
             onDelete = { book -> viewModel.deleteBook(book) },
             onFavorite = { book -> viewModel.updateBook(book.copy(isFavorite = !book.isFavorite)) },
-            onBookmarksNotes = { book -> onNavigateToBookNotes(book.id) },
+            onCustomCover = { book ->
+                coverTargetBook = book
+                coverPickerLauncher.launch("image/*")
+            },
+            onRemoveCustomCover = { book ->
+                FileUtils.deleteCustomCover(context, book.id)
+                // 恢复为原始封面（导入时提取的封面）
+                val originalCoverPath = File(FileUtils.getCoversDirectory(context), "cover_${book.id}.jpg").let {
+                    if (it.exists()) it.absolutePath else null
+                }
+                viewModel.updateBook(book.copy(coverPath = originalCoverPath))
+            },
+            onBookmarksNotes = { book ->
+                val intent = android.content.Intent(context, BookNotesActivity::class.java)
+                intent.putExtra("bookId", book.id)
+                context.startActivity(intent)
+            },
             onEditInfo = { book ->
                 editingBook = book
                 showEditDialog = true
