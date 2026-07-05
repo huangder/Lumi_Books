@@ -37,6 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -66,12 +67,14 @@ sealed class ContextMenuAction {
 /**
  * 内容层高斯模糊 Modifier
  *
- * 将 RenderEffect 模糊应用到内容层（包含子元素），实现真正的毛玻璃效果。
- * 必须在 content 层的 Box 上调用，不是在 overlay 上调用。
+ * 使用 CompositingStrategy.Offscreen 强制离屏渲染，
+ * 确保 RenderEffect 模糊应用到整个内容层（包含所有子元素）。
  */
 fun Modifier.contentBlur(alpha: Float): Modifier {
     if (alpha < 0.01f) return this
     return this.graphicsLayer {
+        // 强制离屏渲染，确保模糊作用于所有子元素
+        compositingStrategy = CompositingStrategy.Offscreen
         if (Build.VERSION.SDK_INT >= 31) {
             renderEffect = RenderEffect
                 .createBlurEffect(20f * alpha, 20f * alpha, Shader.TileMode.CLAMP)
@@ -196,24 +199,24 @@ private fun ContextMenuLayout(
         coverLeftDp - panelWidth - panelGap
     }
 
-    // 单侧面板：信息在上，操作在下，无固定高度限制
+    // 单侧面板：信息在上，操作在下
     Column(
         modifier = Modifier
             .offset(x = panelX, y = coverTopDp)
-            .graphicsLayer { alpha = menuAlpha }
-            .width(panelWidth)
-            .verticalScroll(rememberScrollState()),
+            .width(panelWidth),
         verticalArrangement = Arrangement.spacedBy(panelGap)
     ) {
-        // 上部：信息面板
+        // 上部：信息面板（整体淡入）
         BookInfoPanel(
             book = book,
+            alpha = menuAlpha,
             modifier = Modifier.fillMaxWidth()
         )
 
-        // 下部：操作面板
+        // 下部：操作面板（各项错开淡入）
         MenuActionsPanel(
             modifier = Modifier.fillMaxWidth(),
+            menuAlpha = menuAlpha,
             onAction = onAction
         )
     }
@@ -224,10 +227,12 @@ private fun ContextMenuLayout(
 @Composable
 private fun BookInfoPanel(
     book: Book,
+    alpha: Float = 1f,
     modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier
+            .graphicsLayer { this.alpha = alpha }
             .clip(RoundedCornerShape(AppRadius.md))
             .background(AppColors.CardBg)
             .padding(16.dp)
@@ -285,11 +290,12 @@ private fun BookInfoPanel(
     }
 }
 
-// ─── 操作面板（4 个选项，从下到上） ─────────────────────────────
+// ─── 操作面板（4 个选项，从下到上依次淡入） ────────────────────
 
 @Composable
 private fun MenuActionsPanel(
     modifier: Modifier = Modifier,
+    menuAlpha: Float,
     onAction: (ContextMenuAction) -> Unit
 ) {
     Column(
@@ -299,35 +305,45 @@ private fun MenuActionsPanel(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
+        // 从下到上：删除在最下，书签在最上
+        // staggerIndex 0 = 最先出现（删除），3 = 最后出现（书签）
         val items = listOf(
-            Triple("书签高亮与笔记", Icons.Outlined.Bookmark, ContextMenuAction.BookmarksNotes),
-            Triple("自定义封面", Icons.Outlined.Image, ContextMenuAction.CustomCover),
-            Triple("收藏", Icons.Outlined.FavoriteBorder, ContextMenuAction.Favorite),
-            Triple("删除", Icons.Outlined.Delete, ContextMenuAction.Delete),
+            Triple("删除", Icons.Outlined.Delete, ContextMenuAction.Delete) to 0,
+            Triple("收藏", Icons.Outlined.FavoriteBorder, ContextMenuAction.Favorite) to 1,
+            Triple("自定义封面", Icons.Outlined.Image, ContextMenuAction.CustomCover) to 2,
+            Triple("书签高亮与笔记", Icons.Outlined.Bookmark, ContextMenuAction.BookmarksNotes) to 3,
         )
 
-        items.forEach { (label, icon, action) ->
+        items.forEach { (data, staggerIndex) ->
+            val (label, icon, action) = data
+            // 每项延迟 60ms，从下往上依次淡入
+            // menuAlpha 0→1 的过程中，各项目在不同时刻开始出现
+            val itemDelay = staggerIndex * 0.15f // 0, 0.15, 0.30, 0.45
+            val delayedAlpha = ((menuAlpha - itemDelay) / 0.3f).coerceIn(0f, 1f)
             MenuActionItem(
                 label = label,
                 icon = icon,
+                alpha = delayedAlpha,
                 onClick = { onAction(action) }
             )
         }
     }
 }
 
-// ─── 单个菜单项 ──────────────────────────────────────────────────
+// ─── 单个菜单项（支持错开淡入） ─────────────────────────────────
 
 @Composable
 private fun MenuActionItem(
     label: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
+    alpha: Float = 1f,
     onClick: () -> Unit
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
+            .graphicsLayer { this.alpha = alpha }
             .clip(RoundedCornerShape(AppRadius.sm))
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 10.dp)

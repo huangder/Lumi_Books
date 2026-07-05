@@ -49,6 +49,8 @@ class BookContextMenuState(private val scope: CoroutineScope) {
     val coverScale = Animatable(1f)
     val scrimAlpha = Animatable(0f)
     val menuAlpha = Animatable(0f)
+    /** 原位书本的 alpha（dismiss 时从 0 渐变到 1） */
+    val itemAlpha = Animatable(1f)
 
     fun updateCoverBounds(bounds: Rect) {
         coverBounds = bounds
@@ -94,6 +96,9 @@ class BookContextMenuState(private val scope: CoroutineScope) {
         selectedBook = book
         coverBounds = bounds
         phase = ContextMenuPhase.Enlarging
+
+        // 隐藏原位书本
+        scope.launch { itemAlpha.snapTo(0f) }
 
         // 触发震动
         onHaptic()
@@ -158,17 +163,31 @@ class BookContextMenuState(private val scope: CoroutineScope) {
                     delay(50)
                     scrimAlpha.animateTo(
                         targetValue = 0f,
-                        animationSpec = tween(200, easing = AppEasing.Accelerate)
+                        animationSpec = tween(250, easing = AppEasing.Accelerate)
                     )
                 }
                 launch {
                     delay(80)
                     coverScale.animateTo(
                         targetValue = 1f,
-                        animationSpec = tween(200, easing = AppEasing.Standard)
+                        animationSpec = tween(250, easing = AppEasing.Standard)
+                    )
+                }
+                // 原位书本渐显（与封面缩小同步）
+                launch {
+                    delay(80)
+                    itemAlpha.animateTo(
+                        targetValue = 1f,
+                        animationSpec = tween(250, easing = AppEasing.Decelerate)
                     )
                 }
             }
+            // 确保所有动画值回到初始状态
+            pressScale.snapTo(1f)
+            coverScale.snapTo(1f)
+            scrimAlpha.snapTo(0f)
+            menuAlpha.snapTo(0f)
+            itemAlpha.snapTo(1f)
             // 重置状态
             selectedBook = null
             phase = ContextMenuPhase.Idle

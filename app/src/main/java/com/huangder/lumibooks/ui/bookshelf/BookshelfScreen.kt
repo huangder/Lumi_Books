@@ -223,13 +223,11 @@ private fun BookGridItem(
     Column(
         modifier = Modifier
             .graphicsLayer {
-                // 长按激活时隐藏原位封面
-                alpha = if (isOverlayActive) 0f else 1f
-                // 按下缩小效果（仅在非 overlay 状态下显示）
-                if (!isOverlayActive) {
-                    scaleX = contextMenuState.pressScale.value
-                    scaleY = contextMenuState.pressScale.value
-                }
+                // alpha：使用 itemAlpha 实现平滑过渡（dismiss 时渐显）
+                alpha = if (isOverlayActive) contextMenuState.itemAlpha.value else 1f
+                // 按下缩小效果
+                scaleX = contextMenuState.pressScale.value
+                scaleY = contextMenuState.pressScale.value
             }
             .longPressBookEffect(
                 state = contextMenuState,
