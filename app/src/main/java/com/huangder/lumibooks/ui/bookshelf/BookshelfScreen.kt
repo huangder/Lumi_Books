@@ -12,6 +12,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,7 +51,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -60,7 +65,6 @@ import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.util.parser.BookParserFactory
 import com.huangder.lumibooks.ui.animation.OverscrollBounce
-import com.huangder.lumibooks.ui.animation.cardPressEffect
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
 import com.huangder.lumibooks.ui.home.HomeViewModel
 import com.huangder.lumibooks.ui.theme.AppColors
@@ -80,6 +84,8 @@ fun BookshelfScreen(
     val uiState by viewModel.uiState.collectAsState()
     var selectedFilter by remember { mutableStateOf(0) }
     val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
+    val contextMenuState = rememberBookContextMenuState()
 
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -126,83 +132,124 @@ fun BookshelfScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize().background(AppColors.WindowBg)) {
-        OverscrollBounce(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
-        Column(
+        // ── 内容层（长按时整体高斯模糊） ──
+        Box(
             modifier = Modifier
                 .fillMaxSize()
+                .contentBlur(contextMenuState.scrimAlpha.value)
         ) {
-            Spacer(modifier = Modifier.height(AppSpace.md))
-            Text(
-                text = "书库",
-            fontSize = AppType.Display,
-            fontWeight = FontWeight.Bold,
-            fontFamily = KaiTi,
-            letterSpacing = (-0.02).sp,
-            color = AppColors.TextPrimary,
-            modifier = Modifier.padding(horizontal = AppSpace.lg, vertical = AppSpace.md)
-        )
+            OverscrollBounce(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                ) {
+                    Spacer(modifier = Modifier.height(AppSpace.md))
+                    Text(
+                        text = "书库",
+                        fontSize = AppType.Display,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = KaiTi,
+                        letterSpacing = (-0.02).sp,
+                        color = AppColors.TextPrimary,
+                        modifier = Modifier.padding(horizontal = AppSpace.lg, vertical = AppSpace.md)
+                    )
 
-        // ── 筛选标签 ──
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = AppSpace.lg, vertical = AppSpace.sm),
-            horizontalArrangement = Arrangement.spacedBy(AppSpace.lg)
-        ) {
-            filterTabs.forEachIndexed { index, label ->
-                val isSelected = index == selectedFilter
-                Text(
-                    text = label,
-                    fontSize = AppType.Body,
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                    color = if (isSelected) AppColors.TextPrimary else AppColors.TextSecondary,
-                    modifier = Modifier.clickable { selectedFilter = index }
-                )
-            }
-        }
+                    // ── 筛选标签 ──
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = AppSpace.lg, vertical = AppSpace.sm),
+                        horizontalArrangement = Arrangement.spacedBy(AppSpace.lg)
+                    ) {
+                        filterTabs.forEachIndexed { index, label ->
+                            val isSelected = index == selectedFilter
+                            Text(
+                                text = label,
+                                fontSize = AppType.Body,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) AppColors.TextPrimary else AppColors.TextSecondary,
+                                modifier = Modifier.clickable { selectedFilter = index }
+                            )
+                        }
+                    }
 
-        Spacer(Modifier.height(AppSpace.md))
+                    Spacer(Modifier.height(AppSpace.md))
 
-        // ── 书架网格 ──
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
-            contentPadding = PaddingValues(horizontal = AppSpace.lg),
-            horizontalArrangement = Arrangement.spacedBy(AppSpace.lg),
-            verticalArrangement = Arrangement.spacedBy(AppSpace.lg),
-            modifier = Modifier.weight(1f)
-        ) {
-            items(filteredBooks) { book ->
-                BookGridItem(
-                    book = book,
-                    onClick = { onNavigateToReader(book.id, book.coverPath, book.title) }
-                )
-            }
-            // 添加按钮
-            item {
-                AddBookItem(onClick = { launcher.launch("*/*") })
-            }
-        }
-        } // Column 结束
-        } // OverscrollBounce 结束
+                    // ── 书架网格 ──
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(2),
+                        contentPadding = PaddingValues(horizontal = AppSpace.lg),
+                        horizontalArrangement = Arrangement.spacedBy(AppSpace.lg),
+                        verticalArrangement = Arrangement.spacedBy(AppSpace.lg),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        items(filteredBooks) { book ->
+                            BookGridItem(
+                                book = book,
+                                contextMenuState = contextMenuState,
+                                onHaptic = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
+                                onClick = { onNavigateToReader(book.id, book.coverPath, book.title) }
+                            )
+                        }
+                        // 添加按钮
+                        item {
+                            AddBookItem(onClick = { launcher.launch("*/*") })
+                        }
+                    }
+                } // Column 结束
+            } // OverscrollBounce 结束
 
-        StatusGradientOverlay()
+            StatusGradientOverlay()
+        } // 内容层 Box 结束
+
+        // ── 长按上下文菜单覆盖层（在模糊内容之上） ──
+        BookContextMenuOverlay(state = contextMenuState)
     }
 }
 
 // ─── 书籍网格项 ────────────────────────────────────────────────
 
 @Composable
-private fun BookGridItem(book: Book, onClick: () -> Unit) {
+private fun BookGridItem(
+    book: Book,
+    contextMenuState: BookContextMenuState,
+    onHaptic: () -> Unit,
+    onClick: () -> Unit
+) {
+    // 长按激活时，原位书本隐藏（由 overlay 接管显示）
+    val isOverlayActive = contextMenuState.phase != ContextMenuPhase.Idle
+            && contextMenuState.selectedBook?.id == book.id
+
     Column(
         modifier = Modifier
-            .cardPressEffect()
-            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onClick)
+            .graphicsLayer {
+                // 长按激活时隐藏原位封面
+                alpha = if (isOverlayActive) 0f else 1f
+                // 按下缩小效果（仅在非 overlay 状态下显示）
+                if (!isOverlayActive) {
+                    scaleX = contextMenuState.pressScale.value
+                    scaleY = contextMenuState.pressScale.value
+                }
+            }
+            .longPressBookEffect(
+                state = contextMenuState,
+                book = { book },
+                onClick = onClick,
+                onCoverBounds = { bounds -> contextMenuState.updateCoverBounds(bounds) },
+                onHaptic = onHaptic
+            )
     ) {
         // 封面（3:4 比例）
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(0.75f)
+                .onGloballyPositioned { coordinates ->
+                    // 仅在按下阶段更新 bounds（长按确认时会用到）
+                    if (contextMenuState.phase == ContextMenuPhase.Pressing) {
+                        contextMenuState.updateCoverBounds(coordinates.boundsInWindow())
+                    }
+                }
                 .shadow(12.dp, RoundedCornerShape(AppRadius.sm), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
                 .clip(RoundedCornerShape(AppRadius.sm))
                 .background(AppColors.BgGray)
