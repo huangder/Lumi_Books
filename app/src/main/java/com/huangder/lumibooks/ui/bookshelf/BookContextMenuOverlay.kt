@@ -89,7 +89,7 @@ fun BookContextMenuOverlay(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.15f * scrimAlpha))
+                .background(Color.Black.copy(alpha = 0.5f * scrimAlpha))
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() }

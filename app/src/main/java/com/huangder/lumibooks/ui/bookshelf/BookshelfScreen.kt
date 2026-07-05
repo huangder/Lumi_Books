@@ -167,12 +167,9 @@ fun BookshelfScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize().background(AppColors.WindowBg)) {
-        // ── 内容层（长按时整体高斯模糊） ──
-        val blurRadius = (20 * contextMenuState.scrimAlpha.value).dp
+        // ── 内容层 ──
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .blur(blurRadius)
+            modifier = Modifier.fillMaxSize()
         ) {
             OverscrollBounce(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
                 Column(
