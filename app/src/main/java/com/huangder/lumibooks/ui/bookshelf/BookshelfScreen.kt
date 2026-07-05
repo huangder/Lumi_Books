@@ -6,8 +6,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.foundation.clickable
@@ -87,6 +85,7 @@ import java.io.File
 
 private val filterTabs = listOf("全部图书", "下载内容", "PDF", "收藏")
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun BookshelfScreen(
     onNavigateToReader: (bookId: String, coverPath: String?, title: String) -> Unit,
@@ -273,16 +272,48 @@ fun BookshelfScreen(
             }
         )
 
-        // ── 编辑书本信息对话框 ──
+        // ── 编辑书本信息对话框（卡片风格） ──
         if (showEditDialog && editingBook != null) {
-            EditBookInfoDialog(
-                book = editingBook!!,
-                onDismiss = { showEditDialog = false },
-                onConfirm = { updatedBook ->
-                    viewModel.updateBook(updatedBook)
-                    showEditDialog = false
+            androidx.compose.material3.BasicAlertDialog(
+                onDismissRequest = { showEditDialog = false },
+                properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.4f))
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() },
+                            onClick = { showEditDialog = false }
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(AppSpace.lg)
+                            .clickable(
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() },
+                                onClick = {} // 拦截点击，防止穿透关闭
+                            )
+                    ) {
+                        com.huangder.lumibooks.ui.components.EditInputDialog(
+                            title = "修改书本信息",
+                            fields = listOf(
+                                Triple("书名", "显示原始书名", editingBook!!.title),
+                                Triple("作者", "显示原始作者", editingBook!!.author)
+                            ),
+                            onBack = { showEditDialog = false },
+                            onConfirm = { values ->
+                                viewModel.updateBook(editingBook!!.copy(title = values[0], author = values[1]))
+                                showEditDialog = false
+                            }
+                        )
+                    }
                 }
-            )
+            }
         }
     }
 }
@@ -550,61 +581,3 @@ private fun AddBookItem(onClick: () -> Unit) {
     }
 }
 
-// ─── 编辑书本信息对话框 ──────────────────────────────────────────
-
-@Composable
-private fun EditBookInfoDialog(
-    book: Book,
-    onDismiss: () -> Unit,
-    onConfirm: (Book) -> Unit
-) {
-    var title by remember { mutableStateOf(book.title) }
-    var author by remember { mutableStateOf(book.author) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = "编辑书本信息",
-                fontWeight = FontWeight.Bold,
-                fontFamily = KaiTi
-            )
-        },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    label = { Text("书名") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(AppSpace.md))
-                OutlinedTextField(
-                    value = author,
-                    onValueChange = { author = it },
-                    label = { Text("作者") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        confirmButton = {
-            Text(
-                text = "保存",
-                color = AppColors.Accent,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.clickable {
-                    onConfirm(book.copy(title = title, author = author))
-                }
-            )
-        },
-        dismissButton = {
-            Text(
-                text = "取消",
-                color = AppColors.TextSecondary,
-                modifier = Modifier.clickable(onClick = onDismiss)
-            )
-        }
-    )
-}
