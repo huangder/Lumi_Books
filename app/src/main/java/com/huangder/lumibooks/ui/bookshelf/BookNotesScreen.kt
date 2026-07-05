@@ -1,6 +1,6 @@
 package com.huangder.lumibooks.ui.bookshelf
 
-import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -13,12 +13,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -36,14 +38,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.huangder.lumibooks.domain.model.Bookmark
 import com.huangder.lumibooks.domain.model.Note
-import com.huangder.lumibooks.ui.animation.AppEasing
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
@@ -76,14 +79,22 @@ fun BookNotesScreen(
                 .fillMaxWidth()
                 .padding(horizontal = AppSpace.sm, vertical = AppSpace.sm)
         ) {
-            IconButton(onClick = onNavigateBack) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(AppColors.BgGray)
+                    .clickable(onClick = onNavigateBack),
+                contentAlignment = Alignment.Center
+            ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "返回",
-                    tint = AppColors.TextPrimary
+                    tint = AppColors.TextSecondary,
+                    modifier = Modifier.size(18.dp)
                 )
             }
-            Spacer(Modifier.width(AppSpace.sm))
+            Spacer(Modifier.width(AppSpace.md))
             Text(
                 text = "书签、高亮与笔记",
                 fontSize = AppType.Section,
@@ -93,101 +104,162 @@ fun BookNotesScreen(
             )
         }
 
-        // ── Tab 切换栏 ──
-        TabSwitcher(
+        Spacer(Modifier.height(AppSpace.md))
+
+        // ── 分段选择器 Tab ──
+        SegmentedTabBar(
             selectedTab = selectedTab,
-            onTabSelected = { selectedTab = it }
+            onTabSelected = { selectedTab = it },
+            modifier = Modifier.padding(horizontal = AppSpace.lg)
         )
 
         Spacer(Modifier.height(AppSpace.md))
 
         // ── 内容列表 ──
-        val items = when (selectedTab) {
-            0 -> uiState.highlights
-            1 -> uiState.noteItems
-            2 -> uiState.bookmarks
-            else -> emptyList()
+        when (selectedTab) {
+            0 -> NoteList(
+                notes = uiState.highlights,
+                onDelete = { viewModel.deleteNote(it) }
+            )
+            1 -> NoteList(
+                notes = uiState.noteItems,
+                onDelete = { viewModel.deleteNote(it) }
+            )
+            2 -> BookmarkList(
+                bookmarks = uiState.bookmarks,
+                onDelete = { viewModel.deleteBookmark(it) }
+            )
         }
+    }
+}
 
-        if (items.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = when (selectedTab) {
-                        0 -> "暂无高亮"
-                        1 -> "暂无笔记"
-                        2 -> "暂无书签"
-                        else -> ""
-                    },
-                    fontSize = AppType.Body,
-                    color = AppColors.TextSecondary
-                )
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = AppSpace.lg, vertical = AppSpace.md),
-                verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
-            ) {
-                when (selectedTab) {
-                    0 -> items(items as List<Note>) { note ->
-                        HighlightNoteItem(
-                            note = note,
-                            onDelete = { viewModel.deleteNote(note) }
-                        )
-                    }
-                    1 -> items(items as List<Note>) { note ->
-                        HighlightNoteItem(
-                            note = note,
-                            onDelete = { viewModel.deleteNote(note) }
-                        )
-                    }
-                    2 -> items(items as List<Bookmark>) { bookmark ->
-                        BookmarkItem(
-                            bookmark = bookmark,
-                            onDelete = { viewModel.deleteBookmark(bookmark) }
-                        )
-                    }
+// ─── 分段选择器（设计规范：#F2F2F7 背景, 圆角 20dp, 选中白色带阴影）───
+
+@Composable
+private fun SegmentedTabBar(
+    selectedTab: Int,
+    onTabSelected: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(40.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(AppColors.BgGray)
+            .padding(2.dp)
+    ) {
+        // 选中指示器
+        val indicatorOffset by animateFloatAsState(
+            targetValue = selectedTab.toFloat(),
+            animationSpec = tween(200),
+            label = "tabIndicator"
+        )
+        val tabWidth = 1f / tabs.size
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(tabWidth)
+                .fillMaxSize()
+                .offset(x = with(androidx.compose.ui.platform.LocalDensity.current) {
+                    (indicatorOffset * tabWidth * 100).toInt().let { "${it}%" }
+                        .let { 0.dp } // 使用 weight 方式定位
+                })
+                .clip(RoundedCornerShape(18.dp))
+                .shadow(2.dp, RoundedCornerShape(18.dp))
+                .background(Color.White)
+        )
+
+        // Tab 文字
+        Row(modifier = Modifier.fillMaxSize()) {
+            tabs.forEachIndexed { index, label ->
+                val isSelected = index == selectedTab
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxSize()
+                        .clickable { onTabSelected(index) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = label,
+                        fontSize = 14.sp,
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (isSelected) AppColors.TextPrimary else AppColors.TextSecondary
+                    )
                 }
             }
         }
     }
 }
 
-// ─── Tab 切换栏 ──────────────────────────────────────────────────
+// ─── 内容列表 ────────────────────────────────────────────────────
 
 @Composable
-private fun TabSwitcher(
-    selectedTab: Int,
-    onTabSelected: (Int) -> Unit
+private fun NoteList(
+    notes: List<Note>,
+    onDelete: (Note) -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = AppSpace.lg),
-        horizontalArrangement = Arrangement.spacedBy(AppSpace.lg)
-    ) {
-        tabs.forEachIndexed { index, label ->
-            val isSelected = index == selectedTab
-            val textColor by animateColorAsState(
-                targetValue = if (isSelected) AppColors.TextPrimary else AppColors.TextSecondary,
-                animationSpec = tween(200, easing = AppEasing.Standard),
-                label = "tabColor"
-            )
+    if (notes.isEmpty()) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
             Text(
-                text = label,
+                text = "暂无内容",
                 fontSize = AppType.Body,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                color = textColor,
-                modifier = Modifier.clickable { onTabSelected(index) }
+                color = AppColors.TextSecondary
             )
+        }
+    } else {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = AppSpace.lg, vertical = AppSpace.sm),
+            verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
+        ) {
+            items(notes) { note ->
+                HighlightNoteItem(
+                    note = note,
+                    onDelete = { onDelete(note) }
+                )
+            }
         }
     }
 }
 
-// ─── 高亮/笔记列表项 ────────────────────────────────────────────
+@Composable
+private fun BookmarkList(
+    bookmarks: List<Bookmark>,
+    onDelete: (Bookmark) -> Unit
+) {
+    if (bookmarks.isEmpty()) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "暂无书签",
+                fontSize = AppType.Body,
+                color = AppColors.TextSecondary
+            )
+        }
+    } else {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = AppSpace.lg, vertical = AppSpace.sm),
+            verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
+        ) {
+            items(bookmarks) { bookmark ->
+                BookmarkItem(
+                    bookmark = bookmark,
+                    onDelete = { onDelete(bookmark) }
+                )
+            }
+        }
+    }
+}
+
+// ─── 高亮/笔记列表项（设计规范样式）────────────────────────────
 
 @Composable
 private fun HighlightNoteItem(
@@ -197,25 +269,25 @@ private fun HighlightNoteItem(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadius.sm))
-            .background(AppColors.CardBg)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFFFFFBF0))
             .padding(16.dp)
     ) {
         // 高亮色条 + 文字
         Row(verticalAlignment = Alignment.Top) {
             Box(
                 modifier = Modifier
-                    .width(3.dp)
+                    .width(4.dp)
                     .height(20.dp)
                     .clip(RoundedCornerShape(2.dp))
                     .background(parseColor(note.color))
             )
-            Spacer(Modifier.width(AppSpace.sm))
+            Spacer(Modifier.width(12.dp))
             Text(
                 text = note.selectedText,
-                fontSize = AppType.BodySmall,
+                fontSize = 14.sp,
                 color = AppColors.TextPrimary,
-                maxLines = 3,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
@@ -235,7 +307,7 @@ private fun HighlightNoteItem(
 
         Spacer(Modifier.height(AppSpace.sm))
 
-        // 底部：章节目录 + 删除
+        // 底部：章节 + 日期 + 删除
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -243,17 +315,25 @@ private fun HighlightNoteItem(
         ) {
             Text(
                 text = "第 ${note.chapterIndex + 1} 章",
-                fontSize = AppType.Caption,
-                color = AppColors.TextSecondary
+                fontSize = 12.sp,
+                color = AppColors.Accent
             )
-            Icon(
-                imageVector = Icons.Outlined.Delete,
-                contentDescription = "删除",
-                tint = AppColors.TextSecondary,
-                modifier = Modifier
-                    .size(18.dp)
-                    .clickable(onClick = onDelete)
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = formatDate(note.createdAt),
+                    fontSize = 12.sp,
+                    color = AppColors.Accent
+                )
+                Spacer(Modifier.width(AppSpace.sm))
+                Icon(
+                    imageVector = Icons.Outlined.Delete,
+                    contentDescription = "删除",
+                    tint = AppColors.TextSecondary,
+                    modifier = Modifier
+                        .size(16.dp)
+                        .clickable(onClick = onDelete)
+                )
+            }
         }
     }
 }
@@ -313,11 +393,11 @@ private fun parseColor(hex: String): Color {
     return try {
         Color(android.graphics.Color.parseColor(hex))
     } catch (_: Exception) {
-        Color(0xFFE85D5D) // AppColors.Accent 的默认值
+        Color(0xFFE85D5D)
     }
 }
 
 private fun formatDate(timestamp: Long): String {
-    val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+    val sdf = SimpleDateFormat("MM/dd", Locale.getDefault())
     return sdf.format(Date(timestamp))
 }
