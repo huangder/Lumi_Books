@@ -11,6 +11,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -42,9 +43,8 @@ import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
-import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.updateTransition
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -69,6 +69,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.util.parser.BookParserFactory
@@ -113,9 +114,9 @@ fun BookshelfScreen(
     ) { uri: Uri? ->
         uri?.let {
             val book = coverTargetBook ?: return@let
-            val coverPath = FileUtils.copyCoverImage(context, it, book.id)
-            coverPath?.let { path ->
-                viewModel.updateBook(book.copy(coverPath = path))
+            val newCoverPath = FileUtils.copyCoverImage(context, it, book.id)
+            if (newCoverPath != null) {
+                viewModel.updateBook(book.copy(coverPath = newCoverPath))
             }
             coverTargetBook = null
         }
@@ -297,31 +298,32 @@ private fun AnimatedBookGridItem(
     onHaptic: () -> Unit,
     onClick: () -> Unit
 ) {
-    val deleteTransition = updateTransition(targetState = isDeleting, label = "delete")
+    val scale by animateFloatAsState(
+        targetValue = if (isDeleting) 0.8f else 1f,
+        animationSpec = tween(300, easing = AppEasing.Accelerate),
+        label = "deleteScale"
+    )
+    val alphaAnim by animateFloatAsState(
+        targetValue = if (isDeleting) 0f else 1f,
+        animationSpec = tween(300, easing = AppEasing.Accelerate),
+        label = "deleteAlpha"
+    )
 
-    val itemScale by deleteTransition.animateFloat(
-        transitionSpec = { tween(300, easing = AppEasing.Accelerate) },
-        label = "scale"
-    ) { deleting -> if (deleting) 0.8f else 1f }
-
-    val itemAlpha by deleteTransition.animateFloat(
-        transitionSpec = { tween(300, easing = AppEasing.Accelerate) },
-        label = "alpha"
-    ) { deleting -> if (deleting) 0f else 1f }
-
-    // 动画结束后执行实际删除
-    LaunchedEffect(deleteTransition.currentState, deleteTransition.isRunning) {
-        if (!deleteTransition.isRunning && deleteTransition.currentState && isDeleting) {
+    // 等动画完成后执行实际删除（delay 期间动画持续播放）
+    LaunchedEffect(isDeleting) {
+        if (isDeleting) {
+            kotlinx.coroutines.delay(350)
             onDeleteFinished()
         }
     }
 
+    // 在组合期间读取值 → graphicsLayer 拿到最新值
     Box(
         modifier = Modifier
             .graphicsLayer {
-                scaleX = itemScale
-                scaleY = itemScale
-                alpha = itemAlpha
+                scaleX = scale
+                scaleY = scale
+                alpha = alphaAnim
             }
     ) {
         BookGridItem(
@@ -335,6 +337,7 @@ private fun AnimatedBookGridItem(
 
 // ─── 书籍网格项 ────────────────────────────────────────────────
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun BookGridItem(
     book: Book,
@@ -342,47 +345,71 @@ private fun BookGridItem(
     onHaptic: () -> Unit,
     onClick: () -> Unit
 ) {
-    // 是否为当前操作的目标书本
+    // 是否为当前操作的目标书本（在组合期间读取，确保触发重组）
     val isTarget = contextMenuState.selectedBook?.id == book.id
     val isOverlayActive = contextMenuState.phase != ContextMenuPhase.Idle && isTarget
+    // 在组合期间读取 pressScale → 值变化时触发重组 → graphicsLayer 拿到最新值
+    val pressScaleValue = if (isTarget) contextMenuState.pressScale.value else 1f
+    val overlayAlpha = if (isOverlayActive) contextMenuState.itemAlpha.value else 1f
+
+    // 每本书独立缓存自己的封面 bounds，避免共享状态互相覆盖
+    var myCoverBounds by remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
+
+    // 监听 combinedClickable 的按下/抬起事件，驱动封面缩小动画
+    val interactionSource = remember { MutableInteractionSource() }
+    var isPressed by remember { mutableStateOf(false) }
+    LaunchedEffect(interactionSource) {
+        interactionSource.interactions.collect { interaction ->
+            when (interaction) {
+                is androidx.compose.foundation.interaction.PressInteraction.Press -> isPressed = true
+                is androidx.compose.foundation.interaction.PressInteraction.Release -> isPressed = false
+                is androidx.compose.foundation.interaction.PressInteraction.Cancel -> isPressed = false
+            }
+        }
+    }
+    // 按下时缩小到 0.95，否则用 contextMenuState 的 pressScale
+    val coverScale = if (isPressed) 0.95f else pressScaleValue
 
     Column(
         modifier = Modifier
-            .graphicsLayer {
-                // alpha：使用 itemAlpha 实现平滑过渡（dismiss 时渐显）
-                alpha = if (isOverlayActive) contextMenuState.itemAlpha.value else 1f
-                // 按下缩小效果：仅目标书缩小
-                if (isTarget) {
-                    scaleX = contextMenuState.pressScale.value
-                    scaleY = contextMenuState.pressScale.value
-                }
-            }
-            .longPressBookEffect(
-                state = contextMenuState,
-                book = { book },
+            .graphicsLayer { alpha = overlayAlpha }
+            .combinedClickable(
+                indication = null,
+                interactionSource = interactionSource,
                 onClick = onClick,
-                onCoverBounds = { bounds -> contextMenuState.updateCoverBounds(bounds) },
-                onHaptic = onHaptic
+                onLongClick = {
+                    onHaptic()
+                    contextMenuState.onLongPressConfirmed(
+                        book = book,
+                        bounds = myCoverBounds,
+                        onHaptic = onHaptic
+                    )
+                }
             )
     ) {
-        // 封面（3:4 比例）
+        // 封面（3:4 比例）— 按下缩小 + overlay 状态控制
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(0.75f)
                 .onGloballyPositioned { coordinates ->
-                    // 缓存原始大小的 bounds（Idle 阶段 = 未缩放）
-                    if (contextMenuState.phase == ContextMenuPhase.Idle) {
-                        contextMenuState.updateCoverBounds(coordinates.boundsInWindow())
-                    }
+                    myCoverBounds = coordinates.boundsInWindow()
+                }
+                .graphicsLayer {
+                    scaleX = coverScale
+                    scaleY = coverScale
                 }
                 .shadow(12.dp, RoundedCornerShape(AppRadius.sm), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
                 .clip(RoundedCornerShape(AppRadius.sm))
                 .background(AppColors.BgGray)
         ) {
             if (book.coverPath != null) {
+                val imgContext = LocalContext.current
                 AsyncImage(
-                    model = book.coverPath,
+                    model = ImageRequest.Builder(imgContext)
+                        .data(book.coverPath)
+                        .memoryCacheKey(book.id) // 每本书独立缓存，避免同名书封面串位
+                        .build(),
                     contentDescription = book.title,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop

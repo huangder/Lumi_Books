@@ -63,7 +63,7 @@ class HomeViewModel @Inject constructor(
         loadWeeklyData()
     }
 
-    private fun loadBooks() {
+    fun loadBooks() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
             try {

@@ -100,7 +100,7 @@ class BookContextMenuState(private val scope: CoroutineScope) {
         bounds: Rect,
         onHaptic: () -> Unit
     ) {
-        if (phase != ContextMenuPhase.Pressing) return
+        if (phase != ContextMenuPhase.Idle && phase != ContextMenuPhase.Pressing) return
         selectedBook = book
         coverBounds = bounds
         phase = ContextMenuPhase.Enlarging
