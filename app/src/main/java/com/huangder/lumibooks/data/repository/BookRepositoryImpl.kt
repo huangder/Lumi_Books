@@ -59,7 +59,8 @@ class BookRepositoryImpl @Inject constructor(
             format = BookFormat.valueOf(format),
             lastReadTime = lastReadTime,
             readingProgress = readingProgress,
-            createdAt = createdAt
+            createdAt = createdAt,
+            isFavorite = isFavorite
         )
     }
 
@@ -73,7 +74,8 @@ class BookRepositoryImpl @Inject constructor(
             format = format.name,
             lastReadTime = lastReadTime,
             readingProgress = readingProgress,
-            createdAt = createdAt
+            createdAt = createdAt,
+            isFavorite = isFavorite
         )
     }
 }

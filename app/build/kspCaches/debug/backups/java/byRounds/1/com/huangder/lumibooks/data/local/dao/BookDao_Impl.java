@@ -50,7 +50,7 @@ public final class BookDao_Impl implements BookDao {
       @Override
       @NonNull
       protected String createQuery() {
-        return "INSERT OR REPLACE INTO `books` (`id`,`title`,`author`,`filePath`,`coverPath`,`format`,`lastReadTime`,`readingProgress`,`createdAt`) VALUES (?,?,?,?,?,?,?,?,?)";
+        return "INSERT OR REPLACE INTO `books` (`id`,`title`,`author`,`filePath`,`coverPath`,`format`,`lastReadTime`,`readingProgress`,`createdAt`,`isFavorite`) VALUES (?,?,?,?,?,?,?,?,?,?)";
       }
 
       @Override
@@ -69,6 +69,8 @@ public final class BookDao_Impl implements BookDao {
         statement.bindLong(7, entity.getLastReadTime());
         statement.bindDouble(8, entity.getReadingProgress());
         statement.bindLong(9, entity.getCreatedAt());
+        final int _tmp = entity.isFavorite() ? 1 : 0;
+        statement.bindLong(10, _tmp);
       }
     };
     this.__deletionAdapterOfBookEntity = new EntityDeletionOrUpdateAdapter<BookEntity>(__db) {
@@ -88,7 +90,7 @@ public final class BookDao_Impl implements BookDao {
       @Override
       @NonNull
       protected String createQuery() {
-        return "UPDATE OR ABORT `books` SET `id` = ?,`title` = ?,`author` = ?,`filePath` = ?,`coverPath` = ?,`format` = ?,`lastReadTime` = ?,`readingProgress` = ?,`createdAt` = ? WHERE `id` = ?";
+        return "UPDATE OR ABORT `books` SET `id` = ?,`title` = ?,`author` = ?,`filePath` = ?,`coverPath` = ?,`format` = ?,`lastReadTime` = ?,`readingProgress` = ?,`createdAt` = ?,`isFavorite` = ? WHERE `id` = ?";
       }
 
       @Override
@@ -107,7 +109,9 @@ public final class BookDao_Impl implements BookDao {
         statement.bindLong(7, entity.getLastReadTime());
         statement.bindDouble(8, entity.getReadingProgress());
         statement.bindLong(9, entity.getCreatedAt());
-        statement.bindString(10, entity.getId());
+        final int _tmp = entity.isFavorite() ? 1 : 0;
+        statement.bindLong(10, _tmp);
+        statement.bindString(11, entity.getId());
       }
     };
     this.__preparedStmtOfUpdateLastReadTime = new SharedSQLiteStatement(__db) {
@@ -257,6 +261,7 @@ public final class BookDao_Impl implements BookDao {
           final int _cursorIndexOfLastReadTime = CursorUtil.getColumnIndexOrThrow(_cursor, "lastReadTime");
           final int _cursorIndexOfReadingProgress = CursorUtil.getColumnIndexOrThrow(_cursor, "readingProgress");
           final int _cursorIndexOfCreatedAt = CursorUtil.getColumnIndexOrThrow(_cursor, "createdAt");
+          final int _cursorIndexOfIsFavorite = CursorUtil.getColumnIndexOrThrow(_cursor, "isFavorite");
           final List<BookEntity> _result = new ArrayList<BookEntity>(_cursor.getCount());
           while (_cursor.moveToNext()) {
             final BookEntity _item;
@@ -282,7 +287,11 @@ public final class BookDao_Impl implements BookDao {
             _tmpReadingProgress = _cursor.getFloat(_cursorIndexOfReadingProgress);
             final long _tmpCreatedAt;
             _tmpCreatedAt = _cursor.getLong(_cursorIndexOfCreatedAt);
-            _item = new BookEntity(_tmpId,_tmpTitle,_tmpAuthor,_tmpFilePath,_tmpCoverPath,_tmpFormat,_tmpLastReadTime,_tmpReadingProgress,_tmpCreatedAt);
+            final boolean _tmpIsFavorite;
+            final int _tmp;
+            _tmp = _cursor.getInt(_cursorIndexOfIsFavorite);
+            _tmpIsFavorite = _tmp != 0;
+            _item = new BookEntity(_tmpId,_tmpTitle,_tmpAuthor,_tmpFilePath,_tmpCoverPath,_tmpFormat,_tmpLastReadTime,_tmpReadingProgress,_tmpCreatedAt,_tmpIsFavorite);
             _result.add(_item);
           }
           return _result;
@@ -321,6 +330,7 @@ public final class BookDao_Impl implements BookDao {
           final int _cursorIndexOfLastReadTime = CursorUtil.getColumnIndexOrThrow(_cursor, "lastReadTime");
           final int _cursorIndexOfReadingProgress = CursorUtil.getColumnIndexOrThrow(_cursor, "readingProgress");
           final int _cursorIndexOfCreatedAt = CursorUtil.getColumnIndexOrThrow(_cursor, "createdAt");
+          final int _cursorIndexOfIsFavorite = CursorUtil.getColumnIndexOrThrow(_cursor, "isFavorite");
           final BookEntity _result;
           if (_cursor.moveToFirst()) {
             final String _tmpId;
@@ -345,7 +355,11 @@ public final class BookDao_Impl implements BookDao {
             _tmpReadingProgress = _cursor.getFloat(_cursorIndexOfReadingProgress);
             final long _tmpCreatedAt;
             _tmpCreatedAt = _cursor.getLong(_cursorIndexOfCreatedAt);
-            _result = new BookEntity(_tmpId,_tmpTitle,_tmpAuthor,_tmpFilePath,_tmpCoverPath,_tmpFormat,_tmpLastReadTime,_tmpReadingProgress,_tmpCreatedAt);
+            final boolean _tmpIsFavorite;
+            final int _tmp;
+            _tmp = _cursor.getInt(_cursorIndexOfIsFavorite);
+            _tmpIsFavorite = _tmp != 0;
+            _result = new BookEntity(_tmpId,_tmpTitle,_tmpAuthor,_tmpFilePath,_tmpCoverPath,_tmpFormat,_tmpLastReadTime,_tmpReadingProgress,_tmpCreatedAt,_tmpIsFavorite);
           } else {
             _result = null;
           }
@@ -381,6 +395,7 @@ public final class BookDao_Impl implements BookDao {
           final int _cursorIndexOfLastReadTime = CursorUtil.getColumnIndexOrThrow(_cursor, "lastReadTime");
           final int _cursorIndexOfReadingProgress = CursorUtil.getColumnIndexOrThrow(_cursor, "readingProgress");
           final int _cursorIndexOfCreatedAt = CursorUtil.getColumnIndexOrThrow(_cursor, "createdAt");
+          final int _cursorIndexOfIsFavorite = CursorUtil.getColumnIndexOrThrow(_cursor, "isFavorite");
           final List<BookEntity> _result = new ArrayList<BookEntity>(_cursor.getCount());
           while (_cursor.moveToNext()) {
             final BookEntity _item;
@@ -406,7 +421,11 @@ public final class BookDao_Impl implements BookDao {
             _tmpReadingProgress = _cursor.getFloat(_cursorIndexOfReadingProgress);
             final long _tmpCreatedAt;
             _tmpCreatedAt = _cursor.getLong(_cursorIndexOfCreatedAt);
-            _item = new BookEntity(_tmpId,_tmpTitle,_tmpAuthor,_tmpFilePath,_tmpCoverPath,_tmpFormat,_tmpLastReadTime,_tmpReadingProgress,_tmpCreatedAt);
+            final boolean _tmpIsFavorite;
+            final int _tmp;
+            _tmp = _cursor.getInt(_cursorIndexOfIsFavorite);
+            _tmpIsFavorite = _tmp != 0;
+            _item = new BookEntity(_tmpId,_tmpTitle,_tmpAuthor,_tmpFilePath,_tmpCoverPath,_tmpFormat,_tmpLastReadTime,_tmpReadingProgress,_tmpCreatedAt,_tmpIsFavorite);
             _result.add(_item);
           }
           return _result;

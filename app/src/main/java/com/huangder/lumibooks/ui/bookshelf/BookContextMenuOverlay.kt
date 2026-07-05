@@ -63,7 +63,14 @@ sealed class ContextMenuAction {
  * 书本长按上下文菜单全屏覆盖层
  */
 @Composable
-fun BookContextMenuOverlay(state: BookContextMenuState) {
+fun BookContextMenuOverlay(
+    state: BookContextMenuState,
+    onDelete: (Book) -> Unit = {},
+    onFavorite: (Book) -> Unit = {},
+    onCustomCover: (Book) -> Unit = {},
+    onBookmarksNotes: (Book) -> Unit = {},
+    onEditInfo: (Book) -> Unit = {}
+) {
     if (state.phase == ContextMenuPhase.Idle) return
 
     val book = state.selectedBook ?: return
@@ -99,7 +106,20 @@ fun BookContextMenuOverlay(state: BookContextMenuState) {
                 menuAlpha = menuAlpha,
                 actionsAlpha = actionsAlpha,
                 coverBounds = coverBounds,
-                onAction = { /* UI 阶段，暂不处理 */ }
+                onAction = { action ->
+                    state.dismiss()
+                    when (action) {
+                        is ContextMenuAction.Delete -> onDelete(book)
+                        is ContextMenuAction.Favorite -> onFavorite(book)
+                        is ContextMenuAction.CustomCover -> onCustomCover(book)
+                        is ContextMenuAction.BookmarksNotes -> onBookmarksNotes(book)
+                        is ContextMenuAction.EditInfo -> onEditInfo(book)
+                    }
+                },
+                onEditInfo = {
+                    state.dismiss()
+                    onEditInfo(book)
+                }
             )
         }
     }
@@ -155,7 +175,8 @@ private fun ContextMenuLayout(
     menuAlpha: Float,
     actionsAlpha: Float,
     coverBounds: Rect,
-    onAction: (ContextMenuAction) -> Unit
+    onAction: (ContextMenuAction) -> Unit,
+    onEditInfo: () -> Unit
 ) {
     val density = LocalDensity.current
     val configuration = LocalConfiguration.current
@@ -187,6 +208,7 @@ private fun ContextMenuLayout(
         BookInfoPanel(
             book = book,
             alpha = menuAlpha,
+            onEditInfo = onEditInfo,
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -205,6 +227,7 @@ private fun ContextMenuLayout(
 private fun BookInfoPanel(
     book: Book,
     alpha: Float = 1f,
+    onEditInfo: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -248,7 +271,7 @@ private fun BookInfoPanel(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .clip(RoundedCornerShape(AppRadius.sm))
-                .clickable { /* UI 阶段，暂不处理 */ }
+                .clickable { onEditInfo() }
                 .padding(vertical = 4.dp)
         ) {
             Icon(
@@ -293,9 +316,9 @@ private fun MenuActionsPanel(
 
         items.forEach { (data, staggerIndex) ->
             val (label, icon, action) = data
-            // 每项交错 0.15，从下往上依次淡入
-            val itemDelay = staggerIndex * 0.15f // 0, 0.15, 0.30, 0.45
-            val delayedAlpha = ((actionsAlpha - itemDelay) / 0.3f).coerceIn(0f, 1f)
+            // 每项交错 0.1，渐显窗口 0.5 → 每项约 200ms 渐显
+            val itemDelay = staggerIndex * 0.1f // 0, 0.1, 0.2, 0.3
+            val delayedAlpha = ((actionsAlpha - itemDelay) / 0.5f).coerceIn(0f, 1f)
             MenuActionItem(
                 label = label,
                 icon = icon,

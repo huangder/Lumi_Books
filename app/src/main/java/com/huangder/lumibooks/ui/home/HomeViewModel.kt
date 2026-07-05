@@ -210,6 +210,16 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    fun updateBook(book: Book) {
+        viewModelScope.launch {
+            try {
+                bookRepository.updateBook(book)
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = e.message)
+            }
+        }
+    }
+
     fun clearError() {
         _uiState.value = _uiState.value.copy(error = null)
     }

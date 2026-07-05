@@ -18,7 +18,7 @@ import com.huangder.lumibooks.data.local.entity.ReadingRecordEntity
         BookmarkEntity::class,
         NoteEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

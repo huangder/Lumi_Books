@@ -28,6 +28,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navArgument
 import kotlinx.coroutines.delay
 import com.huangder.lumibooks.ui.bookshelf.BookshelfScreen
+import com.huangder.lumibooks.ui.bookshelf.BookNotesScreen
 import com.huangder.lumibooks.ui.components.BookTransitionOverlay
 import com.huangder.lumibooks.ui.components.FloatingTabBar
 import com.huangder.lumibooks.ui.home.HomeScreen
@@ -90,7 +91,8 @@ fun MainNavGraph(navController: NavHostController) {
     val currentEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentEntry?.destination?.route
     LaunchedEffect(currentRoute, showTransition) {
-        if (currentRoute == Screen.Reader.route || currentRoute == Screen.Welcome.route || showTransition) {
+        if (currentRoute == Screen.Reader.route || currentRoute == Screen.Welcome.route || showTransition
+            || currentRoute?.startsWith("bookmarks/") == true) {
             tabBarVisible = false
         } else {
             delay(800)
@@ -177,12 +179,24 @@ fun MainNavGraph(navController: NavHostController) {
                         readerReady = false
                         showTransition = true
                         pendingBookId = bookId
+                    },
+                    onNavigateToBookNotes = { bookId ->
+                        navController.navigate(Screen.Bookmarks.createRoute(bookId))
                     }
                 )
             }
 
             composable(Screen.Statistics.route) {
                 StatisticsScreen(
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(
+                route = Screen.Bookmarks.route,
+                arguments = listOf(navArgument("bookId") { type = NavType.StringType })
+            ) {
+                BookNotesScreen(
                     onNavigateBack = { navController.popBackStack() }
                 )
             }

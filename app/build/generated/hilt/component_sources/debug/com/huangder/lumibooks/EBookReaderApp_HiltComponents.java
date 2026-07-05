@@ -1,6 +1,7 @@
 package com.huangder.lumibooks;
 
 import com.huangder.lumibooks.di.AppModule;
+import com.huangder.lumibooks.ui.bookshelf.BookNotesViewModel_HiltModules;
 import com.huangder.lumibooks.ui.home.HomeViewModel_HiltModules;
 import com.huangder.lumibooks.ui.reader.ReaderViewModel_HiltModules;
 import com.huangder.lumibooks.ui.settings.DetailActivity_GeneratedInjector;
@@ -159,6 +160,7 @@ public final class EBookReaderApp_HiltComponents {
 
   @Subcomponent(
       modules = {
+          BookNotesViewModel_HiltModules.KeyModule.class,
           ActivityCBuilderModule.class,
           ViewModelCBuilderModule.class,
           HiltWrapper_ActivityRetainedComponentManager_LifecycleModule.class,
@@ -205,6 +207,7 @@ public final class EBookReaderApp_HiltComponents {
 
   @Subcomponent(
       modules = {
+          BookNotesViewModel_HiltModules.BindsModule.class,
           HiltWrapper_HiltViewModelFactory_ViewModelModule.class,
           HomeViewModel_HiltModules.BindsModule.class,
           ReaderViewModel_HiltModules.BindsModule.class,
