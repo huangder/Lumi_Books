@@ -10,13 +10,18 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
+/**
+ * 设置页 — 独立 Activity
+ *
+ * 过渡动画：不调用 overrideActivityTransition / overridePendingTransition，
+ * 由系统使用 OEM 默认动画（小米 HyperOS、OPPO ColorOS、vivo OriginOS、
+ * 荣耀 MagicOS 各自的原生过渡），Pixel 走 Android 原生 CrossActivityAnim。
+ */
 @AndroidEntryPoint
 class SettingsActivity : ComponentActivity() {
 
@@ -27,23 +32,6 @@ class SettingsActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
-        // Android 原生页面切换动画
-        if (android.os.Build.VERSION.SDK_INT >= 34) {
-            overrideActivityTransition(
-                OVERRIDE_TRANSITION_OPEN,
-                R.anim.slide_in_right,
-                R.anim.slide_out_left
-            )
-            overrideActivityTransition(
-                OVERRIDE_TRANSITION_CLOSE,
-                R.anim.slide_in_left,
-                R.anim.slide_out_right
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            overridePendingTransition(R.anim.slide_in_right, R.anim.slide_out_left)
-        }
-
         setContent {
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
             val isDark = when (darkMode) {
@@ -53,10 +41,7 @@ class SettingsActivity : ComponentActivity() {
             }
 
             EBookReaderTheme(darkTheme = isDark) {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = Color.Transparent
-                ) {
+                Surface(modifier = Modifier.fillMaxSize()) {
                     SettingsScreen(
                         onNavigateBack = { finish() }
                     )
@@ -64,19 +49,5 @@ class SettingsActivity : ComponentActivity() {
             }
         }
     }
-
-    override fun finish() {
-        super.finish()
-        // 返回动画
-        if (android.os.Build.VERSION.SDK_INT >= 34) {
-            overrideActivityTransition(
-                OVERRIDE_TRANSITION_CLOSE,
-                R.anim.slide_in_left,
-                R.anim.slide_out_right
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            overridePendingTransition(R.anim.slide_in_left, R.anim.slide_out_right)
-        }
-    }
+    // finish() 不再覆写 — 系统默认返回动画由 OEM 自行控制
 }
