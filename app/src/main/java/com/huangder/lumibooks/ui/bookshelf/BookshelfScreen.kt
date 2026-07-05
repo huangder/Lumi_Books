@@ -245,8 +245,8 @@ private fun BookGridItem(
                 .fillMaxWidth()
                 .aspectRatio(0.75f)
                 .onGloballyPositioned { coordinates ->
-                    // 仅在按下阶段更新 bounds（长按确认时会用到）
-                    if (contextMenuState.phase == ContextMenuPhase.Pressing) {
+                    // 缓存原始大小的 bounds（Idle 阶段 = 未缩放）
+                    if (contextMenuState.phase == ContextMenuPhase.Idle) {
                         contextMenuState.updateCoverBounds(coordinates.boundsInWindow())
                     }
                 }

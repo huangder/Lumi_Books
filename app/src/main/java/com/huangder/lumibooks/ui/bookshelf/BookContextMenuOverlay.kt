@@ -70,6 +70,7 @@ fun BookContextMenuOverlay(state: BookContextMenuState) {
     val coverBounds = state.coverBounds
     val coverScale = state.coverScale.value
     val menuAlpha = state.menuAlpha.value
+    val actionsAlpha = state.actionsAlpha.value
     val scrimAlpha = state.scrimAlpha.value
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -91,11 +92,12 @@ fun BookContextMenuOverlay(state: BookContextMenuState) {
             coverScale = coverScale
         )
 
-        // ── 3. 菜单布局 ──
-        if (menuAlpha > 0.01f) {
+        // ── 3. 菜单布局（信息面板或操作面板任一可见时显示） ──
+        if (menuAlpha > 0.01f || actionsAlpha > 0.01f) {
             ContextMenuLayout(
                 book = book,
                 menuAlpha = menuAlpha,
+                actionsAlpha = actionsAlpha,
                 coverBounds = coverBounds,
                 onAction = { /* UI 阶段，暂不处理 */ }
             )
@@ -128,10 +130,10 @@ private fun HighlightedCover(
                 transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0.5f)
             }
             .shadow(
-                16.dp * coverScale,
+                12.dp,
                 RoundedCornerShape(AppRadius.sm),
-                ambientColor = Color(0x20000000),
-                spotColor = Color(0x20000000)
+                ambientColor = Color(0x06000000),
+                spotColor = Color(0x06000000)
             )
             .clip(RoundedCornerShape(AppRadius.sm))
     ) {
@@ -151,6 +153,7 @@ private fun HighlightedCover(
 private fun ContextMenuLayout(
     book: Book,
     menuAlpha: Float,
+    actionsAlpha: Float,
     coverBounds: Rect,
     onAction: (ContextMenuAction) -> Unit
 ) {
@@ -190,7 +193,7 @@ private fun ContextMenuLayout(
         // 下部：操作面板（各项错开淡入）
         MenuActionsPanel(
             modifier = Modifier.fillMaxWidth(),
-            menuAlpha = menuAlpha,
+            actionsAlpha = actionsAlpha,
             onAction = onAction
         )
     }
@@ -269,7 +272,7 @@ private fun BookInfoPanel(
 @Composable
 private fun MenuActionsPanel(
     modifier: Modifier = Modifier,
-    menuAlpha: Float,
+    actionsAlpha: Float,
     onAction: (ContextMenuAction) -> Unit
 ) {
     Column(
@@ -290,10 +293,9 @@ private fun MenuActionsPanel(
 
         items.forEach { (data, staggerIndex) ->
             val (label, icon, action) = data
-            // 每项延迟 60ms，从下往上依次淡入
-            // menuAlpha 0→1 的过程中，各项目在不同时刻开始出现
+            // 每项交错 0.15，从下往上依次淡入
             val itemDelay = staggerIndex * 0.15f // 0, 0.15, 0.30, 0.45
-            val delayedAlpha = ((menuAlpha - itemDelay) / 0.3f).coerceIn(0f, 1f)
+            val delayedAlpha = ((actionsAlpha - itemDelay) / 0.3f).coerceIn(0f, 1f)
             MenuActionItem(
                 label = label,
                 icon = icon,
