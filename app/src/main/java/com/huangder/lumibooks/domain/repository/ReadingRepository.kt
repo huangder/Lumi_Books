@@ -2,6 +2,7 @@ package com.huangder.lumibooks.domain.repository
 
 import com.huangder.lumibooks.data.local.dao.BookDuration
 import com.huangder.lumibooks.domain.model.Bookmark
+import com.huangder.lumibooks.domain.model.DailyTotal
 import com.huangder.lumibooks.domain.model.Note
 import com.huangder.lumibooks.domain.model.ReadingRecord
 import kotlinx.coroutines.flow.Flow
@@ -22,4 +23,5 @@ interface ReadingRepository {
     suspend fun updateNote(note: Note)
     suspend fun deleteNote(note: Note)
     fun getMostReadBooks(limit: Int = 5): Flow<List<BookDuration>>
+    fun getDailyTotalsBetween(startDate: String, endDate: String): Flow<List<DailyTotal>>
 }

@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.huangder.lumibooks.data.local.entity.ReadingRecordEntity
+import com.huangder.lumibooks.domain.model.DailyTotal
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -32,6 +33,9 @@ interface ReadingRecordDao {
 
     @Query("SELECT bookId, SUM(duration) as totalDuration FROM reading_records GROUP BY bookId ORDER BY totalDuration DESC LIMIT :limit")
     fun getMostReadBooks(limit: Int = 5): Flow<List<BookDuration>>
+
+    @Query("SELECT date, SUM(duration) as totalDuration FROM reading_records WHERE date BETWEEN :startDate AND :endDate GROUP BY date")
+    fun getDailyTotalsBetween(startDate: String, endDate: String): Flow<List<DailyTotal>>
 }
 
 data class BookDuration(

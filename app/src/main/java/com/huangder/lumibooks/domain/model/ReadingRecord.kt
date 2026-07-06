@@ -8,3 +8,8 @@ data class ReadingRecord(
     val startTime: Long,
     val endTime: Long
 )
+
+data class DailyTotal(
+    val date: String,
+    val totalDuration: Long
+)
