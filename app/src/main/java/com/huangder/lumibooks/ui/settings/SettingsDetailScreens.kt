@@ -228,6 +228,35 @@ fun BackupRestoreDetail(viewModel: SettingsViewModel) {
         }
     }
 
+    Spacer(Modifier.height(AppSpace.md))
+
+    // 备份说明
+    DetailCard {
+        Column(Modifier.fillMaxWidth().padding(AppSpace.md)) {
+            Text("备份内容", fontSize = AppType.BodySmall, fontWeight = FontWeight.SemiBold, color = AppColors.TextPrimary)
+            Spacer(Modifier.height(AppSpace.xs))
+            listOf(
+                "阅读记录与书签",
+                "阅读进度与统计数据",
+                "应用设置（字号、主题、深色模式等）",
+                "用户头像",
+                "已导入的电子书文件"
+            ).forEach { item ->
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
+                    Text("·", fontSize = AppType.Caption, color = AppColors.Accent, fontWeight = FontWeight.Bold, modifier = Modifier.width(16.dp))
+                    Text(item, fontSize = AppType.Caption, color = AppColors.TextSecondary)
+                }
+            }
+            Spacer(Modifier.height(AppSpace.sm))
+            Text(
+                "建议定期备份数据，卸载应用或清除数据将导致所有记录丢失。",
+                fontSize = AppType.Caption,
+                color = AppColors.Accent,
+                fontWeight = FontWeight.Medium
+            )
+        }
+    }
+
     // 状态提示
     if (uiState.backupStatus.isNotEmpty()) {
         Spacer(Modifier.height(AppSpace.md))
