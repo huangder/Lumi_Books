@@ -17,11 +17,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.ui.theme.AppColors
@@ -91,21 +88,17 @@ fun PillSlider(
         )
 
         // 填充部分（黑色）—— 左侧圆角、右侧直角
+        // 用 clipRect 截掉右侧圆角，留下直角
         val activeW = w * fraction
         if (activeW > 0f) {
-            val path = Path().apply {
-                moveTo(0f, r)
-                arcTo(
-                    rect = Rect(0f, 0f, h, h),
-                    startAngleDegrees = 90f,
-                    sweepAngleDegrees = -180f,
-                    forceMoveTo = false
-                )
-                lineTo(activeW, h)
-                lineTo(activeW, 0f)
-                close()
-            }
-            drawPath(path, color = activeColor)
+            drawContext.canvas.save()
+            drawContext.canvas.clipRect(0f, 0f, activeW, h)
+            drawRoundRect(
+                color = activeColor,
+                cornerRadius = CornerRadius(r, r),
+                size = Size(w, h)
+            )
+            drawContext.canvas.restore()
         }
     }
 }
