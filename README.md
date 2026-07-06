@@ -2,7 +2,7 @@
 
 > 简洁优雅的 Android 本地电子书阅读器，支持 EPUB、PDF、TXT 格式。纯本地离线，零网络权限，零第三方追踪。
 
-[![Version](https://img.shields.io/badge/version-1.0.01.124-coral)](https://github.com/huangder/Lumi_Books/releases)
+[![Version](https://img.shields.io/badge/version-1.0.01.104_Beta-coral)](https://github.com/huangder/Lumi_Books/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-blue)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-purple)](https://kotlinlang.org)
@@ -83,7 +83,6 @@
 android_books/
 ├── LICENSE                 # MIT 许可证
 ├── README.md               # 项目说明
-├── CHANGELOG.md            # 更新日志
 ├── CLAUDE.md               # Agent 开发指引
 ├── build.gradle.kts        # 顶层构建配置
 ├── settings.gradle.kts     # 项目设置
@@ -110,7 +109,8 @@ android_books/
 │       └── res/            # 资源文件
 │
 ├── devlog/                 # 开发日志（47 篇，按日期）
-├── devdocs/                # 项目文档（15 份）
+├── devdocs/                # 项目文档（16 份）
+│   ├── CHANGELOG.md        # 更新日志
 │   ├── requirements.md     # 需求文档
 │   ├── technical-spec.md   # 技术规范
 │   ├── design-spec.md      # 设计规范
@@ -137,7 +137,7 @@ android_books/
 
 ## 更新日志
 
-详见 [CHANGELOG.md](CHANGELOG.md)
+详见 [devdocs/CHANGELOG.md](devdocs/CHANGELOG.md)
 
 ---
 

@@ -137,6 +137,17 @@
             transform: scale(1.04);
             opacity: 1;
         }
+        .btn-nav-sponsor {
+            background: transparent; color: var(--ink);
+            text-decoration: none; padding: 9px 19px;
+            border-radius: 9999px; font-size: 14px; font-weight: 500;
+            border: 1.5px solid var(--hairline);
+            transition: border-color 0.2s, color 0.2s, background 0.2s;
+        }
+        .btn-nav-sponsor:hover {
+            border-color: var(--ink);
+            background: rgba(0,0,0,0.03);
+        }
 
         /* ========== Layout ========== */
         .container {
@@ -471,8 +482,10 @@
         <li><a href="features.html" class="active">功能</a></li>
         <li><a href="privacy-section.html">隐私</a></li>
         <li><a href="tech.html">技术</a></li>
+        <li><a href="sponsor.html">赞助</a></li>
     </ul>
     <div class="nav-cta">
+        <a href="sponsor.html" class="btn-nav-sponsor">赞助</a>
         <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-nav-download">获取 Lumi</a>
     </div>
 </nav>
