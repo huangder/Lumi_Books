@@ -182,9 +182,7 @@ fun MainNavGraph(navController: NavHostController) {
             }
 
             composable(Screen.Statistics.route) {
-                StatisticsScreen(
-                    onNavigateBack = { navController.popBackStack() }
-                )
+                StatisticsScreen()
             }
 
             composable(

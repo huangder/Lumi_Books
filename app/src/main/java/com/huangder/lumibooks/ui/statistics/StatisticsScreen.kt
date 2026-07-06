@@ -17,10 +17,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ArrowBack
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -55,7 +51,6 @@ import java.util.Calendar
 
 @Composable
 fun StatisticsScreen(
-    onNavigateBack: () -> Unit,
     viewModel: StatisticsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -68,22 +63,12 @@ fun StatisticsScreen(
                 .verticalScroll(rememberScrollState())
         ) {
         Spacer(Modifier.height(AppSpace.md))
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = AppSpace.md, vertical = AppSpace.sm),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onNavigateBack) {
-                Icon(Icons.Outlined.ArrowBack, "返回", tint = AppColors.TextPrimary)
-            }
-        }
         Text(
-            text = "阅读时长与书籍统计",
-            fontSize = AppType.Title,
+            text = "统计",
+            fontSize = AppType.Display,
             fontWeight = FontWeight.Bold,
             fontFamily = KaiTi,
-            letterSpacing = (-0.01).sp,
+            letterSpacing = (-0.02).sp,
             color = AppColors.TextPrimary,
             modifier = Modifier.padding(horizontal = AppSpace.lg)
         )
