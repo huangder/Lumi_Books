@@ -59,8 +59,10 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -167,9 +169,22 @@ fun BookshelfScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize().background(AppColors.WindowBg)) {
-        // ── 内容层 ──
+        // ── 内容层（RenderEffect 模糊，不影响 z 轴排序） ──
+        val scrimProgress = contextMenuState.scrimAlpha.value
         Box(
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    if (scrimProgress > 0.01f && android.os.Build.VERSION.SDK_INT >= 31) {
+                        renderEffect = android.graphics.RenderEffect
+                            .createBlurEffect(
+                                20f * scrimProgress,
+                                20f * scrimProgress,
+                                android.graphics.Shader.TileMode.CLAMP
+                            )
+                            .asComposeRenderEffect()
+                    }
+                }
         ) {
             OverscrollBounce(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
                 Column(
@@ -237,11 +252,15 @@ fun BookshelfScreen(
                 } // Column 结束
             } // OverscrollBounce 结束
 
-            StatusGradientOverlay()
+            // overlay 激活时隐藏状态栏渐变，避免它浮在 overlay 之上
+            if (contextMenuState.phase == ContextMenuPhase.Idle) {
+                StatusGradientOverlay()
+            }
         } // 内容层 Box 结束
 
-        // ── 长按上下文菜单覆盖层（在模糊内容之上） ──
-        BookContextMenuOverlay(
+        // ── 长按上下文菜单覆盖层（zIndex 确保在最顶层） ──
+        Box(modifier = Modifier.fillMaxSize().zIndex(1f)) {
+            BookContextMenuOverlay(
             state = contextMenuState,
             onDelete = { book -> deletingBookId = book.id },
             onFavorite = { book -> viewModel.updateBook(book.copy(isFavorite = !book.isFavorite)) },
@@ -269,6 +288,7 @@ fun BookshelfScreen(
                 showEditDialog = true
             }
         )
+        } // zIndex Box 结束
 
         // ── 编辑书本信息对话框（卡片风格） ──
         if (showEditDialog && editingBook != null) {
