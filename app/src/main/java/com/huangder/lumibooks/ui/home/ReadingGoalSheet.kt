@@ -331,7 +331,8 @@ private fun TodayReadingContent(
 
     // 连续阅读打卡区域
     val goalMs = dailyGoal * 60 * 1000L
-    val todayIndex = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK) - 1
+    // weeklyData 始终是 7 项，index 6 = 今天（最近一天）
+    val todayIndex = if (weeklyData.isNotEmpty()) weeklyData.size - 1 else 6
 
     Row(
         modifier = Modifier.fillMaxWidth(),
