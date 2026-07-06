@@ -253,7 +253,7 @@ private fun CategoryItem(icon: ImageVector, label: String, onClick: () -> Unit) 
             .shadow(6.dp, RoundedCornerShape(AppRadius.md), ambientColor = Color(0x04000000), spotColor = Color(0x04000000))
             .clip(RoundedCornerShape(AppRadius.md))
             .background(AppColors.CardBg)
-            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onClick)
+            .clickable(onClick = onClick)
             .padding(horizontal = AppSpace.md, vertical = AppSpace.md + 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

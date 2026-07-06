@@ -401,7 +401,7 @@ private fun OptionRow(icon: ImageVector, label: String, options: List<Pair<Strin
 @Composable
 private fun ActionRow(icon: ImageVector, label: String, labelColor: Color = AppColors.TextPrimary, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() }.padding(AppSpace.md),
+        Modifier.fillMaxWidth().clickable { onClick() }.padding(AppSpace.md),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(icon, null, tint = if (labelColor == Color.Red) Color.Red else AppColors.TextSecondary, modifier = Modifier.size(22.dp))
