@@ -113,27 +113,27 @@ class HomeViewModel @Inject constructor(
 
     private fun loadWeeklyData() {
         viewModelScope.launch {
-            val calendar = Calendar.getInstance()
+            // 日历周：从本周日开始，到本周六结束
+            val startOfWeek = Calendar.getInstance().apply {
+                firstDayOfWeek = Calendar.SUNDAY
+                set(Calendar.DAY_OF_WEEK, Calendar.SUNDAY)
+                set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0)
+            }
             val goalMs = _uiState.value.dailyGoal * 60 * 1000L
-            val weeklyData = mutableListOf<DailyReading>()
 
-            // 从6天前到今天
-            for (i in 6 downTo 0) {
-                val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -i) }
+            val weeklyData = (0..6).map { i ->
+                val cal = (startOfWeek.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, i) }
                 val date = dateFormat.format(cal.time)
                 val dayOfWeek = cal.get(Calendar.DAY_OF_WEEK) - 1 // 0=Sunday
                 val duration = readingRepository.getTotalDurationByDate(date).first() ?: 0
-                weeklyData.add(DailyReading(date, duration, dayLabels[dayOfWeek]))
+                DailyReading(date, duration, dayLabels[dayOfWeek])
             }
 
-            // 计算连胜天数：从今天往回数，连续达到目标的天数
+            // 连胜：仅从今天往回数（跳过未来天，duration=0 不算中断）
+            val todayIdx = Calendar.getInstance().get(Calendar.DAY_OF_WEEK) - 1 // 0=Sunday
             var streak = 0
-            for (data in weeklyData.reversed()) {
-                if (data.duration >= goalMs) {
-                    streak++
-                } else {
-                    break
-                }
+            for (i in todayIdx downTo 0) {
+                if (weeklyData[i].duration >= goalMs) streak++ else break
             }
 
             _uiState.value = _uiState.value.copy(

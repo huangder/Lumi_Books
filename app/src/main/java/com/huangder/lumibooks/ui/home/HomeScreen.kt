@@ -554,8 +554,9 @@ private fun ArcProgressBar(progress: Float, modifier: Modifier = Modifier) {
 
 @Composable
 private fun WeeklyCheckIn(weeklyData: List<DailyReading> = emptyList(), dailyGoal: Int = 30) {
-    // weeklyData 始终是 7 项，index 6 = 今天（最近一天）
-    val todayIndex = if (weeklyData.isNotEmpty()) weeklyData.size - 1 else 6
+    // weeklyData 是固定日历周 [日, 一, 二, 三, 四, 五, 六]
+    // todayIndex 基于今天是星期几
+    val todayIndex = Calendar.getInstance().get(Calendar.DAY_OF_WEEK) - 1  // 0=周日
     val goalMs = dailyGoal * 60 * 1000L
     val accentColor = AppColors.Accent
 
