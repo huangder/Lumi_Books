@@ -17,8 +17,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.ui.theme.AppColors
@@ -40,7 +43,7 @@ fun PillSlider(
     onValueChange: (Float) -> Unit,
     valueRange: ClosedFloatingPointRange<Float>,
     modifier: Modifier = Modifier,
-    trackHeight: androidx.compose.ui.unit.Dp = 40.dp,
+    trackHeight: androidx.compose.ui.unit.Dp = 28.dp,
     activeColor: Color = AppColors.TextPrimary,
     inactiveColor: Color = AppColors.BgGray
 ) {
@@ -80,21 +83,29 @@ fun PillSlider(
         val h = size.height
         val r = h / 2
 
-        // 底槽（灰色）
+        // 底槽（灰色）—— 全圆角
         drawRoundRect(
             color = inactiveColor,
             cornerRadius = CornerRadius(r, r),
             size = Size(w, h)
         )
 
-        // 填充部分（黑色）
+        // 填充部分（黑色）—— 左侧圆角、右侧直角
         val activeW = w * fraction
         if (activeW > 0f) {
-            drawRoundRect(
-                color = activeColor,
-                cornerRadius = CornerRadius(r, r),
-                size = Size(activeW, h)
-            )
+            val path = Path().apply {
+                moveTo(0f, r)
+                arcTo(
+                    rect = Rect(0f, 0f, h, h),
+                    startAngleDegrees = 90f,
+                    sweepAngleDegrees = -180f,
+                    forceMoveTo = false
+                )
+                lineTo(activeW, h)
+                lineTo(activeW, 0f)
+                close()
+            }
+            drawPath(path, color = activeColor)
         }
     }
 }

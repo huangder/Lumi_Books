@@ -495,9 +495,9 @@ private fun SettingSlider(
     var sliderValue by remember(value) { mutableFloatStateOf(value) }
 
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, fontSize = 14.sp, color = LightTextSecondary)
+        Text(label, fontSize = 14.sp, color = Color.Black)
         Spacer(Modifier.weight(1f))
-        Text(format(sliderValue), fontSize = 14.sp, color = LightTextSecondary)
+        Text(format(sliderValue), fontSize = 14.sp, color = Color.Black)
     }
     Spacer(Modifier.height(4.dp))
     com.huangder.lumibooks.ui.components.PillSlider(

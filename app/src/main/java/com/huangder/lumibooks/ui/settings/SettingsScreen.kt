@@ -179,14 +179,8 @@ fun SettingsScreen(
             Spacer(Modifier.height(AppSpace.lg))
 
             // 分类列表
-            CategoryItem(Icons.Outlined.FormatSize, "阅读设置") {
-                context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "reading"))
-            }
             CategoryItem(Icons.Outlined.Brightness6, "显示与外观") {
                 context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "display"))
-            }
-            CategoryItem(Icons.Outlined.Timer, "阅读目标") {
-                context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "goal"))
             }
             CategoryItem(Icons.Outlined.DeleteSweep, "存储管理") {
                 context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "storage"))
