@@ -1,7 +1,6 @@
 package com.huangder.lumibooks.ui.navigation
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -19,7 +18,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -84,7 +82,6 @@ fun MainNavGraph(navController: NavHostController) {
     var readerReady by remember { mutableStateOf(false) }
     var pendingBookId by remember { mutableStateOf<String?>(null) }
     var tabBarVisible by remember { mutableStateOf(true) }
-    val contentScale = remember { Animatable(1f) }
 
     // 监听路由变化，从阅读页/设置页返回时延迟显示 TabBar
     val currentEntry by navController.currentBackStackEntryAsState()
@@ -107,15 +104,7 @@ fun MainNavGraph(navController: NavHostController) {
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // 主内容（带缩放效果，过渡动画时缩小 5%）
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    scaleX = contentScale.value
-                    scaleY = contentScale.value
-                }
-        ) {
+        // 主内容
         NavHost(
             navController = navController,
             startDestination = when (hasSeenWelcome) {
@@ -201,7 +190,7 @@ fun MainNavGraph(navController: NavHostController) {
             }
 
         }
-        } // contentScale Box 结束
+
 
         // 浮动导航栏（渐隐渐显）
         AnimatedVisibility(
@@ -233,8 +222,8 @@ fun MainNavGraph(navController: NavHostController) {
         if (showTransition) {
             BookTransitionOverlay(
                 title = transitionTitle,
+                coverPath = transitionCover,
                 isReady = readerReady,
-                contentScale = contentScale,
                 onTransitionComplete = {
                     showTransition = false
                 }
