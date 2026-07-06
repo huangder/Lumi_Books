@@ -169,7 +169,7 @@ fun BookshelfScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize().background(AppColors.WindowBg)) {
-        // ── 内容层（RenderEffect 模糊，不影响 z 轴排序） ──
+        // ── 内容层（高斯模糊） ──
         val scrimProgress = contextMenuState.scrimAlpha.value
         Box(
             modifier = Modifier
@@ -251,16 +251,10 @@ fun BookshelfScreen(
                     }
                 } // Column 结束
             } // OverscrollBounce 结束
+        } // 内容层 Box 结束（renderEffect 模糊作用于此）
 
-            // overlay 激活时隐藏状态栏渐变，避免它浮在 overlay 之上
-            if (contextMenuState.phase == ContextMenuPhase.Idle) {
-                StatusGradientOverlay()
-            }
-        } // 内容层 Box 结束
-
-        // ── 长按上下文菜单覆盖层（zIndex 确保在最顶层） ──
-        Box(modifier = Modifier.fillMaxSize().zIndex(1f)) {
-            BookContextMenuOverlay(
+        // ── 长按上下文菜单覆盖层（在内容层之外，不被模糊） ──
+        BookContextMenuOverlay(
             state = contextMenuState,
             onDelete = { book -> deletingBookId = book.id },
             onFavorite = { book -> viewModel.updateBook(book.copy(isFavorite = !book.isFavorite)) },
@@ -270,7 +264,6 @@ fun BookshelfScreen(
             },
             onRemoveCustomCover = { book ->
                 FileUtils.deleteCustomCover(context, book.id)
-                // 重新从书本文件提取原始封面
                 val originalCoverPath = try {
                     val parser = BookParserFactory.createParser(book.format, context)
                     val content = parser.parse(book.filePath)
@@ -288,7 +281,6 @@ fun BookshelfScreen(
                 showEditDialog = true
             }
         )
-        } // zIndex Box 结束
 
         // ── 编辑书本信息对话框（卡片风格） ──
         if (showEditDialog && editingBook != null) {

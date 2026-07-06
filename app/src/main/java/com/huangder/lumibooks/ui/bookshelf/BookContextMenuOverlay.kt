@@ -84,12 +84,12 @@ fun BookContextMenuOverlay(
     val actionsAlpha = state.actionsAlpha.value
     val scrimAlpha = state.scrimAlpha.value
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().graphicsLayer { }) { // 空 graphicsLayer 确保与 OverscrollBounce 同一合成管线
         // ── 1. 半透明背景 + 点击关闭 ──
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.5f * scrimAlpha))
+                .background(Color.Black.copy(alpha = 0.6f * scrimAlpha))
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() }
