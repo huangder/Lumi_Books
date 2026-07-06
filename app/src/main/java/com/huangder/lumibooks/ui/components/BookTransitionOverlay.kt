@@ -108,7 +108,7 @@ fun BookTransitionOverlay(
                         // transformOrigin 默认居中，不需要额外设置
                     }
                     .clip(RoundedCornerShape(28.dp))
-                    .background(Color.White)
+                    .background(AppColors.CardBg)
             ) {
                 val navBarPadding = WindowInsets.navigationBars.asPaddingValues()
 
@@ -153,7 +153,7 @@ fun BookTransitionOverlay(
                         fontSize = 22.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = KaiTi,
-                        color = Color.Black,
+                        color = AppColors.TextPrimary,
                         textAlign = TextAlign.Center
                     )
 
@@ -163,7 +163,7 @@ fun BookTransitionOverlay(
                     Text(
                         text = "加载中",
                         fontSize = 14.sp,
-                        color = Color(0xFF999999),
+                        color = AppColors.TextSecondary,
                         textAlign = TextAlign.Center
                     )
 
@@ -172,7 +172,7 @@ fun BookTransitionOverlay(
                     // 加载指示器
                     CircularProgressIndicator(
                         modifier = Modifier.size(28.dp),
-                        color = Color.Black,
+                        color = AppColors.Accent,
                         strokeWidth = 2.5.dp
                     )
                 }

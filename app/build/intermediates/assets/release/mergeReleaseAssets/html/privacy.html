@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>隐私政策</title>
+<style>
+:root { --bg: #FBFBFC; --card: #fff; --text: #000; --text2: #6E6E73; --line: #E5E5EA; --accent: #6C231D; }
+@media (prefers-color-scheme: dark) { :root { --bg: #000; --card: #1C1C1E; --text: #fff; --text2: #98989D; --line: #38383A; --accent: #D4736A; } }
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--text); font:-apple-system,sans-serif; padding:20px 16px 60px; line-height:1.6; -webkit-text-size-adjust:100%; }
+h1 { font-size:24px; font-weight:700; margin-bottom:4px; }
+.meta { font-size:13px; color:var(--text2); margin-bottom:28px; }
+h2 { font-size:18px; font-weight:600; margin:28px 0 12px; padding-top:20px; border-top:1px solid var(--line); }
+h2:first-of-type { border-top:none; padding-top:0; }
+h3 { font-size:15px; font-weight:600; margin:16px 0 8px; }
+p { font-size:15px; color:var(--text2); margin-bottom:10px; }
+strong { color:var(--text); }
+table { width:100%; border-collapse:collapse; margin:10px 0 16px; font-size:13px; }
+th, td { text-align:left; padding:8px; border-bottom:1px solid var(--line); }
+th { font-weight:600; color:var(--text); font-size:12px; text-transform:uppercase; }
+td { color:var(--text2); }
+ul { list-style:none; padding:0; margin-bottom:10px; }
+li { padding:3px 0; font-size:14px; color:var(--text2); }
+li::before { content:"· "; color:var(--accent); font-weight:bold; }
+.cross { color:#c13515; }
+</style>
+</head>
+<body>
+<h1>隐私政策</h1>
+<p class="meta">生效日期：2026年6月29日 · 最近更新：2026年7月3日</p>
+
+<h2>一、引言</h2>
+<p>Lumi（以下简称"本应用"）是一款本地电子书阅读器。我们深知隐私对您的重要性，本隐私政策旨在向您说明我们如何处理您的个人信息。</p>
+<p><strong>核心原则：本应用不收集、不传输、不存储任何个人信息至外部服务器。</strong></p>
+<p><strong>开源透明：本应用为开源项目，完整源代码公开可审查。</strong></p>
+
+<h2>二、权限说明</h2>
+<p>本应用仅申请以下 Android 系统权限：</p>
+<table><tr><th>权限</th><th>用途</th></tr>
+<tr><td>READ_EXTERNAL_STORAGE（Android 12 及以下）</td><td>读取电子书文件</td></tr>
+<tr><td>READ_MEDIA_IMAGES（Android 13 及以上）</td><td>读取封面图片资源</td></tr></table>
+<p><strong>本应用不申请以下权限：</strong></p>
+<ul>
+<li><span class="cross">✕</span> 网络访问权限（INTERNET）</li>
+<li><span class="cross">✕</span> 位置信息权限</li>
+<li><span class="cross">✕</span> 相机/麦克风权限</li>
+<li><span class="cross">✕</span> 通讯录权限</li>
+<li><span class="cross">✕</span> 任何其他敏感权限</li>
+</ul>
+
+<h2>三、数据处理说明</h2>
+<h3>3.1 本应用处理的数据</h3>
+<p>以下数据仅存储在您的本地设备上：</p>
+<table><tr><th>数据类型</th><th>说明</th><th>存储方式</th></tr>
+<tr><td>电子书文件</td><td>您主动打开的文件</td><td>本地文件</td></tr>
+<tr><td>阅读进度</td><td>章节和页码位置</td><td>Room/SQLite</td></tr>
+<tr><td>书签记录</td><td>手动添加的书签</td><td>Room/SQLite</td></tr>
+<tr><td>阅读时长</td><td>开始/结束时间、时长</td><td>Room/SQLite</td></tr>
+<tr><td>阅读偏好</td><td>字号、主题、行距等</td><td>DataStore</td></tr></table>
+
+<h3>3.2 本应用不处理的数据</h3>
+<ul>
+<li>不收集个人身份信息</li>
+<li>不收集设备标识信息</li>
+<li>不使用分析或追踪工具</li>
+<li>不使用广告 SDK</li>
+<li>不进行数据上传或同步</li>
+</ul>
+
+<h2>四、数据存储与安全</h2>
+<p>所有数据均存储在应用私有沙盒目录中，受 Android 系统隔离保护。应用不连接互联网，不存在网络传输风险。</p>
+<p>您可以随时在应用内清除数据。卸载应用将自动删除所有应用数据。</p>
+
+<h2>五、第三方服务</h2>
+<p>本应用不集成任何第三方服务（无分析、广告、推送、云同步、崩溃报告）。</p>
+
+<h2>六、联系我们</h2>
+<p>邮箱：<a href="mailto:huangder0104@126.com">huangder0104@126.com</a></p>
+</body>
+</html>

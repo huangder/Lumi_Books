@@ -6,7 +6,7 @@ import android.text.Layout
 import android.text.Selection
 import android.text.Spannable
 import android.text.SpannableStringBuilder
-import android.text.style.ReplacementSpan
+import android.text.style.BackgroundColorSpan
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
@@ -14,49 +14,6 @@ import android.view.MotionEvent
 import android.widget.FrameLayout
 import android.widget.TextView
 import kotlin.math.abs
-
-/**
- * 紧凑高亮 Span：背景色仅包裹文字本身 + 少量内边距，
- * 不像 BackgroundColorSpan 那样填充整行高度（含行间距空白）。
- *
- * 注意：ReplacementSpan 对多行跨行 span 逐行调用 draw，
- * 每行独立绘制背景，行间不会有间隙。
- */
-private class TightHighlightSpan(private val color: Int) : ReplacementSpan() {
-
-    override fun getSize(
-        paint: android.graphics.Paint,
-        text: CharSequence, start: Int, end: Int,
-        fm: android.graphics.Paint.FontMetricsInt?
-    ): Int = paint.measureText(text, start, end).toInt()
-
-    override fun draw(
-        canvas: android.graphics.Canvas,
-        text: CharSequence, start: Int, end: Int,
-        x: Float, top: Int, y: Int, bottom: Int,
-        paint: android.graphics.Paint
-    ) {
-        val textWidth = paint.measureText(text, start, end)
-
-        // 用 fontMetricsInt 算文字实际上界/下界（相对于 baseline y）
-        val fm = paint.fontMetricsInt
-        val bgTop = (y + fm.ascent - 3).toFloat()
-        val bgBottom = (y + fm.descent + 3).toFloat()
-        val bgLeft = x - 4f
-        val bgRight = x + textWidth + 4f
-
-        // 先画背景
-        val bgPaint = android.graphics.Paint().apply {
-            this.color = this@TightHighlightSpan.color
-            isAntiAlias = true
-        }
-        val r = 6f
-        canvas.drawRoundRect(bgLeft, bgTop, bgRight, bgBottom, r, r, bgPaint)
-
-        // 再画文字（在背景之上）
-        canvas.drawText(text, start, end, x, y.toFloat(), paint)
-    }
-}
 
 /**
  * 单页内容 View，替代 PageSurfaceView（Bitmap 容器）。
@@ -133,7 +90,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
             val localEnd = (hEnd - startChar).coerceIn(0, spannable.length)
             if (localStart < localEnd) {
                 spannable.setSpan(
-                    TightHighlightSpan(hColor),
+                    BackgroundColorSpan(hColor),
                     localStart, localEnd,
                     Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
                 )

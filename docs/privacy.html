@@ -68,6 +68,20 @@
         .nav-links { display: flex; gap: 32px; list-style: none; }
         .nav-links a { text-decoration: none; font-size: 16px; font-weight: 600; color: var(--muted); transition: color 0.15s; }
         .nav-links a:hover { color: var(--ink); }
+        .nav-back {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            text-decoration: none;
+            color: var(--muted);
+            font-size: 14px;
+            font-weight: 500;
+            transition: color 0.15s;
+            padding: 6px 10px;
+            border-radius: var(--radius-sm);
+        }
+        .nav-back:hover { color: var(--ink); background: rgba(0,0,0,0.04); }
+        .nav-spacer { width: 100px; } /* balance the back button on left */
 
         .container {
             max-width: var(--max-width);
@@ -179,6 +193,10 @@
 <body>
 
 <nav class="top-nav">
+    <a href="javascript:history.back()" class="nav-back" title="返回">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        <span>返回</span>
+    </a>
     <a href="index.html" class="nav-logo">
         <img src="icon.png" alt="Lumi">
         <span>Lumi</span>
@@ -188,11 +206,12 @@
         <li><a href="privacy-section.html">隐私</a></li>
         <li><a href="tech.html">技术</a></li>
     </ul>
+    <div class="nav-spacer"></div>
 </nav>
 
 <div class="container">
     <h1>隐私政策</h1>
-    <p class="meta">生效日期：2026年6月29日 · 最近更新：2026年7月3日</p>
+    <p class="meta">生效日期：2026年6月29日 · 最近更新：2026年7月6日</p>
 
     <h2>一、引言</h2>
     <p>Lumi（以下简称"本应用"）是一款本地电子书阅读器。我们深知隐私对您的重要性，本隐私政策旨在向您说明我们如何处理您的个人信息。</p>
@@ -288,7 +307,7 @@
     <h2>九、适用范围</h2>
     <p>本隐私政策仅适用于 Lumi 应用（com.huangder.lumibooks）在 Android 平台上的功能。不适用于通过其他方式获取您信息的第三方服务。</p>
 
-    <p style="font-size:13px; color:var(--muted-soft); margin-top: var(--space-xxl);">本隐私政策最后更新于 2026年7月3日。</p>
+    <p style="font-size:13px; color:var(--muted-soft); margin-top: var(--space-xxl);">本隐私政策最后更新于 2026年7月6日。</p>
 </div>
 
 <div class="footer-light">

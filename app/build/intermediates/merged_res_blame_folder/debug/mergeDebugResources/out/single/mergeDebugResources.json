@@ -1,54 +1,58 @@
 [
     {
-        "merged": "com.huangder.lumibooks.app-debug-68:/font_fandol_fang.ttf.flat",
-        "source": "com.huangder.lumibooks.app-main-70:/font/fandol_fang.ttf"
+        "merged": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-debug-68:\\drawable_splash_background.xml.flat",
+        "source": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-main-70:\\drawable\\splash_background.xml"
     },
     {
-        "merged": "com.huangder.lumibooks.app-debug-68:/drawable_splash_background.xml.flat",
-        "source": "com.huangder.lumibooks.app-main-70:/drawable/splash_background.xml"
+        "merged": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-debug-68:\\mipmap-xxxhdpi_ic_launcher.png.flat",
+        "source": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-main-70:\\mipmap-xxxhdpi\\ic_launcher.png"
     },
     {
-        "merged": "com.huangder.lumibooks.app-debug-68:/drawable_ic_launcher_foreground.xml.flat",
-        "source": "com.huangder.lumibooks.app-main-70:/drawable/ic_launcher_foreground.xml"
+        "merged": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-debug-68:\\drawable_app_icon.png.flat",
+        "source": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-main-70:\\drawable\\app_icon.png"
     },
     {
-        "merged": "com.huangder.lumibooks.app-debug-68:/mipmap-xxhdpi_ic_launcher.png.flat",
-        "source": "com.huangder.lumibooks.app-main-70:/mipmap-xxhdpi/ic_launcher.png"
+        "merged": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-debug-68:\\mipmap-hdpi_ic_launcher.png.flat",
+        "source": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-main-70:\\mipmap-hdpi\\ic_launcher.png"
     },
     {
-        "merged": "com.huangder.lumibooks.app-debug-68:/mipmap-mdpi_ic_launcher.png.flat",
-        "source": "com.huangder.lumibooks.app-main-70:/mipmap-mdpi/ic_launcher.png"
+        "merged": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-debug-68:\\drawable_ic_launcher_background.xml.flat",
+        "source": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-main-70:\\drawable\\ic_launcher_background.xml"
     },
     {
-        "merged": "com.huangder.lumibooks.app-debug-68:/font_lxgw_wenkai.ttf.flat",
-        "source": "com.huangder.lumibooks.app-main-70:/font/lxgw_wenkai.ttf"
+        "merged": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-debug-68:\\drawable_ic_launcher_foreground.xml.flat",
+        "source": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-main-70:\\drawable\\ic_launcher_foreground.xml"
     },
     {
-        "merged": "com.huangder.lumibooks.app-debug-68:/drawable_app_icon.png.flat",
-        "source": "com.huangder.lumibooks.app-main-70:/drawable/app_icon.png"
+        "merged": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-debug-68:\\mipmap-xxhdpi_ic_launcher.png.flat",
+        "source": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-main-70:\\mipmap-xxhdpi\\ic_launcher.png"
     },
     {
-        "merged": "com.huangder.lumibooks.app-debug-68:/mipmap-xxxhdpi_ic_launcher.png.flat",
-        "source": "com.huangder.lumibooks.app-main-70:/mipmap-xxxhdpi/ic_launcher.png"
+        "merged": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-debug-68:\\drawable_share_poster_bg.png.flat",
+        "source": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-main-70:\\drawable\\share_poster_bg.png"
     },
     {
-        "merged": "com.huangder.lumibooks.app-debug-68:/drawable_share_poster_bg.png.flat",
-        "source": "com.huangder.lumibooks.app-main-70:/drawable/share_poster_bg.png"
+        "merged": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-debug-68:\\font_lxgw_wenkai.ttf.flat",
+        "source": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-main-70:\\font\\lxgw_wenkai.ttf"
     },
     {
-        "merged": "com.huangder.lumibooks.app-debug-68:/mipmap-xhdpi_ic_launcher.png.flat",
-        "source": "com.huangder.lumibooks.app-main-70:/mipmap-xhdpi/ic_launcher.png"
+        "merged": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-debug-68:\\font_fandol_fang.ttf.flat",
+        "source": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-main-70:\\font\\fandol_fang.ttf"
     },
     {
-        "merged": "com.huangder.lumibooks.app-debug-68:/mipmap-hdpi_ic_launcher.png.flat",
-        "source": "com.huangder.lumibooks.app-main-70:/mipmap-hdpi/ic_launcher.png"
+        "merged": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-debug-68:\\xml_file_paths.xml.flat",
+        "source": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-main-70:\\xml\\file_paths.xml"
     },
     {
-        "merged": "com.huangder.lumibooks.app-debug-68:/drawable_ic_launcher_background.xml.flat",
-        "source": "com.huangder.lumibooks.app-main-70:/drawable/ic_launcher_background.xml"
+        "merged": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-debug-68:\\mipmap-xhdpi_ic_launcher.png.flat",
+        "source": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-main-70:\\mipmap-xhdpi\\ic_launcher.png"
     },
     {
-        "merged": "com.huangder.lumibooks.app-debug-68:/xml_file_paths.xml.flat",
-        "source": "com.huangder.lumibooks.app-main-70:/xml/file_paths.xml"
+        "merged": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-debug-68:\\mipmap-mdpi_ic_launcher.png.flat",
+        "source": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-main-70:\\mipmap-mdpi\\ic_launcher.png"
+    },
+    {
+        "merged": "com.huangder.lumibooks.app-debug-68:/drawable_donation_qr.png.flat",
+        "source": "com.huangder.lumibooks.app-main-70:/drawable/donation_qr.png"
     }
 ]

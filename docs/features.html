@@ -6,13 +6,18 @@
     <link rel="icon" type="image/png" href="icon.png">
     <title>功能特性 - Lumi 阅读器</title>
     <style>
-        /* ========== Airbnb Design Tokens ========== */
+        /* ========== Airbnb Design System Tokens ========== */
         :root {
             --primary: #ff385c;
+            --primary-active: #e00b41;
             --ink: #222222;
             --body: #3f3f3f;
             --muted: #6a6a6a;
+            --muted-soft: #929292;
             --hairline: #dddddd;
+            --hairline-soft: #ebebeb;
+            --on-primary: #ffffff;
+            --on-dark: #ffffff;
             --radius-sm: 8px;
             --radius-md: 14px;
             --radius-lg: 20px;
@@ -20,15 +25,17 @@
             --shadow-card: rgba(0,0,0,0.02) 0 0 0 1px, rgba(0,0,0,0.04) 0 2px 6px, rgba(0,0,0,0.10) 0 4px 8px;
             --shadow-hover: rgba(0,0,0,0.04) 0 0 0 1px, rgba(0,0,0,0.08) 0 4px 12px, rgba(0,0,0,0.16) 0 8px 20px;
             --max-width: 1280px;
+            --space-base: 16px;
+            --space-lg: 24px;
+            --space-xl: 32px;
+            --space-xxl: 48px;
             --section-pad: 64px;
         }
 
         /* ========== Reset & Base ========== */
-        *, *::before, *::after {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        html { scroll-behavior: smooth; }
 
         /* ========== Fonts: Product Sans (Western) + MiSans (CJK/Numbers) ========== */
         @font-face { font-family: 'Product Sans'; src: url('fonts/ProductSans-Regular.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: swap; }
@@ -46,40 +53,90 @@
             background: linear-gradient(135deg, #faf5ff 0%, #f0f9ff 30%, #fff7ed 60%, #f0fdf4 100%);
             min-height: 100vh;
             -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
 
-        a {
-            color: var(--primary);
-            text-decoration: none;
-            transition: opacity 0.2s;
-        }
-
-        a:hover {
-            opacity: 0.8;
-        }
+        a { color: var(--primary); text-decoration: none; transition: opacity 0.2s; }
+        a:hover { opacity: 0.8; }
 
         /* ========== Glassmorphism Sticky Nav ========== */
         .top-nav {
-            position: sticky; top: 0; z-index: 100;
+            position: sticky;
+            top: 0;
+            z-index: 100;
             background: rgba(255,255,255,0.72);
-            backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
             height: 80px;
             border-bottom: 1px solid rgba(255,255,255,0.5);
-            display: flex; align-items: center; justify-content: space-between;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
             padding: 0 var(--space-xxl);
             transition: border-color 0.3s, box-shadow 0.3s, background 0.3s;
         }
-        .top-nav.scrolled { border-bottom-color: var(--hairline); box-shadow: 0 1px 0 rgba(0,0,0,0.04); background: rgba(255,255,255,0.88); }
-        .nav-logo { display: flex; align-items: center; gap: 8px; text-decoration: none; color: var(--primary); }
-        .nav-logo img { width: 34px; height: 34px; border-radius: 8px; transition: transform 0.3s; }
+        .top-nav.scrolled {
+            border-bottom-color: var(--hairline);
+            box-shadow: 0 1px 0 rgba(0,0,0,0.04);
+            background: rgba(255,255,255,0.88);
+        }
+        .nav-logo {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+            color: var(--primary);
+        }
+        .nav-logo img {
+            width: 34px;
+            height: 34px;
+            border-radius: 8px;
+            transition: transform 0.3s;
+        }
         .nav-logo:hover img { transform: scale(1.08); }
-        .nav-logo span { font-size: 22px; font-weight: 700; color: var(--ink); }
-        .nav-links { display: flex; gap: 32px; list-style: none; }
-        .nav-links a { text-decoration: none; font-size: 16px; font-weight: 600; color: var(--muted); transition: color 0.15s; }
+        .nav-logo span {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--ink);
+        }
+        .nav-links {
+            display: flex;
+            gap: 32px;
+            list-style: none;
+        }
+        .nav-links a {
+            text-decoration: none;
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--muted);
+            transition: color 0.15s;
+        }
         .nav-links a:hover { color: var(--ink); }
-        .nav-cta { display: flex; align-items: center; gap: 16px; }
-        .btn-nav-download { background: var(--primary); color: #fff; text-decoration: none; padding: 10px 20px; border-radius: 9999px; font-size: 14px; font-weight: 500; transition: background 0.2s, transform 0.2s; }
-        .btn-nav-download:hover { background: var(--primary-active); transform: scale(1.04); }
+        .nav-links a.active {
+            color: var(--ink);
+            border-bottom: 2px solid var(--ink);
+            padding-bottom: 2px;
+        }
+        .nav-cta {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .btn-nav-download {
+            background: var(--primary);
+            color: #fff;
+            text-decoration: none;
+            padding: 10px 20px;
+            border-radius: 9999px;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background 0.2s, transform 0.2s;
+        }
+        .btn-nav-download:hover {
+            background: var(--primary-active);
+            transform: scale(1.04);
+            opacity: 1;
+        }
 
         /* ========== Layout ========== */
         .container {
@@ -88,18 +145,15 @@
             padding: 0 24px;
         }
 
-        section {
-            padding: var(--section-pad) 0;
-        }
+        section { padding: var(--section-pad) 0; }
 
-        /* ========== Hero ========== */
-        .hero {
+        /* ========== Section Hero ========== */
+        .section-hero {
             text-align: center;
             padding-top: 80px;
             padding-bottom: 48px;
         }
-
-        .hero h1 {
+        .section-hero h1 {
             font-size: 48px;
             font-weight: 800;
             color: var(--ink);
@@ -107,32 +161,26 @@
             margin-bottom: 16px;
             letter-spacing: -0.02em;
         }
-
-        .hero p {
+        .section-hero p {
             font-size: 18px;
             color: var(--muted);
             max-width: 560px;
             margin: 0 auto;
             line-height: 1.7;
         }
-
-        .hero-accent {
-            color: var(--primary);
-        }
+        .hero-accent { color: var(--primary); }
 
         /* ========== Section Titles ========== */
         .section-title {
             text-align: center;
             margin-bottom: 48px;
         }
-
         .section-title h2 {
             font-size: 32px;
             font-weight: 700;
             color: var(--ink);
             margin-bottom: 12px;
         }
-
         .section-title p {
             font-size: 16px;
             color: var(--muted);
@@ -157,7 +205,6 @@
             box-shadow: var(--shadow-card);
             transition: transform 0.25s ease, box-shadow 0.25s ease;
         }
-
         .feature-card:hover {
             transform: translateY(-4px);
             box-shadow: var(--shadow-hover);
@@ -173,15 +220,18 @@
             font-size: 24px;
             margin-bottom: 16px;
         }
-
-        .feature-icon.format { background: rgba(255, 56, 92, 0.1); }
-        .feature-icon.flip { background: rgba(108, 99, 255, 0.1); }
-        .feature-icon.theme { background: rgba(255, 152, 0, 0.1); }
-        .feature-icon.typeset { background: rgba(0, 150, 136, 0.1); }
-        .feature-icon.note { background: rgba(33, 150, 243, 0.1); }
-        .feature-icon.bookmark { background: rgba(156, 39, 176, 0.1); }
-        .feature-icon.search { background: rgba(76, 175, 80, 0.1); }
-        .feature-icon.stats { background: rgba(255, 87, 34, 0.1); }
+        .feature-icon.format    { background: rgba(255, 56, 92, 0.1); }
+        .feature-icon.canvas    { background: rgba(108, 99, 255, 0.1); }
+        .feature-icon.select    { background: rgba(233, 30, 99, 0.1); }
+        .feature-icon.flip      { background: rgba(63, 81, 181, 0.1); }
+        .feature-icon.theme     { background: rgba(255, 152, 0, 0.1); }
+        .feature-icon.typeset   { background: rgba(0, 150, 136, 0.1); }
+        .feature-icon.note      { background: rgba(33, 150, 243, 0.1); }
+        .feature-icon.bookmark  { background: rgba(156, 39, 176, 0.1); }
+        .feature-icon.search    { background: rgba(76, 175, 80, 0.1); }
+        .feature-icon.stats     { background: rgba(255, 87, 34, 0.1); }
+        .feature-icon.backup    { background: rgba(0, 188, 212, 0.1); }
+        .feature-icon.font      { background: rgba(121, 85, 72, 0.1); }
 
         .feature-card h3 {
             font-size: 17px;
@@ -189,22 +239,11 @@
             color: var(--ink);
             margin-bottom: 8px;
         }
-
         .feature-card p {
             font-size: 14px;
             color: var(--muted);
             line-height: 1.6;
         }
-
-        /* ========== Stagger Animations ========== */
-        .stagger-1 { transition-delay: 0.05s; }
-        .stagger-2 { transition-delay: 0.10s; }
-        .stagger-3 { transition-delay: 0.15s; }
-        .stagger-4 { transition-delay: 0.20s; }
-        .stagger-5 { transition-delay: 0.25s; }
-        .stagger-6 { transition-delay: 0.30s; }
-        .stagger-7 { transition-delay: 0.35s; }
-        .stagger-8 { transition-delay: 0.40s; }
 
         /* ========== Screenshot Strip ========== */
         .screenshot-strip {
@@ -213,14 +252,12 @@
             gap: 20px;
             margin-top: 48px;
         }
-
         .screenshot-strip img {
             width: 100%;
             border-radius: var(--radius-md);
             box-shadow: var(--shadow-card);
             transition: transform 0.3s ease, box-shadow 0.3s ease;
         }
-
         .screenshot-strip img:hover {
             transform: scale(1.04);
             box-shadow: var(--shadow-hover);
@@ -232,7 +269,6 @@
             grid-template-columns: repeat(3, 1fr);
             gap: 24px;
         }
-
         .showcase-card {
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
@@ -244,25 +280,21 @@
             text-align: center;
             transition: transform 0.25s ease, box-shadow 0.25s ease;
         }
-
         .showcase-card:hover {
             transform: translateY(-4px);
             box-shadow: var(--shadow-hover);
         }
-
         .showcase-emoji {
             font-size: 48px;
             margin-bottom: 20px;
             display: block;
         }
-
         .showcase-card h3 {
             font-size: 20px;
             font-weight: 700;
             color: var(--ink);
             margin-bottom: 12px;
         }
-
         .showcase-card p {
             font-size: 15px;
             color: var(--muted);
@@ -270,23 +302,18 @@
         }
 
         /* ========== CTA ========== */
-        .cta-section {
-            text-align: center;
-        }
-
+        .cta-section { text-align: center; }
         .cta-section h2 {
             font-size: 32px;
             font-weight: 700;
             color: var(--ink);
             margin-bottom: 16px;
         }
-
         .cta-section p {
             font-size: 16px;
             color: var(--muted);
             margin-bottom: 32px;
         }
-
         .btn-primary {
             display: inline-block;
             padding: 14px 36px;
@@ -298,7 +325,6 @@
             transition: transform 0.2s ease, box-shadow 0.2s ease;
             box-shadow: rgba(255, 56, 92, 0.2) 0 4px 12px;
         }
-
         .btn-primary:hover {
             transform: scale(1.03);
             box-shadow: rgba(255, 56, 92, 0.3) 0 6px 20px;
@@ -307,401 +333,384 @@
         }
 
         /* ========== Footer ========== */
-        .site-footer {
-            background: rgba(255, 255, 255, 0.4);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border-top: 1px solid rgba(255, 255, 255, 0.8);
-            padding: 40px 0 32px;
+        footer {
+            background: rgba(255,255,255,0.3);
+            border-top: 1px solid rgba(255,255,255,0.5);
         }
-
-        .footer-inner {
+        .footer-light {
+            padding: var(--space-xxl) var(--space-xxl);
             max-width: var(--max-width);
             margin: 0 auto;
-            padding: 0 24px;
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            flex-wrap: wrap;
-            gap: 32px;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: var(--space-lg);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
         }
-
-        .footer-brand {
-            max-width: 280px;
-        }
-
-        .footer-brand .logo {
-            margin-bottom: 12px;
-        }
-
-        .footer-brand p {
-            font-size: 14px;
-            color: var(--muted);
-            line-height: 1.6;
-        }
-
-        .footer-links {
-            display: flex;
-            gap: 48px;
-        }
-
         .footer-col h4 {
-            font-size: 13px;
-            font-weight: 600;
+            font-size: 16px;
+            font-weight: 500;
             color: var(--ink);
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            margin-bottom: 14px;
+            margin-bottom: var(--space-base);
         }
-
         .footer-col ul {
             list-style: none;
             display: flex;
             flex-direction: column;
             gap: 10px;
         }
-
         .footer-col a {
+            text-decoration: none;
             font-size: 14px;
-            color: var(--muted);
-            transition: color 0.2s;
-        }
-
-        .footer-col a:hover {
             color: var(--ink);
-            opacity: 1;
+            transition: color 0.15s;
         }
+        .footer-col a:hover { color: var(--muted); opacity: 1; }
 
-        .footer-bottom {
+        .legal-band {
+            padding: var(--space-lg) var(--space-xxl);
             max-width: var(--max-width);
             margin: 0 auto;
-            padding: 24px 24px 0;
-            border-top: 1px solid var(--hairline);
-            margin-top: 32px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            flex-wrap: wrap;
-            gap: 12px;
-        }
-
-        .footer-bottom p {
             font-size: 13px;
             color: var(--muted);
+            border-top: 1px solid rgba(255,255,255,0.3);
         }
-
-        .footer-bottom a {
+        .legal-band a {
             color: var(--muted);
+            text-decoration: none;
+            margin-left: var(--space-lg);
         }
+        .legal-band a:hover { text-decoration: underline; opacity: 1; }
 
         /* ========== Scroll Animations ========== */
         .animate-on-scroll {
             opacity: 0;
             transform: translateY(30px);
-            transition: opacity 0.6s ease, transform 0.6s ease;
+            transition: opacity 0.6s cubic-bezier(0.22, 0.61, 0.36, 1),
+                        transform 0.6s cubic-bezier(0.22, 0.61, 0.36, 1);
         }
-
-        .animate-on-scroll.visible {
+        .animate-on-scroll.animated {
             opacity: 1;
             transform: translateY(0);
         }
+        .stagger-1  { transition-delay: 0.00s; }
+        .stagger-2  { transition-delay: 0.06s; }
+        .stagger-3  { transition-delay: 0.12s; }
+        .stagger-4  { transition-delay: 0.18s; }
+        .stagger-5  { transition-delay: 0.24s; }
+        .stagger-6  { transition-delay: 0.30s; }
+        .stagger-7  { transition-delay: 0.36s; }
+        .stagger-8  { transition-delay: 0.42s; }
+        .stagger-9  { transition-delay: 0.48s; }
+        .stagger-10 { transition-delay: 0.54s; }
+        .stagger-11 { transition-delay: 0.60s; }
+        .stagger-12 { transition-delay: 0.66s; }
 
         /* ========== Responsive: Tablet ========== */
         @media (max-width: 1127px) {
-            .features-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
-
-            .showcase-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
-
+            .features-grid { grid-template-columns: repeat(2, 1fr); }
+            .section-hero h1 { font-size: 40px; }
+            .section-title h2 { font-size: 28px; }
+            .screenshot-strip { grid-template-columns: repeat(2, 1fr); }
+            .showcase-grid { grid-template-columns: repeat(2, 1fr); }
             .showcase-grid .showcase-card:last-child {
                 grid-column: 1 / -1;
                 max-width: 480px;
                 margin: 0 auto;
             }
-
-            .screenshot-strip {
-                grid-template-columns: repeat(2, 1fr);
-            }
-
-            .hero h1 {
-                font-size: 40px;
-            }
-
-            .section-title h2 {
-                font-size: 28px;
-            }
         }
 
         /* ========== Responsive: Mobile ========== */
         @media (max-width: 743px) {
-            .features-grid {
-                grid-template-columns: 1fr;
+            :root { --section-pad: 48px; }
+            .top-nav {
+                padding: 0 var(--space-base);
+                height: 56px;
+                gap: var(--space-sm);
             }
-
-            .showcase-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .showcase-grid .showcase-card:last-child {
-                max-width: none;
-            }
-
+            .nav-links { gap: var(--space-base); }
+            .nav-links a { font-size: 13px; padding: 4px 8px; }
+            .nav-logo span { display: none; }
+            .btn-nav-download { padding: 8px 14px; font-size: 13px; }
+            .features-grid { grid-template-columns: 1fr; }
+            .section-hero h1 { font-size: 32px; }
+            .section-hero p { font-size: 16px; }
+            .section-title h2 { font-size: 24px; }
             .screenshot-strip {
                 grid-template-columns: 1fr;
                 max-width: 320px;
                 margin-left: auto;
                 margin-right: auto;
             }
-
-            .hero h1 {
-                font-size: 32px;
+            .showcase-grid { grid-template-columns: 1fr; }
+            .showcase-grid .showcase-card:last-child { max-width: none; }
+            .footer-light {
+                grid-template-columns: 1fr;
+                padding: var(--space-xl) var(--space-base);
             }
-
-            .hero p {
-                font-size: 16px;
-            }
-
-            .section-title h2 {
-                font-size: 24px;
-            }
-
-            .nav-links {
-                gap: 12px;
-            }
-
-            .nav-links a {
-                font-size: 13px;
-                padding: 4px 8px;
-            }
-
-            .footer-inner {
+            .legal-band {
                 flex-direction: column;
-            }
-
-            .footer-links {
-                gap: 32px;
-            }
-
-            .footer-bottom {
-                flex-direction: column;
+                gap: 8px;
                 text-align: center;
-            }
-
-            .top-nav-inner {
-                height: 56px;
-            }
-
-            :root {
-                --section-pad: 48px;
             }
         }
     </style>
 </head>
 <body>
 
-    <nav class="top-nav">
-        <a href="index.html" class="nav-logo">
-            <img src="icon.png" alt="Lumi">
-            <span>Lumi</span>
-        </a>
-        <ul class="nav-links">
-            <li><a href="features.html" style="color:var(--ink);border-bottom:2px solid var(--ink);padding-bottom:2px;">功能</a></li>
-            <li><a href="privacy-section.html">隐私</a></li>
-            <li><a href="tech.html">技术</a></li>
-        </ul>
-        <div class="nav-cta">
-            <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-nav-download">获取 Lumi</a>
-        </div>
-    </nav>
+<!-- ========== Top Navigation ========== -->
+<nav class="top-nav">
+    <a href="index.html" class="nav-logo">
+        <img src="icon.png" alt="Lumi">
+        <span>Lumi</span>
+    </a>
+    <ul class="nav-links">
+        <li><a href="features.html" class="active">功能</a></li>
+        <li><a href="privacy-section.html">隐私</a></li>
+        <li><a href="tech.html">技术</a></li>
+    </ul>
+    <div class="nav-cta">
+        <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-nav-download">获取 Lumi</a>
+    </div>
+</nav>
 
-    <!-- ========== Hero ========== -->
-    <section class="hero">
-        <div class="container">
-            <h1 class="animate-on-scroll">为阅读而生的<span class="hero-accent">每一个细节</span></h1>
-            <p class="animate-on-scroll">Lumi 阅读器精心打磨每一个功能，从格式解析到翻页手势，从主题排版到阅读统计，让沉浸式阅读触手可及。</p>
-        </div>
-    </section>
+<!-- ========== Section Hero ========== -->
+<section class="section-hero">
+    <div class="container">
+        <h1 class="animate-on-scroll">为阅读而生的<span class="hero-accent">每一个细节</span></h1>
+        <p class="animate-on-scroll">Lumi 阅读器精心打磨每一个功能，从格式解析到翻页手势，从主题排版到阅读统计，让沉浸式阅读触手可及。</p>
+    </div>
+</section>
 
-    <!-- ========== Features Grid ========== -->
-    <section>
-        <div class="container">
-            <div class="section-title animate-on-scroll">
-                <h2>核心功能</h2>
-                <p>八大功能模块，覆盖阅读场景的方方面面</p>
-            </div>
-            <div class="features-grid">
-                <div class="feature-card animate-on-scroll stagger-1">
-                    <div class="feature-icon format">📚</div>
-                    <h3>多格式支持</h3>
-                    <p>原生解析 EPUB、PDF、TXT 三种主流电子书格式，无需依赖第三方阅读引擎。</p>
-                </div>
-                <div class="feature-card animate-on-scroll stagger-2">
-                    <div class="feature-icon flip">✨</div>
-                    <h3>视差翻页</h3>
-                    <p>仿 Apple Books 视差翻页动效，支持手势拖拽与点击翻页，流畅丝滑。</p>
-                </div>
-                <div class="feature-card animate-on-scroll stagger-3">
-                    <div class="feature-icon theme">🎨</div>
-                    <h3>四套主题</h3>
-                    <p>纯白、暖光、浅灰、暗夜四套阅读主题，适配不同光线环境和个人偏好。</p>
-                </div>
-                <div class="feature-card animate-on-scroll stagger-4">
-                    <div class="feature-icon typeset">📐</div>
-                    <h3>精细排版</h3>
-                    <p>支持字号、行距、边距、字体调节，每一页都呈现最舒适的排版效果。</p>
-                </div>
-                <div class="feature-card animate-on-scroll stagger-5">
-                    <div class="feature-icon note">📝</div>
-                    <h3>笔记与高亮</h3>
-                    <p>选中文字即可添加高亮或撰写读书笔记，支持多种高亮颜色标记。</p>
-                </div>
-                <div class="feature-card animate-on-scroll stagger-6">
-                    <div class="feature-icon bookmark">🔖</div>
-                    <h3>书签与目录</h3>
-                    <p>一键添加书签，自动解析章节目录，快速跳转到任意章节。</p>
-                </div>
-                <div class="feature-card animate-on-scroll stagger-7">
-                    <div class="feature-icon search">🔍</div>
-                    <h3>全文搜索</h3>
-                    <p>快速搜索书中任意关键词，精确定位到包含目标文字的页面位置。</p>
-                </div>
-                <div class="feature-card animate-on-scroll stagger-8">
-                    <div class="feature-icon stats">📊</div>
-                    <h3>阅读统计</h3>
-                    <p>记录每日阅读时长与进度，可视化图表展示你的阅读习惯与成就。</p>
-                </div>
+<!-- ========== Core Features Grid ========== -->
+<section>
+    <div class="container">
+        <div class="section-title animate-on-scroll">
+            <h2>核心功能</h2>
+            <p>十二大功能模块，覆盖阅读场景的方方面面</p>
+        </div>
+        <div class="features-grid">
+
+            <!-- 1. 多格式支持 -->
+            <div class="feature-card animate-on-scroll stagger-1">
+                <div class="feature-icon format">📚</div>
+                <h3>多格式支持</h3>
+                <p>原生解析 EPUB、PDF、TXT 三种主流电子书格式，自研解析引擎，无需依赖第三方阅读组件。</p>
             </div>
 
-            <!-- ========== Screenshot Strip ========== -->
-            <div class="screenshot-strip">
-                <img src="2026-07-04_02-47-18_478.png" alt="Lumi 阅读器截图 1" class="animate-on-scroll stagger-1" loading="lazy">
-                <img src="2026-07-04_02-47-18_488.png" alt="Lumi 阅读器截图 2" class="animate-on-scroll stagger-2" loading="lazy">
-                <img src="2026-07-04_02-47-18_496.png" alt="Lumi 阅读器截图 3" class="animate-on-scroll stagger-3" loading="lazy">
-                <img src="2026-07-04_02-47-18_504.png" alt="Lumi 阅读器截图 4" class="animate-on-scroll stagger-4" loading="lazy">
+            <!-- 2. Canvas 渲染引擎 -->
+            <div class="feature-card animate-on-scroll stagger-2">
+                <div class="feature-icon canvas">🎯</div>
+                <h3>Canvas 渲染引擎</h3>
+                <p>自研 StaticLayout 排版引擎，将文字渲染到 Canvas 上，翻页流畅无白屏，告别 WebView 性能瓶颈。</p>
             </div>
-        </div>
-    </section>
 
-    <!-- ========== Showcase ========== -->
-    <section>
-        <div class="container">
-            <div class="section-title animate-on-scroll">
-                <h2>体验亮点</h2>
-                <p>那些让阅读变得更美好的小细节</p>
+            <!-- 3. 文字选择与高亮 -->
+            <div class="feature-card animate-on-scroll stagger-3">
+                <div class="feature-icon select">🖍️</div>
+                <h3>文字选择与高亮</h3>
+                <p>原生文字选择手柄 + 自定义操作菜单，支持 6 种标注颜色，选中即高亮，精准流畅。</p>
             </div>
-            <div class="showcase-grid">
-                <div class="showcase-card animate-on-scroll stagger-1">
-                    <span class="showcase-emoji">👆</span>
-                    <h3>智能手势系统</h3>
-                    <p>左侧点击上一页，右侧点击下一页，中间区域唤出菜单。支持拖拽滑动翻页，松手后自动判断翻页方向，操作直觉自然。</p>
-                </div>
-                <div class="showcase-card animate-on-scroll stagger-2">
-                    <span class="showcase-emoji">☀️</span>
-                    <h3>应用内亮度调节</h3>
-                    <p>无需退出应用即可调节屏幕亮度，阅读过程中随时滑动调节，暗光环境下也能获得最舒适的阅读亮度。</p>
-                </div>
-                <div class="showcase-card animate-on-scroll stagger-3">
-                    <span class="showcase-emoji">🌙</span>
-                    <h3>四套阅读主题</h3>
-                    <p>纯白清爽、暖光护眼、浅灰雅致、暗夜深沉，四套精心调校的配色方案，一键切换，每一帧都赏心悦目。</p>
-                </div>
+
+            <!-- 4. 视差翻页 -->
+            <div class="feature-card animate-on-scroll stagger-4">
+                <div class="feature-icon flip">✨</div>
+                <h3>视差翻页</h3>
+                <p>仿 Apple Books 视差翻页动效，支持手势拖拽与点击翻页，松手自动判断方向，流畅丝滑。</p>
             </div>
-        </div>
-    </section>
 
-    <!-- ========== CTA ========== -->
-    <section class="cta-section">
-        <div class="container">
-            <h2 class="animate-on-scroll">准备好开始阅读了吗？</h2>
-            <p class="animate-on-scroll">下载 Lumi 阅读器，开启你的沉浸式阅读之旅。</p>
-            <a href="index.html" class="btn-primary animate-on-scroll">了解更多</a>
-        </div>
-    </section>
-
-    <!-- ========== Footer ========== -->
-    <footer class="site-footer">
-        <div class="footer-inner">
-            <div class="footer-brand">
-                <a href="index.html" class="logo">
-                    <span class="logo-icon">L</span>
-                    Lumi
-                </a>
-                <p>一款简洁优雅的 Android 电子书阅读器，支持 EPUB、PDF、TXT 多种格式，为阅读而生。</p>
+            <!-- 5. 四套阅读主题 -->
+            <div class="feature-card animate-on-scroll stagger-5">
+                <div class="feature-icon theme">🎨</div>
+                <h3>四套阅读主题</h3>
+                <p>纯白、暖光、浅灰、暗夜四套精心调校的阅读配色，一键切换，适配不同光线环境和个人偏好。</p>
             </div>
-            <div class="footer-links">
-                <div class="footer-col">
-                    <h4>产品</h4>
-                    <ul>
-                        <li><a href="features.html">功能特性</a></li>
-                        <li><a href="privacy-section.html">隐私保护</a></li>
-                        <li><a href="tech.html">技术架构</a></li>
-                    </ul>
-                </div>
-                <div class="footer-col">
-                    <h4>法律</h4>
-                    <ul>
-                        <li><a href="privacy.html">隐私政策</a></li>
-                        <li><a href="terms.html">用户协议</a></li>
-                    </ul>
-                </div>
-                <div class="footer-col">
-                    <h4>联系</h4>
-                    <ul>
-                        <li><a href="mailto:huangder0104@126.com">huangder0104@126.com</a></li>
-                    </ul>
-                </div>
+
+            <!-- 6. 精细排版 -->
+            <div class="feature-card animate-on-scroll stagger-6">
+                <div class="feature-icon typeset">📐</div>
+                <h3>精细排版</h3>
+                <p>字号、行距、段间距、页边距独立调节，每项参数实时预览，呈现最舒适的排版效果。</p>
             </div>
+
+            <!-- 7. 笔记与高亮 -->
+            <div class="feature-card animate-on-scroll stagger-7">
+                <div class="feature-icon note">📝</div>
+                <h3>笔记与高亮</h3>
+                <p>选中文字即可添加高亮或撰写笔记，自定义菜单快捷操作，支持导出与集中管理。</p>
+            </div>
+
+            <!-- 8. 书签与目录 -->
+            <div class="feature-card animate-on-scroll stagger-8">
+                <div class="feature-icon bookmark">🔖</div>
+                <h3>书签与目录</h3>
+                <p>一键添加书签，自动解析章节目录结构，快速跳转到任意章节，阅读进度自动保存。</p>
+            </div>
+
+            <!-- 9. 全文搜索 -->
+            <div class="feature-card animate-on-scroll stagger-9">
+                <div class="feature-icon search">🔍</div>
+                <h3>全文搜索</h3>
+                <p>快速搜索书中任意关键词，精确定位到包含目标文字的页面位置，支持结果高亮。</p>
+            </div>
+
+            <!-- 10. 阅读统计 -->
+            <div class="feature-card animate-on-scroll stagger-10">
+                <div class="feature-icon stats">📊</div>
+                <h3>阅读统计</h3>
+                <p>热力图展示阅读频率，连续阅读天数和连胜记录，周/月/年多维度统计，可视化你的阅读成就。</p>
+            </div>
+
+            <!-- 11. 数据备份恢复 -->
+            <div class="feature-card animate-on-scroll stagger-11">
+                <div class="feature-icon backup">💾</div>
+                <h3>数据备份恢复</h3>
+                <p>一键导出书籍、笔记、书签、阅读进度为 ZIP 压缩包，换机迁移或数据恢复轻松完成。</p>
+            </div>
+
+            <!-- 12. 自定义字体 -->
+            <div class="feature-card animate-on-scroll stagger-12">
+                <div class="feature-icon font">🔤</div>
+                <h3>自定义字体</h3>
+                <p>内置霞鹜文楷、仿宋、楷体等多款中文字体，支持从设备导入 TTF/OTF 字体文件。</p>
+            </div>
+
         </div>
-        <div class="footer-bottom">
-            <p>&copy; 2026 Lumi 阅读器. All rights reserved.</p>
-            <p><a href="mailto:huangder0104@126.com">huangder0104@126.com</a></p>
+
+        <!-- ========== Screenshot Strip ========== -->
+        <div class="screenshot-strip">
+            <img src="2026-07-04_02-47-18_478.png" alt="Lumi 阅读器截图 1" class="animate-on-scroll stagger-1" loading="lazy">
+            <img src="2026-07-04_02-47-18_488.png" alt="Lumi 阅读器截图 2" class="animate-on-scroll stagger-2" loading="lazy">
+            <img src="2026-07-04_02-47-18_496.png" alt="Lumi 阅读器截图 3" class="animate-on-scroll stagger-3" loading="lazy">
+            <img src="2026-07-04_02-47-18_504.png" alt="Lumi 阅读器截图 4" class="animate-on-scroll stagger-4" loading="lazy">
         </div>
-    </footer>
+    </div>
+</section>
 
-    <!-- ========== IntersectionObserver & Smooth Scroll ========== -->
-    <script>
-        // IntersectionObserver for scroll-triggered animations
-        (function() {
-            const observer = new IntersectionObserver(function(entries) {
-                entries.forEach(function(entry) {
-                    if (entry.isIntersecting) {
-                        entry.target.classList.add('visible');
-                        observer.unobserve(entry.target);
-                    }
-                });
-            }, {
-                threshold: 0.12,
-                rootMargin: '0px 0px -40px 0px'
-            });
+<!-- ========== 体验亮点 ========== -->
+<section>
+    <div class="container">
+        <div class="section-title animate-on-scroll">
+            <h2>体验亮点</h2>
+            <p>那些让阅读变得更美好的小细节</p>
+        </div>
+        <div class="showcase-grid">
 
-            document.querySelectorAll('.animate-on-scroll').forEach(function(el) {
-                observer.observe(el);
-            });
-        })();
+            <div class="showcase-card animate-on-scroll stagger-1">
+                <span class="showcase-emoji">👆</span>
+                <h3>智能手势系统 + 自定义选择菜单</h3>
+                <p>左侧 30% 点击上一页，右侧 30% 点击下一页，中间 40% 唤出菜单。拖拽滑动翻页，松手自动判断方向。长按文字弹出自定义操作菜单，标注、笔记、复制一气呵成。</p>
+            </div>
 
-        // Smooth anchor scrolling
-        document.querySelectorAll('a[href^="#"]').forEach(function(anchor) {
-            anchor.addEventListener('click', function(e) {
-                e.preventDefault();
-                var target = document.querySelector(this.getAttribute('href'));
-                if (target) {
-                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
-            });
+            <div class="showcase-card animate-on-scroll stagger-2">
+                <span class="showcase-emoji">📋</span>
+                <h3>书架上下文菜单</h3>
+                <p>书架中长按任意书籍弹出毛玻璃上下文菜单，支持重命名、查看详情、分享、删除等操作，交互流畅自然，信息一目了然。</p>
+            </div>
+
+            <div class="showcase-card animate-on-scroll stagger-3">
+                <span class="showcase-emoji">🎨</span>
+                <h3>四套阅读主题</h3>
+                <p>纯白清爽、暖光护眼、浅灰雅致、暗夜深沉，四套精心调校的配色方案，一键切换，每一帧都赏心悦目，让长时间阅读不再疲劳。</p>
+            </div>
+
+        </div>
+    </div>
+</section>
+
+<!-- ========== CTA ========== -->
+<section class="cta-section">
+    <div class="container">
+        <h2 class="animate-on-scroll">准备好开始阅读了吗？</h2>
+        <p class="animate-on-scroll">下载 Lumi 阅读器，开启你的沉浸式阅读之旅。</p>
+        <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-primary animate-on-scroll">获取 Lumi</a>
+    </div>
+</section>
+
+<!-- ========== Footer ========== -->
+<footer>
+    <div class="footer-light">
+        <div class="footer-col">
+            <h4>Lumi</h4>
+            <ul>
+                <li><a href="features.html">功能介绍</a></li>
+                <li><a href="tech.html">技术架构</a></li>
+                <li><a href="https://github.com/huangder/Lumi_Books/releases">更新日志</a></li>
+            </ul>
+        </div>
+        <div class="footer-col">
+            <h4>法律</h4>
+            <ul>
+                <li><a href="privacy.html">隐私政策</a></li>
+                <li><a href="terms.html">用户协议</a></li>
+            </ul>
+        </div>
+        <div class="footer-col">
+            <h4>联系方式</h4>
+            <ul>
+                <li><a href="https://github.com/huangder/Lumi_Books">GitHub</a></li>
+                <li><a href="mailto:huangder0104@126.com">邮件联系</a></li>
+            </ul>
+        </div>
+    </div>
+    <div class="legal-band">
+        <span>&copy; 2026 Huangder</span>
+        <span>
+            <a href="privacy.html">隐私</a>
+            <a href="terms.html">条款</a>
+        </span>
+    </div>
+</footer>
+
+<!-- ========== JavaScript ========== -->
+<script>
+(function() {
+    'use strict';
+
+    /* IntersectionObserver for scroll-triggered animations */
+    var observer = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('animated');
+                observer.unobserve(entry.target);
+            }
         });
+    }, { threshold: 0.12, rootMargin: '0px 0px -30px 0px' });
 
-        /* Nav scroll state */
-        var nav = document.querySelector('.top-nav');
-        window.addEventListener('scroll', function() {
-            requestAnimationFrame(function() {
-                if (window.scrollY > 10) { nav.classList.add('scrolled'); }
-                else { nav.classList.remove('scrolled'); }
-            });
-        }, { passive: true });
-    </script>
+    document.querySelectorAll('.animate-on-scroll').forEach(function(el) {
+        observer.observe(el);
+    });
+
+    /* Nav scroll state */
+    var nav = document.querySelector('.top-nav');
+    function updateNav() {
+        if ((window.scrollY || window.pageYOffset) > 10) {
+            nav.classList.add('scrolled');
+        } else {
+            nav.classList.remove('scrolled');
+        }
+    }
+    window.addEventListener('scroll', function() {
+        requestAnimationFrame(updateNav);
+    }, { passive: true });
+    updateNav();
+
+    /* Smooth anchor scrolling */
+    document.querySelectorAll('a[href^="#"]').forEach(function(anchor) {
+        anchor.addEventListener('click', function(e) {
+            e.preventDefault();
+            var target = document.querySelector(this.getAttribute('href'));
+            if (target) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        });
+    });
+
+})();
+</script>
 
 </body>
 </html>
