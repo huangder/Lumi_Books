@@ -28,6 +28,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.Backup
 import androidx.compose.material.icons.outlined.Brightness6
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.DeleteSweep
@@ -184,6 +185,9 @@ fun SettingsScreen(
             }
             CategoryItem(Icons.Outlined.DeleteSweep, "存储管理") {
                 context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "storage"))
+            }
+            CategoryItem(Icons.Outlined.Backup, "备份与恢复") {
+                context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "backup"))
             }
             CategoryItem(Icons.Outlined.Info, "关于应用") {
                 context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "about"))

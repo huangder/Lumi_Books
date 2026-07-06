@@ -43,6 +43,9 @@ data class StatisticsUiState(
     val monthlyDailyData: Map<String, Long> = emptyMap(),
     val yearlyDailyData: Map<String, Long> = emptyMap(),
     val selectedTab: Int = 0,
+    val displayMonth: Int = Calendar.getInstance().get(Calendar.MONTH),
+    val displayYear: Int = Calendar.getInstance().get(Calendar.YEAR),
+    val displayWeekOffset: Int = 0,
     val isLoading: Boolean = false,
     val error: String? = null
 )
@@ -133,35 +136,30 @@ class StatisticsViewModel @Inject constructor(
         }
     }
 
-    private fun loadWeeklyData() {
+    private fun loadWeeklyData(weekOffset: Int = 0) {
         viewModelScope.launch {
-            val calendar = Calendar.getInstance()
-            val weeklyData = mutableListOf<DailyReading>()
+            val startOfWeek = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0)
+                set(Calendar.DAY_OF_WEEK, firstDayOfWeek)
+                add(Calendar.WEEK_OF_YEAR, weekOffset)
+            }
+            val endOfWeek = (startOfWeek.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 6) }
 
-            for (i in 6 downTo 0) {
-                val date = dateFormat.format(calendar.apply {
-                    add(Calendar.DAY_OF_YEAR, -i)
-                }.time)
+            val startDate = dateFormat.format(startOfWeek.time)
+            val endDate = dateFormat.format(endOfWeek.time)
 
-                val dayOfWeek = dayFormat.format(calendar.time)
-
-                readingRepository.getTotalDurationByDate(date).collectLatest { duration ->
-                    weeklyData.add(
-                        DailyReading(
-                            date = date,
-                            duration = duration ?: 0,
-                            dayOfWeek = dayOfWeek
-                        )
+            readingRepository.getDailyTotalsBetween(startDate, endDate).collectLatest { dailyTotals ->
+                val durationMap = dailyTotals.associate { it.date to it.totalDuration }
+                val weeklyData = (0..6).map { i ->
+                    val cal = (startOfWeek.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, i) }
+                    val date = dateFormat.format(cal.time)
+                    DailyReading(
+                        date = date,
+                        duration = durationMap[date] ?: 0,
+                        dayOfWeek = dayFormat.format(cal.time)
                     )
-
-                    if (weeklyData.size == 7) {
-                        _uiState.value = _uiState.value.copy(
-                            weeklyData = weeklyData.sortedBy { it.date }
-                        )
-                    }
                 }
-
-                calendar.add(Calendar.DAY_OF_YEAR, 1)
+                _uiState.value = _uiState.value.copy(weeklyData = weeklyData)
             }
         }
     }
@@ -196,39 +194,93 @@ class StatisticsViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(selectedTab = index)
     }
 
-    private fun loadMonthlyDailyData() {
+    fun previousWeek() {
+        val newOffset = _uiState.value.displayWeekOffset - 1
+        _uiState.value = _uiState.value.copy(displayWeekOffset = newOffset)
+        loadWeeklyData(newOffset)
+    }
+
+    fun nextWeek() {
+        if (_uiState.value.displayWeekOffset >= 0) return
+        val newOffset = _uiState.value.displayWeekOffset + 1
+        _uiState.value = _uiState.value.copy(displayWeekOffset = newOffset)
+        loadWeeklyData(newOffset)
+    }
+
+    fun previousMonth() {
+        val current = _uiState.value
+        var newMonth = current.displayMonth - 1
+        var newYear = current.displayYear
+        if (newMonth < 0) {
+            newMonth = 11
+            newYear--
+        }
+        _uiState.value = current.copy(displayMonth = newMonth, displayYear = newYear)
+        loadMonthlyDailyData(newYear, newMonth)
+    }
+
+    fun nextMonth() {
+        val current = _uiState.value
+        val now = Calendar.getInstance()
+        // 不超过当前月
+        if (current.displayYear == now.get(Calendar.YEAR) && current.displayMonth == now.get(Calendar.MONTH)) return
+        var newMonth = current.displayMonth + 1
+        var newYear = current.displayYear
+        if (newMonth > 11) {
+            newMonth = 0
+            newYear++
+        }
+        _uiState.value = current.copy(displayMonth = newMonth, displayYear = newYear)
+        loadMonthlyDailyData(newYear, newMonth)
+    }
+
+    fun previousYear() {
+        val current = _uiState.value
+        val newYear = current.displayYear - 1
+        _uiState.value = current.copy(displayYear = newYear)
+        loadYearlyDailyData(newYear)
+    }
+
+    fun nextYear() {
+        val current = _uiState.value
+        val currentYear = Calendar.getInstance().get(Calendar.YEAR)
+        if (current.displayYear >= currentYear) return
+        val newYear = current.displayYear + 1
+        _uiState.value = current.copy(displayYear = newYear)
+        loadYearlyDailyData(newYear)
+    }
+
+    private fun loadMonthlyDailyData(year: Int = _uiState.value.displayYear, month: Int = _uiState.value.displayMonth) {
         viewModelScope.launch {
-            val calendar = Calendar.getInstance()
-            val startDate = dateFormat.format(calendar.apply {
+            val calendar = Calendar.getInstance().apply {
+                set(Calendar.YEAR, year)
+                set(Calendar.MONTH, month)
                 set(Calendar.DAY_OF_MONTH, 1)
                 set(Calendar.HOUR_OF_DAY, 0)
                 set(Calendar.MINUTE, 0)
                 set(Calendar.SECOND, 0)
-            }.time)
+            }
+            val startDate = dateFormat.format(calendar.time)
 
-            val endDate = dateFormat.format(calendar.apply {
-                set(Calendar.DAY_OF_MONTH, getActualMaximum(Calendar.DAY_OF_MONTH))
-                set(Calendar.HOUR_OF_DAY, 23)
-                set(Calendar.MINUTE, 59)
-                set(Calendar.SECOND, 59)
-            }.time)
+            calendar.set(Calendar.DAY_OF_MONTH, calendar.getActualMaximum(Calendar.DAY_OF_MONTH))
+            calendar.set(Calendar.HOUR_OF_DAY, 23)
+            calendar.set(Calendar.MINUTE, 59)
+            calendar.set(Calendar.SECOND, 59)
+            val endDate = dateFormat.format(calendar.time)
 
             readingRepository.getDailyTotalsBetween(startDate, endDate).collectLatest { dailyTotals ->
                 _uiState.value = _uiState.value.copy(
-                    monthlyDailyData = dailyTotals.associate { it.date to it.totalDuration }
+                    monthlyDailyData = dailyTotals.associate { it.date to it.totalDuration },
+                    monthlyReadingTime = dailyTotals.sumOf { it.totalDuration }
                 )
             }
         }
     }
 
-    private fun loadYearlyDailyData() {
+    private fun loadYearlyDailyData(year: Int = _uiState.value.displayYear) {
         viewModelScope.launch {
-            val calendar = Calendar.getInstance()
-            val endDate = dateFormat.format(calendar.time)
-
-            calendar.add(Calendar.YEAR, -1)
-            calendar.add(Calendar.DAY_OF_YEAR, 1)
-            val startDate = dateFormat.format(calendar.time)
+            val startDate = String.format("%04d-01-01", year)
+            val endDate = String.format("%04d-12-31", year)
 
             readingRepository.getDailyTotalsBetween(startDate, endDate).collectLatest { dailyTotals ->
                 _uiState.value = _uiState.value.copy(

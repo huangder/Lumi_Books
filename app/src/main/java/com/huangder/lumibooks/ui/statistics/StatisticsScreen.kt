@@ -18,9 +18,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
@@ -38,6 +38,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -76,7 +77,7 @@ fun StatisticsScreen(
             fontFamily = KaiTi,
             letterSpacing = (-0.02).sp,
             color = AppColors.TextPrimary,
-            modifier = Modifier.padding(horizontal = AppSpace.lg)
+            modifier = Modifier.padding(horizontal = AppSpace.lg, vertical = AppSpace.md)
         )
 
         Spacer(Modifier.height(AppSpace.xl))
@@ -107,9 +108,9 @@ fun StatisticsScreen(
         Spacer(Modifier.height(AppSpace.lg))
 
         when (uiState.selectedTab) {
-            0 -> WeeklyOverview(uiState)
-            1 -> MonthlyHeatmap(uiState)
-            2 -> YearlyHeatmap(uiState)
+            0 -> WeeklyOverview(uiState, viewModel)
+            1 -> MonthlyHeatmap(uiState, viewModel)
+            2 -> YearlyHeatmap(uiState, viewModel)
         }
         Spacer(Modifier.height(AppSpace.lg))
         MostReadBooks(uiState.mostReadBooks)
@@ -124,108 +125,130 @@ fun StatisticsScreen(
 }
 
 @Composable
-private fun WeeklyOverview(uiState: StatisticsUiState) {
-    val totalMinutes = (uiState.todayReadingTime / 1000 / 60).toInt()
+private fun WeeklyOverview(uiState: StatisticsUiState, viewModel: StatisticsViewModel) {
+    val isCurrentWeek = uiState.displayWeekOffset == 0
+    val weekData = uiState.weeklyData
+    val totalMinutes = (weekData.sumOf { it.duration } / 1000 / 60).toInt()
     val hours = totalMinutes / 60
     val minutes = totalMinutes % 60
+    val activeDays = weekData.count { it.duration > 0 }
 
-    // 周平均（排除今天）
-    val weekDays = uiState.weeklyData.filter { it.duration > 0 }
-    val weekAvgMinutes = if (weekDays.isNotEmpty()) {
-        (weekDays.sumOf { it.duration } / 1000 / 60 / weekDays.size).toInt()
-    } else 0
-    val growthPercent = if (weekAvgMinutes > 0) {
-        ((totalMinutes - weekAvgMinutes).toFloat() / weekAvgMinutes * 100).toInt()
-    } else if (totalMinutes > 0) 100 else 0
+    // 日期范围标题
+    val titleText = if (weekData.isNotEmpty()) {
+        val startParts = weekData.first().date.split("-")
+        val endParts = weekData.last().date.split("-")
+        "${startParts[1].toInt()}月${startParts[2].toInt()}日 – ${endParts[1].toInt()}月${endParts[2].toInt()}日"
+    } else ""
 
-    Row(
+    // 柱状图数据
+    val todayIndex = if (isCurrentWeek) Calendar.getInstance().get(Calendar.DAY_OF_WEEK) - 1 else -1
+    val weeklyMinutes = MutableList(7) { 0f }
+    weekData.forEachIndexed { index, daily ->
+        weeklyMinutes[index] = (daily.duration / 1000f / 60f)
+    }
+    if (isCurrentWeek) {
+        weeklyMinutes[todayIndex] = maxOf(weeklyMinutes[todayIndex], uiState.todayReadingTime / 1000f / 60f)
+    }
+
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = AppSpace.lg),
-        horizontalArrangement = Arrangement.spacedBy(AppSpace.lg)
+            .padding(horizontal = AppSpace.lg)
+            .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .clip(RoundedCornerShape(AppRadius.lg))
+            .background(AppColors.CardBg)
+            .padding(AppSpace.md)
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text("$hours", fontSize = AppType.Huge, fontWeight = FontWeight.Bold, color = AppColors.TextPrimary, fontFamily = SansSerif)
-            Text("小时", fontSize = AppType.BodySmall, color = AppColors.TextSecondary)
-            Text("$minutes", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = AppColors.TextPrimary, fontFamily = SansSerif)
-            Text("分钟", fontSize = AppType.BodySmall, color = AppColors.TextSecondary)
-            Spacer(Modifier.height(AppSpace.xs))
-            // 同比增长
-            if (growthPercent != 0) {
-                val color = if (growthPercent > 0) Color(0xFF34C759) else Color(0xFFFF3B30)
-                val sign = if (growthPercent > 0) "+" else ""
-                Text(
-                    text = "$sign$growthPercent%",
-                    fontSize = AppType.BodySmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = color
-                )
+        // 标题 + 导航箭头
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                titleText,
+                fontSize = AppType.Section,
+                fontWeight = FontWeight.Bold,
+                fontFamily = KaiTi,
+                color = AppColors.TextPrimary,
+                modifier = Modifier.weight(1f)
+            )
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { viewModel.previousWeek() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text("‹", fontSize = 20.sp, color = AppColors.TextPrimary, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.width(4.dp))
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable(
+                        enabled = !isCurrentWeek,
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { viewModel.nextWeek() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text("›", fontSize = 20.sp, color = if (isCurrentWeek) AppColors.TextSecondary.copy(alpha = 0.3f) else AppColors.TextPrimary, fontWeight = FontWeight.Bold)
             }
         }
 
-        // 柱状图：真实数据，动态比例尺
-        val todayIndex = Calendar.getInstance().get(Calendar.DAY_OF_WEEK) - 1
-        // 构建 7 天数据（分钟），确保今天有值
-        val weeklyMinutes = MutableList(7) { 0f }
-        uiState.weeklyData.forEach { daily ->
-            // daily.dayOfWeek 是 "Mon", "Tue" 等
-            val dayMap = mapOf("Sun" to 0, "Mon" to 1, "Tue" to 2, "Wed" to 3, "Thu" to 4, "Fri" to 5, "Sat" to 6)
-            val idx = dayMap[daily.dayOfWeek] ?: -1
-            if (idx in 0..6) {
-                weeklyMinutes[idx] = (daily.duration / 1000f / 60f)
-            }
-        }
-        // 今天的数据从 todayReadingTime 补充（可能 weeklyData 还没更新）
-        weeklyMinutes[todayIndex] = maxOf(weeklyMinutes[todayIndex], uiState.todayReadingTime / 1000f / 60f)
+        // 汇总
+        Text("${hours}h${minutes}m · ${activeDays}天阅读", fontSize = AppType.Caption, color = AppColors.TextSecondary)
 
-        WeeklyBarChart(
-            data = weeklyMinutes,
-            todayIndex = todayIndex,
-            modifier = Modifier.weight(1f).height(160.dp)
-        )
-    }
-}
+        Spacer(Modifier.height(AppSpace.md))
 
-@Composable
-private fun WeeklyBarChart(data: List<Float>, todayIndex: Int, modifier: Modifier = Modifier) {
-    val labels = listOf("日", "一", "二", "三", "四", "五", "六")
-    val accentColor = AppColors.Accent
-    // 动态比例尺：最大值向上取整到整分钟，至少 5 分钟
-    val maxVal = (data.maxOrNull() ?: 0f).coerceAtLeast(5f)
+        // 柱状图 + 星期标签（Canvas 绘制，保证对齐）
+        val labels = listOf("日", "一", "二", "三", "四", "五", "六")
+        val accentColor = AppColors.Accent
+        val accentDim = accentColor.copy(alpha = 0.35f)
+        val textSecColor = AppColors.TextSecondary
+        val maxVal = (weeklyMinutes.maxOrNull() ?: 0f).coerceAtLeast(5f)
+        val labelSize = 10.sp
 
-    Column(modifier = modifier) {
-        Canvas(modifier = Modifier.fillMaxWidth().weight(1f)) {
-            val barWidth = size.width / (data.size * 2 - 1)
-            val maxHeight = size.height
+        // 预计算 native 颜色
+        val accentArgb = android.graphics.Color.argb((accentColor.alpha * 255).toInt(), (accentColor.red * 255).toInt(), (accentColor.green * 255).toInt(), (accentColor.blue * 255).toInt())
+        val textSecArgb2 = android.graphics.Color.argb((textSecColor.alpha * 255).toInt(), (textSecColor.red * 255).toInt(), (textSecColor.green * 255).toInt(), (textSecColor.blue * 255).toInt())
+
+        Canvas(modifier = Modifier.fillMaxWidth().height(128.dp)) {
+            val labelHeight = labelSize.toPx() + 6.dp.toPx()
+            val barAreaHeight = size.height - labelHeight
+            val barWidth = size.width / (7 * 2 - 1)
             val cornerRadius = 4.dp.toPx()
 
-            data.forEachIndexed { index, value ->
+            // 柱体
+            weeklyMinutes.forEachIndexed { index, value ->
                 val normalized = (value / maxVal).coerceIn(0f, 1f)
-                val barHeight = maxHeight * normalized
+                val barHeight = barAreaHeight * normalized
                 val x = index * barWidth * 2
                 val isToday = index == todayIndex
-
-                // 最小可见高度（有数据时至少显示 2px）
                 val visibleHeight = if (value > 0f) maxOf(barHeight, 2.dp.toPx()) else 0f
 
                 drawRoundRect(
-                    color = if (isToday) accentColor else accentColor.copy(alpha = 0.35f),
-                    topLeft = Offset(x, maxHeight - visibleHeight),
+                    color = if (isToday) accentColor else accentDim,
+                    topLeft = Offset(x, barAreaHeight - visibleHeight),
                     size = Size(barWidth, visibleHeight),
                     cornerRadius = CornerRadius(cornerRadius, cornerRadius)
                 )
             }
-        }
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+
+            // 星期标签（居中于每个柱体下方）
+            val paint = android.graphics.Paint().apply {
+                textSize = labelSize.toPx()
+                isAntiAlias = true
+                textAlign = android.graphics.Paint.Align.CENTER
+            }
             labels.forEachIndexed { index, label ->
                 val isToday = index == todayIndex
-                Text(
-                    text = label,
-                    fontSize = 10.sp,
-                    fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
-                    color = if (isToday) AppColors.Accent else AppColors.TextSecondary,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.weight(1f)
+                paint.color = if (isToday) accentArgb else textSecArgb2
+                paint.isFakeBoldText = isToday
+                val cx = index * barWidth * 2 + barWidth / 2
+                drawContext.canvas.nativeCanvas.drawText(
+                    label, cx, size.height - 2.dp.toPx(), paint
                 )
             }
         }
@@ -235,16 +258,15 @@ private fun WeeklyBarChart(data: List<Float>, todayIndex: Int, modifier: Modifie
 // ─── 月热力图 ──────────────────────────────────────────────────
 
 @Composable
-private fun MonthlyHeatmap(uiState: StatisticsUiState) {
-    val calendar = Calendar.getInstance()
-    val year = calendar.get(Calendar.YEAR)
-    val month = calendar.get(Calendar.MONTH)
-    val today = calendar.get(Calendar.DAY_OF_MONTH)
+private fun MonthlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsViewModel) {
+    val year = uiState.displayYear
+    val month = uiState.displayMonth
+    val now = Calendar.getInstance()
+    val isCurrentMonth = (year == now.get(Calendar.YEAR) && month == now.get(Calendar.MONTH))
+    val today = if (isCurrentMonth) now.get(Calendar.DAY_OF_MONTH) else -1
 
-    val firstDay = Calendar.getInstance().apply {
-        set(year, month, 1)
-    }
-    val startDayOfWeek = firstDay.get(Calendar.DAY_OF_WEEK) - 1 // 0=周日
+    val firstDay = Calendar.getInstance().apply { set(year, month, 1) }
+    val startDayOfWeek = firstDay.get(Calendar.DAY_OF_WEEK) - 1
     val daysInMonth = firstDay.getActualMaximum(Calendar.DAY_OF_MONTH)
 
     val totalMinutes = (uiState.monthlyReadingTime / 1000 / 60).toInt()
@@ -259,19 +281,51 @@ private fun MonthlyHeatmap(uiState: StatisticsUiState) {
             .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
             .clip(RoundedCornerShape(AppRadius.lg))
             .background(AppColors.CardBg)
-            .cardPressEffect()
             .padding(AppSpace.md)
     ) {
-        // 月份标题
+        // 月份标题 + 导航箭头
         val monthNames = listOf("一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月")
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("${year}年${monthNames[month]}", fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = KaiTi, color = AppColors.TextPrimary)
-            Text("${hours}h${minutes}m · ${activeDays}天", fontSize = AppType.Caption, color = AppColors.TextSecondary)
+            Text(
+                "${year}年${monthNames[month]}",
+                fontSize = AppType.Section,
+                fontWeight = FontWeight.Bold,
+                fontFamily = KaiTi,
+                color = AppColors.TextPrimary,
+                modifier = Modifier.weight(1f)
+            )
+            // 左箭头
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { viewModel.previousMonth() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text("‹", fontSize = 20.sp, color = AppColors.TextPrimary, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.width(4.dp))
+            // 右箭头（当前月禁用）
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable(
+                        enabled = !isCurrentMonth,
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { viewModel.nextMonth() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text("›", fontSize = 20.sp, color = if (isCurrentMonth) AppColors.TextSecondary.copy(alpha = 0.3f) else AppColors.TextPrimary, fontWeight = FontWeight.Bold)
+            }
         }
+
+        // 汇总信息
+        Text("${hours}h${minutes}m · ${activeDays}天", fontSize = AppType.Caption, color = AppColors.TextSecondary)
 
         Spacer(Modifier.height(AppSpace.md))
 
@@ -342,32 +396,38 @@ private fun MonthlyHeatmap(uiState: StatisticsUiState) {
     }
 }
 
-// ─── 年热力图（GitHub 贡献图风格）───────────────────────────────
+// ─── 年热力图（GitHub 贡献图风格，Canvas 渲染）──────────────────
 
 @Composable
-private fun YearlyHeatmap(uiState: StatisticsUiState) {
-    val today = Calendar.getInstance()
-    val todayStr = String.format("%04d-%02d-%02d", today.get(Calendar.YEAR), today.get(Calendar.MONTH) + 1, today.get(Calendar.DAY_OF_MONTH))
+private fun YearlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsViewModel) {
+    val displayYear = uiState.displayYear
+    val currentYear = Calendar.getInstance().get(Calendar.YEAR)
+    val isCurrentYear = displayYear == currentYear
 
-    // 从今天往前推，找到最近的周日作为起始
-    val startCal = Calendar.getInstance().apply {
-        add(Calendar.YEAR, -1)
-        add(Calendar.DAY_OF_YEAR, 1)
+    // 该年1月1日，对齐到周日
+    val yearStart = Calendar.getInstance().apply {
+        set(displayYear, Calendar.JANUARY, 1)
+        set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0)
     }
-    // 对齐到周日
+    val startCal = yearStart.clone() as Calendar
     while (startCal.get(Calendar.DAY_OF_WEEK) != Calendar.SUNDAY) {
         startCal.add(Calendar.DAY_OF_YEAR, -1)
     }
 
-    val startDate = startCal.clone() as Calendar
+    // 结束日期
+    val yearEnd = Calendar.getInstance().apply { set(displayYear, Calendar.DECEMBER, 31) }
+    val endCal = if (isCurrentYear) Calendar.getInstance() else yearEnd
+    val yearEndStr = String.format("%04d-12-31", displayYear)
 
-    // 计算周数
-    val daysBetween = ((today.timeInMillis - startCal.timeInMillis) / (1000 * 60 * 60 * 24)).toInt()
+    val daysBetween = ((endCal.timeInMillis - startCal.timeInMillis) / (1000 * 60 * 60 * 24)).toInt()
     val weeks = (daysBetween + 1 + 6) / 7
 
     val totalMinutes = (uiState.yearlyDailyData.values.sum() / 1000 / 60).toInt()
     val hours = totalMinutes / 60
     val activeDays = uiState.yearlyDailyData.size
+
+    val accentColor = AppColors.Accent
+    val monthLabels = listOf("1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月")
 
     Column(
         modifier = Modifier
@@ -376,87 +436,148 @@ private fun YearlyHeatmap(uiState: StatisticsUiState) {
             .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
             .clip(RoundedCornerShape(AppRadius.lg))
             .background(AppColors.CardBg)
-            .cardPressEffect()
             .padding(AppSpace.md)
     ) {
+        // 标题 + 导航箭头
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("过去一年", fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = KaiTi, color = AppColors.TextPrimary)
-            Text("${hours}小时 · ${activeDays}天", fontSize = AppType.Caption, color = AppColors.TextSecondary)
+            Text(
+                "${displayYear}年",
+                fontSize = AppType.Section,
+                fontWeight = FontWeight.Bold,
+                fontFamily = KaiTi,
+                color = AppColors.TextPrimary,
+                modifier = Modifier.weight(1f)
+            )
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { viewModel.previousYear() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text("‹", fontSize = 20.sp, color = AppColors.TextPrimary, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.width(4.dp))
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable(
+                        enabled = !isCurrentYear,
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { viewModel.nextYear() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text("›", fontSize = 20.sp, color = if (isCurrentYear) AppColors.TextSecondary.copy(alpha = 0.3f) else AppColors.TextPrimary, fontWeight = FontWeight.Bold)
+            }
         }
+
+        // 汇总
+        Text("${hours}小时 · ${activeDays}天", fontSize = AppType.Caption, color = AppColors.TextSecondary)
 
         Spacer(Modifier.height(AppSpace.md))
 
-        Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
-            Column {
-                // 月份标签行
-                Row {
-                    val monthLabels = listOf("1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月")
-                    var lastMonth = -1
-                    repeat(weeks) { week ->
-                        val weekCal = (startCal.clone() as Calendar).apply { add(Calendar.WEEK_OF_YEAR, week) }
-                        val firstDayOfWeek = weekCal.get(Calendar.DAY_OF_MONTH)
-                        val month = weekCal.get(Calendar.MONTH)
-                        // 只在月份的第一周或第一行显示标签
-                        if (month != lastMonth && firstDayOfWeek <= 7) {
-                            Text(
-                                text = monthLabels[month],
-                                fontSize = 9.sp,
-                                color = AppColors.TextSecondary,
-                                modifier = Modifier.width(14.dp)
-                            )
-                            lastMonth = month
-                        } else {
-                            Spacer(modifier = Modifier.width(14.dp))
-                        }
+        // Canvas 渲染热力图网格 — 固定格子大小，水平滚动
+        // 预计算颜色（Canvas 内不能访问 composable 状态）
+        val bgGray = AppColors.BgGray
+        val c0 = accentColor.copy(alpha = 0.2f)
+        val c1 = accentColor.copy(alpha = 0.4f)
+        val c2 = accentColor.copy(alpha = 0.7f)
+        val c3 = accentColor
+        val textSec = AppColors.TextSecondary
+        val textSecArgb = android.graphics.Color.argb(
+            (textSec.alpha * 255).toInt(),
+            (textSec.red * 255).toInt(),
+            (textSec.green * 255).toInt(),
+            (textSec.blue * 255).toInt()
+        )
+        val labelHeight = 14.dp
+        val todayStr = if (isCurrentYear) String.format("%04d-%02d-%02d", endCal.get(Calendar.YEAR), endCal.get(Calendar.MONTH) + 1, endCal.get(Calendar.DAY_OF_MONTH)) else ""
+        val yearStartStr = String.format("%04d-01-01", displayYear)
+
+        val cellSizeDp = 12
+        val gapDp = 2
+        val gridWidth = (weeks * (cellSizeDp + gapDp)).dp
+        val gridHeight = (14 + 7 * 12 + 2).dp
+
+        Box(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+        Canvas(
+            modifier = Modifier
+                .width(gridWidth)
+                .height(gridHeight)
+        ) {
+            val cellSizePx = cellSizeDp.dp.toPx()
+            val gapPx = gapDp.dp.toPx()
+            val cellStepPx = cellSizePx + gapPx
+            val cornerRadius = 2.dp.toPx()
+
+            // 月份标签
+            var lastMonth = -1
+            for (week in 0 until weeks) {
+                val weekCal = (startCal.clone() as Calendar).apply { add(Calendar.WEEK_OF_YEAR, week) }
+                val month = weekCal.get(Calendar.MONTH)
+                val dayOfMonth = weekCal.get(Calendar.DAY_OF_MONTH)
+                if (month != lastMonth && dayOfMonth <= 7) {
+                    val paint = android.graphics.Paint().apply {
+                        color = textSecArgb
+                        textSize = 9.sp.toPx()
+                        isAntiAlias = true
                     }
+                    drawContext.canvas.nativeCanvas.drawText(
+                        monthLabels[month], week * cellStepPx, labelHeight.toPx() - 2.dp.toPx(), paint
+                    )
+                    lastMonth = month
                 }
+            }
 
-                Spacer(Modifier.height(2.dp))
+            // 热力图格子
+            val gridTop = labelHeight.toPx()
+            for (week in 0 until weeks) {
+                for (dayOfWeek in 0..6) {
+                    val cellCal = (startCal.clone() as Calendar).apply {
+                        add(Calendar.WEEK_OF_YEAR, week)
+                        add(Calendar.DAY_OF_WEEK, dayOfWeek)
+                    }
+                    val cellDateStr = String.format(
+                        "%04d-%02d-%02d",
+                        cellCal.get(Calendar.YEAR),
+                        cellCal.get(Calendar.MONTH) + 1,
+                        cellCal.get(Calendar.DAY_OF_MONTH)
+                    )
 
-                // 7行 × N列网格
-                repeat(7) { dayOfWeek ->
-                    Row {
-                        repeat(weeks) { week ->
-                            val cellCal = (startCal.clone() as Calendar).apply {
-                                add(Calendar.WEEK_OF_YEAR, week)
-                                add(Calendar.DAY_OF_WEEK, dayOfWeek)
+                    val isInYear = cellDateStr >= yearStartStr && cellDateStr <= yearEndStr
+                    val isFuture = isCurrentYear && cellDateStr > todayStr
+
+                    val color = when {
+                        !isInYear -> bgGray
+                        isFuture -> bgGray
+                        else -> {
+                            val duration = uiState.yearlyDailyData[cellDateStr] ?: 0L
+                            val m = (duration / 1000 / 60).toInt()
+                            when {
+                                m == 0 -> bgGray
+                                m < 15 -> c0
+                                m < 30 -> c1
+                                m < 60 -> c2
+                                else -> c3
                             }
-                            val cellDateStr = String.format(
-                                "%04d-%02d-%02d",
-                                cellCal.get(Calendar.YEAR),
-                                cellCal.get(Calendar.MONTH) + 1,
-                                cellCal.get(Calendar.DAY_OF_MONTH)
-                            )
-
-                            val isFuture = cellDateStr > todayStr
-                            val duration = if (isFuture) 0L else (uiState.yearlyDailyData[cellDateStr] ?: 0L)
-                            val minutesForDay = (duration / 1000 / 60).toInt()
-
-                            val color = when {
-                                isFuture -> Color.Transparent
-                                minutesForDay == 0 -> AppColors.BgGray
-                                minutesForDay < 15 -> AppColors.Accent.copy(alpha = 0.2f)
-                                minutesForDay < 30 -> AppColors.Accent.copy(alpha = 0.4f)
-                                minutesForDay < 60 -> AppColors.Accent.copy(alpha = 0.7f)
-                                else -> AppColors.Accent
-                            }
-
-                            Box(
-                                modifier = Modifier
-                                    .size(12.dp)
-                                    .padding(1.dp)
-                                    .clip(RoundedCornerShape(2.dp))
-                                    .background(color)
-                            )
                         }
                     }
+
+                    drawRoundRect(
+                        color = color,
+                        topLeft = Offset(week * cellStepPx, gridTop + dayOfWeek * cellStepPx),
+                        size = Size(cellSizePx, cellSizePx),
+                        cornerRadius = CornerRadius(cornerRadius, cornerRadius)
+                    )
                 }
             }
         }
+        } // Box horizontalScroll
 
         Spacer(Modifier.height(AppSpace.sm))
 
@@ -468,8 +589,7 @@ private fun YearlyHeatmap(uiState: StatisticsUiState) {
         ) {
             Text("少", fontSize = 9.sp, color = AppColors.TextSecondary)
             Spacer(Modifier.width(4.dp))
-            val legendColors = listOf(AppColors.BgGray, AppColors.Accent.copy(alpha = 0.2f), AppColors.Accent.copy(alpha = 0.4f), AppColors.Accent.copy(alpha = 0.7f), AppColors.Accent)
-            legendColors.forEach { c ->
+            listOf(AppColors.BgGray, accentColor.copy(alpha = 0.2f), accentColor.copy(alpha = 0.4f), accentColor.copy(alpha = 0.7f), accentColor).forEach { c ->
                 Box(
                     modifier = Modifier
                         .size(10.dp)

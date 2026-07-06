@@ -53,6 +53,11 @@
             android:theme="@style/Theme.EBookReader"
             android:windowSoftInputMode="adjustResize" />
         <activity
+            android:name="com.huangder.lumibooks.ui.settings.WebViewActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+            android:theme="@style/Theme.EBookReader"
+            android:windowSoftInputMode="adjustResize" />
+        <activity
             android:name="com.huangder.lumibooks.ui.bookshelf.BookNotesActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
             android:theme="@style/Theme.EBookReader"

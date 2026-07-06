@@ -1,5 +1,9 @@
 package com.huangder.lumibooks.ui.settings
 
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -21,8 +25,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Brightness6
+import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.DeleteSweep
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.FontDownload
 import androidx.compose.material.icons.outlined.FormatSize
 import androidx.compose.material.icons.outlined.Info
@@ -33,6 +39,7 @@ import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.outlined.Title
+import androidx.compose.material.icons.outlined.Upload
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -43,6 +50,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -176,11 +185,80 @@ fun StorageDetail(viewModel: SettingsViewModel) {
     }
 }
 
+// ─── 备份与恢复 ──────────────────────────────────────────────
+
+@Composable
+fun BackupRestoreDetail(viewModel: SettingsViewModel) {
+    val uiState by viewModel.uiState.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // 备份：创建文件
+    val backupLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri: Uri? ->
+        uri?.let {
+            scope.launch {
+                try { viewModel.backup(it) } catch (_: Exception) {}
+            }
+        }
+    }
+
+    // 恢复：选择文件
+    val restoreLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        uri?.let {
+            scope.launch {
+                try { viewModel.restore(it) } catch (_: Exception) {}
+            }
+        }
+    }
+
+    DetailCard {
+        // 备份
+        ActionRow(Icons.Outlined.Upload, "备份数据") {
+            val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date())
+            backupLauncher.launch("lumi_backup_$timestamp.zip")
+        }
+        SettingsDivider()
+        // 恢复
+        ActionRow(Icons.Outlined.Download, "恢复数据") {
+            restoreLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
+        }
+    }
+
+    // 状态提示
+    if (uiState.backupStatus.isNotEmpty()) {
+        Spacer(Modifier.height(AppSpace.md))
+        DetailCard {
+            Row(Modifier.fillMaxWidth().padding(AppSpace.md), verticalAlignment = Alignment.CenterVertically) {
+                if (uiState.isProcessing) {
+                    androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = AppColors.Accent)
+                    Spacer(Modifier.width(AppSpace.md))
+                }
+                Text(uiState.backupStatus, fontSize = AppType.BodySmall, color = if (uiState.backupStatus.contains("失败")) Color.Red else AppColors.TextSecondary)
+            }
+        }
+    }
+}
+
 // ─── 关于应用 ────────────────────────────────────────────────
 
 @Composable
 fun AboutDetail() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    fun openDoc(title: String, file: String) {
+        context.startActivity(
+            Intent(context, WebViewActivity::class.java)
+                .putExtra("title", title)
+                .putExtra("file", file)
+        )
+    }
+
     DetailCard {
+        // 版本
         Row(Modifier.fillMaxWidth().padding(AppSpace.md), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.Info, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
             Spacer(Modifier.width(AppSpace.md))
@@ -188,6 +266,7 @@ fun AboutDetail() {
             Text("1.0.3", fontSize = AppType.BodySmall, color = AppColors.TextSecondary)
         }
         SettingsDivider()
+        // 隐私声明
         Row(Modifier.fillMaxWidth().padding(AppSpace.md), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.NightsStay, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
             Spacer(Modifier.width(AppSpace.md))
@@ -196,6 +275,19 @@ fun AboutDetail() {
                 Text("本应用完全离线运行，无网络权限，无第三方SDK", fontSize = AppType.Caption, color = AppColors.TextSecondary)
             }
         }
+    }
+
+    Spacer(Modifier.height(AppSpace.lg))
+
+    DetailCard {
+        // 隐私条款
+        ActionRow(Icons.Outlined.NightsStay, "隐私条款") { openDoc("隐私条款", "privacy.html") }
+        SettingsDivider()
+        // 用户协议
+        ActionRow(Icons.Outlined.Info, "用户协议") { openDoc("用户协议", "terms.html") }
+        SettingsDivider()
+        // 开放源代码许可
+        ActionRow(Icons.Outlined.Code, "开放源代码许可") { openDoc("开放源代码许可", "licenses.html") }
     }
 }
 

@@ -21,5 +21,9 @@ data class SettingsUiState(
     val dailyGoal: Int = 30,               // 分钟
 
     // 存储
-    val cacheSize: String = "计算中..."
+    val cacheSize: String = "计算中...",
+
+    // 备份恢复
+    val backupStatus: String = "",     // 操作状态提示
+    val isProcessing: Boolean = false  // 是否正在执行备份/恢复
 )
