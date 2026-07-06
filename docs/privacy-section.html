@@ -74,6 +74,14 @@
         .btn-nav-sponsor { background:transparent; color:var(--ink); text-decoration:none; padding:9px 19px; border-radius:9999px; font-size:14px; font-weight:500; border:1.5px solid var(--hairline); transition:border-color 0.2s,color 0.2s,background 0.2s; }
         .btn-nav-sponsor:hover { border-color:var(--ink); background:rgba(0,0,0,0.03); }
 
+        /* Mobile "…" more menu */
+        .nav-more-btn{display:none;background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);padding:6px 10px;border-radius:8px;line-height:1;letter-spacing:1px;transition:color 0.15s,background 0.15s}
+        .nav-more-btn:hover{color:var(--ink);background:rgba(0,0,0,0.04)}
+        .nav-more-dropdown{display:none;position:absolute;top:calc(var(--nav-height) - 4px);right:var(--space-base);background:rgba(255,255,255,0.96);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--hairline);border-radius:14px;box-shadow:0 4px 24px rgba(0,0,0,0.10),0 1px 4px rgba(0,0,0,0.06);min-width:148px;padding:8px 0;z-index:200;flex-direction:column}
+        .nav-more-dropdown.open{display:flex}
+        .nav-more-dropdown a{padding:11px 20px;text-decoration:none;color:var(--ink);font-size:15px;font-weight:500;transition:background 0.12s;white-space:nowrap}
+        .nav-more-dropdown a:hover{background:rgba(0,0,0,0.04);color:var(--primary)}
+
         /* Section */
         .section { padding:var(--space-section) var(--space-xxl); max-width:var(--max-width); margin:0 auto; }
         .section-header { margin-bottom:var(--space-xl); text-align:center; }
@@ -140,7 +148,7 @@
 
         /* Responsive */
         @media (max-width:1127px) { .privacy-band { grid-template-columns:repeat(2,1fr); } .footer-light { grid-template-columns:repeat(2,1fr); } }
-        @media (max-width:743px) { .top-nav { padding:0 var(--space-base); height:64px; } .nav-links { display:none; } .section { padding:var(--space-xxl) var(--space-base); } .privacy-band { grid-template-columns:1fr; } .footer-light { grid-template-columns:1fr; padding:var(--space-xl) var(--space-base); } .legal-band { flex-direction:column; gap:var(--space-sm); text-align:center; } }
+        @media (max-width:743px) { .top-nav { padding:0 var(--space-base); height:64px; } .nav-links { display:none; } .nav-more-btn{display:block} .section { padding:var(--space-xxl) var(--space-base); } .privacy-band { grid-template-columns:1fr; } .footer-light { grid-template-columns:1fr; padding:var(--space-xl) var(--space-base); } .legal-band { flex-direction:column; gap:var(--space-sm); text-align:center; } }
     </style>
 </head>
 <body>
@@ -159,6 +167,13 @@
     <div class="nav-cta">
         <a href="sponsor.html" class="btn-nav-sponsor">赞助</a>
         <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-nav-download">获取 Lumi</a>
+    </div>
+    <button class="nav-more-btn" aria-label="更多导航" onclick="event.stopPropagation();this.nextElementSibling.classList.toggle('open')">…</button>
+    <div class="nav-more-dropdown">
+        <a href="features.html">功能</a>
+        <a href="privacy-section.html">隐私</a>
+        <a href="tech.html">技术</a>
+        <a href="sponsor.html">赞助</a>
     </div>
 </nav>
 
@@ -280,6 +295,16 @@
             else { nav.classList.remove('scrolled'); }
         });
     }, { passive: true });
+
+    /* Mobile more dropdown: close on outside click */
+    document.addEventListener('click', function(e) {
+        var dd = document.querySelector('.nav-more-dropdown');
+        var btn = document.querySelector('.nav-more-btn');
+        if (dd && dd.classList.contains('open') && !dd.contains(e.target) && e.target !== btn) {
+            dd.classList.remove('open');
+        }
+    });
+
 })();
 </script>
 

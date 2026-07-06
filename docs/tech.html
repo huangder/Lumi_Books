@@ -219,6 +219,33 @@
             background: rgba(0,0,0,0.03);
         }
 
+        /* Mobile "…" more menu button */
+        .nav-more-btn {
+            display: none; background: none; border: none;
+            font-size: 22px; cursor: pointer; color: var(--muted);
+            padding: 6px 10px; border-radius: var(--radius-sm);
+            line-height: 1; letter-spacing: 1px;
+            transition: color 0.15s, background 0.15s;
+        }
+        .nav-more-btn:hover { color: var(--ink); background: rgba(0,0,0,0.04); }
+        .nav-more-dropdown {
+            display: none; position: absolute;
+            top: calc(var(--nav-height) - 4px); right: var(--space-base);
+            background: rgba(255,255,255,0.96);
+            backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--hairline); border-radius: var(--radius-md);
+            box-shadow: 0 4px 24px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06);
+            min-width: 148px; padding: var(--space-sm) 0;
+            z-index: 200; flex-direction: column;
+        }
+        .nav-more-dropdown.open { display: flex; }
+        .nav-more-dropdown a {
+            padding: 11px 20px; text-decoration: none; color: var(--ink);
+            font-size: 15px; font-weight: 500; transition: background 0.12s;
+            white-space: nowrap;
+        }
+        .nav-more-dropdown a:hover { background: rgba(0,0,0,0.04); color: var(--primary); }
+
         /* ═══════════════════════════════════════════════════════
            Glass Card Utility
            ═══════════════════════════════════════════════════════ */
@@ -551,19 +578,11 @@
                 height: 56px;
                 gap: var(--space-sm);
             }
-            .nav-links {
-                gap: var(--space-base);
-            }
-            .nav-links a {
-                font-size: 14px;
-            }
-            .nav-logo span {
-                display: none;
-            }
-            .btn-nav-download {
-                padding: 8px 14px;
-                font-size: 13px;
-            }
+            .nav-links { display: none; }
+            .nav-more-btn { display: block; }
+            .nav-logo span { display: none; }
+            .btn-nav-download { padding: 8px 14px; font-size: 13px; }
+            .btn-nav-sponsor { padding: 7px 14px; font-size: 13px; }
             .tech-grid {
                 grid-template-columns: 1fr;
             }
@@ -610,6 +629,13 @@
     <div class="nav-cta">
         <a href="sponsor.html" class="btn-nav-sponsor">赞助</a>
         <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-nav-download">获取 Lumi</a>
+    </div>
+    <button class="nav-more-btn" aria-label="更多导航" onclick="event.stopPropagation();this.nextElementSibling.classList.toggle('open')">…</button>
+    <div class="nav-more-dropdown">
+        <a href="features.html">功能</a>
+        <a href="privacy-section.html">隐私</a>
+        <a href="tech.html">技术</a>
+        <a href="sponsor.html">赞助</a>
     </div>
 </nav>
 
@@ -675,12 +701,12 @@
 </section>
 
 <!-- ═══════════════════════════════════════════════════════════
-     Section 2: 自研 Canvas 渲染引擎
+     Section 2: Canvas 渲染引擎
      ═══════════════════════════════════════════════════════════ -->
 <section class="section">
     <div class="section-header reveal">
         <div class="section-label">RENDERING ENGINE</div>
-        <h2 class="section-title">自研 Canvas 渲染引擎</h2>
+        <h2 class="section-title">Canvas 渲染引擎</h2>
     </div>
 
     <div class="glass feature-card reveal">
@@ -793,7 +819,7 @@
         <div class="glass privacy-item reveal reveal-delay-1">
             <div class="privacy-icon">🛡</div>
             <h4>无第三方 SDK</h4>
-            <p>零统计、零广告、零推送，代码完全自研</p>
+            <p>零统计、零广告、零推送</p>
         </div>
         <div class="glass privacy-item reveal reveal-delay-2">
             <div class="privacy-icon">📦</div>
@@ -895,6 +921,15 @@
         requestAnimationFrame(updateNav);
     }, { passive: true });
     updateNav();
+
+    /* Mobile more dropdown: close on outside click */
+    document.addEventListener('click', function(e) {
+        var dd = document.querySelector('.nav-more-dropdown');
+        var btn = document.querySelector('.nav-more-btn');
+        if (dd && dd.classList.contains('open') && !dd.contains(e.target) && e.target !== btn) {
+            dd.classList.remove('open');
+        }
+    });
 
 })();
 </script>
