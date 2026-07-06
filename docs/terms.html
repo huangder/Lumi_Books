@@ -67,6 +67,20 @@
         .nav-links { display: flex; gap: 32px; list-style: none; }
         .nav-links a { text-decoration: none; font-size: 16px; font-weight: 600; color: var(--muted); transition: color 0.15s; }
         .nav-links a:hover { color: var(--ink); }
+        .nav-back {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            text-decoration: none;
+            color: var(--muted);
+            font-size: 14px;
+            font-weight: 500;
+            transition: color 0.15s;
+            padding: 6px 10px;
+            border-radius: var(--radius-sm);
+        }
+        .nav-back:hover { color: var(--ink); background: rgba(0,0,0,0.04); }
+        .nav-spacer { width: 100px; }
 
         .container {
             max-width: var(--max-width);
@@ -157,6 +171,10 @@
 <body>
 
 <nav class="top-nav">
+    <a href="javascript:history.back()" class="nav-back" title="返回">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        <span>返回</span>
+    </a>
     <a href="index.html" class="nav-logo">
         <img src="icon.png" alt="Lumi">
         <span>Lumi</span>
@@ -166,11 +184,12 @@
         <li><a href="privacy-section.html">隐私</a></li>
         <li><a href="tech.html">技术</a></li>
     </ul>
+    <div class="nav-spacer"></div>
 </nav>
 
 <div class="container">
     <h1>用户协议</h1>
-    <p class="meta">生效日期：2026年6月29日 · 最近更新：2026年7月3日</p>
+    <p class="meta">生效日期：2026年6月29日 · 最近更新：2026年7月6日</p>
 
     <h2>一、协议的接受</h2>
     <p>欢迎使用 Lumi（以下简称"本应用"）。在使用本应用之前，请仔细阅读并充分理解本用户协议（以下简称"本协议"）。</p>
@@ -287,7 +306,7 @@
         <li>电子邮件：<a href="mailto:huangder0104@126.com">huangder0104@126.com</a></li>
     </ul>
 
-    <p style="font-size:13px; color:var(--muted-soft); margin-top: var(--space-xxl);">本用户协议最后更新于 2026年7月3日。</p>
+    <p style="font-size:13px; color:var(--muted-soft); margin-top: var(--space-xxl);">本用户协议最后更新于 2026年7月6日。</p>
 </div>
 
 <div class="footer-light">

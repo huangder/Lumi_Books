@@ -32,10 +32,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Book
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -152,7 +158,9 @@ fun HomeScreen(
             if (lastReadBook != null) {
                 ContinueReadingCard(
                     book = lastReadBook,
-                    onClick = { onNavigateToReader(lastReadBook.id, lastReadBook.coverPath, lastReadBook.title) }
+                    onClick = { onNavigateToReader(lastReadBook.id, lastReadBook.coverPath, lastReadBook.title) },
+                    onToggleFavorite = { viewModel.updateBook(lastReadBook.copy(isFavorite = !lastReadBook.isFavorite)) },
+                    onDelete = { viewModel.deleteBook(lastReadBook) }
                 )
                 Spacer(Modifier.height(AppSpace.lg))
             }
@@ -322,7 +330,10 @@ private fun ImportHint() {
 // ─── 继续阅读卡片 ──────────────────────────────────────────────
 
 @Composable
-private fun ContinueReadingCard(book: Book, onClick: () -> Unit) {
+private fun ContinueReadingCard(book: Book, onClick: () -> Unit, onToggleFavorite: () -> Unit, onDelete: () -> Unit) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -371,9 +382,68 @@ private fun ContinueReadingCard(book: Book, onClick: () -> Unit) {
                 color = AppColors.TextSecondary
             )
         }
-        IconButton(onClick = { }, modifier = Modifier.size(32.dp)) {
-            Icon(Icons.Outlined.MoreVert, null, tint = AppColors.TextSecondary, modifier = Modifier.size(18.dp))
+        Box {
+            IconButton(onClick = { menuExpanded = true }, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Outlined.MoreVert, null, tint = AppColors.TextSecondary, modifier = Modifier.size(18.dp))
+            }
+            DropdownMenu(
+                expanded = menuExpanded,
+                onDismissRequest = { menuExpanded = false }
+            ) {
+                DropdownMenuItem(
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Outlined.FavoriteBorder, null, modifier = Modifier.size(18.dp), tint = AppColors.TextSecondary)
+                            Spacer(Modifier.width(AppSpace.sm))
+                            Text(
+                                if (book.isFavorite) "取消收藏" else "收藏",
+                                fontSize = AppType.BodySmall,
+                                color = AppColors.TextPrimary
+                            )
+                        }
+                    },
+                    onClick = {
+                        menuExpanded = false
+                        onToggleFavorite()
+                    }
+                )
+                DropdownMenuItem(
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Outlined.Delete, null, modifier = Modifier.size(18.dp), tint = AppColors.Accent)
+                            Spacer(Modifier.width(AppSpace.sm))
+                            Text("删除", fontSize = AppType.BodySmall, color = AppColors.Accent)
+                        }
+                    },
+                    onClick = {
+                        menuExpanded = false
+                        showDeleteConfirm = true
+                    }
+                )
+            }
         }
+    }
+
+    // 删除确认弹窗
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("删除图书", fontWeight = FontWeight.Bold) },
+            text = { Text("确定要从书库中删除《${book.title}》吗？\n此操作不可撤销。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteConfirm = false
+                    onDelete()
+                }) {
+                    Text("删除", color = AppColors.Accent)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("取消", color = AppColors.TextSecondary)
+                }
+            }
+        )
     }
 }
 

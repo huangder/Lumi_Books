@@ -1,167 +1,160 @@
-# 电子书阅读器 (EBook Reader)
+# Lumi — 为阅读而生
 
-一款简洁优雅的Android电子书阅读器，类似Apple Books的安卓版本。
+> 简洁优雅的 Android 本地电子书阅读器，支持 EPUB、PDF、TXT 格式。纯本地离线，零网络权限，零第三方追踪。
+
+[![Version](https://img.shields.io/badge/version-1.0.01.124-coral)](https://github.com/huangder/Lumi_Books/releases)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Android](https://img.shields.io/badge/Android-8.0%2B-blue)](https://developer.android.com)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-purple)](https://kotlinlang.org)
+
+---
 
 ## 功能特性
 
-### 📚 书籍管理
-- 支持EPUB、PDF、TXT格式
-- 本地文件导入
-- 书籍封面展示
-- 搜索和排序功能
-
 ### 📖 阅读体验
-- 全屏沉浸式阅读
-- 流畅的翻页动画
-- 圆角矩形页面
-- 多种阅读主题
+- 支持 EPUB、PDF、TXT 三种主流电子书格式
+- 自研 Canvas + StaticLayout 渲染引擎，流畅的视差翻页动画
+- 4 套阅读主题（日间 / 夜间 / 护眼 / 绿色）
+- 精细排版调节（字号、行距、字间距、页边距）
+- 应用内亮度调节，支持跟随系统
+- 智能手势系统（左右点击翻页、中间唤出菜单、拖拽跟手翻页）
 
-### ⏱️ 阅读统计
-- 今日阅读时长
-- 本月阅读统计
-- 阅读目标设置
-- 柱状图可视化
+### ✨ 文字选择与标注
+- Android 原生文字选择 + 自定义 Compose 浮动菜单
+- 6 色高亮标注，支持点击查看和修改颜色
+- 添加笔记（关联高亮文本）
+- 全文搜索与复制
+- 书签添加/删除/快速跳转
 
-### 🎨 个性化设置
-- 字体大小调节
-- 行距字间距设置
-- 多种阅读主题
-- 亮度调节
+### 📚 书架管理
+- 本地文件导入（系统文件选择器，EPUB/TXT/PDF 过滤）
+- 书籍封面自动提取与展示（Coil 图片加载）
+- 长按书籍唤出上下文菜单（毛玻璃弹出 + 封面缩放动画）
+- 自定义封面（从相册选取）
+- 编辑书籍信息（书名、作者）
+- 收藏 / 删除管理
 
-### 📌 书签笔记
-- 添加书签
-- 阅读笔记
-- 高亮标记
-- 快速跳转
+### 📊 阅读统计
+- 今日阅读时长 + 本周趋势
+- 每日阅读目标设定
+- 周 / 月 / 年三 Tab 导航
+- 月热力图（日历网格，按阅读时长着色）
+- 年热力图（GitHub 贡献图风格，53 列 × 7 行 Canvas 渲染）
+- 周柱状图（Canvas 绘制）
+- 连续阅读天数（连胜记录）
+
+### ⚙️ 设置与工具
+- 完整设置体系（个人信息、阅读设置、显示外观、阅读目标、存储管理、关于）
+- 数据备份与恢复（ZIP 导出/导入：数据库 + DataStore + 封面 + 书籍）
+- 字体系统（霞鹜文楷、仿宋、楷体 + 自定义字体导入）
+- 自定义 PillSlider 胶囊滑动条组件
+- 深色模式（跟随系统 / 浅色 / 深色）
+
+### 🔒 隐私保护
+- **100% 本地离线** — 不申请网络权限（INTERNET）
+- **零第三方 SDK** — 无分析、广告、推送、云同步、崩溃报告
+- **Android 沙盒存储** — 所有数据仅存于应用私有目录
+- **开源可审计** — 完整源代码公开，欢迎审查
+- 首次启动展示隐私政策与用户协议，透明告知
+
+---
 
 ## 技术栈
 
-- **开发语言**：Kotlin
-- **UI框架**：Jetpack Compose
-- **架构模式**：MVVM
-- **依赖注入**：Hilt
-- **本地数据库**：Room
-- **数据存储**：DataStore
-- **图片加载**：Coil
-- **电子书解析**：epublib、PdfRenderer
+| 类别 | 技术 | 版本 |
+|------|------|------|
+| 语言 | Kotlin | 2.0.21 |
+| UI 框架 | Jetpack Compose (BOM) | 2024.12.01 |
+| 架构 | MVVM + Repository | — |
+| 依赖注入 | Hilt | 2.52 |
+| 数据库 | Room | 2.6.1 |
+| 偏好存储 | DataStore Preferences | 1.1.1 |
+| 导航 | Navigation Compose | 2.8.5 |
+| 图片加载 | Coil | 2.7.0 |
+| 构建工具 | AGP / Gradle | 8.7.3 |
+| 最低 SDK | Android 8.0 (API 26) | — |
+| 目标 SDK | Android 15 (API 35) | — |
+
+---
 
 ## 项目结构
 
 ```
 android_books/
-├── CLAUDE.md              # 项目指引
-├── README.md              # 项目说明
-├── devlog/                # 开发日志
-├── docs/                  # 项目文档
-│   ├── requirements.md    # 需求文档
-│   ├── technical-spec.md  # 技术规范
-│   ├── design-spec.md     # 设计规范
+├── LICENSE                 # MIT 许可证
+├── README.md               # 项目说明
+├── CHANGELOG.md            # 更新日志
+├── CLAUDE.md               # Agent 开发指引
+├── build.gradle.kts        # 顶层构建配置
+├── settings.gradle.kts     # 项目设置
+├── gradle.properties       # Gradle 属性
+│
+├── app/                    # Android 应用代码
+│   ├── build.gradle.kts    # 应用构建配置
+│   └── src/main/
+│       ├── AndroidManifest.xml
+│       ├── assets/html/    # 隐私政策/用户协议/开源许可 (HTML)
+│       ├── java/com/huangder/lumibooks/
+│       │   ├── data/       # 数据层 (Room DAO/Entity, DataStore, Repository)
+│       │   ├── domain/     # 领域模型 (Book, Bookmark, Note, ReadingRecord)
+│       │   ├── ui/         # 表现层 (Compose 页面 + ViewModel)
+│       │   │   ├── home/       # 首页、书架
+│       │   │   ├── reader/     # 阅读器（核心）
+│       │   │   ├── statistics/ # 统计页
+│       │   │   ├── settings/   # 设置页
+│       │   │   ├── welcome/    # 欢迎/引导页
+│       │   │   └── navigation/ # 导航
+│       │   ├── di/         # Hilt 依赖注入
+│       │   └── util/       # 工具类
+│       │       └── parser/ # 电子书解析器 (EPUB/PDF/TXT)
+│       └── res/            # 资源文件
+│
+├── devlog/                 # 开发日志（47 篇，按日期）
+├── devdocs/                # 项目文档（15 份）
+│   ├── requirements.md     # 需求文档
+│   ├── technical-spec.md   # 技术规范
+│   ├── design-spec.md      # 设计规范
+│   ├── ui-design-spec.md   # UI 设计实现文档
+│   ├── project-status.md   # 项目状态
 │   ├── development-plan.md # 开发计划
-│   ├── app-description.md # 应用描述
-│   └── project-summary.md # 项目总结
-└── app/                   # Android应用代码
-    ├── src/main/java/com/ebook/reader/
-    │   ├── data/          # 数据层
-    │   ├── domain/        # 领域层
-    │   ├── ui/            # 表现层
-    │   ├── di/            # 依赖注入
-    │   ├── util/          # 工具类
-    │   └── service/       # 服务
-    └── src/main/res/      # 资源文件
+│   └── ...                 # 更多文档
+│
+├── docs/                   # 项目网站 (GitHub Pages → huangder.top)
+│   ├── index.html          # 首页
+│   ├── features.html       # 功能特性
+│   ├── tech.html           # 技术规格
+│   ├── privacy.html        # 隐私政策（完整版）
+│   ├── privacy-section.html # 隐私亮点
+│   ├── terms.html          # 用户协议（完整版）
+│   └── fonts/              # 网站字体 (Product Sans + MiSans)
+│
+├── pagedesign/             # 设计稿与原始文档
+└── icon/                   # 应用图标素材
 ```
 
-## 开发环境
+---
 
-- Android Studio Hedgehog | 2023.1.1
-- Kotlin 1.9.20
-- Jetpack Compose 1.5.5
-- Gradle 8.5
-- Android SDK 34
 
-## 系统要求
+## 更新日志
 
-- Android 8.0 (API 26) 及以上
-- 支持手机和平板
+详见 [CHANGELOG.md](CHANGELOG.md)
 
-## 快速开始
-
-### 使用Android Studio（推荐）
-
-1. 克隆项目
-```bash
-git clone https://github.com/yourusername/ebook-reader.git
-```
-
-2. 使用Android Studio打开项目
-   - 启动Android Studio
-   - 选择 "Open an existing Android Studio project"
-   - 选择项目目录
-
-3. 等待Gradle同步完成（首次可能需要几分钟）
-
-4. 运行项目
-   - 点击工具栏的 "Run" 按钮
-   - 选择模拟器或真机设备
-
-### 使用命令行
-
-1. 进入项目目录
-```bash
-cd android_books
-```
-
-2. 构建Debug APK
-```bash
-# Windows
-gradlew.bat assembleDebug
-
-# Linux/Mac
-./gradlew assembleDebug
-```
-
-3. 安装到设备
-```bash
-adb install app/build/outputs/apk/debug/app-debug.apk
-```
-
-## 构建发布
-
-1. 配置签名密钥
-2. 生成签名APK
-```bash
-gradlew assembleRelease
-```
-3. 发布到应用商店
-
-详细构建说明请参考 [构建指南](docs/build-guide.md)
-
-## 版本历史
-
-### v1.0.0 (2026-06-17)
-- 初始版本发布
-- 支持EPUB、PDF、TXT格式
-- 实现核心阅读功能
-- 实现阅读统计功能
-
-## 贡献指南
-
-1. Fork项目
-2. 创建功能分支
-3. 提交更改
-4. 推送到分支
-5. 创建Pull Request
+---
 
 ## 许可证
 
-本项目采用MIT许可证 - 详见 [LICENSE](LICENSE) 文件
+本项目采用 [MIT License](LICENSE) 开源。© 2026 Huangder
 
-## 联系方式
+---
 
-- 开发者：EBook Reader Team
-- 邮箱：support@ebookreader.com
+## 链接
 
-## 致谢
+- 🌐 官网：[huangder.top](https://huangder.top)
+- 📦 GitHub：[github.com/huangder/Lumi_Books](https://github.com/huangder/Lumi_Books)
+- 📧 联系邮箱：huangder0104@126.com
 
-- Material Design设计规范
-- Jetpack Compose官方文档
-- epublib开源库
+---
+
+<p align="center">
+  <sub>一本好书的归宿，是一个好的阅读器。</sub>
+</p>
