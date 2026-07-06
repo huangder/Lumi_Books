@@ -8,6 +8,7 @@ import com.huangder.lumibooks.data.local.entity.BookmarkEntity
 import com.huangder.lumibooks.data.local.entity.NoteEntity
 import com.huangder.lumibooks.data.local.entity.ReadingRecordEntity
 import com.huangder.lumibooks.domain.model.Bookmark
+import com.huangder.lumibooks.domain.model.DailyTotal
 import com.huangder.lumibooks.domain.model.Note
 import com.huangder.lumibooks.domain.model.ReadingRecord
 import com.huangder.lumibooks.domain.repository.ReadingRepository
@@ -87,6 +88,10 @@ class ReadingRepositoryImpl @Inject constructor(
 
     override fun getMostReadBooks(limit: Int): Flow<List<BookDuration>> {
         return readingRecordDao.getMostReadBooks(limit)
+    }
+
+    override fun getDailyTotalsBetween(startDate: String, endDate: String): Flow<List<DailyTotal>> {
+        return readingRecordDao.getDailyTotalsBetween(startDate, endDate)
     }
 
     private fun ReadingRecordEntity.toDomain(): ReadingRecord {

@@ -13,6 +13,7 @@ import androidx.room.util.CursorUtil;
 import androidx.room.util.DBUtil;
 import androidx.sqlite.db.SupportSQLiteStatement;
 import com.huangder.lumibooks.data.local.entity.ReadingRecordEntity;
+import com.huangder.lumibooks.domain.model.DailyTotal;
 import java.lang.Class;
 import java.lang.Exception;
 import java.lang.Long;
@@ -365,6 +366,46 @@ public final class ReadingRecordDao_Impl implements ReadingRecordDao {
             final long _tmpTotalDuration;
             _tmpTotalDuration = _cursor.getLong(_cursorIndexOfTotalDuration);
             _item = new BookDuration(_tmpBookId,_tmpTotalDuration);
+            _result.add(_item);
+          }
+          return _result;
+        } finally {
+          _cursor.close();
+        }
+      }
+
+      @Override
+      protected void finalize() {
+        _statement.release();
+      }
+    });
+  }
+
+  @Override
+  public Flow<List<DailyTotal>> getDailyTotalsBetween(final String startDate,
+      final String endDate) {
+    final String _sql = "SELECT date, SUM(duration) as totalDuration FROM reading_records WHERE date BETWEEN ? AND ? GROUP BY date";
+    final RoomSQLiteQuery _statement = RoomSQLiteQuery.acquire(_sql, 2);
+    int _argIndex = 1;
+    _statement.bindString(_argIndex, startDate);
+    _argIndex = 2;
+    _statement.bindString(_argIndex, endDate);
+    return CoroutinesRoom.createFlow(__db, false, new String[] {"reading_records"}, new Callable<List<DailyTotal>>() {
+      @Override
+      @NonNull
+      public List<DailyTotal> call() throws Exception {
+        final Cursor _cursor = DBUtil.query(__db, _statement, false, null);
+        try {
+          final int _cursorIndexOfDate = 0;
+          final int _cursorIndexOfTotalDuration = 1;
+          final List<DailyTotal> _result = new ArrayList<DailyTotal>(_cursor.getCount());
+          while (_cursor.moveToNext()) {
+            final DailyTotal _item;
+            final String _tmpDate;
+            _tmpDate = _cursor.getString(_cursorIndexOfDate);
+            final long _tmpTotalDuration;
+            _tmpTotalDuration = _cursor.getLong(_cursorIndexOfTotalDuration);
+            _item = new DailyTotal(_tmpDate,_tmpTotalDuration);
             _result.add(_item);
           }
           return _result;

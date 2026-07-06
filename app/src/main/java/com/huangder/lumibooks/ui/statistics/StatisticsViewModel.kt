@@ -40,6 +40,9 @@ data class StatisticsUiState(
     val goalProgress: Float = 0f,
     val weeklyData: List<DailyReading> = emptyList(),
     val mostReadBooks: List<MostReadBook> = emptyList(),
+    val monthlyDailyData: Map<String, Long> = emptyMap(),
+    val yearlyDailyData: Map<String, Long> = emptyMap(),
+    val selectedTab: Int = 0,
     val isLoading: Boolean = false,
     val error: String? = null
 )
@@ -70,6 +73,8 @@ class StatisticsViewModel @Inject constructor(
                 loadDailyGoal()
                 loadWeeklyData()
                 loadMostReadBooks()
+                loadMonthlyDailyData()
+                loadYearlyDailyData()
                 _uiState.value = _uiState.value.copy(isLoading = false)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
@@ -184,6 +189,52 @@ class StatisticsViewModel @Inject constructor(
             dataStoreManager.saveDailyGoal(goal)
             _uiState.value = _uiState.value.copy(dailyGoal = goal)
             loadTodayReadingTime()
+        }
+    }
+
+    fun selectTab(index: Int) {
+        _uiState.value = _uiState.value.copy(selectedTab = index)
+    }
+
+    private fun loadMonthlyDailyData() {
+        viewModelScope.launch {
+            val calendar = Calendar.getInstance()
+            val startDate = dateFormat.format(calendar.apply {
+                set(Calendar.DAY_OF_MONTH, 1)
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+            }.time)
+
+            val endDate = dateFormat.format(calendar.apply {
+                set(Calendar.DAY_OF_MONTH, getActualMaximum(Calendar.DAY_OF_MONTH))
+                set(Calendar.HOUR_OF_DAY, 23)
+                set(Calendar.MINUTE, 59)
+                set(Calendar.SECOND, 59)
+            }.time)
+
+            readingRepository.getDailyTotalsBetween(startDate, endDate).collectLatest { dailyTotals ->
+                _uiState.value = _uiState.value.copy(
+                    monthlyDailyData = dailyTotals.associate { it.date to it.totalDuration }
+                )
+            }
+        }
+    }
+
+    private fun loadYearlyDailyData() {
+        viewModelScope.launch {
+            val calendar = Calendar.getInstance()
+            val endDate = dateFormat.format(calendar.time)
+
+            calendar.add(Calendar.YEAR, -1)
+            calendar.add(Calendar.DAY_OF_YEAR, 1)
+            val startDate = dateFormat.format(calendar.time)
+
+            readingRepository.getDailyTotalsBetween(startDate, endDate).collectLatest { dailyTotals ->
+                _uiState.value = _uiState.value.copy(
+                    yearlyDailyData = dailyTotals.associate { it.date to it.totalDuration }
+                )
+            }
         }
     }
 
