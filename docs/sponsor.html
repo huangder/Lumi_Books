@@ -14,7 +14,7 @@
   --surface-soft:#f7f7f7; --surface-strong:#f2f2f2;
   --radius-sm:8px; --radius-md:14px; --radius-lg:20px; --radius-xl:32px; --radius-full:9999px;
   --shadow-card:rgba(0,0,0,0.02) 0 0 0 1px,rgba(0,0,0,0.04) 0 2px 6px,rgba(0,0,0,0.10) 0 4px 8px;
-  --max-width:1280px;
+  --max-width:1280px; --nav-height:80px;
 }
 
 /* ── Fonts ── */
@@ -59,6 +59,14 @@ body{
 .btn-nav-download:hover{background:var(--primary-active);transform:scale(1.04)}
 .btn-nav-sponsor{background:transparent;color:var(--ink);text-decoration:none;padding:9px 19px;border-radius:9999px;font-size:14px;font-weight:500;border:1.5px solid var(--hairline);transition:border-color .2s,color .2s,background .2s}
 .btn-nav-sponsor:hover{border-color:var(--ink);background:rgba(0,0,0,0.03)}
+
+/* Mobile "…" more menu */
+.nav-more-btn{display:none;background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);padding:6px 10px;border-radius:8px;line-height:1;letter-spacing:1px;transition:color 0.15s,background 0.15s}
+.nav-more-btn:hover{color:var(--ink);background:rgba(0,0,0,0.04)}
+.nav-more-dropdown{display:none;position:absolute;top:calc(var(--nav-height) - 4px);right:16px;background:rgba(255,255,255,0.96);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--hairline);border-radius:14px;box-shadow:0 4px 24px rgba(0,0,0,0.10),0 1px 4px rgba(0,0,0,0.06);min-width:148px;padding:8px 0;z-index:200;flex-direction:column}
+.nav-more-dropdown.open{display:flex}
+.nav-more-dropdown a{padding:11px 20px;text-decoration:none;color:var(--ink);font-size:15px;font-weight:500;transition:background 0.12s;white-space:nowrap}
+.nav-more-dropdown a:hover{background:rgba(0,0,0,0.04);color:var(--primary)}
 
 /* ── Glass Card ────────────────────────────────────────── */
 .glass{
@@ -131,7 +139,7 @@ body{
 @media(max-width:743px){
   .thanks-grid{grid-template-columns:1fr;max-width:280px;margin:24px auto 0}
   .top-nav{height:56px;padding:0 16px}
-  .nav-links{gap:12px}.nav-links a{font-size:13px}
+  .nav-links{display:none}.nav-more-btn{display:block}
   .nav-logo span{display:none}
   .btn-nav-download,.btn-nav-sponsor{padding:8px 14px;font-size:13px}
   .footer-light{grid-template-columns:1fr}.legal-band{flex-direction:column;gap:8px;text-align:center}
@@ -154,6 +162,13 @@ body{
   <div class="nav-cta">
     <a href="sponsor.html" class="btn-nav-sponsor">赞助</a>
     <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-nav-download">获取 Lumi</a>
+  </div>
+  <button class="nav-more-btn" aria-label="更多导航" onclick="event.stopPropagation();this.nextElementSibling.classList.toggle('open')">…</button>
+  <div class="nav-more-dropdown">
+    <a href="features.html">功能</a>
+    <a href="privacy-section.html">隐私</a>
+    <a href="tech.html">技术</a>
+    <a href="sponsor.html">赞助</a>
   </div>
 </nav>
 
@@ -226,6 +241,7 @@ body{
   els.forEach(function(el){io.observe(el)});
   var nav=document.querySelector('.top-nav');
   window.addEventListener('scroll',function(){requestAnimationFrame(function(){if(window.scrollY>10)nav.classList.add('scrolled');else nav.classList.remove('scrolled')})},{passive:true});
+  document.addEventListener('click',function(e){var dd=document.querySelector('.nav-more-dropdown');var btn=document.querySelector('.nav-more-btn');if(dd&&dd.classList.contains('open')&&!dd.contains(e.target)&&e.target!==btn)dd.classList.remove('open')});
 })();
 </script>
 </body>

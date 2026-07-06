@@ -6,6 +6,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-blue)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-purple)](https://kotlinlang.org)
+[![Sponsor](https://img.shields.io/badge/%E2%9D%A4%EF%B8%8F-%E8%B5%9E%E5%8A%A9-ff385c)](https://huangder.top/sponsor.html)
 
 ---
 
