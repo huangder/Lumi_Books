@@ -11,7 +11,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import android.net.Uri
 import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 import javax.inject.Inject
 
 @HiltViewModel
@@ -233,5 +242,113 @@ class SettingsViewModel @Inject constructor(
             bytes < 1024 * 1024 -> "${bytes / 1024} KB"
             else -> String.format("%.1f MB", bytes / (1024.0 * 1024.0))
         }
+    }
+
+    // ─── 备份 ───
+
+    /**
+     * 将数据库 + DataStore + 头像打包为 ZIP，写入 [outputUri]。
+     * 返回生成文件大小的可读字符串，失败抛异常。
+     */
+    suspend fun backup(outputUri: Uri): String {
+        _uiState.value = _uiState.value.copy(isProcessing = true, backupStatus = "正在备份...")
+        try {
+            val bytes = context.contentResolver.openOutputStream(outputUri)?.use { out ->
+                ZipOutputStream(out).use { zip ->
+                    // 1. Room 数据库（主库 + WAL + SHM）
+                    val dbDir = context.getDatabasePath("ebook_reader_database").parentFile
+                    dbDir?.listFiles()?.forEach { f ->
+                        if (f.name.startsWith("ebook_reader_database")) {
+                            addFileToZip(zip, "database/${f.name}", f)
+                        }
+                    }
+
+                    // 2. DataStore preferences
+                    val dsFile = File(context.filesDir.parentFile, "datastore/settings.preferences")
+                    if (dsFile.exists()) addFileToZip(zip, "datastore/settings.preferences", dsFile)
+
+                    // 3. 头像
+                    val avatar = File(context.filesDir, "avatars/avatar.jpg")
+                    if (avatar.exists()) addFileToZip(zip, "avatars/avatar.jpg", avatar)
+
+                    // 4. 书籍文件目录
+                    val booksDir = File(context.filesDir, "books")
+                    if (booksDir.exists()) {
+                        booksDir.walkTopDown().filter { it.isFile }.forEach { f ->
+                            val rel = f.relativeTo(booksDir).path.replace("\\", "/")
+                            addFileToZip(zip, "books/$rel", f)
+                        }
+                    }
+                }
+                // 计算大小：重新读取有点浪费，用 cacheDir 里的临时副本
+                0L // placeholder
+            }
+
+            // 获取文件大小
+            val size = context.contentResolver.openInputStream(outputUri)?.use { it.available().toLong() } ?: 0L
+            val sizeStr = formatFileSize(size)
+
+            _uiState.value = _uiState.value.copy(isProcessing = false, backupStatus = "备份完成 ($sizeStr)")
+            return sizeStr
+        } catch (e: Exception) {
+            _uiState.value = _uiState.value.copy(isProcessing = false, backupStatus = "备份失败: ${e.message}")
+            throw e
+        }
+    }
+
+    /**
+     * 从 [inputUri] 读取 ZIP 并恢复数据库、DataStore、头像。
+     * 恢复后需要重启 App 才能生效。
+     */
+    suspend fun restore(inputUri: Uri) {
+        _uiState.value = _uiState.value.copy(isProcessing = true, backupStatus = "正在恢复...")
+        try {
+            context.contentResolver.openInputStream(inputUri)?.use { inp ->
+                ZipInputStream(inp).use { zip ->
+                    var entry: ZipEntry? = zip.nextEntry
+                    while (entry != null) {
+                        val name = entry.name
+                        when {
+                            name.startsWith("database/") -> {
+                                val dbName = name.removePrefix("database/")
+                                val target = context.getDatabasePath(dbName)
+                                target.parentFile?.mkdirs()
+                                FileOutputStream(target).use { zip.copyTo(it) }
+                            }
+                            name == "datastore/settings.preferences" -> {
+                                val target = File(context.filesDir.parentFile, "datastore/settings.preferences")
+                                target.parentFile?.mkdirs()
+                                FileOutputStream(target).use { zip.copyTo(it) }
+                            }
+                            name.startsWith("avatars/") -> {
+                                val target = File(context.filesDir, name)
+                                target.parentFile?.mkdirs()
+                                FileOutputStream(target).use { zip.copyTo(it) }
+                            }
+                            name.startsWith("books/") -> {
+                                val target = File(context.filesDir, name)
+                                target.parentFile?.mkdirs()
+                                FileOutputStream(target).use { zip.copyTo(it) }
+                            }
+                        }
+                        entry = zip.nextEntry
+                    }
+                }
+            }
+            _uiState.value = _uiState.value.copy(isProcessing = false, backupStatus = "恢复成功，请重启应用")
+        } catch (e: Exception) {
+            _uiState.value = _uiState.value.copy(isProcessing = false, backupStatus = "恢复失败: ${e.message}")
+            throw e
+        }
+    }
+
+    fun clearBackupStatus() {
+        _uiState.value = _uiState.value.copy(backupStatus = "")
+    }
+
+    private fun addFileToZip(zip: ZipOutputStream, entryName: String, file: File) {
+        zip.putNextEntry(ZipEntry(entryName))
+        FileInputStream(file).use { it.copyTo(zip) }
+        zip.closeEntry()
     }
 }
