@@ -82,6 +82,7 @@ dimen notification_top_pad
 dimen notification_top_pad_large_text
 drawable abc_vector_test
 drawable app_icon
+drawable donation_qr
 drawable ic_call_answer
 drawable ic_call_answer_low
 drawable ic_call_answer_video

@@ -5,6 +5,7 @@ color primary
 color primary_dark
 color white
 drawable app_icon
+drawable donation_qr
 drawable ic_launcher_background
 drawable ic_launcher_foreground
 drawable share_poster_bg

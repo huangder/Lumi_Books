@@ -252,6 +252,14 @@
             transition: background 0.2s ease, transform 0.2s ease;
         }
         .btn-nav-download:hover { background: var(--primary-active); transform: scale(1.04); }
+        .btn-nav-sponsor {
+            background: transparent; color: var(--ink);
+            text-decoration: none; padding: 9px 19px;
+            border-radius: var(--radius-full); font-size: 14px; font-weight: 500;
+            border: 1.5px solid var(--hairline);
+            transition: border-color 0.2s, color 0.2s, background 0.2s;
+        }
+        .btn-nav-sponsor:hover { border-color: var(--ink); background: rgba(0,0,0,0.03); }
 
         /* ═══════════════════════════════════════════════════════
            Hero — no rounded corners, big soft shadow
@@ -671,8 +679,10 @@
         <li><a href="features.html">功能</a></li>
         <li><a href="privacy-section.html">隐私</a></li>
         <li><a href="tech.html">技术</a></li>
+        <li><a href="sponsor.html">赞助</a></li>
     </ul>
     <div class="nav-cta">
+        <a href="sponsor.html" class="btn-nav-sponsor">赞助</a>
         <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-nav-download">获取 Lumi</a>
     </div>
 </nav>
@@ -740,7 +750,7 @@
     <div class="download-band animate-on-scroll scale-in">
         <div class="dl-info">
             <h3>准备好开始阅读了？</h3>
-            <p>最新版本 v1.0.01.124 · 约 15 MB · Android 8.0 及以上</p>
+            <p>最新版本 v1.0.01.104_Beta · 约 15 MB · Android 8.0 及以上</p>
             <div class="version-tag">开源免费 · 持续更新</div>
         </div>
         <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-download-pill">获取 Lumi</a>

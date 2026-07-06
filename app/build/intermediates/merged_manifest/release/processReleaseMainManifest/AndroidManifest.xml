@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.huangder.lumibooks"
     android:versionCode="3"
-    android:versionName="1.00.03_beta" >
+    android:versionName="1.0.01.104_Beta" >
 
     <uses-sdk
         android:minSdkVersion="26"
@@ -53,6 +53,11 @@
             android:windowSoftInputMode="adjustResize" />
         <activity
             android:name="com.huangder.lumibooks.ui.settings.WebViewActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+            android:theme="@style/Theme.EBookReader"
+            android:windowSoftInputMode="adjustResize" />
+        <activity
+            android:name="com.huangder.lumibooks.ui.settings.SponsorActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
             android:theme="@style/Theme.EBookReader"
             android:windowSoftInputMode="adjustResize" />
