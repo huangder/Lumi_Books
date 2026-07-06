@@ -140,8 +140,8 @@ class StatisticsViewModel @Inject constructor(
         viewModelScope.launch {
             val startOfWeek = Calendar.getInstance().apply {
                 set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0)
-                firstDayOfWeek = Calendar.MONDAY
-                set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+                firstDayOfWeek = Calendar.SUNDAY
+                set(Calendar.DAY_OF_WEEK, Calendar.SUNDAY)
                 add(Calendar.WEEK_OF_YEAR, weekOffset)
             }
             val endOfWeek = (startOfWeek.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 6) }
