@@ -34,8 +34,6 @@ import com.huangder.lumibooks.ui.reader.ReaderScreen
 import com.huangder.lumibooks.ui.reader.PdfViewerScreen
 import com.huangder.lumibooks.ui.reader.ReaderViewModel
 import com.huangder.lumibooks.ui.statistics.StatisticsScreen
-import com.huangder.lumibooks.ui.welcome.WelcomeScreen
-import com.huangder.lumibooks.ui.welcome.WelcomeViewModel
 import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.LocalReaderColors
@@ -73,21 +71,19 @@ private fun ReaderRouter(
 
 @Composable
 fun MainNavGraph(navController: NavHostController) {
-    val welcomeViewModel: WelcomeViewModel = hiltViewModel()
-    val hasSeenWelcome by welcomeViewModel.hasSeenWelcome.collectAsState()
     var selectedTab by remember { mutableIntStateOf(0) }
     var showTransition by remember { mutableStateOf(false) }
     var transitionCover by remember { mutableStateOf<String?>(null) }
     var transitionTitle by remember { mutableStateOf("") }
     var readerReady by remember { mutableStateOf(false) }
     var pendingBookId by remember { mutableStateOf<String?>(null) }
-    var tabBarVisible by remember { mutableStateOf(hasSeenWelcome != false) }
+    var tabBarVisible by remember { mutableStateOf(true) }
 
     // 监听路由变化，从阅读页/设置页返回时延迟显示 TabBar
     val currentEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentEntry?.destination?.route
     LaunchedEffect(currentRoute, showTransition) {
-        if (currentRoute == Screen.Reader.route || currentRoute == Screen.Welcome.route || showTransition) {
+        if (currentRoute == Screen.Reader.route || showTransition) {
             tabBarVisible = false
         } else {
             delay(800)
@@ -107,28 +103,8 @@ fun MainNavGraph(navController: NavHostController) {
         // 主内容
         NavHost(
             navController = navController,
-            startDestination = when (hasSeenWelcome) {
-                null -> Screen.Home.route // 加载中，先显示 Home
-                true -> Screen.Home.route
-                false -> Screen.Welcome.route
-            }
+            startDestination = Screen.Home.route
         ) {
-            composable(Screen.Welcome.route) {
-                WelcomeScreen(
-                    onContinue = {
-                        welcomeViewModel.saveHasSeenWelcome(true)
-                        navController.navigate(Screen.Home.route) {
-                            popUpTo(Screen.Welcome.route) { inclusive = true }
-                        }
-                    },
-                    onExit = {
-                        // 退出应用
-                        val activity = (navController.context as? android.app.Activity)
-                        activity?.finish()
-                    }
-                )
-            }
-
             composable(Screen.Home.route) {
                 HomeScreen(
                     onNavigateToReader = { bookId, coverPath, title ->

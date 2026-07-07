@@ -31,7 +31,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.EBookReader" >
         <activity
-            android:name="com.huangder.lumibooks.MainActivity"
+            android:name="com.huangder.lumibooks.ui.welcome.WelcomeActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
             android:exported="true"
             android:theme="@style/Theme.EBookReader"
@@ -42,6 +42,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name="com.huangder.lumibooks.MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+            android:exported="true"
+            android:theme="@style/Theme.EBookReader"
+            android:windowSoftInputMode="adjustResize" />
         <activity
             android:name="com.huangder.lumibooks.ui.settings.SettingsActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
