@@ -81,7 +81,7 @@ fun MainNavGraph(navController: NavHostController) {
     var transitionTitle by remember { mutableStateOf("") }
     var readerReady by remember { mutableStateOf(false) }
     var pendingBookId by remember { mutableStateOf<String?>(null) }
-    var tabBarVisible by remember { mutableStateOf(true) }
+    var tabBarVisible by remember { mutableStateOf(hasSeenWelcome != false) }
 
     // 监听路由变化，从阅读页/设置页返回时延迟显示 TabBar
     val currentEntry by navController.currentBackStackEntryAsState()
