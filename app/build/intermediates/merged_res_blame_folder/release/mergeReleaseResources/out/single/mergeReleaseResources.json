@@ -1,11 +1,11 @@
 [
     {
-        "merged": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-release-64:\\mipmap-mdpi_ic_launcher.png.flat",
-        "source": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-main-65:\\mipmap-mdpi\\ic_launcher.png"
-    },
-    {
         "merged": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-release-64:\\xml_file_paths.xml.flat",
         "source": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-main-65:\\xml\\file_paths.xml"
+    },
+    {
+        "merged": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-release-64:\\mipmap-mdpi_ic_launcher.png.flat",
+        "source": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-main-65:\\mipmap-mdpi\\ic_launcher.png"
     },
     {
         "merged": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-release-64:\\mipmap-hdpi_ic_launcher.png.flat",
@@ -18,6 +18,10 @@
     {
         "merged": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-release-64:\\font_lxgw_wenkai.ttf.flat",
         "source": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-main-65:\\font\\lxgw_wenkai.ttf"
+    },
+    {
+        "merged": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-release-64:\\drawable_donation_qr.png.flat",
+        "source": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-main-65:\\drawable\\donation_qr.png"
     },
     {
         "merged": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-release-64:\\drawable_share_poster_bg.png.flat",
@@ -48,11 +52,11 @@
         "source": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-main-65:\\drawable\\splash_background.xml"
     },
     {
-        "merged": "com.huangder.lumibooks.app-release-64:/drawable_donation_qr.png.flat",
-        "source": "com.huangder.lumibooks.app-main-65:/drawable/donation_qr.png"
-    },
-    {
         "merged": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-release-64:\\font_fandol_fang.ttf.flat",
         "source": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-main-65:\\font\\fandol_fang.ttf"
+    },
+    {
+        "merged": "com.huangder.lumibooks.app-release-64:/drawable_feedback_qr.png.flat",
+        "source": "com.huangder.lumibooks.app-main-65:/drawable/feedback_qr.png"
     }
 ]

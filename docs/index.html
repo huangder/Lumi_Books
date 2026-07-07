@@ -407,6 +407,47 @@
             object-fit: contain;
         }
 
+        /* ── Screenshot preview ────────────────────────────── */
+        .screenshots-section {
+            padding: var(--space-section) var(--space-xxl);
+            max-width: var(--max-width); margin: 0 auto;
+        }
+        .screenshots-header {
+            text-align: center; margin-bottom: var(--space-xl);
+        }
+        .screenshots-header .label {
+            font-size: 12px; font-weight: 700; letter-spacing: 0.5px;
+            text-transform: uppercase; color: var(--muted);
+            margin-bottom: var(--space-xs);
+        }
+        .screenshots-header h2 {
+            font-size: 22px; font-weight: 500; color: var(--ink);
+        }
+        .screenshots-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: var(--space-base);
+        }
+        .screenshot-card {
+            background: rgba(255,255,255,0.55);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.7);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            transition: transform 0.3s cubic-bezier(0.22, 0.61, 0.36, 1),
+                        box-shadow 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
+        }
+        .screenshot-card:hover {
+            transform: translateY(-4px);
+            box-shadow: rgba(0,0,0,0.02) 0 0 0 1px,
+                        rgba(0,0,0,0.06) 0 4px 16px,
+                        rgba(0,0,0,0.10) 0 8px 20px;
+        }
+        .screenshot-card img {
+            width: 100%; height: auto; display: block;
+        }
+
         .pill-strip {
             display: flex;
             gap: var(--space-sm);
@@ -684,6 +725,8 @@
             }
             .explore-section { padding: var(--space-xxl) var(--space-base); }
             .explore-grid { grid-template-columns: 1fr; }
+            .screenshots-section { padding: var(--space-xxl) var(--space-base); }
+            .screenshots-grid { grid-template-columns: 1fr; }
             .download-section { padding: 0 var(--space-base) var(--space-section); }
             .download-band {
                 flex-direction: column;
@@ -719,6 +762,7 @@
         <li><a href="privacy-section.html">隐私</a></li>
         <li><a href="tech.html">技术</a></li>
         <li><a href="sponsor.html">赞助</a></li>
+        <li><a href="feedback.html">反馈</a></li>
     </ul>
     <div class="nav-cta">
         <a href="sponsor.html" class="btn-nav-sponsor">赞助</a>
@@ -730,6 +774,7 @@
         <a href="privacy-section.html">隐私</a>
         <a href="tech.html">技术</a>
         <a href="sponsor.html">赞助</a>
+        <a href="feedback.html">反馈</a>
     </div>
 </nav>
 
@@ -754,10 +799,34 @@
     </div>
     <div class="hero-visual hero-entrance hero-entrance-3">
         <div class="hero-phone">
-            <img src="首页.png" alt="Lumi 阅读界面截图">
+            <img src="hero.png" alt="Lumi 阅读界面截图">
         </div>
     </div>
 </header>
+
+<!-- ═══════════════════════════════════════════════════════
+     Screenshots
+     ═══════════════════════════════════════════════════════ -->
+<section class="screenshots-section">
+    <div class="screenshots-header animate-on-scroll">
+        <div class="label">应用预览</div>
+        <h2>简洁优雅的阅读体验</h2>
+    </div>
+    <div class="screenshots-grid">
+        <div class="screenshot-card animate-on-scroll stagger-1">
+            <img src="hero.png" alt="阅读界面" loading="lazy">
+        </div>
+        <div class="screenshot-card animate-on-scroll stagger-2">
+            <img src="bookshelf.png" alt="书架管理" loading="lazy">
+        </div>
+        <div class="screenshot-card animate-on-scroll stagger-3">
+            <img src="heatmap.png" alt="阅读统计热力图" loading="lazy">
+        </div>
+        <div class="screenshot-card animate-on-scroll stagger-4">
+            <img src="settings.png" alt="设置页面" loading="lazy">
+        </div>
+    </div>
+</section>
 
 <!-- ═══════════════════════════════════════════════════════
      Explore — glassmorphism link cards
