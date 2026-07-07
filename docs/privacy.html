@@ -81,7 +81,24 @@
             border-radius: var(--radius-sm);
         }
         .nav-back:hover { color: var(--ink); background: rgba(0,0,0,0.04); }
-        .nav-spacer { width: 100px; } /* balance the back button on left */
+        .nav-spacer { flex: 1; }
+
+        .nav-cta { display: flex; align-items: center; gap: var(--space-base); }
+        .btn-nav-download {
+            background: var(--primary); color: var(--on-primary);
+            text-decoration: none; padding: 10px 20px;
+            border-radius: var(--radius-full); font-size: 14px; font-weight: 500;
+            transition: background 0.2s, transform 0.2s;
+        }
+        .btn-nav-download:hover { background: var(--primary-active); transform: scale(1.04); }
+        .btn-nav-sponsor {
+            background: transparent; color: var(--ink);
+            text-decoration: none; padding: 9px 19px;
+            border-radius: var(--radius-full); font-size: 14px; font-weight: 500;
+            border: 1.5px solid var(--hairline);
+            transition: border-color 0.2s, color 0.2s, background 0.2s;
+        }
+        .btn-nav-sponsor:hover { border-color: var(--ink); background: rgba(0,0,0,0.03); }
 
         .container {
             max-width: var(--max-width);
@@ -197,16 +214,11 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
         <span>返回</span>
     </a>
-    <a href="index.html" class="nav-logo">
-        <img src="icon.png" alt="Lumi">
-        <span>Lumi</span>
-    </a>
-    <ul class="nav-links">
-        <li><a href="features.html">功能</a></li>
-        <li><a href="privacy-section.html">隐私</a></li>
-        <li><a href="tech.html">技术</a></li>
-    </ul>
     <div class="nav-spacer"></div>
+    <div class="nav-cta">
+        <a href="sponsor.html" class="btn-nav-sponsor">赞助</a>
+        <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-nav-download">获取 Lumi</a>
+    </div>
 </nav>
 
 <div class="container">

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" type="image/png" href="icon.png">
+<title>问题反馈 — Lumi</title>
+<style>
+/* ── Airbnb Design Tokens ─────────────────────────────── */
+:root{
+  --primary:#ff385c; --primary-active:#e00b41;
+  --ink:#222222; --body:#3f3f3f; --muted:#6a6a6a; --muted-soft:#929292;
+  --hairline:#dddddd; --hairline-soft:#ebebeb;
+  --surface-soft:#f7f7f7; --surface-strong:#f2f2f2;
+  --radius-sm:8px; --radius-md:14px; --radius-lg:20px; --radius-xl:32px; --radius-full:9999px;
+  --shadow-card:rgba(0,0,0,0.02) 0 0 0 1px,rgba(0,0,0,0.04) 0 2px 6px,rgba(0,0,0,0.10) 0 4px 8px;
+  --max-width:1280px; --nav-height:80px;
+}
+
+/* ── Fonts ── */
+@font-face{font-family:'Product Sans';src:url('fonts/ProductSans-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Product Sans';src:url('fonts/ProductSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap}
+@font-face{font-family:'Product Sans';src:url('fonts/ProductSans-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap}
+@font-face{font-family:'MiSans';src:url('fonts/MiSans-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'MiSans';src:url('fonts/MiSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap}
+@font-face{font-family:'MiSans';src:url('fonts/MiSans-Semibold.ttf') format('truetype');font-weight:600;font-style:normal;font-display:swap}
+@font-face{font-family:'MiSans';src:url('fonts/MiSans-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap}
+
+/* ── Reset & Base ─────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:'Product Sans','MiSans',-apple-system,system-ui,Roboto,'Helvetica Neue',sans-serif;
+  background:linear-gradient(135deg,#faf5ff 0%,#f0f9ff 30%,#fff7ed 60%,#f0fdf4 100%);
+  color:var(--ink);line-height:1.5;-webkit-font-smoothing:antialiased;
+  min-height:100vh;
+}
+
+/* ── Animations ───────────────────────────────────────── */
+@keyframes fadeInUp{
+  from{opacity:0;transform:translateY(24px)}
+  to{opacity:1;transform:translateY(0)}
+}
+@keyframes fadeIn{
+  from{opacity:0}
+  to{opacity:1}
+}
+.reveal{opacity:0;transform:translateY(24px);transition:opacity 0.6s cubic-bezier(0.22,0.61,0.36,1),transform 0.6s cubic-bezier(0.22,0.61,0.36,1)}
+.reveal.visible{opacity:1;transform:translateY(0)}
+.s1{transition-delay:0.05s}.s2{transition-delay:0.12s}.s3{transition-delay:0.19s}
+
+/* ── Top Nav ──────────────────────────────────────────── */
+.top-nav{
+  position:sticky;top:0;z-index:100;
+  background:rgba(255,255,255,0.72);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  height:var(--nav-height);border-bottom:1px solid rgba(255,255,255,0.5);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 48px;
+}
+.top-nav.scrolled{
+  border-bottom-color:var(--hairline);
+  box-shadow:0 1px 0 rgba(0,0,0,0.04);
+  background:rgba(255,255,255,0.88);
+}
+.nav-back{
+  display:flex;align-items:center;gap:4px;text-decoration:none;
+  color:var(--muted);font-size:14px;font-weight:500;
+  transition:color 0.15s;padding:6px 10px;border-radius:var(--radius-sm);
+}
+.nav-back:hover{color:var(--ink);background:rgba(0,0,0,0.04)}
+.nav-spacer{flex:1}
+.nav-cta{display:flex;align-items:center;gap:12px}
+.btn-nav-download{
+  background:var(--primary);color:#fff;text-decoration:none;
+  padding:10px 20px;border-radius:var(--radius-full);font-size:14px;font-weight:500;
+  transition:background 0.2s,transform 0.2s;
+}
+.btn-nav-download:hover{background:var(--primary-active);transform:scale(1.04)}
+.btn-nav-sponsor{
+  background:transparent;color:var(--ink);text-decoration:none;
+  padding:9px 19px;border-radius:var(--radius-full);font-size:14px;font-weight:500;
+  border:1.5px solid var(--hairline);
+  transition:border-color 0.2s,color 0.2s,background 0.2s;
+}
+.btn-nav-sponsor:hover{border-color:var(--ink);background:rgba(0,0,0,0.03)}
+
+/* ── Page Content ─────────────────────────────────────── */
+.page-container{
+  max-width:720px;margin:0 auto;padding:64px 24px;
+}
+.hero-title{
+  font-size:28px;font-weight:700;line-height:1.43;
+  text-align:center;margin-bottom:8px;
+}
+.hero-sub{
+  font-size:16px;color:var(--body);text-align:center;
+  margin-bottom:40px;line-height:1.6;
+}
+.qr-card{
+  background:rgba(255,255,255,0.55);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border:1px solid rgba(255,255,255,0.7);border-radius:var(--radius-md);
+  padding:40px;text-align:center;
+  box-shadow:var(--shadow-card);max-width:400px;margin:0 auto;
+}
+.qr-card p{font-size:14px;color:var(--muted);margin-top:16px;line-height:1.6}
+.qr-card img{width:240px;height:240px;border-radius:var(--radius-sm)}
+
+/* ── Footer ───────────────────────────────────────────── */
+.footer-light{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:24px;
+  padding:48px 48px 32px;max-width:var(--max-width);margin:0 auto;
+}
+.footer-col h4{font-size:14px;font-weight:600;margin-bottom:12px;color:var(--ink)}
+.footer-col ul{list-style:none;display:flex;flex-direction:column;gap:6px}
+.footer-col ul li a{text-decoration:none;color:var(--muted);font-size:14px;transition:color 0.15s}
+.footer-col ul li a:hover{color:var(--ink)}
+.legal-band{
+  display:flex;justify-content:space-between;align-items:center;
+  font-size:13px;color:var(--muted);border-top:1px solid rgba(255,255,255,0.3);
+  padding:16px 48px;max-width:var(--max-width);margin:0 auto;
+}
+.legal-band a{color:var(--muted);text-decoration:none;margin-left:24px}
+.legal-band a:hover{text-decoration:underline}
+
+/* ── Responsive ────────────────────────────────────────── */
+@media(max-width:743px){
+  .top-nav{height:56px;padding:0 16px}
+  .page-container{padding:48px 16px}
+  .hero-title{font-size:24px}
+  .qr-card{padding:24px}
+  .qr-card img{width:200px;height:200px}
+  .btn-nav-download,.btn-nav-sponsor{padding:8px 14px;font-size:13px}
+  .footer-light{grid-template-columns:1fr;padding:32px 16px}
+  .legal-band{flex-direction:column;gap:8px;text-align:center}
+}
+</style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="javascript:history.back()" class="nav-back" title="返回">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    <span>返回</span>
+  </a>
+  <div class="nav-spacer"></div>
+  <div class="nav-cta">
+    <a href="sponsor.html" class="btn-nav-sponsor">赞助</a>
+    <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-nav-download">获取 Lumi</a>
+  </div>
+</nav>
+
+<div class="page-container">
+  <h1 class="hero-title reveal">问题反馈</h1>
+  <p class="hero-sub reveal s1">
+    使用过程中遇到任何问题，或有功能建议？<br>扫描下方二维码填写反馈表单，我们会尽快处理。
+  </p>
+  <div class="qr-card reveal s2">
+    <img src="feedback-qr.png" alt="反馈表二维码" loading="lazy">
+    <p>微信扫码填写反馈表单<br>也欢迎通过 <a href="https://github.com/huangder/Lumi_Books/issues" style="color:var(--primary);text-decoration:none">GitHub Issues</a> 提交问题</p>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-light">
+    <div class="footer-col"><h4>Lumi</h4><ul><li><a href="features.html">功能介绍</a></li><li><a href="tech.html">技术架构</a></li><li><a href="sponsor.html">赞助支持</a></li><li><a href="feedback.html">问题反馈</a></li></ul></div>
+    <div class="footer-col"><h4>法律</h4><ul><li><a href="privacy.html">隐私政策</a></li><li><a href="terms.html">用户协议</a></li></ul></div>
+    <div class="footer-col"><h4>联系方式</h4><ul><li><a href="https://github.com/huangder/Lumi_Books">GitHub</a></li><li><a href="mailto:huangder0104@126.com">邮件联系</a></li></ul></div>
+  </div>
+  <div class="legal-band"><span>&copy; 2026 Huangder</span><span><a href="privacy.html">隐私</a><a href="terms.html">条款</a><a href="sponsor.html">赞助</a></span></div>
+</footer>
+
+<script>
+(function(){
+  var els=document.querySelectorAll('.reveal');
+  if(!('IntersectionObserver' in window)){els.forEach(function(el){el.classList.add('visible')});return}
+  var io=new IntersectionObserver(function(entries){entries.forEach(function(e){if(e.isIntersecting){e.target.classList.add('visible');io.unobserve(e.target)}})},{threshold:0.12});
+  els.forEach(function(el){io.observe(el)});
+  var nav=document.querySelector('.top-nav');
+  window.addEventListener('scroll',function(){requestAnimationFrame(function(){if(window.scrollY>10)nav.classList.add('scrolled');else nav.classList.remove('scrolled')})},{passive:true});
+})();
+</script>
+</body>
+</html>
