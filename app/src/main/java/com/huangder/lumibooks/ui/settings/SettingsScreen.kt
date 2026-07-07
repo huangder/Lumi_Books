@@ -31,6 +31,7 @@ import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Backup
 import androidx.compose.material.icons.outlined.Brightness6
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.FormatSize
@@ -195,6 +196,9 @@ fun SettingsScreen(
             }
             CategoryItem(Icons.Outlined.FavoriteBorder, "赞助开发") {
                 context.startActivity(Intent(context, SponsorActivity::class.java))
+            }
+            CategoryItem(Icons.Outlined.BugReport, "问题反馈") {
+                context.startActivity(Intent(context, FeedbackActivity::class.java))
             }
 
             Spacer(Modifier.height(120.dp))
