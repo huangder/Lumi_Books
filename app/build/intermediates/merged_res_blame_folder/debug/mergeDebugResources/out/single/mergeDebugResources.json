@@ -4,6 +4,10 @@
         "source": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-main-70:\\drawable\\splash_background.xml"
     },
     {
+        "merged": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-debug-68:\\drawable_donation_qr.png.flat",
+        "source": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-main-70:\\drawable\\donation_qr.png"
+    },
+    {
         "merged": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-debug-68:\\mipmap-xxxhdpi_ic_launcher.png.flat",
         "source": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-main-70:\\mipmap-xxxhdpi\\ic_launcher.png"
     },
@@ -52,7 +56,7 @@
         "source": "C:\\Users\\Huangder\\.gradle\\daemon\\8.13\\com.huangder.lumibooks.app-main-70:\\mipmap-mdpi\\ic_launcher.png"
     },
     {
-        "merged": "com.huangder.lumibooks.app-debug-68:/drawable_donation_qr.png.flat",
-        "source": "com.huangder.lumibooks.app-main-70:/drawable/donation_qr.png"
+        "merged": "com.huangder.lumibooks.app-debug-68:/drawable_feedback_qr.png.flat",
+        "source": "com.huangder.lumibooks.app-main-70:/drawable/feedback_qr.png"
     }
 ]
