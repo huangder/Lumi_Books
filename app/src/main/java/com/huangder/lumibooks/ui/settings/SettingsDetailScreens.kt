@@ -40,7 +40,11 @@ import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material.icons.outlined.Upload
+import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.SystemUpdateAlt
+import androidx.compose.material.icons.outlined.Upgrade
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -429,8 +433,10 @@ fun BackupRestoreDetail(viewModel: SettingsViewModel) {
 // ─── 关于应用 ────────────────────────────────────────────────
 
 @Composable
-fun AboutDetail() {
+fun AboutDetail(viewModel: SettingsViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val uiState by viewModel.uiState.collectAsState()
+    val update = uiState.updateCheck
 
     fun openDoc(title: String, file: String) {
         context.startActivity(
@@ -440,6 +446,81 @@ fun AboutDetail() {
         )
     }
 
+    // ── 条款/政策更新 Dialog ──
+    if (update.showPolicyUpdateDialog) {
+        val needsTerms = update.hasTermsUpdate
+        val needsPrivacy = update.hasPrivacyUpdate
+        val title = when {
+            needsTerms && needsPrivacy -> "用户协议与隐私政策已更新"
+            needsTerms -> "用户协议已更新"
+            else -> "隐私政策已更新"
+        }
+        val message = buildString {
+            append("感谢您使用 Lumi！我们在持续改进产品的同时，也可能会不断完善法律条款。")
+            if (needsTerms) append("\n\n• 用户协议已更新（版本 ${update.termsVersion}）")
+            if (needsPrivacy) append("\n\n• 隐私政策已更新（版本 ${update.privacyVersion}）")
+            append("\n\n请阅读更新内容后选择是否同意。")
+        }
+
+        AlertDialog(
+            onDismissRequest = { /* 不可关闭 */ },
+            title = { Text(title, fontSize = AppType.Body, fontWeight = FontWeight.Bold) },
+            text = { Text(message, fontSize = AppType.BodySmall) },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (update.hasTermsUpdate) viewModel.acceptTermsUpdate(update.termsVersion)
+                    if (update.hasPrivacyUpdate) viewModel.acceptPrivacyUpdate(update.privacyVersion)
+                }) { Text("同意并继续", color = AppColors.Accent) }
+            },
+            dismissButton = {
+                // 查看协议
+                if (update.hasTermsUpdate) {
+                    TextButton(onClick = { openDoc("用户协议", "terms.html") }) {
+                        Text("查看用户协议")
+                    }
+                }
+                if (update.hasPrivacyUpdate) {
+                    TextButton(onClick = { openDoc("隐私政策", "privacy.html") }) {
+                        Text("查看隐私政策")
+                    }
+                }
+                // 退出按钮
+                TextButton(onClick = {
+                    // 用户不同意，退出应用
+                    (context as? android.app.Activity)?.finishAffinity()
+                }) { Text("不同意并退出", color = AppColors.TextSecondary) }
+            }
+        )
+    }
+
+    // ── App 更新 Dialog ──
+    if (update.showAppUpdateDialog) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissAppUpdateDialog() },
+            title = { Text("发现新版本", fontSize = AppType.Body, fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "新版本 ${update.appVersion} 已发布，是否前往下载？",
+                    fontSize = AppType.BodySmall
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    // 打开 GitHub Releases 页面
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(update.releaseUrl))
+                    context.startActivity(intent)
+                    viewModel.dismissAppUpdateDialog()
+                }) { Text("下载", color = AppColors.Accent) }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissAppUpdateDialog() }) {
+                    Text("稍后", color = AppColors.TextSecondary)
+                }
+            }
+        )
+    }
+
+    // ── 版本信息 Card ──
     DetailCard {
         // 版本
         Row(Modifier.fillMaxWidth().padding(AppSpace.md), verticalAlignment = Alignment.CenterVertically) {
@@ -455,13 +536,51 @@ fun AboutDetail() {
             Spacer(Modifier.width(AppSpace.md))
             Column(modifier = Modifier.weight(1f)) {
                 Text("隐私声明", fontSize = AppType.Body, color = AppColors.TextPrimary)
-                Text("本应用完全离线运行，无网络权限，无第三方SDK", fontSize = AppType.Caption, color = AppColors.TextSecondary)
+                Text("网络仅用于检查更新，无数据收集", fontSize = AppType.Caption, color = AppColors.TextSecondary)
             }
         }
     }
 
     Spacer(Modifier.height(AppSpace.lg))
 
+    // ── 检查更新 Card ──
+    DetailCard {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    enabled = !update.isChecking
+                ) { viewModel.checkUpdate(isAutoCheck = false) }
+                .padding(AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Outlined.Upgrade, null, tint = AppColors.Accent, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.width(AppSpace.md))
+            Text(
+                if (update.isChecking) "正在检查更新..." else "检查更新",
+                fontSize = AppType.Body,
+                color = AppColors.TextPrimary,
+                modifier = Modifier.weight(1f)
+            )
+            if (update.isChecking) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                    color = AppColors.Accent
+                )
+            } else {
+                Icon(Icons.Outlined.ChevronRight, null,
+                    tint = AppColors.TextSecondary,
+                    modifier = Modifier.size(22.dp))
+            }
+        }
+    }
+
+    Spacer(Modifier.height(AppSpace.lg))
+
+    // ── 法律条款 Card ──
     DetailCard {
         // 隐私条款
         ActionRow(Icons.Outlined.NightsStay, "隐私条款") { openDoc("隐私条款", "privacy.html") }

@@ -8,6 +8,7 @@ import coil.Coil
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.util.FileUtils
+import com.huangder.lumibooks.util.UpdateChecker
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -99,6 +100,20 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.dailyGoal.collectLatest { goal ->
                 _uiState.value = _uiState.value.copy(dailyGoal = goal)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.acceptedTermsVersion.collectLatest { version ->
+                _uiState.value = _uiState.value.copy(
+                    updateCheck = _uiState.value.updateCheck.copy(acceptedTermsVersion = version)
+                )
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.acceptedPrivacyVersion.collectLatest { version ->
+                _uiState.value = _uiState.value.copy(
+                    updateCheck = _uiState.value.updateCheck.copy(acceptedPrivacyVersion = version)
+                )
             }
         }
     }
@@ -387,6 +402,96 @@ class SettingsViewModel @Inject constructor(
 
     fun clearBackupStatus() {
         _uiState.value = _uiState.value.copy(backupStatus = "")
+    }
+
+    // ─── 检查更新 ──────────────────────────────────────────
+
+    /**
+     * 执行完整的更新检查（App版本 + 用户协议 + 隐私政策）。
+     * @param isAutoCheck true = 启动时自动检查（静默模式），false = 手动触发
+     */
+    fun checkUpdate(isAutoCheck: Boolean = false) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(
+                updateCheck = _uiState.value.updateCheck.copy(isChecking = true, isNetworkError = false)
+            )
+
+            val config = UpdateChecker.fetchUpdateConfig()
+            if (config == null) {
+                _uiState.value = _uiState.value.copy(
+                    updateCheck = _uiState.value.updateCheck.copy(
+                        isChecking = false,
+                        isNetworkError = true
+                    )
+                )
+                if (!isAutoCheck) {
+                    Toast.makeText(context, "网络连接失败，请稍后重试", Toast.LENGTH_SHORT).show()
+                }
+                return@launch
+            }
+
+            val currentVersion = try {
+                context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0"
+            } catch (_: Exception) { "1.0" }
+
+            val state = _uiState.value.updateCheck
+            val result = UpdateChecker.evaluate(
+                config = config,
+                currentVersion = currentVersion,
+                acceptedTerms = state.acceptedTermsVersion,
+                acceptedPrivacy = state.acceptedPrivacyVersion
+            )
+
+            // 决定弹出哪个 Dialog（条款/政策优先于App更新）
+            val hasPolicyUpdate = result.hasTermsUpdate || result.hasPrivacyUpdate
+            val showAppDialog = result.hasAppUpdate && !hasPolicyUpdate
+
+            _uiState.value = _uiState.value.copy(
+                updateCheck = state.copy(
+                    hasAppUpdate = result.hasAppUpdate,
+                    appVersion = result.appVersion,
+                    releaseUrl = result.releaseUrl,
+                    hasTermsUpdate = result.hasTermsUpdate,
+                    termsVersion = result.termsVersion,
+                    hasPrivacyUpdate = result.hasPrivacyUpdate,
+                    privacyVersion = result.privacyVersion,
+                    isChecking = false,
+                    // 自动检查时静默弹窗，手动检查时弹窗
+                    showPolicyUpdateDialog = hasPolicyUpdate,
+                    showAppUpdateDialog = showAppDialog && !isAutoCheck
+                )
+            )
+        }
+    }
+
+    /** 用户同意更新后的条款 */
+    fun acceptTermsUpdate(version: Int) {
+        viewModelScope.launch {
+            dataStoreManager.saveAcceptedTermsVersion(version)
+            dismissPolicyUpdateDialog()
+        }
+    }
+
+    /** 用户同意更新后的隐私政策 */
+    fun acceptPrivacyUpdate(version: Int) {
+        viewModelScope.launch {
+            dataStoreManager.saveAcceptedPrivacyVersion(version)
+            dismissPolicyUpdateDialog()
+        }
+    }
+
+    /** 关闭条款/政策更新 Dialog */
+    fun dismissPolicyUpdateDialog() {
+        _uiState.value = _uiState.value.copy(
+            updateCheck = _uiState.value.updateCheck.copy(showPolicyUpdateDialog = false)
+        )
+    }
+
+    /** 关闭 App 更新 Dialog */
+    fun dismissAppUpdateDialog() {
+        _uiState.value = _uiState.value.copy(
+            updateCheck = _uiState.value.updateCheck.copy(showAppUpdateDialog = false)
+        )
     }
 
     private fun addFileToZip(zip: ZipOutputStream, entryName: String, file: File) {
