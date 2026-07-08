@@ -134,6 +134,9 @@ class MainActivity : ComponentActivity() {
         // 处理外部文件打开（冷启动）
         handleImportIntent(intent)
 
+        // 调度桌面小组件定时刷新
+        com.huangder.lumibooks.widget.WidgetUpdateWorker.schedule(this)
+
         // 启动时自动检查更新（静默执行，有变更时弹窗）
         performStartupUpdateCheck()
 
