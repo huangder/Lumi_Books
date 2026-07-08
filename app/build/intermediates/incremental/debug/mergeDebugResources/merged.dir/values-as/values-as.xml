@@ -12,9 +12,6 @@
     <string msgid="8038256446254964252" name="default_error_message">"অমান্য ইনপুট"</string>
     <string msgid="6312721426453364202" name="default_popup_window_title">"পপ-আপ ৱিণ্ড’"</string>
     <string msgid="1890207353314751437" name="dropdown_menu">"ড্ৰপডাউনৰ মেনু"</string>
-    <string msgid="2863935784364843033" name="glance_error_layout_text"><b><tt>"GlanceAppWidget"</tt></b>" বিচৰা সময়ত "<b><tt>"adb logcat"</tt></b>" ব্যৱহাৰ কৰি সঠিক আসোঁৱাহটো পৰীক্ষা কৰক"</string>
-    <string msgid="5191168365305634625" name="glance_error_layout_text_v2">"সমল দেখুৱাব নোৱাৰি"</string>
-    <string msgid="3631961919234443531" name="glance_error_layout_title"><b>"Glance এপৰ ৱিজেটৰ আসোঁৱাহ"</b></string>
     <string msgid="6827826412747255547" name="in_progress">"প্ৰক্ৰিয়াকৰণ কৰি থকা হৈছে"</string>
     <string msgid="7933458017204019916" name="indeterminate">"আংশিকভাৱে পৰীক্ষা কৰা হৈছে"</string>
     <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"তলৰ শ্বীটখন সংকোচন কৰক"</string>

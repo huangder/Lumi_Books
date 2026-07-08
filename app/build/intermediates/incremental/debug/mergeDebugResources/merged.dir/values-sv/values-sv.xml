@@ -12,9 +12,6 @@
     <string msgid="8038256446254964252" name="default_error_message">"Ogiltiga indata"</string>
     <string msgid="6312721426453364202" name="default_popup_window_title">"Popup-fönster"</string>
     <string msgid="1890207353314751437" name="dropdown_menu">"Rullgardinsmeny"</string>
-    <string msgid="2863935784364843033" name="glance_error_layout_text">"Kontrollera exakt vad som är fel genom att söka efter "<b><tt>"GlanceAppWidget"</tt></b>" i utdata från "<b><tt>"adb logcat"</tt></b>"."</string>
-    <string msgid="5191168365305634625" name="glance_error_layout_text_v2">"Det gick inte att visa innehållet"</string>
-    <string msgid="3631961919234443531" name="glance_error_layout_title"><b>"Fel i appwidget som skapats med Glance"</b></string>
     <string msgid="6827826412747255547" name="in_progress">"Pågår"</string>
     <string msgid="7933458017204019916" name="indeterminate">"Delvis markerad"</string>
     <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"Komprimera arket på nedre delen av skärmen"</string>

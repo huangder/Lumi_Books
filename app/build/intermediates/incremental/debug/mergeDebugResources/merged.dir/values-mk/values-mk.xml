@@ -12,9 +12,6 @@
     <string msgid="8038256446254964252" name="default_error_message">"Неважечки запис"</string>
     <string msgid="6312721426453364202" name="default_popup_window_title">"Скокачки прозорец"</string>
     <string msgid="1890207353314751437" name="dropdown_menu">"Паѓачко мени"</string>
-    <string msgid="2863935784364843033" name="glance_error_layout_text">"Проверете ја точната грешка со "<b><tt>"adb logcat"</tt></b>" при пребарување "<b><tt>"GlanceAppWidget"</tt></b></string>
-    <string msgid="5191168365305634625" name="glance_error_layout_text_v2">"Не може да се прикажат содржините"</string>
-    <string msgid="3631961919234443531" name="glance_error_layout_title"><b>"Грешка на Glance App Widget"</b></string>
     <string msgid="6827826412747255547" name="in_progress">"Во тек"</string>
     <string msgid="7933458017204019916" name="indeterminate">"Делумно проверено"</string>
     <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"Собери го долниот лист"</string>

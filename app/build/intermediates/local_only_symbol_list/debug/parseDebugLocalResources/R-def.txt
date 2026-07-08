@@ -60,7 +60,5 @@ string time_minutes
 string time_seconds
 string today_reading
 string today_reading_time
-string widget_quote_desc
 style Theme.EBookReader
 xml file_paths
-xml quote_widget_info

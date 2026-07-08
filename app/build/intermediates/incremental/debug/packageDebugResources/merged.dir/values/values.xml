@@ -50,7 +50,6 @@
     <string name="time_seconds">%d 秒</string>
     <string name="today_reading">今日阅读</string>
     <string name="today_reading_time">今日阅读时长</string>
-    <string name="widget_quote_desc">随机展示读书摘录与笔记</string>
     <style name="Theme.EBookReader" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>

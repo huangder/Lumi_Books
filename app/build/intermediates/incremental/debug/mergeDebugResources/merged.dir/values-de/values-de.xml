@@ -12,9 +12,6 @@
     <string msgid="8038256446254964252" name="default_error_message">"Ungültige Eingabe"</string>
     <string msgid="6312721426453364202" name="default_popup_window_title">"Pop-up-Fenster"</string>
     <string msgid="1890207353314751437" name="dropdown_menu">"Drop-down-Menü"</string>
-    <string msgid="2863935784364843033" name="glance_error_layout_text">"Prüfe den genauen Fehler mithilfe von "<b><tt>"adb logcat"</tt></b>" und suche dabei nach "<b><tt>"GlanceAppWidget"</tt></b></string>
-    <string msgid="5191168365305634625" name="glance_error_layout_text_v2">"Inhalt kann nicht angezeigt werden"</string>
-    <string msgid="3631961919234443531" name="glance_error_layout_title"><b>"„Glance App Widget“-Fehler"</b></string>
     <string msgid="6827826412747255547" name="in_progress">"In Bearbeitung"</string>
     <string msgid="7933458017204019916" name="indeterminate">"Teilweise aktiviert"</string>
     <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"Ansicht am unteren Rand minimieren"</string>

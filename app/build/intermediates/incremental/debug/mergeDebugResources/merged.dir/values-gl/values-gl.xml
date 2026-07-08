@@ -12,9 +12,6 @@
     <string msgid="8038256446254964252" name="default_error_message">"O texto escrito non é válido"</string>
     <string msgid="6312721426453364202" name="default_popup_window_title">"Ventá emerxente"</string>
     <string msgid="1890207353314751437" name="dropdown_menu">"Menú despregable"</string>
-    <string msgid="2863935784364843033" name="glance_error_layout_text">"Comproba o erro exacto usando "<b><tt>"adb logcat"</tt></b>" e buscando "<b><tt>"GlanceAppWidget"</tt></b></string>
-    <string msgid="5191168365305634625" name="glance_error_layout_text_v2">"Non se puido mostrar o contido"</string>
-    <string msgid="3631961919234443531" name="glance_error_layout_title"><b>"Erro do widget da aplicación Glance"</b></string>
     <string msgid="6827826412747255547" name="in_progress">"En curso"</string>
     <string msgid="7933458017204019916" name="indeterminate">"Marcada parcialmente"</string>
     <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"Contrae o panel inferior"</string>

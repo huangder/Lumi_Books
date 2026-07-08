@@ -12,9 +12,6 @@
     <string msgid="8038256446254964252" name="default_error_message">"ഇൻപുട്ട് അസാധുവാണ്"</string>
     <string msgid="6312721426453364202" name="default_popup_window_title">"പോപ്പ്-അപ്പ് വിൻഡോ"</string>
     <string msgid="1890207353314751437" name="dropdown_menu">"ഡ്രോപ്പ്‌ഡൗൺ മെനു"</string>
-    <string msgid="2863935784364843033" name="glance_error_layout_text"><b><tt>"adb logcat"</tt></b>" ഉപയോഗിച്ച് യഥാർത്ഥ പിശക് പരിശോധിക്കുക, "<b><tt>"GlanceAppWidget"</tt></b>" എന്നത് തിരയുന്നു"</string>
-    <string msgid="5191168365305634625" name="glance_error_layout_text_v2">"ഉള്ളടക്കം കാണിക്കാനാകില്ല"</string>
-    <string msgid="3631961919234443531" name="glance_error_layout_title"><b>"Glance ആപ്പ് വിജറ്റ് പിശക്"</b></string>
     <string msgid="6827826412747255547" name="in_progress">"പുരോഗമിക്കുന്നു"</string>
     <string msgid="7933458017204019916" name="indeterminate">"ഭാഗികമായി ചെക്ക് മാർക്കിട്ടു"</string>
     <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"ബോട്ടം ഷീറ്റ് ചുരുക്കുക"</string>

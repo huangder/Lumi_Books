@@ -12,9 +12,6 @@
     <string msgid="8038256446254964252" name="default_error_message">"輸入內容無效"</string>
     <string msgid="6312721426453364202" name="default_popup_window_title">"彈出式視窗"</string>
     <string msgid="1890207353314751437" name="dropdown_menu">"下拉式選單"</string>
-    <string msgid="2863935784364843033" name="glance_error_layout_text">"搜尋 "<b><tt>"GlanceAppWidget"</tt></b>" 時，你可以使用 "<b><tt>"adb logcat"</tt></b>" 查看確切的錯誤資訊"</string>
-    <string msgid="5191168365305634625" name="glance_error_layout_text_v2">"無法顯示內容"</string>
-    <string msgid="3631961919234443531" name="glance_error_layout_title"><b>"Glance 應用程式小工具錯誤"</b></string>
     <string msgid="6827826412747255547" name="in_progress">"處理中"</string>
     <string msgid="7933458017204019916" name="indeterminate">"部分檢查"</string>
     <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"收合底部功能表"</string>

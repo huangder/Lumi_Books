@@ -12,9 +12,6 @@
     <string msgid="8038256446254964252" name="default_error_message">"Intrare nevalidă"</string>
     <string msgid="6312721426453364202" name="default_popup_window_title">"Fereastră pop-up"</string>
     <string msgid="1890207353314751437" name="dropdown_menu">"Meniu drop-down"</string>
-    <string msgid="2863935784364843033" name="glance_error_layout_text">"Vezi eroarea exactă folosind "<b><tt>"adb logcat"</tt></b>" și căutând "<b><tt>"GlanceAppWidget"</tt></b></string>
-    <string msgid="5191168365305634625" name="glance_error_layout_text_v2">"Nu se poate afișa conținutul"</string>
-    <string msgid="3631961919234443531" name="glance_error_layout_title"><b>"Eroare legată de widgetul aplicației Glance"</b></string>
     <string msgid="6827826412747255547" name="in_progress">"În curs"</string>
     <string msgid="7933458017204019916" name="indeterminate">"Bifată parțial"</string>
     <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"Restrânge foaia din partea de jos"</string>

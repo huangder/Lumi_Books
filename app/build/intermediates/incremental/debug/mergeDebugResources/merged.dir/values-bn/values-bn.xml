@@ -12,9 +12,6 @@
     <string msgid="8038256446254964252" name="default_error_message">"ভুল ইনপুট"</string>
     <string msgid="6312721426453364202" name="default_popup_window_title">"পপ-আপ উইন্ডো"</string>
     <string msgid="1890207353314751437" name="dropdown_menu">"ড্রপডাউন মেনু"</string>
-    <string msgid="2863935784364843033" name="glance_error_layout_text">"আসল সমস্যাটি কী তা "<b><tt>"adb logcat"</tt></b>"-এর সাহায্যে চেক করুন, "<b><tt>"GlanceAppWidget"</tt></b>"-এর জন্য সার্চ করা হচ্ছে"</string>
-    <string msgid="5191168365305634625" name="glance_error_layout_text_v2">"কন্টেন্ট দেখানো যাচ্ছে না"</string>
-    <string msgid="3631961919234443531" name="glance_error_layout_title"><b>"Glance App উইজেট সংক্রান্ত সমস্যা"</b></string>
     <string msgid="6827826412747255547" name="in_progress">"কাজ চলছে"</string>
     <string msgid="7933458017204019916" name="indeterminate">"কয়েকটি বিকল্প বেছে নেওয়া হয়েছে"</string>
     <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"স্ক্রিনের নিচে অ্যাটাচ করা শিট আড়াল করুন"</string>

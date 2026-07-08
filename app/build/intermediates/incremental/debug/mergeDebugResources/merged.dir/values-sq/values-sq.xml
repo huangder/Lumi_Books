@@ -12,9 +12,6 @@
     <string msgid="8038256446254964252" name="default_error_message">"Hyrje e pavlefshme"</string>
     <string msgid="6312721426453364202" name="default_popup_window_title">"Dritare kërcyese"</string>
     <string msgid="1890207353314751437" name="dropdown_menu">"Menyja me lëshim poshtë"</string>
-    <string msgid="2863935784364843033" name="glance_error_layout_text">"Kontrollo gabimin ekzakt duke përdorur "<b><tt>"adb logcat"</tt></b>", duke kërkuar për "<b><tt>"GlanceAppWidget"</tt></b></string>
-    <string msgid="5191168365305634625" name="glance_error_layout_text_v2">"Përmbajtja nuk mund të shfaqet"</string>
-    <string msgid="3631961919234443531" name="glance_error_layout_title"><b>"Gabim i Glance App Widget"</b></string>
     <string msgid="6827826412747255547" name="in_progress">"Në vazhdim"</string>
     <string msgid="7933458017204019916" name="indeterminate">"Pjesërisht e shënuar"</string>
     <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"Palos fletën e poshtme"</string>

@@ -1,9 +1,7 @@
 package com.huangder.lumibooks.data.local.dao;
 
 import android.database.Cursor;
-import android.os.CancellationSignal;
 import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 import androidx.room.CoroutinesRoom;
 import androidx.room.EntityDeletionOrUpdateAdapter;
 import androidx.room.EntityInsertionAdapter;
@@ -246,49 +244,6 @@ public final class NoteDao_Impl implements NoteDao {
         _statement.release();
       }
     });
-  }
-
-  @Override
-  public Object getRandomNoteWithBook(final Continuation<? super RandomNoteWithBook> $completion) {
-    final String _sql = "\n"
-            + "        SELECT notes.selectedText, notes.note, books.title AS bookTitle, books.author AS bookAuthor\n"
-            + "        FROM notes\n"
-            + "        INNER JOIN books ON notes.bookId = books.id\n"
-            + "        ORDER BY RANDOM() LIMIT 1\n"
-            + "    ";
-    final RoomSQLiteQuery _statement = RoomSQLiteQuery.acquire(_sql, 0);
-    final CancellationSignal _cancellationSignal = DBUtil.createCancellationSignal();
-    return CoroutinesRoom.execute(__db, false, _cancellationSignal, new Callable<RandomNoteWithBook>() {
-      @Override
-      @Nullable
-      public RandomNoteWithBook call() throws Exception {
-        final Cursor _cursor = DBUtil.query(__db, _statement, false, null);
-        try {
-          final int _cursorIndexOfSelectedText = 0;
-          final int _cursorIndexOfNote = 1;
-          final int _cursorIndexOfBookTitle = 2;
-          final int _cursorIndexOfBookAuthor = 3;
-          final RandomNoteWithBook _result;
-          if (_cursor.moveToFirst()) {
-            final String _tmpSelectedText;
-            _tmpSelectedText = _cursor.getString(_cursorIndexOfSelectedText);
-            final String _tmpNote;
-            _tmpNote = _cursor.getString(_cursorIndexOfNote);
-            final String _tmpBookTitle;
-            _tmpBookTitle = _cursor.getString(_cursorIndexOfBookTitle);
-            final String _tmpBookAuthor;
-            _tmpBookAuthor = _cursor.getString(_cursorIndexOfBookAuthor);
-            _result = new RandomNoteWithBook(_tmpSelectedText,_tmpNote,_tmpBookTitle,_tmpBookAuthor);
-          } else {
-            _result = null;
-          }
-          return _result;
-        } finally {
-          _cursor.close();
-          _statement.release();
-        }
-      }
-    }, $completion);
   }
 
   @NonNull

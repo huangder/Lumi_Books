@@ -12,9 +12,6 @@
     <string msgid="8038256446254964252" name="default_error_message">"ଅବୈଧ ଇନପୁଟ୍"</string>
     <string msgid="6312721426453364202" name="default_popup_window_title">"ପପ୍-ଅପ୍ ୱିଣ୍ଡୋ"</string>
     <string msgid="1890207353314751437" name="dropdown_menu">"ଡ୍ରପଡାଉନ ମେନୁ"</string>
-    <string msgid="2863935784364843033" name="glance_error_layout_text"><b><tt>"adb logcat"</tt></b>" ବ୍ୟବହାର କରି, "<b><tt>"GlanceAppWidget"</tt></b>" ସନ୍ଧାନ କରି ପ୍ରକୃତ ତ୍ରୁଟି ଯାଞ୍ଚ କରନ୍ତୁ"</string>
-    <string msgid="5191168365305634625" name="glance_error_layout_text_v2">"ବିଷୟବସ୍ତୁ ଦେଖାଯାଇପାରିବ ନାହିଁ"</string>
-    <string msgid="3631961919234443531" name="glance_error_layout_title"><b>"Glance ଆପ ୱିଜେଟରେ ତ୍ରୁଟି"</b></string>
     <string msgid="6827826412747255547" name="in_progress">"ଚାଲିଛି"</string>
     <string msgid="7933458017204019916" name="indeterminate">"ଆଶିଂକ ଭାବେ ଯାଞ୍ଚ କରାଯାଇଛି"</string>
     <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"ବଟମ ସିଟକୁ ସଙ୍କୁଚିତ କରନ୍ତୁ"</string>

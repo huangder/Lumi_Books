@@ -12,9 +12,6 @@
     <string msgid="8038256446254964252" name="default_error_message">"ఇన్‌పుట్ చెల్లదు"</string>
     <string msgid="6312721426453364202" name="default_popup_window_title">"పాప్-అప్ విండో"</string>
     <string msgid="1890207353314751437" name="dropdown_menu">"డ్రాప్‌డౌన్ మెనూ"</string>
-    <string msgid="2863935784364843033" name="glance_error_layout_text"><b><tt>"adb logcat"</tt></b>"‌ను ఉపయోగించి ఖచ్చితమైన ఎర్రర్‌ను చెక్ చేయండి, "<b><tt>"GlanceAppWidget"</tt></b>" కోసం సెర్చ్ చేస్తుంది"</string>
-    <string msgid="5191168365305634625" name="glance_error_layout_text_v2">"కంటెంట్‌ను చూపడం సాధ్యం కాదు"</string>
-    <string msgid="3631961919234443531" name="glance_error_layout_title"><b>"Glance యాప్ విడ్జెట్ ఎర్రర్"</b></string>
     <string msgid="6827826412747255547" name="in_progress">"ప్రోగ్రెస్‌లో ఉంది"</string>
     <string msgid="7933458017204019916" name="indeterminate">"పాక్షికంగా ఎంచుకోబడింది"</string>
     <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"దిగువున ఉన్న షీట్‌ను కుదిస్తుంది"</string>

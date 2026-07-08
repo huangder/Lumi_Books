@@ -12,9 +12,6 @@
     <string msgid="8038256446254964252" name="default_error_message">"Entrée incorrecte"</string>
     <string msgid="6312721426453364202" name="default_popup_window_title">"Fenêtre contextuelle"</string>
     <string msgid="1890207353314751437" name="dropdown_menu">"Menu déroulant"</string>
-    <string msgid="2863935784364843033" name="glance_error_layout_text">"Vérifiez l\'erreur exacte en utilisant "<b><tt>"adb logcat"</tt></b>", en recherchant "<b><tt>"GlanceAppWidget"</tt></b></string>
-    <string msgid="5191168365305634625" name="glance_error_layout_text_v2">"Impossible d\'afficher le contenu"</string>
-    <string msgid="3631961919234443531" name="glance_error_layout_title"><b>"Erreur provenant de la librairie Glance App Widget"</b></string>
     <string msgid="6827826412747255547" name="in_progress">"En cours…"</string>
     <string msgid="7933458017204019916" name="indeterminate">"Partiellement vérifié"</string>
     <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"Réduire la zone de contenu dans le bas de l\'écran"</string>

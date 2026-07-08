@@ -12,9 +12,6 @@
     <string msgid="8038256446254964252" name="default_error_message">"Въведеното е невалидно"</string>
     <string msgid="6312721426453364202" name="default_popup_window_title">"Изскачащ прозорец"</string>
     <string msgid="1890207353314751437" name="dropdown_menu">"Падащо меню"</string>
-    <string msgid="2863935784364843033" name="glance_error_layout_text">"Проверете точната грешка посредством "<b><tt>"adb logcat"</tt></b>", като потърсите "<b><tt>"GlanceAppWidget"</tt></b></string>
-    <string msgid="5191168365305634625" name="glance_error_layout_text_v2">"Съдържанието не може да се покаже"</string>
-    <string msgid="3631961919234443531" name="glance_error_layout_title"><b>"Грешка в приспособлението за приложението Glance"</b></string>
     <string msgid="6827826412747255547" name="in_progress">"В ход"</string>
     <string msgid="7933458017204019916" name="indeterminate">"Частично отметнато"</string>
     <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"Свиване на долния лист"</string>

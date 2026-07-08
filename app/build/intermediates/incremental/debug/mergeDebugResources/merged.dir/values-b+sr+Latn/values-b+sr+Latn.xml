@@ -12,9 +12,6 @@
     <string msgid="8038256446254964252" name="default_error_message">"Unos je nevažeći"</string>
     <string msgid="6312721426453364202" name="default_popup_window_title">"Iskačući prozor"</string>
     <string msgid="1890207353314751437" name="dropdown_menu">"Padajući meni"</string>
-    <string msgid="2863935784364843033" name="glance_error_layout_text">"Proverite u čemu je tačno greška pomoću stavke"<b><tt>"adb logcat"</tt></b>", tražeći stavku "<b><tt>"GlanceAppWidget"</tt></b></string>
-    <string msgid="5191168365305634625" name="glance_error_layout_text_v2">"Sadržaj ne može da se prikaže"</string>
-    <string msgid="3631961919234443531" name="glance_error_layout_title"><b>"Greška u vezi sa vidžetom aplikacije Glance"</b></string>
     <string msgid="6827826412747255547" name="in_progress">"U toku"</string>
     <string msgid="7933458017204019916" name="indeterminate">"Delimično označeno"</string>
     <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"Skupite donju tabelu"</string>

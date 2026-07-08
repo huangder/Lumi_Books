@@ -12,9 +12,6 @@
     <string msgid="8038256446254964252" name="default_error_message">"ಅಮಾನ್ಯ ಇನ್‌ಪುಟ್"</string>
     <string msgid="6312721426453364202" name="default_popup_window_title">"ಪಾಪ್-ಅಪ್ ವಿಂಡೋ"</string>
     <string msgid="1890207353314751437" name="dropdown_menu">"ಡ್ರಾಪ್‌ಡೌನ್ ಮೆನು"</string>
-    <string msgid="2863935784364843033" name="glance_error_layout_text"><b><tt>"adb logcat"</tt></b>" ಬಳಸಿಕೊಂಡು ನಿಖರವಾದ ದೋಷವನ್ನು ಪರಿಶೀಲಿಸಿ, "<b><tt>"GlanceAppWidget"</tt></b>" ಅನ್ನು ಹುಡುಕಲಾಗುತ್ತಿದೆ"</string>
-    <string msgid="5191168365305634625" name="glance_error_layout_text_v2">"ಕಂಟೆಂಟ್ ಅನ್ನು ತೋರಿಸಲು ಸಾಧ್ಯವಿಲ್ಲ"</string>
-    <string msgid="3631961919234443531" name="glance_error_layout_title"><b>"Glance ಆ್ಯಪ್ ವಿಜೆಟ್ ದೋಷ"</b></string>
     <string msgid="6827826412747255547" name="in_progress">"ಪ್ರಗತಿಯಲ್ಲಿದೆ"</string>
     <string msgid="7933458017204019916" name="indeterminate">"ಭಾಗಶಃ ಪರೀಕ್ಷಿಸಲಾಗಿದೆ"</string>
     <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"ಕೆಳಭಾಗದ ಶೀಟ್ ಅನ್ನು ಕುಗ್ಗಿಸಿ"</string>

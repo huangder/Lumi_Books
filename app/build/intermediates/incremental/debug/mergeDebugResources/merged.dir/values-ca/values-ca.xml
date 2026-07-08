@@ -12,9 +12,6 @@
     <string msgid="8038256446254964252" name="default_error_message">"L\'entrada no és vàlida"</string>
     <string msgid="6312721426453364202" name="default_popup_window_title">"Finestra emergent"</string>
     <string msgid="1890207353314751437" name="dropdown_menu">"Menú desplegable"</string>
-    <string msgid="2863935784364843033" name="glance_error_layout_text">"Consulta l\'error exacte fent servir "<b><tt>"adb logcat"</tt></b>" i cercant "<b><tt>"GlanceAppWidget"</tt></b></string>
-    <string msgid="5191168365305634625" name="glance_error_layout_text_v2">"No es pot mostrar el contingut"</string>
-    <string msgid="3631961919234443531" name="glance_error_layout_title"><b>"Error de Glance App Widget"</b></string>
     <string msgid="6827826412747255547" name="in_progress">"En curs"</string>
     <string msgid="7933458017204019916" name="indeterminate">"Marcat parcialment"</string>
     <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"Replega el full inferior"</string>

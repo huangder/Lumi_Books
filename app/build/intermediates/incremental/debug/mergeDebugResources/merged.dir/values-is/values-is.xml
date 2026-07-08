@@ -12,9 +12,6 @@
     <string msgid="8038256446254964252" name="default_error_message">"Ógildur innsláttur"</string>
     <string msgid="6312721426453364202" name="default_popup_window_title">"Sprettigluggi"</string>
     <string msgid="1890207353314751437" name="dropdown_menu">"Fellivalmynd"</string>
-    <string msgid="2863935784364843033" name="glance_error_layout_text">"Skoðaðu villuna með "<b><tt>"adb logcat"</tt></b>" og leitaðu að "<b><tt>"GlanceAppWidget"</tt></b></string>
-    <string msgid="5191168365305634625" name="glance_error_layout_text_v2">"Ekki er hægt að sýna efnið"</string>
-    <string msgid="3631961919234443531" name="glance_error_layout_title"><b>"Villa í forritsgræju „Í fljótu bragði“"</b></string>
     <string msgid="6827826412747255547" name="in_progress">"Í vinnslu"</string>
     <string msgid="7933458017204019916" name="indeterminate">"Hakað við að hluta til"</string>
     <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"Minnka blað neðst"</string>

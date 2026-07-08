@@ -12,9 +12,6 @@
     <string msgid="8038256446254964252" name="default_error_message">"தவறான உள்ளீடு"</string>
     <string msgid="6312721426453364202" name="default_popup_window_title">"பாப்-அப் சாளரம்"</string>
     <string msgid="1890207353314751437" name="dropdown_menu">"கீழ்த்தோன்றல் மெனு"</string>
-    <string msgid="2863935784364843033" name="glance_error_layout_text"><b><tt>"adb logcat"</tt></b>" என்பதைப் பயன்படுத்தி சரியான பிழையைக் கண்டறியவும், "<b><tt>"GlanceAppWidget"</tt></b>" தேடப்படுகிறது"</string>
-    <string msgid="5191168365305634625" name="glance_error_layout_text_v2">"உள்ளடக்கத்தைக் காட்ட முடியவில்லை"</string>
-    <string msgid="3631961919234443531" name="glance_error_layout_title"><b>"Glance ஆப்ஸ் விட்ஜெட் பிழை"</b></string>
     <string msgid="6827826412747255547" name="in_progress">"செயலிலுள்ளது"</string>
     <string msgid="7933458017204019916" name="indeterminate">"சில மட்டுமே தேர்ந்தெடுக்கப்பட்டுள்ளன"</string>
     <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"கீழ்ப்புற ஷீட்டைச் சுருக்கும்"</string>

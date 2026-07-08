@@ -12,9 +12,6 @@
     <string msgid="8038256446254964252" name="default_error_message">"ልክ ያልሆነ ግቤት"</string>
     <string msgid="6312721426453364202" name="default_popup_window_title">"ብቅ-ባይ መስኮት"</string>
     <string msgid="1890207353314751437" name="dropdown_menu">"ተቆልቋይ ምናሌ"</string>
-    <string msgid="2863935784364843033" name="glance_error_layout_text"><b><tt>"GlanceAppWidet"</tt></b>" እየፈለጉ ሳለ "<b><tt>"adb logcat "</tt></b>" በመጠቀም ትክክለኛውን ስህተት ያጣሩ"</string>
-    <string msgid="5191168365305634625" name="glance_error_layout_text_v2">"ይዘትን ማሳየት አልተቻለም"</string>
-    <string msgid="3631961919234443531" name="glance_error_layout_title"><b>"የGlance መተግበሪያ ምግብር ስህተት"</b></string>
     <string msgid="6827826412747255547" name="in_progress">"በሂደት ላይ"</string>
     <string msgid="7933458017204019916" name="indeterminate">"በከፊል የተፈተሸ"</string>
     <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"የግርጌ ሉህን ይሰብስቡ"</string>

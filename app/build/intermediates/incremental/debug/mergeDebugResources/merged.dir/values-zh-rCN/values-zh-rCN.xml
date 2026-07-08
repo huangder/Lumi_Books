@@ -12,9 +12,6 @@
     <string msgid="8038256446254964252" name="default_error_message">"输入无效"</string>
     <string msgid="6312721426453364202" name="default_popup_window_title">"弹出式窗口"</string>
     <string msgid="1890207353314751437" name="dropdown_menu">"下拉菜单"</string>
-    <string msgid="2863935784364843033" name="glance_error_layout_text">"运行 "<b><tt>"adb logcat"</tt></b>" 后搜索 "<b><tt>"GlanceAppWidget"</tt></b>" 可查看确切错误"</string>
-    <string msgid="5191168365305634625" name="glance_error_layout_text_v2">"无法显示内容"</string>
-    <string msgid="3631961919234443531" name="glance_error_layout_title"><b>"Glance 应用微件错误"</b></string>
     <string msgid="6827826412747255547" name="in_progress">"进行中"</string>
     <string msgid="7933458017204019916" name="indeterminate">"部分选中"</string>
     <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"收起底部动作条"</string>
