@@ -608,7 +608,10 @@ class ReaderViewModel @Inject constructor(
             color = color,
             createdAt = System.currentTimeMillis()
         )
-        viewModelScope.launch { readingRepository.insertNote(note) }
+        viewModelScope.launch {
+            readingRepository.insertNote(note)
+            com.huangder.lumibooks.widget.WidgetRefreshHelper.refreshQuoteWidget(context)
+        }
     }
 
     fun updateNote(note: Note) {

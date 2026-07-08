@@ -58,4 +58,7 @@
     <string name="time_minutes">%d 分钟</string>
     <string name="time_hours">%d 小时</string>
     <string name="time_days">%d 天</string>
+
+    <!-- 桌面小组件 -->
+    <string name="widget_quote_desc">随机展示读书摘录与笔记</string>
 </resources>
