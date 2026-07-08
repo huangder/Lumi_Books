@@ -527,7 +527,12 @@ fun AboutDetail(viewModel: SettingsViewModel) {
             Icon(Icons.Outlined.Info, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
             Spacer(Modifier.width(AppSpace.md))
             Text("版本", fontSize = AppType.Body, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
-            Text("1.0.01.104_Beta", fontSize = AppType.BodySmall, color = AppColors.TextSecondary)
+            Text("1.0.02.13_Beta", fontSize = AppType.BodySmall, color = AppColors.TextSecondary)
+        }
+        SettingsDivider()
+        // 更新日志
+        ActionRow(Icons.Outlined.SystemUpdateAlt, "更新日志") {
+            context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "changelog"))
         }
         SettingsDivider()
         // 隐私声明
@@ -591,6 +596,105 @@ fun AboutDetail(viewModel: SettingsViewModel) {
         // 开放源代码许可
         ActionRow(Icons.Outlined.Code, "开放源代码许可") { openDoc("开放源代码许可", "licenses.html") }
     }
+}
+
+// ─── 更新日志 ────────────────────────────────────────────────
+
+data class ChangelogEntry(val version: String, val items: List<String>)
+
+@Composable
+fun ChangelogDetail() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val entries = remember {
+        try {
+            val text = context.assets.open("changelog.md").bufferedReader().readText()
+            parseChangelog(text)
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AppSpace.md, vertical = AppSpace.sm)
+    ) {
+        entries.forEachIndexed { index, entry ->
+            val isLatest = index == 0
+            DetailCard {
+                Column(Modifier.padding(AppSpace.md)) {
+                    // 版本标题行
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            entry.version,
+                            fontSize = AppType.Body,
+                            fontWeight = FontWeight.Bold,
+                            color = AppColors.TextPrimary
+                        )
+                        if (isLatest) {
+                            Spacer(Modifier.width(AppSpace.sm))
+                            Box(
+                                Modifier
+                                    .clip(RoundedCornerShape(AppRadius.sm))
+                                    .background(AppColors.Accent)
+                                    .padding(horizontal = AppSpace.sm, vertical = 2.dp)
+                            ) {
+                                Text("最新", fontSize = AppType.Caption, color = Color.White)
+                            }
+                        }
+                    }
+                    // 变更条目
+                    if (entry.items.isNotEmpty()) {
+                        Spacer(Modifier.height(AppSpace.sm))
+                        entry.items.forEach { item ->
+                            Text(
+                                item,
+                                fontSize = AppType.BodySmall,
+                                color = AppColors.TextSecondary,
+                                modifier = Modifier.padding(vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(AppSpace.sm))
+        }
+    }
+}
+
+private fun parseChangelog(text: String): List<ChangelogEntry> {
+    val result = mutableListOf<ChangelogEntry>()
+    val lines = text.lines()
+    var currentVersion: String? = null
+    val currentItems = mutableListOf<String>()
+
+    for (line in lines) {
+        when {
+            line.startsWith("## ") -> {
+                // 保存上一个版本
+                if (currentVersion != null) {
+                    result.add(ChangelogEntry(currentVersion, currentItems.toList()))
+                    currentItems.clear()
+                }
+                currentVersion = line.removePrefix("## ").trim()
+            }
+            line.startsWith("· ") -> {
+                currentItems.add(line.trim())
+            }
+            line.startsWith("### ") -> {
+                // 跳过标题行
+            }
+            line.isNotBlank() && currentVersion != null && !currentItems.contains(line.trim()) -> {
+                // 非 · 开头的普通行（如"第一个开发测试版"）
+                currentItems.add(line.trim())
+            }
+        }
+    }
+    // 保存最后一个版本
+    if (currentVersion != null) {
+        result.add(ChangelogEntry(currentVersion, currentItems.toList()))
+    }
+    return result
 }
 
 // ─── 通用组件 ────────────────────────────────────────────────
@@ -680,5 +784,6 @@ private fun ActionRow(icon: ImageVector, label: String, labelColor: Color = AppC
         Icon(icon, null, tint = if (labelColor == Color.Red) Color.Red else AppColors.TextSecondary, modifier = Modifier.size(22.dp))
         Spacer(Modifier.width(AppSpace.md))
         Text(label, fontSize = AppType.Body, color = labelColor, modifier = Modifier.weight(1f))
+        Icon(Icons.Outlined.ChevronRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
     }
 }

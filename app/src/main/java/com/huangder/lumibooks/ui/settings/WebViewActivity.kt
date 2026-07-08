@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,15 +23,21 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
+import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.FangSong
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 /**
  * 通用 WebView 页面 — 加载 assets/html/ 下的本地 HTML
@@ -41,7 +48,11 @@ import com.huangder.lumibooks.ui.theme.FangSong
  *
  * 过渡动画继承系统默认。
  */
+@AndroidEntryPoint
 class WebViewActivity : ComponentActivity() {
+
+    @Inject
+    lateinit var dataStoreManager: DataStoreManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -51,7 +62,16 @@ class WebViewActivity : ComponentActivity() {
         val file = intent.getStringExtra("file") ?: "privacy.html"
 
         setContent {
-            WebViewPage(title = title, assetFile = file, onBack = { finish() })
+            val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
+            val isDark = when (darkMode) {
+                "dark" -> true
+                "light" -> false
+                else -> isSystemInDarkTheme()
+            }
+
+            EBookReaderTheme(darkTheme = isDark) {
+                WebViewPage(title = title, assetFile = file, onBack = { finish() })
+            }
         }
     }
 }
