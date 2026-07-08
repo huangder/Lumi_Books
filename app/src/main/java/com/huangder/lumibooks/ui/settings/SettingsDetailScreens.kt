@@ -60,7 +60,9 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
@@ -153,25 +155,179 @@ fun ReadingGoalDetail(viewModel: SettingsViewModel) {
 
 // ─── 存储管理 ────────────────────────────────────────────────
 
+/** 分段色条颜色 */
+private val SegmentColors = listOf(
+    Color(0xFF4A90D9),  // 应用本体 - 蓝
+    Color(0xFF9B9B9B),  // 缓存文件 - 灰
+    Color(0xFFE85D5D),  // 电子书文件 - 主题红
+    Color(0xFFF5A623),  // 封面图片 - 橙黄
+)
+
+/** 格式标签颜色 */
+private val FormatColors = mapOf(
+    "EPUB" to Color(0xFF4CAF50),
+    "PDF" to Color(0xFFE85D5D),
+    "TXT" to Color(0xFF9B9B9B)
+)
+
 @Composable
 fun StorageDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
+    val info = uiState.storageInfo
     var showClearDialog by remember { mutableStateOf(false) }
 
-    DetailCard {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(AppSpace.md),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Outlined.Speed, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
-            Spacer(Modifier.width(AppSpace.md))
-            Text("占用空间", fontSize = AppType.Body, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
-            Text(uiState.cacheSize, fontSize = AppType.BodySmall, color = AppColors.TextSecondary)
+    Column {
+        // ── 总览卡片 ──
+        DetailCard {
+            Column(Modifier.fillMaxWidth().padding(AppSpace.md)) {
+                // 标题行
+                val totalBytes = info.appSizeBytes + info.cacheSizeBytes + info.booksSizeBytes + info.coversSizeBytes
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Outlined.Speed, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(AppSpace.sm))
+                    Text("总占用空间", fontSize = AppType.Body, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
+                    Text(viewModel.formatFileSize(totalBytes), fontSize = AppType.Section, fontWeight = FontWeight.Bold, color = AppColors.Accent)
+                }
+
+                Spacer(Modifier.height(AppSpace.sm))
+
+                // 分段色条
+                if (totalBytes > 0) {
+                    val segments = listOf(
+                        info.appSizeBytes to SegmentColors[0],
+                        info.cacheSizeBytes to SegmentColors[1],
+                        info.booksSizeBytes to SegmentColors[2],
+                        info.coversSizeBytes to SegmentColors[3]
+                    ).filter { it.first > 0 }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                    ) {
+                        segments.forEach { (bytes, color) ->
+                            val weight = (bytes.toFloat() / totalBytes).coerceAtLeast(0.02f)
+                            Box(
+                                modifier = Modifier
+                                    .weight(weight)
+                                    .fillMaxSize()
+                                    .background(color)
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(AppSpace.md))
+
+                    // 分类明细
+                    val categories = listOf(
+                        "应用本体" to (info.appSizeBytes to SegmentColors[0]),
+                        "缓存文件" to (info.cacheSizeBytes to SegmentColors[1]),
+                        "电子书文件" to (info.booksSizeBytes to SegmentColors[2]),
+                        "封面图片" to (info.coversSizeBytes to SegmentColors[3])
+                    )
+                    categories.forEach { (label, pair) ->
+                        val (bytes, color) = pair
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(10.dp)
+                                    .clip(RoundedCornerShape(2.dp))
+                                    .background(color)
+                            )
+                            Spacer(Modifier.width(AppSpace.sm))
+                            Text(label, fontSize = AppType.BodySmall, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
+                            Text(
+                                viewModel.formatFileSize(bytes),
+                                fontSize = AppType.BodySmall,
+                                color = AppColors.TextSecondary
+                            )
+                        }
+                    }
+                } else {
+                    Text("计算中...", fontSize = AppType.BodySmall, color = AppColors.TextSecondary)
+                }
+            }
         }
-        SettingsDivider()
-        ActionRow(Icons.Outlined.DeleteSweep, "清除缓存") { viewModel.clearCache() }
-        SettingsDivider()
-        ActionRow(Icons.Outlined.DeleteForever, "清除所有数据", Color.Red) { showClearDialog = true }
+
+        // ── 书籍明细卡片 ──
+        if (info.bookDetails.isNotEmpty()) {
+            Spacer(Modifier.height(AppSpace.md))
+            DetailCard {
+                Column(Modifier.fillMaxWidth()) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(AppSpace.md),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "电子书文件 (${info.bookDetails.size}本)",
+                            fontSize = AppType.Body,
+                            fontWeight = FontWeight.SemiBold,
+                            color = AppColors.TextPrimary,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            viewModel.formatFileSize(info.booksSizeBytes),
+                            fontSize = AppType.BodySmall,
+                            color = AppColors.TextSecondary
+                        )
+                    }
+                    SettingsDivider()
+                    info.bookDetails.forEachIndexed { index, item ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = AppSpace.md, vertical = AppSpace.sm),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    item.title,
+                                    fontSize = AppType.BodySmall,
+                                    color = AppColors.TextPrimary,
+                                    maxLines = 1
+                                )
+                            }
+                            // 格式标签
+                            val fmtColor = FormatColors[item.format] ?: Color.Gray
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(fmtColor.copy(alpha = 0.12f))
+                                    .padding(horizontal = 6.dp, vertical = 1.dp)
+                            ) {
+                                Text(
+                                    item.format,
+                                    fontSize = 10.sp,
+                                    color = fmtColor,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                            Spacer(Modifier.width(AppSpace.sm))
+                            Text(
+                                viewModel.formatFileSize(item.sizeBytes),
+                                fontSize = AppType.Caption,
+                                color = AppColors.TextSecondary,
+                                modifier = Modifier.width(52.dp),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.End
+                            )
+                        }
+                        if (index < info.bookDetails.lastIndex) {
+                            SettingsDivider()
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── 操作卡片 ──
+        Spacer(Modifier.height(AppSpace.md))
+        DetailCard {
+            ActionRow(Icons.Outlined.DeleteSweep, "清除缓存") { viewModel.clearCache() }
+            SettingsDivider()
+            ActionRow(Icons.Outlined.DeleteForever, "清除所有数据", Color.Red) { showClearDialog = true }
+        }
     }
 
     if (showClearDialog) {

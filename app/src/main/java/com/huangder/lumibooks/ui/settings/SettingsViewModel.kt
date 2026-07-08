@@ -1,16 +1,23 @@
 package com.huangder.lumibooks.ui.settings
 
 import android.content.Context
+import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import coil.Coil
 import com.huangder.lumibooks.data.local.DataStoreManager
+import com.huangder.lumibooks.domain.repository.BookRepository
+import com.huangder.lumibooks.util.FileUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import android.net.Uri
 import java.io.File
 import java.io.FileInputStream
@@ -26,6 +33,7 @@ import javax.inject.Inject
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val dataStoreManager: DataStoreManager,
+    private val bookRepository: BookRepository,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -34,7 +42,7 @@ class SettingsViewModel @Inject constructor(
 
     init {
         collectAllPreferences()
-        calculateCacheSize()
+        calculateStorageBreakdown()
     }
 
     private fun collectAllPreferences() {
@@ -182,19 +190,26 @@ class SettingsViewModel @Inject constructor(
 
     // ─── 存储管理 ───
 
+    @OptIn(coil.annotation.ExperimentalCoilApi::class)
     fun clearCache() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             try {
                 context.cacheDir.deleteRecursively()
                 // 清除图片缓存目录
                 File(context.cacheDir, "image_cache").deleteRecursively()
-                calculateCacheSize()
+                // 清除 Coil 图片缓存
+                try { Coil.imageLoader(context).diskCache?.clear() } catch (_: Exception) { }
+                try { Coil.imageLoader(context).memoryCache?.clear() } catch (_: Exception) { }
+                calculateStorageBreakdown()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "缓存已清除", Toast.LENGTH_SHORT).show()
+                }
             } catch (_: Exception) { }
         }
     }
 
     fun clearAllData() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             try {
                 // 清除缓存
                 context.cacheDir.deleteRecursively()
@@ -219,15 +234,43 @@ class SettingsViewModel @Inject constructor(
                 // 重置 DataStore
                 dataStoreManager.clearAll()
 
-                calculateCacheSize()
+                calculateStorageBreakdown()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "所有数据已清除", Toast.LENGTH_SHORT).show()
+                }
             } catch (_: Exception) { }
         }
     }
 
-    private fun calculateCacheSize() {
-        viewModelScope.launch {
-            val size = getDirSize(context.cacheDir) + getDirSize(context.filesDir)
-            _uiState.value = _uiState.value.copy(cacheSize = formatFileSize(size))
+    /** 计算存储空间分解：应用本体 + 缓存 + 电子书 + 封面 + 逐本书明细 */
+    private fun calculateStorageBreakdown() {
+        viewModelScope.launch(Dispatchers.IO) {
+            // APK 本体大小
+            val appSize = try {
+                val appInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+                File(appInfo.applicationInfo?.sourceDir ?: "").length()
+            } catch (_: Exception) { 0L }
+
+            val cacheSize = getDirSize(context.cacheDir)
+            val filesSize = getDirSize(context.filesDir)
+            val booksDirSize = getDirSize(FileUtils.getBooksDirectory(context))
+            val coversDirSize = getDirSize(FileUtils.getCoversDirectory(context))
+
+            // 逐本书文件大小（按大小降序）
+            val bookDetails = bookRepository.getAllBooks().first().map { book ->
+                val fileSize = File(book.filePath).let { if (it.exists()) it.length() else 0L }
+                BookSizeItem(book.id, book.title, book.format.name, fileSize)
+            }.sortedByDescending { it.sizeBytes }
+
+            _uiState.value = _uiState.value.copy(
+                storageInfo = StorageInfo(
+                    appSizeBytes = appSize,
+                    cacheSizeBytes = cacheSize + filesSize,
+                    booksSizeBytes = booksDirSize,
+                    coversSizeBytes = coversDirSize,
+                    bookDetails = bookDetails
+                )
+            )
         }
     }
 
@@ -236,7 +279,7 @@ class SettingsViewModel @Inject constructor(
         return dir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
     }
 
-    private fun formatFileSize(bytes: Long): String {
+    fun formatFileSize(bytes: Long): String {
         return when {
             bytes < 1024 -> "$bytes B"
             bytes < 1024 * 1024 -> "${bytes / 1024} KB"

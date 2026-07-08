@@ -1,5 +1,22 @@
 package com.huangder.lumibooks.ui.settings
 
+/** 单本书的文件大小明细 */
+data class BookSizeItem(
+    val bookId: String,
+    val title: String,
+    val format: String,     // "EPUB" / "PDF" / "TXT"
+    val sizeBytes: Long
+)
+
+/** 存储空间分解数据 */
+data class StorageInfo(
+    val appSizeBytes: Long = 0,
+    val cacheSizeBytes: Long = 0,
+    val booksSizeBytes: Long = 0,
+    val coversSizeBytes: Long = 0,
+    val bookDetails: List<BookSizeItem> = emptyList()
+)
+
 data class SettingsUiState(
     // 个人信息
     val avatarUri: String? = null,
@@ -21,7 +38,7 @@ data class SettingsUiState(
     val dailyGoal: Int = 30,               // 分钟
 
     // 存储
-    val cacheSize: String = "计算中...",
+    val storageInfo: StorageInfo = StorageInfo(),
 
     // 备份恢复
     val backupStatus: String = "",     // 操作状态提示
