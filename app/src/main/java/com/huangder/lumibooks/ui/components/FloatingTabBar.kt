@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.ui.theme.AppColors
+import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 
 data class TabItem(
     val selectedIcon: ImageVector,
@@ -50,6 +51,8 @@ fun FloatingTabBar(
     onTabSelected: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isDark = LocalIsDarkTheme.current
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -63,11 +66,11 @@ fun FloatingTabBar(
                 .shadow(
                     elevation = 40.dp,
                     shape = CircleShape,
-                    ambientColor = if (isSystemInDarkTheme()) Color(0xCCFFFFFF) else Color(0xCC000000),
-                    spotColor = if (isSystemInDarkTheme()) Color(0xCCFFFFFF) else Color(0xCC000000)
+                    ambientColor = if (isDark) Color(0xCCFFFFFF) else Color(0xCC000000),
+                    spotColor = if (isDark) Color(0xCCFFFFFF) else Color(0xCC000000)
                 )
                 .clip(CircleShape)
-                .background(if (isSystemInDarkTheme()) Color(0xFF1C1C1E) else Color.White)
+                .background(if (isDark) Color(0xFF1C1C1E) else Color.White)
                 .padding(horizontal = 8.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
@@ -119,9 +122,4 @@ private fun TabItemView(
             )
         }
     }
-}
-
-@Composable
-private fun isSystemInDarkTheme(): Boolean {
-    return androidx.compose.foundation.isSystemInDarkTheme()
 }
