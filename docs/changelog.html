@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" type="image/png" href="icon.png">
+<title>更新日志 — Lumi</title>
+<style>
+/* ── Airbnb Design Tokens ─────────────────────────────── */
+:root{
+  --primary:#ff385c; --primary-active:#e00b41;
+  --ink:#222222; --body:#3f3f3f; --muted:#6a6a6a; --muted-soft:#929292;
+  --hairline:#dddddd; --hairline-soft:#ebebeb;
+  --surface-soft:#f7f7f7; --surface-strong:#f2f2f2;
+  --radius-sm:8px; --radius-md:14px; --radius-lg:20px; --radius-xl:32px; --radius-full:9999px;
+  --shadow-card:rgba(0,0,0,0.02) 0 0 0 1px,rgba(0,0,0,0.04) 0 2px 6px,rgba(0,0,0,0.10) 0 4px 8px;
+  --max-width:1280px; --nav-height:80px;
+}
+
+/* ── Fonts ── */
+@font-face{font-family:'Product Sans';src:url('fonts/ProductSans-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Product Sans';src:url('fonts/ProductSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap}
+@font-face{font-family:'Product Sans';src:url('fonts/ProductSans-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap}
+@font-face{font-family:'MiSans';src:url('fonts/MiSans-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'MiSans';src:url('fonts/MiSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap}
+@font-face{font-family:'MiSans';src:url('fonts/MiSans-Semibold.ttf') format('truetype');font-weight:600;font-style:normal;font-display:swap}
+@font-face{font-family:'MiSans';src:url('fonts/MiSans-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap}
+
+/* ── Reset & Base ─────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:'Product Sans','MiSans',-apple-system,system-ui,Roboto,'Helvetica Neue',sans-serif;
+  background:linear-gradient(135deg,#faf5ff 0%,#f0f9ff 30%,#fff7ed 60%,#f0fdf4 100%);
+  color:var(--ink);line-height:1.6;-webkit-font-smoothing:antialiased;
+  min-height:100vh;
+}
+
+/* ── Animations ───────────────────────────────────────── */
+@keyframes fadeInUp{
+  from{opacity:0;transform:translateY(24px)}
+  to{opacity:1;transform:translateY(0)}
+}
+.reveal{opacity:0;transform:translateY(24px);transition:opacity 0.6s cubic-bezier(0.22,0.61,0.36,1),transform 0.6s cubic-bezier(0.22,0.61,0.36,1)}
+.reveal.visible{opacity:1;transform:translateY(0)}
+.s1{transition-delay:0.05s}.s2{transition-delay:0.12s}.s3{transition-delay:0.19s}
+
+/* ── Top Nav ──────────────────────────────────────────── */
+.top-nav{
+  position:sticky;top:0;z-index:100;
+  background:rgba(255,255,255,0.72);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  height:var(--nav-height);border-bottom:1px solid rgba(255,255,255,0.5);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 48px;
+}
+.top-nav.scrolled{
+  border-bottom-color:var(--hairline);
+  box-shadow:0 1px 0 rgba(0,0,0,0.04);
+  background:rgba(255,255,255,0.88);
+}
+.nav-logo{display:flex;align-items:center;gap:8px;text-decoration:none;color:var(--primary)}
+.nav-logo img{width:34px;height:34px;border-radius:8px}
+.nav-logo span{font-size:22px;font-weight:700;color:var(--ink)}
+.nav-links{display:flex;align-items:center;gap:32px;list-style:none}
+.nav-links a{text-decoration:none;color:var(--muted);font-size:16px;font-weight:600;transition:color 0.15s}
+.nav-links a:hover{color:var(--ink)}
+.nav-links a.active{color:var(--ink);border-bottom:2px solid var(--ink);padding-bottom:2px}
+.nav-cta{display:flex;align-items:center;gap:12px}
+.btn-nav-download{
+  background:var(--primary);color:#fff;text-decoration:none;
+  padding:10px 20px;border-radius:var(--radius-full);font-size:14px;font-weight:500;
+  transition:background 0.2s,transform 0.2s;
+}
+.btn-nav-download:hover{background:var(--primary-active);transform:scale(1.04)}
+.btn-nav-sponsor{
+  background:transparent;color:var(--ink);text-decoration:none;
+  padding:9px 19px;border-radius:var(--radius-full);font-size:14px;font-weight:500;
+  border:1.5px solid var(--hairline);
+  transition:border-color 0.2s,color 0.2s,background 0.2s;
+}
+.btn-nav-sponsor:hover{border-color:var(--ink);background:rgba(0,0,0,0.03)}
+
+/* Mobile "…" more menu */
+.nav-more-btn{display:none;background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);padding:6px 10px;border-radius:8px;line-height:1;letter-spacing:1px;transition:color 0.15s,background 0.15s}
+.nav-more-btn:hover{color:var(--ink);background:rgba(0,0,0,0.04)}
+.nav-more-dropdown{display:none;position:absolute;top:calc(var(--nav-height) - 4px);right:16px;background:rgba(255,255,255,0.96);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--hairline);border-radius:14px;box-shadow:0 4px 24px rgba(0,0,0,0.10),0 1px 4px rgba(0,0,0,0.06);min-width:148px;padding:8px 0;z-index:200;flex-direction:column}
+.nav-more-dropdown.open{display:flex}
+.nav-more-dropdown a{padding:11px 20px;text-decoration:none;color:var(--ink);font-size:15px;font-weight:500;transition:background 0.12s;white-space:nowrap}
+.nav-more-dropdown a:hover{background:rgba(0,0,0,0.04);color:var(--primary)}
+
+/* ── Page Content ─────────────────────────────────────── */
+.page-container{
+  max-width:800px;margin:0 auto;padding:64px 24px;
+}
+.page-header{
+  text-align:center;margin-bottom:48px;
+}
+.page-header h1{
+  font-size:28px;font-weight:700;margin-bottom:8px;
+}
+.page-header p{
+  font-size:15px;color:var(--muted);
+}
+
+/* ── Changelog ────────────────────────────────────────── */
+.version-block{
+  margin-bottom:48px;
+}
+.version-badge{
+  display:inline-flex;align-items:center;gap:8px;
+  background:var(--primary);color:#fff;
+  padding:6px 16px;border-radius:var(--radius-full);
+  font-size:14px;font-weight:600;margin-bottom:16px;
+}
+.version-badge.old{
+  background:var(--hairline);color:var(--muted);
+}
+.version-date{
+  font-size:13px;color:var(--muted-soft);font-weight:400;
+}
+.changelog-list{
+  list-style:none;display:flex;flex-direction:column;gap:0;
+}
+.changelog-list li{
+  padding:11px 20px;
+  border-radius:var(--radius-sm);
+  font-size:15px;color:var(--body);
+  line-height:1.6;
+  display:flex;align-items:flex-start;gap:10px;
+  transition:background 0.15s;
+}
+.changelog-list li:hover{background:rgba(0,0,0,0.02)}
+.changelog-list li .tag{
+  flex-shrink:0;font-size:12px;font-weight:600;
+  padding:2px 8px;border-radius:4px;
+  min-width:32px;text-align:center;
+}
+.tag-new{background:#e8f5e9;color:#2e7d32}
+.tag-fix{background:#fff3e0;color:#e65100}
+.tag-opt{background:#e3f2fd;color:#1565c0}
+
+/* ── Footer ───────────────────────────────────────────── */
+.footer-light{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:24px;
+  padding:48px 48px 32px;max-width:var(--max-width);margin:0 auto;
+}
+.footer-col h4{font-size:14px;font-weight:600;margin-bottom:12px;color:var(--ink)}
+.footer-col ul{list-style:none;display:flex;flex-direction:column;gap:6px}
+.footer-col ul li a{text-decoration:none;color:var(--muted);font-size:14px;transition:color 0.15s}
+.footer-col ul li a:hover{color:var(--ink)}
+.legal-band{
+  display:flex;justify-content:space-between;align-items:center;
+  font-size:13px;color:var(--muted);border-top:1px solid rgba(255,255,255,0.3);
+  padding:16px 48px;max-width:var(--max-width);margin:0 auto;
+}
+.legal-band a{color:var(--muted);text-decoration:none;margin-left:24px}
+.legal-band a:hover{text-decoration:underline}
+
+/* ── Responsive ────────────────────────────────────────── */
+@media(max-width:743px){
+  .top-nav{height:56px;padding:0 16px}
+  .nav-links{display:none}.nav-more-btn{display:block}
+  .nav-logo span{display:none}
+  .btn-nav-download,.btn-nav-sponsor{padding:8px 14px;font-size:13px}
+  .page-container{padding:48px 16px}
+  .page-header h1{font-size:24px}
+  .footer-light{grid-template-columns:1fr;padding:32px 16px}
+  .legal-band{flex-direction:column;gap:8px;text-align:center}
+}
+</style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="index.html" class="nav-logo">
+    <img src="icon.png" alt="Lumi"><span>Lumi</span>
+  </a>
+  <ul class="nav-links">
+    <li><a href="features.html">功能</a></li>
+    <li><a href="privacy-section.html">隐私</a></li>
+    <li><a href="tech.html">技术</a></li>
+    <li><a href="sponsor.html">赞助</a></li>
+    <li><a href="feedback.html">反馈</a></li>
+  </ul>
+  <div class="nav-cta">
+    <a href="sponsor.html" class="btn-nav-sponsor">赞助</a>
+    <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-nav-download">获取 Lumi</a>
+  </div>
+  <button class="nav-more-btn" aria-label="更多导航" onclick="event.stopPropagation();this.nextElementSibling.classList.toggle('open')">…</button>
+  <div class="nav-more-dropdown">
+    <a href="features.html">功能</a>
+    <a href="privacy-section.html">隐私</a>
+    <a href="tech.html">技术</a>
+    <a href="sponsor.html">赞助</a>
+    <a href="feedback.html">反馈</a>
+  </div>
+</nav>
+
+<div class="page-container">
+  <div class="page-header reveal">
+    <h1>更新日志</h1>
+    <p>Lumi 的每一次进步，都记录在这里</p>
+  </div>
+
+  <!-- v1.0.02.13_Beta -->
+  <div class="version-block reveal s1">
+    <div class="version-badge">
+      v1.0.02.13_Beta
+      <span class="version-date">2026-07-09</span>
+    </div>
+    <ul class="changelog-list">
+      <li><span class="tag tag-new">新增</span>使用 Lumi 打开 pdf、txt 和 epub 文件</li>
+      <li><span class="tag tag-new">新增</span>存储空间可视化</li>
+      <li><span class="tag tag-new">新增</span>检查更新</li>
+      <li><span class="tag tag-new">新增</span>更新日志页（关于应用内）</li>
+      <li><span class="tag tag-opt">优化</span>设置页 UI：卡片式编辑对话框、自定义 Pill 滑块</li>
+      <li><span class="tag tag-fix">修复</span>pdf 阅读功能无法使用的问题</li>
+      <li><span class="tag tag-fix">修复</span>连胜天数为 0 的问题（待测）</li>
+      <li><span class="tag tag-fix">修复</span>手动深色模式下主页下方菜单栏显色异常的问题</li>
+      <li><span class="tag tag-fix">修复</span>设置页面中部分页面在深色模式下显色异常的问题</li>
+      <li><span class="tag tag-fix">修复</span>隐私条款/用户协议/开源许可页面在手动深色模式下内容未适配的问题</li>
+      <li><span class="tag tag-fix">修复</span>手动深色模式下设置二级页面切换闪白的问题</li>
+      <li><span class="tag tag-fix">修复</span>清理缓存功能无操作反馈的问题</li>
+      <li><span class="tag tag-opt">优化</span>设置二级菜单入口的显示</li>
+    </ul>
+  </div>
+
+  <!-- v1.0.01.104_Beta -->
+  <div class="version-block reveal s2">
+    <div class="version-badge old">
+      v1.0.01.104_Beta
+      <span class="version-date">2026-07-06</span>
+    </div>
+    <ul class="changelog-list">
+      <li><span class="tag tag-new">新增</span>第一个开发测试版</li>
+    </ul>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-light">
+    <div class="footer-col"><h4>Lumi</h4><ul><li><a href="features.html">功能介绍</a></li><li><a href="tech.html">技术架构</a></li><li><a href="sponsor.html">赞助支持</a></li><li><a href="feedback.html">问题反馈</a></li></ul></div>
+    <div class="footer-col"><h4>法律</h4><ul><li><a href="privacy.html">隐私政策</a></li><li><a href="terms.html">用户协议</a></li></ul></div>
+    <div class="footer-col"><h4>联系方式</h4><ul><li><a href="https://github.com/huangder/Lumi_Books">GitHub</a></li><li><a href="mailto:huangder0104@126.com">邮件联系</a></li></ul></div>
+  </div>
+  <div class="legal-band"><span>&copy; 2026 Huangder</span><span><a href="privacy.html">隐私</a><a href="terms.html">条款</a><a href="sponsor.html">赞助</a></span></div>
+</footer>
+
+<script>
+(function(){
+  var els=document.querySelectorAll('.reveal');
+  if(!('IntersectionObserver' in window)){els.forEach(function(el){el.classList.add('visible')});return}
+  var io=new IntersectionObserver(function(entries){entries.forEach(function(e){if(e.isIntersecting){e.target.classList.add('visible');io.unobserve(e.target)}})},{threshold:0.12});
+  els.forEach(function(el){io.observe(el)});
+  var nav=document.querySelector('.top-nav');
+  window.addEventListener('scroll',function(){requestAnimationFrame(function(){if(window.scrollY>10)nav.classList.add('scrolled');else nav.classList.remove('scrolled')})},{passive:true});
+  document.addEventListener('click',function(e){var dd=document.querySelector('.nav-more-dropdown');var btn=document.querySelector('.nav-more-btn');if(dd&&dd.classList.contains('open')&&!dd.contains(e.target)&&e.target!==btn)dd.classList.remove('open')});
+})();
+</script>
+</body>
+</html>
