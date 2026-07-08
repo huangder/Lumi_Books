@@ -46,209 +46,210 @@
 30-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:14:9-41
 31        android:supportsRtl="true"
 31-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:15:9-35
-32        android:theme="@style/Theme.EBookReader" >
-32-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:16:9-49
-33        <activity
-33-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:19:9-29:20
-34            android:name="com.huangder.lumibooks.ui.welcome.WelcomeActivity"
-34-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:20:13-55
-35            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
-35-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:22:13-225
-36            android:exported="true"
-36-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:21:13-36
-37            android:theme="@style/Theme.EBookReader"
-37-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:23:13-53
-38            android:windowSoftInputMode="adjustResize" >
-38-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:24:13-55
-39            <intent-filter>
-39-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:25:13-28:29
-40                <action android:name="android.intent.action.MAIN" />
-40-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:26:17-69
-40-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:26:25-66
-41
-42                <category android:name="android.intent.category.LAUNCHER" />
-42-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:27:17-77
-42-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:27:27-74
-43            </intent-filter>
-44        </activity>
-45        <activity
-45-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:31:9-36:58
-46            android:name="com.huangder.lumibooks.MainActivity"
-46-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:32:13-41
-47            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
-47-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:34:13-225
-48            android:exported="true"
-48-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:33:13-36
-49            android:theme="@style/Theme.EBookReader"
-49-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:35:13-53
-50            android:windowSoftInputMode="adjustResize" />
-50-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:36:13-55
-51        <activity
-51-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:38:9-42:58
-52            android:name="com.huangder.lumibooks.ui.settings.SettingsActivity"
-52-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:39:13-57
-53            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
-53-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:40:13-225
-54            android:theme="@style/Theme.EBookReader"
-54-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:41:13-53
-55            android:windowSoftInputMode="adjustResize" />
-55-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:42:13-55
-56        <activity
-56-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:44:9-48:58
-57            android:name="com.huangder.lumibooks.ui.settings.DetailActivity"
-57-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:45:13-55
-58            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
-58-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:46:13-225
-59            android:theme="@style/Theme.EBookReader"
-59-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:47:13-53
-60            android:windowSoftInputMode="adjustResize" />
-60-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:48:13-55
-61        <activity
-61-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:50:9-54:58
-62            android:name="com.huangder.lumibooks.ui.settings.WebViewActivity"
-62-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:51:13-56
-63            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
-63-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:52:13-225
-64            android:theme="@style/Theme.EBookReader"
-64-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:53:13-53
-65            android:windowSoftInputMode="adjustResize" />
-65-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:54:13-55
-66        <activity
-66-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:56:9-60:58
-67            android:name="com.huangder.lumibooks.ui.settings.SponsorActivity"
-67-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:57:13-56
-68            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
-68-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:58:13-225
-69            android:theme="@style/Theme.EBookReader"
-69-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:59:13-53
-70            android:windowSoftInputMode="adjustResize" />
-70-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:60:13-55
-71        <activity
-71-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:62:9-66:58
-72            android:name="com.huangder.lumibooks.ui.settings.FeedbackActivity"
-72-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:63:13-57
-73            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
-73-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:64:13-225
-74            android:theme="@style/Theme.EBookReader"
-74-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:65:13-53
-75            android:windowSoftInputMode="adjustResize" />
-75-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:66:13-55
-76        <activity
-76-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:68:9-72:58
-77            android:name="com.huangder.lumibooks.ui.bookshelf.BookNotesActivity"
-77-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:69:13-59
-78            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
-78-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:70:13-225
-79            android:theme="@style/Theme.EBookReader"
-79-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:71:13-53
-80            android:windowSoftInputMode="adjustResize" />
-80-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:72:13-55
-81
-82        <!-- 文件提供者 -->
-83        <provider
-84            android:name="androidx.core.content.FileProvider"
-84-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:76:13-62
-85            android:authorities="com.huangder.lumibooks.fileprovider"
-85-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:77:13-64
-86            android:exported="false"
-86-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:78:13-37
-87            android:grantUriPermissions="true" >
-87-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:79:13-47
-88            <meta-data
-88-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:80:13-82:54
-89                android:name="android.support.FILE_PROVIDER_PATHS"
-89-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:81:17-67
-90                android:resource="@xml/file_paths" />
-90-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:82:17-51
-91        </provider>
-92
-93        <activity
-93-->[androidx.compose.ui:ui-tooling-android:1.7.6] C:\Users\Huangder\.gradle\caches\8.13\transforms\011d644e39033794909c939cf1dc2a38\transformed\ui-tooling-release\AndroidManifest.xml:23:9-25:39
-94            android:name="androidx.compose.ui.tooling.PreviewActivity"
-94-->[androidx.compose.ui:ui-tooling-android:1.7.6] C:\Users\Huangder\.gradle\caches\8.13\transforms\011d644e39033794909c939cf1dc2a38\transformed\ui-tooling-release\AndroidManifest.xml:24:13-71
-95            android:exported="true" />
-95-->[androidx.compose.ui:ui-tooling-android:1.7.6] C:\Users\Huangder\.gradle\caches\8.13\transforms\011d644e39033794909c939cf1dc2a38\transformed\ui-tooling-release\AndroidManifest.xml:25:13-36
-96        <activity
-96-->[androidx.compose.ui:ui-test-manifest:1.7.6] C:\Users\Huangder\.gradle\caches\8.13\transforms\21434154e24c6ff5edeb68c0cd3d2562\transformed\ui-test-manifest-1.7.6\AndroidManifest.xml:23:9-25:39
-97            android:name="androidx.activity.ComponentActivity"
-97-->[androidx.compose.ui:ui-test-manifest:1.7.6] C:\Users\Huangder\.gradle\caches\8.13\transforms\21434154e24c6ff5edeb68c0cd3d2562\transformed\ui-test-manifest-1.7.6\AndroidManifest.xml:24:13-63
-98            android:exported="true" />
-98-->[androidx.compose.ui:ui-test-manifest:1.7.6] C:\Users\Huangder\.gradle\caches\8.13\transforms\21434154e24c6ff5edeb68c0cd3d2562\transformed\ui-test-manifest-1.7.6\AndroidManifest.xml:25:13-36
-99
-100        <provider
-100-->[androidx.emoji2:emoji2:1.3.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\f7b458328a2ba135290e486f7f30f988\transformed\emoji2-1.3.0\AndroidManifest.xml:24:9-32:20
-101            android:name="androidx.startup.InitializationProvider"
-101-->[androidx.emoji2:emoji2:1.3.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\f7b458328a2ba135290e486f7f30f988\transformed\emoji2-1.3.0\AndroidManifest.xml:25:13-67
-102            android:authorities="com.huangder.lumibooks.androidx-startup"
-102-->[androidx.emoji2:emoji2:1.3.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\f7b458328a2ba135290e486f7f30f988\transformed\emoji2-1.3.0\AndroidManifest.xml:26:13-68
-103            android:exported="false" >
-103-->[androidx.emoji2:emoji2:1.3.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\f7b458328a2ba135290e486f7f30f988\transformed\emoji2-1.3.0\AndroidManifest.xml:27:13-37
-104            <meta-data
-104-->[androidx.emoji2:emoji2:1.3.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\f7b458328a2ba135290e486f7f30f988\transformed\emoji2-1.3.0\AndroidManifest.xml:29:13-31:52
-105                android:name="androidx.emoji2.text.EmojiCompatInitializer"
-105-->[androidx.emoji2:emoji2:1.3.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\f7b458328a2ba135290e486f7f30f988\transformed\emoji2-1.3.0\AndroidManifest.xml:30:17-75
-106                android:value="androidx.startup" />
-106-->[androidx.emoji2:emoji2:1.3.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\f7b458328a2ba135290e486f7f30f988\transformed\emoji2-1.3.0\AndroidManifest.xml:31:17-49
-107            <meta-data
-107-->[androidx.lifecycle:lifecycle-process:2.8.7] C:\Users\Huangder\.gradle\caches\8.13\transforms\8bb90aa62b330ac33793bdead7f8c587\transformed\lifecycle-process-2.8.7\AndroidManifest.xml:29:13-31:52
-108                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
-108-->[androidx.lifecycle:lifecycle-process:2.8.7] C:\Users\Huangder\.gradle\caches\8.13\transforms\8bb90aa62b330ac33793bdead7f8c587\transformed\lifecycle-process-2.8.7\AndroidManifest.xml:30:17-78
-109                android:value="androidx.startup" />
-109-->[androidx.lifecycle:lifecycle-process:2.8.7] C:\Users\Huangder\.gradle\caches\8.13\transforms\8bb90aa62b330ac33793bdead7f8c587\transformed\lifecycle-process-2.8.7\AndroidManifest.xml:31:17-49
-110            <meta-data
-110-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:29:13-31:52
-111                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
-111-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:30:17-85
-112                android:value="androidx.startup" />
-112-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:31:17-49
-113        </provider>
-114
-115        <service
-115-->[androidx.room:room-runtime:2.6.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\78aa72ad173e9412f79a10b1c463d9af\transformed\room-runtime-2.6.1\AndroidManifest.xml:24:9-28:63
-116            android:name="androidx.room.MultiInstanceInvalidationService"
-116-->[androidx.room:room-runtime:2.6.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\78aa72ad173e9412f79a10b1c463d9af\transformed\room-runtime-2.6.1\AndroidManifest.xml:25:13-74
-117            android:directBootAware="true"
-117-->[androidx.room:room-runtime:2.6.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\78aa72ad173e9412f79a10b1c463d9af\transformed\room-runtime-2.6.1\AndroidManifest.xml:26:13-43
-118            android:exported="false" />
-118-->[androidx.room:room-runtime:2.6.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\78aa72ad173e9412f79a10b1c463d9af\transformed\room-runtime-2.6.1\AndroidManifest.xml:27:13-37
-119
-120        <receiver
-120-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:34:9-52:20
-121            android:name="androidx.profileinstaller.ProfileInstallReceiver"
-121-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:35:13-76
-122            android:directBootAware="false"
-122-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:36:13-44
-123            android:enabled="true"
-123-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:37:13-35
-124            android:exported="true"
-124-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:38:13-36
-125            android:permission="android.permission.DUMP" >
-125-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:39:13-57
-126            <intent-filter>
-126-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:40:13-42:29
-127                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
-127-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:41:17-91
-127-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:41:25-88
-128            </intent-filter>
-129            <intent-filter>
-129-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:43:13-45:29
-130                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
-130-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:44:17-85
-130-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:44:25-82
-131            </intent-filter>
-132            <intent-filter>
-132-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:46:13-48:29
-133                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
-133-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:47:17-88
-133-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:47:25-85
-134            </intent-filter>
-135            <intent-filter>
-135-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:49:13-51:29
-136                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
-136-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:50:17-95
-136-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:50:25-92
-137            </intent-filter>
-138        </receiver>
-139    </application>
-140
-141</manifest>
+32        android:testOnly="true"
+33        android:theme="@style/Theme.EBookReader" >
+33-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:16:9-49
+34        <activity
+34-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:19:9-29:20
+35            android:name="com.huangder.lumibooks.ui.welcome.WelcomeActivity"
+35-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:20:13-55
+36            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+36-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:22:13-225
+37            android:exported="true"
+37-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:21:13-36
+38            android:theme="@style/Theme.EBookReader"
+38-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:23:13-53
+39            android:windowSoftInputMode="adjustResize" >
+39-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:24:13-55
+40            <intent-filter>
+40-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:25:13-28:29
+41                <action android:name="android.intent.action.MAIN" />
+41-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:26:17-69
+41-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:26:25-66
+42
+43                <category android:name="android.intent.category.LAUNCHER" />
+43-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:27:17-77
+43-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:27:27-74
+44            </intent-filter>
+45        </activity>
+46        <activity
+46-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:31:9-36:58
+47            android:name="com.huangder.lumibooks.MainActivity"
+47-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:32:13-41
+48            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+48-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:34:13-225
+49            android:exported="true"
+49-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:33:13-36
+50            android:theme="@style/Theme.EBookReader"
+50-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:35:13-53
+51            android:windowSoftInputMode="adjustResize" />
+51-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:36:13-55
+52        <activity
+52-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:38:9-42:58
+53            android:name="com.huangder.lumibooks.ui.settings.SettingsActivity"
+53-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:39:13-57
+54            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+54-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:40:13-225
+55            android:theme="@style/Theme.EBookReader"
+55-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:41:13-53
+56            android:windowSoftInputMode="adjustResize" />
+56-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:42:13-55
+57        <activity
+57-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:44:9-48:58
+58            android:name="com.huangder.lumibooks.ui.settings.DetailActivity"
+58-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:45:13-55
+59            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+59-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:46:13-225
+60            android:theme="@style/Theme.EBookReader"
+60-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:47:13-53
+61            android:windowSoftInputMode="adjustResize" />
+61-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:48:13-55
+62        <activity
+62-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:50:9-54:58
+63            android:name="com.huangder.lumibooks.ui.settings.WebViewActivity"
+63-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:51:13-56
+64            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+64-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:52:13-225
+65            android:theme="@style/Theme.EBookReader"
+65-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:53:13-53
+66            android:windowSoftInputMode="adjustResize" />
+66-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:54:13-55
+67        <activity
+67-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:56:9-60:58
+68            android:name="com.huangder.lumibooks.ui.settings.SponsorActivity"
+68-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:57:13-56
+69            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+69-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:58:13-225
+70            android:theme="@style/Theme.EBookReader"
+70-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:59:13-53
+71            android:windowSoftInputMode="adjustResize" />
+71-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:60:13-55
+72        <activity
+72-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:62:9-66:58
+73            android:name="com.huangder.lumibooks.ui.settings.FeedbackActivity"
+73-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:63:13-57
+74            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+74-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:64:13-225
+75            android:theme="@style/Theme.EBookReader"
+75-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:65:13-53
+76            android:windowSoftInputMode="adjustResize" />
+76-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:66:13-55
+77        <activity
+77-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:68:9-72:58
+78            android:name="com.huangder.lumibooks.ui.bookshelf.BookNotesActivity"
+78-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:69:13-59
+79            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+79-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:70:13-225
+80            android:theme="@style/Theme.EBookReader"
+80-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:71:13-53
+81            android:windowSoftInputMode="adjustResize" />
+81-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:72:13-55
+82
+83        <!-- 文件提供者 -->
+84        <provider
+85            android:name="androidx.core.content.FileProvider"
+85-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:76:13-62
+86            android:authorities="com.huangder.lumibooks.fileprovider"
+86-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:77:13-64
+87            android:exported="false"
+87-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:78:13-37
+88            android:grantUriPermissions="true" >
+88-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:79:13-47
+89            <meta-data
+89-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:80:13-82:54
+90                android:name="android.support.FILE_PROVIDER_PATHS"
+90-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:81:17-67
+91                android:resource="@xml/file_paths" />
+91-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:82:17-51
+92        </provider>
+93
+94        <activity
+94-->[androidx.compose.ui:ui-tooling-android:1.7.6] C:\Users\Huangder\.gradle\caches\8.13\transforms\011d644e39033794909c939cf1dc2a38\transformed\ui-tooling-release\AndroidManifest.xml:23:9-25:39
+95            android:name="androidx.compose.ui.tooling.PreviewActivity"
+95-->[androidx.compose.ui:ui-tooling-android:1.7.6] C:\Users\Huangder\.gradle\caches\8.13\transforms\011d644e39033794909c939cf1dc2a38\transformed\ui-tooling-release\AndroidManifest.xml:24:13-71
+96            android:exported="true" />
+96-->[androidx.compose.ui:ui-tooling-android:1.7.6] C:\Users\Huangder\.gradle\caches\8.13\transforms\011d644e39033794909c939cf1dc2a38\transformed\ui-tooling-release\AndroidManifest.xml:25:13-36
+97        <activity
+97-->[androidx.compose.ui:ui-test-manifest:1.7.6] C:\Users\Huangder\.gradle\caches\8.13\transforms\21434154e24c6ff5edeb68c0cd3d2562\transformed\ui-test-manifest-1.7.6\AndroidManifest.xml:23:9-25:39
+98            android:name="androidx.activity.ComponentActivity"
+98-->[androidx.compose.ui:ui-test-manifest:1.7.6] C:\Users\Huangder\.gradle\caches\8.13\transforms\21434154e24c6ff5edeb68c0cd3d2562\transformed\ui-test-manifest-1.7.6\AndroidManifest.xml:24:13-63
+99            android:exported="true" />
+99-->[androidx.compose.ui:ui-test-manifest:1.7.6] C:\Users\Huangder\.gradle\caches\8.13\transforms\21434154e24c6ff5edeb68c0cd3d2562\transformed\ui-test-manifest-1.7.6\AndroidManifest.xml:25:13-36
+100
+101        <provider
+101-->[androidx.emoji2:emoji2:1.3.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\f7b458328a2ba135290e486f7f30f988\transformed\emoji2-1.3.0\AndroidManifest.xml:24:9-32:20
+102            android:name="androidx.startup.InitializationProvider"
+102-->[androidx.emoji2:emoji2:1.3.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\f7b458328a2ba135290e486f7f30f988\transformed\emoji2-1.3.0\AndroidManifest.xml:25:13-67
+103            android:authorities="com.huangder.lumibooks.androidx-startup"
+103-->[androidx.emoji2:emoji2:1.3.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\f7b458328a2ba135290e486f7f30f988\transformed\emoji2-1.3.0\AndroidManifest.xml:26:13-68
+104            android:exported="false" >
+104-->[androidx.emoji2:emoji2:1.3.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\f7b458328a2ba135290e486f7f30f988\transformed\emoji2-1.3.0\AndroidManifest.xml:27:13-37
+105            <meta-data
+105-->[androidx.emoji2:emoji2:1.3.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\f7b458328a2ba135290e486f7f30f988\transformed\emoji2-1.3.0\AndroidManifest.xml:29:13-31:52
+106                android:name="androidx.emoji2.text.EmojiCompatInitializer"
+106-->[androidx.emoji2:emoji2:1.3.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\f7b458328a2ba135290e486f7f30f988\transformed\emoji2-1.3.0\AndroidManifest.xml:30:17-75
+107                android:value="androidx.startup" />
+107-->[androidx.emoji2:emoji2:1.3.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\f7b458328a2ba135290e486f7f30f988\transformed\emoji2-1.3.0\AndroidManifest.xml:31:17-49
+108            <meta-data
+108-->[androidx.lifecycle:lifecycle-process:2.8.7] C:\Users\Huangder\.gradle\caches\8.13\transforms\8bb90aa62b330ac33793bdead7f8c587\transformed\lifecycle-process-2.8.7\AndroidManifest.xml:29:13-31:52
+109                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
+109-->[androidx.lifecycle:lifecycle-process:2.8.7] C:\Users\Huangder\.gradle\caches\8.13\transforms\8bb90aa62b330ac33793bdead7f8c587\transformed\lifecycle-process-2.8.7\AndroidManifest.xml:30:17-78
+110                android:value="androidx.startup" />
+110-->[androidx.lifecycle:lifecycle-process:2.8.7] C:\Users\Huangder\.gradle\caches\8.13\transforms\8bb90aa62b330ac33793bdead7f8c587\transformed\lifecycle-process-2.8.7\AndroidManifest.xml:31:17-49
+111            <meta-data
+111-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:29:13-31:52
+112                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
+112-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:30:17-85
+113                android:value="androidx.startup" />
+113-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:31:17-49
+114        </provider>
+115
+116        <service
+116-->[androidx.room:room-runtime:2.6.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\78aa72ad173e9412f79a10b1c463d9af\transformed\room-runtime-2.6.1\AndroidManifest.xml:24:9-28:63
+117            android:name="androidx.room.MultiInstanceInvalidationService"
+117-->[androidx.room:room-runtime:2.6.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\78aa72ad173e9412f79a10b1c463d9af\transformed\room-runtime-2.6.1\AndroidManifest.xml:25:13-74
+118            android:directBootAware="true"
+118-->[androidx.room:room-runtime:2.6.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\78aa72ad173e9412f79a10b1c463d9af\transformed\room-runtime-2.6.1\AndroidManifest.xml:26:13-43
+119            android:exported="false" />
+119-->[androidx.room:room-runtime:2.6.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\78aa72ad173e9412f79a10b1c463d9af\transformed\room-runtime-2.6.1\AndroidManifest.xml:27:13-37
+120
+121        <receiver
+121-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:34:9-52:20
+122            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+122-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:35:13-76
+123            android:directBootAware="false"
+123-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:36:13-44
+124            android:enabled="true"
+124-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:37:13-35
+125            android:exported="true"
+125-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:38:13-36
+126            android:permission="android.permission.DUMP" >
+126-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:39:13-57
+127            <intent-filter>
+127-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:40:13-42:29
+128                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
+128-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:41:17-91
+128-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:41:25-88
+129            </intent-filter>
+130            <intent-filter>
+130-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:43:13-45:29
+131                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
+131-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:44:17-85
+131-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:44:25-82
+132            </intent-filter>
+133            <intent-filter>
+133-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:46:13-48:29
+134                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
+134-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:47:17-88
+134-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:47:25-85
+135            </intent-filter>
+136            <intent-filter>
+136-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:49:13-51:29
+137                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
+137-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:50:17-95
+137-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\80bc0feade0b457f8d5041aaa635e919\transformed\profileinstaller-1.3.1\AndroidManifest.xml:50:25-92
+138            </intent-filter>
+139        </receiver>
+140    </application>
+141
+142</manifest>

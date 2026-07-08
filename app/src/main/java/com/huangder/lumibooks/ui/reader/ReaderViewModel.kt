@@ -570,6 +570,20 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch { readingRepository.insertBookmark(bookmark) }
     }
 
+    /** PDF 专用书签：每页 = 一个 chapterIndex */
+    fun addPdfBookmark(pageIndex: Int, bookTitle: String) {
+        val state = _uiState.value
+        val book = state.book ?: return
+        val bookmark = Bookmark(
+            bookId = book.id,
+            chapterIndex = pageIndex,
+            position = 0f,
+            title = "第${pageIndex + 1}页  $bookTitle",
+            createdAt = System.currentTimeMillis()
+        )
+        viewModelScope.launch { readingRepository.insertBookmark(bookmark) }
+    }
+
     fun deleteBookmark(bookmark: Bookmark) {
         viewModelScope.launch { readingRepository.deleteBookmark(bookmark) }
     }
