@@ -349,6 +349,13 @@ class ReadView(context: Context) : FrameLayout(context) {
         layoutEngine.sharedTextPaint = curPageView.textView.paint
 
         if (needsRelayout) {
+            // 字号变化前捕获当前内容位置，以便重新分页后修正页码
+            if (fontSizeChanged) {
+                val curSlot = slotManager.getCurSlot()
+                if (curSlot.isLoaded) {
+                    slotManager.pendingStartCharOffset = curSlot.contentView.chapterStartOffset
+                }
+            }
             layoutEngine.invalidateAll()
         }
 

@@ -74,6 +74,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.debounce
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -115,6 +117,7 @@ import com.huangder.lumibooks.ui.theme.KaiTi
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
+@OptIn(kotlinx.coroutines.FlowPreview::class)
 @Composable
 fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> Unit = {}, onLoadingComplete: () -> Unit = {}, viewModel: ReaderViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsState()
@@ -123,6 +126,14 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val density = LocalDensity.current
+
+    // 字号拖拽去抖：避免 PillSlider 拖拽时每秒触发 20-50 次重排
+    var debouncedFontSize by remember { mutableFloatStateOf(uiState.fontSize) }
+    LaunchedEffect(Unit) {
+        snapshotFlow { uiState.fontSize }
+            .debounce(200)
+            .collect { debouncedFontSize = it }
+    }
 
     // ReadView 引用
     val readViewRef = remember { mutableStateOf<ReadView?>(null) }
@@ -480,7 +491,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     }
                 },
                 update = { readView ->
-                    val fontSizePx = uiState.fontSize * density.density
+                    val fontSizePx = debouncedFontSize * density.density
                     readView.configure(
                         fontSizePx = fontSizePx,
                         theme = uiState.readerTheme,

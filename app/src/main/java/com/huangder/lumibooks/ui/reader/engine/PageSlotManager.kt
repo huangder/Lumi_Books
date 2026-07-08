@@ -36,6 +36,9 @@ class PageSlotManager(
     private var loadingJob: Job? = null
     private var chapterCount: Int = 0
 
+    /** 字号变化时暂存当前页的字符起始偏移，供 loadSlot 搜索修正后的页码 */
+    var pendingStartCharOffset: Int = -1
+
     /** 文本内容提供者：根据章节索引返回文本 */
     var contentProvider: (suspend (Int) -> CharSequence?)? = null
 
@@ -104,6 +107,20 @@ class PageSlotManager(
                 val chapterLayout = layoutEngine.layout(chapterIndex, text)
 
                 var actualPage = pageInChapter
+
+                // 字号变化后，根据字符偏移修正页码（保持阅读内容位置不变）
+                if (slotIdx == SLOT_CUR && pendingStartCharOffset >= 0) {
+                    val correctedPage = chapterLayout.pages.indexOfFirst { page ->
+                        pendingStartCharOffset >= page.startCharOffset &&
+                                pendingStartCharOffset < page.endCharOffset
+                    }
+                    if (correctedPage >= 0) {
+                        actualPage = correctedPage
+                        slot.pageIndex = correctedPage
+                        Log.d(TAG, "Font-size correction: charOffset=$pendingStartCharOffset -> page $correctedPage")
+                    }
+                    pendingStartCharOffset = -1  // 消费一次
+                }
                 if (slotIdx == SLOT_PREV && actualPage == 0 && chapterIndex < currentChapterIndex) {
                     actualPage = chapterLayout.totalPages - 1
                     slot.pageIndex = actualPage
