@@ -39,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -77,7 +78,7 @@ fun BookNotesScreen(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = AppSpace.sm, vertical = AppSpace.sm)
+                .padding(horizontal = AppSpace.lg, vertical = AppSpace.sm)
         ) {
             Box(
                 modifier = Modifier
@@ -149,22 +150,21 @@ private fun SegmentedTabBar(
             .background(AppColors.BgGray)
             .padding(2.dp)
     ) {
-        // 选中指示器
+        // 选中指示器（graphicsLayer translationX 实现平滑滑动）
         val indicatorOffset by animateFloatAsState(
             targetValue = selectedTab.toFloat(),
             animationSpec = tween(200),
             label = "tabIndicator"
         )
-        val tabWidth = 1f / tabs.size
+        val tabFraction = 1f / tabs.size
 
         Box(
             modifier = Modifier
-                .fillMaxWidth(tabWidth)
+                .fillMaxWidth(tabFraction)
                 .fillMaxSize()
-                .offset(x = with(androidx.compose.ui.platform.LocalDensity.current) {
-                    (indicatorOffset * tabWidth * 100).toInt().let { "${it}%" }
-                        .let { 0.dp } // 使用 weight 方式定位
-                })
+                .graphicsLayer {
+                    translationX = indicatorOffset * size.width
+                }
                 .clip(RoundedCornerShape(18.dp))
                 .shadow(2.dp, RoundedCornerShape(18.dp))
                 .background(Color.White)
