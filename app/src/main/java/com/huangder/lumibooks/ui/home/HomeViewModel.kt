@@ -129,11 +129,19 @@ class HomeViewModel @Inject constructor(
                 DailyReading(date, duration, dayLabels[dayOfWeek])
             }
 
-            // 连胜：仅从今天往回数（跳过未来天，duration=0 不算中断）
+            // 连胜：从今天往回数连续达标的天数
+            // 今天未达标时（今天还在进行中），不计入但也不中断连胜，继续往前统计
             val todayIdx = Calendar.getInstance().get(Calendar.DAY_OF_WEEK) - 1 // 0=Sunday
             var streak = 0
             for (i in todayIdx downTo 0) {
-                if (weeklyData[i].duration >= goalMs) streak++ else break
+                if (weeklyData[i].duration >= goalMs) {
+                    streak++
+                } else if (i == todayIdx) {
+                    // 今天未达标，继续往前检查（今天不计入连胜但也不打断）
+                    continue
+                } else {
+                    break
+                }
             }
 
             _uiState.value = _uiState.value.copy(
