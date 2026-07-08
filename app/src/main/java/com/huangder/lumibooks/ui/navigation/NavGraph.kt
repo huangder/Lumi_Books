@@ -142,7 +142,8 @@ fun MainNavGraph(navController: NavHostController) {
                         readerReady = false
                         showTransition = true
                         pendingBookId = bookId
-                    }
+                    },
+                    onOverlayActiveChange = { active -> tabBarVisible = !active }
                 )
             }
 

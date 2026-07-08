@@ -276,10 +276,10 @@ fun StorageDetail(viewModel: SettingsViewModel) {
                         )
                     }
                     SettingsDivider()
-                    info.bookDetails.forEachIndexed { index, item ->
+                    info.bookDetails.forEach { item ->
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = AppSpace.md, vertical = AppSpace.sm),
-                            verticalAlignment = Alignment.CenterVertically
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = AppSpace.md, vertical = AppSpace.md),
+                            verticalAlignment = Alignment.Top
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
@@ -288,33 +288,31 @@ fun StorageDetail(viewModel: SettingsViewModel) {
                                     color = AppColors.TextPrimary,
                                     maxLines = 1
                                 )
-                            }
-                            // 格式标签
-                            val fmtColor = FormatColors[item.format] ?: Color.Gray
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(fmtColor.copy(alpha = 0.12f))
-                                    .padding(horizontal = 6.dp, vertical = 1.dp)
-                            ) {
-                                Text(
-                                    item.format,
-                                    fontSize = 10.sp,
-                                    color = fmtColor,
-                                    fontWeight = FontWeight.Medium
-                                )
+                                Spacer(Modifier.height(4.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    val fmtColor = FormatColors[item.format] ?: Color.Gray
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(3.dp))
+                                            .background(fmtColor.copy(alpha = 0.12f))
+                                            .padding(horizontal = 5.dp, vertical = 1.dp)
+                                    ) {
+                                        Text(
+                                            item.format,
+                                            fontSize = 10.sp,
+                                            color = fmtColor,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                }
                             }
                             Spacer(Modifier.width(AppSpace.sm))
                             Text(
                                 viewModel.formatFileSize(item.sizeBytes),
-                                fontSize = AppType.Caption,
+                                fontSize = AppType.BodySmall,
                                 color = AppColors.TextSecondary,
-                                modifier = Modifier.width(52.dp),
-                                textAlign = androidx.compose.ui.text.style.TextAlign.End
+                                fontWeight = FontWeight.Medium
                             )
-                        }
-                        if (index < info.bookDetails.lastIndex) {
-                            SettingsDivider()
                         }
                     }
                 }
