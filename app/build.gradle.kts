@@ -85,12 +85,6 @@ dependencies {
     // Coil (Image Loading)
     implementation("io.coil-kt:coil-compose:2.7.0")
 
-    // Glance (App Widgets)
-    implementation("androidx.glance:glance-appwidget:1.1.1")
-
-    // WorkManager (widget periodic update)
-    implementation("androidx.work:work-runtime-ktx:2.10.0")
-
     // Testing
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
