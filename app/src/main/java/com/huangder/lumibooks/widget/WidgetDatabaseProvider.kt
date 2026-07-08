@@ -1,21 +1,15 @@
 package com.huangder.lumibooks.widget
 
 import android.content.Context
-import android.graphics.Bitmap
-import androidx.datastore.preferences.core.intPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
 import androidx.room.Room
 import com.huangder.lumibooks.data.local.dao.RandomNoteWithBook
 import com.huangder.lumibooks.data.local.database.AppDatabase
-import kotlinx.coroutines.flow.first
 
 /**
- * Widget 进程专用的 DataStore 句柄（共享同名文件 "settings"）
- */
-private val Context.widgetDataStore by preferencesDataStore(name = "settings")
-
-/**
- * Widget 专用数据访问（非 Hilt，手动管理 Room 实例）
+ * Widget 专用数据访问（非 Hilt，手动管理 Room 实例）。
+ *
+ * 每次查询后关闭数据库，避免与主 App 的 Room 实例产生多实例冲突。
+ * Android 12+ 下 Glance Receiver 运行在 App 进程内，可安全访问同一 DB 文件。
  */
 object WidgetDatabaseProvider {
 
@@ -24,28 +18,31 @@ object WidgetDatabaseProvider {
     @Volatile
     private var database: AppDatabase? = null
 
-    fun getDatabase(context: Context): AppDatabase {
-        return database ?: synchronized(this) {
-            database ?: buildDatabase(context).also { database = it }
+    @Synchronized
+    private fun getDatabase(context: Context): AppDatabase {
+        // 每次使用前检查实例是否已关闭
+        val existing = database
+        if (existing != null && existing.isOpen) {
+            return existing
         }
-    }
-
-    private fun buildDatabase(context: Context): AppDatabase {
-        val appContext = context.applicationContext
-        return Room.databaseBuilder(appContext, AppDatabase::class.java, DB_NAME)
+        val newDb = Room.databaseBuilder(
+            context.applicationContext,
+            AppDatabase::class.java,
+            DB_NAME
+        )
             .fallbackToDestructiveMigration()
             .build()
+        database = newDb
+        return newDb
     }
 
-    /** 获取一条随机摘录 */
+    /** 获取一条随机摘录（安全调用，异常返回 null） */
     suspend fun getRandomQuote(context: Context): RandomNoteWithBook? {
-        return getDatabase(context).noteDao().getRandomNoteWithBook()
-    }
-
-    /** 每日目标（分钟），用于 Widget 判断空状态等 */
-    suspend fun getDailyGoalMinutes(context: Context): Int {
-        val key = intPreferencesKey("daily_goal")
-        val prefs = context.applicationContext.widgetDataStore.data.first()
-        return prefs[key] ?: 30
+        return try {
+            getDatabase(context).noteDao().getRandomNoteWithBook()
+        } catch (e: Exception) {
+            // Room 打开失败或查询失败时返回 null，Widget 显示空状态
+            null
+        }
     }
 }

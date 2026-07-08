@@ -136,6 +136,8 @@ class MainActivity : ComponentActivity() {
 
         // 调度桌面小组件定时刷新
         com.huangder.lumibooks.widget.WidgetUpdateWorker.schedule(this)
+        // 立即刷新一次（冷启动时让 Widget 尽快拿到数据）
+        com.huangder.lumibooks.widget.WidgetRefreshHelper.refreshQuoteWidget(this)
 
         // 启动时自动检查更新（静默执行，有变更时弹窗）
         performStartupUpdateCheck()

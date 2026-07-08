@@ -37,7 +37,9 @@ class WidgetUpdateWorker(
         fun schedule(context: Context) {
             val request = PeriodicWorkRequestBuilder<WidgetUpdateWorker>(
                 INTERVAL_MINUTES, TimeUnit.MINUTES
-            ).build()
+            )
+                .setInitialDelay(1, TimeUnit.MINUTES)  // 首次延迟 1 分钟后执行
+                .build()
 
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 WORK_NAME,
