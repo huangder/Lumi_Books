@@ -10,6 +10,7 @@ import com.huangder.lumibooks.ui.settings.FeedbackActivity_GeneratedInjector;
 import com.huangder.lumibooks.ui.settings.SettingsActivity_GeneratedInjector;
 import com.huangder.lumibooks.ui.settings.SettingsViewModel_HiltModules;
 import com.huangder.lumibooks.ui.settings.SponsorActivity_GeneratedInjector;
+import com.huangder.lumibooks.ui.settings.WebViewActivity_GeneratedInjector;
 import com.huangder.lumibooks.ui.statistics.StatisticsViewModel_HiltModules;
 import com.huangder.lumibooks.ui.welcome.WelcomeActivity_GeneratedInjector;
 import com.huangder.lumibooks.ui.welcome.WelcomeViewModel_HiltModules;
@@ -201,6 +202,7 @@ public final class EBookReaderApp_HiltComponents {
       FeedbackActivity_GeneratedInjector,
       SettingsActivity_GeneratedInjector,
       SponsorActivity_GeneratedInjector,
+      WebViewActivity_GeneratedInjector,
       WelcomeActivity_GeneratedInjector,
       ActivityComponent,
       DefaultViewModelFactories.ActivityEntryPoint,

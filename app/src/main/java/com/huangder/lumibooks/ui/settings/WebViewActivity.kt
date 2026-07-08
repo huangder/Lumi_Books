@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.settings
 
+import android.content.res.Configuration
 import android.os.Bundle
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -7,7 +8,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,8 +23,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -37,6 +35,8 @@ import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.FangSong
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 
 /**
@@ -61,23 +61,27 @@ class WebViewActivity : ComponentActivity() {
         val title = intent.getStringExtra("title") ?: ""
         val file = intent.getStringExtra("file") ?: "privacy.html"
 
-        setContent {
-            val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
-            val isDark = when (darkMode) {
-                "dark" -> true
-                "light" -> false
-                else -> isSystemInDarkTheme()
-            }
+        // 同步读取避免闪白：手动深色模式下第一个 frame 就渲染深色
+        val darkMode = runBlocking { dataStoreManager.darkMode.first() }
+        val isSystemDark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+        val isDark = when (darkMode) {
+            "dark" -> true
+            "light" -> false
+            else -> isSystemDark
+        }
 
+        setContent {
             EBookReaderTheme(darkTheme = isDark) {
-                WebViewPage(title = title, assetFile = file, onBack = { finish() })
+                WebViewPage(title = title, assetFile = file, isDark = isDark, onBack = { finish() })
             }
         }
     }
 }
 
 @Composable
-private fun WebViewPage(title: String, assetFile: String, onBack: () -> Unit) {
+private fun WebViewPage(title: String, assetFile: String, isDark: Boolean, onBack: () -> Unit) {
+    val bgColor = if (isDark) 0xFF000000.toInt() else 0xFFFBFBFC.toInt()
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -104,8 +108,21 @@ private fun WebViewPage(title: String, assetFile: String, onBack: () -> Unit) {
             AndroidView(
                 factory = { context ->
                     WebView(context).apply {
-                        webViewClient = WebViewClient()
-                        settings.javaScriptEnabled = false
+                        setBackgroundColor(bgColor)
+                        webViewClient = object : WebViewClient() {
+                            override fun onPageFinished(view: WebView, url: String) {
+                                if (isDark) {
+                                    view.evaluateJavascript("""
+                                        (function(){
+                                            var s=document.createElement('style');
+                                            s.textContent=':root{--bg:#000;--card:#1C1C1E;--text:#fff;--text2:#98989D;--line:#38383A}';
+                                            document.head.appendChild(s);
+                                        })();
+                                    """.trimIndent(), null)
+                                }
+                            }
+                        }
+                        settings.javaScriptEnabled = true
                         settings.defaultTextEncodingName = "UTF-8"
                         loadUrl("file:///android_asset/html/$assetFile")
                     }
