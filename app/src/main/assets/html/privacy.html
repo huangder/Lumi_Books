@@ -34,17 +34,17 @@ a { color:var(--accent); }
 
 <h2>一、引言</h2>
 <p>Lumi（以下简称"本应用"）是一款本地电子书阅读器，以 MIT 许可证开源发布。我们深知隐私对您的重要性，本隐私政策旨在向您说明我们如何处理您的个人信息。</p>
-<p><strong>核心原则：本应用不收集、不传输、不存储任何个人信息至外部服务器。</strong></p>
+<p><strong>核心原则：本应用仅在检查更新时连接 GitHub 服务器，不收集、不上传任何个人信息。</strong></p>
 <p><strong>开源透明：本应用为开源项目，完整源代码公开可审查。</strong></p>
 
 <h2>二、权限说明</h2>
 <p>本应用仅申请以下 Android 系统权限：</p>
 <table><tr><th>权限</th><th>用途</th></tr>
 <tr><td>READ_EXTERNAL_STORAGE（Android 12 及以下）</td><td>读取电子书文件</td></tr>
-<tr><td>READ_MEDIA_IMAGES（Android 13 及以上）</td><td>读取封面图片资源</td></tr></table>
+<tr><td>READ_MEDIA_IMAGES（Android 13 及以上）</td><td>读取封面图片资源</td></tr>
+<tr><td>INTERNET</td><td>检查应用更新及条款/政策变更</td></tr></table>
 <p><strong>本应用不申请以下权限：</strong></p>
 <ul>
-<li><span class="cross">✕</span> 网络访问权限（INTERNET）</li>
 <li><span class="cross">✕</span> 位置信息权限</li>
 <li><span class="cross">✕</span> 相机/麦克风权限</li>
 <li><span class="cross">✕</span> 通讯录权限</li>
@@ -64,7 +64,19 @@ a { color:var(--accent); }
 <tr><td>阅读偏好</td><td>字号、主题、行距等</td><td>DataStore</td></tr>
 <tr><td>最近阅读</td><td>最近打开的书籍列表及时间</td><td>Room/SQLite</td></tr></table>
 
-<h3>3.2 本应用不处理的数据</h3>
+<h3>3.2 网络使用说明</h3>
+<ul>
+<li>仅在以下场景发起网络请求：
+  <ul>
+    <li>启动时或手动触发"检查更新"——请求 GitHub Raw 上的 <code>update_config.json</code></li>
+    <li>打开 GitHub Releases 页面下载新版本（需用户手动点击）</li>
+  </ul>
+</li>
+<li>上述请求不携带任何个人信息、设备标识或使用数据</li>
+<li>不进行数据上传、同步或任何形式的用户追踪</li>
+</ul>
+
+<h3>3.3 本应用不处理的数据</h3>
 <ul>
 <li>不收集个人身份信息</li>
 <li>不收集设备标识信息</li>

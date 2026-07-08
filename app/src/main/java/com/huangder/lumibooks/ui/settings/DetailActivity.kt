@@ -55,7 +55,7 @@ class DetailActivity : ComponentActivity() {
                         "goal" -> DetailPage("阅读目标", onBack) { ReadingGoalDetail(viewModel) }
                         "storage" -> DetailPage("存储管理", onBack) { StorageDetail(viewModel) }
                         "backup" -> DetailPage("备份与恢复", onBack) { BackupRestoreDetail(viewModel) }
-                        else -> DetailPage("关于应用", onBack) { AboutDetail() }
+                        else -> DetailPage("关于应用", onBack) { AboutDetail(viewModel) }
                     }
                 }
             }

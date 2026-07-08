@@ -45,6 +45,13 @@ class DataStoreManager @Inject constructor(
         // 个人信息
         private val AVATAR_URI = stringPreferencesKey("avatar_uri")
         private val NICKNAME = stringPreferencesKey("nickname")
+
+        // 已接受的条款/政策版本（用于检查更新）
+        private val ACCEPTED_TERMS_VERSION = intPreferencesKey("accepted_terms_version")
+        private val ACCEPTED_PRIVACY_VERSION = intPreferencesKey("accepted_privacy_version")
+
+        // 是否已完成首次启动的更新检查
+        private val HAS_CHECKED_UPDATE_ON_START = booleanPreferencesKey("has_checked_update_on_start")
     }
 
     // 阅读设置
@@ -202,6 +209,38 @@ class DataStoreManager @Inject constructor(
     suspend fun saveNickname(name: String) {
         context.dataStore.edit { preferences ->
             preferences[NICKNAME] = name
+        }
+    }
+
+    // 已接受的条款/政策版本
+    val acceptedTermsVersion: Flow<Int> = context.dataStore.data.map { preferences ->
+        preferences[ACCEPTED_TERMS_VERSION] ?: 0
+    }
+
+    val acceptedPrivacyVersion: Flow<Int> = context.dataStore.data.map { preferences ->
+        preferences[ACCEPTED_PRIVACY_VERSION] ?: 0
+    }
+
+    /** 首次启动后标记已触发过启动检查（避免重复弹窗） */
+    val hasCheckedUpdateOnStart: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[HAS_CHECKED_UPDATE_ON_START] ?: false
+    }
+
+    suspend fun saveAcceptedTermsVersion(version: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[ACCEPTED_TERMS_VERSION] = version
+        }
+    }
+
+    suspend fun saveAcceptedPrivacyVersion(version: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[ACCEPTED_PRIVACY_VERSION] = version
+        }
+    }
+
+    suspend fun saveHasCheckedUpdateOnStart(checked: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[HAS_CHECKED_UPDATE_ON_START] = checked
         }
     }
 

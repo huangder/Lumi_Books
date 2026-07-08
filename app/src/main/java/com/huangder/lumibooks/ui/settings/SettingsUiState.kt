@@ -17,6 +17,27 @@ data class StorageInfo(
     val bookDetails: List<BookSizeItem> = emptyList()
 )
 
+/**
+ * 更新检查结果（用于 UI 展示）
+ */
+data class UpdateCheckDisplay(
+    val hasAppUpdate: Boolean = false,
+    val appVersion: String = "",
+    val releaseUrl: String = "",
+    val hasTermsUpdate: Boolean = false,
+    val termsVersion: Int = 0,
+    val hasPrivacyUpdate: Boolean = false,
+    val privacyVersion: Int = 0,
+    val isChecking: Boolean = false,
+    val isNetworkError: Boolean = false,
+    // 控制 Dialog 显示
+    val showAppUpdateDialog: Boolean = false,
+    val showPolicyUpdateDialog: Boolean = false,
+    // 已接受的版本（用于 UI 回写）
+    val acceptedTermsVersion: Int = 0,
+    val acceptedPrivacyVersion: Int = 0
+)
+
 data class SettingsUiState(
     // 个人信息
     val avatarUri: String? = null,
@@ -42,5 +63,8 @@ data class SettingsUiState(
 
     // 备份恢复
     val backupStatus: String = "",     // 操作状态提示
-    val isProcessing: Boolean = false  // 是否正在执行备份/恢复
+    val isProcessing: Boolean = false, // 是否正在执行备份/恢复
+
+    // 检查更新
+    val updateCheck: UpdateCheckDisplay = UpdateCheckDisplay()
 )
