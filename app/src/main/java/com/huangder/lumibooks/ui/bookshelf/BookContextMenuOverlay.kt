@@ -186,11 +186,13 @@ private fun ContextMenuLayout(
     val density = LocalDensity.current
     val configuration = LocalConfiguration.current
     val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
+    val screenHeightDp = configuration.screenHeightDp.dp
 
     val isCoverOnLeft = coverBounds.center.x < screenWidthPx / 2
 
     val coverLeftDp = with(density) { coverBounds.left.toDp() }
     val coverTopDp = with(density) { coverBounds.top.toDp() }
+    val coverBottomDp = with(density) { coverBounds.bottom.toDp() }
     val coverWidthDp = with(density) { coverBounds.width.toDp() }
 
     val panelWidth = 170.dp
@@ -202,10 +204,20 @@ private fun ContextMenuLayout(
         coverLeftDp - panelWidth - panelGap
     }
 
-    // 单侧面板：信息在上，操作在下
+    // 菜单面板顶部与封面顶部对齐；如果面板超出屏幕底部，则改为底部对齐
+    // 最低到封面底部，但至少留 48dp 底部边距
+    val estimatedMenuHeight = 400.dp
+    val bottomMargin = 48.dp
+    val maxPanelY = (screenHeightDp - estimatedMenuHeight - bottomMargin).coerceAtLeast(0.dp)
+    val panelY = if (coverTopDp + estimatedMenuHeight > screenHeightDp - bottomMargin) {
+        (coverBottomDp - estimatedMenuHeight).coerceIn(0.dp, maxPanelY)
+    } else {
+        coverTopDp
+    }
+
     Column(
         modifier = Modifier
-            .offset(x = panelX, y = coverTopDp)
+            .offset(x = panelX, y = panelY)
             .width(panelWidth),
         verticalArrangement = Arrangement.spacedBy(panelGap)
     ) {

@@ -92,6 +92,7 @@ private val filterTabs = listOf("全部图书", "下载内容", "PDF", "收藏")
 @Composable
 fun BookshelfScreen(
     onNavigateToReader: (bookId: String, coverPath: String?, title: String) -> Unit,
+    onOverlayActiveChange: (Boolean) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -99,6 +100,11 @@ fun BookshelfScreen(
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val contextMenuState = rememberBookContextMenuState()
+
+    // 通知 NavGraph 隐藏/显示底部 TabBar
+    LaunchedEffect(contextMenuState.phase) {
+        onOverlayActiveChange(contextMenuState.phase != ContextMenuPhase.Idle)
+    }
 
     // 编辑书本信息对话框状态
     var showEditDialog by remember { mutableStateOf(false) }
