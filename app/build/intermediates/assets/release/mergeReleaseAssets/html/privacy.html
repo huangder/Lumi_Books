@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>隐私政策</title>
+<style>
+:root { --bg: #FBFBFC; --card: #fff; --text: #000; --text2: #6E6E73; --line: #E5E5EA; --accent: #E85D5D; }
+@media (prefers-color-scheme: dark) { :root { --bg: #000; --card: #1C1C1E; --text: #fff; --text2: #98989D; --line: #38383A; --accent: #FF8A80; } }
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--text); font:-apple-system,sans-serif; padding:20px 16px 60px; line-height:1.6; -webkit-text-size-adjust:100%; }
+h1 { font-size:24px; font-weight:700; margin-bottom:4px; }
+.meta { font-size:13px; color:var(--text2); margin-bottom:28px; }
+h2 { font-size:18px; font-weight:600; margin:28px 0 12px; padding-top:20px; border-top:1px solid var(--line); }
+h2:first-of-type { border-top:none; padding-top:0; }
+h3 { font-size:15px; font-weight:600; margin:16px 0 8px; }
+p { font-size:15px; color:var(--text2); margin-bottom:10px; }
+strong { color:var(--text); }
+table { width:100%; border-collapse:collapse; margin:10px 0 16px; font-size:13px; }
+th, td { text-align:left; padding:8px; border-bottom:1px solid var(--line); }
+th { font-weight:600; color:var(--text); font-size:12px; text-transform:uppercase; }
+td { color:var(--text2); }
+ul { list-style:none; padding:0; margin-bottom:10px; }
+li { padding:3px 0; font-size:14px; color:var(--text2); }
+li::before { content:"· "; color:var(--accent); font-weight:bold; }
+.cross { color:#c13515; }
+.note { font-size:13px; color:var(--text2); margin-top:20px; padding-top:16px; border-top:1px solid var(--line); }
+a { color:var(--accent); }
+</style>
+</head>
+<body>
+<h1>隐私政策</h1>
+<p class="meta">生效日期：2026年6月29日 · 最近更新：2026年7月6日</p>
+
+<h2>一、引言</h2>
+<p>Lumi（以下简称"本应用"）是一款本地电子书阅读器，以 MIT 许可证开源发布。我们深知隐私对您的重要性，本隐私政策旨在向您说明我们如何处理您的个人信息。</p>
+<p><strong>核心原则：本应用仅在检查更新时连接 GitHub 服务器，不收集、不上传任何个人信息。</strong></p>
+<p><strong>开源透明：本应用为开源项目，完整源代码公开可审查。</strong></p>
+
+<h2>二、权限说明</h2>
+<p>本应用仅申请以下 Android 系统权限：</p>
+<table><tr><th>权限</th><th>用途</th></tr>
+<tr><td>READ_EXTERNAL_STORAGE（Android 12 及以下）</td><td>读取电子书文件</td></tr>
+<tr><td>READ_MEDIA_IMAGES（Android 13 及以上）</td><td>读取封面图片资源</td></tr>
+<tr><td>INTERNET</td><td>检查应用更新及条款/政策变更</td></tr></table>
+<p><strong>本应用不申请以下权限：</strong></p>
+<ul>
+<li><span class="cross">✕</span> 位置信息权限</li>
+<li><span class="cross">✕</span> 相机/麦克风权限</li>
+<li><span class="cross">✕</span> 通讯录权限</li>
+<li><span class="cross">✕</span> 电话状态权限</li>
+<li><span class="cross">✕</span> 写入外部存储权限</li>
+<li><span class="cross">✕</span> 任何其他敏感权限</li>
+</ul>
+
+<h2>三、数据处理说明</h2>
+<h3>3.1 本应用处理的数据</h3>
+<p>以下数据仅存储在您的本地设备上：</p>
+<table><tr><th>数据类型</th><th>说明</th><th>存储方式</th></tr>
+<tr><td>电子书文件</td><td>您主动打开的文件</td><td>本地文件</td></tr>
+<tr><td>阅读进度</td><td>章节和页码位置</td><td>Room/SQLite</td></tr>
+<tr><td>书签记录</td><td>手动添加的书签</td><td>Room/SQLite</td></tr>
+<tr><td>阅读时长</td><td>开始/结束时间、时长</td><td>Room/SQLite</td></tr>
+<tr><td>阅读偏好</td><td>字号、主题、行距等</td><td>DataStore</td></tr>
+<tr><td>最近阅读</td><td>最近打开的书籍列表及时间</td><td>Room/SQLite</td></tr></table>
+
+<h3>3.2 网络使用说明</h3>
+<ul>
+<li>仅在以下场景发起网络请求：
+  <ul>
+    <li>启动时或手动触发"检查更新"——请求 GitHub Raw 上的 <code>update_config.json</code></li>
+    <li>打开 GitHub Releases 页面下载新版本（需用户手动点击）</li>
+  </ul>
+</li>
+<li>上述请求不携带任何个人信息、设备标识或使用数据</li>
+<li>不进行数据上传、同步或任何形式的用户追踪</li>
+</ul>
+
+<h3>3.3 本应用不处理的数据</h3>
+<ul>
+<li>不收集个人身份信息</li>
+<li>不收集设备标识信息</li>
+<li>不收集阅读内容或阅读行为数据</li>
+<li>不使用分析或追踪工具</li>
+<li>不使用广告 SDK</li>
+<li>不进行数据上传或同步</li>
+</ul>
+
+<h2>四、数据存储与安全</h2>
+<p>所有数据均存储在应用私有沙盒目录中，受 Android 系统隔离保护。应用不连接互联网，不存在网络传输风险。</p>
+<p>您可以随时在应用内清除数据。卸载应用将自动删除所有应用数据。电子书源文件由您自行管理，本应用不会修改或删除您的原始文件。</p>
+
+<h2>五、第三方服务</h2>
+<p>本应用不集成任何第三方服务（无分析、广告、推送、云同步、崩溃报告）。</p>
+
+<h2>六、儿童隐私</h2>
+<p>本应用不针对 13 岁以下儿童，不会故意收集儿童的个人信息。如果您是儿童的监护人，发现儿童可能向本应用提供了个人信息，请联系我们，我们将及时删除相关信息。</p>
+
+<h2>七、隐私政策的变更</h2>
+<p>如果我们决定更新本隐私政策，我们将在应用内发布更新后的版本，并更新"最近更新"日期。重大变更将以应用内通知的方式告知您。</p>
+
+<h2>八、适用范围</h2>
+<p>本隐私政策仅适用于 Lumi 应用（com.huangder.lumibooks）在 Android 平台上的功能。不适用于通过其他方式获取您信息的第三方服务。</p>
+
+<h2>九、联系我们</h2>
+<p>如果您对本隐私政策有任何疑问、意见或建议，请通过以下方式联系我们：</p>
+<ul>
+<li>邮箱：<a href="mailto:huangder0104@126.com">huangder0104@126.com</a></li>
+<li>GitHub Issues：在项目仓库提交问题反馈</li>
+</ul>
+
+<p class="note">本页面为应用内参考版本，完整版隐私政策请访问 <a href="https://huangder.top/privacy.html">huangder.top/privacy.html</a></p>
+</body>
+</html>

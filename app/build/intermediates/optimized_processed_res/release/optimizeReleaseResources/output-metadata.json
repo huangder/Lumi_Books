@@ -1,0 +1,20 @@
+{
+  "version": 3,
+  "artifactType": {
+    "type": "OPTIMIZED_PROCESSED_RES",
+    "kind": "Directory"
+  },
+  "applicationId": "com.huangder.lumibooks",
+  "variantName": "release",
+  "elements": [
+    {
+      "type": "SINGLE",
+      "filters": [],
+      "attributes": [],
+      "versionCode": 4,
+      "versionName": "1.0.02.13_Beta",
+      "outputFile": "resources-release-optimize.ap_"
+    }
+  ],
+  "elementType": "File"
+}
