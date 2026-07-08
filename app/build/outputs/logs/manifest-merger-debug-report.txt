@@ -1,20 +1,20 @@
 -- Merging decision tree log ---
 provider#androidx.core.content.FileProvider
-INJECTED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:75:9-83:20
+INJECTED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:104:9-112:20
 	android:grantUriPermissions
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:79:13-47
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:108:13-47
 	android:authorities
 		INJECTED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:77:13-64
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:106:13-64
 	android:exported
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:78:13-37
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:107:13-37
 	android:name
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:76:13-62
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:105:13-62
 manifest
-ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:2:1-85:12
-INJECTED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:2:1-85:12
-INJECTED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:2:1-85:12
-INJECTED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:2:1-85:12
+ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:2:1-114:12
+INJECTED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:2:1-114:12
+INJECTED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:2:1-114:12
+INJECTED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:2:1-114:12
 MERGED from [androidx.hilt:hilt-navigation-compose:1.2.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\9c150e0d345458ed2165a2a068b5ffce\transformed\hilt-navigation-compose-1.2.0\AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.hilt:hilt-navigation:1.2.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\ede7f3596b45c21fefcb7c5cbdec3235\transformed\hilt-navigation-1.2.0\AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.navigation:navigation-common:2.8.5] C:\Users\Huangder\.gradle\caches\8.13\transforms\993618353020976237ca5da84eb875ab\transformed\navigation-common-2.8.5\AndroidManifest.xml:17:1-22:12
@@ -116,8 +116,8 @@ ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:8:5-76
 	android:name
 		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:8:22-73
 application
-ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:10:5-84:19
-INJECTED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:10:5-84:19
+ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:10:5-113:19
+INJECTED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:10:5-113:19
 MERGED from [androidx.compose.ui:ui-tooling-android:1.7.6] C:\Users\Huangder\.gradle\caches\8.13\transforms\011d644e39033794909c939cf1dc2a38\transformed\ui-tooling-release\AndroidManifest.xml:22:5-26:19
 MERGED from [androidx.compose.ui:ui-tooling-android:1.7.6] C:\Users\Huangder\.gradle\caches\8.13\transforms\011d644e39033794909c939cf1dc2a38\transformed\ui-tooling-release\AndroidManifest.xml:22:5-26:19
 MERGED from [androidx.compose.ui:ui-test-manifest:1.7.6] C:\Users\Huangder\.gradle\caches\8.13\transforms\21434154e24c6ff5edeb68c0cd3d2562\transformed\ui-test-manifest-1.7.6\AndroidManifest.xml:22:5-26:19
@@ -177,83 +177,105 @@ ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:27:17-7
 	android:name
 		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:27:27-74
 activity#com.huangder.lumibooks.MainActivity
-ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:31:9-36:58
+ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:31:9-65:20
+	android:launchMode
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:34:13-44
 	android:windowSoftInputMode
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:36:13-55
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:37:13-55
 	android:exported
 		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:33:13-36
 	android:configChanges
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:34:13-225
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:35:13-225
 	android:theme
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:35:13-53
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:36:13-53
 	android:name
 		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:32:13-41
+intent-filter#action:name:android.intent.action.VIEW+category:name:android.intent.category.DEFAULT+data:mimeType:application/pdf+data:scheme:content+data:scheme:file
+ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:40:13-46:29
+action#android.intent.action.VIEW
+ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:41:17-69
+	android:name
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:41:25-66
+category#android.intent.category.DEFAULT
+ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:42:17-76
+	android:name
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:42:27-73
+data
+ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:43:17-50
+	android:scheme
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:43:23-47
+	android:mimeType
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:45:23-57
+intent-filter#action:name:android.intent.action.VIEW+category:name:android.intent.category.DEFAULT+data:mimeType:application/epub+zip+data:scheme:content+data:scheme:file
+ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:49:13-55:29
+intent-filter#action:name:android.intent.action.VIEW+category:name:android.intent.category.DEFAULT+data:mimeType:text/plain+data:scheme:content+data:scheme:file
+ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:58:13-64:29
 activity#com.huangder.lumibooks.ui.settings.SettingsActivity
-ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:38:9-42:58
+ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:67:9-71:58
 	android:windowSoftInputMode
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:42:13-55
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:71:13-55
 	android:configChanges
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:40:13-225
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:69:13-225
 	android:theme
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:41:13-53
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:70:13-53
 	android:name
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:39:13-57
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:68:13-57
 activity#com.huangder.lumibooks.ui.settings.DetailActivity
-ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:44:9-48:58
+ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:73:9-77:58
 	android:windowSoftInputMode
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:48:13-55
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:77:13-55
 	android:configChanges
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:46:13-225
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:75:13-225
 	android:theme
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:47:13-53
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:76:13-53
 	android:name
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:45:13-55
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:74:13-55
 activity#com.huangder.lumibooks.ui.settings.WebViewActivity
-ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:50:9-54:58
+ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:79:9-83:58
 	android:windowSoftInputMode
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:54:13-55
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:83:13-55
 	android:configChanges
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:52:13-225
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:81:13-225
 	android:theme
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:53:13-53
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:82:13-53
 	android:name
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:51:13-56
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:80:13-56
 activity#com.huangder.lumibooks.ui.settings.SponsorActivity
-ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:56:9-60:58
+ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:85:9-89:58
 	android:windowSoftInputMode
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:60:13-55
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:89:13-55
 	android:configChanges
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:58:13-225
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:87:13-225
 	android:theme
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:59:13-53
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:88:13-53
 	android:name
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:57:13-56
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:86:13-56
 activity#com.huangder.lumibooks.ui.settings.FeedbackActivity
-ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:62:9-66:58
+ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:91:9-95:58
 	android:windowSoftInputMode
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:66:13-55
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:95:13-55
 	android:configChanges
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:64:13-225
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:93:13-225
 	android:theme
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:65:13-53
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:94:13-53
 	android:name
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:63:13-57
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:92:13-57
 activity#com.huangder.lumibooks.ui.bookshelf.BookNotesActivity
-ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:68:9-72:58
+ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:97:9-101:58
 	android:windowSoftInputMode
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:72:13-55
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:101:13-55
 	android:configChanges
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:70:13-225
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:99:13-225
 	android:theme
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:71:13-53
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:100:13-53
 	android:name
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:69:13-59
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:98:13-59
 meta-data#android.support.FILE_PROVIDER_PATHS
-ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:80:13-82:54
+ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:109:13-111:54
 	android:resource
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:82:17-51
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:111:17-51
 	android:name
-		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:81:17-67
+		ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:110:17-67
 uses-sdk
 INJECTED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml reason: use-sdk injection requested
 INJECTED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml
