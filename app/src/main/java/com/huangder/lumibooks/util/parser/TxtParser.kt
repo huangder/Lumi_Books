@@ -164,7 +164,7 @@ class TxtParser : BookParser {
         return if (chapterIndex in chapters.indices) chapters[chapterIndex].content else ""
     }
 
-    override fun getChapterHtml(chapterIndex: Int): String {
+    override fun getChapterHtml(chapterIndex: Int, optimizeLayout: Boolean): String {
         return if (chapterIndex in chapters.indices) chapters[chapterIndex].htmlContent else ""
     }
 

@@ -626,7 +626,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             TocSheet(
                 visible = showToc,
                 requestClose = requestCloseToc,
-                chapterTitles = uiState.chapterTitles,
+                tocEntries = uiState.tocEntries,
                 currentChapter = uiState.currentChapterIndex,
                 onChapterSelected = { idx ->
                     isTocJump.value = true
@@ -645,9 +645,11 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 currentFontSize = uiState.fontSize,
                 currentTheme = uiState.readerTheme,
                 currentBrightness = uiState.brightness,
+                currentOptimizeLayout = uiState.optimizeLayout,
                 onFontSizeChange = { viewModel.saveFontSize(it) },
                 onThemeChange = { viewModel.saveReaderTheme(it) },
                 onBrightnessChange = { viewModel.saveBrightness(it) },
+                onOptimizeLayoutChange = { viewModel.saveOptimizeLayout(it) },
                 onOpenAdvanced = {
                     showAdvancedSheet = true
                 },
@@ -1248,7 +1250,7 @@ private fun ActionCapsule(
 private fun TocSheet(
     visible: Boolean,
     requestClose: Boolean = false,
-    chapterTitles: List<String>,
+    tocEntries: List<com.huangder.lumibooks.util.parser.TocEntry>,
     currentChapter: Int,
     onChapterSelected: (Int) -> Unit,
     onDismiss: () -> Unit
@@ -1327,32 +1329,54 @@ private fun TocSheet(
 
             Spacer(Modifier.height(16.dp))
 
-            // 章节列表
+            // 目录列表（支持层级：分组标题 + 缩进章节）
             LazyColumn(modifier = Modifier.weight(1f)) {
-                items(chapterTitles.size) { index ->
-                    val isCurrent = index == currentChapter
-                    val title = chapterTitles.getOrElse(index) { "" }.ifBlank { "第${index + 1}章" }
+                items(tocEntries.size) { index ->
+                    val entry = tocEntries[index]
 
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(LightBgGray)
-                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                                pendingJumpIndex = index
-                                isClosing = true
-                            }
-                            .padding(horizontal = 16.dp, vertical = 14.dp)
-                    ) {
+                    if (entry.isGroup) {
+                        // 分组标题（如"第X卷"）：灰色、粗体、不可点击、无背景
                         Text(
-                            text = title,
-                            fontSize = 16.sp,
-                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isCurrent) AccentColor else Color.Black,
+                            text = entry.title,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Gray,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(
+                                start = 16.dp,
+                                top = if (index > 0) 16.dp else 4.dp,
+                                bottom = 4.dp
+                            )
                         )
+                    } else {
+                        // 实际章节：可点击，根据 level 缩进
+                        val isCurrent = entry.chapterIndex == currentChapter
+                        val indent = ((entry.level - 1) * 20).dp
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = indent, top = 2.dp, bottom = 2.dp, end = 4.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (isCurrent) AccentColor.copy(alpha = 0.1f) else LightBgGray)
+                                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                    if (entry.chapterIndex >= 0) {
+                                        pendingJumpIndex = entry.chapterIndex
+                                        isClosing = true
+                                    }
+                                }
+                                .padding(horizontal = 16.dp, vertical = 12.dp)
+                        ) {
+                            Text(
+                                text = entry.title.ifBlank { "第${entry.chapterIndex + 1}章" },
+                                fontSize = 15.sp,
+                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isCurrent) AccentColor else Color.Black,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }

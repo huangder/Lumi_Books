@@ -7,11 +7,26 @@ data class Chapter(
     val htmlContent: String = ""  // 完整章节HTML，WebView渲染用
 )
 
+/**
+ * 目录条目——支持层级结构（卷→章）
+ * @param title 显示标题
+ * @param level 层级深度（1=顶级，2=卷下章节）
+ * @param chapterIndex 对应 spine 中的索引（isGroup=true 时为 -1）
+ * @param isGroup true=分组标题（不可点击，如"第X卷"），false=实际章节
+ */
+data class TocEntry(
+    val title: String,
+    val level: Int = 1,
+    val chapterIndex: Int = -1,
+    val isGroup: Boolean = false
+)
+
 data class BookContent(
     val title: String,
     val author: String,
     val chapters: List<Chapter>,
-    val coverPath: String? = null
+    val coverPath: String? = null,
+    val tocEntries: List<TocEntry> = emptyList()  // 层级目录（EPUB NCX/nav）
 )
 
 /**
@@ -22,8 +37,10 @@ data class BookContent(
 interface BookParser {
     fun parse(filePath: String): BookContent
     fun getChapterContent(chapterIndex: Int): CharSequence
-    fun getChapterHtml(chapterIndex: Int): String
+    fun getChapterHtml(chapterIndex: Int, optimizeLayout: Boolean = true): String
     fun getChapterCount(): Int
+    /** 清空 HTML 缓存（排版设置变更时调用） */
+    fun clearHtmlCache() {}
 
     /**
      * 轻量级封面提取：只提取封面图片路径，不解析章节内容。
