@@ -21,11 +21,13 @@ import com.huangder.lumibooks.util.parser.BookParser
 import com.huangder.lumibooks.util.parser.BookParserFactory
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class ReaderUiState(
@@ -229,7 +231,9 @@ class ReaderViewModel @Inject constructor(
                 val book = bookRepository.getBookById(bookId)
                 if (book != null) {
                     parser = BookParserFactory.createParser(book.format, context)
-                    val content = parser!!.parse(book.filePath)
+                    val content = withContext(Dispatchers.IO) {
+                        parser!!.parse(book.filePath)
+                    }
 
                     val chapterCount = content.chapters.size
                     val chapterTitles = content.chapters.map { it.title }
