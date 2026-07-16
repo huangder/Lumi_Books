@@ -42,7 +42,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import android.widget.Toast
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -68,8 +70,6 @@ import java.util.Calendar
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.huangder.lumibooks.domain.model.Book
-import com.huangder.lumibooks.domain.model.BookFormat
-import com.huangder.lumibooks.util.parser.BookParserFactory
 import com.huangder.lumibooks.ui.animation.OverscrollBounce
 import com.huangder.lumibooks.ui.animation.cardPressEffect
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
@@ -79,7 +79,6 @@ import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.SansSerif
-import com.huangder.lumibooks.util.FileUtils
 import com.huangder.lumibooks.util.TimeUtils
 
 @Composable
@@ -98,38 +97,13 @@ fun HomeScreen(
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        uri?.let {
-            val fileName = FileUtils.getFileNameFromUri(context, it) ?: "unknown.epub"
-            val extension = FileUtils.getFileExtension(fileName)
-            if (extension in listOf("epub", "pdf", "txt")) {
-                val file = FileUtils.copyFileToInternal(context, it, fileName)
-                file?.let { bookFile ->
-                    val format = when (extension) {
-                        "epub" -> BookFormat.EPUB
-                        "pdf" -> BookFormat.PDF
-                        else -> BookFormat.TXT
-                    }
-                    // 提取封面
-                    val coverPath = try {
-                        val parser = BookParserFactory.createParser(format, context)
-                        val content = parser.parse(bookFile.absolutePath)
-                        content.coverPath
-                    } catch (_: Exception) { null }
+        uri?.let { viewModel.importBook(context, it) }
+    }
 
-                    val book = Book(
-                        id = FileUtils.generateBookId(),
-                        title = fileName.substringBeforeLast('.'),
-                        author = "未知作者",
-                        filePath = bookFile.absolutePath,
-                        coverPath = coverPath,
-                        format = format,
-                        lastReadTime = System.currentTimeMillis(),
-                        readingProgress = 0f,
-                        createdAt = System.currentTimeMillis()
-                    )
-                    viewModel.insertBook(book)
-                }
-            }
+    LaunchedEffect(uiState.importMessage) {
+        uiState.importMessage?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            viewModel.clearImportMessage()
         }
     }
 
@@ -224,7 +198,7 @@ fun HomeScreen(
             onTabBarVisibleChange = onTabBarVisibleChange
         )
 
-        // 导入 FAB（打开 sheet 时隐藏）
+        // 导入 FAB
         if (!showGoalSheet) {
             Box(
                 modifier = Modifier

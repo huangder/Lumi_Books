@@ -26,6 +26,12 @@ interface BookParser {
     fun getChapterCount(): Int
 
     /**
+     * 轻量级封面提取：只提取封面图片路径，不解析章节内容。
+     * 用于导入时快速获取封面，避免解析全部章节/图片的开销。
+     */
+    fun extractCoverPath(filePath: String): String? = null
+
+    /**
      * 🔥 轻量预渲染HTML：只返回body内容片段（不含完整<html>/<head>/<style>）。
      * 用于预渲染相邻章节DOM，减少Base64传输量20-40%。
      * 默认回退到 getChapterHtml。

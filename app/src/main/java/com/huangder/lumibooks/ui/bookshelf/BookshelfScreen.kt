@@ -73,7 +73,6 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.model.BookFormat
-import com.huangder.lumibooks.util.parser.BookParserFactory
 import com.huangder.lumibooks.ui.animation.AppEasing
 import com.huangder.lumibooks.ui.animation.OverscrollBounce
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
@@ -100,6 +99,13 @@ fun BookshelfScreen(
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val contextMenuState = rememberBookContextMenuState()
+
+    LaunchedEffect(uiState.importMessage) {
+        uiState.importMessage?.let {
+            android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show()
+            viewModel.clearImportMessage()
+        }
+    }
 
     // 通知 NavGraph 隐藏/显示底部 TabBar
     LaunchedEffect(contextMenuState.phase) {
@@ -133,38 +139,7 @@ fun BookshelfScreen(
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        uri?.let {
-            val fileName = FileUtils.getFileNameFromUri(context, it) ?: "unknown.epub"
-            val extension = FileUtils.getFileExtension(fileName)
-            if (extension in listOf("epub", "pdf", "txt")) {
-                val file = FileUtils.copyFileToInternal(context, it, fileName)
-                file?.let { bookFile ->
-                    val format = when (extension) {
-                        "epub" -> BookFormat.EPUB
-                        "pdf" -> BookFormat.PDF
-                        else -> BookFormat.TXT
-                    }
-                    val coverPath = try {
-                        val parser = BookParserFactory.createParser(format, context)
-                        val content = parser.parse(bookFile.absolutePath)
-                        content.coverPath
-                    } catch (_: Exception) { null }
-
-                    val book = Book(
-                        id = FileUtils.generateBookId(),
-                        title = fileName.substringBeforeLast('.'),
-                        author = "未知作者",
-                        filePath = bookFile.absolutePath,
-                        coverPath = coverPath,
-                        format = format,
-                        lastReadTime = System.currentTimeMillis(),
-                        readingProgress = 0f,
-                        createdAt = System.currentTimeMillis()
-                    )
-                    viewModel.insertBook(book)
-                }
-            }
-        }
+        uri?.let { viewModel.importBook(context, it) }
     }
 
     val filteredBooks = when (selectedFilter) {
@@ -270,12 +245,7 @@ fun BookshelfScreen(
             },
             onRemoveCustomCover = { book ->
                 FileUtils.deleteCustomCover(context, book.id)
-                val originalCoverPath = try {
-                    val parser = BookParserFactory.createParser(book.format, context)
-                    val content = parser.parse(book.filePath)
-                    content.coverPath
-                } catch (_: Exception) { null }
-                viewModel.updateBook(book.copy(coverPath = originalCoverPath))
+                viewModel.reExtractCover(context, book)
             },
             onBookmarksNotes = { book ->
                 val intent = android.content.Intent(context, BookNotesActivity::class.java)
@@ -332,6 +302,7 @@ fun BookshelfScreen(
                 }
             }
         }
+
     }
 }
 

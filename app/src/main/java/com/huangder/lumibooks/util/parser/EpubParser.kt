@@ -456,4 +456,37 @@ class EpubParser(private val context: Context? = null) : BookParser {
     }
 
     override fun getChapterCount(): Int = chapters.size
+
+    /**
+     * 轻量级封面提取：只解析OPF找到封面图片并保存，不解析任何章节内容。
+     * 用于导入时快速获取封面，避免 parse() 的巨大开销。
+     */
+    override fun extractCoverPath(filePath: String): String? {
+        val ctx = context ?: return null
+        val file = File(filePath)
+        if (!file.exists()) return null
+
+        var zipFile: ZipFile? = null
+        try {
+            zipFile = ZipFile(file)
+
+            // 读取container.xml获取OPF路径
+            val containerEntry = zipFile.getEntry("META-INF/container.xml") ?: return null
+            val containerContent = zipFile.getInputStream(containerEntry).bufferedReader().readText()
+            val opfPath = extractOpfPath(containerContent)
+
+            // 读取OPF文件
+            val opfEntry = zipFile.getEntry(opfPath) ?: return null
+            val opfContent = zipFile.getInputStream(opfEntry).bufferedReader().readText()
+            basePath = opfPath.substringBeforeLast("/")
+
+            // 提取封面
+            return extractCover(zipFile, opfContent)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return null
+        } finally {
+            try { zipFile?.close() } catch (_: Exception) {}
+        }
+    }
 }
