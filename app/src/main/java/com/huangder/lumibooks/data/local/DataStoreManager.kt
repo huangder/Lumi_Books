@@ -176,6 +176,21 @@ class DataStoreManager @Inject constructor(
         }
     }
 
+    /** 每本书的"优化排版"开关（per-book），默认 true */
+    fun optimizeLayout(bookId: String): Flow<Boolean> {
+        val key = booleanPreferencesKey("optimize_layout_$bookId")
+        return context.dataStore.data.map { preferences ->
+            preferences[key] ?: true
+        }
+    }
+
+    suspend fun saveOptimizeLayout(bookId: String, enabled: Boolean) {
+        val key = booleanPreferencesKey("optimize_layout_$bookId")
+        context.dataStore.edit { preferences ->
+            preferences[key] = enabled
+        }
+    }
+
     suspend fun saveDailyGoal(goal: Int) {
         context.dataStore.edit { preferences ->
             preferences[DAILY_GOAL] = goal

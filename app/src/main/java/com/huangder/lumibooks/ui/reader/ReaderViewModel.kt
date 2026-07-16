@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -34,6 +35,7 @@ data class ReaderUiState(
     val book: Book? = null,
     val chapterCount: Int = 0,
     val chapterTitles: List<String> = emptyList(),
+    val tocEntries: List<com.huangder.lumibooks.util.parser.TocEntry> = emptyList(),
     val currentChapterIndex: Int = 0,
     val currentPageIndex: Int = 0,
     val totalPages: Int = 0,
@@ -57,7 +59,9 @@ data class ReaderUiState(
     /** 全局页码（跨所有章节），新引擎用 */
     val globalPageIndex: Int = 0,
     /** 是否使用新 Canvas 引擎 */
-    val useNewEngine: Boolean = true
+    val useNewEngine: Boolean = true,
+    /** 是否使用优化排版（per-book） */
+    val optimizeLayout: Boolean = true
 )
 
 @HiltViewModel
@@ -205,6 +209,16 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch { dataStoreManager.saveCustomFontPath(path) }
     }
 
+    fun saveOptimizeLayout(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(optimizeLayout = enabled)
+        viewModelScope.launch {
+            dataStoreManager.saveOptimizeLayout(bookId, enabled)
+            parser?.clearHtmlCache()
+            preloadCache.clear()  // 清空 ViewModel 预加载缓存
+            loadChapterContent()
+        }
+    }
+
     /** 从 URI 导入字体文件到内部存储，返回文件路径 */
     suspend fun importFont(context: android.content.Context, uri: android.net.Uri): String? {
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -237,18 +251,26 @@ class ReaderViewModel @Inject constructor(
 
                     val chapterCount = content.chapters.size
                     val chapterTitles = content.chapters.map { it.title }
+                    // 层级目录：优先使用 NCX/nav 解析的 tocEntries，回退到 flat list
+                    val tocEntries = content.tocEntries.ifEmpty {
+                        content.chapters.map { com.huangder.lumibooks.util.parser.TocEntry(it.title, 1, it.index) }
+                    }
                     val progressFraction = book.readingProgress * chapterCount
                     val startChapter = progressFraction.toInt().coerceIn(0, chapterCount - 1)
                     val pageFraction = (progressFraction - startChapter).coerceIn(0f, 1f)
 
                     val isPdf = book.format.name == "PDF"
+                    // 读取 per-book 排版设置
+                    val optimize = dataStoreManager.optimizeLayout(bookId).first()
                     _uiState.value = _uiState.value.copy(
                         book = book,
                         chapterCount = chapterCount,
                         chapterTitles = chapterTitles,
+                        tocEntries = tocEntries,
                         currentChapterIndex = startChapter,
                         pendingPageFraction = pageFraction,
-                        useNewEngine = !isPdf  // TXT/EPUB 用新 Canvas 引擎，PDF 保留 WebView
+                        useNewEngine = !isPdf,  // TXT/EPUB 用新 Canvas 引擎，PDF 保留 WebView
+                        optimizeLayout = optimize
                     )
 
                     loadChapterContent()
@@ -301,11 +323,12 @@ class ReaderViewModel @Inject constructor(
             .filter { it != chapterIdx && it in 0 until state.chapterCount && it !in preloadCache }
         if (indices.isEmpty()) return
         android.util.Log.e("PG", "eagerPreload: chapter=$chapterIdx window=$windowSize indices=$indices")
+        val optimize = _uiState.value.optimizeLayout
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
                 indices.forEach { idx ->
                     try {
-                        preloadCache[idx] = p.getChapterHtml(idx)
+                        preloadCache[idx] = p.getChapterHtml(idx, optimize)
                         android.util.Log.d("PG", "eagerPreload done: chapter $idx")
                     } catch (_: Exception) {
                         android.util.Log.d("PG", "eagerPreload failed: chapter $idx")
@@ -438,6 +461,7 @@ class ReaderViewModel @Inject constructor(
     fun preloadAdjacentChapters() {
         val state = _uiState.value
         val parser = parser ?: return
+        val optimize = state.optimizeLayout
         if (state.totalPages <= 0) return
         val progress = state.currentPageIndex.toFloat() / state.totalPages
         android.util.Log.e("PG", "preloadCheck: page=${state.currentPageIndex} total=${state.totalPages} progress=${progress}")
@@ -449,7 +473,7 @@ class ReaderViewModel @Inject constructor(
                 android.util.Log.e("PG", "Preloading next chapter $next")
                 viewModelScope.launch {
                     try {
-                        preloadCache[next] = parser.getChapterHtml(next)
+                        preloadCache[next] = parser.getChapterHtml(next, optimize)
                         android.util.Log.e("PG", "Preloaded chapter $next")
                     } catch (_: Exception) {}
                 }
@@ -461,7 +485,7 @@ class ReaderViewModel @Inject constructor(
                     android.util.Log.e("PG", "Preloading chapter+2: $next2")
                     viewModelScope.launch {
                         try {
-                            preloadCache[next2] = parser.getChapterHtml(next2)
+                            preloadCache[next2] = parser.getChapterHtml(next2, optimize)
                             android.util.Log.e("PG", "Preloaded chapter+2 $next2")
                         } catch (_: Exception) {}
                     }
@@ -476,7 +500,7 @@ class ReaderViewModel @Inject constructor(
                 android.util.Log.e("PG", "Preloading prev chapter $prev")
                 viewModelScope.launch {
                     try {
-                        preloadCache[prev] = parser.getChapterHtml(prev)
+                        preloadCache[prev] = parser.getChapterHtml(prev, optimize)
                         android.util.Log.e("PG", "Preloaded chapter $prev")
                     } catch (_: Exception) {}
                 }
@@ -488,7 +512,7 @@ class ReaderViewModel @Inject constructor(
                     android.util.Log.e("PG", "Preloading chapter-2: $prev2")
                     viewModelScope.launch {
                         try {
-                            preloadCache[prev2] = parser.getChapterHtml(prev2)
+                            preloadCache[prev2] = parser.getChapterHtml(prev2, optimize)
                             android.util.Log.e("PG", "Preloaded chapter-2 $prev2")
                         } catch (_: Exception) {}
                     }
@@ -503,7 +527,8 @@ class ReaderViewModel @Inject constructor(
             return cached
         }
         // 缓存 miss，从 parser 获取并写入缓存
-        val html = parser?.getChapterHtml(index) ?: ""
+        val optimize = _uiState.value.optimizeLayout
+        val html = parser?.getChapterHtml(index, optimize) ?: ""
         if (html.isNotEmpty()) {
             preloadCache[index] = html
         }

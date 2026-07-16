@@ -30,6 +30,9 @@ class EpubParser(private val context: Context? = null) : BookParser {
     // 章节路径列表（spine 顺序）
     private var chapterPaths: List<String> = emptyList()
 
+    // spine 中的 href 列表（用于 NCX → spine 索引映射）
+    private var spineHrefs: List<String> = emptyList()
+
     // 按需缓存
     private val htmlCache = mutableMapOf<Int, String>()
     private val contentCache = mutableMapOf<Int, CharSequence>()
@@ -55,15 +58,19 @@ class EpubParser(private val context: Context? = null) : BookParser {
 
         // 提取章节路径和标题（只读HTML提取标题，不处理图片）
         val chapterInfoList = extractChapterInfo(zipFile, opfContent)
-        chapterPaths = chapterInfoList.map { it.second }
+        chapterPaths = chapterInfoList.map { it.third }  // 完整路径
+        spineHrefs = chapterInfoList.map { it.second }   // 原始href，用于NCX映射
 
         // 构造 Chapter 列表（content/htmlContent 为空，按需加载）
-        chapters = chapterInfoList.mapIndexed { index, (title, _) ->
+        chapters = chapterInfoList.mapIndexed { index, (title, _, _) ->
             Chapter(index = index, title = title, content = "", htmlContent = "")
         }
 
         // 提取封面
         val coverPath = extractCover(zipFile, opfContent)
+
+        // 解析 NCX/nav 构建层级目录
+        val tocEntries = buildTocEntries(zipFile, opfContent)
 
         zipFile.close()
 
@@ -71,7 +78,8 @@ class EpubParser(private val context: Context? = null) : BookParser {
             title = bookTitle,
             author = bookAuthor,
             chapters = chapters,
-            coverPath = coverPath
+            coverPath = coverPath,
+            tocEntries = tocEntries
         )
     }
 
@@ -87,9 +95,10 @@ class EpubParser(private val context: Context? = null) : BookParser {
 
     /**
      * 提取章节路径和标题（读HTML提取标题，但不处理图片）
+     * 返回 Triple<标题, 原始href, 完整路径>
      */
-    private fun extractChapterInfo(zipFile: ZipFile, opfContent: String): List<Pair<String, String>> {
-        val result = mutableListOf<Pair<String, String>>()
+    private fun extractChapterInfo(zipFile: ZipFile, opfContent: String): List<Triple<String, String, String>> {
+        val result = mutableListOf<Triple<String, String, String>>()
 
         // 解析spine顺序
         val spineRegex = """<spine[^>]*>(.*?)</spine>""".toRegex(RegexOption.DOT_MATCHES_ALL)
@@ -116,7 +125,7 @@ class EpubParser(private val context: Context? = null) : BookParser {
                 if (entry != null) {
                     val rawHtml = zipFile.getInputStream(entry).bufferedReader().readText()
                     val title = extractTitle(rawHtml) ?: "第${index + 1}章"
-                    result.add(title to fullPath)
+                    result.add(Triple(title, href, fullPath))
                     android.util.Log.d("EpubParser", "extractChapterInfo: [$index] title=$title path=$fullPath")
                 } else {
                     android.util.Log.w("EpubParser", "extractChapterInfo: [$index] findEntry FAILED for $fullPath")
@@ -137,7 +146,7 @@ class EpubParser(private val context: Context? = null) : BookParser {
                     val rawHtml = zipFile.getInputStream(entry).bufferedReader().readText()
                     if (rawHtml.isNotBlank()) {
                         val title = extractTitle(rawHtml) ?: "第${index + 1}章"
-                        result.add(title to entry.name)
+                        result.add(Triple(title, entry.name, entry.name))
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -148,10 +157,268 @@ class EpubParser(private val context: Context? = null) : BookParser {
         return result
     }
 
+    // ========== NCX/nav 层级目录解析 ==========
+
     /**
-     * 按需加载单个章节的HTML（含图片Base64内嵌），带缓存
+     * 构建层级目录。优先解析 NCX（EPUB 2），回退到 nav（EPUB 3）。
+     * 如果都没有，返回空列表（调用方会回退到 flat list）。
      */
-    override fun getChapterHtml(chapterIndex: Int): String {
+    private fun buildTocEntries(zipFile: ZipFile, opfContent: String): List<TocEntry> {
+        // 尝试 NCX（EPUB 2）
+        val ncxPath = findNcxPath(zipFile, opfContent)
+        if (ncxPath != null) {
+            try {
+                val entries = parseNcx(zipFile, ncxPath)
+                if (entries.isNotEmpty()) {
+                    android.util.Log.d("EpubParser", "buildTocEntries: NCX parsed, ${entries.size} entries")
+                    return entries
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("EpubParser", "buildTocEntries: NCX parse failed", e)
+            }
+        }
+
+        // 尝试 nav（EPUB 3）
+        try {
+            val entries = parseNav(zipFile, opfContent)
+            if (entries.isNotEmpty()) {
+                android.util.Log.d("EpubParser", "buildTocEntries: Nav parsed, ${entries.size} entries")
+                return entries
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("EpubParser", "buildTocEntries: Nav parse failed", e)
+        }
+
+        return emptyList()
+    }
+
+    /** 从 OPF 中找到 NCX 文件路径 */
+    private fun findNcxPath(zipFile: ZipFile, opfContent: String): String? {
+        // 方式1：spine 的 toc 属性引用 NCX id
+        val spineTocRegex = """<spine[^>]*toc="([^"]+)"""".toRegex()
+        val spineTocId = spineTocRegex.find(opfContent)?.groupValues?.get(1)
+
+        if (spineTocId != null) {
+            val manifestRegex = """<manifest[^>]*>(.*?)</manifest>""".toRegex(RegexOption.DOT_MATCHES_ALL)
+            val manifestContent = manifestRegex.find(opfContent)?.groupValues?.get(1) ?: ""
+            val itemRegex = """<item\s+id="${Regex.escape(spineTocId)}"\s+href="([^"]+)"""".toRegex()
+            val href = itemRegex.find(manifestContent)?.groupValues?.get(1)
+            if (href != null) {
+                return if (basePath.isNotEmpty()) "$basePath/$href" else href
+            }
+        }
+
+        // 方式2：查找 manifest 中 media-type 为 NCX 的 item
+        val manifestRegex = """<manifest[^>]*>(.*?)</manifest>""".toRegex(RegexOption.DOT_MATCHES_ALL)
+        val manifestContent = manifestRegex.find(opfContent)?.groupValues?.get(1) ?: ""
+        val ncxItemRegex = """<item[^>]*href="([^"]+\.ncx)"[^>]*/>""".toRegex(RegexOption.IGNORE_CASE)
+        val ncxHref = ncxItemRegex.find(manifestContent)?.groupValues?.get(1)
+        if (ncxHref != null) {
+            return if (basePath.isNotEmpty()) "$basePath/$ncxHref" else ncxHref
+        }
+
+        // 方式3：常见默认路径
+        val candidates = listOf("toc.ncx", "OEBPS/toc.ncx", "content/toc.ncx", "OPS/toc.ncx")
+        for (candidate in candidates) {
+            if (findEntry(zipFile, candidate) != null) return candidate
+        }
+
+        return null
+    }
+
+    /**
+     * 解析 NCX 文件的 navMap，递归构建层级目录。
+     * NCX 结构：<navMap><navPoint><navLabel><text>标题</text></navLabel><content src="..."/><navPoint>...</navPoint></navPoint></navMap>
+     */
+    private fun parseNcx(zipFile: ZipFile, ncxPath: String): List<TocEntry> {
+        val entry = findEntry(zipFile, ncxPath) ?: return emptyList()
+        val ncxContent = zipFile.getInputStream(entry).bufferedReader().readText()
+
+        val result = mutableListOf<TocEntry>()
+
+        // 提取 navMap 内容
+        val navMapRegex = """<navMap[^>]*>(.*?)</navMap>""".toRegex(RegexOption.DOT_MATCHES_ALL)
+        val navMapContent = navMapRegex.find(ncxContent)?.groupValues?.get(1) ?: return emptyList()
+
+        // 递归解析 navPoint
+        parseNavPoints(navMapContent, 1, result)
+
+        // 更新有 chapterIndex 的条目的标题到 chapters 列表
+        for (tocEntry in result) {
+            if (tocEntry.chapterIndex >= 0 && tocEntry.chapterIndex < chapters.size) {
+                // 用 NCX 标题替换 HTML 提取的标题（NCX 更准确）
+                val oldChapter = chapters[tocEntry.chapterIndex]
+                if (oldChapter.title != tocEntry.title) {
+                    chapters = chapters.toMutableList().apply {
+                        set(tocEntry.chapterIndex, oldChapter.copy(title = tocEntry.title))
+                    }
+                }
+            }
+        }
+
+        return result
+    }
+
+    /**
+     * 递归解析 navPoint 元素
+     */
+    private fun parseNavPoints(xml: String, level: Int, result: MutableList<TocEntry>) {
+        // 匹配顶层 navPoint（不嵌套在其他 navPoint 内的）
+        // 使用计数法处理嵌套
+        val navPointPattern = """<navPoint\s[^>]*>(.*?)</navPoint>""".toRegex(RegexOption.DOT_MATCHES_ALL)
+        val allMatches = navPointPattern.findAll(xml).toList()
+
+        for (match in allMatches) {
+            val navPointContent = match.groupValues[1]
+
+            // 提取标题
+            val textRegex = """<text[^>]*>([^<]+)</text>""".toRegex()
+            val title = textRegex.find(navPointContent)?.groupValues?.get(1)?.trim() ?: continue
+
+            // 提取 content src
+            val srcRegex = """<content\s+src="([^"]+)"""".toRegex()
+            val src = srcRegex.find(navPointContent)?.groupValues?.get(1) ?: continue
+
+            // 去掉 fragment（#后缀）
+            val hrefWithoutFragment = src.substringBefore("#")
+
+            // 映射到 spine 索引
+            val spineIndex = mapHrefToSpineIndex(hrefWithoutFragment)
+
+            // 检查是否有子 navPoint
+            val childNavPointRegex = """<navPoint\s[^>]*>""".toRegex()
+            val childMatches = childNavPointRegex.findAll(navPointContent).toList()
+            val hasChildren = childMatches.isNotEmpty()
+
+            if (spineIndex >= 0) {
+                // 找到对应的 spine 项
+                if (hasChildren && level == 1) {
+                    // 顶级且有子项 → 作为分组标题
+                    result.add(TocEntry(title = title, level = level, chapterIndex = -1, isGroup = true))
+                } else {
+                    // 实际章节
+                    result.add(TocEntry(title = title, level = level, chapterIndex = spineIndex))
+                }
+            } else if (hasChildren && level == 1) {
+                // 没有匹配 spine 但有子项 → 仍然作为分组标题
+                result.add(TocEntry(title = title, level = level, chapterIndex = -1, isGroup = true))
+            }
+
+            // 递归处理子 navPoint
+            if (hasChildren) {
+                parseNavPoints(navPointContent, level + 1, result)
+            }
+        }
+    }
+
+    /**
+     * 将 href 映射到 spine 索引
+     */
+    private fun mapHrefToSpineIndex(href: String): Int {
+        // 精确匹配
+        for ((index, spineHref) in spineHrefs.withIndex()) {
+            if (spineHref == href) return index
+            // 去掉 basePath 前缀后匹配
+            val relative = if (basePath.isNotEmpty() && spineHref.startsWith("$basePath/")) {
+                spineHref.removePrefix("$basePath/")
+            } else {
+                spineHref
+            }
+            if (relative == href) return index
+            // 反向：href 可能包含子路径
+            if (href.endsWith(relative) || relative.endsWith(href)) return index
+        }
+
+        // 文件名匹配（最后手段）
+        val hrefFileName = href.substringAfterLast("/")
+        if (hrefFileName.isNotEmpty()) {
+            for ((index, spineHref) in spineHrefs.withIndex()) {
+                val spineFileName = spineHref.substringAfterLast("/")
+                if (spineFileName == hrefFileName) return index
+            }
+        }
+
+        return -1
+    }
+
+    /**
+     * 解析 EPUB 3 的 nav 元素（HTML 格式的目录）
+     * <nav epub:type="toc"><ol><li><a href="...">标题</a><ol>...</ol></li></ol></nav>
+     */
+    private fun parseNav(zipFile: ZipFile, opfContent: String): List<TocEntry> {
+        // 从 manifest 中找 nav 文件
+        val manifestRegex = """<manifest[^>]*>(.*?)</manifest>""".toRegex(RegexOption.DOT_MATCHES_ALL)
+        val manifestContent = manifestRegex.find(opfContent)?.groupValues?.get(1) ?: ""
+
+        // 查找 properties="nav" 的 item
+        val navItemRegex = """<item[^>]*properties="[^"]*nav[^"]*"[^>]*href="([^"]+)"""".toRegex()
+        val navHref = navItemRegex.find(manifestContent)?.groupValues?.get(1)
+            ?: // 尝试反向顺序
+            """<item[^>]*href="([^"]+)"[^>]*properties="[^"]*nav[^"]*"""".toRegex()
+                .find(manifestContent)?.groupValues?.get(1)
+            ?: return emptyList()
+
+        val navPath = if (basePath.isNotEmpty()) "$basePath/$navHref" else navHref
+        val navEntry = findEntry(zipFile, navPath) ?: return emptyList()
+        val navHtml = zipFile.getInputStream(navEntry).bufferedReader().readText()
+
+        // 找到 <nav epub:type="toc"> 或 <nav id="toc">
+        val navRegex = """<nav[^>]*(?:epub:type="toc"|id="toc")[^>]*>(.*?)</nav>""".toRegex(
+            setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)
+        )
+        val navContent = navRegex.find(navHtml)?.groupValues?.get(1) ?: return emptyList()
+
+        val result = mutableListOf<TocEntry>()
+        parseNavOl(navContent, 1, result)
+        return result
+    }
+
+    /**
+     * 递归解析 nav 中的 <ol><li> 结构
+     */
+    private fun parseNavOl(html: String, level: Int, result: MutableList<TocEntry>) {
+        // 匹配 <li> 内容
+        val liRegex = """<li[^>]*>(.*?)</li>""".toRegex(RegexOption.DOT_MATCHES_ALL)
+        val allLis = liRegex.findAll(html).toList()
+
+        for (liMatch in allLis) {
+            val liContent = liMatch.groupValues[1]
+
+            // 提取 <a href="...">标题</a>
+            val aRegex = """<a[^>]*href="([^"]+)"[^>]*>([^<]+)</a>""".toRegex(RegexOption.IGNORE_CASE)
+            val aMatch = aRegex.find(liContent)
+            if (aMatch != null) {
+                val href = aMatch.groupValues[1].substringBefore("#")
+                val title = aMatch.groupValues[2].trim()
+
+                val spineIndex = mapHrefToSpineIndex(href)
+
+                // 检查是否有子 <ol>
+                val hasChildren = """<ol[^>]*>""".toRegex().containsMatchIn(liContent)
+
+                if (spineIndex >= 0) {
+                    if (hasChildren && level == 1) {
+                        result.add(TocEntry(title = title, level = level, chapterIndex = -1, isGroup = true))
+                    } else {
+                        result.add(TocEntry(title = title, level = level, chapterIndex = spineIndex))
+                    }
+                } else if (hasChildren && level == 1) {
+                    result.add(TocEntry(title = title, level = level, chapterIndex = -1, isGroup = true))
+                }
+
+                // 递归处理子 <ol>
+                if (hasChildren) {
+                    parseNavOl(liContent, level + 1, result)
+                }
+            }
+        }
+    }
+
+    /**
+     * 按需加载单个章节的HTML（含图片Base64内嵌），带缓存。
+     * @param optimizeLayout true=使用优化排版（包裹自定义CSS），false=保留EPUB自带排版
+     */
+    override fun getChapterHtml(chapterIndex: Int, optimizeLayout: Boolean): String {
         htmlCache[chapterIndex]?.let { return it }
         if (chapterIndex !in chapterPaths.indices) return ""
 
@@ -161,7 +428,7 @@ class EpubParser(private val context: Context? = null) : BookParser {
             zipFile = ZipFile(File(epubFilePath))
             val zipEntry = findEntry(zipFile, path) ?: return ""
             val rawHtml = zipFile.getInputStream(zipEntry).bufferedReader().readText()
-            val processedHtml = processHtml(zipFile, rawHtml)
+            val processedHtml = processHtml(zipFile, rawHtml, optimizeLayout)
             htmlCache[chapterIndex] = processedHtml
             return processedHtml
         } catch (e: Exception) {
@@ -215,16 +482,30 @@ class EpubParser(private val context: Context? = null) : BookParser {
 
     override fun getChapterCount(): Int = chapterPaths.size
 
-    /**
-     * 处理HTML，将图片转为Base64内嵌，使WebView能直接显示
-     */
-    private fun processHtml(zipFile: ZipFile, html: String): String {
-        var result = html
+    override fun clearHtmlCache() {
+        htmlCache.clear()
+    }
 
+    /**
+     * 处理HTML：将图片转为Base64内嵌，并根据 optimizeLayout 决定是否包裹优化CSS。
+     * @param optimizeLayout true=包裹自定义CSS覆盖EPUB样式，false=保留EPUB原始CSS
+     */
+    private fun processHtml(zipFile: ZipFile, html: String, optimizeLayout: Boolean = true): String {
+        val result = embedImages(zipFile, html)
+
+        return if (optimizeLayout) {
+            wrapWithOptimizedLayout(result)
+        } else {
+            wrapWithOriginalLayout(result)
+        }
+    }
+
+    /** 将 HTML 中的图片转为 Base64 data URI */
+    private fun embedImages(zipFile: ZipFile, html: String): String {
         val imgTagRegex = """<img\s[^>]*?>""".toRegex(RegexOption.IGNORE_CASE)
         val srcRegex = """src\s*=\s*["']([^"']+)["']""".toRegex(RegexOption.IGNORE_CASE)
 
-        result = imgTagRegex.replace(result) { tagMatch ->
+        return imgTagRegex.replace(html) { tagMatch ->
             val tag = tagMatch.value
             val srcMatch = srcRegex.find(tag) ?: return@replace tag
             val imgPath = srcMatch.groupValues[1]
@@ -251,7 +532,10 @@ class EpubParser(private val context: Context? = null) : BookParser {
                 tag
             }
         }
+    }
 
+    /** 优化排版：包裹自定义CSS模板 */
+    private fun wrapWithOptimizedLayout(body: String): String {
         return """
             |<html>
             |<head>
@@ -267,7 +551,24 @@ class EpubParser(private val context: Context? = null) : BookParser {
             |  td, th { padding: 4px 8px; border: 1px solid #ddd; }
             |</style>
             |</head>
-            |<body>$result</body>
+            |<body>$body</body>
+            |</html>
+        """.trimMargin()
+    }
+
+    /** 保留原始排版：只添加 viewport，保留EPUB自带CSS */
+    private fun wrapWithOriginalLayout(body: String): String {
+        return """
+            |<html>
+            |<head>
+            |<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+            |<style>
+            |  * { box-sizing: border-box; }
+            |  body { overflow: hidden; visibility: hidden; }
+            |  img { max-width: 100%; height: auto; }
+            |</style>
+            |</head>
+            |<body>$body</body>
             |</html>
         """.trimMargin()
     }

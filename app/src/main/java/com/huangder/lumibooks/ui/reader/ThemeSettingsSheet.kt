@@ -78,9 +78,11 @@ fun ThemeSettingsSheet(
     currentFontSize: Float,
     currentTheme: String,
     currentBrightness: Float = -1f,
+    currentOptimizeLayout: Boolean = true,
     onFontSizeChange: (Float) -> Unit,
     onThemeChange: (String) -> Unit,
     onBrightnessChange: (Float) -> Unit = {},
+    onOptimizeLayoutChange: (Boolean) -> Unit = {},
     onOpenAdvanced: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -248,7 +250,32 @@ fun ThemeSettingsSheet(
                 )
             }
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(16.dp))
+
+            // 优化书籍排版开关
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("优化书籍排版", fontSize = 14.sp, color = Color.Black)
+                    Spacer(Modifier.height(2.dp))
+                    Text("仅本书生效", fontSize = 12.sp, color = LightTextSecondary)
+                }
+                androidx.compose.material3.Switch(
+                    checked = currentOptimizeLayout,
+                    onCheckedChange = onOptimizeLayoutChange,
+                    colors = androidx.compose.material3.SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = Color(0xFF34C759),
+                        uncheckedThumbColor = Color.White,
+                        uncheckedTrackColor = Color(0xFFE5E5EA),
+                        uncheckedBorderColor = Color(0xFFE5E5EA)
+                    )
+                )
+            }
+
+            Spacer(Modifier.height(16.dp))
 
             // 高级设置按钮
             Box(

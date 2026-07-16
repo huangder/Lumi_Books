@@ -47,7 +47,7 @@ class PdfParser(private val context: Context) : BookParser {
     /**
      * 按需渲染单页（JPEG 压缩，质量 85，缓存最近 3 页）
      */
-    override fun getChapterHtml(chapterIndex: Int): String {
+    override fun getChapterHtml(chapterIndex: Int, optimizeLayout: Boolean): String {
         if (chapterIndex !in 0 until pageCount) return ""
         htmlCache[chapterIndex]?.let { return it }
 
