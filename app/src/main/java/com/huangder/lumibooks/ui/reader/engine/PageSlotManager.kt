@@ -6,6 +6,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 3 槽位页级 conveyor belt 管理器。
@@ -97,7 +98,7 @@ class PageSlotManager(
 
         val thisJob = scope.launch {
             try {
-                val text = contentProvider?.invoke(chapterIndex)
+                val text = withContext(Dispatchers.IO) { contentProvider?.invoke(chapterIndex) }
                 if (text.isNullOrEmpty()) {
                     Log.w(TAG, "Empty text for slot $slotIdx ch=$chapterIndex")
                     slot.isLoaded = false
@@ -170,14 +171,10 @@ class PageSlotManager(
         val cur = slots[SLOT_CUR]
         if (!cur.isLoaded) return
         val cl = layoutEngine.getChapterLayout(cur.chapterIndex) ?: return
-        val text = contentProvider?.let { runBlocking { it(cur.chapterIndex) } } ?: return
+        val text = contentProvider?.let { kotlinx.coroutines.runBlocking(Dispatchers.IO) { it(cur.chapterIndex) } } ?: return
         val pageLayout = cl.pages.getOrNull(cur.pageIndex) ?: return
         val highlights = highlightProvider?.invoke(cur.chapterIndex) ?: emptyList()
         cur.contentView.setPageContent(text, pageLayout.startCharOffset, pageLayout.endCharOffset, highlights)
-    }
-
-    private fun runBlocking(block: suspend () -> CharSequence?): CharSequence? {
-        return kotlinx.coroutines.runBlocking { block() }
     }
 
     /**

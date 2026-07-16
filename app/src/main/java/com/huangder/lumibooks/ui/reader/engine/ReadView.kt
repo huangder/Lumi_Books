@@ -118,7 +118,12 @@ class ReadView(context: Context) : FrameLayout(context) {
         animationController.onCanFlip = { dir ->
             when (dir) {
                 PageAnimationController.Direction.NEXT -> slotManager.getNextSlot().isLoaded
-                PageAnimationController.Direction.PREV -> slotManager.getPrevSlot().isLoaded
+                PageAnimationController.Direction.PREV -> {
+                    // 全书第一页时禁止往前翻
+                    val cur = slotManager.getCurSlot()
+                    val isBookFirstPage = cur.chapterIndex == 0 && cur.pageIndex == 0
+                    !isBookFirstPage && slotManager.getPrevSlot().isLoaded
+                }
                 else -> false
             }
         }
@@ -133,9 +138,13 @@ class ReadView(context: Context) : FrameLayout(context) {
 
         animationController.onTapLeft = {
             clearCurrentSelection()
-            slotManager.getPrevSlot().let { slot ->
-                if (slot.isLoaded) {
-                    startTapAnimation(PageAnimationController.Direction.PREV)
+            val cur = slotManager.getCurSlot()
+            val isBookFirstPage = cur.chapterIndex == 0 && cur.pageIndex == 0
+            if (!isBookFirstPage) {
+                slotManager.getPrevSlot().let { slot ->
+                    if (slot.isLoaded) {
+                        startTapAnimation(PageAnimationController.Direction.PREV)
+                    }
                 }
             }
         }

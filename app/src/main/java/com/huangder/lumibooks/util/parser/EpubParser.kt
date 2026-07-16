@@ -14,13 +14,28 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import kotlin.text.RegexOption
 
+/**
+ * EPUB 解析器 — 按需加载章节
+ *
+ * parse() 只提取元数据（标题、作者、章节列表、封面），不处理图片。
+ * getChapterHtml() / getChapterContent() 按需读取并处理单个章节。
+ */
 class EpubParser(private val context: Context? = null) : BookParser {
     private var chapters: List<Chapter> = emptyList()
     private var bookTitle: String = ""
     private var bookAuthor: String = ""
     private var basePath: String = ""
+    private var epubFilePath: String = ""
+
+    // 章节路径列表（spine 顺序）
+    private var chapterPaths: List<String> = emptyList()
+
+    // 按需缓存
+    private val htmlCache = mutableMapOf<Int, String>()
+    private val contentCache = mutableMapOf<Int, CharSequence>()
 
     override fun parse(filePath: String): BookContent {
+        epubFilePath = filePath
         val file = File(filePath)
         val zipFile = ZipFile(file)
 
@@ -38,8 +53,14 @@ class EpubParser(private val context: Context? = null) : BookParser {
         bookTitle = extractMetadata(opfContent, "dc:title") ?: file.nameWithoutExtension
         bookAuthor = extractMetadata(opfContent, "dc:creator") ?: "未知作者"
 
-        // 解析章节
-        chapters = extractChapters(zipFile, opfContent)
+        // 提取章节路径和标题（只读HTML提取标题，不处理图片）
+        val chapterInfoList = extractChapterInfo(zipFile, opfContent)
+        chapterPaths = chapterInfoList.map { it.second }
+
+        // 构造 Chapter 列表（content/htmlContent 为空，按需加载）
+        chapters = chapterInfoList.mapIndexed { index, (title, _) ->
+            Chapter(index = index, title = title, content = "", htmlContent = "")
+        }
 
         // 提取封面
         val coverPath = extractCover(zipFile, opfContent)
@@ -64,8 +85,11 @@ class EpubParser(private val context: Context? = null) : BookParser {
         return regex.find(opfContent)?.groupValues?.get(1)
     }
 
-    private fun extractChapters(zipFile: ZipFile, opfContent: String): List<Chapter> {
-        val result = mutableListOf<Chapter>()
+    /**
+     * 提取章节路径和标题（读HTML提取标题，但不处理图片）
+     */
+    private fun extractChapterInfo(zipFile: ZipFile, opfContent: String): List<Pair<String, String>> {
+        val result = mutableListOf<Pair<String, String>>()
 
         // 解析spine顺序
         val spineRegex = """<spine[^>]*>(.*?)</spine>""".toRegex(RegexOption.DOT_MATCHES_ALL)
@@ -82,28 +106,23 @@ class EpubParser(private val context: Context? = null) : BookParser {
                 items[match.groupValues[1]] = match.groupValues[2]
             }
 
-        // 按spine顺序读取章节
+        // 按spine顺序记录章节路径
         for ((index, itemref) in itemrefs.withIndex()) {
             val href = items[itemref] ?: continue
             val fullPath = if (basePath.isNotEmpty()) "$basePath/$href" else href
 
             try {
-                val entry = zipFile.getEntry(fullPath)
+                val entry = findEntry(zipFile, fullPath)
                 if (entry != null) {
                     val rawHtml = zipFile.getInputStream(entry).bufferedReader().readText()
-                    val processedHtml = processHtml(zipFile, rawHtml)
-                    val formattedText = htmlToSpanned(rawHtml, zipFile)
-
-                    result.add(
-                        Chapter(
-                            index = index,
-                            title = extractTitle(rawHtml) ?: "第${index + 1}章",
-                            content = formattedText,
-                            htmlContent = processedHtml
-                        )
-                    )
+                    val title = extractTitle(rawHtml) ?: "第${index + 1}章"
+                    result.add(title to fullPath)
+                    android.util.Log.d("EpubParser", "extractChapterInfo: [$index] title=$title path=$fullPath")
+                } else {
+                    android.util.Log.w("EpubParser", "extractChapterInfo: [$index] findEntry FAILED for $fullPath")
                 }
             } catch (e: Exception) {
+                android.util.Log.e("EpubParser", "extractChapterInfo: [$index] exception", e)
                 e.printStackTrace()
             }
         }
@@ -116,17 +135,9 @@ class EpubParser(private val context: Context? = null) : BookParser {
             for ((index, entry) in htmlEntries.withIndex()) {
                 try {
                     val rawHtml = zipFile.getInputStream(entry).bufferedReader().readText()
-                    val processedHtml = processHtml(zipFile, rawHtml)
-                    val formattedText = htmlToSpanned(rawHtml, zipFile)
-                    if (formattedText.isNotBlank()) {
-                        result.add(
-                            Chapter(
-                                index = index,
-                                title = extractTitle(rawHtml) ?: "第${index + 1}章",
-                                content = formattedText,
-                                htmlContent = processedHtml
-                            )
-                        )
+                    if (rawHtml.isNotBlank()) {
+                        val title = extractTitle(rawHtml) ?: "第${index + 1}章"
+                        result.add(title to entry.name)
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -138,13 +149,78 @@ class EpubParser(private val context: Context? = null) : BookParser {
     }
 
     /**
+     * 按需加载单个章节的HTML（含图片Base64内嵌），带缓存
+     */
+    override fun getChapterHtml(chapterIndex: Int): String {
+        htmlCache[chapterIndex]?.let { return it }
+        if (chapterIndex !in chapterPaths.indices) return ""
+
+        val path = chapterPaths[chapterIndex]
+        var zipFile: ZipFile? = null
+        try {
+            zipFile = ZipFile(File(epubFilePath))
+            val zipEntry = findEntry(zipFile, path) ?: return ""
+            val rawHtml = zipFile.getInputStream(zipEntry).bufferedReader().readText()
+            val processedHtml = processHtml(zipFile, rawHtml)
+            htmlCache[chapterIndex] = processedHtml
+            return processedHtml
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return ""
+        } finally {
+            try { zipFile?.close() } catch (_: Exception) {}
+        }
+    }
+
+    /**
+     * 按需加载单个章节的 Spanned，带缓存
+     */
+    override fun getChapterContent(chapterIndex: Int): CharSequence {
+        contentCache[chapterIndex]?.let {
+            android.util.Log.d("EpubParser", "getChapterContent: idx=$chapterIndex from cache, length=${it.length}")
+            return it
+        }
+        if (chapterIndex !in chapterPaths.indices) {
+            android.util.Log.w("EpubParser", "getChapterContent: idx=$chapterIndex out of range (chapterPaths.size=${chapterPaths.size})")
+            return ""
+        }
+
+        val path = chapterPaths[chapterIndex]
+        android.util.Log.d("EpubParser", "getChapterContent: idx=$chapterIndex path=$path")
+        var zipFile: ZipFile? = null
+        try {
+            zipFile = ZipFile(File(epubFilePath))
+            val zipEntry = findEntry(zipFile, path)
+            if (zipEntry == null) {
+                android.util.Log.e("EpubParser", "getChapterContent: findEntry failed for path=$path")
+                return ""
+            }
+            val rawHtml = zipFile.getInputStream(zipEntry).bufferedReader().readText()
+            android.util.Log.d("EpubParser", "getChapterContent: idx=$chapterIndex rawHtml.length=${rawHtml.length}")
+            if (chapterIndex == 0) android.util.Log.d("EpubParser", "cover HTML: $rawHtml")
+            val spanned = htmlToSpanned(rawHtml, zipFile)
+            // 如果 Spanned 为空（纯图片章节图片加载失败），返回占位文本
+            val result: CharSequence = if (spanned.isBlank()) android.text.SpannableString(" ") else spanned
+            android.util.Log.d("EpubParser", "getChapterContent: idx=$chapterIndex result.length=${result.length} isBlank=${spanned.isBlank()}")
+            contentCache[chapterIndex] = result
+            return result
+        } catch (e: Exception) {
+            android.util.Log.e("EpubParser", "getChapterContent: exception for idx=$chapterIndex", e)
+            e.printStackTrace()
+            return ""
+        } finally {
+            try { zipFile?.close() } catch (_: Exception) {}
+        }
+    }
+
+    override fun getChapterCount(): Int = chapterPaths.size
+
+    /**
      * 处理HTML，将图片转为Base64内嵌，使WebView能直接显示
      */
     private fun processHtml(zipFile: ZipFile, html: String): String {
         var result = html
 
-        // 匹配所有 <img> 标签中的 src 属性（不限定属性顺序）
-        // 同时匹配 src="..." 和 src='...' 两种引号
         val imgTagRegex = """<img\s[^>]*?>""".toRegex(RegexOption.IGNORE_CASE)
         val srcRegex = """src\s*=\s*["']([^"']+)["']""".toRegex(RegexOption.IGNORE_CASE)
 
@@ -153,10 +229,8 @@ class EpubParser(private val context: Context? = null) : BookParser {
             val srcMatch = srcRegex.find(tag) ?: return@replace tag
             val imgPath = srcMatch.groupValues[1]
 
-            // 跳过已经是data URI的图片
             if (imgPath.startsWith("data:")) return@replace tag
 
-            // 解析完整路径
             val fullPath = resolveImagePath(imgPath)
             try {
                 val entry = findEntry(zipFile, fullPath)
@@ -165,11 +239,9 @@ class EpubParser(private val context: Context? = null) : BookParser {
                     if (bytes.isEmpty()) return@replace tag
 
                     val mimeType = detectMimeType(imgPath, bytes)
-                    // SVG不转Base64（WebView原生支持更好）
                     if (mimeType == "image/svg+xml") return@replace tag
 
                     val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-                    // 替换src属性为data URI
                     tag.replace(srcRegex, """src="data:$mimeType;base64,$base64"""")
                 } else {
                     tag
@@ -180,7 +252,6 @@ class EpubParser(private val context: Context? = null) : BookParser {
             }
         }
 
-        // body 隐藏直到 JS 设置好 columns
         return """
             |<html>
             |<head>
@@ -201,23 +272,12 @@ class EpubParser(private val context: Context? = null) : BookParser {
         """.trimMargin()
     }
 
-    /**
-     * 解析图片路径：处理相对路径、绝对路径、.. 等情况
-     */
     private fun resolveImagePath(imgPath: String): String {
-        // 已经是绝对路径
         if (imgPath.startsWith("/")) return imgPath.substring(1)
-
-        // 拼接basePath
         val rawPath = if (basePath.isNotEmpty()) "$basePath/$imgPath" else imgPath
-
-        // 规范化路径（处理 ../ 等）
         return normalizePath(rawPath)
     }
 
-    /**
-     * 规范化路径，处理 ../ 和 ./
-     */
     private fun normalizePath(path: String): String {
         val parts = path.split("/").toMutableList()
         val result = mutableListOf<String>()
@@ -225,33 +285,26 @@ class EpubParser(private val context: Context? = null) : BookParser {
             when (part) {
                 ".." -> { if (result.isNotEmpty()) result.removeAt(result.size - 1) }
                 "." -> { /* 跳过 */ }
-                "" -> { if (result.isEmpty()) result.add(part) } // 保留开头的空字符串（绝对路径）
+                "" -> { if (result.isEmpty()) result.add(part) }
                 else -> result.add(part)
             }
         }
         return result.joinToString("/")
     }
 
-    /**
-     * 在ZIP中查找文件，尝试多种路径变体
-     */
     private fun findEntry(zipFile: ZipFile, path: String): java.util.zip.ZipEntry? {
-        // 直接查找
         zipFile.getEntry(path)?.let { return it }
 
-        // 尝试URL解码（处理 %20 等编码）
         val decoded = try { java.net.URLDecoder.decode(path, "UTF-8") } catch (e: Exception) { path }
         if (decoded != path) {
             zipFile.getEntry(decoded)?.let { return it }
         }
 
-        // 尝试去掉开头的 ./
         val withoutDotSlash = path.removePrefix("./")
         if (withoutDotSlash != path) {
             zipFile.getEntry(withoutDotSlash)?.let { return it }
         }
 
-        // 模糊匹配：在ZIP中搜索同名文件
         val fileName = path.substringAfterLast("/")
         if (fileName.isNotEmpty()) {
             zipFile.entries().toList().forEach { entry ->
@@ -264,11 +317,7 @@ class EpubParser(private val context: Context? = null) : BookParser {
         return null
     }
 
-    /**
-     * 检测图片MIME类型（结合扩展名和文件头）
-     */
     private fun detectMimeType(path: String, bytes: ByteArray): String {
-        // 先按扩展名判断
         val extMime = when {
             path.endsWith(".png", true) -> "image/png"
             path.endsWith(".jpg", true) || path.endsWith(".jpeg", true) -> "image/jpeg"
@@ -279,7 +328,6 @@ class EpubParser(private val context: Context? = null) : BookParser {
         }
         if (extMime != null) return extMime
 
-        // 按文件头magic bytes判断
         if (bytes.size >= 4) {
             return when {
                 bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte() && bytes[2] == 0x4E.toByte() && bytes[3] == 0x47.toByte() -> "image/png"
@@ -292,19 +340,30 @@ class EpubParser(private val context: Context? = null) : BookParser {
         return "image/png"
     }
 
-    /**
-     * 将 HTML 转换为 Spanned，保留段落、标题、粗体、斜体、链接等格式。
-     * StaticLayout 原生支持所有标准 Android Span 类型（含 ImageSpan）。
-     */
     private fun htmlToSpanned(html: String, zipFile: ZipFile): Spanned {
-        // 提取 <body> 内容，避免 <head>/<title> 等标签内容泄漏为正文
         val bodyContent = extractBody(html) ?: html
 
-        // 移除无法在 StaticLayout 中渲染的标签
-        val cleaned = bodyContent
+        // 检测是否是纯图片章节（封面）：有 SVG/image 引用但没有 <img> 标签
+        val imgRefRegex = Regex("""(?:xlink:)?href\s*=\s*["']([^"']+\.(?:jpg|jpeg|png|webp|gif))["']""", RegexOption.IGNORE_CASE)
+        val existingImgRegex = Regex("""<img\s[^>]*src\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+        val svgImageRefs = imgRefRegex.findAll(bodyContent).map { it.groupValues[1] }.distinct().toList()
+        val existingImgSrcs = existingImgRegex.findAll(bodyContent).map { it.groupValues[1] }.toSet()
+
+        // 如果有 SVG 图片引用且没有 <img> 标签，用 <img> 完全替换原始内容
+        val preprocessed = if (svgImageRefs.isNotEmpty() && existingImgSrcs.isEmpty()) {
+            svgImageRefs.joinToString("") { """<img src="$it"/>""" }
+        } else {
+            bodyContent
+        }
+
+        val cleaned = preprocessed
             .replace(Regex("""<svg[^>]*>.*?</svg>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
             .replace(Regex("""<script[^>]*>.*?</script>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
             .replace(Regex("""<style[^>]*>.*?</style>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
+            // 清理空容器（SVG 删除后留下的空 div 等）
+            .replace(Regex("""<div[^>]*>\s*</div>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
+            .replace(Regex("""<span[^>]*>\s*</span>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
+            .replace(Regex("""\n{3,}"""), "\n\n")
 
         // 图片前后插入换行，使其独占一行（块级效果）
         val withImageBreaks = cleaned.replace(
@@ -315,35 +374,72 @@ class EpubParser(private val context: Context? = null) : BookParser {
         return Html.fromHtml(withImageBreaks, Html.FROM_HTML_MODE_LEGACY, imageGetter, null)
     }
 
-    /** 从 EPUB ZIP 中加载图片并解码为 Drawable（用于 Html.ImageGetter） */
     private inner class EpubImageGetter(
         private val zipFile: ZipFile
     ) : Html.ImageGetter {
         override fun getDrawable(source: String): Drawable? {
             return try {
-                val entryPath = resolveImagePath(source) ?: return null
-                val entry = findEntry(zipFile, entryPath) ?: return null
+                android.util.Log.d("EpubParser", "getDrawable: source=$source")
+                val entryPath = resolveImagePath(source) ?: run {
+                    android.util.Log.w("EpubParser", "getDrawable: resolveImagePath returned null for $source")
+                    return null
+                }
+                android.util.Log.d("EpubParser", "getDrawable: entryPath=$entryPath")
+                val entry = findEntry(zipFile, entryPath) ?: run {
+                    android.util.Log.w("EpubParser", "getDrawable: findEntry returned null for $entryPath")
+                    return null
+                }
+                android.util.Log.d("EpubParser", "getDrawable: entry=${entry.name} size=${entry.size}")
 
                 val bytes = zipFile.getInputStream(entry).readBytes()
-                val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+                android.util.Log.d("EpubParser", "getDrawable: readBytes=${bytes.size}")
 
-                // 缩放适配屏幕宽度（过大图片会撑破 StaticLayout）
-                val maxWidth = 800
-                val scaled = if (bitmap.width > maxWidth) {
-                    val ratio = maxWidth.toFloat() / bitmap.width
-                    Bitmap.createScaledBitmap(bitmap, maxWidth, (bitmap.height * ratio).toInt(), true)
-                } else bitmap
+                // 先只读尺寸，不分配内存
+                val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+                android.util.Log.d("EpubParser", "getDrawable: originalSize=${opts.outWidth}x${opts.outHeight}")
 
-                val drawable = BitmapDrawable(null, scaled)
-                drawable.setBounds(0, 0, scaled.width, scaled.height)
+                // 计算 inSampleSize，目标尺寸 800×1200
+                val targetWidth = 800
+                val targetHeight = 1200
+                val sampleW = opts.outWidth / targetWidth
+                val sampleH = opts.outHeight / targetHeight
+                opts.inSampleSize = maxOf(sampleW, sampleH).coerceAtLeast(1)
+                opts.inJustDecodeBounds = false
+                android.util.Log.d("EpubParser", "getDrawable: inSampleSize=${opts.inSampleSize}")
+
+                val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+                if (bitmap == null) {
+                    android.util.Log.e("EpubParser", "getDrawable: decodeByteArray returned null!")
+                    return null
+                }
+                android.util.Log.d("EpubParser", "getDrawable: decoded ${bitmap.width}x${bitmap.height}")
+
+                // 缩放至页面可用宽度（屏幕宽度减去左右边距），高度等比
+                val dm = android.content.res.Resources.getSystem().displayMetrics
+                val marginPx = (44 * dm.density).toInt()  // 默认边距 44dp
+                val pageW = dm.widthPixels - marginPx * 2
+                val drawW: Int
+                val drawH: Int
+                if (bitmap.width > pageW) {
+                    val ratio = pageW.toFloat() / bitmap.width
+                    drawW = pageW
+                    drawH = (bitmap.height * ratio).toInt()
+                } else {
+                    drawW = bitmap.width
+                    drawH = bitmap.height
+                }
+
+                val drawable = BitmapDrawable(null, bitmap)
+                drawable.setBounds(0, 0, drawW, drawH)
                 drawable
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                android.util.Log.e("EpubParser", "getDrawable: exception", e)
                 null
             }
         }
     }
 
-    /** 从 HTML 中提取 <body> 标签内的内容 */
     private fun extractBody(html: String): String? {
         val bodyRegex = Regex(
             """<body[^>]*>(.*?)</body>""",
@@ -353,15 +449,12 @@ class EpubParser(private val context: Context? = null) : BookParser {
     }
 
     private fun extractTitle(html: String): String? {
-        // 1. <title> 标签（通常在 <head> 中）
         val titleRegex = """<title[^>]*>([^<]+)</title>""".toRegex(RegexOption.IGNORE_CASE)
         val titleTag = titleRegex.find(html)?.groupValues?.get(1)?.trim()
         if (!titleTag.isNullOrBlank() && !titleTag.matches(Regex("^\\s*(第?[\\d一二三四五六七八九十百千零]+[章节回卷部篇]|Chapter|CH\\s*\\d|\\d+[\\.、])\\s*$"))) {
-            // 如果 title 标签内容不是纯章节编号（如"第一章"），直接使用
             return titleTag
         }
 
-        // 2. 尝试 <h1>~<h6> 标题标签（正文中的真实标题）
         for (level in 1..6) {
             val headingRegex = """<h$level[^>]*>([^<]+)</h$level>""".toRegex(RegexOption.IGNORE_CASE)
             val heading = headingRegex.find(html)?.groupValues?.get(1)?.trim()
@@ -370,40 +463,28 @@ class EpubParser(private val context: Context? = null) : BookParser {
             }
         }
 
-        // 3. 如果 <title> 是章节编号格式，也接受（比"第X章"好）
         if (!titleTag.isNullOrBlank()) return titleTag
 
         return null
     }
 
-    /**
-     * 从 EPUB 中提取封面图片并保存到内部存储
-     * 查找顺序：
-     * 1. OPF meta name="cover" → manifest href
-     * 2. manifest 中 id 包含 "cover" 的图片
-     * 3. 文件名包含 "cover" 的图片
-     */
     private fun extractCover(zipFile: ZipFile, opfContent: String): String? {
         val ctx = context ?: return null
 
         try {
-            // 1. 从 OPF meta 中找 cover ID
             val coverIdRegex = """<meta\s+name="cover"\s+content="([^"]+)"""".toRegex()
             val coverId = coverIdRegex.find(opfContent)?.groupValues?.get(1)
 
-            // 2. 从 manifest 中找图片 href
             val manifestRegex = """<manifest[^>]*>(.*?)</manifest>""".toRegex(RegexOption.DOT_MATCHES_ALL)
             val manifestContent = manifestRegex.find(opfContent)?.groupValues?.get(1) ?: ""
 
             var coverHref: String? = null
 
-            // 先找 meta 指定的 cover
             if (coverId != null) {
                 val itemRegex = """<item\s+id="${Regex.escape(coverId)}"\s+href="([^"]+)"""".toRegex()
                 coverHref = itemRegex.find(manifestContent)?.groupValues?.get(1)
             }
 
-            // 再找 id 或 href 包含 "cover" 的图片
             if (coverHref == null) {
                 """<item\s+id="([^"]*cover[^"]*)"\s+href="([^"]+)"""".toRegex(RegexOption.IGNORE_CASE)
                     .find(manifestContent)?.let { coverHref = it.groupValues[2] }
@@ -413,7 +494,6 @@ class EpubParser(private val context: Context? = null) : BookParser {
                     .find(manifestContent)?.let { coverHref = it.groupValues[1] }
             }
 
-            // 最后找文件名包含 cover 的图片
             if (coverHref == null) {
                 zipFile.entries().toList().forEach { entry ->
                     if (entry.name.contains("cover", ignoreCase = true) &&
@@ -427,16 +507,13 @@ class EpubParser(private val context: Context? = null) : BookParser {
 
             val href = coverHref ?: return null
 
-            // 3. 读取图片并保存到内部存储
             val fullPath = if (basePath.isNotEmpty()) "$basePath/$href" else href
             val entry = findEntry(zipFile, fullPath) ?: return null
             val bytes = zipFile.getInputStream(entry).readBytes()
             if (bytes.isEmpty()) return null
 
-            // 保存到 app 内部存储
             val coversDir = File(ctx.filesDir, "covers")
             coversDir.mkdirs()
-            // 用文件路径的 hash 作为文件名，避免冲突
             val coverFile = File(coversDir, "${zipFile.name.hashCode()}.jpg")
             coverFile.writeBytes(bytes)
 
@@ -447,20 +524,6 @@ class EpubParser(private val context: Context? = null) : BookParser {
         }
     }
 
-    override fun getChapterContent(chapterIndex: Int): CharSequence {
-        return if (chapterIndex in chapters.indices) chapters[chapterIndex].content else ""
-    }
-
-    override fun getChapterHtml(chapterIndex: Int): String {
-        return if (chapterIndex in chapters.indices) chapters[chapterIndex].htmlContent else ""
-    }
-
-    override fun getChapterCount(): Int = chapters.size
-
-    /**
-     * 轻量级封面提取：只解析OPF找到封面图片并保存，不解析任何章节内容。
-     * 用于导入时快速获取封面，避免 parse() 的巨大开销。
-     */
     override fun extractCoverPath(filePath: String): String? {
         val ctx = context ?: return null
         val file = File(filePath)
@@ -470,17 +533,14 @@ class EpubParser(private val context: Context? = null) : BookParser {
         try {
             zipFile = ZipFile(file)
 
-            // 读取container.xml获取OPF路径
             val containerEntry = zipFile.getEntry("META-INF/container.xml") ?: return null
             val containerContent = zipFile.getInputStream(containerEntry).bufferedReader().readText()
             val opfPath = extractOpfPath(containerContent)
 
-            // 读取OPF文件
             val opfEntry = zipFile.getEntry(opfPath) ?: return null
             val opfContent = zipFile.getInputStream(opfEntry).bufferedReader().readText()
             basePath = opfPath.substringBeforeLast("/")
 
-            // 提取封面
             return extractCover(zipFile, opfContent)
         } catch (e: Exception) {
             e.printStackTrace()
