@@ -227,26 +227,23 @@ class EpubParser(private val context: Context? = null) : BookParser {
     }
 
     /**
-     * 解析 NCX 文件的 navMap，递归构建层级目录。
-     * NCX 结构：<navMap><navPoint><navLabel><text>标题</text></navLabel><content src="..."/><navPoint>...</navPoint></navPoint></navMap>
+     * 解析 NCX 文件的 navMap，构建层级目录。
+     * 使用深度计数法正确处理嵌套 navPoint。
      */
     private fun parseNcx(zipFile: ZipFile, ncxPath: String): List<TocEntry> {
         val entry = findEntry(zipFile, ncxPath) ?: return emptyList()
         val ncxContent = zipFile.getInputStream(entry).bufferedReader().readText()
 
-        val result = mutableListOf<TocEntry>()
-
         // 提取 navMap 内容
-        val navMapRegex = """<navMap[^>]*>(.*?)</navMap>""".toRegex(RegexOption.DOT_MATCHES_ALL)
+        val navMapRegex = """<navMap[^>]*>(.*)</navMap>""".toRegex(RegexOption.DOT_MATCHES_ALL)
         val navMapContent = navMapRegex.find(ncxContent)?.groupValues?.get(1) ?: return emptyList()
 
-        // 递归解析 navPoint
-        parseNavPoints(navMapContent, 1, result)
+        val result = mutableListOf<TocEntry>()
+        parseNavPointsDepth(navMapContent, 1, result)
 
-        // 更新有 chapterIndex 的条目的标题到 chapters 列表
+        // 用 NCX 标题更新 chapters 列表（NCX 更准确）
         for (tocEntry in result) {
-            if (tocEntry.chapterIndex >= 0 && tocEntry.chapterIndex < chapters.size) {
-                // 用 NCX 标题替换 HTML 提取的标题（NCX 更准确）
+            if (tocEntry.chapterIndex in chapters.indices) {
                 val oldChapter = chapters[tocEntry.chapterIndex]
                 if (oldChapter.title != tocEntry.title) {
                     chapters = chapters.toMutableList().apply {
@@ -260,54 +257,89 @@ class EpubParser(private val context: Context? = null) : BookParser {
     }
 
     /**
-     * 递归解析 navPoint 元素
+     * 使用深度计数法解析 navPoint，正确处理嵌套。
+     * 正则 .*? 非贪婪匹配会跳过嵌套子项，因此改用逐字符扫描。
      */
-    private fun parseNavPoints(xml: String, level: Int, result: MutableList<TocEntry>) {
-        // 匹配顶层 navPoint（不嵌套在其他 navPoint 内的）
-        // 使用计数法处理嵌套
-        val navPointPattern = """<navPoint\s[^>]*>(.*?)</navPoint>""".toRegex(RegexOption.DOT_MATCHES_ALL)
-        val allMatches = navPointPattern.findAll(xml).toList()
+    private fun parseNavPointsDepth(xml: String, level: Int, result: MutableList<TocEntry>) {
+        // 查找每个 <navPoint 开始标签，然后用深度计数找到对应的 </navPoint>
+        val openTag = "<navPoint"
+        val closeTag = "</navPoint>"
+        var searchFrom = 0
 
-        for (match in allMatches) {
-            val navPointContent = match.groupValues[1]
+        while (searchFrom < xml.length) {
+            val openIdx = xml.indexOf(openTag, searchFrom)
+            if (openIdx < 0) break
 
-            // 提取标题
-            val textRegex = """<text[^>]*>([^<]+)</text>""".toRegex()
-            val title = textRegex.find(navPointContent)?.groupValues?.get(1)?.trim() ?: continue
+            // 找到这个 <navPoint 标签的结束 >
+            val tagEnd = xml.indexOf(">", openIdx)
+            if (tagEnd < 0) break
 
-            // 提取 content src
-            val srcRegex = """<content\s+src="([^"]+)"""".toRegex()
-            val src = srcRegex.find(navPointContent)?.groupValues?.get(1) ?: continue
+            // 用深度计数找到匹配的 </navPoint>
+            var depth = 1
+            var pos = tagEnd + 1
+            while (pos < xml.length && depth > 0) {
+                val nextOpen = xml.indexOf(openTag, pos)
+                val nextClose = xml.indexOf(closeTag, pos)
 
-            // 去掉 fragment（#后缀）
-            val hrefWithoutFragment = src.substringBefore("#")
+                if (nextClose < 0) break  // 格式错误
 
-            // 映射到 spine 索引
-            val spineIndex = mapHrefToSpineIndex(hrefWithoutFragment)
-
-            // 检查是否有子 navPoint
-            val childNavPointRegex = """<navPoint\s[^>]*>""".toRegex()
-            val childMatches = childNavPointRegex.findAll(navPointContent).toList()
-            val hasChildren = childMatches.isNotEmpty()
-
-            if (spineIndex >= 0) {
-                // 找到对应的 spine 项
-                if (hasChildren && level == 1) {
-                    // 顶级且有子项 → 作为分组标题
-                    result.add(TocEntry(title = title, level = level, chapterIndex = -1, isGroup = true))
+                if (nextOpen in 0 until nextClose) {
+                    // 先遇到嵌套的 <navPoint
+                    depth++
+                    pos = xml.indexOf(">", nextOpen) + 1
                 } else {
-                    // 实际章节
-                    result.add(TocEntry(title = title, level = level, chapterIndex = spineIndex))
+                    // 先遇到 </navPoint>
+                    depth--
+                    if (depth == 0) {
+                        // 找到匹配的关闭标签
+                        val navPointContent = xml.substring(tagEnd + 1, nextClose)
+
+                        processNavPoint(navPointContent, level, result)
+
+                        searchFrom = nextClose + closeTag.length
+                        break
+                    }
+                    pos = nextClose + closeTag.length
                 }
-            } else if (hasChildren && level == 1) {
-                // 没有匹配 spine 但有子项 → 仍然作为分组标题
-                result.add(TocEntry(title = title, level = level, chapterIndex = -1, isGroup = true))
             }
 
-            // 递归处理子 navPoint
-            if (hasChildren) {
-                parseNavPoints(navPointContent, level + 1, result)
+            if (depth > 0) break  // 格式错误，退出
+        }
+    }
+
+    /**
+     * 处理单个 navPoint：提取标题、src，判断是否有子项
+     */
+    private fun processNavPoint(content: String, level: Int, result: MutableList<TocEntry>) {
+        // 提取标题
+        val textRegex = """<text[^>]*>([^<]+)</text>""".toRegex()
+        val title = textRegex.find(content)?.groupValues?.get(1)?.trim() ?: return
+
+        // 提取 content src
+        val srcRegex = """<content\s+src="([^"]+)"""".toRegex()
+        val src = srcRegex.find(content)?.groupValues?.get(1) ?: return
+
+        val hrefWithoutFragment = src.substringBefore("#")
+        val spineIndex = mapHrefToSpineIndex(hrefWithoutFragment)
+
+        // 检查是否有子 navPoint
+        val hasChildren = content.contains("<navPoint")
+
+        if (spineIndex >= 0) {
+            if (hasChildren && level == 1) {
+                // 有子项的顶级条目 → 分组标题
+                result.add(TocEntry(title = title, level = level, chapterIndex = -1, isGroup = true))
+            } else {
+                // 实际章节
+                result.add(TocEntry(title = title, level = level, chapterIndex = spineIndex))
             }
+        } else if (hasChildren && level == 1) {
+            result.add(TocEntry(title = title, level = level, chapterIndex = -1, isGroup = true))
+        }
+
+        // 递归处理子 navPoint
+        if (hasChildren) {
+            parseNavPointsDepth(content, level + 1, result)
         }
     }
 
@@ -377,40 +409,71 @@ class EpubParser(private val context: Context? = null) : BookParser {
      * 递归解析 nav 中的 <ol><li> 结构
      */
     private fun parseNavOl(html: String, level: Int, result: MutableList<TocEntry>) {
-        // 匹配 <li> 内容
-        val liRegex = """<li[^>]*>(.*?)</li>""".toRegex(RegexOption.DOT_MATCHES_ALL)
-        val allLis = liRegex.findAll(html).toList()
+        // 使用深度计数法解析 <li>，正确处理嵌套
+        val openTag = "<li"
+        val closeTag = "</li>"
+        var searchFrom = 0
 
-        for (liMatch in allLis) {
-            val liContent = liMatch.groupValues[1]
+        while (searchFrom < html.length) {
+            val openIdx = html.indexOf(openTag, searchFrom)
+            if (openIdx < 0) break
 
-            // 提取 <a href="...">标题</a>
-            val aRegex = """<a[^>]*href="([^"]+)"[^>]*>([^<]+)</a>""".toRegex(RegexOption.IGNORE_CASE)
-            val aMatch = aRegex.find(liContent)
-            if (aMatch != null) {
-                val href = aMatch.groupValues[1].substringBefore("#")
-                val title = aMatch.groupValues[2].trim()
+            val tagEnd = html.indexOf(">", openIdx)
+            if (tagEnd < 0) break
 
-                val spineIndex = mapHrefToSpineIndex(href)
+            // 用深度计数找到匹配的 </li>
+            var depth = 1
+            var pos = tagEnd + 1
+            var found = false
+            while (pos < html.length && depth > 0) {
+                val nextOpen = html.indexOf(openTag, pos)
+                val nextClose = html.indexOf(closeTag, pos)
 
-                // 检查是否有子 <ol>
-                val hasChildren = """<ol[^>]*>""".toRegex().containsMatchIn(liContent)
+                if (nextClose < 0) break
 
-                if (spineIndex >= 0) {
-                    if (hasChildren && level == 1) {
-                        result.add(TocEntry(title = title, level = level, chapterIndex = -1, isGroup = true))
-                    } else {
-                        result.add(TocEntry(title = title, level = level, chapterIndex = spineIndex))
+                if (nextOpen in 0 until nextClose) {
+                    depth++
+                    pos = html.indexOf(">", nextOpen) + 1
+                } else {
+                    depth--
+                    if (depth == 0) {
+                        val liContent = html.substring(tagEnd + 1, nextClose)
+                        processNavLi(liContent, level, result)
+                        searchFrom = nextClose + closeTag.length
+                        found = true
+                        break
                     }
-                } else if (hasChildren && level == 1) {
-                    result.add(TocEntry(title = title, level = level, chapterIndex = -1, isGroup = true))
-                }
-
-                // 递归处理子 <ol>
-                if (hasChildren) {
-                    parseNavOl(liContent, level + 1, result)
+                    pos = nextClose + closeTag.length
                 }
             }
+
+            if (!found) break
+        }
+    }
+
+    /** 处理单个 <li>：提取 <a> 标题和 href，递归处理子 <ol> */
+    private fun processNavLi(content: String, level: Int, result: MutableList<TocEntry>) {
+        val aRegex = """<a[^>]*href="([^"]+)"[^>]*>([^<]+)</a>""".toRegex(RegexOption.IGNORE_CASE)
+        val aMatch = aRegex.find(content) ?: return
+
+        val href = aMatch.groupValues[1].substringBefore("#")
+        val title = aMatch.groupValues[2].trim()
+        val spineIndex = mapHrefToSpineIndex(href)
+        val hasChildren = content.contains("<ol")
+
+        if (spineIndex >= 0) {
+            if (hasChildren && level == 1) {
+                result.add(TocEntry(title = title, level = level, chapterIndex = -1, isGroup = true))
+            } else {
+                result.add(TocEntry(title = title, level = level, chapterIndex = spineIndex))
+            }
+        } else if (hasChildren && level == 1) {
+            result.add(TocEntry(title = title, level = level, chapterIndex = -1, isGroup = true))
+        }
+
+        // 递归处理子 <ol> 中的 <li>
+        if (hasChildren) {
+            parseNavOl(content, level + 1, result)
         }
     }
 
