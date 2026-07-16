@@ -275,11 +275,14 @@ class ReaderViewModel @Inject constructor(
      */
     private fun loadChapterContent(startPage: Int = 0) {
         val state = _uiState.value
-        val html = getChapterHtml(state.currentChapterIndex)
-        android.util.Log.e("PG", "loadChapterContent: chapter=" + state.currentChapterIndex + " html.length=" + (html?.length ?: 0))
-        _uiState.value = _uiState.value.copy(chapterHtml = html, currentPageIndex = startPage, pageReady = false)
-        // 🔥 激进预加载：进入章节后立即在后台拉取前后相邻章节到 preloadCache
-        eagerPreloadAdjacent(state.currentChapterIndex)
+        _uiState.value = _uiState.value.copy(chapterHtml = "", currentPageIndex = startPage, pageReady = false)
+        viewModelScope.launch {
+            val html = withContext(Dispatchers.IO) { getChapterHtml(state.currentChapterIndex) }
+            android.util.Log.e("PG", "loadChapterContent: chapter=" + state.currentChapterIndex + " html.length=" + html.length)
+            _uiState.value = _uiState.value.copy(chapterHtml = html)
+            // 🔥 激进预加载：进入章节后立即在后台拉取前后相邻章节到 preloadCache
+            eagerPreloadAdjacent(state.currentChapterIndex)
+        }
     }
 
     /**
@@ -299,12 +302,14 @@ class ReaderViewModel @Inject constructor(
         if (indices.isEmpty()) return
         android.util.Log.e("PG", "eagerPreload: chapter=$chapterIdx window=$windowSize indices=$indices")
         viewModelScope.launch {
-            indices.forEach { idx ->
-                try {
-                    preloadCache[idx] = p.getChapterHtml(idx)
-                    android.util.Log.d("PG", "eagerPreload done: chapter $idx")
-                } catch (_: Exception) {
-                    android.util.Log.d("PG", "eagerPreload failed: chapter $idx")
+            withContext(Dispatchers.IO) {
+                indices.forEach { idx ->
+                    try {
+                        preloadCache[idx] = p.getChapterHtml(idx)
+                        android.util.Log.d("PG", "eagerPreload done: chapter $idx")
+                    } catch (_: Exception) {
+                        android.util.Log.d("PG", "eagerPreload failed: chapter $idx")
+                    }
                 }
             }
         }
