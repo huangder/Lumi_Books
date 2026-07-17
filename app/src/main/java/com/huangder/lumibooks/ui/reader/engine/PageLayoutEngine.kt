@@ -239,6 +239,11 @@ class PageLayoutEngine {
     }
 
     /**
+     * 获取章节数量
+     */
+    fun getChapterCount(): Int = chapterCount
+
+    /**
      * 获取总页数（跨所有已布局章节）
      */
     fun getTotalPages(): Int {

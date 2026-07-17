@@ -119,20 +119,17 @@ class FadePageAnim(readView: ReadView) : PageAnimationController(readView) {
 
                 if (hasMoved) {
                     // 滑动手势：根据方向决定翻页
-                    val viewWidth = readView.width.toFloat()
-                    val fraction = Math.abs(dx) / viewWidth
-
                     direction = when {
-                        dx > 12f -> Direction.PREV
-                        dx < -12f -> Direction.NEXT
+                        dx > 20f -> Direction.PREV
+                        dx < -20f -> Direction.NEXT
                         else -> Direction.NONE
                     }
 
-                    if (fraction >= FLIP_THRESHOLD && direction != Direction.NONE) {
-                        if (onCanFlip?.invoke(direction) == true) {
-                            isFlipAnim = true
-                            startAnim(fromDrag = false)
-                        }
+                    if (direction != Direction.NONE) {
+                        // 渐变模式：不检查 onCanFlip，直接翻页
+                        // （渐变效果下，即使目标页未加载也能平滑过渡）
+                        isFlipAnim = true
+                        startAnim(fromDrag = false)
                     }
                 }
                 return true

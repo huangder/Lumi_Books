@@ -15,8 +15,13 @@ ADDED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:2:1-118
 INJECTED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:2:1-118:12
 INJECTED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:2:1-118:12
 INJECTED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:2:1-118:12
+MERGED from [androidx.recyclerview:recyclerview:1.3.2] C:\Users\Huangder\.gradle\caches\8.13\transforms\452760231d3e314833fe290bb2916193\transformed\recyclerview-1.3.2\AndroidManifest.xml:17:1-22:12
 MERGED from [androidx.hilt:hilt-navigation-compose:1.2.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\9c150e0d345458ed2165a2a068b5ffce\transformed\hilt-navigation-compose-1.2.0\AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.hilt:hilt-navigation:1.2.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\ede7f3596b45c21fefcb7c5cbdec3235\transformed\hilt-navigation-1.2.0\AndroidManifest.xml:2:1-7:12
+MERGED from [com.google.dagger:hilt-android:2.52] C:\Users\Huangder\.gradle\caches\8.13\transforms\01a92171f595cef848bb82d256d572b9\transformed\hilt-android-2.52\AndroidManifest.xml:16:1-19:12
+MERGED from [androidx.fragment:fragment:1.5.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\a6a4c1b52a460e79ef28ed8265edfa78\transformed\fragment-1.5.1\AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.viewpager:viewpager:1.0.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\e5736be327202a93d9c8579534d807d2\transformed\viewpager-1.0.0\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.customview:customview:1.0.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\6fcfe2bb387f26a10e66e551ed08c9fe\transformed\customview-1.0.0\AndroidManifest.xml:17:1-22:12
 MERGED from [androidx.navigation:navigation-common:2.8.5] C:\Users\Huangder\.gradle\caches\8.13\transforms\993618353020976237ca5da84eb875ab\transformed\navigation-common-2.8.5\AndroidManifest.xml:17:1-22:12
 MERGED from [androidx.navigation:navigation-runtime:2.8.5] C:\Users\Huangder\.gradle\caches\8.13\transforms\50bc8c1ae63a7d7c63d026f69b57e1db\transformed\navigation-runtime-2.8.5\AndroidManifest.xml:17:1-22:12
 MERGED from [androidx.navigation:navigation-common-ktx:2.8.5] C:\Users\Huangder\.gradle\caches\8.13\transforms\33d87c99816cf433788f4d9e20771bc2\transformed\navigation-common-ktx-2.8.5\AndroidManifest.xml:2:1-7:12
@@ -40,8 +45,6 @@ MERGED from [androidx.compose.ui:ui-tooling-preview-android:1.7.6] C:\Users\Huan
 MERGED from [androidx.compose.ui:ui-tooling-android:1.7.6] C:\Users\Huangder\.gradle\caches\8.13\transforms\011d644e39033794909c939cf1dc2a38\transformed\ui-tooling-release\AndroidManifest.xml:17:1-28:12
 MERGED from [androidx.compose.ui:ui-graphics-android:1.7.6] C:\Users\Huangder\.gradle\caches\8.13\transforms\4eab8f23bc540e5e26bd8dcdaab34f99\transformed\ui-graphics-release\AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.compose.ui:ui-test-manifest:1.7.6] C:\Users\Huangder\.gradle\caches\8.13\transforms\21434154e24c6ff5edeb68c0cd3d2562\transformed\ui-test-manifest-1.7.6\AndroidManifest.xml:17:1-28:12
-MERGED from [com.google.dagger:hilt-android:2.52] C:\Users\Huangder\.gradle\caches\8.13\transforms\01a92171f595cef848bb82d256d572b9\transformed\hilt-android-2.52\AndroidManifest.xml:16:1-19:12
-MERGED from [androidx.fragment:fragment:1.5.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\a6a4c1b52a460e79ef28ed8265edfa78\transformed\fragment-1.5.1\AndroidManifest.xml:17:1-24:12
 MERGED from [androidx.activity:activity:1.9.3] C:\Users\Huangder\.gradle\caches\8.13\transforms\1977664190175c04e46a11d93b83b9ab\transformed\activity-1.9.3\AndroidManifest.xml:17:1-22:12
 MERGED from [androidx.activity:activity-ktx:1.9.3] C:\Users\Huangder\.gradle\caches\8.13\transforms\86229007e49d5d87c8b402b78596b14b\transformed\activity-ktx-1.9.3\AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.activity:activity-compose:1.9.3] C:\Users\Huangder\.gradle\caches\8.13\transforms\539e7119a1c89e5dbc9142ad863a0487\transformed\activity-compose-1.9.3\AndroidManifest.xml:2:1-7:12
@@ -67,10 +70,8 @@ MERGED from [androidx.lifecycle:lifecycle-viewmodel-compose-android:2.8.7] C:\Us
 MERGED from [androidx.compose.material:material-icons-extended-android:1.7.6] C:\Users\Huangder\.gradle\caches\8.13\transforms\28f8fb87fb2e06b5de66ed2fb45e5703\transformed\material-icons-extended-release\AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.compose.material:material-icons-core-android:1.7.6] C:\Users\Huangder\.gradle\caches\8.13\transforms\8637f4db788db7709ac1730b3ca5091c\transformed\material-icons-core-release\AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.compose.ui:ui-android:1.7.6] C:\Users\Huangder\.gradle\caches\8.13\transforms\2e698c387947aa40f58106e8678d53d0\transformed\ui-release\AndroidManifest.xml:2:1-7:12
-MERGED from [androidx.viewpager:viewpager:1.0.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\e5736be327202a93d9c8579534d807d2\transformed\viewpager-1.0.0\AndroidManifest.xml:17:1-22:12
 MERGED from [androidx.autofill:autofill:1.0.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\b8dd69d3fef7c34a92f761a16f87863f\transformed\autofill-1.0.0\AndroidManifest.xml:17:1-24:12
 MERGED from [androidx.graphics:graphics-path:1.0.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\1e6b91506d77d3bc5d1c9f7802904744\transformed\graphics-path-1.0.1\AndroidManifest.xml:2:1-7:12
-MERGED from [androidx.customview:customview:1.0.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\6fcfe2bb387f26a10e66e551ed08c9fe\transformed\customview-1.0.0\AndroidManifest.xml:17:1-22:12
 MERGED from [androidx.appcompat:appcompat-resources:1.6.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\de3b14e9d1b2fadc35e2156543566c94\transformed\appcompat-resources-1.6.1\AndroidManifest.xml:17:1-22:12
 MERGED from [androidx.vectordrawable:vectordrawable-animated:1.1.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\735d658bf3cbe9b09007cd13b8498e57\transformed\vectordrawable-animated-1.1.0\AndroidManifest.xml:17:1-24:12
 MERGED from [androidx.vectordrawable:vectordrawable:1.1.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\33e845ab01963399264c6789c6789bfb\transformed\vectordrawable-1.1.0\AndroidManifest.xml:17:1-24:12
@@ -288,10 +289,20 @@ uses-sdk
 INJECTED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml reason: use-sdk injection requested
 INJECTED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml
 INJECTED from D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml
+MERGED from [androidx.recyclerview:recyclerview:1.3.2] C:\Users\Huangder\.gradle\caches\8.13\transforms\452760231d3e314833fe290bb2916193\transformed\recyclerview-1.3.2\AndroidManifest.xml:20:5-44
+MERGED from [androidx.recyclerview:recyclerview:1.3.2] C:\Users\Huangder\.gradle\caches\8.13\transforms\452760231d3e314833fe290bb2916193\transformed\recyclerview-1.3.2\AndroidManifest.xml:20:5-44
 MERGED from [androidx.hilt:hilt-navigation-compose:1.2.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\9c150e0d345458ed2165a2a068b5ffce\transformed\hilt-navigation-compose-1.2.0\AndroidManifest.xml:5:5-44
 MERGED from [androidx.hilt:hilt-navigation-compose:1.2.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\9c150e0d345458ed2165a2a068b5ffce\transformed\hilt-navigation-compose-1.2.0\AndroidManifest.xml:5:5-44
 MERGED from [androidx.hilt:hilt-navigation:1.2.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\ede7f3596b45c21fefcb7c5cbdec3235\transformed\hilt-navigation-1.2.0\AndroidManifest.xml:5:5-44
 MERGED from [androidx.hilt:hilt-navigation:1.2.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\ede7f3596b45c21fefcb7c5cbdec3235\transformed\hilt-navigation-1.2.0\AndroidManifest.xml:5:5-44
+MERGED from [com.google.dagger:hilt-android:2.52] C:\Users\Huangder\.gradle\caches\8.13\transforms\01a92171f595cef848bb82d256d572b9\transformed\hilt-android-2.52\AndroidManifest.xml:18:3-42
+MERGED from [com.google.dagger:hilt-android:2.52] C:\Users\Huangder\.gradle\caches\8.13\transforms\01a92171f595cef848bb82d256d572b9\transformed\hilt-android-2.52\AndroidManifest.xml:18:3-42
+MERGED from [androidx.fragment:fragment:1.5.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\a6a4c1b52a460e79ef28ed8265edfa78\transformed\fragment-1.5.1\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.fragment:fragment:1.5.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\a6a4c1b52a460e79ef28ed8265edfa78\transformed\fragment-1.5.1\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.viewpager:viewpager:1.0.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\e5736be327202a93d9c8579534d807d2\transformed\viewpager-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.viewpager:viewpager:1.0.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\e5736be327202a93d9c8579534d807d2\transformed\viewpager-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.customview:customview:1.0.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\6fcfe2bb387f26a10e66e551ed08c9fe\transformed\customview-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.customview:customview:1.0.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\6fcfe2bb387f26a10e66e551ed08c9fe\transformed\customview-1.0.0\AndroidManifest.xml:20:5-44
 MERGED from [androidx.navigation:navigation-common:2.8.5] C:\Users\Huangder\.gradle\caches\8.13\transforms\993618353020976237ca5da84eb875ab\transformed\navigation-common-2.8.5\AndroidManifest.xml:20:5-44
 MERGED from [androidx.navigation:navigation-common:2.8.5] C:\Users\Huangder\.gradle\caches\8.13\transforms\993618353020976237ca5da84eb875ab\transformed\navigation-common-2.8.5\AndroidManifest.xml:20:5-44
 MERGED from [androidx.navigation:navigation-runtime:2.8.5] C:\Users\Huangder\.gradle\caches\8.13\transforms\50bc8c1ae63a7d7c63d026f69b57e1db\transformed\navigation-runtime-2.8.5\AndroidManifest.xml:20:5-44
@@ -338,10 +349,6 @@ MERGED from [androidx.compose.ui:ui-graphics-android:1.7.6] C:\Users\Huangder\.g
 MERGED from [androidx.compose.ui:ui-graphics-android:1.7.6] C:\Users\Huangder\.gradle\caches\8.13\transforms\4eab8f23bc540e5e26bd8dcdaab34f99\transformed\ui-graphics-release\AndroidManifest.xml:5:5-44
 MERGED from [androidx.compose.ui:ui-test-manifest:1.7.6] C:\Users\Huangder\.gradle\caches\8.13\transforms\21434154e24c6ff5edeb68c0cd3d2562\transformed\ui-test-manifest-1.7.6\AndroidManifest.xml:20:5-44
 MERGED from [androidx.compose.ui:ui-test-manifest:1.7.6] C:\Users\Huangder\.gradle\caches\8.13\transforms\21434154e24c6ff5edeb68c0cd3d2562\transformed\ui-test-manifest-1.7.6\AndroidManifest.xml:20:5-44
-MERGED from [com.google.dagger:hilt-android:2.52] C:\Users\Huangder\.gradle\caches\8.13\transforms\01a92171f595cef848bb82d256d572b9\transformed\hilt-android-2.52\AndroidManifest.xml:18:3-42
-MERGED from [com.google.dagger:hilt-android:2.52] C:\Users\Huangder\.gradle\caches\8.13\transforms\01a92171f595cef848bb82d256d572b9\transformed\hilt-android-2.52\AndroidManifest.xml:18:3-42
-MERGED from [androidx.fragment:fragment:1.5.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\a6a4c1b52a460e79ef28ed8265edfa78\transformed\fragment-1.5.1\AndroidManifest.xml:20:5-22:41
-MERGED from [androidx.fragment:fragment:1.5.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\a6a4c1b52a460e79ef28ed8265edfa78\transformed\fragment-1.5.1\AndroidManifest.xml:20:5-22:41
 MERGED from [androidx.activity:activity:1.9.3] C:\Users\Huangder\.gradle\caches\8.13\transforms\1977664190175c04e46a11d93b83b9ab\transformed\activity-1.9.3\AndroidManifest.xml:20:5-44
 MERGED from [androidx.activity:activity:1.9.3] C:\Users\Huangder\.gradle\caches\8.13\transforms\1977664190175c04e46a11d93b83b9ab\transformed\activity-1.9.3\AndroidManifest.xml:20:5-44
 MERGED from [androidx.activity:activity-ktx:1.9.3] C:\Users\Huangder\.gradle\caches\8.13\transforms\86229007e49d5d87c8b402b78596b14b\transformed\activity-ktx-1.9.3\AndroidManifest.xml:5:5-44
@@ -392,14 +399,10 @@ MERGED from [androidx.compose.material:material-icons-core-android:1.7.6] C:\Use
 MERGED from [androidx.compose.material:material-icons-core-android:1.7.6] C:\Users\Huangder\.gradle\caches\8.13\transforms\8637f4db788db7709ac1730b3ca5091c\transformed\material-icons-core-release\AndroidManifest.xml:5:5-44
 MERGED from [androidx.compose.ui:ui-android:1.7.6] C:\Users\Huangder\.gradle\caches\8.13\transforms\2e698c387947aa40f58106e8678d53d0\transformed\ui-release\AndroidManifest.xml:5:5-44
 MERGED from [androidx.compose.ui:ui-android:1.7.6] C:\Users\Huangder\.gradle\caches\8.13\transforms\2e698c387947aa40f58106e8678d53d0\transformed\ui-release\AndroidManifest.xml:5:5-44
-MERGED from [androidx.viewpager:viewpager:1.0.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\e5736be327202a93d9c8579534d807d2\transformed\viewpager-1.0.0\AndroidManifest.xml:20:5-44
-MERGED from [androidx.viewpager:viewpager:1.0.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\e5736be327202a93d9c8579534d807d2\transformed\viewpager-1.0.0\AndroidManifest.xml:20:5-44
 MERGED from [androidx.autofill:autofill:1.0.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\b8dd69d3fef7c34a92f761a16f87863f\transformed\autofill-1.0.0\AndroidManifest.xml:20:5-22:41
 MERGED from [androidx.autofill:autofill:1.0.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\b8dd69d3fef7c34a92f761a16f87863f\transformed\autofill-1.0.0\AndroidManifest.xml:20:5-22:41
 MERGED from [androidx.graphics:graphics-path:1.0.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\1e6b91506d77d3bc5d1c9f7802904744\transformed\graphics-path-1.0.1\AndroidManifest.xml:5:5-44
 MERGED from [androidx.graphics:graphics-path:1.0.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\1e6b91506d77d3bc5d1c9f7802904744\transformed\graphics-path-1.0.1\AndroidManifest.xml:5:5-44
-MERGED from [androidx.customview:customview:1.0.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\6fcfe2bb387f26a10e66e551ed08c9fe\transformed\customview-1.0.0\AndroidManifest.xml:20:5-44
-MERGED from [androidx.customview:customview:1.0.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\6fcfe2bb387f26a10e66e551ed08c9fe\transformed\customview-1.0.0\AndroidManifest.xml:20:5-44
 MERGED from [androidx.appcompat:appcompat-resources:1.6.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\de3b14e9d1b2fadc35e2156543566c94\transformed\appcompat-resources-1.6.1\AndroidManifest.xml:20:5-44
 MERGED from [androidx.appcompat:appcompat-resources:1.6.1] C:\Users\Huangder\.gradle\caches\8.13\transforms\de3b14e9d1b2fadc35e2156543566c94\transformed\appcompat-resources-1.6.1\AndroidManifest.xml:20:5-44
 MERGED from [androidx.vectordrawable:vectordrawable-animated:1.1.0] C:\Users\Huangder\.gradle\caches\8.13\transforms\735d658bf3cbe9b09007cd13b8498e57\transformed\vectordrawable-animated-1.1.0\AndroidManifest.xml:20:5-22:41
