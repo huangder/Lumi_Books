@@ -42,6 +42,9 @@ class DataStoreManager @Inject constructor(
         private val LAST_READ_BOOK = stringPreferencesKey("last_read_book")
         private val HAS_SEEN_WELCOME = booleanPreferencesKey("has_seen_welcome")
 
+        // 应用语言
+        private val APP_LANGUAGE = stringPreferencesKey("app_language")
+
         // 个人信息
         private val AVATAR_URI = stringPreferencesKey("avatar_uri")
         private val NICKNAME = stringPreferencesKey("nickname")
@@ -109,6 +112,11 @@ class DataStoreManager @Inject constructor(
 
     val hasSeenWelcome: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[HAS_SEEN_WELCOME] ?: false
+    }
+
+    // 应用语言
+    val appLanguage: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[APP_LANGUAGE] ?: "system"
     }
 
     // 个人信息
@@ -191,6 +199,28 @@ class DataStoreManager @Inject constructor(
         }
     }
 
+    /** 简繁转换模式："original" | "simplified" | "traditional" */
+    fun chineseMode(): Flow<String> {
+        val key = stringPreferencesKey("chinese_mode")
+        return context.dataStore.data.map { it[key] ?: "original" }
+    }
+
+    suspend fun saveChineseMode(mode: String) {
+        val key = stringPreferencesKey("chinese_mode")
+        context.dataStore.edit { it[key] = mode }
+    }
+
+    /** 翻页效果："slide" | "scroll" | "fade" */
+    fun pageTransition(): Flow<String> {
+        val key = stringPreferencesKey("page_transition")
+        return context.dataStore.data.map { it[key] ?: "slide" }
+    }
+
+    suspend fun savePageTransition(mode: String) {
+        val key = stringPreferencesKey("page_transition")
+        context.dataStore.edit { it[key] = mode }
+    }
+
     suspend fun saveDailyGoal(goal: Int) {
         context.dataStore.edit { preferences ->
             preferences[DAILY_GOAL] = goal
@@ -212,6 +242,14 @@ class DataStoreManager @Inject constructor(
     suspend fun saveHasSeenWelcome(seen: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[HAS_SEEN_WELCOME] = seen
+        }
+    }
+
+    suspend fun saveAppLanguage(language: String) {
+        // 同步写入 SharedPreferences（供 attachBaseContext 同步读取）
+        com.huangder.lumibooks.util.LocaleHelper.saveLanguage(context, language)
+        context.dataStore.edit { preferences ->
+            preferences[APP_LANGUAGE] = language
         }
     }
 

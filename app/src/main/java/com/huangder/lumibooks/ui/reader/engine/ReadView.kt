@@ -382,6 +382,37 @@ class ReadView(context: Context) : FrameLayout(context) {
         slotManager.jumpTo(chapterIndex, pageInChapter)
     }
 
+    /** 设置简繁转换模式，刷新当前页 */
+    fun setChineseMode(mode: String) {
+        prevPageView.chineseMode = mode
+        curPageView.chineseMode = mode
+        nextPageView.chineseMode = mode
+        // 刷新当前页显示
+        slotManager.refreshCurrentPage()
+    }
+
+    /** 设置翻页动画类型 */
+    fun setPageTransition(mode: String) {
+        // 先移除旧的动画控制器回调
+        animationController.abortAnim()
+
+        val newController = when (mode) {
+            "scroll" -> ScrollPageAnim(this)
+            "fade" -> FadePageAnim(this)
+            else -> SlidePageAnim(this)
+        }
+        // 重新绑定回调
+        newController.onCanFlip = animationController.onCanFlip
+        newController.onAnimationComplete = animationController.onAnimationComplete
+        newController.onTapLeft = animationController.onTapLeft
+        newController.onTapCenter = animationController.onTapCenter
+        newController.onTapRight = animationController.onTapRight
+        newController.onLongPress = animationController.onLongPress
+
+        animationController = newController
+        invalidate()
+    }
+
     /** 获取指定章节的页数（需已布局） */
     fun getChapterPageCount(chapterIndex: Int): Int {
         return layoutEngine.getChapterPageCount(chapterIndex)

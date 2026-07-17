@@ -8,7 +8,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -26,6 +28,10 @@ import javax.inject.Inject
  */
 @AndroidEntryPoint
 class DetailActivity : ComponentActivity() {
+
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(com.huangder.lumibooks.util.LocaleHelper.applyLanguage(newBase))
+    }
 
     @Inject
     lateinit var dataStoreManager: DataStoreManager
@@ -52,13 +58,14 @@ class DetailActivity : ComponentActivity() {
                     val onBack = { finish() }
 
                     when (category) {
-                        "reading" -> DetailPage("阅读设置", onBack) { ReadingSettingsDetail(viewModel) }
-                        "display" -> DetailPage("显示与外观", onBack) { DisplayDetail(viewModel) }
-                        "goal" -> DetailPage("阅读目标", onBack) { ReadingGoalDetail(viewModel) }
-                        "storage" -> DetailPage("存储管理", onBack) { StorageDetail(viewModel) }
-                        "backup" -> DetailPage("备份与恢复", onBack) { BackupRestoreDetail(viewModel) }
-                        "changelog" -> DetailPage("更新日志", onBack) { ChangelogDetail() }
-                        else -> DetailPage("关于应用", onBack) { AboutDetail(viewModel) }
+                        "reading" -> DetailPage(stringResource(R.string.title_reading_settings), onBack) { ReadingSettingsDetail(viewModel) }
+                        "display" -> DetailPage(stringResource(R.string.title_display), onBack) { DisplayDetail(viewModel) }
+                        "language" -> DetailPage(stringResource(R.string.title_language), onBack) { LanguageDetailScreen(viewModel) }
+                        "goal" -> DetailPage(stringResource(R.string.title_reading_goal), onBack) { ReadingGoalDetail(viewModel) }
+                        "storage" -> DetailPage(stringResource(R.string.title_storage), onBack) { StorageDetail(viewModel) }
+                        "backup" -> DetailPage(stringResource(R.string.title_backup), onBack) { BackupRestoreDetail(viewModel) }
+                        "changelog" -> DetailPage(stringResource(R.string.title_changelog), onBack) { ChangelogDetail() }
+                        else -> DetailPage(stringResource(R.string.title_about), onBack) { AboutDetail(viewModel) }
                     }
                 }
             }

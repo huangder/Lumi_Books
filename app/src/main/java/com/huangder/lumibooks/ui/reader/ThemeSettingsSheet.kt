@@ -48,6 +48,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.ui.theme.FangSong
 import com.huangder.lumibooks.ui.theme.KaiTi
+import com.huangder.lumibooks.R
+import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
@@ -138,7 +140,7 @@ fun ThemeSettingsSheet(
             // 标题栏
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "主题与设置",
+                    stringResource(R.string.theme_settings_title),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = KaiTi,
@@ -154,7 +156,7 @@ fun ThemeSettingsSheet(
                         .clickable { isClosing = true },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Outlined.Close, "关闭", tint = LightTextSecondary, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Outlined.Close, stringResource(R.string.close), tint = LightTextSecondary, modifier = Modifier.size(18.dp))
                 }
             }
 
@@ -162,7 +164,7 @@ fun ThemeSettingsSheet(
 
             // 字号区域
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("字号", fontSize = 14.sp, color = LightTextSecondary)
+                Text(stringResource(R.string.label_font_size), fontSize = 14.sp, color = LightTextSecondary)
                 Spacer(Modifier.weight(1f))
                 Text("${currentFontSize.toInt()}sp", fontSize = 14.sp, color = LightTextSecondary)
             }
@@ -177,10 +179,10 @@ fun ThemeSettingsSheet(
 
             // 亮度区域
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("亮度", fontSize = 14.sp, color = LightTextSecondary)
+                Text(stringResource(R.string.brightness), fontSize = 14.sp, color = LightTextSecondary)
                 Spacer(Modifier.weight(1f))
                 Text(
-                    if (currentBrightness < 0f) "自动" else "${(currentBrightness * 100).toInt()}%",
+                    if (currentBrightness < 0f) stringResource(R.string.brightness_auto) else "${(currentBrightness * 100).toInt()}%",
                     fontSize = 14.sp,
                     color = LightTextSecondary
                 )
@@ -195,7 +197,7 @@ fun ThemeSettingsSheet(
             Spacer(Modifier.height(16.dp))
 
             // 阅读背景区域
-            Text("阅读背景", fontSize = 14.sp, color = LightTextSecondary)
+            Text(stringResource(R.string.reading_background), fontSize = 14.sp, color = LightTextSecondary)
             Spacer(Modifier.height(12.dp))
 
             // 第一行：日间、夜间
@@ -204,7 +206,7 @@ fun ThemeSettingsSheet(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 ThemeButton(
-                    label = "日间",
+                    label = stringResource(R.string.theme_day),
                     bgColor = ReaderDayBg,
                     textColor = ReaderDayText,
                     isSelected = currentTheme == "day",
@@ -213,7 +215,7 @@ fun ThemeSettingsSheet(
                     modifier = Modifier.weight(1f)
                 )
                 ThemeButton(
-                    label = "夜间",
+                    label = stringResource(R.string.theme_night),
                     bgColor = ReaderNightBg,
                     textColor = ReaderNightText,
                     isSelected = currentTheme == "night",
@@ -231,7 +233,7 @@ fun ThemeSettingsSheet(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 ThemeButton(
-                    label = "护眼",
+                    label = stringResource(R.string.theme_sepia),
                     bgColor = ReaderSepiaBg,
                     textColor = ReaderSepiaText,
                     isSelected = currentTheme == "sepia",
@@ -240,7 +242,7 @@ fun ThemeSettingsSheet(
                     modifier = Modifier.weight(1f)
                 )
                 ThemeButton(
-                    label = "护眼绿",
+                    label = stringResource(R.string.theme_green),
                     bgColor = ReaderGreenBg,
                     textColor = ReaderGreenText,
                     isSelected = currentTheme == "green",
@@ -258,9 +260,9 @@ fun ThemeSettingsSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text("优化书籍排版", fontSize = 14.sp, color = Color.Black)
+                    Text(stringResource(R.string.optimize_layout), fontSize = 14.sp, color = Color.Black)
                     Spacer(Modifier.height(2.dp))
-                    Text("仅本书生效", fontSize = 12.sp, color = LightTextSecondary)
+                    Text(stringResource(R.string.optimize_layout_hint), fontSize = 12.sp, color = LightTextSecondary)
                 }
                 androidx.compose.material3.Switch(
                     checked = currentOptimizeLayout,
@@ -288,7 +290,7 @@ fun ThemeSettingsSheet(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    "高级设置",
+                    stringResource(R.string.advanced_settings),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = Color.Black
@@ -429,11 +431,11 @@ fun AdvancedSettingsSheet(
                         .clickable { isClosing = true },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Outlined.Close, "关闭", tint = LightTextSecondary, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Outlined.Close, stringResource(R.string.close), tint = LightTextSecondary, modifier = Modifier.size(18.dp))
                 }
                 Spacer(Modifier.weight(1f))
                 Text(
-                    "高级设置",
+                    stringResource(R.string.advanced_settings),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = KaiTi,
@@ -456,7 +458,7 @@ fun AdvancedSettingsSheet(
             Spacer(Modifier.height(16.dp))
 
             // 预览框
-            Text("预览", fontSize = 14.sp, color = LightTextSecondary)
+            Text(stringResource(R.string.preview), fontSize = 14.sp, color = LightTextSecondary)
             Spacer(Modifier.height(8.dp))
             Box(
                 modifier = Modifier
@@ -467,7 +469,7 @@ fun AdvancedSettingsSheet(
                     .padding(horizontal = (currentMarginHoriz / 3).dp, vertical = (currentMarginVert / 5).dp)
             ) {
                 Text(
-                    text = previewText.ifBlank { "落霞与孤鹜齐飞，秋水共长天一色。渔舟唱晚，响穷彭蠡之滨；雁阵惊寒，声断衡阳之浦。" },
+                    text = previewText.ifBlank { stringResource(R.string.preview_text) },
                     fontSize = currentFontSizeSp.sp,
                     color = currentTextColor.copy(alpha = 0.7f),
                     fontFamily = previewFont,
@@ -486,23 +488,23 @@ fun AdvancedSettingsSheet(
                     .verticalScroll(rememberScrollState())
             ) {
                 // 行距
-                SettingSlider("行距", currentLineHeight, 1.0f..2.5f, 0.1f, { String.format("%.1fx", it) }, onLineHeightChange)
+                SettingSlider(stringResource(R.string.label_line_height), currentLineHeight, 1.0f..2.5f, 0.1f, { String.format("%.1fx", it) }, onLineHeightChange)
                 Spacer(Modifier.height(12.dp))
 
                 // 字间距
-                SettingSlider("字间距", currentLetterSpacing, 0f..10f, 0.5f, { String.format("%.1f sp", it) }, onLetterSpacingChange)
+                SettingSlider(stringResource(R.string.label_letter_spacing), currentLetterSpacing, 0f..10f, 0.5f, { String.format("%.1f sp", it) }, onLetterSpacingChange)
                 Spacer(Modifier.height(12.dp))
 
                 // 左右边距
-                SettingSlider("左右边距", currentMarginHoriz, 20f..80f, 2f, { "${it.toInt()} dp" }, onMarginHorizChange)
+                SettingSlider(stringResource(R.string.label_margin_horiz), currentMarginHoriz, 20f..80f, 2f, { "${it.toInt()} dp" }, onMarginHorizChange)
                 Spacer(Modifier.height(12.dp))
 
                 // 上下边距
-                SettingSlider("上下边距", currentMarginVert, 32f..120f, 2f, { "${it.toInt()} dp" }, onMarginVertChange)
+                SettingSlider(stringResource(R.string.label_margin_vert), currentMarginVert, 32f..120f, 2f, { "${it.toInt()} dp" }, onMarginVertChange)
                 Spacer(Modifier.height(16.dp))
 
                 // 字体选择
-                Text("字体", fontSize = 14.sp, color = LightTextSecondary)
+                Text(stringResource(R.string.font_label), fontSize = 14.sp, color = LightTextSecondary)
                 Spacer(Modifier.height(12.dp))
                 FontSelector(currentFont = currentFontType, customFontPath = customFontPath, onFontChange = onFontTypeChange, onImportFont = onImportFont)
             }
@@ -565,7 +567,7 @@ private fun FontSelector(currentFont: String, customFontPath: String? = null, on
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             FontButton(
-                label = "系统",
+                label = stringResource(R.string.font_system),
                 isSelected = currentFont == "system",
                 onClick = { onFontChange("system") },
                 fontFamily = FontFamily.Default,
@@ -579,7 +581,7 @@ private fun FontSelector(currentFont: String, customFontPath: String? = null, on
                 modifier = Modifier.weight(1f)
             )
             FontButton(
-                label = "仿宋",
+                label = stringResource(R.string.font_fangsong),
                 isSelected = currentFont == "fangsong",
                 onClick = { onFontChange("fangsong") },
                 fontFamily = FangSong,
@@ -592,7 +594,7 @@ private fun FontSelector(currentFont: String, customFontPath: String? = null, on
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             FontButton(
-                label = "楷体",
+                label = stringResource(R.string.font_kaiti),
                 isSelected = currentFont == "kaiti",
                 onClick = { onFontChange("kaiti") },
                 fontFamily = KaiTi,
@@ -600,7 +602,7 @@ private fun FontSelector(currentFont: String, customFontPath: String? = null, on
             )
             // 导入字体按钮
             val hasCustomFont = customFontPath != null
-            val label = if (hasCustomFont) "自定义" else "导入"
+            val label = if (hasCustomFont) stringResource(R.string.font_custom) else stringResource(R.string.font_import)
             Box(
                 modifier = Modifier
                     .weight(1f)

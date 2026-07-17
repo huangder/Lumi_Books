@@ -55,6 +55,10 @@ private data class PendingPolicyUpdate(
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(com.huangder.lumibooks.util.LocaleHelper.applyLanguage(newBase))
+    }
+
     @Inject
     lateinit var dataStoreManager: DataStoreManager
 

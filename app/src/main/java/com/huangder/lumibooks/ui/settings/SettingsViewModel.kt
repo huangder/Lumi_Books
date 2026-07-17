@@ -116,6 +116,11 @@ class SettingsViewModel @Inject constructor(
                 )
             }
         }
+        viewModelScope.launch {
+            dataStoreManager.appLanguage.collectLatest { language ->
+                _uiState.value = _uiState.value.copy(appLanguage = language)
+            }
+        }
     }
 
     // ─── 个人信息 ───
@@ -191,6 +196,15 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.saveReaderTheme(theme)
             _uiState.value = _uiState.value.copy(readerTheme = theme)
+        }
+    }
+
+    // ─── 语言 ───
+
+    fun saveAppLanguage(language: String) {
+        viewModelScope.launch {
+            dataStoreManager.saveAppLanguage(language)
+            _uiState.value = _uiState.value.copy(appLanguage = language)
         }
     }
 

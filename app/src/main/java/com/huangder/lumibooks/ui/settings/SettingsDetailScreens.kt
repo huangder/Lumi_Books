@@ -41,6 +41,8 @@ import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material.icons.outlined.Upload
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material.icons.outlined.SystemUpdateAlt
 import androidx.compose.material.icons.outlined.Upgrade
 import androidx.compose.material3.AlertDialog
@@ -63,8 +65,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import com.huangder.lumibooks.R
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.ui.theme.AppColors
@@ -96,7 +101,7 @@ fun DetailPage(title: String, onBack: () -> Unit, content: @Composable () -> Uni
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回", tint = AppColors.TextPrimary)
+                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.back), tint = AppColors.TextPrimary)
                 }
                 Spacer(Modifier.weight(1f))
                 Text(title, fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = FangSong, color = AppColors.TextPrimary)
@@ -117,17 +122,17 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
 
     DetailCard {
-        SettingsSliderItem(Icons.Outlined.FormatSize, "字号", uiState.fontSize, 12f..28f, "${uiState.fontSize.toInt()} sp") { viewModel.saveFontSize(it) }
+        SettingsSliderItem(Icons.Outlined.FormatSize, stringResource(R.string.label_font_size), uiState.fontSize, 12f..28f, "${uiState.fontSize.toInt()} sp") { viewModel.saveFontSize(it) }
         SettingsDivider()
-        SettingsSliderItem(Icons.Outlined.LineWeight, "行距", uiState.lineHeight, 1.0f..2.5f, String.format("%.1f", uiState.lineHeight)) { viewModel.saveLineHeight(it) }
+        SettingsSliderItem(Icons.Outlined.LineWeight, stringResource(R.string.label_line_height), uiState.lineHeight, 1.0f..2.5f, String.format("%.1f", uiState.lineHeight)) { viewModel.saveLineHeight(it) }
         SettingsDivider()
-        SettingsSliderItem(Icons.Outlined.Title, "字间距", uiState.letterSpacing, 0f..0.1f, String.format("%.2f em", uiState.letterSpacing)) { viewModel.saveLetterSpacing(it) }
+        SettingsSliderItem(Icons.Outlined.Title, stringResource(R.string.label_letter_spacing), uiState.letterSpacing, 0f..0.1f, String.format("%.2f em", uiState.letterSpacing)) { viewModel.saveLetterSpacing(it) }
         SettingsDivider()
         FontTypeRow(uiState.fontType) { viewModel.saveFontType(it) }
         SettingsDivider()
-        SettingsSliderItem(Icons.Outlined.Landscape, "左右边距", uiState.marginHoriz, 20f..60f, "${uiState.marginHoriz.toInt()} dp") { viewModel.saveMarginHoriz(it) }
+        SettingsSliderItem(Icons.Outlined.Landscape, stringResource(R.string.label_margin_horiz), uiState.marginHoriz, 20f..60f, "${uiState.marginHoriz.toInt()} dp") { viewModel.saveMarginHoriz(it) }
         SettingsDivider()
-        SettingsSliderItem(Icons.Outlined.Landscape, "上下边距", uiState.marginVert, 40f..100f, "${uiState.marginVert.toInt()} dp") { viewModel.saveMarginVert(it) }
+        SettingsSliderItem(Icons.Outlined.Landscape, stringResource(R.string.label_margin_vert), uiState.marginVert, 40f..100f, "${uiState.marginVert.toInt()} dp") { viewModel.saveMarginVert(it) }
     }
 }
 
@@ -138,11 +143,20 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
 
     DetailCard {
-        val darkModeOptions = listOf("system" to "跟随系统", "light" to "浅色", "dark" to "深色")
-        OptionRow(Icons.Outlined.Brightness6, "深色模式", darkModeOptions, uiState.darkMode) { viewModel.saveDarkMode(it) }
+        val darkModeOptions = listOf(
+            "system" to stringResource(R.string.dark_mode_system),
+            "light" to stringResource(R.string.dark_mode_light),
+            "dark" to stringResource(R.string.dark_mode_dark)
+        )
+        OptionRow(Icons.Outlined.Brightness6, stringResource(R.string.label_dark_mode), darkModeOptions, uiState.darkMode) { viewModel.saveDarkMode(it) }
         SettingsDivider()
-        val themeOptions = listOf("day" to "日间", "night" to "夜间", "sepia" to "护眼", "green" to "绿色")
-        OptionRow(Icons.Outlined.Palette, "默认阅读主题", themeOptions, uiState.readerTheme) { viewModel.saveReaderTheme(it) }
+        val themeOptions = listOf(
+            "day" to stringResource(R.string.theme_day),
+            "night" to stringResource(R.string.theme_night),
+            "sepia" to stringResource(R.string.theme_sepia),
+            "green" to stringResource(R.string.theme_green)
+        )
+        OptionRow(Icons.Outlined.Palette, stringResource(R.string.label_reader_theme), themeOptions, uiState.readerTheme) { viewModel.saveReaderTheme(it) }
     }
 }
 
@@ -153,7 +167,7 @@ fun ReadingGoalDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
 
     DetailCard {
-        SettingsSliderItem(Icons.Outlined.Timer, "每日目标", uiState.dailyGoal.toFloat(), 10f..120f, "${uiState.dailyGoal} 分钟", steps = 21) { viewModel.saveDailyGoal(it.toInt()) }
+        SettingsSliderItem(Icons.Outlined.Timer, stringResource(R.string.label_daily_goal), uiState.dailyGoal.toFloat(), 10f..120f, stringResource(R.string.goal_minutes, uiState.dailyGoal), steps = 21) { viewModel.saveDailyGoal(it.toInt()) }
     }
 }
 
@@ -189,7 +203,7 @@ fun StorageDetail(viewModel: SettingsViewModel) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.Speed, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
                     Spacer(Modifier.width(AppSpace.sm))
-                    Text("总占用空间", fontSize = AppType.Body, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
+                    Text(stringResource(R.string.label_total_size), fontSize = AppType.Body, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
                     Text(viewModel.formatFileSize(totalBytes), fontSize = AppType.Section, fontWeight = FontWeight.Bold, color = AppColors.Accent)
                 }
 
@@ -225,10 +239,10 @@ fun StorageDetail(viewModel: SettingsViewModel) {
 
                     // 分类明细
                     val categories = listOf(
-                        "应用本体" to (info.appSizeBytes to SegmentColors[0]),
-                        "缓存文件" to (info.cacheSizeBytes to SegmentColors[1]),
-                        "电子书文件" to (info.booksSizeBytes to SegmentColors[2]),
-                        "封面图片" to (info.coversSizeBytes to SegmentColors[3])
+                        stringResource(R.string.storage_app) to (info.appSizeBytes to SegmentColors[0]),
+                        stringResource(R.string.storage_cache) to (info.cacheSizeBytes to SegmentColors[1]),
+                        stringResource(R.string.storage_books) to (info.booksSizeBytes to SegmentColors[2]),
+                        stringResource(R.string.storage_covers) to (info.coversSizeBytes to SegmentColors[3])
                     )
                     categories.forEach { (label, pair) ->
                         val (bytes, color) = pair
@@ -252,7 +266,7 @@ fun StorageDetail(viewModel: SettingsViewModel) {
                         }
                     }
                 } else {
-                    Text("计算中...", fontSize = AppType.BodySmall, color = AppColors.TextSecondary)
+                    Text(stringResource(R.string.calculating), fontSize = AppType.BodySmall, color = AppColors.TextSecondary)
                 }
             }
         }
@@ -267,7 +281,7 @@ fun StorageDetail(viewModel: SettingsViewModel) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            "电子书文件 (${info.bookDetails.size}本)",
+                            stringResource(R.string.storage_books_count, info.bookDetails.size),
                             fontSize = AppType.Body,
                             fontWeight = FontWeight.SemiBold,
                             color = AppColors.TextPrimary,
@@ -326,19 +340,19 @@ fun StorageDetail(viewModel: SettingsViewModel) {
         // ── 操作卡片 ──
         Spacer(Modifier.height(AppSpace.md))
         DetailCard {
-            ActionRow(Icons.Outlined.DeleteSweep, "清除缓存") { viewModel.clearCache() }
+            ActionRow(Icons.Outlined.DeleteSweep, stringResource(R.string.clear_cache)) { viewModel.clearCache() }
             SettingsDivider()
-            ActionRow(Icons.Outlined.DeleteForever, "清除所有数据", Color.Red) { showClearDialog = true }
+            ActionRow(Icons.Outlined.DeleteForever, stringResource(R.string.clear_all_data), Color.Red) { showClearDialog = true }
         }
     }
 
     if (showClearDialog) {
         AlertDialog(
             onDismissRequest = { showClearDialog = false },
-            title = { Text("清除所有数据") },
-            text = { Text("此操作将清除所有阅读记录、书籍数据和设置。头像将被保留。此操作不可撤销。") },
-            confirmButton = { TextButton(onClick = { viewModel.clearAllData(); showClearDialog = false }) { Text("确认清除", color = Color.Red) } },
-            dismissButton = { TextButton(onClick = { showClearDialog = false }) { Text("取消") } }
+            title = { Text(stringResource(R.string.clear_all_data)) },
+            text = { Text(stringResource(R.string.clear_all_confirm)) },
+            confirmButton = { TextButton(onClick = { viewModel.clearAllData(); showClearDialog = false }) { Text(stringResource(R.string.clear), color = Color.Red) } },
+            dismissButton = { TextButton(onClick = { showClearDialog = false }) { Text(stringResource(R.string.cancel)) } }
         )
     }
 }
@@ -785,5 +799,80 @@ private fun ActionRow(icon: ImageVector, label: String, labelColor: Color = AppC
         Spacer(Modifier.width(AppSpace.md))
         Text(label, fontSize = AppType.Body, color = labelColor, modifier = Modifier.weight(1f))
         Icon(Icons.Outlined.ChevronRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+    }
+}
+
+// ─── 语言设置 ────────────────────────────────────────────────
+
+@Composable
+fun LanguageDetailScreen(viewModel: SettingsViewModel) {
+    val uiState by viewModel.uiState.collectAsState()
+    var showRestartDialog by remember { mutableStateOf(false) }
+    var pendingLanguage by remember { mutableStateOf("") }
+    val context = LocalContext.current
+
+    val languageOptions = com.huangder.lumibooks.util.LocaleHelper.SUPPORTED_LANGUAGES.map { key ->
+        key to (com.huangder.lumibooks.util.LocaleHelper.LANGUAGE_DISPLAY_NAMES[key] ?: key)
+    }
+
+    DetailCard {
+        languageOptions.forEachIndexed { index, (key, displayName) ->
+            val isSelected = key == uiState.appLanguage
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                        if (!isSelected) {
+                            pendingLanguage = key
+                            showRestartDialog = true
+                        }
+                    }
+                    .padding(horizontal = AppSpace.md, vertical = AppSpace.md),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    displayName,
+                    fontSize = AppType.Body,
+                    color = if (isSelected) AppColors.Accent else AppColors.TextPrimary,
+                    fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
+                    modifier = Modifier.weight(1f)
+                )
+                if (isSelected) {
+                    Icon(
+                        Icons.Outlined.Check,
+                        contentDescription = null,
+                        tint = AppColors.Accent,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+            if (index < languageOptions.size - 1) {
+                SettingsDivider()
+            }
+        }
+    }
+
+    // ── 重启确认对话框 ──
+    if (showRestartDialog) {
+        AlertDialog(
+            onDismissRequest = { showRestartDialog = false },
+            title = { Text(stringResource(R.string.switch_language)) },
+            text = { Text(stringResource(R.string.restart_prompt)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.saveAppLanguage(pendingLanguage)
+                    showRestartDialog = false
+                    // 重启应用
+                    val intent = android.content.Intent(context, com.huangder.lumibooks.MainActivity::class.java).apply {
+                        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                    }
+                    context.startActivity(intent)
+                    (context as? android.app.Activity)?.finishAffinity()
+                }) { Text(stringResource(R.string.restart)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRestartDialog = false }) { Text(stringResource(R.string.later)) }
+            }
+        )
     }
 }

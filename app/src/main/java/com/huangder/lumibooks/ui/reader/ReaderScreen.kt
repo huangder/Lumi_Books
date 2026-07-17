@@ -114,6 +114,8 @@ import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.MainActivity
 import com.huangder.lumibooks.ui.theme.KaiTi
+import com.huangder.lumibooks.R
+import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
@@ -1058,7 +1060,7 @@ private fun ReaderTopBar(
             ) {
                 Icon(
                     Icons.Default.KeyboardArrowLeft,
-                    contentDescription = "返回",
+                    contentDescription = stringResource(R.string.reader_back),
                     tint = AppColors.TextPrimary,
                     modifier = Modifier.size(18.dp)
                 )
@@ -1089,7 +1091,7 @@ private fun ReaderTopBar(
             ) {
                 Icon(
                     if (isBookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder,
-                    contentDescription = "书签",
+                    contentDescription = stringResource(R.string.reader_bookmark),
                     tint = if (isBookmarked) AppColors.Accent else AppColors.TextPrimary,
                     modifier = Modifier.size(18.dp)
                 )
@@ -1162,17 +1164,17 @@ private fun FloatingReaderMenu(
             Box(modifier = Modifier.weight(1f).graphicsLayer {
                 alpha = alpha1.value; translationY = offset1.value
             }) {
-                ActionCapsule(Icons.Default.Bookmark, "笔记", capsuleBgColor, capsuleContentColor, Modifier.fillMaxWidth(), onBookmarkClick)
+                ActionCapsule(Icons.Default.Bookmark, stringResource(R.string.reader_notes), capsuleBgColor, capsuleContentColor, Modifier.fillMaxWidth(), onBookmarkClick)
             }
             Box(modifier = Modifier.weight(1f).graphicsLayer {
                 alpha = alpha2.value; translationY = offset2.value
             }) {
-                ActionCapsule(Icons.Default.Search, "搜索", capsuleBgColor, capsuleContentColor, Modifier.fillMaxWidth(), onSearchClick)
+                ActionCapsule(Icons.Default.Search, stringResource(R.string.reader_search), capsuleBgColor, capsuleContentColor, Modifier.fillMaxWidth(), onSearchClick)
             }
             Box(modifier = Modifier.weight(1f).graphicsLayer {
                 alpha = alpha3.value; translationY = offset3.value
             }) {
-                ActionCapsule(Icons.Default.Settings, "主题", capsuleBgColor, capsuleContentColor, Modifier.fillMaxWidth(), onThemeClick)
+                ActionCapsule(Icons.Default.Settings, stringResource(R.string.reader_theme), capsuleBgColor, capsuleContentColor, Modifier.fillMaxWidth(), onThemeClick)
             }
         }
     }
@@ -1213,7 +1215,7 @@ private fun CatalogCapsule(
         ) {
             Icon(Icons.Default.List, contentDescription = null, tint = leftColor, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text("目录", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = leftColor)
+            Text(stringResource(R.string.reader_toc), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = leftColor)
             Spacer(Modifier.weight(1f))
             Text("$progress%", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = rightColor)
         }
@@ -1307,7 +1309,7 @@ private fun TocSheet(
             // 标题栏
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "目录",
+                    stringResource(R.string.reader_toc),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = KaiTi,
@@ -1323,7 +1325,7 @@ private fun TocSheet(
                         .clickable { isClosing = true },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.Close, "关闭", tint = LightTextSecondary, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Close, stringResource(R.string.reader_close), tint = LightTextSecondary, modifier = Modifier.size(18.dp))
                 }
             }
 
@@ -1369,7 +1371,7 @@ private fun TocSheet(
                                 .padding(horizontal = 16.dp, vertical = 12.dp)
                         ) {
                             Text(
-                                text = entry.title.ifBlank { "第${entry.chapterIndex + 1}章" },
+                                text = entry.title.ifBlank { stringResource(R.string.reader_chapter_fallback, entry.chapterIndex + 1) },
                                 fontSize = 15.sp,
                                 fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
                                 color = if (isCurrent) AccentColor else Color.Black,
@@ -1451,7 +1453,7 @@ private fun SearchSheet(
                 // 标题栏
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "搜索",
+                        stringResource(R.string.reader_search),
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = KaiTi,
@@ -1467,7 +1469,7 @@ private fun SearchSheet(
                             .clickable { isClosing = true },
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.Close, "关闭", tint = LightTextSecondary, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.Close, stringResource(R.string.reader_close), tint = LightTextSecondary, modifier = Modifier.size(18.dp))
                     }
                 }
 
@@ -1487,7 +1489,7 @@ private fun SearchSheet(
                         androidx.compose.material3.TextField(
                             value = query,
                             onValueChange = onQueryChange,
-                            placeholder = { Text("输入关键词", fontSize = 14.sp, color = LightTextSecondary) },
+                            placeholder = { Text(stringResource(R.string.search_placeholder), fontSize = 14.sp, color = LightTextSecondary) },
                             textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = Color.Black),
                             singleLine = true,
                             colors = androidx.compose.material3.TextFieldDefaults.colors(
@@ -1512,7 +1514,7 @@ private fun SearchSheet(
                         if (isSearching) {
                             CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
                         } else {
-                            Text("搜索", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = if (query.isNotBlank()) Color.White else LightTextSecondary)
+                            Text(stringResource(R.string.reader_search), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = if (query.isNotBlank()) Color.White else LightTextSecondary)
                         }
                     }
                 }
@@ -1521,7 +1523,7 @@ private fun SearchSheet(
                 if (hasResults) {
                     Spacer(Modifier.height(16.dp))
                     Text(
-                        "找到 ${results.size} 条结果",
+                        stringResource(R.string.search_results_found, results.size),
                         fontSize = 12.sp,
                         color = LightTextSecondary
                     )
@@ -1572,7 +1574,7 @@ private fun SearchSheet(
                         Modifier.fillMaxWidth(),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("未找到匹配结果", fontSize = 14.sp, color = LightTextSecondary)
+                        Text(stringResource(R.string.search_no_results), fontSize = 14.sp, color = LightTextSecondary)
                     }
                     Spacer(Modifier.height(8.dp))
                 }
@@ -1788,33 +1790,33 @@ private fun SelectionMenuOverlay(
                 ) {
                     Icon(
                         Icons.Default.Delete,
-                        contentDescription = "删除高亮",
+                        contentDescription = stringResource(R.string.highlight_delete),
                         tint = menuText.copy(alpha = 0.7f),
                         modifier = Modifier.size(18.dp)
                     )
                 }
                 Spacer(Modifier.width(6.dp))
                 MenuDivider(dividerColor)
-                MenuChip("搜索", menuText, onSearch)
+                MenuChip(stringResource(R.string.menu_search), menuText, onSearch)
                 MenuDivider(dividerColor)
-                MenuChip("复制", menuText, onCopy)
+                MenuChip(stringResource(R.string.menu_copy), menuText, onCopy)
             } else if (state.hasNote) {
                 // 🔥 有笔记：查看/修改笔记 + 移除高亮 + 搜索 + 复制
-                MenuChip("查看笔记", menuText, onViewNote)
+                MenuChip(stringResource(R.string.menu_view_note), menuText, onViewNote)
                 MenuDivider(dividerColor)
-                MenuChip("移除高亮", menuText, onRemoveHighlight)
+                MenuChip(stringResource(R.string.menu_remove_highlight), menuText, onRemoveHighlight)
                 MenuDivider(dividerColor)
-                MenuChip("搜索", menuText, onSearch)
+                MenuChip(stringResource(R.string.menu_search), menuText, onSearch)
                 MenuDivider(dividerColor)
-                MenuChip("复制", menuText, onCopy)
+                MenuChip(stringResource(R.string.menu_copy), menuText, onCopy)
             } else {
-                MenuChip("高亮", menuText, onHighlight)
+                MenuChip(stringResource(R.string.menu_highlight), menuText, onHighlight)
                 MenuDivider(dividerColor)
-                MenuChip("笔记", menuText, onNote)
+                MenuChip(stringResource(R.string.menu_note), menuText, onNote)
                 MenuDivider(dividerColor)
-                MenuChip("搜索", menuText, onSearch)
+                MenuChip(stringResource(R.string.menu_search), menuText, onSearch)
                 MenuDivider(dividerColor)
-                MenuChip("复制", menuText, onCopy)
+                MenuChip(stringResource(R.string.menu_copy), menuText, onCopy)
             }
         }
     }
@@ -1890,8 +1892,8 @@ private fun NoteInputSheet(
                     Box(
                         modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.BgGray).clickable { onCancel() },
                         contentAlignment = Alignment.Center
-                    ) { Icon(Icons.Default.Close, "取消", tint = AppColors.TextSecondary, modifier = Modifier.size(18.dp)) }
-                    Text("笔记", fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = KaiTi, color = AppColors.TextPrimary, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
+                    ) { Icon(Icons.Default.Close, stringResource(R.string.cancel), tint = AppColors.TextSecondary, modifier = Modifier.size(18.dp)) }
+                    Text(stringResource(R.string.reader_notes), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = KaiTi, color = AppColors.TextPrimary, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
                     Box(
                         modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.Accent.copy(alpha = 0.15f)).clickable { onConfirm() },
                         contentAlignment = Alignment.Center
@@ -1903,7 +1905,7 @@ private fun NoteInputSheet(
                 androidx.compose.material3.TextField(
                     value = initialText,
                     onValueChange = onTextChange,
-                    placeholder = { Text("输入笔记...", fontSize = 14.sp, color = AppColors.TextSecondary) },
+                    placeholder = { Text(stringResource(R.string.note_input_placeholder), fontSize = 14.sp, color = AppColors.TextSecondary) },
                     textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = AppColors.TextPrimary),
                     colors = androidx.compose.material3.TextFieldDefaults.colors(
                         focusedContainerColor = AppColors.BgGray,
@@ -2002,7 +2004,7 @@ private fun NotesListSheet(
             // 标题栏
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "高亮与笔记",
+                    stringResource(R.string.highlights_notes_title),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = KaiTi,
@@ -2018,7 +2020,7 @@ private fun NotesListSheet(
                         .clickable { isClosing = true },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.Close, "关闭", tint = LightTextSecondary, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Close, stringResource(R.string.reader_close), tint = LightTextSecondary, modifier = Modifier.size(18.dp))
                 }
             }
 
@@ -2040,7 +2042,7 @@ private fun NotesListSheet(
                 // 书签列表
                 if (bookmarks.isEmpty()) {
                     Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                        Text("暂无书签", fontSize = 14.sp, color = LightTextSecondary)
+                        Text(stringResource(R.string.no_bookmarks_yet), fontSize = 14.sp, color = LightTextSecondary)
                     }
                 } else {
                     LazyColumn(modifier = Modifier.weight(1f)) {
@@ -2064,7 +2066,7 @@ private fun NotesListSheet(
                 if (items.isEmpty()) {
                     Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                         Text(
-                            "暂无${if (activeTag == "highlight") "高亮" else "笔记"}",
+                            stringResource(if (activeTag == "highlight") R.string.no_highlights else R.string.no_notes),
                             fontSize = 14.sp,
                             color = LightTextSecondary
                         )
@@ -2148,7 +2150,7 @@ private fun HighlightNoteTabSwitcher(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    "高亮 ($highlightCount)",
+                    stringResource(R.string.highlights_count, highlightCount),
                     fontSize = 14.sp,
                     fontWeight = if (activeTag == "highlight") FontWeight.SemiBold else FontWeight.Normal,
                     color = if (activeTag == "highlight") Color.Black else LightTextSecondary
@@ -2162,7 +2164,7 @@ private fun HighlightNoteTabSwitcher(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    "笔记 ($noteCount)",
+                    stringResource(R.string.notes_count, noteCount),
                     fontSize = 14.sp,
                     fontWeight = if (activeTag == "note") FontWeight.SemiBold else FontWeight.Normal,
                     color = if (activeTag == "note") Color.Black else LightTextSecondary
@@ -2177,7 +2179,7 @@ private fun HighlightNoteTabSwitcher(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    "书签 ($bookmarkCount)",
+                    stringResource(R.string.bookmarks_count, bookmarkCount),
                     fontSize = 14.sp,
                     fontWeight = if (activeTag == "bookmark") FontWeight.SemiBold else FontWeight.Normal,
                     color = if (activeTag == "bookmark") Color.Black else LightTextSecondary
@@ -2231,7 +2233,7 @@ private fun BookmarkListItem(
                         }
                     },
                 contentAlignment = Alignment.Center
-            ) { Icon(Icons.Default.Delete, "删除", tint = Color.White, modifier = Modifier.size(20.dp)) }
+            ) { Icon(Icons.Default.Delete, stringResource(R.string.delete), tint = Color.White, modifier = Modifier.size(20.dp)) }
         }
 
         // 书签卡片
@@ -2288,7 +2290,7 @@ private fun BookmarkListItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             // 左侧书签图标
-            Icon(Icons.Default.Bookmark, "书签", tint = Color(0xFFFFB300), modifier = Modifier.size(20.dp))
+            Icon(Icons.Default.Bookmark, stringResource(R.string.reader_bookmark), tint = Color(0xFFFFB300), modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(12.dp))
             // 内容
             Column(modifier = Modifier.weight(1f)) {
@@ -2383,7 +2385,7 @@ private fun HighlightNoteItem(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.Delete, "删除", tint = Color.White, modifier = Modifier.size(20.dp))
+                Icon(Icons.Default.Delete, stringResource(R.string.delete), tint = Color.White, modifier = Modifier.size(20.dp))
             }
         }
 
@@ -2492,7 +2494,7 @@ private fun HighlightNoteItem(
                 }
                 Spacer(Modifier.height(4.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("第${item.chapterIndex + 1}章", fontSize = 12.sp, color = AccentColor)
+                    Text(stringResource(R.string.reader_chapter_fallback, item.chapterIndex + 1), fontSize = 12.sp, color = AccentColor)
                     Text(
                         java.text.SimpleDateFormat("MM/dd", java.util.Locale.getDefault()).format(java.util.Date(item.createdAt)),
                         fontSize = 12.sp,
