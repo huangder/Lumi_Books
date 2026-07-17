@@ -86,7 +86,7 @@ abstract class PageAnimationController(
 
     // ── 触摸处理 ──
 
-    fun onTouchEvent(event: MotionEvent): Boolean {
+    open fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
                 abortAnim()
@@ -213,7 +213,7 @@ abstract class PageAnimationController(
 
     // ── computeScroll ──
 
-    fun computeScroll(): Boolean {
+    open fun computeScroll(): Boolean {
         if (scroller.computeScrollOffset()) {
             touchX = scroller.currX.toFloat()
             touchY = scroller.currY.toFloat()
@@ -284,7 +284,7 @@ abstract class PageAnimationController(
         readView.postInvalidateOnAnimation()
     }
 
-    fun getOffsetX(): Float = touchX - startX
+    open fun getOffsetX(): Float = touchX - startX
 
     /**
      * 创建一个带透明渐变阴影的 Paint。由子类在 onDraw 中使用。

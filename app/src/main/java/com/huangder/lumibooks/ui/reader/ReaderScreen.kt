@@ -508,6 +508,10 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         marginVertDp = uiState.marginVertDp
                     )
                     readView.setSavedNotes(notes)
+                    // 简繁转换
+                    readView.setChineseMode(uiState.chineseMode)
+                    // 翻页效果
+                    readView.setPageTransition(uiState.pageTransition)
                 },
                 modifier = Modifier.fillMaxSize()
             )
@@ -648,10 +652,14 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 currentTheme = uiState.readerTheme,
                 currentBrightness = uiState.brightness,
                 currentOptimizeLayout = uiState.optimizeLayout,
+                currentChineseMode = uiState.chineseMode,
+                currentPageTransition = uiState.pageTransition,
                 onFontSizeChange = { viewModel.saveFontSize(it) },
                 onThemeChange = { viewModel.saveReaderTheme(it) },
                 onBrightnessChange = { viewModel.saveBrightness(it) },
                 onOptimizeLayoutChange = { viewModel.saveOptimizeLayout(it) },
+                onChineseModeChange = { viewModel.saveChineseMode(it) },
+                onPageTransitionChange = { viewModel.savePageTransition(it) },
                 onOpenAdvanced = {
                     showAdvancedSheet = true
                 },

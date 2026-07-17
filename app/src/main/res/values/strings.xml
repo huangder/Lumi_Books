@@ -300,6 +300,18 @@
     <string name="font_custom">自定义</string>
     <string name="font_import">导入</string>
 
+    <!-- 简繁转换 -->
+    <string name="chinese_convert_label">简繁转换</string>
+    <string name="chinese_original">原文</string>
+    <string name="chinese_simplified">简体</string>
+    <string name="chinese_traditional">繁体</string>
+
+    <!-- 翻页效果 -->
+    <string name="page_transition_label">翻页效果</string>
+    <string name="transition_slide">左右滑动</string>
+    <string name="transition_scroll">上下滚动</string>
+    <string name="transition_fade">渐变切换</string>
+
     <!-- 欢迎页 -->
     <string name="welcome_title">欢迎使用</string>
     <string name="welcome_desc">Lumi 是一款纯粹的本地图书阅读器。我们绝不会在未经许可的情况下收集任何个人信息，且承诺永久不设网络账号服务。所有的阅读数据均储存在您的本地设备中，请务必定期做好数据备份以防丢失。Lumi 坚持最小权限原则，不会向您索取任何无关的敏感权限。点击\"继续\"按钮，即表示您已阅读并同意</string>

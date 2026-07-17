@@ -165,6 +165,19 @@ class PageSlotManager(
     }
 
     /**
+     * 刷新当前页内容（简繁转换等设置变更后调用）。
+     */
+    fun refreshCurrentPage() {
+        val cur = slots[SLOT_CUR]
+        if (!cur.isLoaded) return
+        val cl = layoutEngine.getChapterLayout(cur.chapterIndex) ?: return
+        val text = contentProvider?.let { kotlinx.coroutines.runBlocking(Dispatchers.IO) { it(cur.chapterIndex) } } ?: return
+        val pageLayout = cl.pages.getOrNull(cur.pageIndex) ?: return
+        val highlights = highlightProvider?.invoke(cur.chapterIndex) ?: emptyList()
+        cur.contentView.setPageContent(text, pageLayout.startCharOffset, pageLayout.endCharOffset, highlights)
+    }
+
+    /**
      * 刷新当前槽位的高亮（笔记/书签变化后调用）。
      */
     fun refreshCurrentHighlights() {

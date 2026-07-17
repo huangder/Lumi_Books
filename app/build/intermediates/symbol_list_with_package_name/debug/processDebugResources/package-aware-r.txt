@@ -257,6 +257,10 @@ string chapter_list
 string chapter_number
 string check_update
 string checking_update
+string chinese_convert_label
+string chinese_original
+string chinese_simplified
+string chinese_traditional
 string clear
 string clear_all_confirm
 string clear_all_data
@@ -457,6 +461,7 @@ string open_source_licenses
 string optimize_layout
 string optimize_layout_hint
 string page_number
+string page_transition_label
 string pdf_back
 string pdf_bookmark
 string pdf_close
@@ -570,6 +575,9 @@ string today_reading_label
 string today_reading_time
 string tooltip_description
 string tooltip_label
+string transition_fade
+string transition_scroll
+string transition_slide
 string tuesday_short
 string wednesday_short
 string welcome_and
