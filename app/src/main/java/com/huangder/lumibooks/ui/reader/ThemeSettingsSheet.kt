@@ -455,6 +455,10 @@ fun AdvancedSettingsSheet(
     onImportFont: (android.net.Uri) -> Unit = {},
     onMarginHorizChange: (Float) -> Unit,
     onMarginVertChange: (Float) -> Unit,
+    currentParagraphSpacing: Float = 0f,
+    currentFirstLineIndent: Float = 0f,
+    onParagraphSpacingChange: (Float) -> Unit = {},
+    onFirstLineIndentChange: (Float) -> Unit = {},
     onDismiss: () -> Unit
 ) {
     if (!visible) return
@@ -592,6 +596,14 @@ fun AdvancedSettingsSheet(
 
                 // 上下边距
                 SettingSlider(stringResource(R.string.label_margin_vert), currentMarginVert, 32f..120f, 2f, { "${it.toInt()} dp" }, onMarginVertChange)
+                Spacer(Modifier.height(12.dp))
+
+                // 段间距
+                SettingSlider(stringResource(R.string.label_paragraph_spacing), currentParagraphSpacing, 0f..30f, 1f, { "${it.toInt()} dp" }, onParagraphSpacingChange)
+                Spacer(Modifier.height(12.dp))
+
+                // 首行缩进
+                SettingSlider(stringResource(R.string.label_first_line_indent), currentFirstLineIndent, 0f..4f, 0.5f, { "${it} 字符" }, onFirstLineIndentChange)
                 Spacer(Modifier.height(16.dp))
 
                 // 字体选择

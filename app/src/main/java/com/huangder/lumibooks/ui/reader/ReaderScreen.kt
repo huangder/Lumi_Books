@@ -750,6 +750,10 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 },
                 onMarginHorizChange = { viewModel.saveMarginHoriz(it) },
                 onMarginVertChange = { viewModel.saveMarginVert(it) },
+                currentParagraphSpacing = uiState.paragraphSpacing,
+                currentFirstLineIndent = uiState.firstLineIndent,
+                onParagraphSpacingChange = { viewModel.saveParagraphSpacing(it) },
+                onFirstLineIndentChange = { viewModel.saveFirstLineIndent(it) },
                 onDismiss = { showAdvancedSheet = false; requestCloseAdvanced = false }
             )
         }

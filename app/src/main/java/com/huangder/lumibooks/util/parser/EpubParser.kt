@@ -21,6 +21,8 @@ import kotlin.text.RegexOption
  * getChapterHtml() / getChapterContent() 按需读取并处理单个章节。
  */
 class EpubParser(private val context: Context? = null) : BookParser {
+    override var paragraphSpacingDp: Float = 0f
+    override var firstLineIndentChars: Float = 0f
     private var chapters: List<Chapter> = emptyList()
     private var bookTitle: String = ""
     private var bookAuthor: String = ""
@@ -557,7 +559,7 @@ class EpubParser(private val context: Context? = null) : BookParser {
         val result = embedImages(zipFile, html)
 
         return if (optimizeLayout) {
-            wrapWithOptimizedLayout(result)
+            wrapWithOptimizedLayout(result, paragraphSpacingDp, firstLineIndentChars)
         } else {
             wrapWithOriginalLayout(result)
         }
@@ -598,7 +600,16 @@ class EpubParser(private val context: Context? = null) : BookParser {
     }
 
     /** 优化排版：包裹自定义CSS模板 */
-    private fun wrapWithOptimizedLayout(body: String): String {
+    private fun wrapWithOptimizedLayout(
+        body: String,
+        paragraphSpacingDp: Float = 0f,
+        firstLineIndentChars: Float = 0f
+    ): String {
+        // 段间距：用户设置 >= 0 时使用用户值，负数才用默认
+        val pMargin = if (paragraphSpacingDp >= 0f) "${paragraphSpacingDp}dp 0" else "8px 0"
+        // 首行缩进：用户设置 >= 0 时使用用户值，负数才用默认
+        val pIndent = if (firstLineIndentChars >= 0f) "${firstLineIndentChars}em" else "2em"
+
         return """
             |<html>
             |<head>
@@ -607,7 +618,7 @@ class EpubParser(private val context: Context? = null) : BookParser {
             |  * { box-sizing: border-box; }
             |  body { font-family: sans-serif; font-size: 18px; line-height: 1.6; letter-spacing: 0.03em; color: #333; background: #fff; text-align: justify; word-wrap: break-word; overflow-wrap: break-word; margin: 0; padding: 0; overflow: hidden; visibility: hidden; }
             |  img { max-width: 100%; max-height: 85vh; height: auto; display: block; margin: 12px auto; border-radius: 4px; object-fit: contain; }
-            |  p { margin: 8px 0; text-indent: 2em; }
+            |  p { margin: $pMargin; text-indent: $pIndent; }
             |  h1, h2, h3 { margin: 16px 0 8px 0; text-align: left; }
             |  h1 { font-size: 1.6em; } h2 { font-size: 1.3em; } h3 { font-size: 1.1em; }
             |  table { max-width: 100%; border-collapse: collapse; }
