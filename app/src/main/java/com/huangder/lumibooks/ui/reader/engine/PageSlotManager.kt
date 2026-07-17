@@ -138,6 +138,9 @@ class PageSlotManager(
                 // 设置页面文本内容
                 val pageLayout = chapterLayout.pages[actualPage]
                 val highlights = highlightProvider?.invoke(chapterIndex) ?: emptyList()
+                // 追踪 LeadingMarginSpan 存活情况
+                val lmsBefore = if (text is android.text.Spannable) text.getSpans(0, text.length, android.text.style.LeadingMarginSpan::class.java) else emptyArray()
+                Log.d(TAG, "loadSlot: text type=${text.javaClass.simpleName} LeadingMarginSpans=${lmsBefore.size} startChar=${pageLayout.startCharOffset} endChar=${pageLayout.endCharOffset}")
                 slot.contentView.setPageContent(text, pageLayout.startCharOffset, pageLayout.endCharOffset, highlights)
 
                 if (slot.chapterIndex == chapterIndex && slot.pageIndex == actualPage) {

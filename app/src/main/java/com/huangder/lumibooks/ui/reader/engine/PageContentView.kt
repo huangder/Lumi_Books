@@ -34,7 +34,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
         // 🔥 启用 Android 原生文字选择（泪滴手柄 + 系统浮动工具栏）
         setTextIsSelectable(true)
         gravity = Gravity.TOP
-        includeFontPadding = true
+        includeFontPadding = false  // 关闭字体额外间距，由 padding 精确控制上下边距
         // 默认样式
         setTextColor(0xFF333333.toInt())
         setTextSize(TypedValue.COMPLEX_UNIT_PX, 56f)
@@ -76,28 +76,79 @@ class PageContentView(context: Context) : FrameLayout(context) {
         endChar: Int,
         highlights: List<Triple<Int, Int, Int>> = emptyList()
     ) {
-        // 🔥 缓存章节级起始偏移，供 selectWordAt 返回值转换使用
-        chapterStartOffset = startChar
-
         if (startChar < 0 || endChar > fullText.length || startChar >= endChar) {
+            chapterStartOffset = startChar
             textView.text = ""
             return
         }
 
-        var pageText = fullText.subSequence(startChar, endChar)
+        // 追踪 LeadingMarginSpan：检查 fullText 中是否包含 span
+        val fullLms = if (fullText is Spannable) fullText.getSpans(0, fullText.length, android.text.style.LeadingMarginSpan::class.java) else emptyArray()
+        Log.d("PageSlotManager", "setPageContent: fullText type=${fullText.javaClass.simpleName} LeadingMarginSpans=${fullLms.size} start=$startChar end=$endChar")
 
-        // 简繁转换（在切片后、应用高亮前）
-        if (chineseMode != "original") {
-            val converted = com.huangder.lumibooks.util.ChineseConverter.convert(pageText.toString(), chineseMode)
-            pageText = converted
+        // 🔥 跳过页面开头的空行（段间距的空白行落在页面顶部时不需要显示）
+        var actualStart = startChar
+        while (actualStart < endChar && fullText[actualStart] == '\n') {
+            actualStart++
+        }
+        chapterStartOffset = actualStart
+
+        if (actualStart >= endChar) {
+            textView.text = ""
+            return
         }
 
-        val spannable = SpannableStringBuilder(pageText)
+        val subText = fullText.subSequence(actualStart, endChar)
+        Log.d(TAG, "setPageContent: subText type=${subText.javaClass.simpleName} isSpanned=${subText is android.text.Spanned}")
 
-        // 应用高亮（将全局偏移转换为页内偏移）
+        // 简繁转换（在切片后、应用高亮前）
+        val pageText = if (chineseMode != "original") {
+            com.huangder.lumibooks.util.ChineseConverter.convert(subText.toString(), chineseMode)
+        } else {
+            subText
+        }
+        Log.d(TAG, "setPageContent: pageText type=${pageText.javaClass.simpleName} isSpanned=${pageText is android.text.Spanned}")
+
+        // 🔥 保留 span：从 subText 中提取所有格式 span 并重新应用
+        // （SpannableStringBuilder(pageText) 会丢失 LeadingMarginSpan 和 ParagraphLineHeightSpan）
+        val spannable = SpannableStringBuilder(pageText.toString())
+        if (subText is android.text.Spanned) {
+            // 恢复 LeadingMarginSpan（首行缩进）
+            // 如果页面从段落中间开始（前一个字符不是 \n），跳过开头到第一个 \n 的缩进
+            val startsMidParagraph = actualStart > 0 && fullText[actualStart - 1] != '\n'
+            val lms = subText.getSpans(0, subText.length, android.text.style.LeadingMarginSpan::class.java)
+            for (lm in lms) {
+                val start = subText.getSpanStart(lm).coerceIn(0, spannable.length)
+                val end = subText.getSpanEnd(lm).coerceIn(0, spannable.length)
+                if (start < end) {
+                    if (startsMidParagraph && start == 0) {
+                        // 段落跨页续行：去掉开头到第一个 \n 的缩进
+                        val firstNl = spannable.indexOf('\n')
+                        if (firstNl >= 0 && firstNl < end) {
+                            spannable.setSpan(lm, firstNl + 1, end, Spannable.SPAN_INCLUSIVE_INCLUSIVE)
+                        }
+                        // 如果没有 \n 说明整个页面都是一个段落的续行，不添加缩进
+                    } else {
+                        spannable.setSpan(lm, start, end, Spannable.SPAN_INCLUSIVE_INCLUSIVE)
+                    }
+                }
+            }
+            // 恢复 ParagraphLineHeightSpan（段间距）
+            val lhs = subText.getSpans(0, subText.length, com.huangder.lumibooks.util.parser.EpubParser.ParagraphLineHeightSpan::class.java)
+            for (lh in lhs) {
+                val start = subText.getSpanStart(lh).coerceIn(0, spannable.length)
+                val end = subText.getSpanEnd(lh).coerceIn(0, spannable.length)
+                if (start < end) {
+                    spannable.setSpan(lh, start, end, Spannable.SPAN_INCLUSIVE_INCLUSIVE)
+                }
+            }
+            Log.d(TAG, "setPageContent: restored ${lms.size} LeadingMarginSpans, ${lhs.size} ParagraphLineHeightSpans")
+        }
+
+        // 应用高亮（将全局偏移转换为页内偏移，基于 actualStart 而非 startChar）
         for ((hStart, hEnd, hColor) in highlights) {
-            val localStart = (hStart - startChar).coerceIn(0, spannable.length)
-            val localEnd = (hEnd - startChar).coerceIn(0, spannable.length)
+            val localStart = (hStart - actualStart).coerceIn(0, spannable.length)
+            val localEnd = (hEnd - actualStart).coerceIn(0, spannable.length)
             if (localStart < localEnd) {
                 spannable.setSpan(
                     BackgroundColorSpan(hColor),
@@ -106,6 +157,18 @@ class PageContentView(context: Context) : FrameLayout(context) {
                 )
             }
         }
+
+        // 验证 LeadingMarginSpan 存活（调试用）
+        val lms = spannable.getSpans(0, spannable.length, android.text.style.LeadingMarginSpan::class.java)
+        Log.d(TAG, "setPageContent: start=$actualStart end=$endChar len=${spannable.length} LeadingMarginSpans=${lms.size}")
+
+        textView.text = spannable
+
+        // 验证 TextView 最终文本中的 span
+        val tvText = textView.text
+        val tvLms = if (tvText is Spannable) tvText.getSpans(0, tvText.length, android.text.style.LeadingMarginSpan::class.java) else emptyArray()
+        Log.d(TAG, "setPageContent: AFTER setText: tvText type=${tvText.javaClass.simpleName} LeadingMarginSpans=${tvLms.size}")
+        Log.d(TAG, "setPageContent: AFTER setText: tvText type=${tvText.javaClass.simpleName} LeadingMarginSpans=${tvLms.size}")
 
         textView.text = spannable
         // 🔥 setTextIsSelectable(true) 时 Android 内部通过 Editable.Factory.newEditable() 创建副本

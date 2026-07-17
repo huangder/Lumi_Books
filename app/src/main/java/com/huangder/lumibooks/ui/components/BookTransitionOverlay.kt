@@ -85,7 +85,7 @@ fun BookTransitionOverlay(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // 深色半透明遮罩（不用 blur，避免卡顿） 
+        // 深色半透明遮罩（不用 blur，避免卡顿）
         Box(
             modifier = Modifier
                 .fillMaxSize()

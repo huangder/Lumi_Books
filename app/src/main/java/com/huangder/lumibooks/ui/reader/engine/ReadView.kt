@@ -104,6 +104,7 @@ class ReadView(context: Context) : FrameLayout(context) {
     private var currentCustomFontPath: String? = null
     private var currentMarginHorizDp: Float = 44f
     private var currentMarginVertDp: Float = 72f
+    private var currentParagraphSpacingDp: Float = 0f
     private var pendingStartChapter: Int = 0
     private var pendingStartPage: Int = 0
 
@@ -237,7 +238,7 @@ class ReadView(context: Context) : FrameLayout(context) {
         val density = resources.displayMetrics.density
         val marginHoriz = currentMarginHorizDp * density
         val marginVert = currentMarginVertDp * density
-        val marginTop = marginVert + 6f * density   // 顶部微调
+        val marginTop = marginVert   // includeFontPadding 已关闭，无需补偿
         val lineSpacingExtra = 2.5f * density
 
         // 选择高亮色jian
@@ -317,6 +318,7 @@ class ReadView(context: Context) : FrameLayout(context) {
         customFontPath: String? = null,
         marginHorizDp: Float = 44f,
         marginVertDp: Float = 72f,
+        paragraphSpacingDp: Float = 0f,
         width: Int = this.width,
         height: Int = this.height
     ) {
@@ -336,10 +338,11 @@ class ReadView(context: Context) : FrameLayout(context) {
         val fontTypeChanged = currentFontType != fontType
         val marginHorizChanged = Math.abs(currentMarginHorizDp - marginHorizDp) > 0.5f
         val marginVertChanged = Math.abs(currentMarginVertDp - marginVertDp) > 0.5f
+        val paragraphSpacingChanged = Math.abs(currentParagraphSpacingDp - paragraphSpacingDp) > 0.01f
         val sizeChanged = !isConfigured
         val needsRelayout = themeChanged || fontSizeChanged || lineHeightChanged ||
                 letterSpacingChanged || fontTypeChanged || marginHorizChanged ||
-                marginVertChanged || sizeChanged
+                marginVertChanged || paragraphSpacingChanged || sizeChanged
 
         currentFontSizePx = fontSizePx
         currentTheme = theme
@@ -350,12 +353,13 @@ class ReadView(context: Context) : FrameLayout(context) {
         currentCustomFontPath = customFontPath
         currentMarginHorizDp = marginHorizDp
         currentMarginVertDp = marginVertDp
+        currentParagraphSpacingDp = paragraphSpacingDp
 
         val (_, textColor, _) = getThemeColors(theme)
         val density = resources.displayMetrics.density
         val marginHoriz = marginHorizDp * density
         val marginVert = marginVertDp * density
-        val marginTop = marginVert + 6f * density   // 顶部微调：补偿 includeFontPadding 的视觉不对称
+        val marginTop = marginVert   // includeFontPadding 已关闭，无需补偿
         val lineSpacing = 2.5f * density
         val lsPx = letterSpacingDp * density
 
@@ -411,6 +415,20 @@ class ReadView(context: Context) : FrameLayout(context) {
             slotManager.setChapterCount(chapterCount)
             slotManager.initialize(startChapter, startPage)
             isConfigured = true
+        }
+    }
+
+    /**
+     * 强制重新分页并刷新当前页。
+     * 用于段间距/首行缩进等文本内容变化后，
+     * 需要在 configure() 之外单独触发的场景。
+     */
+    fun forceRelayout() {
+        if (!isConfigured) return
+        layoutEngine.invalidateAll()
+        val curSlot = slotManager.getCurSlot()
+        if (curSlot.chapterIndex >= 0) {
+            slotManager.loadSlot(PageSlotManager.SLOT_CUR, curSlot.chapterIndex, curSlot.pageIndex)
         }
     }
 

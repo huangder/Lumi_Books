@@ -67,13 +67,17 @@ class ContinuousPageAdapter(
     override fun getItemCount(): Int = totalPages.coerceAtLeast(1)
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PageViewHolder {
-        // 记录 RecyclerView 高度
-        if (recyclerViewHeight <= 0) recyclerViewHeight = parent.height
-
         val pageView = PageContentView(parent.context)
+        // 🔥 连续滚动模式：高度设为 WRAP_CONTENT，让内容自然撑开
+        // 配合 TextView 也设为 WRAP_CONTENT，消除页面间的空白间隙
         pageView.layoutParams = ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            recyclerViewHeight.coerceAtLeast(1)  // 全屏高度
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+        // TextView 也需要 WRAP_CONTENT，否则 MATCH_PARENT 在 WRAP_CONTENT 父布局中会坍缩为 0
+        pageView.textView.layoutParams = android.widget.FrameLayout.LayoutParams(
+            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+            android.widget.FrameLayout.LayoutParams.WRAP_CONTENT
         )
         return PageViewHolder(pageView)
     }

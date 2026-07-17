@@ -35,6 +35,10 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
                 readView.nextPageView.translationX = (vw + ox) * PARALLAX_RATIO
                 readView.curPageView.translationX = ox
                 readView.prevPageView.translationX = -vw
+                // 🔥 确保页面可见（setPageTransition 可能把 alpha 设为 0）
+                readView.curPageView.alpha = 1f
+                readView.nextPageView.alpha = 1f
+                readView.prevPageView.alpha = 0f
                 // z-order: cur 在上层
                 readView.curPageView.translationZ = 2f
                 readView.nextPageView.translationZ = 1f
@@ -45,6 +49,10 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
                 readView.curPageView.translationX = ox * PARALLAX_RATIO
                 readView.prevPageView.translationX = -vw + ox
                 readView.nextPageView.translationX = vw
+                // 🔥 确保页面可见
+                readView.curPageView.alpha = 1f
+                readView.prevPageView.alpha = 1f
+                readView.nextPageView.alpha = 0f
                 // z-order: prev 在上层
                 readView.prevPageView.translationZ = 2f
                 readView.curPageView.translationZ = 1f
@@ -54,6 +62,10 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
                 readView.curPageView.translationX = 0f
                 readView.prevPageView.translationX = -vw
                 readView.nextPageView.translationX = vw
+                // 🔥 空闲状态：只显示当前页
+                readView.curPageView.alpha = 1f
+                readView.prevPageView.alpha = 0f
+                readView.nextPageView.alpha = 0f
                 // z-order: cur 在上层
                 readView.curPageView.translationZ = 2f
                 readView.prevPageView.translationZ = 0f

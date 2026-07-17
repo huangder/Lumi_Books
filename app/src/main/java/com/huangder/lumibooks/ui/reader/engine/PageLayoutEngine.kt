@@ -138,7 +138,7 @@ class PageLayoutEngine {
         val sl = StaticLayout.Builder.obtain(text, 0, text.length, activeTextPaint, vw)
             .setAlignment(Layout.Alignment.ALIGN_NORMAL)
             .setLineSpacing(lineSpacingExtra, lineSpacingMultiplier)
-            .setIncludePad(true)
+            .setIncludePad(false)  // 关闭额外 padding，由 marginTop/marginBottom 精确控制
             .setBreakStrategy(Layout.BREAK_STRATEGY_HIGH_QUALITY)  // 与 TextView 默认值一致，消除断行差异
             .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)  // CJK 文本不需要断字
             .build()
