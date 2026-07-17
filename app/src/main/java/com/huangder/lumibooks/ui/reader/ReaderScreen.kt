@@ -505,7 +505,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         fontType = uiState.fontType,
                         customFontPath = uiState.customFontPath,
                         marginHorizDp = uiState.marginHorizDp,
-                        marginVertDp = uiState.marginVertDp
+                        marginVertDp = uiState.marginVertDp,
+                        paragraphSpacingDp = uiState.paragraphSpacing
                     )
                     readView.setSavedNotes(notes)
                     // 简繁转换
@@ -515,6 +516,11 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 },
                 modifier = Modifier.fillMaxSize()
             )
+
+            // 段间距/首行缩进变化时，强制重新分页
+            LaunchedEffect(uiState.paragraphSpacing, uiState.firstLineIndent) {
+                readViewRef.value?.forceRelayout()
+            }
         }
 
         // ── 旧 WebView 路径（PDF） ──

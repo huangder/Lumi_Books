@@ -244,21 +244,21 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun saveParagraphSpacing(value: Float) {
-        _uiState.value = _uiState.value.copy(paragraphSpacing = value)
         parser?.paragraphSpacingDp = value
+        parser?.clearHtmlCache()  // 同步清缓存，确保 configure() 重新分页时拿到新内容
+        _uiState.value = _uiState.value.copy(paragraphSpacing = value)
         viewModelScope.launch {
             dataStoreManager.saveParagraphSpacing(value)
-            parser?.clearHtmlCache()
             loadChapterContent()
         }
     }
 
     fun saveFirstLineIndent(value: Float) {
-        _uiState.value = _uiState.value.copy(firstLineIndent = value)
         parser?.firstLineIndentChars = value
+        parser?.clearHtmlCache()  // 同步清缓存
+        _uiState.value = _uiState.value.copy(firstLineIndent = value)
         viewModelScope.launch {
             dataStoreManager.saveFirstLineIndent(value)
-            parser?.clearHtmlCache()
             loadChapterContent()
         }
     }

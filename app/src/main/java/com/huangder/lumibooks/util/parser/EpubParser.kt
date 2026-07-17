@@ -531,9 +531,20 @@ class EpubParser(private val context: Context? = null) : BookParser {
             android.util.Log.d("EpubParser", "getChapterContent: idx=$chapterIndex rawHtml.length=${rawHtml.length}")
             if (chapterIndex == 0) android.util.Log.d("EpubParser", "cover HTML: $rawHtml")
             val spanned = htmlToSpanned(rawHtml, zipFile)
+            // 应用段间距和首行缩进（Canvas 引擎需要在 Spanned 层面处理）
+            val formatted = applyParagraphFormatting(spanned)
+            // 修剪末尾多余换行（防止章节末尾出现空白页）
+            val trimmed = trimTrailingNewlines(formatted)
+            // 验证修剪后 span 存活
+            val trimSpans = if (trimmed is android.text.Spannable) trimmed.getSpans(0, trimmed.length, android.text.style.LeadingMarginSpan::class.java) else emptyArray()
+            android.util.Log.d("EpubParser", "getChapterContent: after trim: type=${trimmed.javaClass.simpleName} LeadingMarginSpans=${trimSpans.size}")
             // 如果 Spanned 为空（纯图片章节图片加载失败），返回占位文本
-            val result: CharSequence = if (spanned.isBlank()) android.text.SpannableString(" ") else spanned
-            android.util.Log.d("EpubParser", "getChapterContent: idx=$chapterIndex result.length=${result.length} isBlank=${spanned.isBlank()}")
+            val result: CharSequence = if (trimmed.isBlank()) android.text.SpannableString(" ") else trimmed
+            // 验证最终结果中的 span
+            val finalSpans = if (result is android.text.Spannable) result.getSpans(0, result.length, Any::class.java) else emptyArray()
+            val finalIndentCount = finalSpans.count { it is android.text.style.LeadingMarginSpan }
+            val finalLHCount = finalSpans.count { it is ParagraphLineHeightSpan }
+            android.util.Log.d("EpubParser", "getChapterContent: idx=$chapterIndex result.length=${result.length} LeadingMarginSpans=$finalIndentCount LineHeightSpans=$finalLHCount firstLineIndentChars=$firstLineIndentChars indentPx=${(firstLineIndentChars * 18f * (context?.resources?.displayMetrics?.density ?: 2.75f)).toInt()}")
             contentCache[chapterIndex] = result
             return result
         } catch (e: Exception) {
@@ -549,6 +560,121 @@ class EpubParser(private val context: Context? = null) : BookParser {
 
     override fun clearHtmlCache() {
         htmlCache.clear()
+        contentCache.clear()  // 段间距/首行缩进变更时也需要清空内容缓存
+    }
+
+    /**
+     * 对 Spanned 文本应用段间距和首行缩进。
+     * Canvas 引擎（StaticLayout）不支持 CSS，需要在 Spanned 层面处理。
+     *
+     * - 首行缩进：LeadingMarginSpan.Standard 作用于每个段落
+     * - 段间距：在段落之间插入空行，用 LineHeightSpan 精确控制空行高度
+     */
+    private fun applyParagraphFormatting(text: CharSequence): CharSequence {
+        android.util.Log.d("EpubParser", "applyParagraphFormatting: paragraphSpacingDp=$paragraphSpacingDp firstLineIndentChars=$firstLineIndentChars")
+
+        val ssb = android.text.SpannableStringBuilder(text)
+
+        // 段间距为0时，合并连续换行（\n\n → \n），消除段落间空行
+        if (paragraphSpacingDp <= 0f) {
+            var i = ssb.length - 1
+            while (i > 0) {
+                if (ssb[i] == '\n' && ssb[i - 1] == '\n') {
+                    ssb.delete(i, i + 1)
+                }
+                i--
+            }
+        }
+
+        if (paragraphSpacingDp <= 0f && firstLineIndentChars <= 0f) {
+            android.util.Log.d("EpubParser", "applyParagraphFormatting: SKIP (both <= 0)")
+            return ssb
+        }
+
+        val density = context?.resources?.displayMetrics?.density ?: 2.75f
+        val indentPx = if (firstLineIndentChars > 0f) (firstLineIndentChars * 18f * density).toInt() else 0
+        val spacingPx = if (paragraphSpacingDp > 0f) (paragraphSpacingDp * density).toInt() else 0
+        android.util.Log.d("EpubParser", "applyParagraphFormatting: density=$density spacingDp=$paragraphSpacingDp -> spacingPx=$spacingPx")
+
+        // ── 段间距：在每个 \n 后插入一个空行，并用 LineHeightSpan 控制高度 ──
+        if (spacingPx > 0) {
+            // 从后往前插入，避免位置偏移
+            val newlinePositions = mutableListOf<Int>()
+            for (j in 0 until ssb.length) {
+                if (ssb[j] == '\n') newlinePositions.add(j)
+            }
+            for (nl in newlinePositions.reversed()) {
+                ssb.insert(nl + 1, "\n")
+                ssb.setSpan(
+                    ParagraphLineHeightSpan(spacingPx),
+                    nl + 1, nl + 2,
+                    android.text.Spannable.SPAN_INCLUSIVE_INCLUSIVE
+                )
+            }
+        }
+
+        // ── 首行缩进：给每个段落添加 LeadingMarginSpan ──
+        android.util.Log.d("EpubParser", "applyParagraphFormatting: indentPx=$indentPx (firstLineIndentChars=$firstLineIndentChars)")
+        if (indentPx > 0) {
+            var paraStart = 0
+            for (j in 0..ssb.length) {
+                val isEnd = j == ssb.length
+                val isNewline = !isEnd && ssb[j] == '\n'
+                if (isEnd || isNewline) {
+                    if (paraStart < j) {
+                        ssb.setSpan(
+                            android.text.style.LeadingMarginSpan.Standard(indentPx, 0),
+                            paraStart, j,
+                            android.text.Spannable.SPAN_INCLUSIVE_INCLUSIVE
+                        )
+                    }
+                    paraStart = j + 1
+                }
+            }
+        }
+
+        // 验证 span 被正确添加
+        val spans = ssb.getSpans(0, ssb.length, Any::class.java)
+        val indentCount = spans.count { it is android.text.style.LeadingMarginSpan }
+        val lineHeightCount = spans.count { it is ParagraphLineHeightSpan }
+        android.util.Log.d("EpubParser", "applyParagraphFormatting: indentPx=$indentPx spacingPx=$spacingPx textLen=${ssb.length} LeadingMarginSpans=$indentCount LineHeightSpans=$lineHeightCount")
+
+        return ssb
+    }
+
+    /**
+     * 修剪末尾多余换行，防止章节末尾出现空白页。
+     * 保留最多一个换行作为段落结束标记。
+     */
+    private fun trimTrailingNewlines(text: CharSequence): CharSequence {
+        var end = text.length
+        while (end > 0 && text[end - 1] == '\n') end--
+        // 保留一个换行作为段落结束
+        if (end < text.length) end++
+        return if (end == text.length) text else text.subSequence(0, end)
+    }
+
+    /**
+     * 段间距专用 LineHeightSpan。
+     *
+     * 仅作用于段落之间的空行，通过增加 descent 来撑大行高。
+     * 不影响正文行的高度，避免之前 LineHeightSpan 导致"每页只有几句话"的问题。
+     */
+    class ParagraphLineHeightSpan(val extraHeightPx: Int) : android.text.style.LineHeightSpan {
+        override fun chooseHeight(
+            text: CharSequence, start: Int, end: Int,
+            spanstartv: Int, lineHeight: Int,
+            fm: android.graphics.Paint.FontMetricsInt
+        ) {
+            val origAscent = fm.ascent
+            val origDescent = fm.descent
+            // 强制覆盖字体度量，精确控制空行高度
+            fm.ascent = 0
+            fm.top = 0
+            fm.descent = extraHeightPx
+            fm.bottom = extraHeightPx
+            android.util.Log.d("EpubParser", "chooseHeight: extraPx=$extraHeightPx origAscent=$origAscent origDescent=$origDescent lineHeight=$lineHeight -> newDescent=$extraHeightPx")
+        }
     }
 
     /**
