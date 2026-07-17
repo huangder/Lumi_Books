@@ -410,6 +410,16 @@ class ReadView(context: Context) : FrameLayout(context) {
         newController.onLongPress = animationController.onLongPress
 
         animationController = newController
+        // 重置页面位置状态（防止切换时残留偏移）
+        prevPageView.translationX = -width.toFloat()
+        prevPageView.translationY = 0f
+        prevPageView.alpha = 0f
+        curPageView.translationX = 0f
+        curPageView.translationY = 0f
+        curPageView.alpha = 1f
+        nextPageView.translationX = width.toFloat()
+        nextPageView.translationY = 0f
+        nextPageView.alpha = 0f
         invalidate()
     }
 
@@ -522,12 +532,16 @@ class ReadView(context: Context) : FrameLayout(context) {
     // ── 绘制 ──
 
     override fun dispatchDraw(canvas: android.graphics.Canvas) {
-        // 先设置子 View 的 translationX（翻页动画位置）
+        // 先设置子 View 的 translationX/Y（翻页动画位置）
         animationController.onDraw(canvas)
         // 绘制子 View（PageContentView 包含的 TextView）
         super.dispatchDraw(canvas)
         // 再绘制阴影叠加层（在子 View 之上）
-        (animationController as? SlidePageAnim)?.drawOverlay(canvas)
+        when (val ctrl = animationController) {
+            is SlidePageAnim -> ctrl.drawOverlay(canvas)
+            is ScrollPageAnim -> ctrl.drawOverlay(canvas)
+            is FadePageAnim -> ctrl.drawOverlay(canvas)
+        }
     }
 
     // ── 生命周期 ──
@@ -543,7 +557,11 @@ class ReadView(context: Context) : FrameLayout(context) {
 
     private fun startTapAnimation(dir: PageAnimationController.Direction) {
         if (animationController.isRunning) return
-        (animationController as? SlidePageAnim)?.startFromTap(dir)
+        when (val ctrl = animationController) {
+            is SlidePageAnim -> ctrl.startFromTap(dir)
+            is ScrollPageAnim -> ctrl.startFromTap(dir)
+            is FadePageAnim -> ctrl.startFromTap(dir)
+        }
     }
 
     /** @return Triple(backgroundColor, textColor, accentColor) */

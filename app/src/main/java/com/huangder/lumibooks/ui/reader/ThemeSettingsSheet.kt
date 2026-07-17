@@ -81,10 +81,14 @@ fun ThemeSettingsSheet(
     currentTheme: String,
     currentBrightness: Float = -1f,
     currentOptimizeLayout: Boolean = true,
+    currentChineseMode: String = "original",
+    currentPageTransition: String = "slide",
     onFontSizeChange: (Float) -> Unit,
     onThemeChange: (String) -> Unit,
     onBrightnessChange: (Float) -> Unit = {},
     onOptimizeLayoutChange: (Boolean) -> Unit = {},
+    onChineseModeChange: (String) -> Unit = {},
+    onPageTransitionChange: (String) -> Unit = {},
     onOpenAdvanced: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -254,6 +258,64 @@ fun ThemeSettingsSheet(
 
             Spacer(Modifier.height(16.dp))
 
+            // 简繁转换
+            Text(stringResource(R.string.chinese_convert_label), fontSize = 14.sp, color = LightTextSecondary)
+            Spacer(Modifier.height(12.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                ModeButton(
+                    label = stringResource(R.string.chinese_original),
+                    isSelected = currentChineseMode == "original",
+                    onClick = { onChineseModeChange("original") },
+                    modifier = Modifier.weight(1f)
+                )
+                ModeButton(
+                    label = stringResource(R.string.chinese_simplified),
+                    isSelected = currentChineseMode == "simplified",
+                    onClick = { onChineseModeChange("simplified") },
+                    modifier = Modifier.weight(1f)
+                )
+                ModeButton(
+                    label = stringResource(R.string.chinese_traditional),
+                    isSelected = currentChineseMode == "traditional",
+                    onClick = { onChineseModeChange("traditional") },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // 翻页效果
+            Text(stringResource(R.string.page_transition_label), fontSize = 14.sp, color = LightTextSecondary)
+            Spacer(Modifier.height(12.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                ModeButton(
+                    label = stringResource(R.string.transition_slide),
+                    isSelected = currentPageTransition == "slide",
+                    onClick = { onPageTransitionChange("slide") },
+                    modifier = Modifier.weight(1f)
+                )
+                ModeButton(
+                    label = stringResource(R.string.transition_scroll),
+                    isSelected = currentPageTransition == "scroll",
+                    onClick = { onPageTransitionChange("scroll") },
+                    modifier = Modifier.weight(1f)
+                )
+                ModeButton(
+                    label = stringResource(R.string.transition_fade),
+                    isSelected = currentPageTransition == "fade",
+                    onClick = { onPageTransitionChange("fade") },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Spacer(Modifier.height(16.dp))
+
             // 优化书籍排版开关
             Row(
                 Modifier.fillMaxWidth(),
@@ -336,6 +398,35 @@ private fun ThemeButton(
             label,
             fontSize = 14.sp,
             color = textColor
+        )
+    }
+}
+
+/** 通用模式选择按钮（简繁转换、翻页效果等） */
+@Composable
+private fun ModeButton(
+    label: String,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .height(44.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .then(
+                if (isSelected) Modifier.border(1.5.dp, Color.Black, RoundedCornerShape(12.dp))
+                else Modifier
+            )
+            .background(if (isSelected) LightBgGray else Color.White)
+            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            label,
+            fontSize = 14.sp,
+            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+            color = Color.Black
         )
     }
 }
