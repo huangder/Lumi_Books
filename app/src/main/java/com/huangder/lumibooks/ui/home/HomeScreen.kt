@@ -61,6 +61,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import com.huangder.lumibooks.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -140,7 +142,7 @@ fun HomeScreen(
             }
 
             if (uiState.books.size > 1) {
-                SectionHeader("之前读过")
+                SectionHeader(stringResource(R.string.section_previously_read))
                 Spacer(Modifier.height(AppSpace.md))
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = AppSpace.lg),
@@ -173,7 +175,7 @@ fun HomeScreen(
                 .sortedByDescending { it.lastReadTime }
                 .take(3)
             if (booksThisYear.isNotEmpty()) {
-                SectionHeader("最近读过")
+                SectionHeader(stringResource(R.string.section_recently_read))
                 Spacer(Modifier.height(AppSpace.md))
                 BooksReadGrid(
                     books = booksThisYear,
@@ -211,7 +213,7 @@ fun HomeScreen(
                     .clickable { launcher.launch("*/*") },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.Add, "导入", tint = Color.White, modifier = Modifier.size(24.dp))
+                Icon(Icons.Default.Add, stringResource(R.string.import_books), tint = Color.White, modifier = Modifier.size(24.dp))
             }
         }
     } // 外层 Box 结束
@@ -231,7 +233,7 @@ private fun HomeHeader(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = "主页",
+            text = stringResource(R.string.home_page),
             fontSize = AppType.Display,
             fontWeight = FontWeight.Bold,
             fontFamily = KaiTi,
@@ -254,7 +256,7 @@ private fun HomeHeader(
             if (avatarUri != null) {
                 AsyncImage(
                     model = java.io.File(avatarUri),
-                    contentDescription = "头像",
+                    contentDescription = stringResource(R.string.avatar),
                     modifier = Modifier
                         .fillMaxSize()
                         .clip(CircleShape),
@@ -263,7 +265,7 @@ private fun HomeHeader(
             } else {
                 Icon(
                     imageVector = Icons.Outlined.AccountCircle,
-                    contentDescription = "设置",
+                    contentDescription = stringResource(R.string.settings),
                     tint = AppColors.TextSecondary,
                     modifier = Modifier.size(36.dp)
                 )
@@ -293,7 +295,7 @@ private fun ImportHint() {
         )
         Spacer(Modifier.width(AppSpace.md))
         Text(
-            text = "在此处管理您的本地 PDF 和 EPUB 图书",
+            text = stringResource(R.string.home_manage_hint),
             fontSize = AppType.BodySmall,
             color = AppColors.TextSecondary,
             fontFamily = SansSerif
@@ -351,7 +353,7 @@ private fun ContinueReadingCard(book: Book, onClick: () -> Unit, onToggleFavorit
             )
             Spacer(Modifier.height(AppSpace.xs))
             Text(
-                text = "图书 · ${(book.readingProgress * 100).toInt()}%",
+                text = stringResource(R.string.book_progress, (book.readingProgress * 100).toInt()),
                 fontSize = AppType.Caption,
                 color = AppColors.TextSecondary
             )
@@ -370,7 +372,7 @@ private fun ContinueReadingCard(book: Book, onClick: () -> Unit, onToggleFavorit
                             Icon(Icons.Outlined.FavoriteBorder, null, modifier = Modifier.size(18.dp), tint = AppColors.TextSecondary)
                             Spacer(Modifier.width(AppSpace.sm))
                             Text(
-                                if (book.isFavorite) "取消收藏" else "收藏",
+                                if (book.isFavorite) stringResource(R.string.remove_favorite) else stringResource(R.string.add_favorite),
                                 fontSize = AppType.BodySmall,
                                 color = AppColors.TextPrimary
                             )
@@ -386,7 +388,7 @@ private fun ContinueReadingCard(book: Book, onClick: () -> Unit, onToggleFavorit
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Outlined.Delete, null, modifier = Modifier.size(18.dp), tint = AppColors.Accent)
                             Spacer(Modifier.width(AppSpace.sm))
-                            Text("删除", fontSize = AppType.BodySmall, color = AppColors.Accent)
+                            Text(stringResource(R.string.delete_book), fontSize = AppType.BodySmall, color = AppColors.Accent)
                         }
                     },
                     onClick = {
@@ -402,19 +404,19 @@ private fun ContinueReadingCard(book: Book, onClick: () -> Unit, onToggleFavorit
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("删除图书", fontWeight = FontWeight.Bold) },
-            text = { Text("确定要从书库中删除《${book.title}》吗？\n此操作不可撤销。") },
+            title = { Text(stringResource(R.string.delete_book_title), fontWeight = FontWeight.Bold) },
+            text = { Text(stringResource(R.string.delete_book_confirm, book.title)) },
             confirmButton = {
                 TextButton(onClick = {
                     showDeleteConfirm = false
                     onDelete()
                 }) {
-                    Text("删除", color = AppColors.Accent)
+                    Text(stringResource(R.string.delete_book), color = AppColors.Accent)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text("取消", color = AppColors.TextSecondary)
+                    Text(stringResource(R.string.cancel), color = AppColors.TextSecondary)
                 }
             }
         )
@@ -527,7 +529,7 @@ private fun ReadingGoalCard(
             color = AppColors.TextPrimary
         )
         Text(
-            text = "(目标 $dailyGoal 分钟)",
+            text = stringResource(R.string.goal_label, dailyGoal),
             fontSize = AppType.Caption,
             color = AppColors.TextSecondary
         )
@@ -545,7 +547,7 @@ private fun ReadingGoalCard(
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = "继续阅读",
+                text = stringResource(R.string.continue_reading),
                 fontSize = AppType.Body,
                 fontWeight = FontWeight.SemiBold,
                 color = Color.White

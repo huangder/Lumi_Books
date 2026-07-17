@@ -44,8 +44,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.ui.theme.AppColors
+import androidx.compose.ui.res.stringResource
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
@@ -301,7 +303,7 @@ private fun BookInfoPanel(
             )
             Spacer(Modifier.width(6.dp))
             Text(
-                text = "编辑书本信息",
+                text = stringResource(R.string.edit_book_info),
                 fontSize = AppType.Caption,
                 color = AppColors.Accent
             )
@@ -327,19 +329,19 @@ private fun MenuActionsPanel(
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         val favoriteIcon = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder
-        val favoriteLabel = if (isFavorite) "移除收藏" else "收藏"
+        val favoriteLabel = if (isFavorite) stringResource(R.string.remove_favorite_short) else stringResource(R.string.favorite)
 
         // 动态构建菜单项列表
         data class MenuItem(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val action: ContextMenuAction)
 
         val items = buildList {
-            add(MenuItem("删除", Icons.Outlined.Delete, ContextMenuAction.Delete))
+            add(MenuItem(stringResource(R.string.delete), Icons.Outlined.Delete, ContextMenuAction.Delete))
             add(MenuItem(favoriteLabel, favoriteIcon, ContextMenuAction.Favorite))
-            add(MenuItem("自定义封面", Icons.Outlined.Image, ContextMenuAction.CustomCover))
+            add(MenuItem(stringResource(R.string.custom_cover), Icons.Outlined.Image, ContextMenuAction.CustomCover))
             if (hasCustomCover) {
-                add(MenuItem("移除自定义封面", Icons.Outlined.Restore, ContextMenuAction.RemoveCustomCover))
+                add(MenuItem(stringResource(R.string.remove_custom_cover), Icons.Outlined.Restore, ContextMenuAction.RemoveCustomCover))
             }
-            add(MenuItem("书签高亮与笔记", Icons.Outlined.Bookmark, ContextMenuAction.BookmarksNotes))
+            add(MenuItem(stringResource(R.string.bookmarks_notes), Icons.Outlined.Bookmark, ContextMenuAction.BookmarksNotes))
         }
 
         items.forEachIndexed { index, item ->

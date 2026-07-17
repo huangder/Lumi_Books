@@ -55,6 +55,9 @@ data class SettingsUiState(
     val darkMode: String = "system",       // "system" / "light" / "dark"
     val readerTheme: String = "day",       // "day" / "night" / "sepia" / "green"
 
+    // 语言
+    val appLanguage: String = "system",    // "system" / "zh-CN" / "zh-TW" / "zh-HK" / "zh-MO" / "ko" / "ja" / "en"
+
     // 阅读目标
     val dailyGoal: Int = 30,               // 分钟
 

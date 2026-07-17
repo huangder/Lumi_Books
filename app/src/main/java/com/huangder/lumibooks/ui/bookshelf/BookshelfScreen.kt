@@ -30,6 +30,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -82,10 +84,10 @@ import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
+import com.huangder.lumibooks.R
 import com.huangder.lumibooks.util.FileUtils
+import androidx.compose.ui.res.stringResource
 import java.io.File
-
-private val filterTabs = listOf("全部图书", "下载内容", "PDF", "收藏")
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -99,6 +101,13 @@ fun BookshelfScreen(
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val contextMenuState = rememberBookContextMenuState()
+
+    val filterTabs = listOf(
+        stringResource(R.string.filter_all),
+        stringResource(R.string.filter_downloaded),
+        stringResource(R.string.format_pdf),
+        stringResource(R.string.filter_favorites)
+    )
 
     LaunchedEffect(uiState.importMessage) {
         uiState.importMessage?.let {
@@ -174,7 +183,7 @@ fun BookshelfScreen(
                 ) {
                     Spacer(modifier = Modifier.height(AppSpace.md))
                     Text(
-                        text = "书库",
+                        text = stringResource(R.string.bookshelf_title),
                         fontSize = AppType.Display,
                         fontWeight = FontWeight.Bold,
                         fontFamily = KaiTi,
@@ -183,10 +192,11 @@ fun BookshelfScreen(
                         modifier = Modifier.padding(horizontal = AppSpace.lg, vertical = AppSpace.md)
                     )
 
-                    // ── 筛选标签 ──
+                    // ── 筛选标签（可横向滚动） ──
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
                             .padding(horizontal = AppSpace.lg, vertical = AppSpace.sm),
                         horizontalArrangement = Arrangement.spacedBy(AppSpace.lg)
                     ) {
@@ -287,10 +297,10 @@ fun BookshelfScreen(
                             )
                     ) {
                         com.huangder.lumibooks.ui.components.EditInputDialog(
-                            title = "修改书本信息",
+                            title = stringResource(R.string.edit_book_info),
                             fields = listOf(
-                                Triple("书名", "显示原始书名", editingBook!!.title),
-                                Triple("作者", "显示原始作者", editingBook!!.author)
+                                Triple(stringResource(R.string.book_title_label), "显示原始书名", editingBook!!.title),
+                                Triple(stringResource(R.string.book_author_label), "显示原始作者", editingBook!!.author)
                             ),
                             onBack = { showEditDialog = false },
                             onConfirm = { values ->
@@ -504,7 +514,7 @@ private fun BookGridItem(
                 Spacer(Modifier.width(4.dp))
                 Icon(
                     imageVector = Icons.Filled.Favorite,
-                    contentDescription = "收藏",
+                    contentDescription = stringResource(R.string.favorite),
                     tint = AppColors.Accent,
                     modifier = Modifier.size(12.dp)
                 )
@@ -555,14 +565,14 @@ private fun AddBookItem(onClick: () -> Unit) {
             }
             Icon(
                 Icons.Default.Add,
-                contentDescription = "添加书籍",
+                contentDescription = stringResource(R.string.import_books),
                 tint = AppColors.TextSecondary,
                 modifier = Modifier.size(32.dp)
             )
         }
         Spacer(Modifier.height(AppSpace.sm))
         Text(
-            text = "导入图书",
+            text = stringResource(R.string.import_book_label),
             fontSize = AppType.Caption,
             color = AppColors.TextSecondary
         )

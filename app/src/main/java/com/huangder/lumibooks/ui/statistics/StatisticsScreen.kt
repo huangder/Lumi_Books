@@ -45,8 +45,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
+import com.huangder.lumibooks.R
 import com.huangder.lumibooks.ui.animation.OverscrollBounce
 import com.huangder.lumibooks.ui.animation.cardPressEffect
+import androidx.compose.ui.res.stringResource
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
@@ -71,7 +73,7 @@ fun StatisticsScreen(
         ) {
         Spacer(Modifier.height(AppSpace.md))
         Text(
-            text = "统计",
+            text = stringResource(R.string.stats_title),
             fontSize = AppType.Display,
             fontWeight = FontWeight.Bold,
             fontFamily = KaiTi,
@@ -83,7 +85,7 @@ fun StatisticsScreen(
         Spacer(Modifier.height(AppSpace.xl))
 
         // 周/月/年 切换 Tab
-        val tabs = listOf("周", "月", "年")
+        val tabs = listOf(stringResource(R.string.tab_week), stringResource(R.string.tab_month), stringResource(R.string.tab_year))
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -137,7 +139,7 @@ private fun WeeklyOverview(uiState: StatisticsUiState, viewModel: StatisticsView
     val titleText = if (weekData.isNotEmpty()) {
         val startParts = weekData.first().date.split("-")
         val endParts = weekData.last().date.split("-")
-        "${startParts[1].toInt()}月${startParts[2].toInt()}日 – ${endParts[1].toInt()}月${endParts[2].toInt()}日"
+        stringResource(R.string.month_format, startParts[1].toInt(), startParts[2].toInt(), endParts[1].toInt(), endParts[2].toInt())
     } else ""
 
     // 柱状图数据
@@ -198,12 +200,20 @@ private fun WeeklyOverview(uiState: StatisticsUiState, viewModel: StatisticsView
         }
 
         // 汇总
-        Text("${hours}h${minutes}m · ${activeDays}天阅读", fontSize = AppType.Caption, color = AppColors.TextSecondary)
+        Text(stringResource(R.string.reading_time_hours, hours, minutes, activeDays), fontSize = AppType.Caption, color = AppColors.TextSecondary)
 
         Spacer(Modifier.height(AppSpace.md))
 
         // 柱状图 + 星期标签（Canvas 绘制，保证对齐）
-        val labels = listOf("日", "一", "二", "三", "四", "五", "六")
+        val labels = listOf(
+            stringResource(R.string.day_sunday),
+            stringResource(R.string.day_monday),
+            stringResource(R.string.day_tuesday),
+            stringResource(R.string.day_wednesday),
+            stringResource(R.string.day_thursday),
+            stringResource(R.string.day_friday),
+            stringResource(R.string.day_saturday)
+        )
         val accentColor = AppColors.Accent
         val accentDim = accentColor.copy(alpha = 0.35f)
         val textSecColor = AppColors.TextSecondary
@@ -284,13 +294,26 @@ private fun MonthlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsView
             .padding(AppSpace.md)
     ) {
         // 月份标题 + 导航箭头
-        val monthNames = listOf("一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月")
+        val monthNames = listOf(
+            stringResource(R.string.month_january),
+            stringResource(R.string.month_february),
+            stringResource(R.string.month_march),
+            stringResource(R.string.month_april),
+            stringResource(R.string.month_may),
+            stringResource(R.string.month_june),
+            stringResource(R.string.month_july),
+            stringResource(R.string.month_august),
+            stringResource(R.string.month_september),
+            stringResource(R.string.month_october),
+            stringResource(R.string.month_november),
+            stringResource(R.string.month_december)
+        )
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                "${year}年${monthNames[month]}",
+                stringResource(R.string.year_format, year) + monthNames[month],
                 fontSize = AppType.Section,
                 fontWeight = FontWeight.Bold,
                 fontFamily = KaiTi,
@@ -325,12 +348,20 @@ private fun MonthlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsView
         }
 
         // 汇总信息
-        Text("${hours}h${minutes}m · ${activeDays}天", fontSize = AppType.Caption, color = AppColors.TextSecondary)
+        Text(stringResource(R.string.reading_time_hours, hours, minutes, activeDays), fontSize = AppType.Caption, color = AppColors.TextSecondary)
 
         Spacer(Modifier.height(AppSpace.md))
 
         // 星期标题
-        val weekLabels = listOf("日", "一", "二", "三", "四", "五", "六")
+        val weekLabels = listOf(
+            stringResource(R.string.day_sunday),
+            stringResource(R.string.day_monday),
+            stringResource(R.string.day_tuesday),
+            stringResource(R.string.day_wednesday),
+            stringResource(R.string.day_thursday),
+            stringResource(R.string.day_friday),
+            stringResource(R.string.day_saturday)
+        )
         Row(modifier = Modifier.fillMaxWidth()) {
             weekLabels.forEach { label ->
                 Text(
@@ -427,7 +458,20 @@ private fun YearlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsViewM
     val activeDays = uiState.yearlyDailyData.size
 
     val accentColor = AppColors.Accent
-    val monthLabels = listOf("1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月")
+    val monthLabels = listOf(
+        stringResource(R.string.month_label_format, 1),
+        stringResource(R.string.month_label_format, 2),
+        stringResource(R.string.month_label_format, 3),
+        stringResource(R.string.month_label_format, 4),
+        stringResource(R.string.month_label_format, 5),
+        stringResource(R.string.month_label_format, 6),
+        stringResource(R.string.month_label_format, 7),
+        stringResource(R.string.month_label_format, 8),
+        stringResource(R.string.month_label_format, 9),
+        stringResource(R.string.month_label_format, 10),
+        stringResource(R.string.month_label_format, 11),
+        stringResource(R.string.month_label_format, 12)
+    )
 
     Column(
         modifier = Modifier
@@ -444,7 +488,7 @@ private fun YearlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsViewM
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                "${displayYear}年",
+                stringResource(R.string.year_format, displayYear),
                 fontSize = AppType.Section,
                 fontWeight = FontWeight.Bold,
                 fontFamily = KaiTi,
@@ -477,7 +521,7 @@ private fun YearlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsViewM
         }
 
         // 汇总
-        Text("${hours}小时 · ${activeDays}天", fontSize = AppType.Caption, color = AppColors.TextSecondary)
+        Text(stringResource(R.string.reading_time_hours_short, hours, activeDays), fontSize = AppType.Caption, color = AppColors.TextSecondary)
 
         Spacer(Modifier.height(AppSpace.md))
 
@@ -587,7 +631,7 @@ private fun YearlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsViewM
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("少", fontSize = 9.sp, color = AppColors.TextSecondary)
+            Text(stringResource(R.string.heat_low), fontSize = 9.sp, color = AppColors.TextSecondary)
             Spacer(Modifier.width(4.dp))
             listOf(AppColors.BgGray, accentColor.copy(alpha = 0.2f), accentColor.copy(alpha = 0.4f), accentColor.copy(alpha = 0.7f), accentColor).forEach { c ->
                 Box(
@@ -599,7 +643,7 @@ private fun YearlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsViewM
                 )
             }
             Spacer(Modifier.width(4.dp))
-            Text("多", fontSize = 9.sp, color = AppColors.TextSecondary)
+            Text(stringResource(R.string.heat_high), fontSize = 9.sp, color = AppColors.TextSecondary)
         }
     }
 }
@@ -616,11 +660,11 @@ private fun MostReadBooks(books: List<MostReadBook>) {
             .cardPressEffect()
             .padding(AppSpace.md)
     ) {
-        Text("最常阅读的书籍", fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = KaiTi, color = AppColors.TextPrimary)
+        Text(stringResource(R.string.most_read_books), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = KaiTi, color = AppColors.TextPrimary)
         Spacer(Modifier.height(AppSpace.md))
 
         if (books.isEmpty()) {
-            Text("暂无阅读记录", fontSize = AppType.BodySmall, color = AppColors.TextSecondary)
+            Text(stringResource(R.string.no_reading_records), fontSize = AppType.BodySmall, color = AppColors.TextSecondary)
         } else {
             books.forEachIndexed { index, book ->
                 if (index > 0) {
@@ -675,10 +719,10 @@ private fun CompletionProgress(uiState: StatisticsUiState) {
             .cardPressEffect()
             .padding(AppSpace.lg)
     ) {
-        Text("今日目标", fontSize = AppType.Body, fontWeight = FontWeight.SemiBold, color = AppColors.TextPrimary)
+        Text(stringResource(R.string.today_goal), fontSize = AppType.Body, fontWeight = FontWeight.SemiBold, color = AppColors.TextPrimary)
         Spacer(Modifier.height(AppSpace.xs))
         Text(
-            text = "${totalMinutes}/${goalMinutes}分钟",
+            text = stringResource(R.string.goal_progress_format, totalMinutes, goalMinutes),
             fontSize = AppType.BodySmall,
             color = AppColors.TextSecondary
         )
@@ -693,10 +737,10 @@ private fun CompletionProgress(uiState: StatisticsUiState) {
         Spacer(Modifier.height(AppSpace.lg))
 
         val monthlyHours = (uiState.monthlyReadingTime / 1000 / 60 / 60).toInt()
-        Text("本月阅读", fontSize = AppType.Body, fontWeight = FontWeight.SemiBold, color = AppColors.TextPrimary)
+        Text(stringResource(R.string.monthly_reading_label), fontSize = AppType.Body, fontWeight = FontWeight.SemiBold, color = AppColors.TextPrimary)
         Spacer(Modifier.height(AppSpace.xs))
         Text(
-            text = "${monthlyHours}小时",
+            text = stringResource(R.string.monthly_hours_format, monthlyHours),
             fontSize = AppType.BodySmall,
             color = AppColors.TextSecondary
         )

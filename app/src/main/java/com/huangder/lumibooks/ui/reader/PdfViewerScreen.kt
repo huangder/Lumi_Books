@@ -79,6 +79,8 @@ import com.huangder.lumibooks.ui.components.ImmersiveMode
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
+import com.huangder.lumibooks.R
+import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -310,7 +312,7 @@ private fun PdfTopBar(
                     .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onBack() },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.ArrowBack, "返回", tint = AppColors.TextPrimary, modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.ArrowBack, stringResource(R.string.pdf_back), tint = AppColors.TextPrimary, modifier = Modifier.size(18.dp))
             }
             Spacer(Modifier.width(10.dp))
             // 页码徽章：半透明黑底 + 圆角矩形
@@ -356,7 +358,7 @@ private fun PdfTopBar(
             ) {
                 Icon(
                     if (isBookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder,
-                    contentDescription = "书签",
+                    contentDescription = stringResource(R.string.pdf_bookmark),
                     tint = if (isBookmarked) AppColors.Accent else AppColors.TextPrimary,
                     modifier = Modifier.size(18.dp)
                 )
@@ -407,7 +409,7 @@ private fun PdfCatalogCapsule(title: String, progress: Int, onClick: () -> Unit)
         ) {
             Icon(Icons.Default.Bookmark, null, tint = if (progress > 5) Color.White else AppColors.TextPrimary, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text("目录", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = if (progress > 5) Color.White else AppColors.TextPrimary)
+            Text(stringResource(R.string.pdf_toc), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = if (progress > 5) Color.White else AppColors.TextPrimary)
             Spacer(Modifier.weight(1f))
             Text("$progress%", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (progress > 70) Color.White.copy(alpha = 0.9f) else AppColors.TextSecondary)
         }
@@ -441,7 +443,7 @@ private fun PdfPageItem(filePath: String, pageIndex: Int) {
     DisposableEffect(Unit) { onDispose { bitmap?.recycle() } }
 
     if (bitmap != null) {
-        Image(bitmap = bitmap!!.asImageBitmap(), contentDescription = "第${pageIndex + 1}页",
+        Image(bitmap = bitmap!!.asImageBitmap(), contentDescription = stringResource(R.string.pdf_page_desc, pageIndex + 1),
             modifier = Modifier.fillMaxWidth(), contentScale = ContentScale.FillWidth)
     } else {
         Box(Modifier.fillMaxWidth().height(600.dp), contentAlignment = Alignment.Center) {
@@ -547,7 +549,7 @@ private fun PdfTocSheet(
             // 标题栏
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "目录",
+                    stringResource(R.string.pdf_toc),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = KaiTi,
@@ -566,7 +568,7 @@ private fun PdfTocSheet(
                 ) {
                     Icon(
                         Icons.Default.Close,
-                        "关闭",
+                        stringResource(R.string.pdf_close),
                         tint = Color(0xFF6E6E73),
                         modifier = Modifier.size(18.dp)
                     )
@@ -648,7 +650,7 @@ private fun PdfThumbnailItem(
             if (thumbnail != null) {
                 Image(
                     bitmap = thumbnail!!.asImageBitmap(),
-                    contentDescription = "第${pageIndex + 1}页",
+                    contentDescription = stringResource(R.string.pdf_page_desc, pageIndex + 1),
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.FillBounds
                 )

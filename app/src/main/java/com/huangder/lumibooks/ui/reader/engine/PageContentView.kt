@@ -67,6 +67,9 @@ class PageContentView(context: Context) : FrameLayout(context) {
     /** 文本设置完成后的回调（ReadView 用于注册 SpanWatcher） */
     var onTextSet: ((Spannable) -> Unit)? = null
 
+    /** 简繁转换模式，默认 "original"（不转换） */
+    var chineseMode: String = "original"
+
     fun setPageContent(
         fullText: CharSequence,
         startChar: Int,
@@ -81,7 +84,14 @@ class PageContentView(context: Context) : FrameLayout(context) {
             return
         }
 
-        val pageText = fullText.subSequence(startChar, endChar)
+        var pageText = fullText.subSequence(startChar, endChar)
+
+        // 简繁转换（在切片后、应用高亮前）
+        if (chineseMode != "original") {
+            val converted = com.huangder.lumibooks.util.ChineseConverter.convert(pageText.toString(), chineseMode)
+            pageText = converted
+        }
+
         val spannable = SpannableStringBuilder(pageText)
 
         // 应用高亮（将全局偏移转换为页内偏移）

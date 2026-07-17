@@ -61,7 +61,11 @@ data class ReaderUiState(
     /** 是否使用新 Canvas 引擎 */
     val useNewEngine: Boolean = true,
     /** 是否使用优化排版（per-book） */
-    val optimizeLayout: Boolean = true
+    val optimizeLayout: Boolean = true,
+    /** 简繁转换模式："original" | "simplified" | "traditional" */
+    val chineseMode: String = "original",
+    /** 翻页效果："slide" | "scroll" | "fade" */
+    val pageTransition: String = "slide"
 )
 
 @HiltViewModel
@@ -219,6 +223,22 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
+    fun saveChineseMode(mode: String) {
+        _uiState.value = _uiState.value.copy(chineseMode = mode)
+        viewModelScope.launch {
+            dataStoreManager.saveChineseMode(mode)
+            // 简繁模式变更需要重新加载当前页（清缓存）
+            loadChapterContent()
+        }
+    }
+
+    fun savePageTransition(mode: String) {
+        _uiState.value = _uiState.value.copy(pageTransition = mode)
+        viewModelScope.launch {
+            dataStoreManager.savePageTransition(mode)
+        }
+    }
+
     /** 从 URI 导入字体文件到内部存储，返回文件路径 */
     suspend fun importFont(context: android.content.Context, uri: android.net.Uri): String? {
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -260,8 +280,10 @@ class ReaderViewModel @Inject constructor(
                     val pageFraction = (progressFraction - startChapter).coerceIn(0f, 1f)
 
                     val isPdf = book.format.name == "PDF"
-                    // 读取 per-book 排版设置
+                    // 读取设置
                     val optimize = dataStoreManager.optimizeLayout(bookId).first()
+                    val chineseMode = dataStoreManager.chineseMode().first()
+                    val pageTransition = dataStoreManager.pageTransition().first()
                     _uiState.value = _uiState.value.copy(
                         book = book,
                         chapterCount = chapterCount,
@@ -270,7 +292,9 @@ class ReaderViewModel @Inject constructor(
                         currentChapterIndex = startChapter,
                         pendingPageFraction = pageFraction,
                         useNewEngine = !isPdf,  // TXT/EPUB 用新 Canvas 引擎，PDF 保留 WebView
-                        optimizeLayout = optimize
+                        optimizeLayout = optimize,
+                        chineseMode = chineseMode,
+                        pageTransition = pageTransition
                     )
 
                     loadChapterContent()

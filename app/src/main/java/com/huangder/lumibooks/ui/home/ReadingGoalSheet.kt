@@ -45,6 +45,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
+import com.huangder.lumibooks.R
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -174,7 +176,7 @@ fun ReadingGoalSheet(
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.Close,
-                        contentDescription = "关闭",
+                        contentDescription = stringResource(R.string.close),
                         tint = textSecondary,
                         modifier = Modifier.size(18.dp)
                     )
@@ -231,7 +233,7 @@ private fun TodayReadingContent(
 
     // 标题
     Text(
-        text = "今日阅读",
+        text = stringResource(R.string.today_reading_label),
         fontSize = 20.sp,
         fontWeight = FontWeight.Bold,
         fontFamily = KaiTi,
@@ -254,7 +256,7 @@ private fun TodayReadingContent(
         )
         Spacer(modifier = Modifier.width(4.dp))
         Text(
-            text = "分钟",
+            text = stringResource(R.string.minutes_label),
             fontSize = 16.sp,
             color = textSecondary,
             modifier = Modifier.padding(bottom = 8.dp)
@@ -265,7 +267,7 @@ private fun TodayReadingContent(
 
     // 目标提示
     Text(
-        text = "目标 $dailyGoal 分钟",
+        text = stringResource(R.string.goal_minutes_label, dailyGoal),
         fontSize = 14.sp,
         color = textSecondary,
         modifier = Modifier.fillMaxWidth(),
@@ -289,7 +291,7 @@ private fun TodayReadingContent(
 
     // 剩余时间提示
     Text(
-        text = if (remaining > 0) "还剩 $remaining 分钟达标" else "🎉 已达标！",
+        text = if (remaining > 0) stringResource(R.string.remaining_minutes, remaining) else stringResource(R.string.goal_reached),
         fontSize = 12.sp,
         color = if (remaining > 0) textSecondary else AccentColor,
         modifier = Modifier.fillMaxWidth(),
@@ -309,7 +311,7 @@ private fun TodayReadingContent(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("正在阅读", fontSize = 12.sp, color = textSecondary)
+                Text(stringResource(R.string.currently_reading), fontSize = 12.sp, color = textSecondary)
                 Text(
                     text = currentBook.title,
                     fontSize = 16.sp,
@@ -373,7 +375,7 @@ private fun TodayReadingContent(
 
         // 连胜天数
         Text(
-            text = "连胜 $streakDays 天",
+            text = stringResource(R.string.streak_days, streakDays),
             fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
             color = StreakBlue
@@ -393,7 +395,7 @@ private fun TodayReadingContent(
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = "修改每日目标",
+            text = stringResource(R.string.edit_daily_goal),
             fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
             color = textPrimary
@@ -419,7 +421,7 @@ private fun GoalPicker(
     var selectedMinutes by remember { mutableIntStateOf(currentMinutes) }
 
     Text(
-        text = "设置每日阅读目标",
+        text = stringResource(R.string.set_daily_goal),
         fontSize = 20.sp,
         fontWeight = FontWeight.Bold,
         fontFamily = KaiTi,
@@ -441,7 +443,7 @@ private fun GoalPicker(
         )
         Spacer(modifier = Modifier.width(4.dp))
         Text(
-            text = "分钟",
+            text = stringResource(R.string.minutes_label),
             fontSize = 16.sp,
             color = textSecondary,
             modifier = Modifier.padding(bottom = 8.dp)
@@ -475,7 +477,7 @@ private fun GoalPicker(
                 .clickable(onClick = onCancel),
             contentAlignment = Alignment.Center
         ) {
-            Text("取消", fontSize = 16.sp, color = textSecondary)
+            Text(stringResource(R.string.cancel), fontSize = 16.sp, color = textSecondary)
         }
         Box(
             modifier = Modifier
@@ -486,7 +488,7 @@ private fun GoalPicker(
                 .clickable { onConfirm(selectedMinutes) },
             contentAlignment = Alignment.Center
         ) {
-            Text("确定", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Text(stringResource(R.string.confirm), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
         }
     }
 }
@@ -534,7 +536,7 @@ private fun WheelPicker(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "$value 分钟",
+                            text = stringResource(R.string.goal_minutes_label, value),
                             fontSize = if (isSelected) 22.sp else 18.sp,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                             color = if (isSelected) textPrimary else textSecondary

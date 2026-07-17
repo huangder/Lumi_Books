@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.ui.theme.KaiTi
+import androidx.compose.ui.res.stringResource
 
 // 设计规范颜色 - 浅色模式
 private val AccentColor = Color(0xFFE85D5D)
@@ -125,7 +126,7 @@ fun WelcomeScreen(
 
             // 欢迎使用（系统字体）
             Text(
-                text = "欢迎使用",
+                text = stringResource(R.string.welcome_title),
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Bold,
                 color = textPrimary
@@ -148,22 +149,25 @@ fun WelcomeScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // 隐私文字（带可点击的链接）
+                val privacyText = stringResource(R.string.welcome_privacy)
+                val andText = stringResource(R.string.welcome_and)
+                val termsText = stringResource(R.string.welcome_terms)
                 val annotatedText = buildAnnotatedString {
                     append("Lumi 是一款纯粹的本地图书阅读器。我们绝不会在未经许可的情况下收集任何个人信息，且承诺永久不设网络账号服务。所有的阅读数据均储存在您的本地设备中，请务必定期做好数据备份以防丢失。Lumi 坚持最小权限原则，不会向您索取任何无关的敏感权限。点击\"继续\"按钮，即表示您已阅读并同意")
 
                     // 隐私政策链接
                     pushStringAnnotation(tag = "PRIVACY", annotation = "privacy")
                     withStyle(style = SpanStyle(color = AccentColor, fontWeight = FontWeight.Medium)) {
-                        append("《隐私政策》")
+                        append(privacyText)
                     }
                     pop()
 
-                    append("和")
+                    append(andText)
 
                     // 用户协议链接
                     pushStringAnnotation(tag = "TERMS", annotation = "terms")
                     withStyle(style = SpanStyle(color = AccentColor, fontWeight = FontWeight.Medium)) {
-                        append("《用户协议》")
+                        append(termsText)
                     }
                     pop()
 
@@ -227,7 +231,7 @@ fun WelcomeScreen(
                     )
                 ) {
                     Text(
-                        text = "退出",
+                        text = stringResource(R.string.welcome_exit),
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Medium
                     )
@@ -248,7 +252,7 @@ fun WelcomeScreen(
                     )
                 ) {
                     Text(
-                        text = "继续",
+                        text = stringResource(R.string.welcome_continue),
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Medium
                     )
@@ -265,7 +269,7 @@ fun WelcomeScreen(
             exit = fadeOut(animationSpec = tween(200, easing = FastOutSlowInEasing))
         ) {
             PolicyBottomSheet(
-                title = "隐私政策",
+                title = stringResource(R.string.welcome_privacy_title),
                 content = getPrivacyPolicyContent(),
                 isDark = isDark,
                 visible = showPrivacyPolicy,
@@ -280,7 +284,7 @@ fun WelcomeScreen(
             exit = fadeOut(animationSpec = tween(200, easing = FastOutSlowInEasing))
         ) {
             PolicyBottomSheet(
-                title = "用户协议",
+                title = stringResource(R.string.welcome_terms_title),
                 content = getTermsOfServiceContent(),
                 isDark = isDark,
                 visible = showTermsOfService,
@@ -373,7 +377,7 @@ private fun PolicyBottomSheet(
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.Close,
-                        contentDescription = "关闭",
+                        contentDescription = stringResource(R.string.close),
                         tint = textSecondary,
                         modifier = Modifier.size(18.dp)
                     )

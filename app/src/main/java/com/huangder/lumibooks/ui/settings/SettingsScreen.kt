@@ -38,6 +38,7 @@ import androidx.compose.material.icons.outlined.FormatSize
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Timer
+import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -54,7 +55,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import com.huangder.lumibooks.R
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -118,10 +121,10 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onNavigateBack) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回", tint = AppColors.TextPrimary)
+                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.back), tint = AppColors.TextPrimary)
                 }
                 Spacer(Modifier.weight(1f))
-                Text("设置", fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = FangSong, color = AppColors.TextPrimary)
+                Text(stringResource(R.string.settings_title), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = FangSong, color = AppColors.TextPrimary)
                 Spacer(Modifier.weight(1f))
                 Spacer(Modifier.size(48.dp))
             }
@@ -174,7 +177,7 @@ fun SettingsScreen(
                         )
                 ) {
                     Text(uiState.nickname, fontSize = AppType.Body, fontWeight = FontWeight.SemiBold, color = AppColors.TextPrimary)
-                    Text("点击修改昵称", fontSize = AppType.Caption, color = AppColors.TextSecondary)
+                    Text(stringResource(R.string.tap_to_change_nickname), fontSize = AppType.Caption, color = AppColors.TextSecondary)
                 }
                 Icon(Icons.Outlined.ChevronRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
             }
@@ -182,22 +185,25 @@ fun SettingsScreen(
             Spacer(Modifier.height(AppSpace.lg))
 
             // 分类列表
-            CategoryItem(Icons.Outlined.Brightness6, "显示与外观") {
+            CategoryItem(Icons.Outlined.Brightness6, stringResource(R.string.category_display)) {
                 context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "display"))
             }
-            CategoryItem(Icons.Outlined.DeleteSweep, "存储管理") {
+            CategoryItem(Icons.Outlined.Translate, stringResource(R.string.category_language)) {
+                context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "language"))
+            }
+            CategoryItem(Icons.Outlined.DeleteSweep, stringResource(R.string.category_storage)) {
                 context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "storage"))
             }
-            CategoryItem(Icons.Outlined.Backup, "备份与恢复") {
+            CategoryItem(Icons.Outlined.Backup, stringResource(R.string.category_backup)) {
                 context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "backup"))
             }
-            CategoryItem(Icons.Outlined.Info, "关于应用") {
+            CategoryItem(Icons.Outlined.Info, stringResource(R.string.category_about)) {
                 context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "about"))
             }
-            CategoryItem(Icons.Outlined.FavoriteBorder, "赞助开发") {
+            CategoryItem(Icons.Outlined.FavoriteBorder, stringResource(R.string.category_sponsor)) {
                 context.startActivity(Intent(context, SponsorActivity::class.java))
             }
-            CategoryItem(Icons.Outlined.BugReport, "问题反馈") {
+            CategoryItem(Icons.Outlined.BugReport, stringResource(R.string.category_feedback)) {
                 context.startActivity(Intent(context, FeedbackActivity::class.java))
             }
 
@@ -234,9 +240,9 @@ fun SettingsScreen(
                         )
                 ) {
                     com.huangder.lumibooks.ui.components.EditInputDialog(
-                        title = "修改昵称",
+                        title = stringResource(R.string.edit_nickname),
                         fields = listOf(
-                            Triple("昵称", "显示原始昵称", uiState.nickname)
+                            Triple(stringResource(R.string.nickname_label), "", uiState.nickname)
                         ),
                         onBack = { showNicknameDialog = false },
                         onConfirm = { values ->

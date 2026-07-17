@@ -1,9 +1,11 @@
 package com.huangder.lumibooks.ui.home
 
+import android.app.Application
 import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.model.BookFormat
@@ -54,14 +56,23 @@ enum class SortBy {
 class HomeViewModel @Inject constructor(
     private val bookRepository: BookRepository,
     private val readingRepository: ReadingRepository,
-    private val dataStoreManager: DataStoreManager
+    private val dataStoreManager: DataStoreManager,
+    private val application: Application
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-    private val dayLabels = listOf("日", "一", "二", "三", "四", "五", "六")
+    private val dayLabels = listOf(
+        application.getString(R.string.day_sunday),
+        application.getString(R.string.day_monday),
+        application.getString(R.string.day_tuesday),
+        application.getString(R.string.day_wednesday),
+        application.getString(R.string.day_thursday),
+        application.getString(R.string.day_friday),
+        application.getString(R.string.day_saturday)
+    )
 
     init {
         loadBooks()
@@ -222,7 +233,7 @@ class HomeViewModel @Inject constructor(
      */
     fun importBook(context: Context, uri: Uri) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(importMessage = "正在导入…")
+            _uiState.value = _uiState.value.copy(importMessage = context.getString(R.string.importing))
             try {
                 withContext(Dispatchers.IO) {
                     val fileName = FileUtils.getFileNameFromUri(context, uri) ?: return@withContext
@@ -245,7 +256,7 @@ class HomeViewModel @Inject constructor(
                     val book = Book(
                         id = FileUtils.generateBookId(),
                         title = fileName.substringBeforeLast('.'),
-                        author = "未知作者",
+                        author = context.getString(R.string.book_author_unknown),
                         filePath = file.absolutePath,
                         coverPath = coverPath,
                         format = format,
@@ -255,9 +266,9 @@ class HomeViewModel @Inject constructor(
                     )
                     bookRepository.insertBook(book)
                 }
-                _uiState.value = _uiState.value.copy(importMessage = "导入完成")
+                _uiState.value = _uiState.value.copy(importMessage = context.getString(R.string.import_complete))
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(importMessage = "导入失败：${e.message}")
+                _uiState.value = _uiState.value.copy(importMessage = context.getString(R.string.import_failed, e.message ?: ""))
             }
         }
     }

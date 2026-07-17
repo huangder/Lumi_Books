@@ -46,9 +46,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.Bookmark
 import com.huangder.lumibooks.domain.model.Note
 import com.huangder.lumibooks.ui.theme.AppColors
+import androidx.compose.ui.res.stringResource
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
@@ -57,8 +59,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private val tabs = listOf("高亮", "笔记", "书签")
-
 @Composable
 fun BookNotesScreen(
     onNavigateBack: () -> Unit,
@@ -66,6 +66,12 @@ fun BookNotesScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var selectedTab by remember { mutableIntStateOf(0) }
+
+    val tabs = listOf(
+        stringResource(R.string.tab_highlights),
+        stringResource(R.string.tab_notes),
+        stringResource(R.string.tab_bookmarks)
+    )
 
     Column(
         modifier = Modifier
@@ -90,14 +96,14 @@ fun BookNotesScreen(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "返回",
+                    contentDescription = stringResource(R.string.back),
                     tint = AppColors.TextSecondary,
                     modifier = Modifier.size(18.dp)
                 )
             }
             Spacer(Modifier.width(AppSpace.md))
             Text(
-                text = "书签、高亮与笔记",
+                text = stringResource(R.string.notes_title),
                 fontSize = AppType.Section,
                 fontWeight = FontWeight.Bold,
                 fontFamily = KaiTi,
@@ -110,6 +116,7 @@ fun BookNotesScreen(
         // ── 分段选择器 Tab ──
         SegmentedTabBar(
             selectedTab = selectedTab,
+            tabs = tabs,
             onTabSelected = { selectedTab = it },
             modifier = Modifier.padding(horizontal = AppSpace.lg)
         )
@@ -139,6 +146,7 @@ fun BookNotesScreen(
 @Composable
 private fun SegmentedTabBar(
     selectedTab: Int,
+    tabs: List<String>,
     onTabSelected: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -206,7 +214,7 @@ private fun NoteList(
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = "暂无内容",
+                text = stringResource(R.string.no_content),
                 fontSize = AppType.Body,
                 color = AppColors.TextSecondary
             )
@@ -238,7 +246,7 @@ private fun BookmarkList(
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = "暂无书签",
+                text = stringResource(R.string.no_bookmarks),
                 fontSize = AppType.Body,
                 color = AppColors.TextSecondary
             )
@@ -314,7 +322,7 @@ private fun HighlightNoteItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "第 ${note.chapterIndex + 1} 章",
+                text = stringResource(R.string.chapter_number, note.chapterIndex + 1),
                 fontSize = 12.sp,
                 color = AppColors.Accent
             )
@@ -327,7 +335,7 @@ private fun HighlightNoteItem(
                 Spacer(Modifier.width(AppSpace.sm))
                 Icon(
                     imageVector = Icons.Outlined.Delete,
-                    contentDescription = "删除",
+                    contentDescription = stringResource(R.string.delete),
                     tint = AppColors.TextSecondary,
                     modifier = Modifier
                         .size(16.dp)
@@ -362,7 +370,7 @@ private fun BookmarkItem(
         Spacer(Modifier.width(AppSpace.md))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = bookmark.title.ifBlank { "第 ${bookmark.chapterIndex + 1} 章" },
+                text = bookmark.title.ifBlank { stringResource(R.string.chapter_number, bookmark.chapterIndex + 1) },
                 fontSize = AppType.BodySmall,
                 fontWeight = FontWeight.SemiBold,
                 color = AppColors.TextPrimary,
@@ -378,7 +386,7 @@ private fun BookmarkItem(
         }
         Icon(
             imageVector = Icons.Outlined.Delete,
-            contentDescription = "删除",
+            contentDescription = stringResource(R.string.delete),
             tint = AppColors.TextSecondary,
             modifier = Modifier
                 .size(18.dp)

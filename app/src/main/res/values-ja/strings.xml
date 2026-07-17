@@ -1,0 +1,339 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Lumi</string>
+
+    <!-- ホーム -->
+    <string name="home_title">ホーム</string>
+    <string name="import_book">書籍をインポート</string>
+    <string name="today_reading_time">今日の読書時間</string>
+    <string name="no_books">書籍がありません</string>
+    <string name="import_books_hint">インポートボタンを押して電子書籍を追加してください</string>
+
+    <!-- 統計 -->
+    <string name="statistics_title">統計</string>
+    <string name="today_reading">今日の読書</string>
+    <string name="monthly_reading">今月の読書</string>
+    <string name="daily_goal">日次目標</string>
+    <string name="goal_progress">目標進捗</string>
+    <string name="set_goal">目標を設定</string>
+    <string name="reading_minutes">%d分</string>
+    <string name="reading_hours">%1$d時間%2$d分</string>
+
+    <!-- リーダー -->
+    <string name="reader_title">リーダー</string>
+    <string name="chapter_list">目次</string>
+    <string name="font_settings">フォント設定</string>
+    <string name="theme_settings">テーマ設定</string>
+    <string name="brightness">明るさ</string>
+    <string name="add_bookmark">ブックマーク追加</string>
+    <string name="bookmarks">ブックマーク</string>
+    <string name="notes">メモ</string>
+    <string name="search">検索</string>
+    <string name="reading_progress">読書進捗</string>
+    <string name="font_size">フォントサイズ</string>
+    <string name="line_height">行間</string>
+    <string name="letter_spacing">字間</string>
+    <string name="font_type">フォント</string>
+
+    <!-- 共通 -->
+    <string name="confirm">確認</string>
+    <string name="cancel">キャンセル</string>
+    <string name="save">保存</string>
+    <string name="delete">削除</string>
+    <string name="edit">編集</string>
+    <string name="settings">設定</string>
+    <string name="loading">読み込み中...</string>
+    <string name="error">エラー</string>
+    <string name="success">成功</string>
+    <string name="retry">再試行</string>
+    <string name="close">閉じる</string>
+    <string name="back">戻る</string>
+    <string name="clear">クリア</string>
+    <string name="restart">再起動</string>
+    <string name="later">後で</string>
+
+    <!-- 形式 -->
+    <string name="format_epub">EPUB</string>
+    <string name="format_pdf">PDF</string>
+    <string name="format_txt">TXT</string>
+
+    <!-- 時間 -->
+    <string name="time_seconds">%d秒</string>
+    <string name="time_minutes">%d分</string>
+    <string name="time_hours">%d時間</string>
+    <string name="time_days">%d日</string>
+
+    <!-- 設定メイン -->
+    <string name="settings_title">設定</string>
+    <string name="tap_to_change_nickname">タップしてニックネームを変更</string>
+    <string name="category_display">表示と外観</string>
+    <string name="category_language">言語</string>
+    <string name="category_storage">ストレージ</string>
+    <string name="category_backup">バックアップと復元</string>
+    <string name="category_about">アプリについて</string>
+    <string name="category_sponsor">スポンサー</string>
+    <string name="category_feedback">フィードバック</string>
+    <string name="edit_nickname">ニックネーム変更</string>
+    <string name="nickname_label">ニックネーム</string>
+
+    <!-- 設定詳細タイトル -->
+    <string name="title_reading_settings">読書設定</string>
+    <string name="title_display">表示と外観</string>
+    <string name="title_language">言語</string>
+    <string name="title_reading_goal">読書目標</string>
+    <string name="title_storage">ストレージ</string>
+    <string name="title_backup">バックアップと復元</string>
+    <string name="title_changelog">更新履歴</string>
+    <string name="title_about">アプリについて</string>
+
+    <!-- 読書設定 -->
+    <string name="label_font_size">フォントサイズ</string>
+    <string name="label_line_height">行間</string>
+    <string name="label_letter_spacing">字間</string>
+    <string name="label_font_type">フォント</string>
+    <string name="label_margin_horiz">左右マージン</string>
+    <string name="label_margin_vert">上下マージン</string>
+
+    <!-- 表示と外観 -->
+    <string name="label_dark_mode">ダークモード</string>
+    <string name="dark_mode_system">システム設定に従う</string>
+    <string name="dark_mode_light">ライト</string>
+    <string name="dark_mode_dark">ダーク</string>
+    <string name="label_reader_theme">デフォルトテーマ</string>
+    <string name="theme_day">デイ</string>
+    <string name="theme_night">ナイト</string>
+    <string name="theme_sepia">セピア</string>
+    <string name="theme_green">グリーン</string>
+
+    <!-- 読書目標 -->
+    <string name="label_daily_goal">日次目標</string>
+    <string name="goal_minutes">%d分</string>
+
+    <!-- ストレージ -->
+    <string name="label_total_size">合計容量</string>
+    <string name="storage_app">アプリ本体</string>
+    <string name="storage_cache">キャッシュ</string>
+    <string name="storage_books">書籍ファイル</string>
+    <string name="storage_covers">表紙画像</string>
+    <string name="calculating">計算中...</string>
+    <string name="storage_books_count">書籍ファイル（%d冊）</string>
+    <string name="clear_cache">キャッシュをクリア</string>
+    <string name="clear_all_data">全データを削除</string>
+    <string name="clear_all_confirm">読書履歴、書籍データ、設定がすべて削除されます。アバターは保持されます。この操作は取り消せません。</string>
+
+    <!-- バックアップ -->
+    <string name="backup_in_progress">バックアップ中...</string>
+    <string name="backup_complete">バックアップ完了（%s）</string>
+    <string name="backup_failed">バックアップ失敗：%s</string>
+    <string name="restore_in_progress">復元中...</string>
+    <string name="restore_success">復元成功、アプリを再起動してください</string>
+    <string name="restore_failed">復元失敗：%s</string>
+    <string name="select_backup_file">バックアップファイルを選択</string>
+    <string name="select_restore_file">復元ファイルを選択</string>
+
+    <!-- 更新チェック -->
+    <string name="check_update">更新を確認</string>
+    <string name="checking_update">確認中...</string>
+    <string name="network_error">ネットワークエラー、後でもう一度お試しください</string>
+    <string name="privacy_policy">プライバシーポリシー</string>
+    <string name="terms_of_service">利用規約</string>
+    <string name="open_source_licenses">オープンソースライセンス</string>
+
+    <!-- 言語切替 -->
+    <string name="switch_language">言語を切り替え</string>
+    <string name="restart_prompt">言語はアプリ再起動後に有効になります。今すぐ再起動しますか？</string>
+
+    <!-- スポンサー -->
+    <string name="sponsor_title">スポンサー</string>
+    <string name="sponsor_desc">寄付：気に入ったら開発をサポートしてください</string>
+    <string name="sponsor_qr_desc">寄付用QRコード</string>
+    <string name="sponsor_quote">「気に入ったら、おごってください😊」</string>
+    <string name="sponsor_code_label">Yufu の赞赏码</string>
+    <string name="sponsor_thanks_title">スペシャルサンクス</string>
+    <string name="sponsor_tech_title">技術サポート</string>
+    <string name="sponsor_dev_title">開発者</string>
+
+    <!-- フィードバック -->
+    <string name="feedback_title">フィードバック</string>
+    <string name="feedback_desc">バグ報告や機能提案をお寄せください</string>
+    <string name="feedback_qr_desc">フィードバックフォームQRコード</string>
+    <string name="feedback_thanks">Lumi の開発をサポートしていただきありがとうございます！</string>
+    <string name="feedback_website">ウェブサイト</string>
+
+    <!-- ホームページ -->
+    <string name="section_previously_read">以前読んだ</string>
+    <string name="section_recently_read">最近読んだ</string>
+    <string name="import_books">インポート</string>
+    <string name="home_page">ホーム</string>
+    <string name="avatar">アバター</string>
+    <string name="home_manage_hint">ローカルのPDF・EPUB書籍をここで管理</string>
+    <string name="book_progress">書籍 · %d%%</string>
+    <string name="remove_favorite">お気に入り解除</string>
+    <string name="add_favorite">お気に入り</string>
+    <string name="delete_book">削除</string>
+    <string name="delete_book_title">書籍を削除</string>
+    <string name="delete_book_confirm">「%s」をライブラリから削除しますか？\nこの操作は取り消せません。</string>
+    <string name="goal_label">（目標 %d分）</string>
+    <string name="continue_reading">続きを読む</string>
+
+    <!-- 読書目標 -->
+    <string name="today_reading_label">今日の読書</string>
+    <string name="minutes_label">分</string>
+    <string name="goal_minutes_label">目標：%d分</string>
+    <string name="remaining_minutes">あと%d分で目標達成</string>
+    <string name="goal_reached">🎉 目標達成！</string>
+    <string name="currently_reading">読書中</string>
+    <string name="streak_days">%d日連続</string>
+    <string name="edit_daily_goal">日次目標を変更</string>
+    <string name="set_daily_goal">読書目標を設定</string>
+
+    <!-- 本棚 -->
+    <string name="bookshelf_title">ライブラリ</string>
+    <string name="filter_all">すべての書籍</string>
+    <string name="filter_downloaded">ダウンロード済み</string>
+    <string name="filter_pdf">PDF</string>
+    <string name="filter_favorites">お気に入り</string>
+    <string name="edit_book_info">書籍情報を編集</string>
+    <string name="book_title_label">タイトル</string>
+    <string name="book_author_label">著者</string>
+    <string name="import_book_label">書籍をインポート</string>
+    <string name="favorite">お気に入り</string>
+    <string name="remove_favorite_short">お気に入り解除</string>
+    <string name="custom_cover">カスタム表紙</string>
+    <string name="remove_custom_cover">カスタム表紙を削除</string>
+    <string name="bookmarks_notes">ブックマーク・ハイライト・メモ</string>
+
+    <!-- ブックマークノート -->
+    <string name="notes_title">ブックマーク・ハイライト・メモ</string>
+    <string name="tab_highlights">ハイライト</string>
+    <string name="tab_notes">メモ</string>
+    <string name="tab_bookmarks">ブックマーク</string>
+    <string name="no_content">コンテンツがありません</string>
+    <string name="no_bookmarks">ブックマークがありません</string>
+    <string name="tap_to_add_bookmark">読書中にブックマークアイコンをタップして追加</string>
+    <string name="chapter_number">第%d章</string>
+    <string name="page_number">第%d頁</string>
+
+    <!-- 統計 -->
+    <string name="stats_title">統計</string>
+    <string name="tab_week">週</string>
+    <string name="tab_month">月</string>
+    <string name="tab_year">年</string>
+    <string name="days_reading">%d日間の読書</string>
+    <string name="monday_short">月</string>
+    <string name="tuesday_short">火</string>
+    <string name="wednesday_short">水</string>
+    <string name="thursday_short">木</string>
+    <string name="friday_short">金</string>
+    <string name="saturday_short">土</string>
+    <string name="sunday_short">日</string>
+    <string name="month_january">1月</string>
+    <string name="month_february">2月</string>
+    <string name="month_march">3月</string>
+    <string name="month_april">4月</string>
+    <string name="month_may">5月</string>
+    <string name="month_june">6月</string>
+    <string name="month_july">7月</string>
+    <string name="month_august">8月</string>
+    <string name="month_september">9月</string>
+    <string name="month_october">10月</string>
+    <string name="month_november">11月</string>
+    <string name="month_december">12月</string>
+    <string name="month_format">%1$d/%2$d – %3$d/%4$d</string>
+    <string name="year_format">%d年</string>
+    <string name="reading_time_hours">%1$d時間%2$d分 · %3$d日</string>
+    <string name="reading_time_hours_short">%1$d時間 · %2$d日</string>
+    <string name="heat_low">少</string>
+    <string name="heat_high">多</string>
+    <string name="most_read_books">よく読まれた書籍</string>
+    <string name="no_reading_records">読書記録がありません</string>
+    <string name="today_goal">今日の目標</string>
+    <string name="goal_progress_format">%1$d/%2$d分</string>
+    <string name="monthly_reading_label">今月の読書</string>
+    <string name="monthly_hours_format">%d時間</string>
+    <string name="month_label_format">%d月</string>
+
+    <!-- リーダー -->
+    <string name="reader_back">戻る</string>
+    <string name="reader_bookmark">ブックマーク</string>
+    <string name="reader_notes">メモ</string>
+    <string name="reader_search">検索</string>
+    <string name="reader_theme">テーマ</string>
+    <string name="reader_toc">目次</string>
+    <string name="reader_close">閉じる</string>
+    <string name="reader_chapter_fallback">第%d章</string>
+    <string name="search_placeholder">キーワードを入力</string>
+    <string name="search_results_found">%d件見つかりました</string>
+    <string name="search_no_results">一致する結果が見つかりません</string>
+    <string name="highlight_delete">ハイライトを削除</string>
+    <string name="menu_search">検索</string>
+    <string name="menu_copy">コピー</string>
+    <string name="menu_highlight">ハイライト</string>
+    <string name="menu_note">メモ</string>
+    <string name="menu_view_note">メモを表示</string>
+    <string name="menu_remove_highlight">削除</string>
+    <string name="note_input_placeholder">メモを入力...</string>
+    <string name="highlights_notes_title">ハイライトとメモ</string>
+    <string name="tab_highlight">ハイライト</string>
+    <string name="tab_note">メモ</string>
+    <string name="tab_bookmark">ブックマーク</string>
+    <string name="no_bookmarks_yet">ブックマークはまだありません</string>
+    <string name="no_highlights">ハイライトがありません</string>
+    <string name="no_notes">メモがありません</string>
+    <string name="highlights_count">ハイライト（%d）</string>
+    <string name="notes_count">メモ（%d）</string>
+    <string name="bookmarks_count">ブックマーク（%d）</string>
+
+    <!-- テーマ設定 -->
+    <string name="theme_settings_title">テーマと設定</string>
+    <string name="brightness_auto">自動</string>
+    <string name="reading_background">読書背景</string>
+    <string name="optimize_layout">レイアウトを最適化</string>
+    <string name="optimize_layout_hint">この書籍のみ</string>
+    <string name="advanced_settings">詳細設定</string>
+    <string name="preview">プレビュー</string>
+    <string name="preview_text">落霞と孤鶩が一緒に飛び、秋水は空と一体になる。漁舟の夕暮れの歌は、彭蠡のほとりに響き渡る。</string>
+    <string name="font_label">フォント</string>
+    <string name="font_system">システム</string>
+    <string name="font_fangsong">仿宋</string>
+    <string name="font_kaiti">楷体</string>
+    <string name="font_custom">カスタム</string>
+    <string name="font_import">インポート</string>
+
+    <!-- ウェルカム -->
+    <string name="welcome_title">ようこそ</string>
+    <string name="welcome_desc">Lumiは純粋なローカル書籍リーダーです。許可なく個人情報を収集することはありません。すべての読書データはローカルに保存されます。定期的にバックアップを行ってください。「続行」をタップすると、以下に同意したことになります：</string>
+    <string name="welcome_privacy">プライバシーポリシー</string>
+    <string name="welcome_and">と</string>
+    <string name="welcome_terms">利用規約</string>
+    <string name="welcome_exit">終了</string>
+    <string name="welcome_continue">続行</string>
+    <string name="welcome_privacy_title">プライバシーポリシー</string>
+    <string name="welcome_terms_title">利用規約</string>
+
+    <!-- PDFリーダー -->
+    <string name="pdf_back">戻る</string>
+    <string name="pdf_bookmark">ブックマーク</string>
+    <string name="pdf_toc">目次</string>
+    <string name="pdf_close">閉じる</string>
+    <string name="pdf_page_desc">第%d頁</string>
+
+    <!-- その他 -->
+    <string name="loading_text">読み込み中</string>
+    <string name="loading_dots">読み込み中...</string>
+    <string name="confirm_action">確認</string>
+    <string name="book_author_unknown">著者不明</string>
+    <string name="importing">インポート中…</string>
+    <string name="import_complete">インポート完了</string>
+    <string name="import_failed">インポート失敗：%s</string>
+    <string name="book_not_found">書籍が見つかりません</string>
+    <string name="animation_slide">スライドオーバー</string>
+    <string name="animation_simple">シンプルスライド</string>
+    <string name="day_monday">月</string>
+    <string name="day_tuesday">火</string>
+    <string name="day_wednesday">水</string>
+    <string name="day_thursday">木</string>
+    <string name="day_friday">金</string>
+    <string name="day_saturday">土</string>
+    <string name="day_sunday">日</string>
+</resources>
