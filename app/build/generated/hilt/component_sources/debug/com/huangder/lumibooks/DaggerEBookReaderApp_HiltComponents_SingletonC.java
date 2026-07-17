@@ -507,20 +507,17 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
 
     @IdentifierNameString
     private static final class LazyClassKeyProvider {
-      static String com_huangder_lumibooks_ui_bookshelf_BookNotesViewModel = "com.huangder.lumibooks.ui.bookshelf.BookNotesViewModel";
-
       static String com_huangder_lumibooks_ui_home_HomeViewModel = "com.huangder.lumibooks.ui.home.HomeViewModel";
 
       static String com_huangder_lumibooks_ui_statistics_StatisticsViewModel = "com.huangder.lumibooks.ui.statistics.StatisticsViewModel";
 
-      static String com_huangder_lumibooks_ui_settings_SettingsViewModel = "com.huangder.lumibooks.ui.settings.SettingsViewModel";
+      static String com_huangder_lumibooks_ui_bookshelf_BookNotesViewModel = "com.huangder.lumibooks.ui.bookshelf.BookNotesViewModel";
 
-      static String com_huangder_lumibooks_ui_welcome_WelcomeViewModel = "com.huangder.lumibooks.ui.welcome.WelcomeViewModel";
+      static String com_huangder_lumibooks_ui_settings_SettingsViewModel = "com.huangder.lumibooks.ui.settings.SettingsViewModel";
 
       static String com_huangder_lumibooks_ui_reader_ReaderViewModel = "com.huangder.lumibooks.ui.reader.ReaderViewModel";
 
-      @KeepFieldType
-      BookNotesViewModel com_huangder_lumibooks_ui_bookshelf_BookNotesViewModel2;
+      static String com_huangder_lumibooks_ui_welcome_WelcomeViewModel = "com.huangder.lumibooks.ui.welcome.WelcomeViewModel";
 
       @KeepFieldType
       HomeViewModel com_huangder_lumibooks_ui_home_HomeViewModel2;
@@ -529,13 +526,16 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
       StatisticsViewModel com_huangder_lumibooks_ui_statistics_StatisticsViewModel2;
 
       @KeepFieldType
+      BookNotesViewModel com_huangder_lumibooks_ui_bookshelf_BookNotesViewModel2;
+
+      @KeepFieldType
       SettingsViewModel com_huangder_lumibooks_ui_settings_SettingsViewModel2;
 
       @KeepFieldType
-      WelcomeViewModel com_huangder_lumibooks_ui_welcome_WelcomeViewModel2;
+      ReaderViewModel com_huangder_lumibooks_ui_reader_ReaderViewModel2;
 
       @KeepFieldType
-      ReaderViewModel com_huangder_lumibooks_ui_reader_ReaderViewModel2;
+      WelcomeViewModel com_huangder_lumibooks_ui_welcome_WelcomeViewModel2;
     }
   }
 
@@ -593,26 +593,20 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
 
     @IdentifierNameString
     private static final class LazyClassKeyProvider {
-      static String com_huangder_lumibooks_ui_settings_SettingsViewModel = "com.huangder.lumibooks.ui.settings.SettingsViewModel";
-
-      static String com_huangder_lumibooks_ui_bookshelf_BookNotesViewModel = "com.huangder.lumibooks.ui.bookshelf.BookNotesViewModel";
-
-      static String com_huangder_lumibooks_ui_home_HomeViewModel = "com.huangder.lumibooks.ui.home.HomeViewModel";
+      static String com_huangder_lumibooks_ui_statistics_StatisticsViewModel = "com.huangder.lumibooks.ui.statistics.StatisticsViewModel";
 
       static String com_huangder_lumibooks_ui_welcome_WelcomeViewModel = "com.huangder.lumibooks.ui.welcome.WelcomeViewModel";
 
       static String com_huangder_lumibooks_ui_reader_ReaderViewModel = "com.huangder.lumibooks.ui.reader.ReaderViewModel";
 
-      static String com_huangder_lumibooks_ui_statistics_StatisticsViewModel = "com.huangder.lumibooks.ui.statistics.StatisticsViewModel";
+      static String com_huangder_lumibooks_ui_home_HomeViewModel = "com.huangder.lumibooks.ui.home.HomeViewModel";
+
+      static String com_huangder_lumibooks_ui_bookshelf_BookNotesViewModel = "com.huangder.lumibooks.ui.bookshelf.BookNotesViewModel";
+
+      static String com_huangder_lumibooks_ui_settings_SettingsViewModel = "com.huangder.lumibooks.ui.settings.SettingsViewModel";
 
       @KeepFieldType
-      SettingsViewModel com_huangder_lumibooks_ui_settings_SettingsViewModel2;
-
-      @KeepFieldType
-      BookNotesViewModel com_huangder_lumibooks_ui_bookshelf_BookNotesViewModel2;
-
-      @KeepFieldType
-      HomeViewModel com_huangder_lumibooks_ui_home_HomeViewModel2;
+      StatisticsViewModel com_huangder_lumibooks_ui_statistics_StatisticsViewModel2;
 
       @KeepFieldType
       WelcomeViewModel com_huangder_lumibooks_ui_welcome_WelcomeViewModel2;
@@ -621,7 +615,13 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
       ReaderViewModel com_huangder_lumibooks_ui_reader_ReaderViewModel2;
 
       @KeepFieldType
-      StatisticsViewModel com_huangder_lumibooks_ui_statistics_StatisticsViewModel2;
+      HomeViewModel com_huangder_lumibooks_ui_home_HomeViewModel2;
+
+      @KeepFieldType
+      BookNotesViewModel com_huangder_lumibooks_ui_bookshelf_BookNotesViewModel2;
+
+      @KeepFieldType
+      SettingsViewModel com_huangder_lumibooks_ui_settings_SettingsViewModel2;
     }
 
     private static final class SwitchingProvider<T> implements Provider<T> {

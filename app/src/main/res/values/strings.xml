@@ -93,6 +93,8 @@
     <string name="label_font_type">字体类型</string>
     <string name="label_margin_horiz">左右边距</string>
     <string name="label_margin_vert">上下边距</string>
+    <string name="label_paragraph_spacing">段间距</string>
+    <string name="label_first_line_indent">首行缩进</string>
 
     <!-- 显示与外观 -->
     <string name="label_dark_mode">深色模式</string>

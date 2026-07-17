@@ -7,6 +7,8 @@ import java.nio.charset.Charset
 import java.nio.charset.CodingErrorAction
 
 class TxtParser : BookParser {
+    override var paragraphSpacingDp: Float = 0f
+    override var firstLineIndentChars: Float = 0f
     private var content: String = ""
     private var chapters: List<Chapter> = emptyList()
 

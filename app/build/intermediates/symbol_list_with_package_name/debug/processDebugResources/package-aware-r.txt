@@ -362,12 +362,14 @@ string in_progress
 string indeterminate
 string label_daily_goal
 string label_dark_mode
+string label_first_line_indent
 string label_font_size
 string label_font_type
 string label_letter_spacing
 string label_line_height
 string label_margin_horiz
 string label_margin_vert
+string label_paragraph_spacing
 string label_reader_theme
 string label_total_size
 string later

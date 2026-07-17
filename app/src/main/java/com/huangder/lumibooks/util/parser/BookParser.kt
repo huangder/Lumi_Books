@@ -42,6 +42,11 @@ interface BookParser {
     /** 清空 HTML 缓存（排版设置变更时调用） */
     fun clearHtmlCache() {}
 
+    /** 段间距（dp），0 = 使用默认值 */
+    var paragraphSpacingDp: Float
+    /** 首行缩进字符数，0 = 使用默认值 */
+    var firstLineIndentChars: Float
+
     /**
      * 轻量级封面提取：只提取封面图片路径，不解析章节内容。
      * 用于导入时快速获取封面，避免解析全部章节/图片的开销。

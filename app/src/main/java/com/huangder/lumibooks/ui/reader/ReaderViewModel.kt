@@ -65,7 +65,11 @@ data class ReaderUiState(
     /** 简繁转换模式："original" | "simplified" | "traditional" */
     val chineseMode: String = "original",
     /** 翻页效果："slide" | "scroll" | "fade" */
-    val pageTransition: String = "slide"
+    val pageTransition: String = "slide",
+    /** 段间距（dp），默认 8 */
+    val paragraphSpacing: Float = 8f,
+    /** 首行缩进字符数，默认 2 */
+    val firstLineIndent: Float = 2f
 )
 
 @HiltViewModel
@@ -239,6 +243,26 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
+    fun saveParagraphSpacing(value: Float) {
+        _uiState.value = _uiState.value.copy(paragraphSpacing = value)
+        parser?.paragraphSpacingDp = value
+        viewModelScope.launch {
+            dataStoreManager.saveParagraphSpacing(value)
+            parser?.clearHtmlCache()
+            loadChapterContent()
+        }
+    }
+
+    fun saveFirstLineIndent(value: Float) {
+        _uiState.value = _uiState.value.copy(firstLineIndent = value)
+        parser?.firstLineIndentChars = value
+        viewModelScope.launch {
+            dataStoreManager.saveFirstLineIndent(value)
+            parser?.clearHtmlCache()
+            loadChapterContent()
+        }
+    }
+
     /** 从 URI 导入字体文件到内部存储，返回文件路径 */
     suspend fun importFont(context: android.content.Context, uri: android.net.Uri): String? {
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -265,13 +289,24 @@ class ReaderViewModel @Inject constructor(
                 val book = bookRepository.getBookById(bookId)
                 if (book != null) {
                     parser = BookParserFactory.createParser(book.format, context)
+
+                    // 读取设置
+                    val optimize = dataStoreManager.optimizeLayout(bookId).first()
+                    val chineseMode = dataStoreManager.chineseMode().first()
+                    val pageTransition = dataStoreManager.pageTransition().first()
+                    val paragraphSpacing = dataStoreManager.paragraphSpacing().first()
+                    val firstLineIndent = dataStoreManager.firstLineIndent().first()
+
+                    // 应用段间距和首行缩进到 parser
+                    parser!!.paragraphSpacingDp = paragraphSpacing
+                    parser!!.firstLineIndentChars = firstLineIndent
+
                     val content = withContext(Dispatchers.IO) {
                         parser!!.parse(book.filePath)
                     }
 
                     val chapterCount = content.chapters.size
                     val chapterTitles = content.chapters.map { it.title }
-                    // 层级目录：优先使用 NCX/nav 解析的 tocEntries，回退到 flat list
                     val tocEntries = content.tocEntries.ifEmpty {
                         content.chapters.map { com.huangder.lumibooks.util.parser.TocEntry(it.title, 1, it.index) }
                     }
@@ -280,10 +315,6 @@ class ReaderViewModel @Inject constructor(
                     val pageFraction = (progressFraction - startChapter).coerceIn(0f, 1f)
 
                     val isPdf = book.format.name == "PDF"
-                    // 读取设置
-                    val optimize = dataStoreManager.optimizeLayout(bookId).first()
-                    val chineseMode = dataStoreManager.chineseMode().first()
-                    val pageTransition = dataStoreManager.pageTransition().first()
                     _uiState.value = _uiState.value.copy(
                         book = book,
                         chapterCount = chapterCount,
@@ -294,7 +325,9 @@ class ReaderViewModel @Inject constructor(
                         useNewEngine = !isPdf,  // TXT/EPUB 用新 Canvas 引擎，PDF 保留 WebView
                         optimizeLayout = optimize,
                         chineseMode = chineseMode,
-                        pageTransition = pageTransition
+                        pageTransition = pageTransition,
+                        paragraphSpacing = paragraphSpacing,
+                        firstLineIndent = firstLineIndent
                     )
 
                     loadChapterContent()

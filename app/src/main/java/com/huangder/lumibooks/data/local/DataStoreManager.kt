@@ -221,6 +221,28 @@ class DataStoreManager @Inject constructor(
         context.dataStore.edit { it[key] = mode }
     }
 
+    /** 段间距（dp），默认 8dp */
+    fun paragraphSpacing(): Flow<Float> {
+        val key = floatPreferencesKey("paragraph_spacing")
+        return context.dataStore.data.map { it[key] ?: 8f }
+    }
+
+    suspend fun saveParagraphSpacing(value: Float) {
+        val key = floatPreferencesKey("paragraph_spacing")
+        context.dataStore.edit { it[key] = value }
+    }
+
+    /** 首行缩进字符数，默认 2 */
+    fun firstLineIndent(): Flow<Float> {
+        val key = floatPreferencesKey("first_line_indent")
+        return context.dataStore.data.map { it[key] ?: 2f }
+    }
+
+    suspend fun saveFirstLineIndent(value: Float) {
+        val key = floatPreferencesKey("first_line_indent")
+        context.dataStore.edit { it[key] = value }
+    }
+
     suspend fun saveDailyGoal(goal: Int) {
         context.dataStore.edit { preferences ->
             preferences[DAILY_GOAL] = goal
