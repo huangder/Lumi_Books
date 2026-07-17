@@ -8,8 +8,15 @@ import android.view.ActionMode
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
+import android.view.View
 import android.widget.FrameLayout
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.huangder.lumibooks.domain.model.Note
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
 /**
@@ -61,6 +68,12 @@ class ReadView(context: Context) : FrameLayout(context) {
     val curPageView = PageContentView(context)
     val nextPageView = PageContentView(context)
 
+    // ── 连续滚动模式 ──
+    lateinit var continuousRecyclerView: RecyclerView
+        private set
+    var continuousAdapter: ContinuousPageAdapter? = null
+    private var isScrollMode: Boolean = false
+
     // ── 外部回调 ──
     private var callbacks: ReadViewCallbacks? = null
     private var contentProvider: (suspend (Int) -> CharSequence?)? = null
@@ -97,11 +110,23 @@ class ReadView(context: Context) : FrameLayout(context) {
     init {
         isClickable = true
         isFocusable = true
+        // 🔥 禁用裁剪：翻页动画需要子 View 在屏幕外绘制（左右滑动时上/下一页在屏幕外）
+        clipChildren = false
+        clipToPadding = false
 
-        // 添加三个 PageContentView 到布局
+        // 添加三个 PageContentView 到布局（分页模式）
         addView(prevPageView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(curPageView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(nextPageView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+
+        // 连续滚动 RecyclerView（scroll 模式）
+        continuousRecyclerView = RecyclerView(context).apply {
+            id = View.generateViewId()
+            layoutManager = LinearLayoutManager(context)
+            visibility = View.GONE  // 默认隐藏
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+        }
+        addView(continuousRecyclerView)
 
         // 初始化管理器
         slotManager = PageSlotManager(layoutEngine, prevPageView, curPageView, nextPageView)
@@ -377,9 +402,101 @@ class ReadView(context: Context) : FrameLayout(context) {
 
     /** 跳转到指定章节指定页 */
     fun jumpToChapter(chapterIndex: Int, pageInChapter: Int = 0) {
-        animationController.abortAnim()
-        layoutEngine.invalidateChapter(chapterIndex)
-        slotManager.jumpTo(chapterIndex, pageInChapter)
+        if (isScrollMode) {
+            // 连续滚动模式：加载章节并滚动到位置
+            loadChapterForContinuous(chapterIndex)
+            // 等待布局完成后滚动（简单延迟处理）
+            postDelayed({
+                val scrollPos = continuousAdapter?.getScrollPosition(chapterIndex, pageInChapter) ?: 0
+                (continuousRecyclerView.layoutManager as? LinearLayoutManager)
+                    ?.scrollToPositionWithOffset(scrollPos, 0)
+            }, 300)
+        } else {
+            animationController.abortAnim()
+            layoutEngine.invalidateChapter(chapterIndex)
+            slotManager.jumpTo(chapterIndex, pageInChapter)
+        }
+    }
+
+    /** 切换连续滚动/分页模式 */
+    fun setScrollMode(enabled: Boolean) {
+        if (isScrollMode == enabled) return
+        isScrollMode = enabled
+
+        if (enabled) {
+            // 切换到连续滚动模式
+            // 隐藏分页 View
+            prevPageView.visibility = View.GONE
+            curPageView.visibility = View.GONE
+            nextPageView.visibility = View.GONE
+
+            // 初始化连续滚动 Adapter（如果还没初始化）
+            if (continuousAdapter == null) {
+                continuousAdapter = ContinuousPageAdapter(
+                    layoutEngine = layoutEngine,
+                    contentProvider = contentProvider,
+                    chapterLoadCallback = { chapterIndex ->
+                        // 当滚动到未布局的章节时，触发加载
+                        Log.d(TAG, "ContinuousScroll: need to load chapter $chapterIndex")
+                        loadChapterForContinuous(chapterIndex)
+                    }
+                )
+                continuousRecyclerView.adapter = continuousAdapter
+            }
+
+            // 确保当前章节已布局
+            val curSlot = slotManager.getCurSlot()
+            val startChapter = curSlot.chapterIndex
+            val startPage = curSlot.pageIndex
+
+            // 布局当前章节（如果还没布局）
+            if (layoutEngine.getChapterLayout(startChapter) == null) {
+                CoroutineScope(Dispatchers.Main).launch {
+                    layoutCurrentChapterForContinuous(startChapter, startPage)
+                }
+            } else {
+                continuousAdapter?.initialize()
+                // 滚动到当前页
+                val scrollPos = continuousAdapter?.getScrollPosition(startChapter, startPage) ?: 0
+                (continuousRecyclerView.layoutManager as? LinearLayoutManager)
+                    ?.scrollToPositionWithOffset(scrollPos, 0)
+            }
+
+            continuousRecyclerView.visibility = View.VISIBLE
+        } else {
+            // 切换回分页模式
+            continuousRecyclerView.visibility = View.GONE
+            prevPageView.visibility = View.VISIBLE
+            curPageView.visibility = View.VISIBLE
+            nextPageView.visibility = View.VISIBLE
+        }
+    }
+
+    /** 为连续滚动模式加载指定章节 */
+    private fun loadChapterForContinuous(chapterIndex: Int) {
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                val text = contentProvider?.invoke(chapterIndex) ?: return@launch
+                layoutEngine.layout(chapterIndex, text)
+                continuousAdapter?.onChapterLaidOut(chapterIndex)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load chapter $chapterIndex for continuous scroll", e)
+            }
+        }
+    }
+
+    /** 为连续滚动模式布局当前章节并初始化 */
+    private suspend fun layoutCurrentChapterForContinuous(chapterIndex: Int, startPage: Int) {
+        try {
+            val text = contentProvider?.invoke(chapterIndex) ?: return
+            layoutEngine.layout(chapterIndex, text)
+            continuousAdapter?.initialize()
+            val scrollPos = continuousAdapter?.getScrollPosition(chapterIndex, startPage) ?: 0
+            (continuousRecyclerView.layoutManager as? LinearLayoutManager)
+                ?.scrollToPositionWithOffset(scrollPos, 0)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to layout chapter $chapterIndex for continuous scroll", e)
+        }
     }
 
     /** 设置简繁转换模式，刷新当前页 */
@@ -387,17 +504,28 @@ class ReadView(context: Context) : FrameLayout(context) {
         prevPageView.chineseMode = mode
         curPageView.chineseMode = mode
         nextPageView.chineseMode = mode
-        // 刷新当前页显示
-        slotManager.refreshCurrentPage()
+        // 连续滚动模式下也需要刷新
+        if (isScrollMode) {
+            continuousAdapter?.notifyDataSetChanged()
+        } else {
+            slotManager.refreshCurrentPage()
+        }
     }
 
     /** 设置翻页动画类型 */
     fun setPageTransition(mode: String) {
-        // 先移除旧的动画控制器回调
+        if (mode == "scroll") {
+            // 连续滚动模式
+            setScrollMode(true)
+            return
+        }
+
+        // 分页模式
+        setScrollMode(false)
+
         animationController.abortAnim()
 
         val newController = when (mode) {
-            "scroll" -> ScrollPageAnim(this)
             "fade" -> FadePageAnim(this)
             else -> SlidePageAnim(this)
         }
@@ -445,6 +573,7 @@ class ReadView(context: Context) : FrameLayout(context) {
      * - 长按（>500ms 或无明显移动）→ 不拦截，TextView 原生触发选词
      */
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+        if (isScrollMode) return false  // 连续滚动模式：不拦截，让 RecyclerView 处理
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 rvTouchStartX = ev.x
@@ -520,10 +649,12 @@ class ReadView(context: Context) : FrameLayout(context) {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (isScrollMode) return false  // 连续滚动模式：让 RecyclerView 处理触摸
         return animationController.onTouchEvent(event)
     }
 
     override fun computeScroll() {
+        if (isScrollMode) return  // 连续滚动模式：不需要动画帧
         if (animationController.computeScroll()) {
             postInvalidateOnAnimation()
         }
@@ -532,15 +663,19 @@ class ReadView(context: Context) : FrameLayout(context) {
     // ── 绘制 ──
 
     override fun dispatchDraw(canvas: android.graphics.Canvas) {
-        // 先设置子 View 的 translationX/Y（翻页动画位置）
-        animationController.onDraw(canvas)
+        if (!isScrollMode) {
+            // 分页模式：先设置子 View 的 translationX/Y（翻页动画位置）
+            animationController.onDraw(canvas)
+        }
         // 绘制子 View（PageContentView 包含的 TextView）
         super.dispatchDraw(canvas)
-        // 再绘制阴影叠加层（在子 View 之上）
-        when (val ctrl = animationController) {
-            is SlidePageAnim -> ctrl.drawOverlay(canvas)
-            is ScrollPageAnim -> ctrl.drawOverlay(canvas)
-            is FadePageAnim -> ctrl.drawOverlay(canvas)
+        if (!isScrollMode) {
+            // 分页模式：再绘制阴影叠加层（在子 View 之上）
+            when (val ctrl = animationController) {
+                is SlidePageAnim -> ctrl.drawOverlay(canvas)
+                is ScrollPageAnim -> ctrl.drawOverlay(canvas)
+                is FadePageAnim -> ctrl.drawOverlay(canvas)
+            }
         }
     }
 
