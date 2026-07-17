@@ -278,6 +278,20 @@ class ReadView(context: Context) : FrameLayout(context) {
             view.setBackgroundColor(bgColor)
         }
         setBackgroundColor(bgColor)
+
+        // 同步到连续滚动 adapter（如果存在）
+        continuousAdapter?.let { adapter ->
+            adapter.fontSizePx = currentFontSizePx
+            adapter.textColor = textColor
+            adapter.lineHeightMult = currentLineHeightMult
+            adapter.letterSpacingPx = currentLetterSpacingDp * density
+            adapter.typeface = customTypeface
+            adapter.marginHorizPx = marginHoriz
+            adapter.marginVertPx = marginVert
+            adapter.highlightColor = highlightColor
+            adapter.accentColor = accentColor
+            adapter.chineseMode = prevPageView.chineseMode
+        }
     }
 
     // ── 配置 ──
@@ -436,13 +450,48 @@ class ReadView(context: Context) : FrameLayout(context) {
                     layoutEngine = layoutEngine,
                     contentProvider = contentProvider,
                     chapterLoadCallback = { chapterIndex ->
-                        // 当滚动到未布局的章节时，触发加载
                         Log.d(TAG, "ContinuousScroll: need to load chapter $chapterIndex")
                         loadChapterForContinuous(chapterIndex)
                     }
                 )
                 continuousRecyclerView.adapter = continuousAdapter
+
+                // 添加触摸监听：中间区域点击打开菜单
+                continuousRecyclerView.addOnItemTouchListener(object : RecyclerView.SimpleOnItemTouchListener() {
+                    private var touchStartX = 0f
+                    private var touchStartY = 0f
+                    private var touchDownTime = 0L
+
+                    override fun onInterceptTouchEvent(rv: RecyclerView, ev: MotionEvent): Boolean {
+                        when (ev.actionMasked) {
+                            MotionEvent.ACTION_DOWN -> {
+                                touchStartX = ev.x
+                                touchStartY = ev.y
+                                touchDownTime = System.currentTimeMillis()
+                                return false
+                            }
+                            MotionEvent.ACTION_UP -> {
+                                val dx = Math.abs(ev.x - touchStartX)
+                                val dy = Math.abs(ev.y - touchStartY)
+                                val dt = System.currentTimeMillis() - touchDownTime
+                                // 短按 + 无明显滑动
+                                if (dt < 300L && dx < 20f && dy < 20f) {
+                                    val relX = ev.x / rv.width
+                                    // 中间 40% 区域 → 打开菜单
+                                    if (relX in 0.3f..0.7f) {
+                                        callbacks?.onMenuToggle()
+                                    }
+                                }
+                                return false
+                            }
+                        }
+                        return false
+                    }
+                })
             }
+
+            // 同步样式参数到 adapter
+            syncStyleToContinuousAdapter()
 
             // 确保当前章节已布局
             val curSlot = slotManager.getCurSlot()
@@ -473,6 +522,37 @@ class ReadView(context: Context) : FrameLayout(context) {
     }
 
     /** 为连续滚动模式加载指定章节 */
+    /** 同步当前样式参数到连续滚动 adapter */
+    private fun syncStyleToContinuousAdapter() {
+        val adapter = continuousAdapter ?: return
+        val density = resources.displayMetrics.density
+        adapter.fontSizePx = currentFontSizePx
+        adapter.lineHeightMult = currentLineHeightMult
+        adapter.letterSpacingPx = currentLetterSpacingDp * density
+        adapter.marginHorizPx = currentMarginHorizDp * density
+        adapter.marginVertPx = currentMarginVertDp * density
+        adapter.chineseMode = prevPageView.chineseMode
+        // 主题颜色
+        val (bgColor, textColor, accentColor) = getThemeColors(currentTheme)
+        adapter.textColor = textColor
+        adapter.highlightColor = (accentColor and 0x00FFFFFF) or 0x40000000.toInt()
+        // 字体
+        adapter.typeface = when (currentFontType) {
+            "serif" -> android.graphics.Typeface.SERIF
+            "fangsong" -> try { androidx.core.content.res.ResourcesCompat.getFont(context, com.huangder.lumibooks.R.font.fandol_fang) }
+                catch (_: Exception) { null } ?: android.graphics.Typeface.DEFAULT
+            "kaiti" -> try { androidx.core.content.res.ResourcesCompat.getFont(context, com.huangder.lumibooks.R.font.lxgw_wenkai) }
+                catch (_: Exception) { null } ?: android.graphics.Typeface.DEFAULT
+            "custom" -> {
+                val path = currentCustomFontPath
+                if (path != null) try { android.graphics.Typeface.createFromFile(java.io.File(path)) }
+                catch (_: Exception) { android.graphics.Typeface.DEFAULT }
+                else android.graphics.Typeface.DEFAULT
+            }
+            else -> android.graphics.Typeface.DEFAULT
+        }
+    }
+
     private fun loadChapterForContinuous(chapterIndex: Int) {
         CoroutineScope(Dispatchers.Main).launch {
             try {
@@ -597,6 +677,13 @@ class ReadView(context: Context) : FrameLayout(context) {
                 // 放宽条件：dx > 16f && dx > dy * 0.5f（允许一定垂直分量）
                 if (dt < 500L && dx > 16f && dx > dy * 0.5f) {
                     Log.d(TAG, "Intercept swipe at dx=$dx dy=$dy dt=$dt")
+                    // 🔥 合成 DOWN 事件传递给动画控制器（拦截后 onTouchEvent 收到的第一个事件是 MOVE 不是 DOWN）
+                    val downEvent = MotionEvent.obtain(
+                        rvTouchDownTime, System.currentTimeMillis(),
+                        MotionEvent.ACTION_DOWN, rvTouchStartX, rvTouchStartY, 0
+                    )
+                    animationController.onTouchEvent(downEvent)
+                    downEvent.recycle()
                     return true
                 }
                 return false
