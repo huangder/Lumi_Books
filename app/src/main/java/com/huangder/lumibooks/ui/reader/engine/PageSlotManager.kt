@@ -320,8 +320,11 @@ class PageSlotManager(
         toSlot.pageIndex = fromSlot.pageIndex
         toSlot.globalPageIndex = fromSlot.globalPageIndex
         toSlot.isLoaded = fromSlot.isLoaded
-        // 复制文本内容（同步到 textView 和 justifiedView）
-        toSlot.contentView.syncText(fromSlot.contentView.textView.text)
+        // 复制文本内容：textView 用副本（透明 ImageSpan），justifiedView 用原始 spannable（真实 ImageSpan）
+        toSlot.contentView.syncText(
+            textViewText = fromSlot.contentView.textView.text,
+            justifiedText = fromSlot.contentView.getJustifiedText()
+        )
 
         fromSlot.chapterIndex = -1
         fromSlot.pageIndex = -1

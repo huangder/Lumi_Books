@@ -12,9 +12,11 @@ import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.StaticLayout
 import android.text.TextPaint
+import android.text.style.AbsoluteSizeSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.RelativeSizeSpan
 import android.text.style.StyleSpan
+import android.text.style.URLSpan
 import android.text.style.UnderlineSpan
 import android.text.style.StrikethroughSpan
 import android.text.style.LeadingMarginSpan
@@ -63,6 +65,7 @@ class JustifiedTextView @JvmOverloads constructor(
 
     fun setTextSize(px: Float) {
         textPaint.textSize = px
+        defaultTextSize = px
         rebuildLayout()
     }
 
@@ -134,6 +137,8 @@ class JustifiedTextView @JvmOverloads constructor(
         val sl = layout ?: return
         val s = spannable ?: return
         val textStr = s.toString()
+
+        var skippedFFFC = 0  // 🔥 统计跳过的 U+FFFC 字符（图片加载失败）
 
         val saveCount = canvas.save()
         canvas.translate(paddingLeft.toFloat(), paddingTop.toFloat())
@@ -227,6 +232,7 @@ class JustifiedTextView @JvmOverloads constructor(
             for (idx in lineStart until effectiveEnd) {
                 // 跳过 U+FFFC（图片加载失败的占位字符，避免显示 "obj"）
                 if (textStr[idx] == '￼') {
+                    skippedFFFC++
                     continue
                 }
 
@@ -240,6 +246,10 @@ class JustifiedTextView @JvmOverloads constructor(
 
                 resetPaintStyle()
             }
+        }
+
+        if (skippedFFFC > 0) {
+            android.util.Log.d("JustifiedTextView", "onDraw: skipped $skippedFFFC U+FFFC placeholder(s) — images failed to load")
         }
 
         canvas.restoreToCount(saveCount)
@@ -263,8 +273,22 @@ class JustifiedTextView @JvmOverloads constructor(
                     }
                 }
                 is ForegroundColorSpan -> paint.color = span.foregroundColor
+                is URLSpan -> {
+                    paint.color = paint.linkColor
+                    paint.isUnderlineText = true
+                }
                 is UnderlineSpan -> paint.isUnderlineText = true
                 is StrikethroughSpan -> paint.isStrikeThruText = true
+                is AbsoluteSizeSpan -> {
+                    paint.textSize = if (span.dip) {
+                        TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, span.size.toFloat(), resources.displayMetrics)
+                    } else {
+                        span.size.toFloat()
+                    }
+                }
+                is RelativeSizeSpan -> {
+                    paint.textSize *= span.sizeChange
+                }
             }
         }
     }
@@ -278,9 +302,11 @@ class JustifiedTextView @JvmOverloads constructor(
         textPaint.isUnderlineText = false
         textPaint.isStrikeThruText = false
         textPaint.color = defaultTextColor
+        textPaint.textSize = defaultTextSize
     }
 
     private var defaultTextColor = 0xFF333333.toInt()
+    private var defaultTextSize = 56f
 
     fun setDefaultTextColor(color: Int) {
         defaultTextColor = color

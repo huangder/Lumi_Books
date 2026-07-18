@@ -46,6 +46,8 @@ interface BookParser {
     var paragraphSpacingDp: Float
     /** 首行缩进字符数，0 = 使用默认值 */
     var firstLineIndentChars: Float
+    /** 阅读区域内容宽度（像素），用于图片缩放。0 = 未设置，回退到 DisplayMetrics */
+    var contentWidth: Int
 
     /**
      * 轻量级封面提取：只提取封面图片路径，不解析章节内容。

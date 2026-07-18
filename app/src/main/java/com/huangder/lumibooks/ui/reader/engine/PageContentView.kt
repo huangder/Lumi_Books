@@ -102,6 +102,9 @@ class PageContentView(context: Context) : FrameLayout(context) {
     /** 简繁转换模式，默认 "original"（不转换） */
     var chineseMode: String = "original"
 
+    /** 原始 spannable（含真实 BitmapDrawable ImageSpan），供 syncText/moveSlot 使用 */
+    private var originalSpannable: Spannable? = null
+
     fun setPageContent(
         fullText: CharSequence,
         startChar: Int,
@@ -136,8 +139,9 @@ class PageContentView(context: Context) : FrameLayout(context) {
         Log.d(TAG, "setPageContent: subText type=${subText.javaClass.simpleName} isSpanned=${subText is android.text.Spanned}")
 
         // 简繁转换（在切片后、应用高亮前）
+        // 🔥 使用 convertPreservingSpans 保留所有 span（ImageSpan/LeadingMarginSpan 等）
         val pageText = if (chineseMode != "original") {
-            com.huangder.lumibooks.util.ChineseConverter.convert(subText.toString(), chineseMode)
+            com.huangder.lumibooks.util.ChineseConverter.convertPreservingSpans(subText, chineseMode)
         } else {
             subText
         }
@@ -201,14 +205,49 @@ class PageContentView(context: Context) : FrameLayout(context) {
         val imgSpans = spannable.getSpans(0, spannable.length, android.text.style.ImageSpan::class.java)
         Log.d(TAG, "setPageContent: start=$actualStart end=$endChar len=${spannable.length} LMS=${lms.size} ImageSpan=${imgSpans.size}")
 
-        // 设置文本到两个 View
-        textView.text = spannable
-        justifiedView.text = spannable
-
-        // 仅当内容含图片时才 requestLayout（避免纯文本页面触发不必要的重测量导致闪烁）
-        if (imgSpans.isNotEmpty()) {
-            requestLayout()
+        // 🔥 诊断：检测 U+FFFC 但没有 ImageSpan 的字符位置（图片加载失败）
+        var orphanFFFC = 0
+        for (i in 0 until spannable.length) {
+            if (spannable[i] == '￼' && spannable.getSpans(i, i + 1, android.text.style.ImageSpan::class.java).isEmpty()) {
+                orphanFFFC++
+            }
         }
+        if (orphanFFFC > 0) {
+            Log.w(TAG, "setPageContent: $orphanFFFC U+FFFC without ImageSpan — images failed to load at page offset")
+        }
+
+        // 🔥 创建 textView 副本：
+        // - ImageSpan → 替换为透明占位（保持相同 bounds，确保行高一致，无需 requestLayout）
+        // - ForegroundColorSpan → 移除（防止 textView 也绘制彩色文字导致重影）
+        val textViewCopy = SpannableStringBuilder(spannable)
+        for (span in textViewCopy.getSpans(0, textViewCopy.length, android.text.style.ImageSpan::class.java)) {
+            val start = textViewCopy.getSpanStart(span)
+            val end = textViewCopy.getSpanEnd(span)
+            val flags = textViewCopy.getSpanFlags(span)
+            val drawable = span.drawable
+            if (drawable != null) {
+                val bounds = drawable.copyBounds()
+                // 🔥 使用 1x1 透明 BitmapDrawable（有 intrinsic size），而非 ColorDrawable（无 intrinsic size）
+                // ColorDrawable.getIntrinsicHeight() 返回 -1，可能导致测量路径出错
+                val bitmap = android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.ARGB_8888)
+                bitmap.eraseColor(android.graphics.Color.TRANSPARENT)
+                val transparent = android.graphics.drawable.BitmapDrawable(resources, bitmap)
+                transparent.bounds = bounds
+                textViewCopy.removeSpan(span)
+                textViewCopy.setSpan(android.text.style.ImageSpan(transparent), start, end, flags)
+            } else {
+                textViewCopy.removeSpan(span)
+            }
+        }
+        for (span in textViewCopy.getSpans(0, textViewCopy.length, android.text.style.ForegroundColorSpan::class.java)) {
+            textViewCopy.removeSpan(span)
+        }
+
+        // 设置文本到两个 View
+        textView.text = textViewCopy
+        justifiedView.text = spannable
+        // 保存原始 spannable（含真实 BitmapDrawable ImageSpan），供 moveSlot/syncText 使用
+        this.originalSpannable = spannable
 
         // setTextIsSelectable(true) 时 Android 内部通过 Editable.Factory.newEditable() 创建副本
         // 必须从 textView.text 取实际存储的 Spannable，否则 SpanWatcher 注册在死对象上
@@ -369,14 +408,26 @@ class PageContentView(context: Context) : FrameLayout(context) {
     fun clear() {
         textView.text = ""
         justifiedView.text = null
+        originalSpannable = null
     }
+
+    /** 获取原始 spannable（含真实 ImageSpan），供 moveSlot 使用 */
+    fun getJustifiedText(): Spannable? = originalSpannable
 
     /**
      * 同步设置文本到 textView 和 justifiedView。
-     * 用于外部直接设置 textView.text 的场景（如 PageSlotManager）。
+     * 用于外部直接设置 textView.text 的场景（如 PageSlotManager.moveSlot）。
+     *
+     * @param textViewText 设置给隐藏 textView 的文本（可含透明 ImageSpan）
+     * @param justifiedText 设置给可见 justifiedView 的文本（应含真实 ImageSpan），null 时回退到 textViewText
      */
-    fun syncText(text: CharSequence?) {
-        textView.text = text
-        justifiedView.text = text as? Spannable ?: text?.let { SpannableStringBuilder(it) }
+    fun syncText(textViewText: CharSequence?, justifiedText: Spannable? = null) {
+        textView.text = textViewText
+        justifiedView.text = justifiedText
+            ?: (textViewText as? Spannable ?: textViewText?.let { SpannableStringBuilder(it) })
+        // 如果传入了 justifiedText，同步更新 originalSpannable
+        if (justifiedText != null) {
+            this.originalSpannable = justifiedText
+        }
     }
 }

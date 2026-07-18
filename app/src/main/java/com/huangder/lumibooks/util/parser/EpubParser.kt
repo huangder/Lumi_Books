@@ -23,6 +23,9 @@ import kotlin.text.RegexOption
 class EpubParser(private val context: Context? = null) : BookParser {
     override var paragraphSpacingDp: Float = 0f
     override var firstLineIndentChars: Float = 0f
+
+    /** 阅读区域内容宽度（像素），用于图片缩放。0 表示未设置，回退到 DisplayMetrics 计算 */
+    override var contentWidth: Int = 0
     private var chapters: List<Chapter> = emptyList()
     private var bookTitle: String = ""
     private var bookAuthor: String = ""
@@ -871,12 +874,13 @@ class EpubParser(private val context: Context? = null) : BookParser {
             Regex("""(<img[^>]*/?>)""", RegexOption.IGNORE_CASE), "\n$1\n"
         )
 
-        val imageGetter = EpubImageGetter(zipFile)
+        val imageGetter = EpubImageGetter(zipFile, contentWidth)
         return Html.fromHtml(withImageBreaks, Html.FROM_HTML_MODE_LEGACY, imageGetter, null)
     }
 
     private inner class EpubImageGetter(
-        private val zipFile: ZipFile
+        private val zipFile: ZipFile,
+        private val pageContentWidth: Int = 0
     ) : Html.ImageGetter {
         override fun getDrawable(source: String): Drawable? {
             return try {
@@ -889,17 +893,24 @@ class EpubParser(private val context: Context? = null) : BookParser {
 
                 val entryPath = resolveImagePath(source) ?: run {
                     android.util.Log.w("EpubParser", "getDrawable: resolveImagePath returned null for $source")
-                    return null
+                    return createErrorPlaceholder("Path resolution failed: ${source.take(60)}")
                 }
                 android.util.Log.d("EpubParser", "getDrawable: entryPath=$entryPath")
                 val entry = findEntry(zipFile, entryPath) ?: run {
                     android.util.Log.w("EpubParser", "getDrawable: findEntry returned null for $entryPath")
-                    return null
+                    return createErrorPlaceholder("Image not found: ${entryPath.take(60)}")
                 }
                 android.util.Log.d("EpubParser", "getDrawable: entry=${entry.name} size=${entry.size}")
 
                 val bytes = zipFile.getInputStream(entry).readBytes()
                 android.util.Log.d("EpubParser", "getDrawable: readBytes=${bytes.size}")
+
+                // 🔥 SVG 检测：BitmapFactory 无法解码 SVG，返回占位符
+                val mimeType = detectMimeType(entry.name, bytes)
+                if (mimeType == "image/svg+xml") {
+                    android.util.Log.w("EpubParser", "getDrawable: SVG not supported by BitmapFactory, using placeholder for ${entry.name}")
+                    return createSvgPlaceholder()
+                }
 
                 // 先只读尺寸，不分配内存
                 val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -918,14 +929,19 @@ class EpubParser(private val context: Context? = null) : BookParser {
                 val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
                 if (bitmap == null) {
                     android.util.Log.e("EpubParser", "getDrawable: decodeByteArray returned null!")
-                    return null
+                    return createErrorPlaceholder("Decode failed: ${entry.name.take(60)}")
                 }
                 android.util.Log.d("EpubParser", "getDrawable: decoded ${bitmap.width}x${bitmap.height}")
 
-                // 缩放至页面可用宽度（屏幕宽度减去左右边距），高度等比
-                val dm = android.content.res.Resources.getSystem().displayMetrics
-                val marginPx = (44 * dm.density).toInt()  // 默认边距 44dp
-                val pageW = dm.widthPixels - marginPx * 2
+                // 缩放至页面可用宽度，高度等比
+                val pageW = if (pageContentWidth > 0) {
+                    pageContentWidth
+                } else {
+                    val dm = context?.resources?.displayMetrics
+                        ?: android.content.res.Resources.getSystem().displayMetrics
+                    val marginPx = (44 * dm.density).toInt()  // 默认边距 44dp
+                    dm.widthPixels - marginPx * 2
+                }
                 val drawW: Int
                 val drawH: Int
                 if (bitmap.width > pageW) {
@@ -942,8 +958,68 @@ class EpubParser(private val context: Context? = null) : BookParser {
                 drawable
             } catch (e: Throwable) {
                 android.util.Log.e("EpubParser", "getDrawable: exception", e)
-                null
+                createErrorPlaceholder("Exception: ${e.message?.take(60) ?: "unknown"}")
             }
+        }
+
+        /** 创建 SVG 占位符 Drawable（灰色矩形 + "SVG" 文字） */
+        private fun createSvgPlaceholder(): Drawable {
+            val dm = context?.resources?.displayMetrics
+                ?: android.content.res.Resources.getSystem().displayMetrics
+            val pw = if (pageContentWidth > 0) pageContentWidth else (dm.widthPixels - 88)
+            val ph = (pw * 0.4f).toInt().coerceAtLeast(80)
+            val bitmap = Bitmap.createBitmap(pw, ph, Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bitmap)
+            // 灰色背景
+            canvas.drawColor(0xFFE0E0E0.toInt())
+            // 边框
+            val borderPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = 0xFFBDBDBD.toInt()
+                style = android.graphics.Paint.Style.STROKE
+                strokeWidth = 2f
+            }
+            canvas.drawRect(1f, 1f, pw - 1f, ph - 1f, borderPaint)
+            // "SVG" 文字
+            val textPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = 0xFF757575.toInt()
+                textSize = (ph * 0.25f).coerceIn(12f, 48f)
+                textAlign = android.graphics.Paint.Align.CENTER
+                isFakeBoldText = true
+            }
+            canvas.drawText("SVG", pw / 2f, ph / 2f + textPaint.textSize / 3f, textPaint)
+            val drawable = BitmapDrawable(null, bitmap)
+            drawable.setBounds(0, 0, pw, ph)
+            return drawable
+        }
+
+        /** 创建错误占位符 Drawable（灰色矩形 + 错误图标） */
+        private fun createErrorPlaceholder(reason: String): Drawable {
+            android.util.Log.w("EpubParser", "createErrorPlaceholder: $reason")
+            val dm = context?.resources?.displayMetrics
+                ?: android.content.res.Resources.getSystem().displayMetrics
+            val pw = if (pageContentWidth > 0) pageContentWidth else (dm.widthPixels - 88)
+            val ph = (pw * 0.3f).toInt().coerceAtLeast(60)
+            val bitmap = Bitmap.createBitmap(pw, ph, Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bitmap)
+            // 浅灰背景
+            canvas.drawColor(0xFFF5F5F5.toInt())
+            // 虚线边框
+            val borderPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = 0xFFCCCCCC.toInt()
+                style = android.graphics.Paint.Style.STROKE
+                strokeWidth = 2f
+            }
+            canvas.drawRect(1f, 1f, pw - 1f, ph - 1f, borderPaint)
+            // "⚠" 文字
+            val textPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = 0xFF9E9E9E.toInt()
+                textSize = (ph * 0.3f).coerceIn(14f, 40f)
+                textAlign = android.graphics.Paint.Align.CENTER
+            }
+            canvas.drawText("⚠", pw / 2f, ph / 2f + textPaint.textSize / 3f, textPaint)
+            val drawable = BitmapDrawable(null, bitmap)
+            drawable.setBounds(0, 0, pw, ph)
+            return drawable
         }
 
         /** 解析 data:mime;base64,... URI 为 BitmapDrawable */

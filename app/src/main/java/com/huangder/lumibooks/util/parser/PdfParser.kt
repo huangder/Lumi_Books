@@ -8,6 +8,7 @@ import java.io.File
 class PdfParser(private val context: Context) : BookParser {
     override var paragraphSpacingDp: Float = 0f
     override var firstLineIndentChars: Float = 0f
+    override var contentWidth: Int = 0
     private var pdfRenderer: PdfRenderer? = null
     private var fileDescriptor: android.os.ParcelFileDescriptor? = null
     private var pageCount: Int = 0
