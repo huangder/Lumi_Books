@@ -282,16 +282,26 @@ class PageContentView(context: Context) : FrameLayout(context) {
         textView.typeface = typeface
         textView.setLineSpacing(lineSpacingExtraPx, lineHeightMult)
         textView.letterSpacing = spacingRatio
-        textView.breakStrategy = Layout.BREAK_STRATEGY_HIGH_QUALITY
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-            textView.hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NONE
+        // 🔥 守卫：仅在值变更时才设置，避免无条件触发 nullLayouts() + requestLayout()
+        // Android 的 setBreakStrategy/setHyphenationFrequency 不检查相等性，即使值相同
+        // 也会无效化已存在的 Layout，导致多余的 layout pass → 内容位移
+        if (textView.breakStrategy != Layout.BREAK_STRATEGY_HIGH_QUALITY) {
+            textView.breakStrategy = Layout.BREAK_STRATEGY_HIGH_QUALITY
         }
-        textView.setPadding(
-            marginLeftPx.toInt(),
-            marginTopPx.toInt(),
-            marginRightPx.toInt(),
-            marginBottomPx.toInt()
-        )
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            if (textView.hyphenationFrequency != Layout.HYPHENATION_FREQUENCY_NONE) {
+                textView.hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NONE
+            }
+        }
+        // 🔥 守卫：仅在 padding 实际变更时调用 setPadding，避免无谓的 requestLayout()
+        val ml = marginLeftPx.toInt()
+        val mt = marginTopPx.toInt()
+        val mr = marginRightPx.toInt()
+        val mb = marginBottomPx.toInt()
+        if (textView.paddingLeft != ml || textView.paddingTop != mt ||
+            textView.paddingRight != mr || textView.paddingBottom != mb) {
+            textView.setPadding(ml, mt, mr, mb)
+        }
         textView.highlightColor = highlightColor
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             val density = textView.resources.displayMetrics.density
@@ -311,12 +321,10 @@ class PageContentView(context: Context) : FrameLayout(context) {
         justifiedView.setTypeface(typeface)
         justifiedView.setLineSpacing(lineSpacingExtraPx, lineHeightMult)
         justifiedView.setLetterSpacing(spacingRatio)
-        justifiedView.setPadding(
-            marginLeftPx.toInt(),
-            marginTopPx.toInt(),
-            marginRightPx.toInt(),
-            marginBottomPx.toInt()
-        )
+        if (justifiedView.paddingLeft != ml || justifiedView.paddingTop != mt ||
+            justifiedView.paddingRight != mr || justifiedView.paddingBottom != mb) {
+            justifiedView.setPadding(ml, mt, mr, mb)
+        }
     }
 
     /** 获取当前 TextView 的 Spannable（用于读取选区等） */
@@ -422,9 +430,11 @@ class PageContentView(context: Context) : FrameLayout(context) {
      * @param justifiedText 设置给可见 justifiedView 的文本（应含真实 ImageSpan），null 时回退到 textViewText
      */
     fun syncText(textViewText: CharSequence?, justifiedText: Spannable? = null) {
-        textView.text = textViewText
+        // 🔥 先设置 justifiedView（只 invalidate，不触发父布局），再设置 textView（可能触发父布局）
+        // 确保 textView 触发的 layout pass 中，justifiedView 已有正确内容供 onSizeChanged → rebuildLayout 使用
         justifiedView.text = justifiedText
             ?: (textViewText as? Spannable ?: textViewText?.let { SpannableStringBuilder(it) })
+        textView.text = textViewText
         // 如果传入了 justifiedText，同步更新 originalSpannable
         if (justifiedText != null) {
             this.originalSpannable = justifiedText

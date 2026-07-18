@@ -64,27 +64,32 @@ class JustifiedTextView @JvmOverloads constructor(
     private var gravity = Gravity.TOP
 
     fun setTextSize(px: Float) {
+        if (textPaint.textSize == px && defaultTextSize == px) return
         textPaint.textSize = px
         defaultTextSize = px
         rebuildLayout()
     }
 
     fun setTextColor(color: Int) {
+        if (textPaint.color == color) return
         textPaint.color = color
         invalidate()
     }
 
     fun setTypeface(tf: Typeface) {
+        if (textPaint.typeface === tf) return
         textPaint.typeface = tf
         rebuildLayout()
     }
 
     fun setLetterSpacing(ratio: Float) {
+        if (textPaint.letterSpacing == ratio) return
         textPaint.letterSpacing = ratio
         rebuildLayout()
     }
 
     fun setLineSpacing(addPx: Float, mult: Float) {
+        if (lineSpacingExtra == addPx && lineSpacingMult == mult) return
         lineSpacingExtra = addPx
         lineSpacingMult = mult
         rebuildLayout()
@@ -187,8 +192,9 @@ class JustifiedTextView @JvmOverloads constructor(
             }
 
             if (hasImageInLine) {
-                // 图片行：逐 span 绘制 ImageSpan，跳过文字
-                var x = indentPx
+                // 图片行：逐 span 绘制 ImageSpan，始终从左边界开始（不受首行缩进影响）
+                @Suppress("UNUSED_VALUE")
+                var x = 0f
                 var idx = lineStart
                 while (idx < effectiveEnd) {
                     val imgSpans = s.getSpans(idx, idx + 1, android.text.style.ImageSpan::class.java)
@@ -201,8 +207,11 @@ class JustifiedTextView @JvmOverloads constructor(
                             val imgH = drawable.bounds.height().toFloat()
                             val lineHeight = sl.getLineBottom(i) - sl.getLineTop(i)
                             val imgTop = lineTop + (lineHeight - imgH) / 2f
+                            // 🔥 保存原始 bounds，绘制后恢复。防止屏幕坐标污染 StaticLayout 行高计算
+                            val savedBounds = android.graphics.Rect(drawable.bounds)
                             drawable.setBounds(x.toInt(), imgTop.toInt(), (x + imgW).toInt(), (imgTop + imgH).toInt())
                             drawable.draw(canvas)
+                            drawable.bounds = savedBounds
                             x += imgW
                             idx = if (spanEnd > idx) spanEnd else idx + 1
                             continue

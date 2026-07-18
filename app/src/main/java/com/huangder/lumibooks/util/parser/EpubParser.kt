@@ -625,11 +625,15 @@ class EpubParser(private val context: Context? = null) : BookParser {
                 val isNewline = !isEnd && ssb[j] == '\n'
                 if (isEnd || isNewline) {
                     if (paraStart < j) {
-                        ssb.setSpan(
-                            android.text.style.LeadingMarginSpan.Standard(indentPx, 0),
-                            paraStart, j,
-                            android.text.Spannable.SPAN_INCLUSIVE_INCLUSIVE
-                        )
+                        // 🔥 跳过含图片的段落：图片不应有首行缩进
+                        val hasImage = ssb.getSpans(paraStart, j, android.text.style.ImageSpan::class.java).isNotEmpty()
+                        if (!hasImage) {
+                            ssb.setSpan(
+                                android.text.style.LeadingMarginSpan.Standard(indentPx, 0),
+                                paraStart, j,
+                                android.text.Spannable.SPAN_INCLUSIVE_INCLUSIVE
+                            )
+                        }
                     }
                     paraStart = j + 1
                 }
@@ -944,14 +948,10 @@ class EpubParser(private val context: Context? = null) : BookParser {
                 }
                 val drawW: Int
                 val drawH: Int
-                if (bitmap.width > pageW) {
-                    val ratio = pageW.toFloat() / bitmap.width
-                    drawW = pageW
-                    drawH = (bitmap.height * ratio).toInt()
-                } else {
-                    drawW = bitmap.width
-                    drawH = bitmap.height
-                }
+                // 🔥 统一缩放到 pageW：无论图片原始尺寸大还是小，都缩放到内容宽度
+                val ratio = pageW.toFloat() / bitmap.width.coerceAtLeast(1)
+                drawW = pageW
+                drawH = (bitmap.height * ratio).toInt()
 
                 val drawable = BitmapDrawable(null, bitmap)
                 drawable.setBounds(0, 0, drawW, drawH)
@@ -1047,16 +1047,10 @@ class EpubParser(private val context: Context? = null) : BookParser {
                 val dm = android.content.res.Resources.getSystem().displayMetrics
                 val marginPx = (44 * dm.density).toInt()
                 val pageW = dm.widthPixels - marginPx * 2
-                val drawW: Int
-                val drawH: Int
-                if (bitmap.width > pageW) {
-                    val ratio = pageW.toFloat() / bitmap.width
-                    drawW = pageW
-                    drawH = (bitmap.height * ratio).toInt()
-                } else {
-                    drawW = bitmap.width
-                    drawH = bitmap.height
-                }
+                // 🔥 统一缩放到 pageW：无论图片原始尺寸大还是小，都缩放到内容宽度
+                val ratio = pageW.toFloat() / bitmap.width.coerceAtLeast(1)
+                val drawW = pageW
+                val drawH = (bitmap.height * ratio).toInt()
                 val drawable = BitmapDrawable(null, bitmap)
                 drawable.setBounds(0, 0, drawW, drawH)
                 return drawable
