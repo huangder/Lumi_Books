@@ -2575,4 +2575,51 @@ object ChineseConverter {
             else -> text // "original" 或其他值保持不变
         }
     }
+
+    /**
+     * 保留 Span 的简繁转换。
+     *
+     * 与 [convert] 不同，此方法在转换文本的同时保留源 [CharSequence] 中的所有 span
+     *（如 [android.text.style.ImageSpan]、[android.text.style.LeadingMarginSpan] 等）。
+     * 简繁转换是 1:1 字符映射，因此所有 span 的位置可以直接复制。
+     *
+     * @param source 原始文本（可以是 [android.text.Spanned]）
+     * @param mode 转换模式: "original" | "simplified" | "traditional"
+     * @return 转换后的文本，保留所有 span
+     */
+    fun convertPreservingSpans(source: CharSequence, mode: String): CharSequence {
+        // "original" 模式直接返回原文
+        if (mode == "original") return source
+
+        // 确定转换映射表
+        val charMap: Map<Char, Char> = when (mode) {
+            "simplified" -> traditionalToSimplified
+            "traditional" -> simplifiedToTraditional
+            else -> return source
+        }
+
+        // 逐字转换
+        val converted = CharArray(source.length) { i ->
+            val ch = source[i]
+            if (ch == '￼') ch else (charMap[ch] ?: ch)
+        }
+
+        // 如果源不是 Spanned，直接返回字符串
+        if (source !is android.text.Spanned) {
+            return String(converted)
+        }
+
+        // 保留所有 span
+        val result = android.text.SpannableStringBuilder(String(converted))
+        val spans = source.getSpans(0, source.length, Any::class.java)
+        for (span in spans) {
+            val start = source.getSpanStart(span)
+            val end = source.getSpanEnd(span)
+            val flags = source.getSpanFlags(span)
+            if (start < end && start < result.length && end <= result.length) {
+                result.setSpan(span, start, end, flags)
+            }
+        }
+        return result
+    }
 }

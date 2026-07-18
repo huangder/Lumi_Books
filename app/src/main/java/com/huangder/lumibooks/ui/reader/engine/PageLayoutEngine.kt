@@ -160,10 +160,37 @@ class PageLayoutEngine {
                 val lineTop = sl.getLineTop(pageEndLine)
                 val lineHeight = (lineBottom - lineTop).toFloat()
                 if (accumulatedHeight + lineHeight > effectiveVh && pageEndLine > pageStartLine) {
+                    // 🔥 溢出容忍：剩余空间 > 50% 行高时允许当前行纳入（轻微溢出到 margin 区域）
+                    val remaining = effectiveVh - accumulatedHeight
+                    if (remaining > lineHeight * 0.5f) {
+                        // 检查是否是图片行（行高异常大，防止图片被截断）
+                        val isImageLine = lineHeight > (sl.getLineBottom(pageEndLine - 1).coerceAtLeast(1) - sl.getLineTop(pageEndLine - 1)).toFloat() * 3f ||
+                                pageEndLine == pageStartLine
+                        if (!isImageLine || accumulatedHeight == 0f) {
+                            // 允许纳入：文本行溢出容忍，或图片是页面唯一内容时允许
+                            accumulatedHeight += lineHeight
+                            pageEndLine++
+                        }
+                    }
                     break
                 }
                 accumulatedHeight += lineHeight
                 pageEndLine++
+            }
+
+            // 🔥 收尾优化：将纯空白行（仅有 \n 的行）纳入当前页底部
+            // 这些行在页底不可见，不会影响视觉效果，但避免了下一页顶部出现空白
+            while (pageEndLine < sl.lineCount) {
+                val lineStart = sl.getLineStart(pageEndLine)
+                val lineEnd = sl.getLineEnd(pageEndLine)
+                if (lineEnd - lineStart == 1 && text[lineStart] == '\n') {
+                    val lineBottom = sl.getLineBottom(pageEndLine)
+                    val lineTop = sl.getLineTop(pageEndLine)
+                    accumulatedHeight += (lineBottom - lineTop).toFloat()
+                    pageEndLine++
+                } else {
+                    break
+                }
             }
 
             val startChar = sl.getLineStart(pageStartLine)
