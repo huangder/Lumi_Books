@@ -4,19 +4,10 @@ import android.content.Context
 import android.text.Selection
 import android.text.Spannable
 import android.util.Log
-import android.view.ActionMode
-import android.view.Menu
-import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import com.huangder.lumibooks.domain.model.Note
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
 /**
@@ -68,12 +59,6 @@ class ReadView(context: Context) : FrameLayout(context) {
     val curPageView = PageContentView(context)
     val nextPageView = PageContentView(context)
 
-    // ── 连续滚动模式 ──
-    lateinit var continuousRecyclerView: RecyclerView
-        private set
-    var continuousAdapter: ContinuousPageAdapter? = null
-    private var isScrollMode: Boolean = false
-
     // ── 外部回调 ──
     private var callbacks: ReadViewCallbacks? = null
     private var contentProvider: (suspend (Int) -> CharSequence?)? = null
@@ -105,6 +90,8 @@ class ReadView(context: Context) : FrameLayout(context) {
     private var currentMarginHorizDp: Float = 44f
     private var currentMarginVertDp: Float = 72f
     private var currentParagraphSpacingDp: Float = 0f
+    private var currentChineseMode: String = "original"
+    private var currentPageTransition: String = "slide"
     private var pendingStartChapter: Int = 0
     private var pendingStartPage: Int = 0
 
@@ -119,15 +106,6 @@ class ReadView(context: Context) : FrameLayout(context) {
         addView(prevPageView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(curPageView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(nextPageView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-
-        // 连续滚动 RecyclerView（scroll 模式）
-        continuousRecyclerView = RecyclerView(context).apply {
-            id = View.generateViewId()
-            layoutManager = LinearLayoutManager(context)
-            visibility = View.GONE  // 默认隐藏
-            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
-        }
-        addView(continuousRecyclerView)
 
         // 初始化管理器
         slotManager = PageSlotManager(layoutEngine, prevPageView, curPageView, nextPageView)
@@ -199,14 +177,12 @@ class ReadView(context: Context) : FrameLayout(context) {
             }
         }
 
-        // 🔥 为三个页面槽位设置原生选择 ActionMode 回调 + 选区检测
-        setupNativeSelectionActionMode(prevPageView)
-        setupNativeSelectionActionMode(curPageView)
-        setupNativeSelectionActionMode(nextPageView)
+        // 🔥 为三个页面槽位设置选区检测 + 压制系统浮动工具栏
         // SpanWatcher 在每次文本设置后注册（因为 setPageContent 创建新 Spannable）
-        setupSelectionWatcher(prevPageView)
-        setupSelectionWatcher(curPageView)
-        setupSelectionWatcher(nextPageView)
+        for (pageView in listOf(prevPageView, curPageView, nextPageView)) {
+            setupSelectionWatcher(pageView)
+            pageView.suppressSystemToolbar()
+        }
 
         // 翻页后刷新高亮
         slotManager.onPageChangedCallback = { globalPage, chapterIdx, pageInChapter, chapterTotal ->
@@ -279,20 +255,6 @@ class ReadView(context: Context) : FrameLayout(context) {
             view.setBackgroundColor(bgColor)
         }
         setBackgroundColor(bgColor)
-
-        // 同步到连续滚动 adapter（如果存在）
-        continuousAdapter?.let { adapter ->
-            adapter.fontSizePx = currentFontSizePx
-            adapter.textColor = textColor
-            adapter.lineHeightMult = currentLineHeightMult
-            adapter.letterSpacingPx = currentLetterSpacingDp * density
-            adapter.typeface = customTypeface
-            adapter.marginHorizPx = marginHoriz
-            adapter.marginVertPx = marginVert
-            adapter.highlightColor = highlightColor
-            adapter.accentColor = accentColor
-            adapter.chineseMode = prevPageView.chineseMode
-        }
     }
 
     // ── 配置 ──
@@ -343,6 +305,9 @@ class ReadView(context: Context) : FrameLayout(context) {
         val needsRelayout = themeChanged || fontSizeChanged || lineHeightChanged ||
                 letterSpacingChanged || fontTypeChanged || marginHorizChanged ||
                 marginVertChanged || paragraphSpacingChanged || sizeChanged
+
+        // 🔥 无变化时提前返回，避免菜单切换等 recomposition 触发不必要的重配置
+        if (isConfigured && !needsRelayout) return
 
         currentFontSizePx = fontSizePx
         currentTheme = theme
@@ -434,192 +399,25 @@ class ReadView(context: Context) : FrameLayout(context) {
 
     /** 跳转到指定章节指定页 */
     fun jumpToChapter(chapterIndex: Int, pageInChapter: Int = 0) {
-        if (isScrollMode) {
-            // 连续滚动模式：加载章节并滚动到位置
-            loadChapterForContinuous(chapterIndex)
-            // 等待布局完成后滚动（简单延迟处理）
-            postDelayed({
-                val scrollPos = continuousAdapter?.getScrollPosition(chapterIndex, pageInChapter) ?: 0
-                (continuousRecyclerView.layoutManager as? LinearLayoutManager)
-                    ?.scrollToPositionWithOffset(scrollPos, 0)
-            }, 300)
-        } else {
-            animationController.abortAnim()
-            layoutEngine.invalidateChapter(chapterIndex)
-            slotManager.jumpTo(chapterIndex, pageInChapter)
-        }
-    }
-
-    /** 切换连续滚动/分页模式 */
-    fun setScrollMode(enabled: Boolean) {
-        if (isScrollMode == enabled) return
-        isScrollMode = enabled
-
-        if (enabled) {
-            // 切换到连续滚动模式
-            // 隐藏分页 View
-            prevPageView.visibility = View.GONE
-            curPageView.visibility = View.GONE
-            nextPageView.visibility = View.GONE
-
-            // 初始化连续滚动 Adapter（如果还没初始化）
-            if (continuousAdapter == null) {
-                continuousAdapter = ContinuousPageAdapter(
-                    layoutEngine = layoutEngine,
-                    contentProvider = contentProvider,
-                    chapterLoadCallback = { chapterIndex ->
-                        Log.d(TAG, "ContinuousScroll: need to load chapter $chapterIndex")
-                        loadChapterForContinuous(chapterIndex)
-                    }
-                )
-                continuousRecyclerView.adapter = continuousAdapter
-
-                // 添加触摸监听：中间区域点击打开菜单
-                continuousRecyclerView.addOnItemTouchListener(object : RecyclerView.SimpleOnItemTouchListener() {
-                    private var touchStartX = 0f
-                    private var touchStartY = 0f
-                    private var touchDownTime = 0L
-
-                    override fun onInterceptTouchEvent(rv: RecyclerView, ev: MotionEvent): Boolean {
-                        when (ev.actionMasked) {
-                            MotionEvent.ACTION_DOWN -> {
-                                touchStartX = ev.x
-                                touchStartY = ev.y
-                                touchDownTime = System.currentTimeMillis()
-                                return false
-                            }
-                            MotionEvent.ACTION_UP -> {
-                                val dx = Math.abs(ev.x - touchStartX)
-                                val dy = Math.abs(ev.y - touchStartY)
-                                val dt = System.currentTimeMillis() - touchDownTime
-                                // 短按 + 无明显滑动
-                                if (dt < 300L && dx < 20f && dy < 20f) {
-                                    val relX = ev.x / rv.width
-                                    // 中间 40% 区域 → 打开菜单
-                                    if (relX in 0.3f..0.7f) {
-                                        callbacks?.onMenuToggle()
-                                    }
-                                }
-                                return false
-                            }
-                        }
-                        return false
-                    }
-                })
-            }
-
-            // 同步样式参数到 adapter
-            syncStyleToContinuousAdapter()
-
-            // 确保当前章节已布局
-            val curSlot = slotManager.getCurSlot()
-            val startChapter = curSlot.chapterIndex
-            val startPage = curSlot.pageIndex
-
-            // 布局当前章节（如果还没布局）
-            if (layoutEngine.getChapterLayout(startChapter) == null) {
-                CoroutineScope(Dispatchers.Main).launch {
-                    layoutCurrentChapterForContinuous(startChapter, startPage)
-                }
-            } else {
-                continuousAdapter?.initialize()
-                // 滚动到当前页
-                val scrollPos = continuousAdapter?.getScrollPosition(startChapter, startPage) ?: 0
-                (continuousRecyclerView.layoutManager as? LinearLayoutManager)
-                    ?.scrollToPositionWithOffset(scrollPos, 0)
-            }
-
-            continuousRecyclerView.visibility = View.VISIBLE
-        } else {
-            // 切换回分页模式
-            continuousRecyclerView.visibility = View.GONE
-            prevPageView.visibility = View.VISIBLE
-            curPageView.visibility = View.VISIBLE
-            nextPageView.visibility = View.VISIBLE
-        }
-    }
-
-    /** 为连续滚动模式加载指定章节 */
-    /** 同步当前样式参数到连续滚动 adapter */
-    private fun syncStyleToContinuousAdapter() {
-        val adapter = continuousAdapter ?: return
-        val density = resources.displayMetrics.density
-        adapter.fontSizePx = currentFontSizePx
-        adapter.lineHeightMult = currentLineHeightMult
-        adapter.letterSpacingPx = currentLetterSpacingDp * density
-        adapter.marginHorizPx = currentMarginHorizDp * density
-        adapter.marginVertPx = currentMarginVertDp * density
-        adapter.chineseMode = prevPageView.chineseMode
-        // 主题颜色
-        val (bgColor, textColor, accentColor) = getThemeColors(currentTheme)
-        adapter.textColor = textColor
-        adapter.highlightColor = (accentColor and 0x00FFFFFF) or 0x40000000.toInt()
-        // 字体
-        adapter.typeface = when (currentFontType) {
-            "serif" -> android.graphics.Typeface.SERIF
-            "fangsong" -> try { androidx.core.content.res.ResourcesCompat.getFont(context, com.huangder.lumibooks.R.font.fandol_fang) }
-                catch (_: Exception) { null } ?: android.graphics.Typeface.DEFAULT
-            "kaiti" -> try { androidx.core.content.res.ResourcesCompat.getFont(context, com.huangder.lumibooks.R.font.lxgw_wenkai) }
-                catch (_: Exception) { null } ?: android.graphics.Typeface.DEFAULT
-            "custom" -> {
-                val path = currentCustomFontPath
-                if (path != null) try { android.graphics.Typeface.createFromFile(java.io.File(path)) }
-                catch (_: Exception) { android.graphics.Typeface.DEFAULT }
-                else android.graphics.Typeface.DEFAULT
-            }
-            else -> android.graphics.Typeface.DEFAULT
-        }
-    }
-
-    private fun loadChapterForContinuous(chapterIndex: Int) {
-        CoroutineScope(Dispatchers.Main).launch {
-            try {
-                val text = contentProvider?.invoke(chapterIndex) ?: return@launch
-                layoutEngine.layout(chapterIndex, text)
-                continuousAdapter?.onChapterLaidOut(chapterIndex)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to load chapter $chapterIndex for continuous scroll", e)
-            }
-        }
-    }
-
-    /** 为连续滚动模式布局当前章节并初始化 */
-    private suspend fun layoutCurrentChapterForContinuous(chapterIndex: Int, startPage: Int) {
-        try {
-            val text = contentProvider?.invoke(chapterIndex) ?: return
-            layoutEngine.layout(chapterIndex, text)
-            continuousAdapter?.initialize()
-            val scrollPos = continuousAdapter?.getScrollPosition(chapterIndex, startPage) ?: 0
-            (continuousRecyclerView.layoutManager as? LinearLayoutManager)
-                ?.scrollToPositionWithOffset(scrollPos, 0)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to layout chapter $chapterIndex for continuous scroll", e)
-        }
+        animationController.abortAnim()
+        layoutEngine.invalidateChapter(chapterIndex)
+        slotManager.jumpTo(chapterIndex, pageInChapter)
     }
 
     /** 设置简繁转换模式，刷新当前页 */
     fun setChineseMode(mode: String) {
+        if (currentChineseMode == mode) return
+        currentChineseMode = mode
         prevPageView.chineseMode = mode
         curPageView.chineseMode = mode
         nextPageView.chineseMode = mode
-        // 连续滚动模式下也需要刷新
-        if (isScrollMode) {
-            continuousAdapter?.notifyDataSetChanged()
-        } else {
-            slotManager.refreshCurrentPage()
-        }
+        slotManager.refreshCurrentPage()
     }
 
     /** 设置翻页动画类型 */
     fun setPageTransition(mode: String) {
-        if (mode == "scroll") {
-            // 连续滚动模式
-            setScrollMode(true)
-            return
-        }
-
-        // 分页模式
-        setScrollMode(false)
+        if (currentPageTransition == mode) return
+        currentPageTransition = mode
 
         animationController.abortAnim()
 
@@ -671,7 +469,6 @@ class ReadView(context: Context) : FrameLayout(context) {
      * - 长按（>500ms 或无明显移动）→ 不拦截，TextView 原生触发选词
      */
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
-        if (isScrollMode) return false  // 连续滚动模式：不拦截，让 RecyclerView 处理
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 rvTouchStartX = ev.x
@@ -754,12 +551,10 @@ class ReadView(context: Context) : FrameLayout(context) {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (isScrollMode) return false  // 连续滚动模式：让 RecyclerView 处理触摸
         return animationController.onTouchEvent(event)
     }
 
     override fun computeScroll() {
-        if (isScrollMode) return  // 连续滚动模式：不需要动画帧
         if (animationController.computeScroll()) {
             postInvalidateOnAnimation()
         }
@@ -768,19 +563,15 @@ class ReadView(context: Context) : FrameLayout(context) {
     // ── 绘制 ──
 
     override fun dispatchDraw(canvas: android.graphics.Canvas) {
-        if (!isScrollMode) {
-            // 分页模式：先设置子 View 的 translationX/Y（翻页动画位置）
-            animationController.onDraw(canvas)
-        }
+        // 先设置子 View 的 translationX/Y（翻页动画位置）
+        animationController.onDraw(canvas)
         // 绘制子 View（PageContentView 包含的 TextView）
         super.dispatchDraw(canvas)
-        if (!isScrollMode) {
-            // 分页模式：再绘制阴影叠加层（在子 View 之上）
-            when (val ctrl = animationController) {
-                is SlidePageAnim -> ctrl.drawOverlay(canvas)
-                is ScrollPageAnim -> ctrl.drawOverlay(canvas)
-                is FadePageAnim -> ctrl.drawOverlay(canvas)
-            }
+        // 再绘制阴影叠加层（在子 View 之上）
+        when (val ctrl = animationController) {
+            is SlidePageAnim -> ctrl.drawOverlay(canvas)
+            is ScrollPageAnim -> ctrl.drawOverlay(canvas)
+            is FadePageAnim -> ctrl.drawOverlay(canvas)
         }
     }
 
@@ -835,8 +626,9 @@ class ReadView(context: Context) : FrameLayout(context) {
      * 获取当前页选区的完整信息（供 Compose 层自定义菜单使用）。
      * @return null 表示当前无选区
      */
-    fun getSelectionInfo(): SelectionInfo? {
-        val tv = curPageView.textView
+    fun getSelectionInfo(sourceView: PageContentView? = null): SelectionInfo? {
+        val pageView = sourceView ?: curPageView
+        val tv = pageView.textView
         val layout = tv.layout ?: return null
         val spannable = tv.text as? android.text.Spannable ?: return null
         val selStart = android.text.Selection.getSelectionStart(spannable)
@@ -846,7 +638,7 @@ class ReadView(context: Context) : FrameLayout(context) {
         val text = spannable.toString().substring(selStart, selEnd)
         val curSlot = slotManager.getCurSlot()
         val chapterIdx = curSlot.chapterIndex
-        val chapterStartOffset = curPageView.chapterStartOffset
+        val chapterStartOffset = pageView.chapterStartOffset
 
         val startLine = layout.getLineForOffset(selStart)
         val endLine = layout.getLineForOffset(selEnd.coerceAtMost(spannable.length - 1))
@@ -871,42 +663,6 @@ class ReadView(context: Context) : FrameLayout(context) {
     /** 清除当前页的选区 */
     private fun clearCurrentSelection() {
         curPageView.clearSelection()
-    }
-
-    // ── 原生选择 ActionMode ──
-
-    /**
-     * 为 PageContentView 的 TextView 设置 customSelectionActionModeCallback。
-     * onCreateActionMode 返回 false → 系统不创建 ActionMode → 浮动工具栏不显示。
-     * 选区完全由系统原生管理，不受 ActionMode 生命周期干扰。
-     * Compose 层通过 SpanWatcher + onSelectionActionModeStarted 检测选区。
-     */
-    private fun setupNativeSelectionActionMode(pageView: PageContentView) {
-        pageView.textView.customSelectionActionModeCallback = object : ActionMode.Callback {
-            override fun onCreateActionMode(mode: ActionMode?, menu: Menu?): Boolean {
-                // 🔥 返回 true → 系统创建 ActionMode → 选区保留（MIUI 在 false 时会清除选区）
-                // 同步清空菜单项 + 立即隐藏 + 异步多次隐藏，彻底压制系统浮动工具栏
-                menu?.clear()
-                mode?.hide(Long.MAX_VALUE)
-                android.os.Handler(android.os.Looper.getMainLooper()).post {
-                    menu?.clear()
-                    mode?.hide(Long.MAX_VALUE)
-                }
-                return true
-            }
-            override fun onPrepareActionMode(mode: ActionMode?, menu: Menu?): Boolean {
-                // 🔥 拖拽结束时系统重新调用 onPrepareActionMode（刷新工具栏）
-                menu?.clear()
-                mode?.hide(Long.MAX_VALUE)
-                android.os.Handler(android.os.Looper.getMainLooper()).post {
-                    menu?.clear()
-                    mode?.hide(Long.MAX_VALUE)
-                }
-                return true
-            }
-            override fun onActionItemClicked(mode: ActionMode?, item: MenuItem?): Boolean = false
-            override fun onDestroyActionMode(mode: ActionMode?) {}
-        }
     }
 
     /**

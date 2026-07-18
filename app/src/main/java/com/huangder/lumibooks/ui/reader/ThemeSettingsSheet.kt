@@ -301,12 +301,6 @@ fun ThemeSettingsSheet(
                     modifier = Modifier.weight(1f)
                 )
                 ModeButton(
-                    label = stringResource(R.string.transition_scroll),
-                    isSelected = currentPageTransition == "scroll",
-                    onClick = { onPageTransitionChange("scroll") },
-                    modifier = Modifier.weight(1f)
-                )
-                ModeButton(
                     label = stringResource(R.string.transition_fade),
                     isSelected = currentPageTransition == "fade",
                     onClick = { onPageTransitionChange("fade") },

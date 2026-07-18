@@ -880,7 +880,13 @@ class EpubParser(private val context: Context? = null) : BookParser {
     ) : Html.ImageGetter {
         override fun getDrawable(source: String): Drawable? {
             return try {
-                android.util.Log.d("EpubParser", "getDrawable: source=$source")
+                android.util.Log.d("EpubParser", "getDrawable: source=${source.take(80)}")
+
+                // 🔥 处理 Base64 data URI（embedImages 转换后的格式）
+                if (source.startsWith("data:", ignoreCase = true)) {
+                    return decodeDataUri(source)
+                }
+
                 val entryPath = resolveImagePath(source) ?: run {
                     android.util.Log.w("EpubParser", "getDrawable: resolveImagePath returned null for $source")
                     return null
@@ -937,6 +943,50 @@ class EpubParser(private val context: Context? = null) : BookParser {
             } catch (e: Throwable) {
                 android.util.Log.e("EpubParser", "getDrawable: exception", e)
                 null
+            }
+        }
+
+        /** 解析 data:mime;base64,... URI 为 BitmapDrawable */
+        private fun decodeDataUri(dataUri: String): Drawable? {
+            try {
+                // 格式: data:image/png;base64,iVBOR...
+                val commaIdx = dataUri.indexOf(',')
+                if (commaIdx < 0) return null
+                val base64Part = dataUri.substring(commaIdx + 1)
+                val bytes = Base64.decode(base64Part, Base64.DEFAULT)
+                if (bytes.isEmpty()) return null
+
+                // 先读尺寸
+                val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+
+                // 降采样
+                val targetW = 800
+                val targetH = 1200
+                opts.inSampleSize = maxOf(opts.outWidth / targetW, opts.outHeight / targetH).coerceAtLeast(1)
+                opts.inJustDecodeBounds = false
+                val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return null
+
+                // 缩放至页面宽度
+                val dm = android.content.res.Resources.getSystem().displayMetrics
+                val marginPx = (44 * dm.density).toInt()
+                val pageW = dm.widthPixels - marginPx * 2
+                val drawW: Int
+                val drawH: Int
+                if (bitmap.width > pageW) {
+                    val ratio = pageW.toFloat() / bitmap.width
+                    drawW = pageW
+                    drawH = (bitmap.height * ratio).toInt()
+                } else {
+                    drawW = bitmap.width
+                    drawH = bitmap.height
+                }
+                val drawable = BitmapDrawable(null, bitmap)
+                drawable.setBounds(0, 0, drawW, drawH)
+                return drawable
+            } catch (e: Throwable) {
+                android.util.Log.e("EpubParser", "decodeDataUri failed", e)
+                return null
             }
         }
     }

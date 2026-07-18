@@ -18,11 +18,13 @@ import kotlin.math.abs
 /**
  * 单页内容 View，替代 PageSurfaceView（Bitmap 容器）。
  *
- * 内部持有 TextView，支持：
- * - **系统原生文字选择**（setTextIsSelectable → 泪滴手柄 + 浮动工具栏）
- * - BackgroundColorSpan 高亮
- * - 字体/字号/边距配置
- * - **条件触摸拦截**：仅拦截水平滑动（翻页），点击/长按传递给 TextView 原生处理
+ * 双层架构：
+ * - **JustifiedTextView**（可见）：中文两端对齐渲染，逐字绘制 + 行尾字间距自动填充
+ * - **TextView**（隐藏）：计算 StaticLayout，处理文字选择（泪滴手柄 + 浮动工具栏）
+ *
+ * 选择手柄位置基于 TextView 的 layout 计算，
+ * 实际文字渲染使用 JustifiedTextView 的逐字绘制，
+ * 两者之间的微小偏差（< 5% 行宽）在视觉上可接受。
  */
 class PageContentView(context: Context) : FrameLayout(context) {
 
@@ -30,40 +32,70 @@ class PageContentView(context: Context) : FrameLayout(context) {
         private const val TAG = "PageContentView"
     }
 
+    /**
+     * 隐藏文字的 TextView：计算 layout + 处理文字选择。
+     *
+     * 文字颜色设为透明 → 不绘制文字（由 JustifiedTextView 负责渲染）。
+     * 但保留选区高亮（BackgroundColorSpan）和选择手柄的绘制。
+     * 这样选词时可以看到高亮背景 + 手柄，文字由 JustifiedTextView 叠加绘制。
+     */
     val textView: TextView = TextView(context).apply {
-        // 🔥 启用 Android 原生文字选择（泪滴手柄 + 系统浮动工具栏）
         setTextIsSelectable(true)
         gravity = Gravity.TOP
-        includeFontPadding = false  // 关闭字体额外间距，由 padding 精确控制上下边距
-        // 默认样式
-        setTextColor(0xFF333333.toInt())
+        includeFontPadding = false
+        // 文字颜色透明：不绘制文字本身，但选区高亮（BackgroundColorSpan）仍然可见
+        setTextColor(android.graphics.Color.TRANSPARENT)
         setTextSize(TypedValue.COMPLEX_UNIT_PX, 56f)
     }
 
+    /** 可见的 JustifiedTextView：中文两端对齐渲染 */
+    private val justifiedView = JustifiedTextView(context).apply {
+        setDefaultTextColor(0xFF333333.toInt())
+        setTextSize(56f)
+    }
+
     init {
-        // PageContentView 自身不消耗事件，让触摸穿透到 ReadView
         isClickable = false
         isFocusable = false
         isLongClickable = false
+        // 先添加隐藏的 TextView（底层，处理触摸）
         addView(textView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        // 再添加可见的 JustifiedTextView（顶层，渲染文字）
+        addView(justifiedView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     }
 
-    // ── 触摸拦截策略 ──
-    // 🔥 ReadView.onInterceptTouchEvent 统一处理所有触摸分类
-    // PageContentView 不再拦截任何事件，全部穿透给 TextView 原生处理
-    // （长按选词由 TextView setTextIsSelectable(true) 原生支持；
-    //   翻页/菜单/点击由 ReadView 层统一拦截处理）
+    /**
+     * 压制系统浮动工具栏：选词时使用自定义菜单而非系统菜单。
+     * 必须在 onSelectionAction 回调设置之后调用，
+     * 否则自定义菜单也会被压制。
+     */
+    fun suppressSystemToolbar() {
+        textView.customSelectionActionModeCallback = object : android.view.ActionMode.Callback {
+            override fun onCreateActionMode(mode: android.view.ActionMode?, menu: android.view.Menu?): Boolean {
+                menu?.clear()
+                mode?.hide(Long.MAX_VALUE)
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    menu?.clear()
+                    mode?.hide(Long.MAX_VALUE)
+                }
+                return true
+            }
+            override fun onPrepareActionMode(mode: android.view.ActionMode?, menu: android.view.Menu?): Boolean {
+                menu?.clear()
+                mode?.hide(Long.MAX_VALUE)
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    menu?.clear()
+                    mode?.hide(Long.MAX_VALUE)
+                }
+                return true
+            }
+            override fun onActionItemClicked(mode: android.view.ActionMode?, item: android.view.MenuItem?): Boolean = false
+            override fun onDestroyActionMode(mode: android.view.ActionMode?) {}
+        }
+    }
 
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean = false
 
-
-    /**
-     * 设置页面文本内容。
-     * @param fullText 完整章节文本
-     * @param startChar 起始字符偏移（含），即本章节中的全局起始位置
-     * @param endChar 结束字符偏移（不含）
-     * @param highlights 高亮列表 (start, end, color)，偏移相对于 fullText
-     */
     /** 文本设置完成后的回调（ReadView 用于注册 SpanWatcher） */
     var onTextSet: ((Spannable) -> Unit)? = null
 
@@ -79,6 +111,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
         if (startChar < 0 || endChar > fullText.length || startChar >= endChar) {
             chapterStartOffset = startChar
             textView.text = ""
+            justifiedView.text = null
             return
         }
 
@@ -95,6 +128,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
 
         if (actualStart >= endChar) {
             textView.text = ""
+            justifiedView.text = null
             return
         }
 
@@ -109,9 +143,13 @@ class PageContentView(context: Context) : FrameLayout(context) {
         }
         Log.d(TAG, "setPageContent: pageText type=${pageText.javaClass.simpleName} isSpanned=${pageText is android.text.Spanned}")
 
-        // 🔥 保留 span：从 subText 中提取所有格式 span 并重新应用
-        // （SpannableStringBuilder(pageText) 会丢失 LeadingMarginSpan 和 ParagraphLineHeightSpan）
-        val spannable = SpannableStringBuilder(pageText.toString())
+        // 🔥 保留 span：直接用 SpannableStringBuilder(Spanned) 保留所有 span（含 ImageSpan）
+        // toString() 会把 ImageSpan 变成 U+FFFC "obj" 字符，图片丢失
+        val spannable = if (pageText is android.text.Spanned) {
+            SpannableStringBuilder(pageText)
+        } else {
+            SpannableStringBuilder(pageText)
+        }
         if (subText is android.text.Spanned) {
             // 恢复 LeadingMarginSpan（首行缩进）
             // 如果页面从段落中间开始（前一个字符不是 \n），跳过开头到第一个 \n 的缩进
@@ -158,20 +196,21 @@ class PageContentView(context: Context) : FrameLayout(context) {
             }
         }
 
-        // 验证 LeadingMarginSpan 存活（调试用）
+        // 验证 span 存活（调试用）
         val lms = spannable.getSpans(0, spannable.length, android.text.style.LeadingMarginSpan::class.java)
-        Log.d(TAG, "setPageContent: start=$actualStart end=$endChar len=${spannable.length} LeadingMarginSpans=${lms.size}")
+        val imgSpans = spannable.getSpans(0, spannable.length, android.text.style.ImageSpan::class.java)
+        Log.d(TAG, "setPageContent: start=$actualStart end=$endChar len=${spannable.length} LMS=${lms.size} ImageSpan=${imgSpans.size}")
 
+        // 设置文本到两个 View
         textView.text = spannable
+        justifiedView.text = spannable
 
-        // 验证 TextView 最终文本中的 span
-        val tvText = textView.text
-        val tvLms = if (tvText is Spannable) tvText.getSpans(0, tvText.length, android.text.style.LeadingMarginSpan::class.java) else emptyArray()
-        Log.d(TAG, "setPageContent: AFTER setText: tvText type=${tvText.javaClass.simpleName} LeadingMarginSpans=${tvLms.size}")
-        Log.d(TAG, "setPageContent: AFTER setText: tvText type=${tvText.javaClass.simpleName} LeadingMarginSpans=${tvLms.size}")
+        // 仅当内容含图片时才 requestLayout（避免纯文本页面触发不必要的重测量导致闪烁）
+        if (imgSpans.isNotEmpty()) {
+            requestLayout()
+        }
 
-        textView.text = spannable
-        // 🔥 setTextIsSelectable(true) 时 Android 内部通过 Editable.Factory.newEditable() 创建副本
+        // setTextIsSelectable(true) 时 Android 内部通过 Editable.Factory.newEditable() 创建副本
         // 必须从 textView.text 取实际存储的 Spannable，否则 SpanWatcher 注册在死对象上
         val actualSpannable = textView.text as? Spannable ?: spannable
         onTextSet?.invoke(actualSpannable)
@@ -179,6 +218,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
 
     /**
      * 配置 TextView 样式。
+     * 同时配置隐藏的 TextView（用于 layout 计算）和可见的 JustifiedTextView（用于渲染）。
      */
     fun configure(
         fontSizePx: Float,
@@ -194,15 +234,18 @@ class PageContentView(context: Context) : FrameLayout(context) {
         highlightColor: Int = 0x40007AFF.toInt(),
         accentColor: Int = 0xFF007AFF.toInt()
     ) {
+        val spacingRatio = if (fontSizePx > 0) letterSpacingPx / fontSizePx else 0f
+
+        // 配置隐藏的 TextView（layout 计算 + 选择）
+        // 文字颜色保持透明，不绘制文字（由 JustifiedTextView 负责渲染）
         textView.setTextSize(TypedValue.COMPLEX_UNIT_PX, fontSizePx)
-        textView.setTextColor(textColor)
+        textView.setTextColor(android.graphics.Color.TRANSPARENT)
         textView.typeface = typeface
         textView.setLineSpacing(lineSpacingExtraPx, lineHeightMult)
-        textView.letterSpacing = if (fontSizePx > 0) letterSpacingPx / fontSizePx else 0f
-        // 断行策略：与 PageLayoutEngine 保持一致，防止分页边界与渲染不匹配
+        textView.letterSpacing = spacingRatio
         textView.breakStrategy = Layout.BREAK_STRATEGY_HIGH_QUALITY
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-            textView.hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NONE  // CJK 文本不需要断字
+            textView.hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NONE
         }
         textView.setPadding(
             marginLeftPx.toInt(),
@@ -210,9 +253,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
             marginRightPx.toInt(),
             marginBottomPx.toInt()
         )
-        // 🔥 选择高亮色跟随主题
         textView.highlightColor = highlightColor
-        // 🔥 API 29+ 选择手柄颜色跟随主题
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             val density = textView.resources.displayMetrics.density
             val handle = android.graphics.drawable.GradientDrawable().apply {
@@ -224,6 +265,19 @@ class PageContentView(context: Context) : FrameLayout(context) {
             textView.setTextSelectHandleLeft(handle)
             textView.setTextSelectHandleRight(handle)
         }
+
+        // 配置可见的 JustifiedTextView（两端对齐渲染）
+        justifiedView.setTextSize(fontSizePx)
+        justifiedView.setDefaultTextColor(textColor)
+        justifiedView.setTypeface(typeface)
+        justifiedView.setLineSpacing(lineSpacingExtraPx, lineHeightMult)
+        justifiedView.setLetterSpacing(spacingRatio)
+        justifiedView.setPadding(
+            marginLeftPx.toInt(),
+            marginTopPx.toInt(),
+            marginRightPx.toInt(),
+            marginBottomPx.toInt()
+        )
     }
 
     /** 获取当前 TextView 的 Spannable（用于读取选区等） */
@@ -314,5 +368,15 @@ class PageContentView(context: Context) : FrameLayout(context) {
     /** 清除内容 */
     fun clear() {
         textView.text = ""
+        justifiedView.text = null
+    }
+
+    /**
+     * 同步设置文本到 textView 和 justifiedView。
+     * 用于外部直接设置 textView.text 的场景（如 PageSlotManager）。
+     */
+    fun syncText(text: CharSequence?) {
+        textView.text = text
+        justifiedView.text = text as? Spannable ?: text?.let { SpannableStringBuilder(it) }
     }
 }
