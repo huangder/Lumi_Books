@@ -320,8 +320,8 @@ class PageSlotManager(
         toSlot.pageIndex = fromSlot.pageIndex
         toSlot.globalPageIndex = fromSlot.globalPageIndex
         toSlot.isLoaded = fromSlot.isLoaded
-        // 复制文本内容（TextView 不能直接转移引用）
-        toSlot.contentView.textView.text = fromSlot.contentView.textView.text
+        // 复制文本内容（同步到 textView 和 justifiedView）
+        toSlot.contentView.syncText(fromSlot.contentView.textView.text)
 
         fromSlot.chapterIndex = -1
         fromSlot.pageIndex = -1
