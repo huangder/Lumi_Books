@@ -343,8 +343,8 @@ class SettingsViewModel @Inject constructor(
                     val avatar = File(context.filesDir, "avatars/avatar.jpg")
                     if (avatar.exists()) addFileToZip(zip, "avatars/avatar.jpg", avatar)
 
-                    // 4. 书籍文件目录
-                    val booksDir = File(context.filesDir, "books")
+                    // 4. 书籍文件目录（与 FileUtils.getBooksDirectory 路径一致）
+                    val booksDir = File(context.getExternalFilesDir(null), "books")
                     if (booksDir.exists()) {
                         booksDir.walkTopDown().filter { it.isFile }.forEach { f ->
                             val rel = f.relativeTo(booksDir).path.replace("\\", "/")
@@ -398,7 +398,7 @@ class SettingsViewModel @Inject constructor(
                                 FileOutputStream(target).use { zip.copyTo(it) }
                             }
                             name.startsWith("books/") -> {
-                                val target = File(context.filesDir, name)
+                                val target = File(context.getExternalFilesDir(null), name)
                                 target.parentFile?.mkdirs()
                                 FileOutputStream(target).use { zip.copyTo(it) }
                             }

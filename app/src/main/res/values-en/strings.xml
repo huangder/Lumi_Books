@@ -317,6 +317,7 @@
 
     <!-- Welcome Page -->
     <string name="welcome_title">Welcome</string>
+    <string name="welcome_update_title">Lumi is now up to date</string>
     <string name="welcome_desc">Lumi is a pure local book reader. We will never collect any personal information without your permission, and we are committed to never providing network account services. All reading data is stored on your local device, so please remember to back up your data regularly. Lumi follows the principle of minimal permissions and will never request unnecessary sensitive permissions. By tapping \"Continue\", you confirm that you have read and agree to</string>
     <string name="welcome_privacy">Privacy Policy</string>
     <string name="welcome_and">and</string>
@@ -325,6 +326,8 @@
     <string name="welcome_continue">Continue</string>
     <string name="welcome_privacy_title">Privacy Policy</string>
     <string name="welcome_terms_title">Terms of Service</string>
+    <string name="welcome_support_message">Enjoying Lumi? You can support us in Settings > Support Development. Every donation goes entirely toward Lumi\'s continued development and improvement.</string>
+    <string name="welcome_start_using">Get Started</string>
 
     <!-- PDF Reader -->
     <string name="pdf_back">Back</string>
