@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.huangder.lumibooks.app-mergeDebugResources-67:/values-nl/values-nl.xml",
+            "outputFile": "com.huangder.lumibooks.app-mergeDebugResources-68:/values-nl/values-nl.xml",
             "map": [
                 {
                     "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.9\\transforms\\5b22736a0f7c9570977b801b9b5c129d\\transformed\\foundation-release\\res\\values-nl\\values-nl.xml",

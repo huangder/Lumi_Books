@@ -40,6 +40,7 @@ class DataStoreManager @Inject constructor(
         private val READER_TEXT_COLOR = intPreferencesKey("reader_text_color")
         private val PARAGRAPH_SPACING = floatPreferencesKey("paragraph_spacing")
         private val FIRST_LINE_INDENT = floatPreferencesKey("first_line_indent")
+        private val ADVANCED_DEFAULTS_VERSION = intPreferencesKey("advanced_defaults_version")
 
         // 统计设置
         private val DAILY_GOAL = intPreferencesKey("daily_goal")
@@ -82,11 +83,11 @@ class DataStoreManager @Inject constructor(
     }
 
     val marginHoriz: Flow<Float> = context.dataStore.data.map { preferences ->
-        preferences[MARGIN_HORIZ] ?: 40f
+        preferences[MARGIN_HORIZ] ?: 38f
     }
 
     val marginVert: Flow<Float> = context.dataStore.data.map { preferences ->
-        preferences[MARGIN_VERT] ?: 68f
+        preferences[MARGIN_VERT] ?: 64f
     }
 
     val readerTheme: Flow<String> = context.dataStore.data.map { preferences ->
@@ -228,11 +229,28 @@ class DataStoreManager @Inject constructor(
             preferences[LINE_HEIGHT] = 1.5f
             preferences[LETTER_SPACING] = 0f
             preferences[FONT_TYPE] = "system"
-            preferences[MARGIN_HORIZ] = 40f
-            preferences[MARGIN_VERT] = 68f
-            preferences[PARAGRAPH_SPACING] = 8f
+            preferences[MARGIN_HORIZ] = 38f
+            preferences[MARGIN_VERT] = 64f
+            preferences[PARAGRAPH_SPACING] = 2f
             preferences[FIRST_LINE_INDENT] = 2f
             preferences.remove(READER_TEXT_COLOR)
+        }
+    }
+
+    suspend fun migrateAdvancedReaderDefaults() {
+        context.dataStore.edit { preferences ->
+            if ((preferences[ADVANCED_DEFAULTS_VERSION] ?: 0) >= 1) return@edit
+
+            if (preferences[PARAGRAPH_SPACING] == 8f) {
+                preferences[PARAGRAPH_SPACING] = 2f
+            }
+            if (preferences[MARGIN_HORIZ] == 44f || preferences[MARGIN_HORIZ] == 40f) {
+                preferences[MARGIN_HORIZ] = 38f
+            }
+            if (preferences[MARGIN_VERT] == 72f || preferences[MARGIN_VERT] == 68f) {
+                preferences[MARGIN_VERT] = 64f
+            }
+            preferences[ADVANCED_DEFAULTS_VERSION] = 1
         }
     }
 
@@ -287,9 +305,9 @@ class DataStoreManager @Inject constructor(
         context.dataStore.edit { it[key] = mode }
     }
 
-    /** 段间距（dp），默认 8dp */
+    /** 段间距（dp），默认 2dp */
     fun paragraphSpacing(): Flow<Float> {
-        return context.dataStore.data.map { it[PARAGRAPH_SPACING] ?: 8f }
+        return context.dataStore.data.map { it[PARAGRAPH_SPACING] ?: 2f }
     }
 
     suspend fun saveParagraphSpacing(value: Float) {

@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.huangder.lumibooks.app-mergeDebugResources-67:/values-en-rCA/values-en-rCA.xml",
+            "outputFile": "com.huangder.lumibooks.app-mergeDebugResources-68:/values-en-rCA/values-en-rCA.xml",
             "map": [
                 {
                     "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.9\\transforms\\fa8fe1df0856f66f194f295ae16e5d01\\transformed\\ui-release\\res\\values-en-rCA\\values-en-rCA.xml",

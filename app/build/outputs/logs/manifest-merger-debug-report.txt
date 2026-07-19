@@ -30,6 +30,7 @@ MERGED from [androidx.navigation:navigation-common-ktx:2.8.5] C:\Users\Huangder\
 MERGED from [androidx.navigation:navigation-runtime-ktx:2.8.5] C:\Users\Huangder\.gradle\caches\8.9\transforms\121fe64f7bcf9272cefa2475666791ab\transformed\navigation-runtime-ktx-2.8.5\AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.navigation:navigation-compose:2.8.5] C:\Users\Huangder\.gradle\caches\8.9\transforms\aa147167f634f2e5eff5782c6e4ca60f\transformed\navigation-compose-2.8.5\AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.compose.material3:material3-android:1.3.1] C:\Users\Huangder\.gradle\caches\8.9\transforms\91d9b7eeac7439eceef19660890d9a0d\transformed\material3-release\AndroidManifest.xml:17:1-22:12
+MERGED from [dev.chrisbanes.haze:haze-android:1.1.1] C:\Users\Huangder\.gradle\caches\8.9\transforms\ae694fc9e57497eb3e27bd52832b4df6\transformed\haze-release\AndroidManifest.xml:2:1-7:12
 MERGED from [io.coil-kt:coil-compose:2.7.0] C:\Users\Huangder\.gradle\caches\8.9\transforms\bb403ccf35c1cc407d79401c28d057c1\transformed\coil-compose-2.7.0\AndroidManifest.xml:2:1-7:12
 MERGED from [io.coil-kt:coil-compose-base:2.7.0] C:\Users\Huangder\.gradle\caches\8.9\transforms\acdbe75a902162e264f63483ab9ceba8\transformed\coil-compose-base-2.7.0\AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.compose.material:material-android:1.7.6] C:\Users\Huangder\.gradle\caches\8.9\transforms\0b4b80ada30bf2b214f938409fac368a\transformed\material-release\AndroidManifest.xml:2:1-7:12
@@ -325,6 +326,8 @@ MERGED from [androidx.navigation:navigation-compose:2.8.5] C:\Users\Huangder\.gr
 MERGED from [androidx.navigation:navigation-compose:2.8.5] C:\Users\Huangder\.gradle\caches\8.9\transforms\aa147167f634f2e5eff5782c6e4ca60f\transformed\navigation-compose-2.8.5\AndroidManifest.xml:5:5-44
 MERGED from [androidx.compose.material3:material3-android:1.3.1] C:\Users\Huangder\.gradle\caches\8.9\transforms\91d9b7eeac7439eceef19660890d9a0d\transformed\material3-release\AndroidManifest.xml:20:5-44
 MERGED from [androidx.compose.material3:material3-android:1.3.1] C:\Users\Huangder\.gradle\caches\8.9\transforms\91d9b7eeac7439eceef19660890d9a0d\transformed\material3-release\AndroidManifest.xml:20:5-44
+MERGED from [dev.chrisbanes.haze:haze-android:1.1.1] C:\Users\Huangder\.gradle\caches\8.9\transforms\ae694fc9e57497eb3e27bd52832b4df6\transformed\haze-release\AndroidManifest.xml:5:5-44
+MERGED from [dev.chrisbanes.haze:haze-android:1.1.1] C:\Users\Huangder\.gradle\caches\8.9\transforms\ae694fc9e57497eb3e27bd52832b4df6\transformed\haze-release\AndroidManifest.xml:5:5-44
 MERGED from [io.coil-kt:coil-compose:2.7.0] C:\Users\Huangder\.gradle\caches\8.9\transforms\bb403ccf35c1cc407d79401c28d057c1\transformed\coil-compose-2.7.0\AndroidManifest.xml:5:5-44
 MERGED from [io.coil-kt:coil-compose:2.7.0] C:\Users\Huangder\.gradle\caches\8.9\transforms\bb403ccf35c1cc407d79401c28d057c1\transformed\coil-compose-2.7.0\AndroidManifest.xml:5:5-44
 MERGED from [io.coil-kt:coil-compose-base:2.7.0] C:\Users\Huangder\.gradle\caches\8.9\transforms\acdbe75a902162e264f63483ab9ceba8\transformed\coil-compose-base-2.7.0\AndroidManifest.xml:5:5-44

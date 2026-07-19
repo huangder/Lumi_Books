@@ -56,8 +56,8 @@ data class ReaderUiState(
     val lineHeight: Float = 1.5f,
     val letterSpacing: Float = 0f,
     val fontType: String = "system",
-    val marginHorizDp: Float = 40f,
-    val marginVertDp: Float = 68f,
+    val marginHorizDp: Float = 38f,
+    val marginVertDp: Float = 64f,
     val readerTheme: String = "day",
     /** 亮度 0f~1f，-1f 跟随系统 */
     val brightness: Float = -1f,
@@ -78,7 +78,7 @@ data class ReaderUiState(
     /** 翻页效果："slide" | "scroll" | "fade" */
     val pageTransition: String = "slide",
     /** 段间距（dp），默认 8 */
-    val paragraphSpacing: Float = 8f,
+    val paragraphSpacing: Float = 2f,
     /** 首行缩进字符数，默认 2 */
     val firstLineIndent: Float = 2f
 )
@@ -131,8 +131,11 @@ class ReaderViewModel @Inject constructor(
     }
 
     init {
-        loadBook()
-        loadReaderSettings()
+        viewModelScope.launch {
+            dataStoreManager.migrateAdvancedReaderDefaults()
+            loadBook()
+            loadReaderSettings()
+        }
     }
 
     private fun loadReaderSettings() {
@@ -425,16 +428,16 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun resetAdvancedReaderSettings() {
-        parser?.paragraphSpacingDp = 8f
+        parser?.paragraphSpacingDp = 2f
         parser?.firstLineIndentChars = 2f
         parser?.clearHtmlCache()
         _uiState.value = _uiState.value.copy(
             lineHeight = 1.5f,
             letterSpacing = 0f,
             fontType = "system",
-            marginHorizDp = 40f,
-            marginVertDp = 68f,
-            paragraphSpacing = 8f,
+            marginHorizDp = 38f,
+            marginVertDp = 64f,
+            paragraphSpacing = 2f,
             firstLineIndent = 2f,
             readerTextColor = null
         )

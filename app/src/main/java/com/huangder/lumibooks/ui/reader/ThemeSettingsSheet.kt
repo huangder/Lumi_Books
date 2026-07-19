@@ -848,55 +848,15 @@ fun AdvancedSettingsSheet(
                 .fillMaxHeight(0.90f)
                 .graphicsLayer { translationY = sheetOffset.value * size.height }
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(LightCardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .navigationBarsPadding()
-                .padding(24.dp)
         ) {
-            // 标题栏
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                // 关闭按钮
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(LightBgGray)
-                        .clickable { isClosing = true },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Outlined.Close, stringResource(R.string.close), tint = LightTextSecondary, modifier = Modifier.size(18.dp))
-                }
-                Spacer(Modifier.weight(1f))
-                Text(
-                    stringResource(R.string.advanced_settings),
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = KaiTi,
-                    color = Color.Black
-                )
-                Spacer(Modifier.weight(1f))
-                // 确认按钮
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black)
-                        .clickable { isClosing = true },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("✓", fontSize = 16.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                }
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            // 预览框
-            Text(stringResource(R.string.preview), fontSize = 14.sp, color = LightTextSecondary)
-            Spacer(Modifier.height(8.dp))
+            // 顶部预览区域：背景直接铺到容器顶部，操作按钮悬浮在预览之上。
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(220.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .height(260.dp)
                     .background(currentBgColor)
             ) {
                 currentBackgroundImagePath?.let { path ->
@@ -910,12 +870,13 @@ fun AdvancedSettingsSheet(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
+                        .padding(top = 62.dp)
                         .padding(
                             horizontal = previewHorizontalPadding,
                             vertical = previewVerticalPadding
                         ),
                     verticalArrangement = Arrangement.spacedBy(
-                        (currentParagraphSpacing * 0.65f).coerceAtLeast(0f).dp
+                        (currentParagraphSpacing * 3f).coerceIn(0f, 36f).dp
                     )
                 ) {
                     previewParagraphs.forEach { paragraph ->
@@ -935,15 +896,49 @@ fun AdvancedSettingsSheet(
                         )
                     }
                 }
-            }
 
-            Spacer(Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 20.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(LightBgGray.copy(alpha = 0.92f))
+                            .clickable { isClosing = true },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Outlined.Close,
+                            stringResource(R.string.close),
+                            tint = LightTextSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(Modifier.weight(1f))
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.92f))
+                            .clickable { isClosing = true },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("✓", fontSize = 16.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
 
             // 可滚动调节区
             Column(
                 modifier = Modifier
                     .weight(1f)
                     .verticalScroll(settingsScrollState)
+                    .padding(start = 24.dp, top = 16.dp, end = 24.dp, bottom = 24.dp)
             ) {
                 TextColorSetting(
                     currentOverride = currentTextColorOverride,
@@ -1239,7 +1234,8 @@ private fun SettingSlider(
     com.huangder.lumibooks.ui.components.PillSlider(
         value = sliderValue,
         onValueChange = { sliderValue = it; onChange(it) },
-        valueRange = range
+        valueRange = range,
+        step = step
     )
 }
 

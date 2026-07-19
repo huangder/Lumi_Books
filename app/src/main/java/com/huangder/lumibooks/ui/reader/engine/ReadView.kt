@@ -91,8 +91,8 @@ class ReadView(context: Context) : FrameLayout(context) {
     private var currentLetterSpacingDp: Float = 0f
     private var currentFontType: String = "system"
     private var currentCustomFontPath: String? = null
-    private var currentMarginHorizDp: Float = 40f
-    private var currentMarginVertDp: Float = 68f
+    private var currentMarginHorizDp: Float = 38f
+    private var currentMarginVertDp: Float = 64f
     private var currentParagraphSpacingDp: Float = 0f
     private var currentChineseMode: String = "original"
     private var currentPageTransition: String = "slide"
@@ -306,9 +306,9 @@ class ReadView(context: Context) : FrameLayout(context) {
         letterSpacingDp: Float = 0f,
         fontType: String = "system",
         customFontPath: String? = null,
-        marginHorizDp: Float = 40f,
-        marginVertDp: Float = 68f,
-        paragraphSpacingDp: Float = 0f,
+        marginHorizDp: Float = 38f,
+        marginVertDp: Float = 64f,
+        paragraphSpacingDp: Float = 2f,
         width: Int = this.width,
         height: Int = this.height
     ) {
