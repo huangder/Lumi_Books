@@ -59,6 +59,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.Lifecycle
@@ -226,7 +227,19 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
 
     var showNotesList by remember { mutableStateOf(false) }
     var linkReturnLocation by remember(bookId) { mutableStateOf<ReaderLinkLocation?>(null) }
+    var linkReturnToken by remember(bookId) { mutableStateOf(0) }
     var linkNavigationJob by remember(bookId) { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+
+    // 每次书内链接跳转成功后重新计时，30 秒后自动隐藏原页返回按钮。
+    LaunchedEffect(linkReturnLocation, linkReturnToken) {
+        if (linkReturnLocation != null) {
+            val activeToken = linkReturnToken
+            kotlinx.coroutines.delay(30_000L)
+            if (activeToken == linkReturnToken) {
+                linkReturnLocation = null
+            }
+        }
+    }
 
     // 🔥 原生选择 ActionMode 回调 → 等待笔记输入
     var pendingSelection by remember { mutableStateOf<PendingSelection?>(null) }
@@ -362,6 +375,39 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     // 全屏沉浸
     ImmersiveMode()
 
+    val loadError = uiState.error
+    if (!uiState.isLoading && loadError != null) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(AppColors.WindowBg),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = stringResource(R.string.reader_load_failed),
+                    fontSize = AppType.Section,
+                    fontWeight = FontWeight.Bold,
+                    color = AppColors.TextPrimary
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = loadError,
+                    fontSize = AppType.BodySmall,
+                    color = AppColors.TextSecondary
+                )
+                Spacer(Modifier.height(16.dp))
+                TextButton(onClick = onNavigateBack) {
+                    Text(stringResource(R.string.back), color = AppColors.Accent)
+                }
+            }
+        }
+        return
+    }
+
     // 主题背景色
     val composeBgColor = Color(readerBackgroundColorInt)
 
@@ -403,6 +449,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                     val target = viewModel.resolveBookLink(source.chapterIndex, href)
                                         ?: return@launch
                                     linkReturnLocation = source
+                                    linkReturnToken += 1
                                     readViewRef.value?.jumpToCharacter(
                                         target.chapterIndex,
                                         target.characterOffset
@@ -594,7 +641,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .statusBarsPadding()
-                    .padding(start = 16.dp, top = 12.dp)
+                    .padding(start = 24.dp, top = 20.dp)
             ) {
                 LinkReturnButton(
                     backgroundColor = capsuleBgColor,
@@ -1120,23 +1167,22 @@ private fun LinkReturnButton(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .shadow(3.dp, shape)
             .clip(shape)
             .background(backgroundColor.copy(alpha = 0.96f))
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 9.dp)
+            .padding(horizontal = 7.dp, vertical = 6.dp)
     ) {
         Icon(
             imageVector = Icons.Default.KeyboardArrowLeft,
             contentDescription = null,
             tint = contentColor,
-            modifier = Modifier.size(20.dp)
+            modifier = Modifier.size(14.dp)
         )
-        Spacer(Modifier.width(4.dp))
+        Spacer(Modifier.width(3.dp))
         Text(
             text = stringResource(R.string.reader_link_return),
             color = contentColor,
-            fontSize = 14.sp,
+            fontSize = 10.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1
         )

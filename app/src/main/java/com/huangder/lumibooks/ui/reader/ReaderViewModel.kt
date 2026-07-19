@@ -25,6 +25,7 @@ import com.huangder.lumibooks.util.TimeUtils
 import com.huangder.lumibooks.util.parser.BookParser
 import com.huangder.lumibooks.util.parser.BookParserFactory
 import com.huangder.lumibooks.util.parser.BookLinkTarget
+import com.huangder.lumibooks.util.parser.PdfParser
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -81,7 +82,9 @@ data class ReaderUiState(
     /** 段间距（dp），默认 8 */
     val paragraphSpacing: Float = 2f,
     /** 首行缩进字符数，默认 2 */
-    val firstLineIndent: Float = 2f
+    val firstLineIndent: Float = 2f,
+    /** PDF 阅读方向："vertical" | "horizontal" */
+    val pdfPageMode: String = "vertical"
 )
 
 @HiltViewModel
@@ -216,6 +219,11 @@ class ReaderViewModel @Inject constructor(
                     _uiState.value = _uiState.value.copy(customReaderBackgrounds = hydrated)
                     dataStoreManager.saveCustomReaderBackgrounds(hydrated)
                 }
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.pdfPageMode.collectLatest { mode ->
+                _uiState.value = _uiState.value.copy(pdfPageMode = mode)
             }
         }
     }
@@ -408,6 +416,12 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
+    fun togglePdfPageMode() {
+        val nextMode = if (_uiState.value.pdfPageMode == "horizontal") "vertical" else "horizontal"
+        _uiState.value = _uiState.value.copy(pdfPageMode = nextMode)
+        viewModelScope.launch { dataStoreManager.savePdfPageMode(nextMode) }
+    }
+
     fun saveParagraphSpacing(value: Float) {
         parser?.paragraphSpacingDp = value
         parser?.clearHtmlCache()  // 同步清缓存，确保 configure() 重新分页时拿到新内容
@@ -481,6 +495,7 @@ class ReaderViewModel @Inject constructor(
                     val pageTransition = dataStoreManager.pageTransition().first()
                     val paragraphSpacing = dataStoreManager.paragraphSpacing().first()
                     val firstLineIndent = dataStoreManager.firstLineIndent().first()
+                    val pdfPageMode = dataStoreManager.pdfPageMode.first()
 
                     // 应用段间距和首行缩进到 parser
                     parser!!.paragraphSpacingDp = paragraphSpacing
@@ -491,6 +506,7 @@ class ReaderViewModel @Inject constructor(
                     }
 
                     val chapterCount = content.chapters.size
+                    require(chapterCount > 0) { "书籍没有可阅读内容" }
                     val chapterTitles = content.chapters.map { it.title }
                     val tocEntries = content.tocEntries.ifEmpty {
                         content.chapters.map { com.huangder.lumibooks.util.parser.TocEntry(it.title, 1, it.index) }
@@ -512,10 +528,15 @@ class ReaderViewModel @Inject constructor(
                         chineseMode = chineseMode,
                         pageTransition = pageTransition,
                         paragraphSpacing = paragraphSpacing,
-                        firstLineIndent = firstLineIndent
+                        firstLineIndent = firstLineIndent,
+                        pdfPageMode = pdfPageMode,
+                        error = null
                     )
 
-                    loadChapterContent()
+                    if (isPdf) {
+                        // PDF 使用独立 PdfViewerScreen，不生成 Base64 HTML。
+                        _uiState.value = _uiState.value.copy(isLoading = false, pageReady = true)
+                    }
                     loadBookmarks()
                     loadNotes()
                 } else {
@@ -539,6 +560,7 @@ class ReaderViewModel @Inject constructor(
      */
     private fun loadChapterContent(startPage: Int = 0) {
         val state = _uiState.value
+        if (state.useNewEngine) return
         _uiState.value = _uiState.value.copy(chapterHtml = "", currentPageIndex = startPage, pageReady = false)
         viewModelScope.launch {
             val html = withContext(Dispatchers.IO) { getChapterHtml(state.currentChapterIndex) }
@@ -589,7 +611,7 @@ class ReaderViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(
             currentChapterIndex = state.currentChapterIndex + 1
         )
-        loadChapterContent()
+        if (!state.useNewEngine) loadChapterContent()
         saveProgress()
     }
 
@@ -603,7 +625,7 @@ class ReaderViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(
             currentChapterIndex = state.currentChapterIndex - 1
         )
-        loadChapterContent(startPage = targetPage)
+        if (!state.useNewEngine) loadChapterContent(startPage = targetPage)
         saveProgress()
     }
 
@@ -613,7 +635,7 @@ class ReaderViewModel @Inject constructor(
     fun setChapter(chapterIndex: Int) {
         if (chapterIndex == _uiState.value.currentChapterIndex) return
         _uiState.value = _uiState.value.copy(currentChapterIndex = chapterIndex)
-        loadChapterContent()
+        if (!_uiState.value.useNewEngine) loadChapterContent()
         saveProgress()
     }
 
@@ -1050,5 +1072,11 @@ class ReaderViewModel @Inject constructor(
         } catch (e: Exception) {
             android.util.Log.e("READING", "Save failed: ${e.message}")
         }
+    }
+
+    override fun onCleared() {
+        (parser as? PdfParser)?.close()
+        preloadCache.clear()
+        super.onCleared()
     }
 }

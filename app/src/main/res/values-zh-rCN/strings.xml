@@ -332,6 +332,9 @@
     <string name="pdf_toc">目录</string>
     <string name="pdf_close">关闭</string>
     <string name="pdf_page_desc">第%d页</string>
+    <string name="pdf_switch_to_horizontal">切换为左右翻页</string>
+    <string name="pdf_switch_to_vertical">切换为上下翻页</string>
+    <string name="reader_load_failed">书籍加载失败</string>
 
     <!-- 其他 -->
     <string name="loading_text">加载中</string>
