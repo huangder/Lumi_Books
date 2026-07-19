@@ -1,10 +1,10 @@
 {
     "logs": [
         {
-            "outputFile": "com.huangder.lumibooks.app-mergeReleaseResources-62:/values-ca/values-ca.xml",
+            "outputFile": "com.huangder.lumibooks.app-mergeReleaseResources-64:/values-ca/values-ca.xml",
             "map": [
                 {
-                    "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.13\\transforms\\0e1e5722d8d00985dbe6e233cdb91d7d\\transformed\\core-1.15.0\\res\\values-ca\\values-ca.xml",
+                    "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.9\\transforms\\e5ff5fc370625606275ba2ae3f11162f\\transformed\\core-1.15.0\\res\\values-ca\\values-ca.xml",
                     "from": {
                         "startLines": "2,3,4,5,6,7,8,9",
                         "startColumns": "4,4,4,4,4,4,4,4",
@@ -21,7 +21,7 @@
                     }
                 },
                 {
-                    "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.13\\transforms\\2e698c387947aa40f58106e8678d53d0\\transformed\\ui-release\\res\\values-ca\\values-ca.xml",
+                    "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.9\\transforms\\fa8fe1df0856f66f194f295ae16e5d01\\transformed\\ui-release\\res\\values-ca\\values-ca.xml",
                     "from": {
                         "startLines": "2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19",
                         "startColumns": "4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4",
@@ -38,24 +38,7 @@
                     }
                 },
                 {
-                    "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.13\\transforms\\acbc8678748029b3361fa9fd0b201889\\transformed\\foundation-release\\res\\values-ca\\values-ca.xml",
-                    "from": {
-                        "startLines": "2,3",
-                        "startColumns": "4,4",
-                        "startOffsets": "55,153",
-                        "endColumns": "97,101",
-                        "endOffsets": "148,250"
-                    },
-                    "to": {
-                        "startLines": "85,86",
-                        "startColumns": "4,4",
-                        "startOffsets": "8924,9022",
-                        "endColumns": "97,101",
-                        "endOffsets": "9017,9119"
-                    }
-                },
-                {
-                    "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.13\\transforms\\008bd89bfb8f52456a40d44d6c6d3b4a\\transformed\\material3-release\\res\\values-ca\\values-ca.xml",
+                    "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.9\\transforms\\91d9b7eeac7439eceef19660890d9a0d\\transformed\\material3-release\\res\\values-ca\\values-ca.xml",
                     "from": {
                         "startLines": "2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58",
                         "startColumns": "4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4",
@@ -69,6 +52,23 @@
                         "startOffsets": "1482,1603,1722,1841,1961,2061,2159,2274,2416,2531,2690,2774,2872,2970,3071,3188,3317,3420,3561,3701,3842,4008,4141,4258,4379,4508,4607,4704,4825,4970,5076,5189,5303,5442,5587,5696,5803,5889,5990,6091,6202,6288,6374,6485,6565,6649,6750,6858,6957,7061,7148,7261,7361,7468,7587,7667,7784",
                         "endColumns": "120,118,118,119,99,97,114,141,114,158,83,97,97,100,116,128,102,140,139,140,165,132,116,120,128,98,96,120,144,105,112,113,138,144,108,106,85,100,100,110,85,85,110,79,83,100,107,98,103,86,112,99,106,118,79,116,106",
                         "endOffsets": "1598,1717,1836,1956,2056,2154,2269,2411,2526,2685,2769,2867,2965,3066,3183,3312,3415,3556,3696,3837,4003,4136,4253,4374,4503,4602,4699,4820,4965,5071,5184,5298,5437,5582,5691,5798,5884,5985,6086,6197,6283,6369,6480,6560,6644,6745,6853,6952,7056,7143,7256,7356,7463,7582,7662,7779,7886"
+                    }
+                },
+                {
+                    "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.9\\transforms\\5b22736a0f7c9570977b801b9b5c129d\\transformed\\foundation-release\\res\\values-ca\\values-ca.xml",
+                    "from": {
+                        "startLines": "2,3",
+                        "startColumns": "4,4",
+                        "startOffsets": "55,153",
+                        "endColumns": "97,101",
+                        "endOffsets": "148,250"
+                    },
+                    "to": {
+                        "startLines": "85,86",
+                        "startColumns": "4,4",
+                        "startOffsets": "8924,9022",
+                        "endColumns": "97,101",
+                        "endOffsets": "9017,9119"
                     }
                 }
             ]

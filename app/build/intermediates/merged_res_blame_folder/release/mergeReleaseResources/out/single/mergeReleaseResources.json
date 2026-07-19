@@ -1,62 +1,62 @@
 [
     {
-        "merged": "com.huangder.lumibooks.app-release-64:/drawable_ic_launcher_background.xml.flat",
-        "source": "com.huangder.lumibooks.app-main-65:/drawable/ic_launcher_background.xml"
+        "merged": "com.huangder.lumibooks.app-release-66:/drawable_ic_launcher_background.xml.flat",
+        "source": "com.huangder.lumibooks.app-main-67:/drawable/ic_launcher_background.xml"
     },
     {
-        "merged": "com.huangder.lumibooks.app-release-64:/mipmap-hdpi_ic_launcher.png.flat",
-        "source": "com.huangder.lumibooks.app-main-65:/mipmap-hdpi/ic_launcher.png"
+        "merged": "com.huangder.lumibooks.app-release-66:/drawable_app_icon.png.flat",
+        "source": "com.huangder.lumibooks.app-main-67:/drawable/app_icon.png"
     },
     {
-        "merged": "com.huangder.lumibooks.app-release-64:/mipmap-mdpi_ic_launcher.png.flat",
-        "source": "com.huangder.lumibooks.app-main-65:/mipmap-mdpi/ic_launcher.png"
+        "merged": "com.huangder.lumibooks.app-release-66:/mipmap-hdpi_ic_launcher.png.flat",
+        "source": "com.huangder.lumibooks.app-main-67:/mipmap-hdpi/ic_launcher.png"
     },
     {
-        "merged": "com.huangder.lumibooks.app-release-64:/drawable_splash_background.xml.flat",
-        "source": "com.huangder.lumibooks.app-main-65:/drawable/splash_background.xml"
+        "merged": "com.huangder.lumibooks.app-release-66:/drawable_share_poster_bg.png.flat",
+        "source": "com.huangder.lumibooks.app-main-67:/drawable/share_poster_bg.png"
     },
     {
-        "merged": "com.huangder.lumibooks.app-release-64:/drawable_app_icon.png.flat",
-        "source": "com.huangder.lumibooks.app-main-65:/drawable/app_icon.png"
+        "merged": "com.huangder.lumibooks.app-release-66:/drawable_feedback_qr.png.flat",
+        "source": "com.huangder.lumibooks.app-main-67:/drawable/feedback_qr.png"
     },
     {
-        "merged": "com.huangder.lumibooks.app-release-64:/xml_file_paths.xml.flat",
-        "source": "com.huangder.lumibooks.app-main-65:/xml/file_paths.xml"
+        "merged": "com.huangder.lumibooks.app-release-66:/mipmap-mdpi_ic_launcher.png.flat",
+        "source": "com.huangder.lumibooks.app-main-67:/mipmap-mdpi/ic_launcher.png"
     },
     {
-        "merged": "com.huangder.lumibooks.app-release-64:/font_lxgw_wenkai.ttf.flat",
-        "source": "com.huangder.lumibooks.app-main-65:/font/lxgw_wenkai.ttf"
+        "merged": "com.huangder.lumibooks.app-release-66:/mipmap-xxxhdpi_ic_launcher.png.flat",
+        "source": "com.huangder.lumibooks.app-main-67:/mipmap-xxxhdpi/ic_launcher.png"
     },
     {
-        "merged": "com.huangder.lumibooks.app-release-64:/mipmap-xxhdpi_ic_launcher.png.flat",
-        "source": "com.huangder.lumibooks.app-main-65:/mipmap-xxhdpi/ic_launcher.png"
+        "merged": "com.huangder.lumibooks.app-release-66:/font_lxgw_wenkai.ttf.flat",
+        "source": "com.huangder.lumibooks.app-main-67:/font/lxgw_wenkai.ttf"
     },
     {
-        "merged": "com.huangder.lumibooks.app-release-64:/font_fandol_fang.ttf.flat",
-        "source": "com.huangder.lumibooks.app-main-65:/font/fandol_fang.ttf"
+        "merged": "com.huangder.lumibooks.app-release-66:/mipmap-xxhdpi_ic_launcher.png.flat",
+        "source": "com.huangder.lumibooks.app-main-67:/mipmap-xxhdpi/ic_launcher.png"
     },
     {
-        "merged": "com.huangder.lumibooks.app-release-64:/mipmap-xxxhdpi_ic_launcher.png.flat",
-        "source": "com.huangder.lumibooks.app-main-65:/mipmap-xxxhdpi/ic_launcher.png"
+        "merged": "com.huangder.lumibooks.app-release-66:/xml_file_paths.xml.flat",
+        "source": "com.huangder.lumibooks.app-main-67:/xml/file_paths.xml"
     },
     {
-        "merged": "com.huangder.lumibooks.app-release-64:/drawable_share_poster_bg.png.flat",
-        "source": "com.huangder.lumibooks.app-main-65:/drawable/share_poster_bg.png"
+        "merged": "com.huangder.lumibooks.app-release-66:/drawable_splash_background.xml.flat",
+        "source": "com.huangder.lumibooks.app-main-67:/drawable/splash_background.xml"
     },
     {
-        "merged": "com.huangder.lumibooks.app-release-64:/drawable_ic_launcher_foreground.xml.flat",
-        "source": "com.huangder.lumibooks.app-main-65:/drawable/ic_launcher_foreground.xml"
+        "merged": "com.huangder.lumibooks.app-release-66:/drawable_donation_qr.png.flat",
+        "source": "com.huangder.lumibooks.app-main-67:/drawable/donation_qr.png"
     },
     {
-        "merged": "com.huangder.lumibooks.app-release-64:/mipmap-xhdpi_ic_launcher.png.flat",
-        "source": "com.huangder.lumibooks.app-main-65:/mipmap-xhdpi/ic_launcher.png"
+        "merged": "com.huangder.lumibooks.app-release-66:/mipmap-xhdpi_ic_launcher.png.flat",
+        "source": "com.huangder.lumibooks.app-main-67:/mipmap-xhdpi/ic_launcher.png"
     },
     {
-        "merged": "com.huangder.lumibooks.app-release-64:/drawable_donation_qr.png.flat",
-        "source": "com.huangder.lumibooks.app-main-65:/drawable/donation_qr.png"
+        "merged": "com.huangder.lumibooks.app-release-66:/font_fandol_fang.ttf.flat",
+        "source": "com.huangder.lumibooks.app-main-67:/font/fandol_fang.ttf"
     },
     {
-        "merged": "com.huangder.lumibooks.app-release-64:/drawable_feedback_qr.png.flat",
-        "source": "com.huangder.lumibooks.app-main-65:/drawable/feedback_qr.png"
+        "merged": "com.huangder.lumibooks.app-release-66:/drawable_ic_launcher_foreground.xml.flat",
+        "source": "com.huangder.lumibooks.app-main-67:/drawable/ic_launcher_foreground.xml"
     }
 ]

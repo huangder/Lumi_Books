@@ -1,10 +1,10 @@
 {
     "logs": [
         {
-            "outputFile": "com.huangder.lumibooks.app-mergeReleaseResources-62:/values-lv/values-lv.xml",
+            "outputFile": "com.huangder.lumibooks.app-mergeReleaseResources-64:/values-lv/values-lv.xml",
             "map": [
                 {
-                    "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.13\\transforms\\008bd89bfb8f52456a40d44d6c6d3b4a\\transformed\\material3-release\\res\\values-lv\\values-lv.xml",
+                    "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.9\\transforms\\91d9b7eeac7439eceef19660890d9a0d\\transformed\\material3-release\\res\\values-lv\\values-lv.xml",
                     "from": {
                         "startLines": "2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58",
                         "startColumns": "4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4",
@@ -21,24 +21,7 @@
                     }
                 },
                 {
-                    "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.13\\transforms\\2e698c387947aa40f58106e8678d53d0\\transformed\\ui-release\\res\\values-lv\\values-lv.xml",
-                    "from": {
-                        "startLines": "2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19",
-                        "startColumns": "4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4",
-                        "startOffsets": "105,203,292,388,491,581,667,755,848,932,1017,1104,1177,1253,1330,1406,1484,1552",
-                        "endColumns": "97,88,95,102,89,85,87,92,83,84,86,72,75,76,75,77,67,121",
-                        "endOffsets": "198,287,383,486,576,662,750,843,927,1012,1099,1172,1248,1325,1401,1479,1547,1669"
-                    },
-                    "to": {
-                        "startLines": "9,10,11,12,13,14,15,73,74,75,76,77,78,79,80,82,83,84",
-                        "startColumns": "4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4",
-                        "startOffsets": "836,934,1023,1119,1222,1312,1398,7845,7938,8022,8107,8194,8267,8343,8420,8597,8675,8743",
-                        "endColumns": "97,88,95,102,89,85,87,92,83,84,86,72,75,76,75,77,67,121",
-                        "endOffsets": "929,1018,1114,1217,1307,1393,1481,7933,8017,8102,8189,8262,8338,8415,8491,8670,8738,8860"
-                    }
-                },
-                {
-                    "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.13\\transforms\\acbc8678748029b3361fa9fd0b201889\\transformed\\foundation-release\\res\\values-lv\\values-lv.xml",
+                    "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.9\\transforms\\5b22736a0f7c9570977b801b9b5c129d\\transformed\\foundation-release\\res\\values-lv\\values-lv.xml",
                     "from": {
                         "startLines": "2,3",
                         "startColumns": "4,4",
@@ -55,7 +38,7 @@
                     }
                 },
                 {
-                    "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.13\\transforms\\0e1e5722d8d00985dbe6e233cdb91d7d\\transformed\\core-1.15.0\\res\\values-lv\\values-lv.xml",
+                    "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.9\\transforms\\e5ff5fc370625606275ba2ae3f11162f\\transformed\\core-1.15.0\\res\\values-lv\\values-lv.xml",
                     "from": {
                         "startLines": "2,3,4,5,6,7,8,9",
                         "startColumns": "4,4,4,4,4,4,4,4",
@@ -69,6 +52,23 @@
                         "startOffsets": "105,203,305,405,506,613,721,8496",
                         "endColumns": "97,101,99,100,106,107,114,100",
                         "endOffsets": "198,300,400,501,608,716,831,8592"
+                    }
+                },
+                {
+                    "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.9\\transforms\\fa8fe1df0856f66f194f295ae16e5d01\\transformed\\ui-release\\res\\values-lv\\values-lv.xml",
+                    "from": {
+                        "startLines": "2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19",
+                        "startColumns": "4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4",
+                        "startOffsets": "105,203,292,388,491,581,667,755,848,932,1017,1104,1177,1253,1330,1406,1484,1552",
+                        "endColumns": "97,88,95,102,89,85,87,92,83,84,86,72,75,76,75,77,67,121",
+                        "endOffsets": "198,287,383,486,576,662,750,843,927,1012,1099,1172,1248,1325,1401,1479,1547,1669"
+                    },
+                    "to": {
+                        "startLines": "9,10,11,12,13,14,15,73,74,75,76,77,78,79,80,82,83,84",
+                        "startColumns": "4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4",
+                        "startOffsets": "836,934,1023,1119,1222,1312,1398,7845,7938,8022,8107,8194,8267,8343,8420,8597,8675,8743",
+                        "endColumns": "97,88,95,102,89,85,87,92,83,84,86,72,75,76,75,77,67,121",
+                        "endOffsets": "929,1018,1114,1217,1307,1393,1481,7933,8017,8102,8189,8262,8338,8415,8491,8670,8738,8860"
                     }
                 }
             ]

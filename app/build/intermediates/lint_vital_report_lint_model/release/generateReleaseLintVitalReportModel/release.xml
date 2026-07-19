@@ -27,6 +27,6 @@
       applicationId="com.huangder.lumibooks"
       generatedSourceFolders="build\generated\ksp\release\java;build\generated\ksp\release\kotlin;build\generated\ap_generated_sources\release\out"
       generatedResourceFolders="build\generated\res\resValues\release"
-      desugaredMethodsFiles="C:\Users\Huangder\.gradle\caches\8.13\transforms\77dd2585c8c73ee77d4f83da75d6ee7a\transformed\D8BackportedDesugaredMethods.txt">
+      desugaredMethodsFiles="C:\Users\Huangder\.gradle\caches\8.9\transforms\0df03fba8cb10fcabcb661463067f2b6\transformed\D8BackportedDesugaredMethods.txt">
   </artifact>
 </variant>
