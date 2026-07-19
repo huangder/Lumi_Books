@@ -41,6 +41,7 @@ class DataStoreManager @Inject constructor(
         private val PARAGRAPH_SPACING = floatPreferencesKey("paragraph_spacing")
         private val FIRST_LINE_INDENT = floatPreferencesKey("first_line_indent")
         private val ADVANCED_DEFAULTS_VERSION = intPreferencesKey("advanced_defaults_version")
+        private val PDF_PAGE_MODE = stringPreferencesKey("pdf_page_mode")
 
         // 统计设置
         private val DAILY_GOAL = intPreferencesKey("daily_goal")
@@ -115,6 +116,11 @@ class DataStoreManager @Inject constructor(
 
     val readerTextColor: Flow<Int?> = context.dataStore.data.map { preferences ->
         preferences[READER_TEXT_COLOR]
+    }
+
+    /** PDF 阅读方向："vertical" | "horizontal"，所有 PDF 共用。 */
+    val pdfPageMode: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[PDF_PAGE_MODE].takeIf { it == "horizontal" } ?: "vertical"
     }
 
     // 统计设置
@@ -221,6 +227,12 @@ class DataStoreManager @Inject constructor(
         context.dataStore.edit { preferences ->
             if (color == null) preferences.remove(READER_TEXT_COLOR)
             else preferences[READER_TEXT_COLOR] = color
+        }
+    }
+
+    suspend fun savePdfPageMode(mode: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PDF_PAGE_MODE] = if (mode == "horizontal") "horizontal" else "vertical"
         }
     }
 

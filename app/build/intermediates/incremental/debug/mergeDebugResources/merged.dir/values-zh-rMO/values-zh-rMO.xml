@@ -184,6 +184,8 @@
     <string name="pdf_bookmark">書籤</string>
     <string name="pdf_close">關閉</string>
     <string name="pdf_page_desc">第%d頁</string>
+    <string name="pdf_switch_to_horizontal">切換為左右翻頁</string>
+    <string name="pdf_switch_to_vertical">切換為上下翻頁</string>
     <string name="pdf_toc">目錄</string>
     <string name="preview">預覽</string>
     <string name="preview_text">落霞與孤鶩齊飛，秋水共長天一色。漁舟唱晚，響窮彭蠡之濱；雁陣驚寒，聲斷衡陽之浦。</string>
@@ -193,6 +195,7 @@
     <string name="reader_chapter_fallback">第%d章</string>
     <string name="reader_close">關閉</string>
     <string name="reader_link_return">返回剛才頁</string>
+    <string name="reader_load_failed">書籍載入失敗</string>
     <string name="reader_notes">筆記</string>
     <string name="reader_search">搜尋</string>
     <string name="reader_theme">主題</string>

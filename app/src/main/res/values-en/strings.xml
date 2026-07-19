@@ -332,6 +332,9 @@
     <string name="pdf_toc">Contents</string>
     <string name="pdf_close">Close</string>
     <string name="pdf_page_desc">Page %d</string>
+    <string name="pdf_switch_to_horizontal">Switch to horizontal paging</string>
+    <string name="pdf_switch_to_vertical">Switch to vertical scrolling</string>
+    <string name="reader_load_failed">Failed to load book</string>
 
     <!-- Other -->
     <string name="loading_text">Loading</string>

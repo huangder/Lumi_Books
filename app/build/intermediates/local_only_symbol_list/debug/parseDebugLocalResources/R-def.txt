@@ -205,6 +205,8 @@ string pdf_back
 string pdf_bookmark
 string pdf_close
 string pdf_page_desc
+string pdf_switch_to_horizontal
+string pdf_switch_to_vertical
 string pdf_toc
 string preview
 string preview_text
@@ -214,6 +216,7 @@ string reader_bookmark
 string reader_chapter_fallback
 string reader_close
 string reader_link_return
+string reader_load_failed
 string reader_notes
 string reader_search
 string reader_theme

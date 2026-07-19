@@ -184,6 +184,8 @@
     <string name="pdf_bookmark">Bookmark</string>
     <string name="pdf_close">Close</string>
     <string name="pdf_page_desc">Page %d</string>
+    <string name="pdf_switch_to_horizontal">Switch to horizontal paging</string>
+    <string name="pdf_switch_to_vertical">Switch to vertical scrolling</string>
     <string name="pdf_toc">Contents</string>
     <string name="preview">Preview</string>
     <string name="preview_text">The setting sun and the rising moon fly together, the autumn waters merge with the vast sky in one hue. Fishing boats sing at dusk, echoing across the shores of Pengli; geese formations startle at the cold, their cries fading at Hengyang\'s shore.</string>
@@ -193,6 +195,7 @@
     <string name="reader_chapter_fallback">Ch.%d</string>
     <string name="reader_close">Close</string>
     <string name="reader_link_return">Back to previous page</string>
+    <string name="reader_load_failed">Failed to load book</string>
     <string name="reader_notes">Notes</string>
     <string name="reader_search">Search</string>
     <string name="reader_theme">Theme</string>

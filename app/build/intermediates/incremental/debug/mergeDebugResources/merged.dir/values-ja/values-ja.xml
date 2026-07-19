@@ -257,6 +257,8 @@
     <string name="pdf_bookmark">ブックマーク</string>
     <string name="pdf_close">閉じる</string>
     <string name="pdf_page_desc">第%d頁</string>
+    <string name="pdf_switch_to_horizontal">左右ページ送りに切り替え</string>
+    <string name="pdf_switch_to_vertical">上下スクロールに切り替え</string>
     <string name="pdf_toc">目次</string>
     <string name="preview">プレビュー</string>
     <string name="preview_text">落霞と孤鶩が一緒に飛び、秋水は空と一体になる。漁舟の夕暮れの歌は、彭蠡のほとりに響き渡る。</string>
@@ -268,6 +270,7 @@
     <string name="reader_chapter_fallback">第%d章</string>
     <string name="reader_close">閉じる</string>
     <string name="reader_link_return">前のページに戻る</string>
+    <string name="reader_load_failed">書籍を読み込めませんでした</string>
     <string name="reader_notes">メモ</string>
     <string name="reader_search">検索</string>
     <string name="reader_theme">テーマ</string>

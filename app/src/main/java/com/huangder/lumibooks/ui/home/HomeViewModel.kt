@@ -20,10 +20,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
+import java.time.LocalDate
 import java.util.Calendar
 import java.util.Locale
 import javax.inject.Inject
@@ -42,7 +43,7 @@ data class HomeUiState(
     val isLoading: Boolean = false,
     val importMessage: String? = null,
     val error: String? = null,
-    /** 过去7天的阅读数据（含今日） */
+    /** 当前日历周的阅读数据（周日至周六） */
     val weeklyData: List<DailyReading> = emptyList(),
     /** 连胜天数 */
     val streakDays: Int = 0
@@ -77,7 +78,6 @@ class HomeViewModel @Inject constructor(
     init {
         loadBooks()
         loadTodayReadingTime()
-        loadDailyGoal()
         loadAvatar()
         loadWeeklyData()
     }
@@ -114,14 +114,6 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    private fun loadDailyGoal() {
-        viewModelScope.launch {
-            dataStoreManager.dailyGoal.collectLatest { goal ->
-                _uiState.value = _uiState.value.copy(dailyGoal = goal)
-            }
-        }
-    }
-
     private fun loadAvatar() {
         viewModelScope.launch {
             dataStoreManager.avatarUri.collectLatest { uri ->
@@ -138,35 +130,32 @@ class HomeViewModel @Inject constructor(
                 set(Calendar.DAY_OF_WEEK, Calendar.SUNDAY)
                 set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0)
             }
-            val goalMs = _uiState.value.dailyGoal * 60 * 1000L
-
-            val weeklyData = (0..6).map { i ->
-                val cal = (startOfWeek.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, i) }
-                val date = dateFormat.format(cal.time)
-                val dayOfWeek = cal.get(Calendar.DAY_OF_WEEK) - 1 // 0=Sunday
-                val duration = readingRepository.getTotalDurationByDate(date).first() ?: 0
-                DailyReading(date, duration, dayLabels[dayOfWeek])
-            }
-
-            // 连胜：从今天往回数连续达标的天数
-            // 今天未达标时（今天还在进行中），不计入但也不中断连胜，继续往前统计
-            val todayIdx = Calendar.getInstance().get(Calendar.DAY_OF_WEEK) - 1 // 0=Sunday
-            var streak = 0
-            for (i in todayIdx downTo 0) {
-                if (weeklyData[i].duration >= goalMs) {
-                    streak++
-                } else if (i == todayIdx) {
-                    // 今天未达标，继续往前检查（今天不计入连胜但也不打断）
-                    continue
-                } else {
-                    break
+            val today = LocalDate.now()
+            combine(
+                dataStoreManager.dailyGoal,
+                readingRepository.getDailyTotalsBetween(READING_HISTORY_START_DATE, today.toString())
+            ) { goal, dailyTotals ->
+                goal to dailyTotals
+            }.collectLatest { (goal, dailyTotals) ->
+                val durationMap = dailyTotals.associate { it.date to it.totalDuration }
+                val weeklyData = (0..6).map { i ->
+                    val cal = (startOfWeek.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, i) }
+                    val date = dateFormat.format(cal.time)
+                    val dayOfWeek = cal.get(Calendar.DAY_OF_WEEK) - 1 // 0=Sunday
+                    DailyReading(date, durationMap[date] ?: 0L, dayLabels[dayOfWeek])
                 }
-            }
+                val streak = ReadingStreakCalculator.calculate(
+                    dailyDurations = durationMap,
+                    today = today,
+                    goalDurationMs = goal * 60 * 1000L
+                )
 
-            _uiState.value = _uiState.value.copy(
-                weeklyData = weeklyData,
-                streakDays = streak
-            )
+                _uiState.value = _uiState.value.copy(
+                    dailyGoal = goal,
+                    weeklyData = weeklyData,
+                    streakDays = streak
+                )
+            }
         }
     }
 
@@ -315,5 +304,9 @@ class HomeViewModel @Inject constructor(
 
     fun clearError() {
         _uiState.value = _uiState.value.copy(error = null)
+    }
+
+    private companion object {
+        const val READING_HISTORY_START_DATE = "1970-01-01"
     }
 }

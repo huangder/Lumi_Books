@@ -312,16 +312,24 @@ class ReadView(context: Context) : FrameLayout(context) {
         width: Int = this.width,
         height: Int = this.height
     ) {
-        if (width <= 0 || height <= 0) {
+        if (width <= 0 || height <= 0 || chapterCount <= 0) {
             pendingStartChapter = startChapter
             pendingStartPage = startPage
             currentFontSizePx = fontSizePx
             currentTheme = theme
             currentChapterCount = chapterCount
+            currentLineHeightMult = lineHeightMult
+            currentLetterSpacingDp = letterSpacingDp
+            currentFontType = fontType
+            currentCustomFontPath = customFontPath
+            currentMarginHorizDp = marginHorizDp
+            currentMarginVertDp = marginVertDp
+            currentParagraphSpacingDp = paragraphSpacingDp
             return
         }
 
         val themeChanged = currentTheme != theme
+        val chapterCountChanged = currentChapterCount != chapterCount
         val fontSizeChanged = Math.abs(currentFontSizePx - fontSizePx) > 0.5f
         val lineHeightChanged = Math.abs(currentLineHeightMult - lineHeightMult) > 0.01f
         val letterSpacingChanged = Math.abs(currentLetterSpacingDp - letterSpacingDp) > 0.05f
@@ -330,7 +338,7 @@ class ReadView(context: Context) : FrameLayout(context) {
         val marginVertChanged = Math.abs(currentMarginVertDp - marginVertDp) > 0.5f
         val paragraphSpacingChanged = Math.abs(currentParagraphSpacingDp - paragraphSpacingDp) > 0.01f
         val sizeChanged = !isConfigured
-        val needsRelayout = themeChanged || fontSizeChanged || lineHeightChanged ||
+        val needsRelayout = themeChanged || chapterCountChanged || fontSizeChanged || lineHeightChanged ||
                 letterSpacingChanged || fontTypeChanged || marginHorizChanged ||
                 marginVertChanged || paragraphSpacingChanged || sizeChanged
 
@@ -713,6 +721,13 @@ class ReadView(context: Context) : FrameLayout(context) {
                 chapterCount = currentChapterCount,
                 startChapter = pendingStartChapter,
                 startPage = pendingStartPage,
+                lineHeightMult = currentLineHeightMult,
+                letterSpacingDp = currentLetterSpacingDp,
+                fontType = currentFontType,
+                customFontPath = currentCustomFontPath,
+                marginHorizDp = currentMarginHorizDp,
+                marginVertDp = currentMarginVertDp,
+                paragraphSpacingDp = currentParagraphSpacingDp,
                 width = right - left,
                 height = bottom - top
             )

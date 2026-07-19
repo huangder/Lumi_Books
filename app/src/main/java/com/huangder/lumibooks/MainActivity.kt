@@ -1,6 +1,7 @@
 package com.huangder.lumibooks
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
@@ -9,7 +10,6 @@ import android.view.ActionMode
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
@@ -55,6 +55,8 @@ private data class PendingPolicyUpdate(
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
+    private var systemDarkMode by mutableStateOf(false)
+
     override fun attachBaseContext(newBase: android.content.Context) {
         super.attachBaseContext(com.huangder.lumibooks.util.LocaleHelper.applyLanguage(newBase))
     }
@@ -77,6 +79,11 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleImportIntent(intent)
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        systemDarkMode = newConfig.isNightModeEnabled()
     }
 
     /**
@@ -104,7 +111,7 @@ class MainActivity : ComponentActivity() {
         }
         val coverPath = try {
             val parser = BookParserFactory.createParser(format, this)
-            parser.parse(file.absolutePath).coverPath
+            parser.extractCoverPath(file.absolutePath)
         } catch (_: Exception) { null }
 
         val book = Book(
@@ -134,6 +141,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        systemDarkMode = resources.configuration.isNightModeEnabled()
 
         // 处理外部文件打开（冷启动）
         handleImportIntent(intent)
@@ -146,7 +154,7 @@ class MainActivity : ComponentActivity() {
             val isDark = when (darkMode) {
                 "dark" -> true
                 "light" -> false
-                else -> isSystemInDarkTheme()
+                else -> systemDarkMode
             }
 
             // 条款/政策更新弹窗状态
@@ -205,6 +213,10 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    private fun Configuration.isNightModeEnabled(): Boolean {
+        return (uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
     }
 
     /**

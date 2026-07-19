@@ -22,6 +22,7 @@ class PdfParser(private val context: Context) : BookParser {
     }
 
     override fun parse(filePath: String): BookContent {
+        close()
         val file = File(filePath)
         fileName = file.nameWithoutExtension
         fileDescriptor = android.os.ParcelFileDescriptor.open(
@@ -104,7 +105,10 @@ class PdfParser(private val context: Context) : BookParser {
 
     fun close() {
         htmlCache.clear()
-        pdfRenderer?.close()
-        fileDescriptor?.close()
+        runCatching { pdfRenderer?.close() }
+        runCatching { fileDescriptor?.close() }
+        pdfRenderer = null
+        fileDescriptor = null
+        pageCount = 0
     }
 }

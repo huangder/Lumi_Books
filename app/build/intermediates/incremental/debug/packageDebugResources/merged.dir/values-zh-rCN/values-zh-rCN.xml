@@ -184,6 +184,8 @@
     <string name="pdf_bookmark">书签</string>
     <string name="pdf_close">关闭</string>
     <string name="pdf_page_desc">第%d页</string>
+    <string name="pdf_switch_to_horizontal">切换为左右翻页</string>
+    <string name="pdf_switch_to_vertical">切换为上下翻页</string>
     <string name="pdf_toc">目录</string>
     <string name="preview">预览</string>
     <string name="preview_text">落霞与孤鹜齐飞，秋水共长天一色。渔舟唱晚，响穷彭蠡之滨；雁阵惊寒，声断衡阳之浦。</string>
@@ -193,6 +195,7 @@
     <string name="reader_chapter_fallback">第%d章</string>
     <string name="reader_close">关闭</string>
     <string name="reader_link_return">返回到刚才页</string>
+    <string name="reader_load_failed">书籍加载失败</string>
     <string name="reader_notes">笔记</string>
     <string name="reader_search">搜索</string>
     <string name="reader_theme">主题</string>

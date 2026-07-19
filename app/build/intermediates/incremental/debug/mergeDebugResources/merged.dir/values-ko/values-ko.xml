@@ -257,6 +257,8 @@
     <string name="pdf_bookmark">북마크</string>
     <string name="pdf_close">닫기</string>
     <string name="pdf_page_desc">페이지 %d</string>
+    <string name="pdf_switch_to_horizontal">좌우 페이지 넘김으로 전환</string>
+    <string name="pdf_switch_to_vertical">상하 스크롤로 전환</string>
     <string name="pdf_toc">목차</string>
     <string name="preview">미리보기</string>
     <string name="preview_text">落霞與孤鶩齊飛，秋水共長天一色。漁舟唱晚，響窮彭蠡之濱；雁陣驚寒，聲斷衡陽之浦。</string>
@@ -268,6 +270,7 @@
     <string name="reader_chapter_fallback">제%d장</string>
     <string name="reader_close">닫기</string>
     <string name="reader_link_return">이전 페이지로 돌아가기</string>
+    <string name="reader_load_failed">책을 불러오지 못했습니다</string>
     <string name="reader_notes">메모</string>
     <string name="reader_search">검색</string>
     <string name="reader_theme">테마</string>

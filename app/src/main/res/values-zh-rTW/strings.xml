@@ -332,6 +332,9 @@
     <string name="pdf_toc">目錄</string>
     <string name="pdf_close">關閉</string>
     <string name="pdf_page_desc">第%d頁</string>
+    <string name="pdf_switch_to_horizontal">切換為左右翻頁</string>
+    <string name="pdf_switch_to_vertical">切換為上下翻頁</string>
+    <string name="reader_load_failed">書籍載入失敗</string>
 
     <!-- 其他 -->
     <string name="loading_text">載入中</string>

@@ -3,8 +3,10 @@ package com.huangder.lumibooks.util.parser
 data class Chapter(
     val index: Int,
     val title: String,
-    val content: CharSequence,  // EPUB 为 Spanned（保留格式），TXT/PDF 为 String
-    val htmlContent: String = ""  // 完整章节HTML，WebView渲染用
+    // 懒加载解析器可留空；正文统一通过 BookParser.getChapterContent() 获取。
+    val content: CharSequence,
+    // 懒加载解析器可留空；HTML 统一通过 BookParser.getChapterHtml() 获取。
+    val htmlContent: String = ""
 )
 
 /**
