@@ -297,7 +297,8 @@
     <string name="welcome_privacy">《개인정보 처리방침》</string>
     <string name="welcome_privacy_title">개인정보 처리방침</string>
     <string name="welcome_start_using">시작하기</string>
-    <string name="welcome_support_message">Lumi가 마음에 드셨다면 「설정 > 개발 후원」에서 응원해 주세요. 모든 후원금은 Lumi의 지속적인 개발과 개선에 전액 사용됩니다.</string>
+    <string name="welcome_support_message">「설정 > 개발 후원」에서 응원해 주세요. 모든 후원금은 Lumi의 지속적인 개발과 개선에 전액 사용됩니다.</string>
+    <string name="welcome_support_title">Lumi가 마음에 드셨나요?</string>
     <string name="welcome_terms">《이용약관》</string>
     <string name="welcome_terms_title">이용약관</string>
     <string name="welcome_title">환영합니다</string>

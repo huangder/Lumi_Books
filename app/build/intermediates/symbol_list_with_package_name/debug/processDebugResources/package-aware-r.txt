@@ -627,6 +627,7 @@ string welcome_privacy
 string welcome_privacy_title
 string welcome_start_using
 string welcome_support_message
+string welcome_support_title
 string welcome_terms
 string welcome_terms_title
 string welcome_title

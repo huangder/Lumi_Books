@@ -326,7 +326,8 @@
     <string name="welcome_continue">繼續</string>
     <string name="welcome_privacy_title">隱私政策</string>
     <string name="welcome_terms_title">使用者條款</string>
-    <string name="welcome_support_message">喜歡 Lumi？歡迎前往「設定 > 贊助開發」支持我們。每一筆捐贈都將全數用於 Lumi 的持續開發與完善。</string>
+    <string name="welcome_support_title">喜歡 Lumi？</string>
+    <string name="welcome_support_message">歡迎前往「設定 > 贊助開發」支持我們。每一筆捐贈都將全數用於 Lumi 的持續開發與完善。</string>
     <string name="welcome_start_using">開始使用</string>
 
     <!-- PDF閱讀器 -->
