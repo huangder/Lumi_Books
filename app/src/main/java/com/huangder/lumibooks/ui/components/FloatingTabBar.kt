@@ -116,10 +116,10 @@ fun FloatingTabBar(
                 .fillMaxWidth()
                 .height(56.dp)
                 .shadow(
-                    elevation = 28.dp,
+                    elevation = 14.dp,
                     shape = glassShape,
-                    ambientColor = if (isDark) Color(0x66FFFFFF) else Color(0x33000000),
-                    spotColor = if (isDark) Color(0x44FFFFFF) else Color(0x26000000)
+                    ambientColor = if (isDark) Color(0x22000000) else Color(0x16000000),
+                    spotColor = if (isDark) Color(0x18000000) else Color(0x10000000)
                 )
                 .clip(glassShape)
                 .then(hazeModifier)

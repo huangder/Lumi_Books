@@ -365,6 +365,9 @@ class PageContentView(context: Context) : FrameLayout(context) {
     /** 获取当前 TextView 的 Spannable（用于读取选区等） */
     fun getTextSpannable(): Spannable? = textView.text as? Spannable
 
+    /** 返回指定页面坐标处的 EPUB 链接；未命中链接时返回 null。 */
+    fun getLinkAt(x: Float, y: Float): String? = justifiedView.getLinkAtPosition(x, y)
+
     /** 缓存当前页在章节中的起始字符偏移（用于选区偏移转换） */
     var chapterStartOffset: Int = 0
         private set

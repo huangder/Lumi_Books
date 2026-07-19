@@ -192,6 +192,7 @@
     <string name="reader_bookmark">Bookmark</string>
     <string name="reader_chapter_fallback">Ch.%d</string>
     <string name="reader_close">Close</string>
+    <string name="reader_link_return">Back to previous page</string>
     <string name="reader_notes">Notes</string>
     <string name="reader_search">Search</string>
     <string name="reader_theme">Theme</string>

@@ -203,6 +203,7 @@
     <string name="reader_bookmark">书签</string>
     <string name="reader_chapter_fallback">第%d章</string>
     <string name="reader_close">关闭</string>
+    <string name="reader_link_return">返回到刚才页</string>
     <string name="reader_notes">笔记</string>
     <string name="reader_search">搜索</string>
     <string name="reader_theme">主题</string>

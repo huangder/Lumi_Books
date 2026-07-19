@@ -255,6 +255,7 @@
 
     <!-- 閱讀器 -->
     <string name="reader_back">返回</string>
+    <string name="reader_link_return">返回剛才頁</string>
     <string name="reader_bookmark">書籤</string>
     <string name="reader_notes">筆記</string>
     <string name="reader_search">搜尋</string>

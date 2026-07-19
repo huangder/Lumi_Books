@@ -267,6 +267,7 @@
     <string name="reader_bookmark">ブックマーク</string>
     <string name="reader_chapter_fallback">第%d章</string>
     <string name="reader_close">閉じる</string>
+    <string name="reader_link_return">前のページに戻る</string>
     <string name="reader_notes">メモ</string>
     <string name="reader_search">検索</string>
     <string name="reader_theme">テーマ</string>

@@ -24,6 +24,7 @@ import com.huangder.lumibooks.domain.repository.ReadingRepository
 import com.huangder.lumibooks.util.TimeUtils
 import com.huangder.lumibooks.util.parser.BookParser
 import com.huangder.lumibooks.util.parser.BookParserFactory
+import com.huangder.lumibooks.util.parser.BookLinkTarget
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -807,6 +808,13 @@ class ReaderViewModel @Inject constructor(
             spannable
         } else {
             raw  // 无换行，保持原样
+        }
+    }
+
+    /** 在 IO 线程解析 EPUB 相对路径/锚点，返回原生阅读引擎可跳转的位置。 */
+    suspend fun resolveBookLink(sourceChapterIndex: Int, href: String): BookLinkTarget? {
+        return withContext(Dispatchers.IO) {
+            parser?.resolveLink(sourceChapterIndex, href)
         }
     }
 

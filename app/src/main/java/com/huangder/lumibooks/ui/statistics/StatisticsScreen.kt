@@ -19,9 +19,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -66,60 +66,69 @@ fun StatisticsScreen(
 
     Box(modifier = Modifier.fillMaxSize().background(AppColors.WindowBg)) {
         OverscrollBounce(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-        ) {
-        Spacer(Modifier.height(AppSpace.md))
-        Text(
-            text = stringResource(R.string.stats_title),
-            fontSize = AppType.Display,
-            fontWeight = FontWeight.Bold,
-            fontFamily = KaiTi,
-            letterSpacing = (-0.02).sp,
-            color = AppColors.TextPrimary,
-            modifier = Modifier.padding(horizontal = AppSpace.lg, vertical = AppSpace.md)
-        )
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                item(key = "header") {
+                    Spacer(Modifier.height(AppSpace.md))
+                    Text(
+                        text = stringResource(R.string.stats_title),
+                        fontSize = AppType.Display,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = KaiTi,
+                        letterSpacing = (-0.02).sp,
+                        color = AppColors.TextPrimary,
+                        modifier = Modifier.padding(horizontal = AppSpace.lg, vertical = AppSpace.md)
+                    )
+                    Spacer(Modifier.height(AppSpace.xl))
+                }
 
-        Spacer(Modifier.height(AppSpace.xl))
+                item(key = "tabs") {
+                    val tabs = listOf(
+                        stringResource(R.string.tab_week),
+                        stringResource(R.string.tab_month),
+                        stringResource(R.string.tab_year)
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = AppSpace.lg, vertical = AppSpace.sm),
+                        horizontalArrangement = Arrangement.spacedBy(AppSpace.lg)
+                    ) {
+                        tabs.forEachIndexed { index, label ->
+                            val isSelected = index == uiState.selectedTab
+                            Text(
+                                text = label,
+                                fontSize = AppType.Body,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) AppColors.TextPrimary else AppColors.TextSecondary,
+                                modifier = Modifier.clickable(
+                                    indication = null,
+                                    interactionSource = remember { MutableInteractionSource() }
+                                ) { viewModel.selectTab(index) }
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(AppSpace.lg))
+                }
 
-        // 周/月/年 切换 Tab
-        val tabs = listOf(stringResource(R.string.tab_week), stringResource(R.string.tab_month), stringResource(R.string.tab_year))
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = AppSpace.lg, vertical = AppSpace.sm),
-            horizontalArrangement = Arrangement.spacedBy(AppSpace.lg)
-        ) {
-            tabs.forEachIndexed { index, label ->
-                val isSelected = index == uiState.selectedTab
-                Text(
-                    text = label,
-                    fontSize = AppType.Body,
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                    color = if (isSelected) AppColors.TextPrimary else AppColors.TextSecondary,
-                    modifier = Modifier.clickable(
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() }
-                    ) { viewModel.selectTab(index) }
-                )
+                item(key = "overview_${uiState.selectedTab}") {
+                    when (uiState.selectedTab) {
+                        0 -> WeeklyOverview(uiState, viewModel)
+                        1 -> MonthlyHeatmap(uiState, viewModel)
+                        2 -> YearlyHeatmap(uiState, viewModel)
+                    }
+                    Spacer(Modifier.height(AppSpace.lg))
+                }
+
+                item(key = "most_read") {
+                    MostReadBooks(uiState.mostReadBooks)
+                    Spacer(Modifier.height(AppSpace.lg))
+                }
+
+                item(key = "completion") {
+                    CompletionProgress(uiState)
+                    Spacer(Modifier.height(120.dp))
+                }
             }
-        }
-
-        Spacer(Modifier.height(AppSpace.lg))
-
-        when (uiState.selectedTab) {
-            0 -> WeeklyOverview(uiState, viewModel)
-            1 -> MonthlyHeatmap(uiState, viewModel)
-            2 -> YearlyHeatmap(uiState, viewModel)
-        }
-        Spacer(Modifier.height(AppSpace.lg))
-        MostReadBooks(uiState.mostReadBooks)
-        Spacer(Modifier.height(AppSpace.lg))
-        CompletionProgress(uiState)
-        Spacer(Modifier.height(120.dp))
-        } // Column 结束
         } // OverscrollBounce 结束
 
         StatusGradientOverlay()

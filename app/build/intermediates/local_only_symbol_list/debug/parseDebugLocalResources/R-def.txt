@@ -213,6 +213,7 @@ string reader_back
 string reader_bookmark
 string reader_chapter_fallback
 string reader_close
+string reader_link_return
 string reader_notes
 string reader_search
 string reader_theme

@@ -121,6 +121,11 @@ import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
+private data class ReaderLinkLocation(
+    val chapterIndex: Int,
+    val pageIndex: Int
+)
+
 @OptIn(kotlinx.coroutines.FlowPreview::class)
 @Composable
 fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> Unit = {}, onLoadingComplete: () -> Unit = {}, viewModel: ReaderViewModel = hiltViewModel()) {
@@ -220,6 +225,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     }
 
     var showNotesList by remember { mutableStateOf(false) }
+    var linkReturnLocation by remember(bookId) { mutableStateOf<ReaderLinkLocation?>(null) }
+    var linkNavigationJob by remember(bookId) { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
     // 🔥 原生选择 ActionMode 回调 → 等待笔记输入
     var pendingSelection by remember { mutableStateOf<PendingSelection?>(null) }
@@ -276,6 +283,16 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             showAdvancedSheet -> requestCloseAdvanced = true
             showSearch -> requestCloseSearch = true
         }
+    }
+    val returnToLinkedSource = {
+        linkReturnLocation?.let { source ->
+            linkReturnLocation = null
+            readViewRef.value?.jumpToChapter(source.chapterIndex, source.pageIndex)
+        }
+        Unit
+    }
+    BackHandler(enabled = !isAnySheetOpen && linkReturnLocation != null) {
+        returnToLinkedSource()
     }
     var searchQuery by remember { mutableStateOf("") }
     var searchResults by remember { mutableStateOf<List<ReaderViewModel.SearchResult>>(emptyList()) }
@@ -373,6 +390,24 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                 selectionState = null
                                 isSelectionDragging = false
                                 viewModel.toggleMenu()
+                            }
+
+                            override fun onLinkClick(href: String) {
+                                if (openExternalBookLink(context, href)) return
+                                val source = readViewRef.value?.getCurrentLocation()
+                                    ?.let { ReaderLinkLocation(it.first, it.second) }
+                                    ?: return
+
+                                linkNavigationJob?.cancel()
+                                linkNavigationJob = scope.launch {
+                                    val target = viewModel.resolveBookLink(source.chapterIndex, href)
+                                        ?: return@launch
+                                    linkReturnLocation = source
+                                    readViewRef.value?.jumpToCharacter(
+                                        target.chapterIndex,
+                                        target.characterOffset
+                                    )
+                                }
                             }
 
                             override fun onLoadingChanged(isLoading: Boolean) {}
@@ -552,6 +587,22 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
 
         // ── 覆盖层 UI（新旧引擎共享） ──
         if (!uiState.isLoading) {
+            AnimatedVisibility(
+                visible = linkReturnLocation != null && !uiState.isMenuVisible && !isAnySheetOpen,
+                enter = fadeIn(animationSpec = tween(200)),
+                exit = fadeOut(animationSpec = tween(150)),
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .statusBarsPadding()
+                    .padding(start = 16.dp, top = 12.dp)
+            ) {
+                LinkReturnButton(
+                    backgroundColor = capsuleBgColor,
+                    contentColor = capsuleContentColor,
+                    onClick = returnToLinkedSource
+                )
+            }
+
             // 顶部栏
             AnimatedVisibility(
                 visible = uiState.isMenuVisible,
@@ -950,6 +1001,16 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     )
 }
 
+private fun openExternalBookLink(context: Context, href: String): Boolean {
+    val uri = runCatching { android.net.Uri.parse(href.trim()) }.getOrNull() ?: return false
+    val scheme = uri.scheme?.lowercase() ?: return false
+    if (scheme !in setOf("http", "https", "mailto", "tel")) return false
+
+    return runCatching {
+        context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, uri))
+    }.isSuccess
+}
+
 /**
  * 旧 WebView 路径（PDF 格式保留使用）。
  * 简化版：单 WebView，无跨章 conveyor。
@@ -1047,6 +1108,39 @@ try{AndroidBridge.onPageChanged(0,1);}catch(e){}
         },
         modifier = Modifier.fillMaxSize()
     )
+}
+
+@Composable
+private fun LinkReturnButton(
+    backgroundColor: Color,
+    contentColor: Color,
+    onClick: () -> Unit
+) {
+    val shape = RoundedCornerShape(8.dp)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .shadow(3.dp, shape)
+            .clip(shape)
+            .background(backgroundColor.copy(alpha = 0.96f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 9.dp)
+    ) {
+        Icon(
+            imageVector = Icons.Default.KeyboardArrowLeft,
+            contentDescription = null,
+            tint = contentColor,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(Modifier.width(4.dp))
+        Text(
+            text = stringResource(R.string.reader_link_return),
+            color = contentColor,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1
+        )
+    }
 }
 
 @Composable

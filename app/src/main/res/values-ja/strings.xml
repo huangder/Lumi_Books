@@ -255,6 +255,7 @@
 
     <!-- リーダー -->
     <string name="reader_back">戻る</string>
+    <string name="reader_link_return">前のページに戻る</string>
     <string name="reader_bookmark">ブックマーク</string>
     <string name="reader_notes">メモ</string>
     <string name="reader_search">検索</string>

@@ -1,0 +1,279 @@
+07-19 20:38:03.369 22678 22964 I TestRunner: started: resolvesCrossChapterAnchorToFinalTextOffset(com.huangder.lumibooks.util.parser.EpubParserLinkTest)
+07-19 20:38:03.370  2153  2153 I vendor.qti.hardware.servicetrackeraidl-service: bindService is called for service : com.xiaomi.mi_connect_service/com.xiaomi.continuity.networking.service.NetworkingService and for client com.xiaomi.finddevice
+07-19 20:38:03.370  2153  2153 I vendor.qti.hardware.servicetrackeraidl-service: total connections for service : com.xiaomi.mi_connect_service/com.xiaomi.continuity.networking.service.NetworkingServiceare :12
+07-19 20:38:03.370  2153  2153 I vendor.qti.hardware.servicetrackeraidl-service: total connections for client : com.xiaomi.finddeviceare :2
+07-19 20:38:03.373 22889 22982 I TrustedDeviceManager: onServiceConnected()
+07-19 20:38:03.374  3094 19117 I NetworkingServiceImpl: addServiceInfo uid {6110}, pid {22889}
+07-19 20:38:03.374  3094 19117 I PackageUtil: callingAppPackageName : com.xiaomi.finddevice, invokePackage : com.xiaomi.finddevice
+07-19 20:38:03.375  3094 19117 I PackageUtil: callingAppPackageName : com.xiaomi.finddevice, invokePackage : com.xiaomi.finddevice
+07-19 20:38:03.375 20622 16621 I SKIA    : CreateGraphicsPipeline pipeline cache hit. elpased time: 0.27 ms.
+07-19 20:38:03.376  3094 19117 I NetworkingServiceImpl: BusinessServiceInfo{serviceName='findDeviceService', packageName='com.xiaomi.finddevice', serviceData=[0, 1]}
+07-19 20:38:03.376  3094 19117 I lyra-net-jni: Java_com_xiaomi_continuity_networking_service_DevRepoNative_addServiceInfo:159
+07-19 20:38:03.376  3094 19117 I lyra-unified-api: UnifiedImpl::AddNetworkingServiceInfo:1646 service_name=findDeviceService
+07-19 20:38:03.377 22889 22977 I TrustedDeviceManager: addServiceListener, version:5.1.130.10.1119126
+07-19 20:38:03.377  3094  3620 I lyra-net-service: DevRepoWrapperImpl::AddServiceInfo:359 service_info={service_name='findDeviceService', service_data='0001', app_name='com.xiaomi.finddevice', customized_app_name='', sync_cloud='0', trusted_types='0'}
+07-19 20:38:03.377  3094  3620 W lyra-net-repo: TrustedDeviceInfoInner::AddService:65 same service, unique_service_name=com.xiaomi.finddevice:findDeviceService, service_info={service_name='findDeviceService', service_data='0001', app_name='com.xiaomi.finddevice', customized_app_name='', sync_cloud='0', trusted_types='0'}
+07-19 20:38:03.377  3094  3620 I lyra-net-service: DevRepoWrapperImpl::AddServiceInfo:363 add same service!
+07-19 20:38:03.377  3094  3620 W lyra-net-repo: RepoImpl::LocalDevWrite:236 action execution failed!
+07-19 20:38:03.378  2193  2290 I [THP0]  : ALG_I: alg_input_report: Touch Down: id: 0
+07-19 20:38:03.378  2278  3545 D MI-SF	 : TouchMonitorThread: BTN_TOUCH: 0x1
+07-19 20:38:03.379  4722  6565 D PerfMTKStubImpl: perfLockRelease
+07-19 20:38:03.379  4722  6565 D PerfMTKStubImpl: mtkPowerHint
+07-19 20:38:03.380 20622 20622 I ImeTracker: com.tencent.mm:6f06a020: onRequestHide at ORIGIN_CLIENT reason HIDE_SOFT_INPUT fromUser true
+07-19 20:38:03.380 20622 20622 D InsetsController: hide(ime(), fromIme=false)
+07-19 20:38:03.380 20622 20622 I ImeTracker: com.tencent.mm:6f06a020: onCancelled at PHASE_CLIENT_ALREADY_HIDDEN
+07-19 20:38:03.381  3094 19117 E PackageUtil: getApplicationInfo fail. pkg: android.uid.finddevice:6110 android.uid.finddevice:6110
+07-19 20:38:03.381  3094 19117 E lyra-report-NetBusReporter: get sdkapp meta data fail.
+07-19 20:38:03.381  3094 19117 I lyra-net-RemoteListenerManager: addServiceListener:{"deviceTypeFilter":[16777217,16777218,16777219,16777220],"trustedTypeFilter":[1],"serviceFilter":"com.find.watch:findDeviceService","mediumTypeFilter":[2,128,65536]}
+07-19 20:38:03.382  3094  3820 I lyra-net-RemoteListenerManager: addServiceListener dispatch
+07-19 20:38:03.382  3094  3820 I lyra-net-jni: Java_com_xiaomi_continuity_networking_service_DevRepoNative_getTrustedDeviceList:71
+07-19 20:38:03.382  3094  3820 I lyra-unified-api: UnifiedImpl::GetNetworkingTrustedDeviceList:1743
+07-19 20:38:03.382  3094  3820 I lyra-net-service: FilterHelper::ToJsonAndCheckFilter:53 filter =
+07-19 20:38:03.382  3094  3820 I lyra-net-service: FilterHelper::FilterMatches:149 matching succeeded
+07-19 20:38:03.382  3094  3820 I lyra-net-service: FilterHelper::ToJsonAndCheckFilter:53 filter =
+07-19 20:38:03.382  3094  3820 I lyra-net-service: FilterHelper::FilterMatches:149 matching succeeded
+07-19 20:38:03.382  3094  3820 I lyra-net-service: DevRepoWrapperImpl::GetTrustedDeviceList:97 filter = , is_online_empty = 0, dev_info_list: 2
+07-19 20:38:03.382  3094  3820 I lyra-net-jni: Java_com_xiaomi_continuity_networking_service_DevRepoNative_getServiceInfoList:235
+07-19 20:38:03.382  3094  3820 I lyra-unified-api: UnifiedImpl::GetNetworkingServiceInfos:1698 device_id=8D7A3793
+07-19 20:38:03.383 22889 22977 I TrustedDeviceManager: addServiceListener, version:5.1.130.10.1119126
+07-19 20:38:03.383  3094 19117 I lyra-net-RemoteListenerManager: addServiceListener:{"deviceTypeFilter":[1],"trustedTypeFilter":[1],"serviceFilter":"com.xiaomi.finddevice:findDeviceService","mediumTypeFilter":[128,65536]}
+07-19 20:38:03.383  3094  3820 I lyra-net-service: DevRepoWrapperImpl::GetServiceInfos:411 servies size: 35
+07-19 20:38:03.383 22889 22977 I ##XLogger##: #&^Vl+i3on8Mo2OL93T14lYpVHD8KplqafQAJKBtNYS0JmT2VfO7I5yD75SdrrNiybYEbbtxE5qDulLJFqOs+NhU1f6i91lHdI+OPhyOkl00ibkiulczP87VDU8KavelzFZSMKa5TfPGIo1GPX3o59f/ifog/8c4aNRq0a+5J7TqtM=!!az1hWRfdty+zBPy4Jibon3mfJxVQd4GVKoyPENILjcKW3H0lu6oUa+yG9S2ms+sSJI/+W0aOAjOJlLmglH84fbCfkerWcGW88s7PeIs+DVJyjDGX1SqNyQC6j5J362XmeegLqqSsPJC2CyRO5L6e5g==^&#
+07-19 20:38:03.383  3094  3820 I lyra-net-AdapterServiceListener: deviceOnline, filter: {"deviceTypeFilter":[16777217,16777218,16777219,16777220],"trustedTypeFilter":[1],"serviceFilter":"com.find.watch:findDeviceService","mediumTypeFilter":[2,128,65536]}
+07-19 20:38:03.384  3094  3820 E lyra-net-AdapterServiceListener: service map is empty of device: 8D7A3793
+07-19 20:38:03.384  3094  3820 I lyra-net-jni: Java_com_xiaomi_continuity_networking_service_DevRepoNative_getServiceInfoList:235
+07-19 20:38:03.384  3094  3820 I lyra-unified-api: UnifiedImpl::GetNetworkingServiceInfos:1698 device_id=F8341F41
+07-19 20:38:03.384  3094  3820 I lyra-net-service: DevRepoWrapperImpl::GetServiceInfos:411 servies size: 2
+07-19 20:38:03.384  3094  3820 I lyra-net-AdapterServiceListener: deviceOnline, filter: {"deviceTypeFilter":[16777217,16777218,16777219,16777220],"trustedTypeFilter":[1],"serviceFilter":"com.find.watch:findDeviceService","mediumTypeFilter":[2,128,65536]}
+07-19 20:38:03.384  3094  3820 E lyra-net-AdapterServiceListener: service map is empty of device: F8341F41
+07-19 20:38:03.384  3094  3820 I lyra-net-RemoteListenerManager: addServiceListener dispatch
+07-19 20:38:03.384  3094  3820 I lyra-net-jni: Java_com_xiaomi_continuity_networking_service_DevRepoNative_getTrustedDeviceList:71
+07-19 20:38:03.384  3094  3820 I lyra-unified-api: UnifiedImpl::GetNetworkingTrustedDeviceList:1743
+07-19 20:38:03.384  3094  3820 I lyra-net-service: FilterHelper::ToJsonAndCheckFilter:53 filter =
+07-19 20:38:03.384  3094  3820 I lyra-net-service: FilterHelper::FilterMatches:149 matching succeeded
+07-19 20:38:03.384  3094  3820 I lyra-net-service: FilterHelper::ToJsonAndCheckFilter:53 filter =
+07-19 20:38:03.384  3094  3820 I lyra-net-service: FilterHelper::FilterMatches:149 matching succeeded
+07-19 20:38:03.384  3094  3820 I lyra-net-service: DevRepoWrapperImpl::GetTrustedDeviceList:97 filter = , is_online_empty = 0, dev_info_list: 2
+07-19 20:38:03.384  3094  3820 I lyra-net-jni: Java_com_xiaomi_continuity_networking_service_DevRepoNative_getServiceInfoList:235
+07-19 20:38:03.384  3094  3820 I lyra-unified-api: UnifiedImpl::GetNetworkingServiceInfos:1698 device_id=8D7A3793
+07-19 20:38:03.384  3094  3820 I lyra-net-service: DevRepoWrapperImpl::GetServiceInfos:411 servies size: 35
+07-19 20:38:03.384  3094  3820 I lyra-net-AdapterServiceListener: deviceOnline, filter: {"deviceTypeFilter":[1],"trustedTypeFilter":[1],"serviceFilter":"com.xiaomi.finddevice:findDeviceService","mediumTypeFilter":[128,65536]}
+07-19 20:38:03.384  3094  3820 I lyra-net-AdapterServiceListener:  listener.onServiceOnline:BusinessServiceInfo{serviceName='findDeviceService', packageName='com.xiaomi.finddevice', serviceData=[0, 1]},8D7A3793
+07-19 20:38:03.385 22889 22925 I TrustedDeviceManager: onServiceOnline, serviceName:findDeviceService, deviceId:8D7A3793
+07-19 20:38:03.385  3094  3820 I lyra-net-jni: Java_com_xiaomi_continuity_networking_service_DevRepoNative_getServiceInfoList:235
+07-19 20:38:03.385  3094  3820 I lyra-unified-api: UnifiedImpl::GetNetworkingServiceInfos:1698 device_id=F8341F41
+07-19 20:38:03.385  3094  3820 I lyra-net-service: DevRepoWrapperImpl::GetServiceInfos:411 servies size: 2
+07-19 20:38:03.385  3094  3820 I lyra-net-AdapterServiceListener: deviceOnline, filter: {"deviceTypeFilter":[1],"trustedTypeFilter":[1],"serviceFilter":"com.xiaomi.finddevice:findDeviceService","mediumTypeFilter":[128,65536]}
+07-19 20:38:03.385  3094  3820 E lyra-net-AdapterServiceListener: service map is empty of device: F8341F41
+07-19 20:38:03.385 22889 22925 I ##XLogger##: #&^Vl+i3on8Mo2OL93T14lYpVHD8KplqafQAJKBtNYS0JmT2VfO7I5yD75SdrrNiybYEbbtxE5qDulLJFqOs+NhU1f6i91lHdI+OPhyOkl00ibkiulczP87VDU8KavelzFZSMKa5TfPGIo1GPX3o59f/ifog/8c4aNRq0a+5J7TqtM=!!4vvgTfUVjlzCYkxATBoDtOBiVSgU79oqu+TMgU8mqpgcONlYRJlRQXTNn4iNRhi/62bxyTXT9hh2+U68YMmMcK0+r/wptTfiGKFzz+0ojjl3gZVrUaIKIxk79M+xin7buFMPaSCesOm4RArEEY4AdiEtYnE/1nN97VGxB1jcktNI69+t4J2RfDegS3E6t//FTYux1yQEuV5XuXmbewVsTb0ZVJpCe3YccA0+bn5PooXhc2lKtdVYP+IyufFh4XhKa+t+UNiKGjUWHjPrkgV3wHQ3tR5qhEqy1tLXHclIeN19ZHBGS1es9ez5+j0NohXBQK2HiSC5PPIa0NkZ+zQHlXTEcUDOzml4vve07u4xkKlt6VUuG9GLOxoLtRjTnyd0GK1leyFX0r2HGPjpjB8pJdh9ptbD9AFgBMGnIfxa7QcnOf1YlW1/Why7/HHa4JLLkCKFMcuxGkjo9LP8yfocUgoTL2saIsdsiFaXCW81aGg=^&#
+07-19 20:38:03.390  2112 15058 D vendor.qti.bluetooth@1.0-wake_lock: Release wakelock is released
+07-19 20:38:03.392 18897 19019 I android.vending: AssetManager2(0xb400007b79bf3578) locale list changing from [] to [zh-CN]
+07-19 20:38:03.393  2153  2153 I vendor.qti.hardware.servicetrackeraidl-service: bindService is called for service : com.xiaomi.finddevice/.coreserver.CoreWorkJobService and for client system
+07-19 20:38:03.393  2153  2153 I vendor.qti.hardware.servicetrackeraidl-service: total connections for service : com.xiaomi.finddevice/.coreserver.CoreWorkJobServiceare :1
+07-19 20:38:03.393  2153  2153 I vendor.qti.hardware.servicetrackeraidl-service: total connections for client : systemare :25
+07-19 20:38:03.394  4722  6164 I system_server: This is sticky GC, maxfree is 33554432 minfree is 8388608
+07-19 20:38:03.394  4722  6164 I system_server: Background young concurrent copying GC freed 133MB AllocSpace bytes, 103(2768KB) LOS objects, 32% free, 198MB/294MB, paused 103us,181us total 127.298ms
+07-19 20:38:03.394 22889 22889 E ##XLogger##: #&^Vl+i3on8Mo2OL93T14lYpVHD8KplqafQAJKBtNYS0JmT2VfO7I5yD75SdrrNiybYEbbtxE5qDulLJFqOs+NhU1f6i91lHdI+OPhyOkl00ibkiulczP87VDU8KavelzFZSMKa5TfPGIo1GPX3o59f/ifog/8c4aNRq0a+5J7TqtM=!!Zx6RnVydlP36rcurCjVfNmry6+XSQdEfNgnxXHzyJGdV0yiONU0bWEjgMrznIfoApl1i+/ZQ4tJbG4g00hzW8osg2MaheCbAnQG8tmSza2UO7/mH5ycWayycXO5f/5D09dT4cKY+icdgIQXAK+OIxyodtoq14HUd6aRJ7n52QVlPYyPC2oy/5H5VOm7CkVJw^&#
+07-19 20:38:03.394  2145  2557 E PERFHAL-WLC-SCENARIO: PERFHAL-WLC-SCENARIO: GetWeight() 127: empty appName or WLC is not initialized
+07-19 20:38:03.394  2145  2560 E PERFHAL-SERVICE: PERFHAL-SERVICE: perfHintAsync() 599: perfHintAsync SubmitScenarioDRequest initcomplete
+07-19 20:38:03.395  2145  2557 E PERFHAL-WLC-SCENARIO: PERFHAL-WLC-SCENARIO: GetWeight() 127: empty appName or WLC is not initialized
+07-19 20:38:03.398 22889 22992 I ServiceConnector.Impl: start bindService: null
+07-19 20:38:03.399  2153  2153 I vendor.qti.hardware.servicetrackeraidl-service: bindService is called for service : com.xiaomi.mi_connect_service/com.xiaomi.continuity.ContinuityServiceManagerService and for client com.xiaomi.finddevice
+07-19 20:38:03.399  2153  2153 I vendor.qti.hardware.servicetrackeraidl-service: total connections for service : com.xiaomi.mi_connect_service/com.xiaomi.continuity.ContinuityServiceManagerServiceare :9
+07-19 20:38:03.399  2153  2153 I vendor.qti.hardware.servicetrackeraidl-service: total connections for client : com.xiaomi.finddeviceare :3
+07-19 20:38:03.399 22889 22992 I ServiceConnector.Impl: onServiceConnected component:ComponentInfo{com.xiaomi.mi_connect_service/com.xiaomi.continuity.ContinuityServiceManagerService}
+07-19 20:38:03.399  2119 15773 I sensors-hal: qsh_conn_event_cb:789, wakeup event[0] sensor:knuckle  Wakeup msg_id=1024, ts=2957038415938
+07-19 20:38:03.399  2119 15773 E sensors-hal: handle_sns_client_event:54, knuckle_event: ts=154007586874506, event=0.000000 now = 154007587152781
+07-19 20:38:03.405  1170  1235 D DrmLibTime: Time dispatch starts
+07-19 20:38:03.405  1170  1235 D DrmLibTime: command id, time_cmd_id = 770
+07-19 20:38:03.405  1170  1235 D DrmLibTime: time_getutcsec starts!
+07-19 20:38:03.405  1170  1235 D DrmLibTime: QSEE Time Listener: time_getutcsec
+07-19 20:38:03.405  1170  1235 D DrmLibTime: QSEE Time Listener: get_utc_seconds
+07-19 20:38:03.405  1170  1235 D DrmLibTime: QSEE Time Listener: time_get_modem_time
+07-19 20:38:03.405  1170  1235 D DrmLibTime: QSEE Time Listener: Checking if ATS_MODEM is set or not.
+07-19 20:38:03.406  1170  1235 D QC-time-services: Lib:time_genoff_operation: pargs->base = 13
+07-19 20:38:03.406  1170  1235 D QC-time-services: Lib:time_genoff_operation: pargs->operation = 2
+07-19 20:38:03.406  1170  1235 D QC-time-services: Lib:time_genoff_operation: pargs->ts_val = 0
+07-19 20:38:03.406  1170  1235 D QC-time-services: Lib:time_genoff_operation: Send to server  passed!!
+07-19 20:38:03.406  1954  1967 D QC-time-services: Daemon: Connection accepted:time_genoff
+07-19 20:38:03.406  1954 22994 D QC-time-services: Daemon:Received base = 13, unit = 1, operation = 2,value = 0
+07-19 20:38:03.406  1954 22994 D QC-time-services: Daemon:genoff_opr: Base = 13, val = 0, operation = 2
+07-19 20:38:03.406  1954 22994 D QC-time-services: offset is: 1 for base: 13
+07-19 20:38:03.406  1170  1235 E QC-time-services: Receive Passed == base = 13, unit = 1, operation = 2, result = 0
+07-19 20:38:03.406  1954  1967 E QC-time-services: Daemon: Time-services: Waiting to acceptconnection
+07-19 20:38:03.406  1170  1235 D DrmLibTime: QSEE Time Listener: ATS_MODEM is set. Try to retrieve it.
+07-19 20:38:03.407  1954  1967 D QC-time-services: Daemon: Connection accepted:time_genoff
+07-19 20:38:03.407  1954 22995 D QC-time-services: Daemon:Received base = 13, unit = 1, operation = 1,value = 0
+07-19 20:38:03.407  1954 22995 D QC-time-services: Daemon:genoff_opr: Base = 13, val = 0, operation = 1
+07-19 20:38:03.407  1954 22995 D QC-time-services: Daemon: genoff get for 13
+07-19 20:38:03.407  1954 22995 D QC-time-services: Daemon:Value read from QTimer mseconds = 154012425
+07-19 20:38:03.407  1954 22995 D QC-time-services: Daemon:Value read from RTC mseconds on boot = 1861315000
+07-19 20:38:03.407  1954 22995 D QC-time-services: Daemon:Value read from QTimer mseconds = 154012425
+07-19 20:38:03.407  1954 22995 D QC-time-services: Daemon:Value read from generic offset = 1782449375207
+07-19 20:38:03.407  1954 22995 D QC-time-services: Daemon:Delta read on boot mseconds = 1861295704
+07-19 20:38:03.407  1954 22995 D QC-time-services: Daemon:Final Time = 1784464683336
+07-19 20:38:03.407  1170  1235 D DrmLibTime: QSEE Time Listener: Time GenOff - seconds: 1784464683
+07-19 20:38:03.407  1170  1235 D DrmLibTime: time_getutcsec returns 0, sec = 1784464683; nsec = 0
+07-19 20:38:03.407  1170  1235 D DrmLibTime: time_getutcsec finished!
+07-19 20:38:03.407  1170  1235 D DrmLibTime: time_services Dispatch ends and ret = 0!
+07-19 20:38:03.407  1954  1967 E QC-time-services: Daemon: Time-services: Waiting to acceptconnection
+07-19 20:38:03.410 22889 22996 I ##XLogger##: #&^Vl+i3on8Mo2OL93T14lYpVHD8KplqafQAJKBtNYS0JmT2VfO7I5yD75SdrrNiybYEbbtxE5qDulLJFqOs+NhU1f6i91lHdI+OPhyOkl00ibkiulczP87VDU8KavelzFZSMKa5TfPGIo1GPX3o59f/ifog/8c4aNRq0a+5J7TqtM=!!XT9gpyMsjbpvP0X/yp0RlGxbk7R3XY66ekSrn34xCluSmqnz4E3LEyR5BIDwPeOuQzI6T0ggmOEy1fUsrVN5/phLi5W0rN5foR7xH/3gQ8N0pKkHqdrSFCZNVqaYldge^&#
+07-19 20:38:03.410 22678 22964 D EpubParser: extractChapterInfo: [0] title=One path=OEBPS/Text/ch1.xhtml
+07-19 20:38:03.410 22889 22997 D OneTrackSdk: updateDebugSwitch sEnable: false sDebugMode：false sDebugProperty：false
+07-19 20:38:03.410 22889 22997 D OneTrackSdk: updateTestSwitch sTestEnable: false sTestMode：false sTestProperty：false
+07-19 20:38:03.410 22889 22997 D OneTrackSdk: log on: false, quick upload on: false
+07-19 20:38:03.411 22678 22964 D EpubParser: extractChapterInfo: [1] title=Two path=OEBPS/Text/ch2.xhtml
+07-19 20:38:03.413 22889 22996 I ##XLogger##: #&^Vl+i3on8Mo2OL93T14lYpVHD8KplqafQAJKBtNYS0JmT2VfO7I5yD75SdrrNiybYEbbtxE5qDulLJFqOs+NhU1f6i91lHdI+OPhyOkl00ibkiulczP87VDU8KavelzFZSMKa5TfPGIo1GPX3o59f/ifog/8c4aNRq0a+5J7TqtM=!!DGAm2Jm4PM4GKhx2FEeRCy9sxxvt+8VqZyEvcoG3XG9UAe+EbFFHoJIQCG3xfJLD6yrjE0+PU6UTc8T5Sw1TeoAseYAPEC3Xse28b9NaUT7G4KgHfuacOAVa2uQIiz2vJuZ+y7jazOkAEOVZxEBvw0J6D4a1+/KIggiA4u8GPE2qd9inuJFFcKZ8c2VlKnQMNmMaprgtwfhV47hEve7qpS7FhvjRWDErsDBrKsLgFViO63bCm1PThMHk92NcWlg0F44d5EkiDTF8h98ECvoNpOX09i3eECayAseLc1b77lER766RRB5dAdCVU0ZcBGjr7UGvzcDQ5x+/lrrt0QQWB0zxPMGGuRqDcVdLNo4Z9VWMocNiKhc1AWZ30FTTFH0n3jdNPCsaWdvFKTkZZpc9NOZZtEpHR5YWbnxIJS+GZA8=^&#
+07-19 20:38:03.413 22889 22997 D CompatChangeReporter: Compat change id reported: 270674727; UID 6110; state: ENABLED
+07-19 20:38:03.417 22889 22889 E XiaomiAccountManager: PassportLog@A2^6C[c2V0dXAgdHJ1ZQ==]
+07-19 20:38:03.419 14705 16000 E misc    : isReadonlyFilesystem(): statfs(/product/overlay/treble-overlay-teleservice.apk) failed: No such file or directory
+07-19 20:38:03.419 14705 16000 W ziparchive: Unable to open '/product/overlay/treble-overlay-teleservice.apk': No such file or directory
+07-19 20:38:03.419 14705 16000 E m.android.phone: Failed to open APK '/product/overlay/treble-overlay-teleservice.apk': I/O error
+07-19 20:38:03.419 14705 16000 W ResourcesManager: failed to preload asset path '/product/overlay/treble-overlay-teleservice.apk'
+07-19 20:38:03.419 14705 16000 W ResourcesManager: java.io.IOException: Failed to load asset path /data/resource-cache/product@overlay@treble-overlay-teleservice.apk@idmap
+07-19 20:38:03.419 14705 16000 W ResourcesManager: 	at android.content.res.ApkAssets.nativeLoad(Native Method)
+07-19 20:38:03.419 14705 16000 W ResourcesManager: 	at android.content.res.ApkAssets.<init>(ApkAssets.java:322)
+07-19 20:38:03.419 14705 16000 W ResourcesManager: 	at android.content.res.ApkAssets.loadOverlayFromPath(ApkAssets.java:242)
+07-19 20:38:03.419 14705 16000 W ResourcesManager: 	at android.app.ResourcesManager.loadApkAssets(ResourcesManager.java:641)
+07-19 20:38:03.419 14705 16000 W ResourcesManager: 	at android.app.ResourcesManager$ApkAssetsSupplier.load(ResourcesManager.java:312)
+07-19 20:38:03.419 14705 16000 W ResourcesManager: 	at android.app.ResourcesManager.createApkAssetsSupplierNotLocked(ResourcesManager.java:1213)
+07-19 20:38:03.419 14705 16000 W ResourcesManager: 	at android.app.ResourcesManager.getResources(ResourcesManager.java:1332)
+07-19 20:38:03.419 14705 16000 W ResourcesManager: 	at android.app.ContextImpl.createResources(ContextImpl.java:2737)
+07-19 20:38:03.419 14705 16000 W ResourcesManager: 	at android.app.ContextImpl.createPackageContextAsUser(ContextImpl.java:2828)
+07-19 20:38:03.419 14705 16000 W ResourcesManager: 	at android.app.ContextImpl.createContextAsUser(ContextImpl.java:2843)
+07-19 20:38:03.419 14705 16000 W ResourcesManager: 	at android.content.ContextWrapper.createContextAsUser(ContextWrapper.java:1153)
+07-19 20:38:03.419 14705 16000 W ResourcesManager: 	at com.android.phone.PhoneInterfaceManager.getCurrentPackageName(PhoneInterfaceManager.java:11183)
+07-19 20:38:03.419 14705 16000 W ResourcesManager: 	at com.android.phone.PhoneInterfaceManager.getSimStateForSlotIndex(PhoneInterfaceManager.java:13300)
+07-19 20:38:03.419 14705 16000 W ResourcesManager: 	at com.android.internal.telephony.ITelephony$Stub.onTransact(ITelephony.java:8309)
+07-19 20:38:03.419 14705 16000 W ResourcesManager: 	at android.os.Binder.execTransactInternal(Binder.java:1428)
+07-19 20:38:03.419 14705 16000 W ResourcesManager: 	at android.os.Binder.execTransact(Binder.java:1372)
+07-19 20:38:03.419 22889 22997 D OneTrackImp: OneTrackImp init : Configuration{appId='31*******39', pluginId='null', channel='default', international=false, region='null', overrideMiuiRegionSetting=false, mode=APP, GAIDEnable=true, IMSIEnable=true, IMEIEnable=true, ExceptionCatcherEnable=true, instanceId=null}
+07-19 20:38:03.419 22889 22997 D OneTrackImp: OneTrackImp sdk ver : 2.2.3
+07-19 20:38:03.420 22678 22964 D EpubParser: getChapterContent: idx=0 path=OEBPS/Text/ch1.xhtml
+07-19 20:38:03.420 22889 22997 I ##XLogger##: #&^Vl+i3on8Mo2OL93T14lYpVHD8KplqafQAJKBtNYS0JmT2VfO7I5yD75SdrrNiybYEbbtxE5qDulLJFqOs+NhU1f6i91lHdI+OPhyOkl00ibkiulczP87VDU8KavelzFZSMKa5TfPGIo1GPX3o59f/ifog/8c4aNRq0a+5J7TqtM=!!Zx6RnVydlP36rcurCjVfNmry6+XSQdEfNgnxXHzyJGf+fNRTCn8I3zURtLr4NzNIALaL3pC7LSnNNZl94HBKcei9IOhWPLSorzZcg2XYT7As2J3hmqxwZfBUaPp4woco8Uz7Z6z9w7vjaVyU/wySg2ezXiEeB+ZflsxXY4Ont8HbF1HCfsccPPQWt7XuHXBv^&#
+07-19 20:38:03.420 22678 22964 D EpubParser: getChapterContent: idx=0 rawHtml.length=118
+07-19 20:38:03.420 22678 22964 D EpubParser: cover HTML: <html><head><title>One</title></head><body>
+07-19 20:38:03.420 22678 22964 D EpubParser:   <p>Source text <a href="ch2.xhtml#note">open note</a></p>
+07-19 20:38:03.420 22678 22964 D EpubParser: </body></html>
+07-19 20:38:03.431 14705 16000 E misc    : isReadonlyFilesystem(): statfs(/product/overlay/treble-overlay-teleservice.apk) failed: No such file or directory
+07-19 20:38:03.431 14705 16000 W ziparchive: Unable to open '/product/overlay/treble-overlay-teleservice.apk': No such file or directory
+07-19 20:38:03.431 14705 16000 E m.android.phone: Failed to open APK '/product/overlay/treble-overlay-teleservice.apk': I/O error
+07-19 20:38:03.431 14705 16000 W ResourcesManager: failed to preload asset path '/product/overlay/treble-overlay-teleservice.apk'
+07-19 20:38:03.431 14705 16000 W ResourcesManager: java.io.IOException: Failed to load asset path /data/resource-cache/product@overlay@treble-overlay-teleservice.apk@idmap
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at android.content.res.ApkAssets.nativeLoad(Native Method)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at android.content.res.ApkAssets.<init>(ApkAssets.java:322)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at android.content.res.ApkAssets.loadOverlayFromPath(ApkAssets.java:242)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at android.app.ResourcesManager.loadApkAssets(ResourcesManager.java:641)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at android.app.ResourcesManager$ApkAssetsSupplier.load(ResourcesManager.java:312)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at android.app.ResourcesManager.createApkAssetsSupplierNotLocked(ResourcesManager.java:1213)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at android.app.ResourcesManager.getResources(ResourcesManager.java:1332)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at android.app.ContextImpl.createResources(ContextImpl.java:2737)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at android.app.ContextImpl.createPackageContextAsUser(ContextImpl.java:2828)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at android.app.ContextImpl.createContextAsUser(ContextImpl.java:2843)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at android.content.ContextWrapper.createContextAsUser(ContextWrapper.java:1153)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at com.android.phone.PhoneInterfaceManager.getCurrentPackageName(PhoneInterfaceManager.java:11183)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at com.android.phone.PhoneInterfaceManager.getCarrierPrivilegeStatusForUid(PhoneInterfaceManager.java:7841)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at android.telephony.TelephonyManager.getCarrierPrivilegeStatus(TelephonyManager.java:16545)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at com.android.internal.telephony.TelephonyPermissions.getCarrierPrivilegeStatus(TelephonyPermissions.java:778)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at com.android.internal.telephony.TelephonyPermissions.checkCarrierPrivilegeForSubId(TelephonyPermissions.java:213)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at com.android.internal.telephony.TelephonyPermissions.checkPrivilegedReadPermissionOrCarrierPrivilegePermission(TelephonyPermissions.java:390)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at com.android.internal.telephony.TelephonyPermissions.checkCallingOrSelfReadSubscriberIdentifiers(TelephonyPermissions.java:356)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at com.android.internal.telephony.subscription.SubscriptionManagerService.hasSubscriberIdentifierAccess(SubscriptionManagerService.java:854)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at com.android.internal.telephony.subscription.SubscriptionManagerService.conditionallyRemoveIdentifiers(SubscriptionManagerService.java:888)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at com.android.internal.telephony.subscription.SubscriptionManagerService.lambda$getActiveSubscriptionInfoList$18(SubscriptionManagerService.java:2227)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at com.android.internal.telephony.subscription.SubscriptionManagerService.$r8$lambda$iDD3gWq8W6TKyRsslw-iAH5aSiw(SubscriptionManagerService.java:0)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at com.android.internal.telephony.subscription.SubscriptionManagerService$$ExternalSyntheticLambda43.apply(R8$$SyntheticClass:0)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:209)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at java.util.stream.ReferencePipeline$2$1.accept(ReferencePipeline.java:191)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at java.util.stream.ReferencePipeline$2$1.accept(ReferencePipeline.java:191)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1725)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:513)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:503)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at java.util.stream.ReduceOps$ReduceOp.evaluateSequential(ReduceOps.java:921)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:236)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at java.util.stream.ReferencePipeline.collect(ReferencePipeline.java:705)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at com.android.internal.telephony.subscription.SubscriptionManagerService.getActiveSubscriptionInfoList(SubscriptionManagerService.java:2231)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at com.android.internal.telephony.ISub$Stub.onTransact(ISub.java:861)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at android.os.Binder.execTransactInternal(Binder.java:1428)
+07-19 20:38:03.431 14705 16000 W ResourcesManager: 	at android.os.Binder.execTransact(Binder.java:1372)
+07-19 20:38:03.432 22889 22889 E XiaomiAccountManager: PassportLog@A2^6C[Y2FsbGVyIHNpZ25hdHVyZSA9IEFwcFNpZ25hdHVyZUhhc2h7c2hhMT0nN0I2REM3MDc5QzM0NzM5Q0U4MTE1OTcxOUZCNUVCNjFEMkEwMzIyNScsIG1kNT0nNzAxNDc4QTFFM0I0QjdFMzk3OEVBNjk0Njk0MTBGMTMnfQ==]
+07-19 20:38:03.432 22889 22889 E XiaomiAccountManager: PassportLog@A2^6C[c3lzIGFjY291bnQgc2lnbmF0dXJlID0gQXBwU2lnbmF0dXJlSGFzaHtzaGExPSc3QjZEQzcwNzlDMzQ3MzlDRTgxMTU5NzE5RkI1RUI2MUQyQTAzMjI1JywgbWQ1PSc3MDE0NzhBMUUzQjRCN0UzOTc4RUE2OTQ2OTQxMEYxMyd9]
+07-19 20:38:03.433 14705 16000 E misc    : isReadonlyFilesystem(): statfs(/product/overlay/treble-overlay-teleservice.apk) failed: No such file or directory
+07-19 20:38:03.433 14705 16000 W ziparchive: Unable to open '/product/overlay/treble-overlay-teleservice.apk': No such file or directory
+07-19 20:38:03.433 14705 16000 E m.android.phone: Failed to open APK '/product/overlay/treble-overlay-teleservice.apk': I/O error
+07-19 20:38:03.434 14705 16000 W ResourcesManager: failed to preload asset path '/product/overlay/treble-overlay-teleservice.apk'
+07-19 20:38:03.434 14705 16000 W ResourcesManager: java.io.IOException: Failed to load asset path /data/resource-cache/product@overlay@treble-overlay-teleservice.apk@idmap
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at android.content.res.ApkAssets.nativeLoad(Native Method)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at android.content.res.ApkAssets.<init>(ApkAssets.java:322)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at android.content.res.ApkAssets.loadOverlayFromPath(ApkAssets.java:242)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at android.app.ResourcesManager.loadApkAssets(ResourcesManager.java:641)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at android.app.ResourcesManager$ApkAssetsSupplier.load(ResourcesManager.java:312)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at android.app.ResourcesManager.createApkAssetsSupplierNotLocked(ResourcesManager.java:1213)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at android.app.ResourcesManager.getResources(ResourcesManager.java:1332)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at android.app.ContextImpl.createResources(ContextImpl.java:2737)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at android.app.ContextImpl.createPackageContextAsUser(ContextImpl.java:2828)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at android.app.ContextImpl.createContextAsUser(ContextImpl.java:2843)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at android.content.ContextWrapper.createContextAsUser(ContextWrapper.java:1153)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at com.android.phone.PhoneInterfaceManager.getCurrentPackageName(PhoneInterfaceManager.java:11183)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at com.android.phone.PhoneInterfaceManager.getCarrierPrivilegeStatusForUid(PhoneInterfaceManager.java:7841)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at android.telephony.TelephonyManager.getCarrierPrivilegeStatus(TelephonyManager.java:16545)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at com.android.internal.telephony.TelephonyPermissions.getCarrierPrivilegeStatus(TelephonyPermissions.java:778)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at com.android.internal.telephony.TelephonyPermissions.checkCarrierPrivilegeForSubId(TelephonyPermissions.java:213)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at com.android.internal.telephony.TelephonyPermissions.checkPrivilegedReadPermissionOrCarrierPrivilegePermission(TelephonyPermissions.java:390)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at com.android.internal.telephony.TelephonyPermissions.checkCallingOrSelfReadSubscriberIdentifiers(TelephonyPermissions.java:356)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at com.android.internal.telephony.subscription.SubscriptionManagerService.hasSubscriberIdentifierAccess(SubscriptionManagerService.java:854)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at com.android.internal.telephony.subscription.SubscriptionManagerService.conditionallyRemoveIdentifiers(SubscriptionManagerService.java:888)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at com.android.internal.telephony.subscription.SubscriptionManagerService.lambda$getActiveSubscriptionInfoList$18(SubscriptionManagerService.java:2227)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at com.android.internal.telephony.subscription.SubscriptionManagerService.$r8$lambda$iDD3gWq8W6TKyRsslw-iAH5aSiw(SubscriptionManagerService.java:0)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at com.android.internal.telephony.subscription.SubscriptionManagerService$$ExternalSyntheticLambda43.apply(R8$$SyntheticClass:0)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:209)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at java.util.stream.ReferencePipeline$2$1.accept(ReferencePipeline.java:191)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at java.util.stream.ReferencePipeline$2$1.accept(ReferencePipeline.java:191)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1725)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:513)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:503)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at java.util.stream.ReduceOps$ReduceOp.evaluateSequential(ReduceOps.java:921)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:236)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at java.util.stream.ReferencePipeline.collect(ReferencePipeline.java:705)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at com.android.internal.telephony.subscription.SubscriptionManagerService.getActiveSubscriptionInfoList(SubscriptionManagerService.java:2231)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at com.android.internal.telephony.ISub$Stub.onTransact(ISub.java:861)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at android.os.Binder.execTransactInternal(Binder.java:1428)
+07-19 20:38:03.434 14705 16000 W ResourcesManager: 	at android.os.Binder.execTransact(Binder.java:1372)
+07-19 20:38:03.434 22889 22889 E XiaomiAccountManager: PassportLog@A2^6C[aGFzIHN5c3RlbSBhY2NvdW50IGFwcCBhbmQgY3VycmVudCBjb20ueGlhb21pLmZpbmRkZXZpY2UgaGFzIHNhbWUgc2lnbmF0dXJl]
+07-19 20:38:03.434 22889 22889 I ##XLogger##: #&^Vl+i3on8Mo2OL93T14lYpVHD8KplqafQAJKBtNYS0JmT2VfO7I5yD75SdrrNiybYEbbtxE5qDulLJFqOs+NhU1f6i91lHdI+OPhyOkl00ibkiulczP87VDU8KavelzFZSMKa5TfPGIo1GPX3o59f/ifog/8c4aNRq0a+5J7TqtM=!!Zx6RnVydlP36rcurCjVfNmry6+XSQdEfNgnxXHzyJGf+fNRTCn8I3zURtLr4NzNIlrBikXAbsr/kdMly5OIEpBLaMu+sVgS2RJv+rbfBRUT2LQQTFnlubINElSjmJIpaVAxQG0nV3GyLfIbKUga8AIb4U03n24H/t96Gw0FCv8a1apvkkIVIaxOk1hEdmRrR6/cw+jPOhh7NZuf3ALTaHw==^&#
+07-19 20:38:03.435 22889 22889 I ##XLogger##: #&^Vl+i3on8Mo2OL93T14lYpVHD8KplqafQAJKBtNYS0JmT2VfO7I5yD75SdrrNiybYEbbtxE5qDulLJFqOs+NhU1f6i91lHdI+OPhyOkl00ibkiulczP87VDU8KavelzFZSMKa5TfPGIo1GPX3o59f/ifog/8c4aNRq0a+5J7TqtM=!!N/I71q+OZemo666MTRyjG1i+OKLABgRmAwjEybbol0eIpchKHjU1+GJbczSI78WXSV2auv0xC383PtP3gfqHIU2EXCUm1zGGhVaF+qfa6qJ+OP/h57EOXOiYSPoXSW0XFh7sHaZSPFQHIP8EDkYp/mnS5lpqwQCdiQ9J8I/RiYU=^&#
+07-19 20:38:03.435 22678 22964 D EpubParser: applyParagraphFormatting: paragraphSpacingDp=0.0 firstLineIndentChars=0.0
+07-19 20:38:03.435 22678 22964 D EpubParser: applyParagraphFormatting: SKIP (both <= 0)
+07-19 20:38:03.435 22678 22964 D EpubParser: getChapterContent: after trim: type=SpannableStringBuilder LeadingMarginSpans=0
+07-19 20:38:03.436 22678 22964 D EpubParser: getChapterContent: idx=0 result.length=22 LeadingMarginSpans=0 LineHeightSpans=0 firstLineIndentChars=0.0 indentPx=0
+07-19 20:38:03.437 22889 23009 I ##XLogger##: #&^Vl+i3on8Mo2OL93T14lYpVHD8KplqafQAJKBtNYS0JmT2VfO7I5yD75SdrrNiybYEbbtxE5qDulLJFqOs+NhU1f6i91lHdI+OPhyOkl00ibkiulczP87VDU8KavelzFZSMKa5TfPGIo1GPX3o59f/ifog/8c4aNRq0a+5J7TqtM=!!Zx6RnVydlP36rcurCjVfNmry6+XSQdEfNgnxXHzyJGdV0yiONU0bWEjgMrznIfoAlTgZa8odrhWlDSZ+BQR4jF5rOm780XvWF4sUqOm6v5RGjSBo/SlXcpJtU9DlHwVeh5iFt+om5gwzaQoM1WxZtoCFnOswKk/UoPhYgG88RreKFtUgHss2Kxw+UmhyQ6s4^&#
+07-19 20:38:03.438 22889 23009 I TrustedDeviceManager: addServiceInfo, version:5.1.130.10.1119126
+07-19 20:38:03.441 22889 22985 D nativeloader: Load /product/priv-app/MIUIFindDeviceCN/MIUIFindDeviceCN.apk!/lib/arm64-v8a/libmicontinuity_sdk.so using class loader ns product-clns-13 (caller=/product/priv-app/MIUIFindDeviceCN/MIUIFindDeviceCN.apk!classes2.dex): ok
+07-19 20:38:03.441 21806 22196 I XWeb.Core: [0719/203803.441340:INFO:third_party/blink/renderer/core/frame/local_frame_view.cc:4862] [XWEB_PAGE_CALLBACK_TRACE] [0x6c002b9100]LocalFrameView paint-holding NOT started, have_deferred_main_frame_commits_=0
+07-19 20:38:03.441 21806 22196 I XWeb.Core: [0719/203803.441473:INFO:third_party/blink/renderer/core/frame/local_frame_view.cc:4862] [XWEB_PAGE_CALLBACK_TRACE] [0x6c002b9100]LocalFrameView paint-holding NOT started, have_deferred_main_frame_commits_=0
+07-19 20:38:03.441 21806 22196 I XWeb.Core: [0719/203803.441591:INFO:third_party/blink/renderer/platform/widget/compositing/layer_tree_settings.cc:66] [XWEB_SCROLLBAR] InitializeScrollbarFadeAndDelay settings.is_xweb_scrollbar_default_hidden:1
+07-19 20:38:03.441 22889 22985 I lyra-micont-jni: JNI_OnLoad:11
+07-19 20:38:03.442 22889 22985 I lyra-micont-ch-jni: Java_com_xiaomi_continuity_channel_NChannelManager_initialize:217
+07-19 20:38:03.442 22678 22964 D EpubParser: getChapterContent: idx=1 path=OEBPS/Text/ch2.xhtml
+07-19 20:38:03.443  4722 13575 I MiuiNetworkPolicy: updateUidState uid = 6110, uidState = 19
+07-19 20:38:03.443 22678 22964 D EpubParser: getChapterContent: idx=1 rawHtml.length=114
+07-19 20:38:03.443 21806 22196 I XWeb.Core: [0719/203803.443759:INFO:cc/trees/proxy_main.cc:711] [XWEB_PAGE_CALLBACK_TRACE] [0x74004dbac0]ProxyMain::SetDeferMainFrameUpdate:1
+07-19 20:38:03.443 21806 22196 I XWeb.Core: [0719/203803.443961:INFO:xweb/xweb_comm/renderer/xweb_content_renderer_client.cc:91] [XWEB_LONG_SCREENSHOTS] Create PaintPreviewRecorderImpl
+07-19 20:38:03.443 21806 22196 I XWeb.Core: [0719/203803.443977:INFO:xweb/xweb_comm/renderer/xweb_content_renderer_client.cc:94] [XWEB_COMMON] royle XWebContentRendererClient::RenderFrameCreated render_frame->IsMainFrame():1
+07-19 20:38:03.444 21806 22196 I XWeb.Core: [0719/203803.444243:INFO:content/renderer/java/gin_java_bridge_dispatcher.cc:105] [XWEB_DEBUG_JAVA_BRIDGE] GinJavaBridgeDispatcher AddNamedObject, name: __wx, id: 2, this:0x740044a3d0
+07-19 20:38:03.444 21806 22196 I XWeb.Core: [0719/203803.444276:INFO:content/renderer/java/gin_java_bridge_dispatcher.cc:105] [XWEB_DEBUG_JAVA_BRIDGE] GinJavaBridgeDispatcher AddNamedObject, name: webSearchJSApi, id: 3, this:0x740044a3d0
+07-19 20:38:03.444 21806 22196 I XWeb.Core: [0719/203803.444297:INFO:content/renderer/java/gin_java_bridge_dispatcher.cc:105] [XWEB_DEBUG_JAVA_BRIDGE] GinJavaBridgeDispatcher AddNamedObject, name: xwebToNative, id: 1, this:0x740044a3d0
+07-19 20:38:03.444 21806 22196 I XWeb.Core: [0719/203803.444354:INFO:cc/trees/layer_tree_host.cc:873] [XWEB_PAGE_CALLBACK_TRACE] [0x740054f100]LayerTreeHost::SetVisible:1
+07-19 20:38:03.444 22889 22889 I ##XLogger##: #&^Vl+i3on8Mo2OL93T14lYpVHD8KplqafQAJKBtNYS0JmT2VfO7I5yD75SdrrNiybYEbbtxE5qDulLJFqOs+NhU1f6i91lHdI+OPhyOkl00ibkiulczP87VDU8KavelzFZSMKa5TfPGIo1GPX3o59f/ifog/8c4aNRq0a+5J7TqtM=!!9aBJZr8OVrCeD13pEgSrePVHxtONyMHK1VxT4LU5h6DR7hi99zlJCtQGEyGTd10PJBPy5HVvrOPyfVdztGDyhjI9PDqgN6IaKDGdnn89tIc1Tc76nSuZF6Lj1AaNTqgi^&#
+07-19 20:38:03.444 21806 22196 I XWeb.Core: [0719/203803.444578:INFO:content/renderer/java/gin_java_bridge_dispatcher.cc:105] [XWEB_DEBUG_JAVA_BRIDGE] GinJavaBridgeDispatcher AddNamedObject, name: MiWebViewDetector, id: 4, this:0x740044a3d0
+07-19 20:38:03.445 22889 22889 I ##XLogger##: #&^Vl+i3on8Mo2OL93T14lYpVHD8KplqafQAJKBtNYS0JmT2VfO7I5yD75SdrrNiybYEbbtxE5qDulLJFqOs+NhU1f6i91lHdI+OPhyOkl00ibkiulczP87VDU8KavelzFZSMKa5TfPGIo1GPX3o59f/ifog/8c4aNRq0a+5J7TqtM=!!Y5yDD1u5nUkLW7DyXaiFZM7gqd3xatwadJpwlagKsYenrbME55iN9heNfCFRgbR6tdgYnzZJFqCxxT0yEx/WbummHtJlBBaCfXW9A/7xzrVEd7cBZU7CIucsKTwlIyFD^&#
+07-19 20:38:03.445 22889 22889 I ##XLogger##: #&^Vl+i3on8Mo2OL93T14lYpVHD8KplqafQAJKBtNYS0JmT2VfO7I5yD75SdrrNiybYEbbtxE5qDulLJFqOs+NhU1f6i91lHdI+OPhyOkl00ibkiulczP87VDU8KavelzFZSMKa5TfPGIo1GPX3o59f/ifog/8c4aNRq0a+5J7TqtM=!!RSpy/dxT3yrcKjaj9kB8tfA3tWLCprSCFmWQotw6HL3tPL5auEBLsOPvnwq/IBb2x3e+s4ACcGsTPI7ZcvvXyRL6XUGgOELuKkTBwA10XbZ8Jfe08CBS5kKWR1UOa2PX7cFUU1nxn9T+ilDa3h0iYxO36lskkhLDArIWz8D3vRY=^&#
+07-19 20:38:03.446 22889 22889 D ##XLogger##: #&^Vl+i3on8Mo2OL93T14lYpVHD8KplqafQAJKBtNYS0JmT2VfO7I5yD75SdrrNiybYEbbtxE5qDulLJFqOs+NhU1f6i91lHdI+OPhyOkl00ibkiulczP87VDU8KavelzFZSMKa5TfPGIo1GPX3o59f/ifog/8c4aNRq0a+5J7TqtM=!!9q7T2YPR9UfsEFsOnfygPOP5hYYEFwI4iRDy22ClmVkpTfMsTQ6yTnVQT7lQhwmD8cirfxaqgMwydpC0+1i6dRSOEJe0rlixUydUbQpENt8=^&#
+07-19 20:38:03.447 22678 22964 D EpubParser: applyParagraphFormatting: paragraphSpacingDp=0.0 firstLineIndentChars=0.0
+07-19 20:38:03.447 22678 22964 D EpubParser: applyParagraphFormatting: SKIP (both <= 0)
+07-19 20:38:03.447 22678 22964 D EpubParser: getChapterContent: after trim: type=SpannableStringBuilder LeadingMarginSpans=0
+07-19 20:38:03.447 22678 22964 D EpubParser: getChapterContent: idx=1 result.length=31 LeadingMarginSpans=0 LineHeightSpans=0 firstLineIndentChars=0.0 indentPx=0
+07-19 20:38:03.449 22889 23010 D ##XLogger##: #&^Vl+i3on8Mo2OL93T14lYpVHD8KplqafQAJKBtNYS0JmT2VfO7I5yD75SdrrNiybYEbbtxE5qDulLJFqOs+NhU1f6i91lHdI+OPhyOkl00ibkiulczP87VDU8KavelzFZSMKa5TfPGIo1GPX3o59f/ifog/8c4aNRq0a+5J7TqtM=!!Zx6RnVydlP36rcurCjVfNmry6+XSQdEfNgnxXHzyJGdV0yiONU0bWEjgMrznIfoAjw7dCNYG3BPwetNCtHFbbUTu94ZB4DFnirn7yKG90ZK6CKLTabvVc4C2YMJpLZHovUgMs3QcDcXXjhAvy5BGfVjrJXaoaAnH84du3NgkLERpNIuG/mlpFT5E35GFnsbR2RTsOxYNRE4Y+uOsHCoIZob4YEK1OQDDLx5jWuNF9YyDK7ej6YeWoLki0tbuf3Cogp9E2rK2FZkG/eyHgvKXGw==^&#
+07-19 20:38:03.449 22889 22997 I ##XLogger##: #&^Vl+i3on8Mo2OL93T14lYpVHD8KplqafQAJKBtNYS0JmT2VfO7I5yD75SdrrNiybYEbbtxE5qDulLJFqOs+NhU1f6i91lHdI+OPhyOkl00ibkiulczP87VDU8KavelzFZSMKa5TfPGIo1GPX3o59f/ifog/8c4aNRq0a+5J7TqtM=!!Zx6RnVydlP36rcurCjVfNmry6+XSQdEfNgnxXHzyJGf+fNRTCn8I3zURtLr4NzNIALaL3pC7LSnNNZl94HBKcei9IOhWPLSorzZcg2XYT7As2J3hmqxwZfBUaPp4woco8Uz7Z6z9w7vjaVyU/wySg8tEowCxRVn6ViNlcrclYZ7Gna2TqpvU8ALc9yEhK++vKcuZDphELUWs6L/jFjxWRw==^&#
+07-19 20:38:03.450 22678 22964 D EpubParser: getChapterContent: idx=1 from cache, length=31
+07-19 20:38:03.450 22678 22964 I TestRunner: finished: resolvesCrossChapterAnchorToFinalTextOffset(com.huangder.lumibooks.util.parser.EpubParserLinkTest)

@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuite name="com.huangder.lumibooks.util.parser.EpubParserLinkTest" tests="1" failures="0" errors="0" skipped="0" time="2.563" timestamp="2026-07-19T12:38:06" hostname="localhost">
+  <properties>
+    <property name="device" value="24129PN74C - 16" />
+    <property name="flavor" value="" />
+    <property name="project" value=":app" />
+  </properties>
+  <testcase name="resolvesCrossChapterAnchorToFinalTextOffset" classname="com.huangder.lumibooks.util.parser.EpubParserLinkTest" time="0.013" />
+</testsuite>
