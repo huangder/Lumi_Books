@@ -21,6 +21,11 @@ import kotlin.text.RegexOption
  * getChapterHtml() / getChapterContent() 按需读取并处理单个章节。
  */
 class EpubParser(private val context: Context? = null) : BookParser {
+    companion object {
+        private const val ANCHOR_MARKER_PREFIX = "\uE000LUMIBOOKS_ANCHOR:"
+        private const val ANCHOR_MARKER_SUFFIX = "\uE001"
+    }
+
     override var paragraphSpacingDp: Float = 0f
     override var firstLineIndentChars: Float = 0f
 
@@ -41,6 +46,7 @@ class EpubParser(private val context: Context? = null) : BookParser {
     // 按需缓存
     private val htmlCache = mutableMapOf<Int, String>()
     private val contentCache = mutableMapOf<Int, CharSequence>()
+    private val anchorOffsets = mutableMapOf<Int, Map<String, Int>>()
 
     override fun parse(filePath: String): BookContent {
         epubFilePath = filePath
@@ -538,11 +544,13 @@ class EpubParser(private val context: Context? = null) : BookParser {
             val formatted = applyParagraphFormatting(spanned)
             // 修剪末尾多余换行（防止章节末尾出现空白页）
             val trimmed = trimTrailingNewlines(formatted)
+            // 移除 HTML 锚点占位，并记录其在最终章节文本中的字符位置
+            val anchored = extractAnchorOffsets(chapterIndex, trimmed)
             // 验证修剪后 span 存活
-            val trimSpans = if (trimmed is android.text.Spannable) trimmed.getSpans(0, trimmed.length, android.text.style.LeadingMarginSpan::class.java) else emptyArray()
-            android.util.Log.d("EpubParser", "getChapterContent: after trim: type=${trimmed.javaClass.simpleName} LeadingMarginSpans=${trimSpans.size}")
+            val trimSpans = anchored.getSpans(0, anchored.length, android.text.style.LeadingMarginSpan::class.java)
+            android.util.Log.d("EpubParser", "getChapterContent: after trim: type=${anchored.javaClass.simpleName} LeadingMarginSpans=${trimSpans.size}")
             // 如果 Spanned 为空（纯图片章节图片加载失败），返回占位文本
-            val result: CharSequence = if (trimmed.isBlank()) android.text.SpannableString(" ") else trimmed
+            val result: CharSequence = if (anchored.isBlank()) android.text.SpannableString(" ") else anchored
             // 验证最终结果中的 span
             val finalSpans = if (result is android.text.Spannable) result.getSpans(0, result.length, Any::class.java) else emptyArray()
             val finalIndentCount = finalSpans.count { it is android.text.style.LeadingMarginSpan }
@@ -561,9 +569,40 @@ class EpubParser(private val context: Context? = null) : BookParser {
 
     override fun getChapterCount(): Int = chapterPaths.size
 
+    override fun resolveLink(sourceChapterIndex: Int, href: String): BookLinkTarget? {
+        if (sourceChapterIndex !in chapterPaths.indices) return null
+
+        val trimmedHref = href.trim()
+        if (trimmedHref.isEmpty() || trimmedHref.startsWith("//")) return null
+        if (Regex("^[A-Za-z][A-Za-z0-9+.-]*:").containsMatchIn(trimmedHref)) return null
+
+        val documentHref = trimmedHref.substringBefore('#').substringBefore('?')
+        val targetChapter = if (documentHref.isBlank()) {
+            sourceChapterIndex
+        } else {
+            resolveLinkedChapter(sourceChapterIndex, documentHref)
+        }
+        if (targetChapter !in chapterPaths.indices) return null
+
+        val fragment = if ('#' in trimmedHref) {
+            decodeUrlComponent(trimmedHref.substringAfter('#'))
+        } else {
+            ""
+        }
+        if (fragment.isEmpty()) return BookLinkTarget(targetChapter)
+
+        // 目标章可能尚未分页，先按需解析以建立 id/name → 字符偏移映射。
+        getChapterContent(targetChapter)
+        val offset = anchorOffsets[targetChapter]?.get(fragment)
+            ?: anchorOffsets[targetChapter]?.get(fragment.lowercase())
+            ?: 0
+        return BookLinkTarget(targetChapter, offset)
+    }
+
     override fun clearHtmlCache() {
         htmlCache.clear()
         contentCache.clear()  // 段间距/首行缩进变更时也需要清空内容缓存
+        anchorOffsets.clear()
     }
 
     /**
@@ -800,6 +839,37 @@ class EpubParser(private val context: Context? = null) : BookParser {
         return result.joinToString("/")
     }
 
+    /** 根据来源章节目录解析 EPUB 内部相对链接。 */
+    private fun resolveLinkedChapter(sourceChapterIndex: Int, documentHref: String): Int {
+        val decodedHref = decodeUrlComponent(documentHref).replace('\\', '/')
+        val sourcePath = chapterPaths[sourceChapterIndex].replace('\\', '/')
+        val sourceDirectory = sourcePath.substringBeforeLast('/', "")
+        val resolvedPath = if (decodedHref.startsWith('/')) {
+            decodedHref.trimStart('/')
+        } else {
+            normalizePath(
+                if (sourceDirectory.isEmpty()) decodedHref else "$sourceDirectory/$decodedHref"
+            ).trimStart('/')
+        }
+
+        val exactMatch = chapterPaths.indexOfFirst { chapterPath ->
+            normalizePath(decodeUrlComponent(chapterPath).replace('\\', '/'))
+                .trimStart('/') == resolvedPath
+        }
+        if (exactMatch >= 0) return exactMatch
+
+        return mapHrefToSpineIndex(decodedHref.trimStart('/'))
+    }
+
+    private fun decodeUrlComponent(value: String): String {
+        return try {
+            // URLDecoder 会把 '+' 当空格；EPUB 文件名和锚点中的 '+' 应保留原义。
+            java.net.URLDecoder.decode(value.replace("+", "%2B"), "UTF-8")
+        } catch (_: Exception) {
+            value
+        }
+    }
+
     private fun findEntry(zipFile: ZipFile, path: String): java.util.zip.ZipEntry? {
         zipFile.getEntry(path)?.let { return it }
 
@@ -873,13 +943,77 @@ class EpubParser(private val context: Context? = null) : BookParser {
             .replace(Regex("""<span[^>]*>\s*</span>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
             .replace(Regex("""\n{3,}"""), "\n\n")
 
+        // Html.fromHtml 会丢弃 id/name。先插入不可见占位，转成 Spanned 后再移除并记录偏移。
+        val withAnchorMarkers = insertAnchorMarkers(cleaned)
+
         // 图片前后插入换行，使其独占一行（块级效果）
-        val withImageBreaks = cleaned.replace(
+        val withImageBreaks = withAnchorMarkers.replace(
             Regex("""(<img[^>]*/?>)""", RegexOption.IGNORE_CASE), "\n$1\n"
         )
 
         val imageGetter = EpubImageGetter(zipFile, contentWidth)
         return Html.fromHtml(withImageBreaks, Html.FROM_HTML_MODE_LEGACY, imageGetter, null)
+    }
+
+    private fun insertAnchorMarkers(html: String): String {
+        val openingTagRegex = Regex("""<([A-Za-z][^<>]*?)>""")
+        val doubleQuotedAnchor = Regex(
+            """\s(?:id|name)\s*=\s*"([^"]+)"""",
+            RegexOption.IGNORE_CASE
+        )
+        val singleQuotedAnchor = Regex(
+            """\s(?:id|name)\s*=\s*'([^']+)'""",
+            RegexOption.IGNORE_CASE
+        )
+
+        return openingTagRegex.replace(html) { match ->
+            val tag = match.value
+            val anchor = doubleQuotedAnchor.find(tag)?.groupValues?.get(1)
+                ?: singleQuotedAnchor.find(tag)?.groupValues?.get(1)
+                ?: return@replace tag
+            val encoded = Base64.encodeToString(
+                anchor.toByteArray(Charsets.UTF_8),
+                Base64.NO_WRAP or Base64.URL_SAFE
+            )
+            "$tag$ANCHOR_MARKER_PREFIX$encoded$ANCHOR_MARKER_SUFFIX"
+        }
+    }
+
+    private fun extractAnchorOffsets(
+        chapterIndex: Int,
+        text: CharSequence
+    ): android.text.SpannableStringBuilder {
+        val result = android.text.SpannableStringBuilder(text)
+        val offsets = linkedMapOf<String, Int>()
+        var searchFrom = 0
+
+        while (searchFrom < result.length) {
+            val currentText = result.toString()
+            val markerStart = currentText.indexOf(ANCHOR_MARKER_PREFIX, searchFrom)
+            if (markerStart < 0) break
+            val payloadStart = markerStart + ANCHOR_MARKER_PREFIX.length
+            val markerEnd = currentText.indexOf(ANCHOR_MARKER_SUFFIX, payloadStart)
+            if (markerEnd < 0) break
+
+            val encoded = currentText.substring(payloadStart, markerEnd)
+            val anchor = try {
+                String(Base64.decode(encoded, Base64.NO_WRAP or Base64.URL_SAFE), Charsets.UTF_8)
+            } catch (_: IllegalArgumentException) {
+                ""
+            }
+            if (anchor.isNotEmpty()) {
+                val decodedAnchor = decodeUrlComponent(anchor)
+                offsets.putIfAbsent(anchor, markerStart)
+                offsets.putIfAbsent(decodedAnchor, markerStart)
+                offsets.putIfAbsent(decodedAnchor.lowercase(), markerStart)
+            }
+
+            result.delete(markerStart, markerEnd + ANCHOR_MARKER_SUFFIX.length)
+            searchFrom = markerStart
+        }
+
+        anchorOffsets[chapterIndex] = offsets
+        return result
     }
 
     private inner class EpubImageGetter(

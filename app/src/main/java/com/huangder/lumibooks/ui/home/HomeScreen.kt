@@ -11,23 +11,25 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.AccountCircle
@@ -83,6 +85,7 @@ import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.SansSerif
 import com.huangder.lumibooks.util.TimeUtils
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun HomeScreen(
     onNavigateToReader: (bookId: String, coverPath: String?, title: String) -> Unit,
@@ -94,7 +97,12 @@ fun HomeScreen(
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     var showGoalSheet by remember { mutableStateOf(false) }
-    val lastReadBook = uiState.books.maxByOrNull { it.lastReadTime }
+    val booksByLastRead = remember(uiState.books) {
+        uiState.books.sortedByDescending { it.lastReadTime }
+    }
+    val lastReadBook = booksByLastRead.firstOrNull()
+    val otherBooks = booksByLastRead.drop(1)
+    val booksThisYear = booksByLastRead.take(3)
 
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -110,80 +118,88 @@ fun HomeScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize().background(AppColors.WindowBg)) {
-        OverscrollBounce(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
-        Column(
+        OverscrollBounce(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+                .windowInsetsPadding(WindowInsets.statusBarsIgnoringVisibility)
         ) {
-            Spacer(Modifier.height(AppSpace.md)) // 和状态栏/遮罩拉开距离
-            HomeHeader(
-                avatarUri = uiState.avatarUri,
-                onAvatarClick = {
-                    context.startActivity(
-                        android.content.Intent(context, com.huangder.lumibooks.ui.settings.SettingsActivity::class.java)
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                item(key = "header") {
+                    Spacer(Modifier.height(AppSpace.md)) // 和状态栏/遮罩拉开距离
+                    HomeHeader(
+                        avatarUri = uiState.avatarUri,
+                        onAvatarClick = {
+                            context.startActivity(
+                                android.content.Intent(context, com.huangder.lumibooks.ui.settings.SettingsActivity::class.java)
+                            )
+                        }
                     )
+                    Spacer(Modifier.height(AppSpace.lg))
                 }
-            )
-            Spacer(Modifier.height(AppSpace.lg))
 
-            ImportHint()
-            Spacer(Modifier.height(AppSpace.lg))
+                item(key = "import_hint") {
+                    ImportHint()
+                    Spacer(Modifier.height(AppSpace.lg))
+                }
 
-            val lastReadBook = uiState.books.maxByOrNull { it.lastReadTime }
-            if (lastReadBook != null) {
-                ContinueReadingCard(
-                    book = lastReadBook,
-                    onClick = { onNavigateToReader(lastReadBook.id, lastReadBook.coverPath, lastReadBook.title) },
-                    onToggleFavorite = { viewModel.updateBook(lastReadBook.copy(isFavorite = !lastReadBook.isFavorite)) },
-                    onDelete = { viewModel.deleteBook(lastReadBook) }
-                )
-                Spacer(Modifier.height(AppSpace.lg))
-            }
+                if (lastReadBook != null) {
+                    item(key = "continue_reading") {
+                        ContinueReadingCard(
+                            book = lastReadBook,
+                            onClick = { onNavigateToReader(lastReadBook.id, lastReadBook.coverPath, lastReadBook.title) },
+                            onToggleFavorite = { viewModel.updateBook(lastReadBook.copy(isFavorite = !lastReadBook.isFavorite)) },
+                            onDelete = { viewModel.deleteBook(lastReadBook) }
+                        )
+                        Spacer(Modifier.height(AppSpace.lg))
+                    }
+                }
 
-            if (uiState.books.size > 1) {
-                SectionHeader(stringResource(R.string.section_previously_read))
-                Spacer(Modifier.height(AppSpace.md))
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = AppSpace.lg),
-                    horizontalArrangement = Arrangement.spacedBy(AppSpace.md)
-                ) {
-                    val otherBooks = uiState.books.sortedByDescending { it.lastReadTime }.drop(1)
-                    items(otherBooks) { book ->
-                        RecentBookCard(
-                            book = book,
-                            onClick = { onNavigateToReader(book.id, book.coverPath, book.title) }
+                if (otherBooks.isNotEmpty()) {
+                    item(key = "previously_read") {
+                        SectionHeader(stringResource(R.string.section_previously_read))
+                        Spacer(Modifier.height(AppSpace.md))
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = AppSpace.lg),
+                            horizontalArrangement = Arrangement.spacedBy(AppSpace.md)
+                        ) {
+                            items(otherBooks, key = { it.id }) { book ->
+                                RecentBookCard(
+                                    book = book,
+                                    onClick = { onNavigateToReader(book.id, book.coverPath, book.title) }
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(AppSpace.lg))
+                    }
+                }
+
+                item(key = "reading_goal") {
+                    ReadingGoalCard(
+                        readingTime = uiState.todayReadingTime,
+                        dailyGoal = uiState.dailyGoal,
+                        weeklyData = uiState.weeklyData,
+                        onCardClick = { showGoalSheet = true },
+                        onContinueClick = {
+                            lastReadBook?.let { onNavigateToReader(it.id, it.coverPath, it.title) }
+                        }
+                    )
+                    Spacer(Modifier.height(AppSpace.lg))
+                }
+
+                if (booksThisYear.isNotEmpty()) {
+                    item(key = "recently_read") {
+                        SectionHeader(stringResource(R.string.section_recently_read))
+                        Spacer(Modifier.height(AppSpace.md))
+                        BooksReadGrid(
+                            books = booksThisYear,
+                            modifier = Modifier.padding(horizontal = AppSpace.lg)
                         )
                     }
                 }
-                Spacer(Modifier.height(AppSpace.lg))
-            }
-
-            ReadingGoalCard(
-                readingTime = uiState.todayReadingTime,
-                dailyGoal = uiState.dailyGoal,
-                weeklyData = uiState.weeklyData,
-                onCardClick = { showGoalSheet = true },
-                onContinueClick = {
-                    lastReadBook?.let { onNavigateToReader(it.id, it.coverPath, it.title) }
+                item(key = "bottom_spacing") {
+                    Spacer(Modifier.height(120.dp))
                 }
-            )
-            Spacer(Modifier.height(AppSpace.lg))
-
-            // 今年读过的图书（最近阅读的前3本）
-            val booksThisYear = uiState.books
-                .sortedByDescending { it.lastReadTime }
-                .take(3)
-            if (booksThisYear.isNotEmpty()) {
-                SectionHeader(stringResource(R.string.section_recently_read))
-                Spacer(Modifier.height(AppSpace.md))
-                BooksReadGrid(
-                    books = booksThisYear,
-                    modifier = Modifier.padding(horizontal = AppSpace.lg)
-                )
             }
-            Spacer(Modifier.height(120.dp))
-        } // Column 结束
         } // OverscrollBounce 结束
 
         StatusGradientOverlay()

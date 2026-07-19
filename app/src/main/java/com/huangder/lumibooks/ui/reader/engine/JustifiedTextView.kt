@@ -314,6 +314,65 @@ class JustifiedTextView @JvmOverloads constructor(
         textPaint.textSize = defaultTextSize
     }
 
+    /**
+     * 按与 onDraw 相同的两端对齐坐标计算链接命中，避免使用普通 TextView
+     * 的字符位置时，行内额外字距造成链接点击区域偏移。
+     */
+    fun getLinkAtPosition(x: Float, y: Float): String? {
+        val sl = layout ?: return null
+        val text = spannable ?: return null
+        val tx = x - paddingLeft
+        val ty = y - paddingTop
+        if (tx < 0f || ty < 0f || ty >= sl.height) return null
+
+        val line = sl.getLineForVertical(ty.toInt())
+        val lineStart = sl.getLineStart(line)
+        val rawLineEnd = sl.getLineEnd(line)
+        val lineEnd = if (rawLineEnd > lineStart && text[rawLineEnd - 1] == '\n') {
+            rawLineEnd - 1
+        } else {
+            rawLineEnd
+        }
+        if (lineStart >= lineEnd) return null
+
+        var indentPx = 0f
+        text.getSpans(lineStart, lineStart + 1, LeadingMarginSpan::class.java)
+            .firstOrNull()
+            ?.let { span ->
+                val isFirstLine = line == 0 || (lineStart > 0 && text[lineStart - 1] == '\n')
+                indentPx = span.getLeadingMargin(isFirstLine).toFloat()
+            }
+
+        val contentWidth = (width - paddingLeft - paddingRight).toFloat()
+        val visibleCharacterCount = (lineStart until lineEnd).count { text[it] != '￼' }
+        val gapCount = (visibleCharacterCount - 1).coerceAtLeast(0)
+        val extraSpace = contentWidth - indentPx - sl.getLineWidth(line)
+        val extraPerCharacter = if (
+            extraSpace > 0f && gapCount > 0 && extraSpace < contentWidth * 0.15f
+        ) {
+            extraSpace / gapCount
+        } else {
+            0f
+        }
+
+        var cursorX = indentPx
+        for (index in lineStart until lineEnd) {
+            if (text[index] == '￼') continue
+            applySpanStyles(text, index, textPaint)
+            val characterWidth = textPaint.measureText(text, index, index + 1)
+            val hitEnd = cursorX + characterWidth + extraPerCharacter
+            val link = if (tx >= cursorX && tx <= hitEnd) {
+                text.getSpans(index, index + 1, URLSpan::class.java).firstOrNull()?.url
+            } else {
+                null
+            }
+            resetPaintStyle()
+            if (link != null) return link
+            cursorX = hitEnd
+        }
+        return null
+    }
+
     private var defaultTextColor = 0xFF333333.toInt()
     private var defaultTextSize = 56f
 

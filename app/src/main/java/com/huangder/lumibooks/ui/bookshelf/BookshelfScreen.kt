@@ -381,8 +381,10 @@ private fun BookGridItem(
     val pressScaleValue = if (isTarget) contextMenuState.pressScale.value else 1f
     val overlayAlpha = if (isOverlayActive) contextMenuState.itemAlpha.value else 1f
 
-    // 每本书独立缓存自己的封面 bounds，避免共享状态互相覆盖
-    var myCoverBounds by remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
+    // 只保存坐标引用，避免滚动时把每帧变化的窗口坐标写入 Compose State。
+    val coverCoordinates = remember {
+        arrayOfNulls<androidx.compose.ui.layout.LayoutCoordinates>(1)
+    }
 
     // 监听 combinedClickable 的按下/抬起事件，驱动封面缩小动画
     val interactionSource = remember { MutableInteractionSource() }
@@ -410,7 +412,8 @@ private fun BookGridItem(
                     onHaptic()
                     contextMenuState.onLongPressConfirmed(
                         book = book,
-                        bounds = myCoverBounds,
+                        bounds = coverCoordinates[0]?.boundsInWindow()
+                            ?: androidx.compose.ui.geometry.Rect.Zero,
                         onHaptic = onHaptic
                     )
                 }
@@ -422,7 +425,7 @@ private fun BookGridItem(
                 .fillMaxWidth()
                 .aspectRatio(0.75f)
                 .onGloballyPositioned { coordinates ->
-                    myCoverBounds = coordinates.boundsInWindow()
+                    coverCoordinates[0] = coordinates
                 }
                 .graphicsLayer {
                     scaleX = coverScale
@@ -578,4 +581,3 @@ private fun AddBookItem(onClick: () -> Unit) {
         )
     }
 }
-

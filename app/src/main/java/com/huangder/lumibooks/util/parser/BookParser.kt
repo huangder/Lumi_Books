@@ -29,6 +29,12 @@ data class BookContent(
     val tocEntries: List<TocEntry> = emptyList()  // 层级目录（EPUB NCX/nav）
 )
 
+/** EPUB 书内链接解析后的阅读位置。 */
+data class BookLinkTarget(
+    val chapterIndex: Int,
+    val characterOffset: Int = 0
+)
+
 /**
  * 电子书解析器接口
  * 解析文件 → 按章节拆分 → 提供HTML内容
@@ -39,6 +45,13 @@ interface BookParser {
     fun getChapterContent(chapterIndex: Int): CharSequence
     fun getChapterHtml(chapterIndex: Int, optimizeLayout: Boolean = true): String
     fun getChapterCount(): Int
+
+    /**
+     * 将当前章节中的 href 解析为书内位置。
+     * 外部链接或当前格式不支持书内链接时返回 null。
+     */
+    fun resolveLink(sourceChapterIndex: Int, href: String): BookLinkTarget? = null
+
     /** 清空 HTML 缓存（排版设置变更时调用） */
     fun clearHtmlCache() {}
 

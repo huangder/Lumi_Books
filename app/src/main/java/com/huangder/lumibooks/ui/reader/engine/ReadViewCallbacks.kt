@@ -17,6 +17,9 @@ interface ReadViewCallbacks {
     /** 点击中间区域，切换菜单 */
     fun onMenuToggle()
 
+    /** 点击 EPUB 正文中的超链接。 */
+    fun onLinkClick(href: String) {}
+
     /** 正在加载内容变化 */
     fun onLoadingChanged(isLoading: Boolean)
 

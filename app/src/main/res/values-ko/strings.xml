@@ -255,6 +255,7 @@
 
     <!-- 리더 -->
     <string name="reader_back">뒤로</string>
+    <string name="reader_link_return">이전 페이지로 돌아가기</string>
     <string name="reader_bookmark">북마크</string>
     <string name="reader_notes">메모</string>
     <string name="reader_search">검색</string>

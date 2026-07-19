@@ -432,6 +432,31 @@ class ReadView(context: Context) : FrameLayout(context) {
         slotManager.jumpTo(chapterIndex, pageInChapter)
     }
 
+    /** 跳转到章节内包含指定字符偏移的页面。 */
+    fun jumpToCharacter(chapterIndex: Int, characterOffset: Int) {
+        animationController.abortAnim()
+        val targetOffset = characterOffset.coerceAtLeast(0)
+        val cachedLayout = layoutEngine.getChapterLayout(chapterIndex)
+        val cachedPage = cachedLayout?.pages?.indexOfFirst { page ->
+            targetOffset >= page.startCharOffset && targetOffset < page.endCharOffset
+        } ?: -1
+
+        if (cachedPage >= 0) {
+            slotManager.jumpTo(chapterIndex, cachedPage)
+        } else {
+            slotManager.pendingStartCharOffset = targetOffset
+            layoutEngine.invalidateChapter(chapterIndex)
+            slotManager.jumpTo(chapterIndex, 0)
+        }
+    }
+
+    /** 当前真实槽位位置，供书内链接保存返回点。 */
+    fun getCurrentLocation(): Pair<Int, Int>? {
+        val current = slotManager.getCurSlot()
+        if (current.chapterIndex < 0 || current.pageIndex < 0) return null
+        return current.chapterIndex to current.pageIndex
+    }
+
     /** 设置简繁转换模式，刷新当前页 */
     fun setChineseMode(mode: String) {
         if (currentChineseMode == mode) return
@@ -568,7 +593,15 @@ class ReadView(context: Context) : FrameLayout(context) {
         when (ev.actionMasked) {
             MotionEvent.ACTION_UP -> {
                 if (!rvHasMoved && System.currentTimeMillis() - rvTouchDownTime < 300L) {
-                    if (rvIsEdgeTouch) {
+                    val link = curPageView.getLinkAt(
+                        rvTouchStartX - curPageView.left,
+                        rvTouchStartY - curPageView.top
+                    )
+                    if (link != null) {
+                        Log.d(TAG, "EPUB link tap: $link")
+                        clearCurrentSelection()
+                        callbacks?.onLinkClick(link)
+                    } else if (rvIsEdgeTouch) {
                         // 边缘短按 → 点击翻页（复用 animationController 回调）
                         Log.d(TAG, "Edge tap at x=${ev.x} → page turn")
                         if (rvTouchStartX / width < 0.3f) {
