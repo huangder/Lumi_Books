@@ -1,18 +1,21 @@
 package com.huangder.lumibooks.ui.welcome
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,10 +24,12 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -40,10 +45,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.launch
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -62,8 +68,10 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.R
+import com.huangder.lumibooks.ui.animation.AppEasing
 import com.huangder.lumibooks.ui.theme.KaiTi
 import androidx.compose.ui.res.stringResource
+import kotlinx.coroutines.delay
 
 // 设计规范颜色 - 浅色模式
 private val AccentColor = Color(0xFFE85D5D)
@@ -77,13 +85,79 @@ private val DarkTextSecondary = Color(0xFF98989D)
 private val DarkBgGray = Color(0xFF2C2C2E)
 private val DarkBackground = Color(0xFF000000)
 private val DarkCardBg = Color(0xFF1C1C1E)
+private val LightSupportBackground = Color(0xFFFFECEF)
+private val DarkSupportBackground = Color(0xFF3A2429)
+
+private enum class WelcomePage {
+    INTRODUCTION,
+    SUPPORT
+}
 
 @Composable
 fun WelcomeScreen(
+    isUpdate: Boolean,
+    isDark: Boolean,
+    onFinished: () -> Unit,
+    onExit: () -> Unit
+) {
+    var currentPage by rememberSaveable { mutableStateOf(WelcomePage.INTRODUCTION) }
+    val backgroundColor = if (isDark) DarkBackground else LightBackground
+
+    BackHandler(enabled = currentPage == WelcomePage.SUPPORT) {
+        currentPage = WelcomePage.INTRODUCTION
+    }
+
+    AnimatedContent(
+        targetState = currentPage,
+        modifier = Modifier
+            .fillMaxSize()
+            .background(backgroundColor),
+        transitionSpec = {
+            if (targetState == WelcomePage.SUPPORT) {
+                (slideInHorizontally(
+                    animationSpec = tween(430, easing = AppEasing.Smooth),
+                    initialOffsetX = { it }
+                ) + fadeIn(tween(300))) togetherWith
+                    (slideOutHorizontally(
+                        animationSpec = tween(320, easing = AppEasing.Accelerate),
+                        targetOffsetX = { -it / 4 }
+                    ) + fadeOut(tween(220)))
+            } else {
+                (slideInHorizontally(
+                    animationSpec = tween(380, easing = AppEasing.Decelerate),
+                    initialOffsetX = { -it / 3 }
+                ) + fadeIn(tween(280))) togetherWith
+                    (slideOutHorizontally(
+                        animationSpec = tween(340, easing = AppEasing.Smooth),
+                        targetOffsetX = { it }
+                    ) + fadeOut(tween(220)))
+            }
+        },
+        label = "welcomePage"
+    ) { page ->
+        when (page) {
+            WelcomePage.INTRODUCTION -> WelcomeIntroductionPage(
+                isUpdate = isUpdate,
+                isDark = isDark,
+                onContinue = { currentPage = WelcomePage.SUPPORT },
+                onExit = onExit
+            )
+
+            WelcomePage.SUPPORT -> SupportProjectPage(
+                isDark = isDark,
+                onFinished = onFinished
+            )
+        }
+    }
+}
+
+@Composable
+private fun WelcomeIntroductionPage(
+    isUpdate: Boolean,
+    isDark: Boolean,
     onContinue: () -> Unit,
     onExit: () -> Unit
 ) {
-    val isDark = isSystemInDarkTheme()
     var showPrivacyPolicy by remember { mutableStateOf(false) }
     var showTermsOfService by remember { mutableStateOf(false) }
 
@@ -124,21 +198,36 @@ fun WelcomeScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 欢迎使用（系统字体）
-            Text(
-                text = stringResource(R.string.welcome_title),
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Bold,
-                color = textPrimary
-            )
-
-            // Lumi
-            Text(
-                text = "Lumi",
-                fontSize = 36.sp,
-                fontWeight = FontWeight.Bold,
-                color = AccentColor
-            )
+            Column(
+                modifier = Modifier.heightIn(min = 84.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                if (isUpdate) {
+                    Text(
+                        text = stringResource(R.string.welcome_update_title),
+                        modifier = Modifier.padding(horizontal = 24.dp),
+                        fontSize = 30.sp,
+                        lineHeight = 38.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        color = textPrimary
+                    )
+                } else {
+                    Text(
+                        text = stringResource(R.string.welcome_title),
+                        fontSize = 32.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = textPrimary
+                    )
+                    Text(
+                        text = "Lumi",
+                        fontSize = 36.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = AccentColor
+                    )
+                }
+            }
 
             // 下半部分 - 推到底部
             Spacer(modifier = Modifier.weight(1f))
@@ -291,6 +380,181 @@ fun WelcomeScreen(
                 onDismiss = { showTermsOfService = false }
             )
         }
+    }
+}
+
+@Composable
+private fun SupportProjectPage(
+    isDark: Boolean,
+    onFinished: () -> Unit
+) {
+    var entranceStage by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(Unit) {
+        delay(70)
+        entranceStage = 1
+        delay(150)
+        entranceStage = 2
+        delay(170)
+        entranceStage = 3
+        delay(150)
+        entranceStage = 4
+    }
+
+    val backgroundColor = if (isDark) DarkBackground else LightBackground
+    val textPrimary = if (isDark) Color.White else Color.Black
+    val supportBackground = if (isDark) DarkSupportBackground else LightSupportBackground
+    val panelAlpha by animateFloatAsState(
+        targetValue = if (entranceStage >= 1) 1f else 0f,
+        animationSpec = tween(300),
+        label = "supportPanelAlpha"
+    )
+    val panelScale by animateFloatAsState(
+        targetValue = if (entranceStage >= 1) 1f else 0.72f,
+        animationSpec = spring(dampingRatio = 0.66f, stiffness = 320f),
+        label = "supportPanelScale"
+    )
+    val sideEmojiProgress by animateFloatAsState(
+        targetValue = if (entranceStage >= 2) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.62f, stiffness = 360f),
+        label = "supportSideEmojiProgress"
+    )
+    val copyProgress by animateFloatAsState(
+        targetValue = if (entranceStage >= 3) 1f else 0f,
+        animationSpec = tween(420, easing = AppEasing.Decelerate),
+        label = "supportCopyProgress"
+    )
+    val buttonProgress by animateFloatAsState(
+        targetValue = if (entranceStage >= 4) 1f else 0f,
+        animationSpec = tween(420, easing = AppEasing.Decelerate),
+        label = "supportButtonProgress"
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(backgroundColor)
+            .navigationBarsPadding(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Spacer(modifier = Modifier.weight(0.42f))
+
+        Box(
+            modifier = Modifier
+                .width(164.dp)
+                .height(104.dp)
+                .graphicsLayer {
+                    alpha = panelAlpha
+                    scaleX = panelScale
+                    scaleY = panelScale
+                    translationY = (1f - panelAlpha) * 18.dp.toPx()
+                }
+                .clip(RoundedCornerShape(28.dp))
+                .background(supportBackground),
+            contentAlignment = Alignment.Center
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AnimatedEmoji(
+                    emoji = "✨",
+                    progress = sideEmojiProgress,
+                    rotation = -12f,
+                    fontSize = 28
+                )
+                AnimatedEmoji(
+                    emoji = "📚",
+                    progress = panelAlpha,
+                    rotation = 0f,
+                    fontSize = 40
+                )
+                AnimatedEmoji(
+                    emoji = "☕",
+                    progress = sideEmojiProgress,
+                    rotation = 10f,
+                    fontSize = 28
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(28.dp))
+
+        Text(
+            text = stringResource(R.string.welcome_support_message),
+            modifier = Modifier
+                .padding(horizontal = 40.dp)
+                .widthIn(max = 360.dp)
+                .graphicsLayer {
+                    alpha = copyProgress
+                    translationY = (1f - copyProgress) * 18.dp.toPx()
+                },
+            fontSize = 16.sp,
+            lineHeight = 25.sp,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center,
+            color = textPrimary
+        )
+
+        Spacer(modifier = Modifier.weight(0.58f))
+
+        Button(
+            onClick = onFinished,
+            enabled = entranceStage >= 4,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp)
+                .height(52.dp)
+                .graphicsLayer {
+                    alpha = buttonProgress
+                    translationY = (1f - buttonProgress) * 16.dp.toPx()
+                },
+            shape = RoundedCornerShape(28.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = AccentColor,
+                contentColor = Color.White,
+                disabledContainerColor = AccentColor,
+                disabledContentColor = Color.White
+            )
+        ) {
+            Text(
+                text = stringResource(R.string.welcome_start_using),
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun AnimatedEmoji(
+    emoji: String,
+    progress: Float,
+    rotation: Float,
+    fontSize: Int
+) {
+    val alpha = progress.coerceIn(0f, 1f)
+
+    Box(
+        modifier = Modifier.size(44.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = emoji,
+            modifier = Modifier.graphicsLayer {
+                this.alpha = alpha
+                scaleX = 0.6f + progress * 0.4f
+                scaleY = 0.6f + progress * 0.4f
+                rotationZ = (1f - progress) * rotation
+            },
+            fontSize = fontSize.sp,
+            textAlign = TextAlign.Center
+        )
     }
 }
 
@@ -642,7 +906,7 @@ Lumi 是一款本地电子书阅读器，主要功能包括：
 
 本应用为本地优先应用（仅检查更新时联网）：
 
-• 本应用不连接互联网
+• 本应用仅在检查更新时连接 GitHub
 • 本应用不提供任何在线内容或服务
 • 本应用不提供用户账号注册或登录功能
 • 所有数据均存储在您的本地设备上
@@ -706,7 +970,7 @@ Lumi 是一款本地电子书阅读器，主要功能包括：
 本应用高度重视您的隐私保护。核心要点：
 
 • 本应用不收集任何个人信息
-• 本应用不连接互联网
+• 本应用仅在检查更新时连接 GitHub
 • 所有数据存储在您的本地设备上
 • 源代码公开透明，欢迎审查
 
