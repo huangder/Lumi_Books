@@ -186,11 +186,24 @@ class PageSlotManager(
     fun refreshCurrentHighlights() {
         val cur = slots[SLOT_CUR]
         if (!cur.isLoaded) return
-        val cl = layoutEngine.getChapterLayout(cur.chapterIndex) ?: return
-        val text = contentProvider?.let { kotlinx.coroutines.runBlocking(Dispatchers.IO) { it(cur.chapterIndex) } } ?: return
-        val pageLayout = cl.pages.getOrNull(cur.pageIndex) ?: return
-        val highlights = highlightProvider?.invoke(cur.chapterIndex) ?: emptyList()
-        cur.contentView.setPageContent(text, pageLayout.startCharOffset, pageLayout.endCharOffset, highlights)
+        val ci = cur.chapterIndex
+        val pi = cur.pageIndex
+        val cl = layoutEngine.getChapterLayout(ci) ?: return
+        val pageLayout = cl.pages.getOrNull(pi) ?: return
+
+        // 🔥 异步加载文本，避免 runBlocking 阻塞主线程
+        scope.launch {
+            val text = withContext(Dispatchers.IO) { contentProvider?.invoke(ci) } ?: return@launch
+            val highlights = highlightProvider?.invoke(ci) ?: emptyList()
+
+            withContext(Dispatchers.Main) {
+                // 双重检查：异步加载期间槽位可能已变化（翻页/跳转）
+                val currentCur = slots[SLOT_CUR]
+                if (currentCur.chapterIndex == ci && currentCur.pageIndex == pi && currentCur.isLoaded) {
+                    currentCur.contentView.setPageContent(text, pageLayout.startCharOffset, pageLayout.endCharOffset, highlights)
+                }
+            }
+        }
     }
 
     /**
@@ -325,6 +338,11 @@ class PageSlotManager(
             textViewText = fromSlot.contentView.textView.text,
             justifiedText = fromSlot.contentView.getJustifiedText()
         )
+        // 🔥 诊断：syncText 只 invalidate 了子 View（textView/justifiedView），
+        // 但父容器 PageContentView 的硬件 Display List 可能未失效。
+        // 显式 invalidate 确保 PageContentView 的 RenderNode 重建，消除闪烁。
+        Log.d(TAG, "moveSlot $from→$to: invalidating ${toSlot.contentView}")
+        toSlot.contentView.invalidate()
 
         fromSlot.chapterIndex = -1
         fromSlot.pageIndex = -1

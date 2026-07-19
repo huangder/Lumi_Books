@@ -313,6 +313,7 @@
     <string name="transition_slide">左右滑动</string>
     <string name="transition_scroll">上下滚动</string>
     <string name="transition_fade">渐变切换</string>
+    <string name="transition_curl">仿真卷曲</string>
 
     <!-- 欢迎页 -->
     <string name="welcome_title">欢迎使用</string>

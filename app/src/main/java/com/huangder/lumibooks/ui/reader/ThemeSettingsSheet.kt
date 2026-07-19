@@ -306,6 +306,12 @@ fun ThemeSettingsSheet(
                     onClick = { onPageTransitionChange("fade") },
                     modifier = Modifier.weight(1f)
                 )
+                ModeButton(
+                    label = stringResource(R.string.transition_curl),
+                    isSelected = currentPageTransition == "curl",
+                    onClick = { onPageTransitionChange("curl") },
+                    modifier = Modifier.weight(1f)
+                )
             }
 
             Spacer(Modifier.height(16.dp))

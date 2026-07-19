@@ -38,6 +38,9 @@ abstract class PageAnimationController(
         protected set
     var isDragging: Boolean = false
         protected set
+
+    /** 是否直接绘制到 Canvas 上（绕过 View 层级）。默认为 false。 */
+    open val drawsDirectlyOnCanvas: Boolean = false
     protected var direction: Direction = Direction.NONE
 
     /** 公开读取当前动画方向 */
@@ -268,7 +271,7 @@ abstract class PageAnimationController(
         readView.invalidate()
     }
 
-    protected fun startBounceBack() {
+    protected open fun startBounceBack() {
         // 🔥 回弹不是翻页，清除方向防止 onAnimationComplete 错误 shift
         direction = Direction.NONE
         isFlipAnim = false
