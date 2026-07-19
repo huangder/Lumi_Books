@@ -1,6 +1,8 @@
 package com.huangder.lumibooks.ui.reader
 
 import android.content.Context
+import android.graphics.BitmapFactory
+import android.net.Uri
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.AbsoluteSizeSpan
@@ -9,11 +11,14 @@ import android.graphics.Typeface
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.palette.graphics.Palette
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.model.Bookmark
 import com.huangder.lumibooks.domain.model.Note
 import com.huangder.lumibooks.domain.model.ReadingRecord
+import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
+import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.domain.repository.ReadingRepository
 import com.huangder.lumibooks.util.TimeUtils
@@ -30,6 +35,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
+import java.io.File
+import java.util.Locale
+import java.util.UUID
 
 data class ReaderUiState(
     val book: Book? = null,
@@ -48,13 +56,16 @@ data class ReaderUiState(
     val lineHeight: Float = 1.5f,
     val letterSpacing: Float = 0f,
     val fontType: String = "system",
-    val marginHorizDp: Float = 44f,
-    val marginVertDp: Float = 72f,
+    val marginHorizDp: Float = 40f,
+    val marginVertDp: Float = 68f,
     val readerTheme: String = "day",
     /** 亮度 0f~1f，-1f 跟随系统 */
     val brightness: Float = -1f,
     /** 自定义导入字体文件路径 */
     val customFontPath: String? = null,
+    val readerBackgroundSelection: String = "day",
+    val customReaderBackgrounds: List<ReaderBackgroundPreset> = emptyList(),
+    val readerTextColor: Int? = null,
     val error: String? = null,
     /** 全局页码（跨所有章节），新引擎用 */
     val globalPageIndex: Int = 0,
@@ -170,6 +181,39 @@ class ReaderViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(customFontPath = path)
             }
         }
+        viewModelScope.launch {
+            dataStoreManager.readerBackgroundSelection.collectLatest { selection ->
+                _uiState.value = _uiState.value.copy(readerBackgroundSelection = selection)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.readerTextColor.collectLatest { color ->
+                _uiState.value = _uiState.value.copy(readerTextColor = color)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.customReaderBackgrounds.collectLatest { presets ->
+                _uiState.value = _uiState.value.copy(customReaderBackgrounds = presets)
+                val hydrated = withContext(Dispatchers.IO) {
+                    presets.map { preset ->
+                        if (preset.type == ReaderBackgroundType.IMAGE && preset.dominantColor == null) {
+                            val file = File(preset.value)
+                            if (file.exists()) {
+                                preset.copy(dominantColor = extractDominantColor(file))
+                            } else {
+                                preset
+                            }
+                        } else {
+                            preset
+                        }
+                    }
+                }
+                if (hydrated != presets) {
+                    _uiState.value = _uiState.value.copy(customReaderBackgrounds = hydrated)
+                    dataStoreManager.saveCustomReaderBackgrounds(hydrated)
+                }
+            }
+        }
     }
 
     fun saveFontSize(size: Float) {
@@ -203,8 +247,125 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun saveReaderTheme(theme: String) {
-        _uiState.value = _uiState.value.copy(readerTheme = theme)
-        viewModelScope.launch { dataStoreManager.saveReaderTheme(theme) }
+        _uiState.value = _uiState.value.copy(
+            readerTheme = theme,
+            readerBackgroundSelection = theme
+        )
+        viewModelScope.launch {
+            dataStoreManager.saveReaderBackgroundState(theme, theme)
+        }
+    }
+
+    fun saveReaderTextColor(color: Int?) {
+        _uiState.value = _uiState.value.copy(readerTextColor = color)
+        viewModelScope.launch { dataStoreManager.saveReaderTextColor(color) }
+    }
+
+    fun selectReaderBackground(selection: String) {
+        if (selection in setOf("day", "night", "sepia", "green")) {
+            saveReaderTheme(selection)
+            return
+        }
+        if (_uiState.value.customReaderBackgrounds.none { it.selectionKey == selection }) return
+
+        _uiState.value = _uiState.value.copy(
+            readerTheme = "day",
+            readerBackgroundSelection = selection
+        )
+        viewModelScope.launch {
+            dataStoreManager.saveReaderBackgroundState("day", selection)
+        }
+    }
+
+    fun addCustomReaderBackgroundColor(color: Int) {
+        val preset = ReaderBackgroundPreset(
+            id = UUID.randomUUID().toString(),
+            type = ReaderBackgroundType.COLOR,
+            value = String.format(Locale.US, "#%08X", color),
+            dominantColor = color
+        )
+        saveAddedReaderBackground(preset)
+    }
+
+    fun addCustomReaderBackgroundImage(uri: Uri) {
+        viewModelScope.launch {
+            val preset = withContext(Dispatchers.IO) {
+                val id = UUID.randomUUID().toString()
+                val directory = File(context.filesDir, "reader_backgrounds").apply { mkdirs() }
+                val file = File(directory, "$id.image")
+                try {
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        file.outputStream().use { output -> input.copyTo(output) }
+                    } ?: return@withContext null
+                    ReaderBackgroundPreset(
+                        id = id,
+                        type = ReaderBackgroundType.IMAGE,
+                        value = file.absolutePath,
+                        dominantColor = extractDominantColor(file)
+                    )
+                } catch (_: Exception) {
+                    file.delete()
+                    null
+                }
+            } ?: return@launch
+            saveAddedReaderBackground(preset)
+        }
+    }
+
+    fun deleteCustomReaderBackground(id: String) {
+        val state = _uiState.value
+        val removed = state.customReaderBackgrounds.firstOrNull { it.id == id } ?: return
+        val remaining = state.customReaderBackgrounds.filterNot { it.id == id }
+        val wasSelected = state.readerBackgroundSelection == removed.selectionKey
+        _uiState.value = state.copy(
+            customReaderBackgrounds = remaining,
+            readerTheme = if (wasSelected) "day" else state.readerTheme,
+            readerBackgroundSelection = if (wasSelected) "day" else state.readerBackgroundSelection
+        )
+        viewModelScope.launch {
+            val nextTheme = if (wasSelected) "day" else state.readerTheme
+            val nextSelection = if (wasSelected) "day" else state.readerBackgroundSelection
+            dataStoreManager.saveReaderBackgroundState(nextTheme, nextSelection, remaining)
+            if (removed.type == ReaderBackgroundType.IMAGE) {
+                withContext(Dispatchers.IO) { runCatching { File(removed.value).delete() } }
+            }
+        }
+    }
+
+    private fun saveAddedReaderBackground(preset: ReaderBackgroundPreset) {
+        val updated = _uiState.value.customReaderBackgrounds + preset
+        _uiState.value = _uiState.value.copy(
+            customReaderBackgrounds = updated,
+            readerTheme = "day",
+            readerBackgroundSelection = preset.selectionKey
+        )
+        viewModelScope.launch {
+            dataStoreManager.saveReaderBackgroundState("day", preset.selectionKey, updated)
+        }
+    }
+
+    private fun extractDominantColor(file: File): Int {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.absolutePath, bounds)
+        var sampleSize = 1
+        while (bounds.outWidth / sampleSize > 256 || bounds.outHeight / sampleSize > 256) {
+            sampleSize *= 2
+        }
+        val bitmap = BitmapFactory.decodeFile(
+            file.absolutePath,
+            BitmapFactory.Options().apply {
+                inSampleSize = sampleSize
+                inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888
+            }
+        ) ?: return 0xFFFBFBFC.toInt()
+        return try {
+            Palette.from(bitmap)
+                .maximumColorCount(24)
+                .generate()
+                .getDominantColor(0xFFFBFBFC.toInt()) or 0xFF000000.toInt()
+        } finally {
+            bitmap.recycle()
+        }
     }
 
     fun saveBrightness(value: Float) {
@@ -259,6 +420,26 @@ class ReaderViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(firstLineIndent = value)
         viewModelScope.launch {
             dataStoreManager.saveFirstLineIndent(value)
+            loadChapterContent()
+        }
+    }
+
+    fun resetAdvancedReaderSettings() {
+        parser?.paragraphSpacingDp = 8f
+        parser?.firstLineIndentChars = 2f
+        parser?.clearHtmlCache()
+        _uiState.value = _uiState.value.copy(
+            lineHeight = 1.5f,
+            letterSpacing = 0f,
+            fontType = "system",
+            marginHorizDp = 40f,
+            marginVertDp = 68f,
+            paragraphSpacing = 8f,
+            firstLineIndent = 2f,
+            readerTextColor = null
+        )
+        viewModelScope.launch {
+            dataStoreManager.resetAdvancedReaderSettings()
             loadChapterContent()
         }
     }

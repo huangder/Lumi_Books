@@ -98,6 +98,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.core.graphics.ColorUtils
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalConfiguration
@@ -115,6 +116,7 @@ import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.MainActivity
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.R
+import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -280,11 +282,44 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     var isSearching by remember { mutableStateOf(false) }
     var hasSearched by remember { mutableStateOf(false) }
 
-    val menuBgColor = when (uiState.readerTheme) {
-        "night" -> Color(0xFF1a1a1a)
-        "sepia" -> Color(0xFFf5e6d3)
-        "green" -> Color(0xFFe8f5e9)
-        else -> Color.White
+    val selectedCustomBackground = uiState.customReaderBackgrounds.firstOrNull {
+        it.selectionKey == uiState.readerBackgroundSelection
+    }
+    val readerBackgroundColorInt = when {
+        selectedCustomBackground?.type == ReaderBackgroundType.COLOR ->
+            runCatching { android.graphics.Color.parseColor(selectedCustomBackground.value) }
+                .getOrDefault(0xFFFBFBFC.toInt())
+        uiState.readerBackgroundSelection == "night" -> 0xFF1a1a1a.toInt()
+        uiState.readerBackgroundSelection == "sepia" -> 0xFFf5e6d3.toInt()
+        uiState.readerBackgroundSelection == "green" -> 0xFFe8f5e9.toInt()
+        else -> 0xFFFBFBFC.toInt()
+    }
+    val readerBackgroundImagePath = selectedCustomBackground
+        ?.takeIf { it.type == ReaderBackgroundType.IMAGE }
+        ?.value
+    val customBackgroundThemeColorInt = selectedCustomBackground?.dominantColor
+        ?: readerBackgroundColorInt
+    val automaticReaderTextColorInt = when {
+        selectedCustomBackground != null -> {
+            if (ColorUtils.calculateLuminance(customBackgroundThemeColorInt) < 0.42) {
+                0xFFE8E8EA.toInt()
+            } else {
+                0xFF333333.toInt()
+            }
+        }
+        uiState.readerBackgroundSelection == "night" -> 0xFFCCCCCC.toInt()
+        uiState.readerBackgroundSelection == "sepia" -> 0xFF4a3728.toInt()
+        uiState.readerBackgroundSelection == "green" -> 0xFF2e7d32.toInt()
+        else -> 0xFF333333.toInt()
+    }
+    val readerTextColorInt = uiState.readerTextColor ?: automaticReaderTextColorInt
+
+    val menuBgColorInt = selectedCustomBackground?.dominantColor ?: readerBackgroundColorInt
+    val menuBgColor = Color(menuBgColorInt)
+    val menuContentColor = if (ColorUtils.calculateLuminance(menuBgColorInt) < 0.4) {
+        Color.White
+    } else {
+        AppColors.TextPrimary
     }
     // 胶囊按钮背景色：基于阅读主题而非系统深色模式
     val capsuleBgColor = when (uiState.readerTheme) {
@@ -311,29 +346,11 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     ImmersiveMode()
 
     // 主题背景色
-    val composeBgColor = when (uiState.readerTheme) {
-        "night" -> Color(0xFF1a1a1a)
-        "sepia" -> Color(0xFFf5e6d3)
-        "green" -> Color(0xFFe8f5e9)
-        else -> Color(0xFFFBFBFC)
-    }
+    val composeBgColor = Color(readerBackgroundColorInt)
 
     Box(Modifier.fillMaxSize().background(composeBgColor)) {
         // ── 新 Canvas 引擎（TXT/EPUB） ──
         if (uiState.useNewEngine) {
-            val bgColorInt = when (uiState.readerTheme) {
-                "night" -> 0xFF1a1a1a.toInt()
-                "sepia" -> 0xFFf5e6d3.toInt()
-                "green" -> 0xFFe8f5e9.toInt()
-                else -> 0xFFFBFBFC.toInt()
-            }
-            val textColorInt = when (uiState.readerTheme) {
-                "night" -> 0xFFCCCCCC.toInt()
-                "sepia" -> 0xFF4a3728.toInt()
-                "green" -> 0xFF2e7d32.toInt()
-                else -> 0xFF333333.toInt()
-            }
-
             AndroidView(
                 factory = { ctx ->
                     ReadView(ctx).apply {
@@ -508,6 +525,11 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         marginVertDp = uiState.marginVertDp,
                         paragraphSpacingDp = uiState.paragraphSpacing
                     )
+                    readView.setReaderBackground(
+                        backgroundColor = readerBackgroundColorInt,
+                        textColor = readerTextColorInt,
+                        imagePath = readerBackgroundImagePath
+                    )
                     readView.setSavedNotes(notes)
                     // 简繁转换
                     readView.setChineseMode(uiState.chineseMode)
@@ -546,6 +568,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     title = bookTitle,
                     onBack = onNavigateBack,
                     bgColor = menuBgColor,
+                    contentColor = menuContentColor,
                     isBookmarked = isCurrentPageBookmarked,
                     onBookmarkToggle = {
                         if (isCurrentPageBookmarked) {
@@ -656,12 +679,18 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 requestClose = requestCloseTheme,
                 currentFontSize = uiState.fontSize,
                 currentTheme = uiState.readerTheme,
+                currentBackgroundSelection = uiState.readerBackgroundSelection,
+                customBackgrounds = uiState.customReaderBackgrounds,
                 currentBrightness = uiState.brightness,
                 currentOptimizeLayout = uiState.optimizeLayout,
                 currentChineseMode = uiState.chineseMode,
                 currentPageTransition = uiState.pageTransition,
                 onFontSizeChange = { viewModel.saveFontSize(it) },
                 onThemeChange = { viewModel.saveReaderTheme(it) },
+                onBackgroundSelect = { viewModel.selectReaderBackground(it) },
+                onAddBackgroundColor = { viewModel.addCustomReaderBackgroundColor(it) },
+                onAddBackgroundImage = { viewModel.addCustomReaderBackgroundImage(it) },
+                onDeleteBackground = { viewModel.deleteCustomReaderBackground(it) },
                 onBrightnessChange = { viewModel.saveBrightness(it) },
                 onOptimizeLayoutChange = { viewModel.saveOptimizeLayout(it) },
                 onChineseModeChange = { viewModel.saveChineseMode(it) },
@@ -715,19 +744,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             val previewText = remember(uiState.currentChapterIndex) {
                 viewModel.getChapterText(uiState.currentChapterIndex)
                     ?.toString()
-                    ?.take(200) ?: ""
-            }
-            val sheetBg = when (uiState.readerTheme) {
-                "night" -> Color(0xFF1a1a1a)
-                "sepia" -> Color(0xFFf5e6d3)
-                "green" -> Color(0xFFe8f5e9)
-                else -> Color(0xFFFBFBFC)
-            }
-            val sheetText = when (uiState.readerTheme) {
-                "night" -> Color(0xFFCCCCCC)
-                "sepia" -> Color(0xFF4a3728)
-                "green" -> Color(0xFF2e7d32)
-                else -> Color(0xFF333333)
+                    ?.take(420) ?: ""
             }
             AdvancedSettingsSheet(
                 visible = showAdvancedSheet,
@@ -739,8 +756,10 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 customFontPath = uiState.customFontPath,
                 currentMarginHoriz = uiState.marginHorizDp,
                 currentMarginVert = uiState.marginVertDp,
-                currentBgColor = sheetBg,
-                currentTextColor = sheetText,
+                currentBgColor = Color(readerBackgroundColorInt),
+                currentBackgroundImagePath = readerBackgroundImagePath,
+                currentTextColor = Color(readerTextColorInt),
+                currentTextColorOverride = uiState.readerTextColor,
                 currentFontSizeSp = uiState.fontSize,
                 onLineHeightChange = { viewModel.saveLineHeight(it) },
                 onLetterSpacingChange = { viewModel.saveLetterSpacing(it) },
@@ -760,6 +779,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 currentFirstLineIndent = uiState.firstLineIndent,
                 onParagraphSpacingChange = { viewModel.saveParagraphSpacing(it) },
                 onFirstLineIndentChange = { viewModel.saveFirstLineIndent(it) },
+                onTextColorChange = { viewModel.saveReaderTextColor(it) },
+                onResetSettings = { viewModel.resetAdvancedReaderSettings() },
                 onDismiss = { showAdvancedSheet = false; requestCloseAdvanced = false }
             )
         }
@@ -1033,9 +1054,15 @@ private fun ReaderTopBar(
     title: String,
     onBack: () -> Unit,
     bgColor: Color = Color.White,
+    contentColor: Color = AppColors.TextPrimary,
     isBookmarked: Boolean = false,
     onBookmarkToggle: () -> Unit = {}
 ) {
+    val controlBackground = if (contentColor == Color.White) {
+        Color.Black.copy(alpha = 0.28f)
+    } else {
+        AppColors.BgGray.copy(alpha = 0.8f)
+    }
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -1068,7 +1095,7 @@ private fun ReaderTopBar(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(CircleShape)
-                    .background(AppColors.BgGray.copy(alpha = 0.8f))
+                    .background(controlBackground)
                     .cardPressEffect()
                     .clickable(
                         indication = null,
@@ -1079,7 +1106,7 @@ private fun ReaderTopBar(
                 Icon(
                     Icons.Default.KeyboardArrowLeft,
                     contentDescription = stringResource(R.string.reader_back),
-                    tint = AppColors.TextPrimary,
+                    tint = contentColor,
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -1088,7 +1115,7 @@ private fun ReaderTopBar(
             Text(
                 text = title,
                 fontSize = 12.sp,
-                color = AppColors.TextSecondary.copy(alpha = 0.7f),
+                color = contentColor.copy(alpha = 0.7f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.width(180.dp)
@@ -1099,7 +1126,7 @@ private fun ReaderTopBar(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(CircleShape)
-                    .background(AppColors.BgGray.copy(alpha = 0.8f))
+                    .background(controlBackground)
                     .cardPressEffect()
                     .clickable(
                         indication = null,
@@ -1110,7 +1137,7 @@ private fun ReaderTopBar(
                 Icon(
                     if (isBookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder,
                     contentDescription = stringResource(R.string.reader_bookmark),
-                    tint = if (isBookmarked) AppColors.Accent else AppColors.TextPrimary,
+                    tint = if (isBookmarked) AppColors.Accent else contentColor,
                     modifier = Modifier.size(18.dp)
                 )
             }

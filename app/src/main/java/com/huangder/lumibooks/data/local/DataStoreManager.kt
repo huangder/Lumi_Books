@@ -10,6 +10,8 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
+import com.huangder.lumibooks.domain.model.ReaderBackgroundPresetCodec
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -33,6 +35,11 @@ class DataStoreManager @Inject constructor(
         private val MARGIN_VERT = floatPreferencesKey("margin_vert")
         private val BRIGHTNESS = floatPreferencesKey("brightness")
         private val CUSTOM_FONT_PATH = stringPreferencesKey("custom_font_path")
+        private val READER_BACKGROUND_SELECTION = stringPreferencesKey("reader_background_selection")
+        private val CUSTOM_READER_BACKGROUNDS = stringPreferencesKey("custom_reader_backgrounds")
+        private val READER_TEXT_COLOR = intPreferencesKey("reader_text_color")
+        private val PARAGRAPH_SPACING = floatPreferencesKey("paragraph_spacing")
+        private val FIRST_LINE_INDENT = floatPreferencesKey("first_line_indent")
 
         // 统计设置
         private val DAILY_GOAL = intPreferencesKey("daily_goal")
@@ -75,11 +82,11 @@ class DataStoreManager @Inject constructor(
     }
 
     val marginHoriz: Flow<Float> = context.dataStore.data.map { preferences ->
-        preferences[MARGIN_HORIZ] ?: 44f
+        preferences[MARGIN_HORIZ] ?: 40f
     }
 
     val marginVert: Flow<Float> = context.dataStore.data.map { preferences ->
-        preferences[MARGIN_VERT] ?: 72f
+        preferences[MARGIN_VERT] ?: 68f
     }
 
     val readerTheme: Flow<String> = context.dataStore.data.map { preferences ->
@@ -94,6 +101,19 @@ class DataStoreManager @Inject constructor(
     /** 自定义导入字体文件路径 */
     val customFontPath: Flow<String?> = context.dataStore.data.map { preferences ->
         preferences[CUSTOM_FONT_PATH]
+    }
+
+    val readerBackgroundSelection: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[READER_BACKGROUND_SELECTION] ?: preferences[READER_THEME] ?: "day"
+    }
+
+    val customReaderBackgrounds: Flow<List<ReaderBackgroundPreset>> =
+        context.dataStore.data.map { preferences ->
+            ReaderBackgroundPresetCodec.decode(preferences[CUSTOM_READER_BACKGROUNDS])
+        }
+
+    val readerTextColor: Flow<Int?> = context.dataStore.data.map { preferences ->
+        preferences[READER_TEXT_COLOR]
     }
 
     // 统计设置
@@ -184,6 +204,52 @@ class DataStoreManager @Inject constructor(
         }
     }
 
+    suspend fun saveReaderBackgroundSelection(selection: String) {
+        context.dataStore.edit { preferences ->
+            preferences[READER_BACKGROUND_SELECTION] = selection
+        }
+    }
+
+    suspend fun saveCustomReaderBackgrounds(presets: List<ReaderBackgroundPreset>) {
+        context.dataStore.edit { preferences ->
+            preferences[CUSTOM_READER_BACKGROUNDS] = ReaderBackgroundPresetCodec.encode(presets)
+        }
+    }
+
+    suspend fun saveReaderTextColor(color: Int?) {
+        context.dataStore.edit { preferences ->
+            if (color == null) preferences.remove(READER_TEXT_COLOR)
+            else preferences[READER_TEXT_COLOR] = color
+        }
+    }
+
+    suspend fun resetAdvancedReaderSettings() {
+        context.dataStore.edit { preferences ->
+            preferences[LINE_HEIGHT] = 1.5f
+            preferences[LETTER_SPACING] = 0f
+            preferences[FONT_TYPE] = "system"
+            preferences[MARGIN_HORIZ] = 40f
+            preferences[MARGIN_VERT] = 68f
+            preferences[PARAGRAPH_SPACING] = 8f
+            preferences[FIRST_LINE_INDENT] = 2f
+            preferences.remove(READER_TEXT_COLOR)
+        }
+    }
+
+    suspend fun saveReaderBackgroundState(
+        theme: String,
+        selection: String,
+        presets: List<ReaderBackgroundPreset>? = null
+    ) {
+        context.dataStore.edit { preferences ->
+            preferences[READER_THEME] = theme
+            preferences[READER_BACKGROUND_SELECTION] = selection
+            if (presets != null) {
+                preferences[CUSTOM_READER_BACKGROUNDS] = ReaderBackgroundPresetCodec.encode(presets)
+            }
+        }
+    }
+
     /** 每本书的"优化排版"开关（per-book），默认 true */
     fun optimizeLayout(bookId: String): Flow<Boolean> {
         val key = booleanPreferencesKey("optimize_layout_$bookId")
@@ -223,24 +289,20 @@ class DataStoreManager @Inject constructor(
 
     /** 段间距（dp），默认 8dp */
     fun paragraphSpacing(): Flow<Float> {
-        val key = floatPreferencesKey("paragraph_spacing")
-        return context.dataStore.data.map { it[key] ?: 8f }
+        return context.dataStore.data.map { it[PARAGRAPH_SPACING] ?: 8f }
     }
 
     suspend fun saveParagraphSpacing(value: Float) {
-        val key = floatPreferencesKey("paragraph_spacing")
-        context.dataStore.edit { it[key] = value }
+        context.dataStore.edit { it[PARAGRAPH_SPACING] = value }
     }
 
     /** 首行缩进字符数，默认 2 */
     fun firstLineIndent(): Flow<Float> {
-        val key = floatPreferencesKey("first_line_indent")
-        return context.dataStore.data.map { it[key] ?: 2f }
+        return context.dataStore.data.map { it[FIRST_LINE_INDENT] ?: 2f }
     }
 
     suspend fun saveFirstLineIndent(value: Float) {
-        val key = floatPreferencesKey("first_line_indent")
-        context.dataStore.edit { it[key] = value }
+        context.dataStore.edit { it[FIRST_LINE_INDENT] = value }
     }
 
     suspend fun saveDailyGoal(goal: Int) {

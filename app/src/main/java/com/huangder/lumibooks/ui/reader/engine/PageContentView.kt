@@ -11,8 +11,12 @@ import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.View
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.TextView
+import coil.load
+import java.io.File
 import kotlin.math.abs
 
 /**
@@ -30,6 +34,13 @@ class PageContentView(context: Context) : FrameLayout(context) {
 
     companion object {
         private const val TAG = "PageContentView"
+    }
+
+    private val backgroundImageView = ImageView(context).apply {
+        scaleType = ImageView.ScaleType.CENTER_CROP
+        isClickable = false
+        isFocusable = false
+        visibility = View.GONE
     }
 
     /**
@@ -58,10 +69,34 @@ class PageContentView(context: Context) : FrameLayout(context) {
         isClickable = false
         isFocusable = false
         isLongClickable = false
-        // 先添加隐藏的 TextView（底层，处理触摸）
+        addView(backgroundImageView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        // 再添加隐藏的 TextView（处理触摸）
         addView(textView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         // 再添加可见的 JustifiedTextView（顶层，渲染文字）
         addView(justifiedView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+    }
+
+    private var readerBackgroundImagePath: String? = null
+
+    fun setReaderBackground(color: Int, imagePath: String?) {
+        setBackgroundColor(color)
+        backgroundImageView.setBackgroundColor(color)
+        if (readerBackgroundImagePath == imagePath) return
+
+        readerBackgroundImagePath = imagePath
+        val imageFile = imagePath?.let(::File)?.takeIf { it.exists() }
+        if (imageFile == null) {
+            backgroundImageView.load(null)
+            backgroundImageView.visibility = View.GONE
+        } else {
+            backgroundImageView.visibility = View.VISIBLE
+            backgroundImageView.load(imageFile) {
+                allowHardware(false)
+                crossfade(false)
+                memoryCacheKey(imageFile.absolutePath)
+                diskCacheKey(imageFile.absolutePath)
+            }
+        }
     }
 
     /**

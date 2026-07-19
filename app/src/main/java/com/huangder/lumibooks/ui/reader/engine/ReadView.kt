@@ -91,11 +91,14 @@ class ReadView(context: Context) : FrameLayout(context) {
     private var currentLetterSpacingDp: Float = 0f
     private var currentFontType: String = "system"
     private var currentCustomFontPath: String? = null
-    private var currentMarginHorizDp: Float = 44f
-    private var currentMarginVertDp: Float = 72f
+    private var currentMarginHorizDp: Float = 40f
+    private var currentMarginVertDp: Float = 68f
     private var currentParagraphSpacingDp: Float = 0f
     private var currentChineseMode: String = "original"
     private var currentPageTransition: String = "slide"
+    private var currentReaderBackgroundColor: Int? = null
+    private var currentReaderBackgroundImagePath: String? = null
+    private var currentReaderTextColor: Int? = null
     private var pendingStartChapter: Int = 0
     private var pendingStartPage: Int = 0
 
@@ -218,7 +221,9 @@ class ReadView(context: Context) : FrameLayout(context) {
 
     /** 配置所有 PageContentView 的 TextView 样式（防止翻页错版） */
     private fun configureCurrentPageView() {
-        val (bgColor, textColor, accentColor) = getThemeColors(currentTheme)
+        val (themeBgColor, themeTextColor, accentColor) = getThemeColors(currentTheme)
+        val bgColor = currentReaderBackgroundColor ?: themeBgColor
+        val textColor = currentReaderTextColor ?: themeTextColor
         val density = resources.displayMetrics.density
         val marginHoriz = currentMarginHorizDp * density
         val marginVert = currentMarginVertDp * density
@@ -260,10 +265,24 @@ class ReadView(context: Context) : FrameLayout(context) {
                 highlightColor = highlightColor,
                 accentColor = accentColor
             )
-            view.setBackgroundColor(bgColor)
+            view.setReaderBackground(bgColor, currentReaderBackgroundImagePath)
         }
         setBackgroundColor(bgColor)
         this.bgColor = bgColor
+    }
+
+    fun setReaderBackground(backgroundColor: Int, textColor: Int, imagePath: String?) {
+        if (currentReaderBackgroundColor == backgroundColor &&
+            currentReaderTextColor == textColor &&
+            currentReaderBackgroundImagePath == imagePath
+        ) return
+
+        animationController.abortAnim()
+        currentReaderBackgroundColor = backgroundColor
+        currentReaderTextColor = textColor
+        currentReaderBackgroundImagePath = imagePath
+        configureCurrentPageView()
+        invalidate()
     }
 
     // ── 配置 ──
@@ -287,8 +306,8 @@ class ReadView(context: Context) : FrameLayout(context) {
         letterSpacingDp: Float = 0f,
         fontType: String = "system",
         customFontPath: String? = null,
-        marginHorizDp: Float = 44f,
-        marginVertDp: Float = 72f,
+        marginHorizDp: Float = 40f,
+        marginVertDp: Float = 68f,
         paragraphSpacingDp: Float = 0f,
         width: Int = this.width,
         height: Int = this.height
