@@ -48,8 +48,8 @@ data class SettingsUiState(
     val lineHeight: Float = 1.5f,
     val letterSpacing: Float = 0f,
     val fontType: String = "system",
-    val marginHoriz: Float = 44f,
-    val marginVert: Float = 72f,
+    val marginHoriz: Float = 40f,
+    val marginVert: Float = 68f,
 
     // 显示与外观
     val darkMode: String = "system",       // "system" / "light" / "dark"

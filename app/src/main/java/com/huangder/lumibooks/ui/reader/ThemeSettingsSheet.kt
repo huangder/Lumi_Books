@@ -1,11 +1,16 @@
 package com.huangder.lumibooks.ui.reader
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,12 +25,18 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,24 +45,36 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import coil.compose.AsyncImage
+import androidx.core.graphics.ColorUtils
 import com.huangder.lumibooks.ui.theme.FangSong
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.R
+import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
+import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import java.io.File
 
 // 设计规范颜色
 private val AccentColor = Color(0xFFE85D5D)
@@ -79,12 +102,18 @@ fun ThemeSettingsSheet(
     requestClose: Boolean = false,
     currentFontSize: Float,
     currentTheme: String,
+    currentBackgroundSelection: String = currentTheme,
+    customBackgrounds: List<ReaderBackgroundPreset> = emptyList(),
     currentBrightness: Float = -1f,
     currentOptimizeLayout: Boolean = true,
     currentChineseMode: String = "original",
     currentPageTransition: String = "slide",
     onFontSizeChange: (Float) -> Unit,
     onThemeChange: (String) -> Unit,
+    onBackgroundSelect: (String) -> Unit = onThemeChange,
+    onAddBackgroundColor: (Int) -> Unit = {},
+    onAddBackgroundImage: (Uri) -> Unit = {},
+    onDeleteBackground: (String) -> Unit = {},
     onBrightnessChange: (Float) -> Unit = {},
     onOptimizeLayoutChange: (Boolean) -> Unit = {},
     onChineseModeChange: (String) -> Unit = {},
@@ -138,11 +167,14 @@ fun ThemeSettingsSheet(
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(LightCardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .navigationBarsPadding()
-                .padding(24.dp)
+                .padding(start = 24.dp, top = 24.dp, bottom = 24.dp)
                 .verticalScroll(rememberScrollState())
         ) {
             // 标题栏
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth().padding(end = 24.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
                     stringResource(R.string.theme_settings_title),
                     fontSize = 20.sp,
@@ -167,7 +199,10 @@ fun ThemeSettingsSheet(
             Spacer(Modifier.height(24.dp))
 
             // 字号区域
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth().padding(end = 24.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(stringResource(R.string.label_font_size), fontSize = 14.sp, color = LightTextSecondary)
                 Spacer(Modifier.weight(1f))
                 Text("${currentFontSize.toInt()}sp", fontSize = 14.sp, color = LightTextSecondary)
@@ -176,13 +211,17 @@ fun ThemeSettingsSheet(
             com.huangder.lumibooks.ui.components.PillSlider(
                 value = currentFontSize,
                 onValueChange = onFontSizeChange,
-                valueRange = 12f..28f
+                valueRange = 12f..28f,
+                modifier = Modifier.padding(end = 24.dp)
             )
 
             Spacer(Modifier.height(16.dp))
 
             // 亮度区域
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth().padding(end = 24.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(stringResource(R.string.brightness), fontSize = 14.sp, color = LightTextSecondary)
                 Spacer(Modifier.weight(1f))
                 Text(
@@ -195,7 +234,8 @@ fun ThemeSettingsSheet(
             com.huangder.lumibooks.ui.components.PillSlider(
                 value = brightnessPercent,
                 onValueChange = { pct -> onBrightnessChange(pct / 100f) },
-                valueRange = 0f..100f
+                valueRange = 0f..100f,
+                modifier = Modifier.padding(end = 24.dp)
             )
 
             Spacer(Modifier.height(16.dp))
@@ -204,57 +244,14 @@ fun ThemeSettingsSheet(
             Text(stringResource(R.string.reading_background), fontSize = 14.sp, color = LightTextSecondary)
             Spacer(Modifier.height(12.dp))
 
-            // 第一行：日间、夜间
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                ThemeButton(
-                    label = stringResource(R.string.theme_day),
-                    bgColor = ReaderDayBg,
-                    textColor = ReaderDayText,
-                    isSelected = currentTheme == "day",
-                    hasBorder = true,
-                    onClick = { onThemeChange("day") },
-                    modifier = Modifier.weight(1f)
-                )
-                ThemeButton(
-                    label = stringResource(R.string.theme_night),
-                    bgColor = ReaderNightBg,
-                    textColor = ReaderNightText,
-                    isSelected = currentTheme == "night",
-                    hasBorder = false,
-                    onClick = { onThemeChange("night") },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-            // 第二行：护眼、护眼绿
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                ThemeButton(
-                    label = stringResource(R.string.theme_sepia),
-                    bgColor = ReaderSepiaBg,
-                    textColor = ReaderSepiaText,
-                    isSelected = currentTheme == "sepia",
-                    hasBorder = false,
-                    onClick = { onThemeChange("sepia") },
-                    modifier = Modifier.weight(1f)
-                )
-                ThemeButton(
-                    label = stringResource(R.string.theme_green),
-                    bgColor = ReaderGreenBg,
-                    textColor = ReaderGreenText,
-                    isSelected = currentTheme == "green",
-                    hasBorder = false,
-                    onClick = { onThemeChange("green") },
-                    modifier = Modifier.weight(1f)
-                )
-            }
+            ReaderBackgroundSelector(
+                currentSelection = currentBackgroundSelection,
+                customBackgrounds = customBackgrounds,
+                onSelect = onBackgroundSelect,
+                onAddColor = onAddBackgroundColor,
+                onAddImage = onAddBackgroundImage,
+                onDelete = onDeleteBackground
+            )
 
             Spacer(Modifier.height(16.dp))
 
@@ -262,7 +259,7 @@ fun ThemeSettingsSheet(
             Text(stringResource(R.string.chinese_convert_label), fontSize = 14.sp, color = LightTextSecondary)
             Spacer(Modifier.height(12.dp))
             Row(
-                Modifier.fillMaxWidth(),
+                Modifier.fillMaxWidth().padding(end = 24.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 ModeButton(
@@ -291,7 +288,7 @@ fun ThemeSettingsSheet(
             Text(stringResource(R.string.page_transition_label), fontSize = 14.sp, color = LightTextSecondary)
             Spacer(Modifier.height(12.dp))
             Row(
-                Modifier.fillMaxWidth(),
+                Modifier.fillMaxWidth().padding(end = 24.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 ModeButton(
@@ -318,7 +315,7 @@ fun ThemeSettingsSheet(
 
             // 优化书籍排版开关
             Row(
-                Modifier.fillMaxWidth(),
+                Modifier.fillMaxWidth().padding(end = 24.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(Modifier.weight(1f)) {
@@ -345,6 +342,7 @@ fun ThemeSettingsSheet(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(end = 24.dp)
                     .height(48.dp)
                     .clip(RoundedCornerShape(28.dp))
                     .background(LightBgGray)
@@ -360,6 +358,333 @@ fun ThemeSettingsSheet(
             }
         }
     }
+}
+
+@Composable
+private fun ReaderBackgroundSelector(
+    currentSelection: String,
+    customBackgrounds: List<ReaderBackgroundPreset>,
+    onSelect: (String) -> Unit,
+    onAddColor: (Int) -> Unit,
+    onAddImage: (Uri) -> Unit,
+    onDelete: (String) -> Unit
+) {
+    var showCustomizer by remember { mutableStateOf(false) }
+    var deleteArmedId by remember { mutableStateOf<String?>(null) }
+    val photoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) onAddImage(uri)
+    }
+
+    LaunchedEffect(currentSelection, customBackgrounds) {
+        val armedId = deleteArmedId
+        if (armedId != null &&
+            (currentSelection != "custom:$armedId" || customBackgrounds.none { it.id == armedId })
+        ) {
+            deleteArmedId = null
+        }
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        BackgroundPresetItem(
+            label = stringResource(R.string.theme_day),
+            isSelected = currentSelection == "day",
+            onClick = { deleteArmedId = null; onSelect("day") }
+        ) {
+            Box(Modifier.fillMaxSize().background(ReaderDayBg))
+        }
+        BackgroundPresetItem(
+            label = stringResource(R.string.theme_night),
+            isSelected = currentSelection == "night",
+            onClick = { deleteArmedId = null; onSelect("night") }
+        ) {
+            Box(Modifier.fillMaxSize().background(ReaderNightBg))
+        }
+        BackgroundPresetItem(
+            label = stringResource(R.string.theme_sepia),
+            isSelected = currentSelection == "sepia",
+            onClick = { deleteArmedId = null; onSelect("sepia") }
+        ) {
+            Box(Modifier.fillMaxSize().background(ReaderSepiaBg))
+        }
+        BackgroundPresetItem(
+            label = stringResource(R.string.theme_green),
+            isSelected = currentSelection == "green",
+            onClick = { deleteArmedId = null; onSelect("green") }
+        ) {
+            Box(Modifier.fillMaxSize().background(ReaderGreenBg))
+        }
+
+        customBackgrounds.forEach { preset ->
+            val isSelected = currentSelection == preset.selectionKey
+            val isDeleteArmed = deleteArmedId == preset.id
+            BackgroundPresetItem(
+                label = stringResource(R.string.background_custom),
+                isSelected = isSelected,
+                onClick = {
+                    if (isDeleteArmed) {
+                        onDelete(preset.id)
+                        deleteArmedId = null
+                    } else {
+                        deleteArmedId = null
+                        onSelect(preset.selectionKey)
+                    }
+                },
+                onLongPress = {
+                    if (isSelected) deleteArmedId = preset.id
+                }
+            ) {
+                when (preset.type) {
+                    ReaderBackgroundType.COLOR -> {
+                        val color = remember(preset.value) {
+                            runCatching {
+                                Color(android.graphics.Color.parseColor(preset.value))
+                            }.getOrDefault(LightBgGray)
+                        }
+                        Box(Modifier.fillMaxSize().background(color))
+                    }
+                    ReaderBackgroundType.IMAGE -> {
+                        AsyncImage(
+                            model = File(preset.value),
+                            contentDescription = stringResource(R.string.background_custom),
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                }
+                if (isDeleteArmed) {
+                    Box(
+                        modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.48f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Delete,
+                            contentDescription = stringResource(R.string.delete_custom_background),
+                            tint = Color.White,
+                            modifier = Modifier.size(23.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        BackgroundPresetItem(
+            label = stringResource(R.string.background_add),
+            isSelected = false,
+            onClick = { deleteArmedId = null; showCustomizer = true }
+        ) {
+            Box(
+                modifier = Modifier.fillMaxSize().background(LightBgGray),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Add,
+                    contentDescription = stringResource(R.string.background_add),
+                    tint = LightTextSecondary,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+    }
+
+    if (showCustomizer) {
+        CustomBackgroundDialog(
+            onAddColor = onAddColor,
+            onPickPhoto = {
+                showCustomizer = false
+                photoPicker.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
+            },
+            onDismiss = { showCustomizer = false }
+        )
+    }
+}
+
+@Composable
+private fun BackgroundPresetItem(
+    label: String,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    onLongPress: (() -> Unit)? = null,
+    content: @Composable () -> Unit
+) {
+    val latestOnClick by rememberUpdatedState(onClick)
+    val latestOnLongPress by rememberUpdatedState(onLongPress)
+
+    Column(
+        modifier = Modifier.width(58.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .size(58.dp)
+                .then(
+                    if (isSelected) Modifier.border(2.dp, AccentColor, CircleShape)
+                    else Modifier
+                )
+                .padding(4.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(CircleShape)
+                    .border(1.dp, LightDivider, CircleShape)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = { latestOnClick() },
+                            onLongPress = { latestOnLongPress?.invoke() }
+                        )
+                    }
+            ) {
+                content()
+            }
+        }
+        Spacer(Modifier.height(5.dp))
+        Text(
+            text = label,
+            fontSize = 11.sp,
+            color = if (isSelected) Color.Black else LightTextSecondary,
+            maxLines = 1,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun CustomBackgroundDialog(
+    onAddColor: (Int) -> Unit,
+    onPickPhoto: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    var hue by remember { mutableFloatStateOf(35f) }
+    var saturation by remember { mutableFloatStateOf(12f) }
+    var lightness by remember { mutableFloatStateOf(96f) }
+    val previewColorInt = android.graphics.Color.HSVToColor(
+        floatArrayOf(hue, saturation / 100f, lightness / 100f)
+    )
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            color = Color.White
+        ) {
+            Column(Modifier.padding(20.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.custom_background_title),
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Black
+                    )
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = onDismiss) {
+                        Text(stringResource(R.string.cancel), color = LightTextSecondary)
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .size(52.dp)
+                        .clip(CircleShape)
+                        .background(Color(previewColorInt))
+                        .border(1.dp, LightDivider, CircleShape)
+                )
+                Spacer(Modifier.height(16.dp))
+
+                BackgroundColorSlider(stringResource(R.string.background_hue), hue, 0f..360f) {
+                    hue = it
+                }
+                Spacer(Modifier.height(10.dp))
+                BackgroundColorSlider(
+                    stringResource(R.string.background_saturation),
+                    saturation,
+                    0f..100f
+                ) { saturation = it }
+                Spacer(Modifier.height(10.dp))
+                BackgroundColorSlider(
+                    stringResource(R.string.background_lightness),
+                    lightness,
+                    15f..100f
+                ) { lightness = it }
+                Spacer(Modifier.height(18.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(AccentColor)
+                        .clickable { onAddColor(previewColorInt); onDismiss() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = stringResource(R.string.background_add_color),
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(22.dp))
+                        .border(1.dp, LightDivider, RoundedCornerShape(22.dp))
+                        .clickable { onPickPhoto() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Outlined.Image,
+                            contentDescription = null,
+                            tint = Color.Black,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = stringResource(R.string.background_choose_photo),
+                            color = Color.Black,
+                            fontSize = 14.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BackgroundColorSlider(
+    label: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    onValueChange: (Float) -> Unit
+) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, fontSize = 13.sp, color = LightTextSecondary)
+        Spacer(Modifier.weight(1f))
+        Text(value.toInt().toString(), fontSize = 12.sp, color = LightTextSecondary)
+    }
+    Spacer(Modifier.height(3.dp))
+    com.huangder.lumibooks.ui.components.PillSlider(
+        value = value,
+        onValueChange = onValueChange,
+        valueRange = range
+    )
 }
 
 @Composable
@@ -447,7 +772,9 @@ fun AdvancedSettingsSheet(
     currentMarginHoriz: Float,
     currentMarginVert: Float,
     currentBgColor: Color,
+    currentBackgroundImagePath: String?,
     currentTextColor: Color,
+    currentTextColorOverride: Int?,
     currentFontSizeSp: Float,
     onLineHeightChange: (Float) -> Unit,
     onLetterSpacingChange: (Float) -> Unit,
@@ -459,14 +786,18 @@ fun AdvancedSettingsSheet(
     currentFirstLineIndent: Float = 0f,
     onParagraphSpacingChange: (Float) -> Unit = {},
     onFirstLineIndentChange: (Float) -> Unit = {},
+    onTextColorChange: (Int?) -> Unit,
+    onResetSettings: () -> Unit,
     onDismiss: () -> Unit
 ) {
     if (!visible) return
 
     val sheetOffset = remember { Animatable(1f) }
+    val settingsScrollState = rememberScrollState()
 
     LaunchedEffect(visible) {
         if (visible) {
+            settingsScrollState.scrollTo(0)
             sheetOffset.snapTo(1f)
             sheetOffset.animateTo(0f, tween(300, easing = FastOutSlowInEasing))
         }
@@ -495,6 +826,12 @@ fun AdvancedSettingsSheet(
         "kaiti" -> KaiTi
         else -> androidx.compose.ui.text.font.FontFamily.Default
     }
+    val resolvedPreviewText = previewText.ifBlank { stringResource(R.string.preview_text) }
+    val previewParagraphs = remember(resolvedPreviewText) {
+        buildPreviewParagraphs(resolvedPreviewText)
+    }
+    val previewHorizontalPadding = (currentMarginHoriz / 2f).coerceIn(10f, 40f).dp
+    val previewVerticalPadding = (currentMarginVert / 3f).coerceIn(10f, 40f).dp
 
     Box(Modifier.fillMaxSize()) {
         // 遮罩
@@ -504,11 +841,11 @@ fun AdvancedSettingsSheet(
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { isClosing = true }
         )
 
-        // 底部弹出（85% 屏幕高度）
+        // 底部弹出（90% 屏幕高度）
         Column(
             Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .fillMaxHeight(0.85f)
+                .fillMaxHeight(0.90f)
                 .graphicsLayer { translationY = sheetOffset.value * size.height }
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(LightCardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
@@ -558,20 +895,46 @@ fun AdvancedSettingsSheet(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(120.dp)
+                    .height(220.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(currentBgColor)
-                    .padding(horizontal = (currentMarginHoriz / 3).dp, vertical = (currentMarginVert / 5).dp)
             ) {
-                Text(
-                    text = previewText.ifBlank { stringResource(R.string.preview_text) },
-                    fontSize = currentFontSizeSp.sp,
-                    color = currentTextColor.copy(alpha = 0.7f),
-                    fontFamily = previewFont,
-                    lineHeight = (currentFontSizeSp * currentLineHeight).sp,
-                    letterSpacing = currentLetterSpacing.sp,
-                    maxLines = 4
-                )
+                currentBackgroundImagePath?.let { path ->
+                    AsyncImage(
+                        model = File(path),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(
+                            horizontal = previewHorizontalPadding,
+                            vertical = previewVerticalPadding
+                        ),
+                    verticalArrangement = Arrangement.spacedBy(
+                        (currentParagraphSpacing * 0.65f).coerceAtLeast(0f).dp
+                    )
+                ) {
+                    previewParagraphs.forEach { paragraph ->
+                        Text(
+                            text = paragraph,
+                            modifier = Modifier.fillMaxWidth(),
+                            style = androidx.compose.ui.text.TextStyle(
+                                fontSize = currentFontSizeSp.sp,
+                                color = currentTextColor,
+                                fontFamily = previewFont,
+                                lineHeight = (currentFontSizeSp * currentLineHeight).sp,
+                                letterSpacing = currentLetterSpacing.sp,
+                                textIndent = androidx.compose.ui.text.style.TextIndent(
+                                    firstLine = (currentFontSizeSp * currentFirstLineIndent).sp
+                                )
+                            )
+                        )
+                    }
+                }
             }
 
             Spacer(Modifier.height(16.dp))
@@ -580,8 +943,15 @@ fun AdvancedSettingsSheet(
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(settingsScrollState)
             ) {
+                TextColorSetting(
+                    currentOverride = currentTextColorOverride,
+                    effectiveTextColor = currentTextColor,
+                    onColorChange = onTextColorChange
+                )
+                Spacer(Modifier.height(16.dp))
+
                 // 行距
                 SettingSlider(stringResource(R.string.label_line_height), currentLineHeight, 1.0f..2.5f, 0.1f, { String.format("%.1fx", it) }, onLineHeightChange)
                 Spacer(Modifier.height(12.dp))
@@ -610,6 +980,240 @@ fun AdvancedSettingsSheet(
                 Text(stringResource(R.string.font_label), fontSize = 14.sp, color = LightTextSecondary)
                 Spacer(Modifier.height(12.dp))
                 FontSelector(currentFont = currentFontType, customFontPath = customFontPath, onFontChange = onFontTypeChange, onImportFont = onImportFont)
+                Spacer(Modifier.height(24.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(LightBgGray)
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) { onResetSettings() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = stringResource(R.string.reset_reader_settings),
+                        color = AccentColor,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+        }
+    }
+}
+
+private fun buildPreviewParagraphs(text: String): List<String> {
+    val lines = text.lineSequence().map(String::trim).filter(String::isNotEmpty).toList()
+    if (lines.size >= 2) return lines.take(3)
+    val compact = lines.firstOrNull().orEmpty()
+    if (compact.isBlank()) return listOf(text)
+    val chunkSize = (compact.length / 3).coerceIn(24, 48)
+    return compact.chunked(chunkSize).take(3)
+}
+
+@Composable
+private fun TextColorSetting(
+    currentOverride: Int?,
+    effectiveTextColor: Color,
+    onColorChange: (Int?) -> Unit
+) {
+    val presetColors = remember {
+        listOf(
+            0xFF202124.toInt(),
+            0xFF55565A.toInt(),
+            0xFF4A3728.toInt(),
+            0xFFF4F4F5.toInt()
+        )
+    }
+    var showCustomColorDialog by remember { mutableStateOf(false) }
+    val isCustomColor = currentOverride != null && currentOverride !in presetColors
+
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(stringResource(R.string.label_text_color), fontSize = 14.sp, color = Color.Black)
+        Spacer(Modifier.weight(1f))
+        Text(
+            text = if (currentOverride == null) {
+                stringResource(R.string.text_color_auto)
+            } else {
+                String.format("#%06X", 0xFFFFFF and currentOverride)
+            },
+            fontSize = 13.sp,
+            color = LightTextSecondary
+        )
+    }
+    Spacer(Modifier.height(10.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        TextColorSwatch(
+            color = Color.White,
+            isSelected = currentOverride == null,
+            contentDescription = stringResource(R.string.text_color_auto),
+            onClick = { onColorChange(null) }
+        ) {
+            Text("A", color = Color.Black, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        }
+        presetColors.forEach { color ->
+            TextColorSwatch(
+                color = Color(color),
+                isSelected = currentOverride == color,
+                contentDescription = stringResource(R.string.label_text_color),
+                onClick = { onColorChange(color) }
+            )
+        }
+        TextColorSwatch(
+            color = if (isCustomColor) Color(currentOverride!!) else LightBgGray,
+            isSelected = isCustomColor,
+            contentDescription = stringResource(R.string.text_color_custom),
+            onClick = { showCustomColorDialog = true }
+        ) {
+            if (!isCustomColor) {
+                Icon(
+                    imageVector = Icons.Outlined.Add,
+                    contentDescription = null,
+                    tint = LightTextSecondary,
+                    modifier = Modifier.size(19.dp)
+                )
+            }
+        }
+    }
+
+    if (showCustomColorDialog) {
+        TextColorDialog(
+            initialColor = currentOverride ?: effectiveTextColor.toArgb(),
+            onApply = {
+                onColorChange(it)
+                showCustomColorDialog = false
+            },
+            onDismiss = { showCustomColorDialog = false }
+        )
+    }
+}
+
+@Composable
+private fun TextColorSwatch(
+    color: Color,
+    isSelected: Boolean,
+    contentDescription: String,
+    onClick: () -> Unit,
+    content: @Composable () -> Unit = {}
+) {
+    Box(
+        modifier = Modifier
+            .size(42.dp)
+            .then(
+                if (isSelected) Modifier.border(2.dp, AccentColor, CircleShape)
+                else Modifier
+            )
+            .padding(4.dp)
+            .clip(CircleShape)
+            .background(color)
+            .border(1.dp, LightDivider, CircleShape)
+            .semantics { this.contentDescription = contentDescription }
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() }
+            ) { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun TextColorDialog(
+    initialColor: Int,
+    onApply: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val initialHsv = remember(initialColor) {
+        FloatArray(3).also { android.graphics.Color.colorToHSV(initialColor, it) }
+    }
+    var hue by remember(initialColor) { mutableFloatStateOf(initialHsv[0]) }
+    var saturation by remember(initialColor) { mutableFloatStateOf(initialHsv[1] * 100f) }
+    var lightness by remember(initialColor) { mutableFloatStateOf(initialHsv[2] * 100f) }
+    val previewColor = android.graphics.Color.HSVToColor(
+        floatArrayOf(hue, saturation / 100f, lightness / 100f)
+    )
+    val previewLabelColor = if (ColorUtils.calculateLuminance(previewColor) < 0.45) {
+        Color.White
+    } else {
+        Color.Black
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            color = Color.White
+        ) {
+            Column(Modifier.padding(20.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.text_color_custom),
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Black
+                    )
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = onDismiss) {
+                        Text(stringResource(R.string.cancel), color = LightTextSecondary)
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .size(56.dp)
+                        .clip(CircleShape)
+                        .background(Color(previewColor))
+                        .border(1.dp, LightDivider, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Aa", color = previewLabelColor, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.height(16.dp))
+                BackgroundColorSlider(stringResource(R.string.background_hue), hue, 0f..360f) {
+                    hue = it
+                }
+                Spacer(Modifier.height(10.dp))
+                BackgroundColorSlider(
+                    stringResource(R.string.background_saturation),
+                    saturation,
+                    0f..100f
+                ) { saturation = it }
+                Spacer(Modifier.height(10.dp))
+                BackgroundColorSlider(
+                    stringResource(R.string.background_lightness),
+                    lightness,
+                    5f..100f
+                ) { lightness = it }
+                Spacer(Modifier.height(18.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(AccentColor)
+                        .clickable { onApply(previewColor) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = stringResource(R.string.apply_text_color),
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
         }
     }

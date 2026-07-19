@@ -84,7 +84,11 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
     // Coil (Image Loading)
+    implementation("io.coil-kt:coil:2.7.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
+
+    // Image dominant color extraction
+    implementation("androidx.palette:palette-ktx:1.0.0")
 
     // Testing
     testImplementation("junit:junit:4.13.2")
