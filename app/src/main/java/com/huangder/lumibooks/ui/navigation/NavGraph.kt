@@ -41,6 +41,8 @@ import com.huangder.lumibooks.ui.theme.ReaderColors
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.hilt.navigation.compose.hiltViewModel
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.haze
 import kotlinx.coroutines.delay
 
 /**
@@ -78,6 +80,7 @@ fun MainNavGraph(navController: NavHostController) {
     var readerReady by remember { mutableStateOf(false) }
     var pendingBookId by remember { mutableStateOf<String?>(null) }
     var tabBarVisible by remember { mutableStateOf(true) }
+    val hazeState = remember { HazeState() }
 
     // 监听路由变化，从阅读页/设置页返回时延迟显示 TabBar
     val currentEntry by navController.currentBackStackEntryAsState()
@@ -103,7 +106,10 @@ fun MainNavGraph(navController: NavHostController) {
         // 主内容
         NavHost(
             navController = navController,
-            startDestination = Screen.Home.route
+            startDestination = Screen.Home.route,
+            modifier = Modifier
+                .fillMaxSize()
+                .haze(hazeState)
         ) {
             composable(Screen.Home.route) {
                 HomeScreen(
@@ -178,6 +184,7 @@ fun MainNavGraph(navController: NavHostController) {
         ) {
             FloatingTabBar(
                 selectedIndex = selectedTab,
+                hazeState = hazeState,
                 onTabSelected = { index ->
                     selectedTab = index
                     val r = when (index) {

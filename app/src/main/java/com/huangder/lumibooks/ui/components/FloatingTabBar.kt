@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -28,11 +29,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeChild
 
 data class TabItem(
     val selectedIcon: ImageVector,
@@ -49,9 +54,56 @@ val tabs = listOf(
 fun FloatingTabBar(
     selectedIndex: Int,
     onTabSelected: (Int) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    hazeState: HazeState? = null
 ) {
     val isDark = LocalIsDarkTheme.current
+    val glassShape = CircleShape
+    val glassBrush = if (isDark) {
+        Brush.verticalGradient(
+            colors = listOf(
+                Color(0xCC2C2C2E),
+                Color(0xB01C1C1E)
+            )
+        )
+    } else {
+        Brush.verticalGradient(
+            colors = listOf(
+                Color(0xDFFFFFFF),
+                Color(0xB8FFFFFF)
+            )
+        )
+    }
+    val borderBrush = if (isDark) {
+        Brush.verticalGradient(
+            colors = listOf(
+                Color.White.copy(alpha = 0.22f),
+                Color.White.copy(alpha = 0.06f)
+            )
+        )
+    } else {
+        Brush.verticalGradient(
+            colors = listOf(
+                Color.White.copy(alpha = 0.88f),
+                Color.Black.copy(alpha = 0.08f)
+            )
+        )
+    }
+    val hazeModifier = hazeState?.let { state ->
+        Modifier.hazeChild(state) {
+            backgroundColor = if (isDark) Color(0xFF1C1C1E) else Color.White
+            tints = listOf(
+                HazeTint(
+                    if (isDark) Color(0x661C1C1E) else Color(0x88FFFFFF)
+                )
+            )
+            blurRadius = 24.dp
+            noiseFactor = 0.06f
+            fallbackTint = HazeTint(
+                if (isDark) Color(0xD01C1C1E) else Color(0xDFFFFFFF)
+            )
+        }
+    } ?: Modifier
 
     Box(
         modifier = modifier
@@ -64,13 +116,15 @@ fun FloatingTabBar(
                 .fillMaxWidth()
                 .height(56.dp)
                 .shadow(
-                    elevation = 40.dp,
-                    shape = CircleShape,
-                    ambientColor = if (isDark) Color(0xCCFFFFFF) else Color(0xCC000000),
-                    spotColor = if (isDark) Color(0xCCFFFFFF) else Color(0xCC000000)
+                    elevation = 28.dp,
+                    shape = glassShape,
+                    ambientColor = if (isDark) Color(0x66FFFFFF) else Color(0x33000000),
+                    spotColor = if (isDark) Color(0x44FFFFFF) else Color(0x26000000)
                 )
-                .clip(CircleShape)
-                .background(if (isDark) Color(0xFF1C1C1E) else Color.White)
+                .clip(glassShape)
+                .then(hazeModifier)
+                .background(glassBrush)
+                .border(width = 0.8.dp, brush = borderBrush, shape = glassShape)
                 .padding(horizontal = 8.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
@@ -109,7 +163,7 @@ private fun TabItemView(
                 .size(40.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(
-                    if (isSelected) AppColors.Accent.copy(alpha = 0.12f)
+                    if (isSelected) AppColors.Accent.copy(alpha = 0.16f)
                     else Color.Transparent
                 ),
             contentAlignment = Alignment.Center
