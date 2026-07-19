@@ -1,12 +1,14 @@
 package com.huangder.lumibooks.ui.settings
 
-import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -14,8 +16,6 @@ import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 
 /**
@@ -42,16 +42,14 @@ class DetailActivity : ComponentActivity() {
 
         val category = intent.getStringExtra("category") ?: "about"
 
-        // 同步读取避免闪白：手动深色模式下第一个 frame 就渲染深色
-        val darkMode = runBlocking { dataStoreManager.darkMode.first() }
-        val isSystemDark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-        val isDark = when (darkMode) {
-            "dark" -> true
-            "light" -> false
-            else -> isSystemDark
-        }
-
         setContent {
+            val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
+            val isDark = when (darkMode) {
+                "dark" -> true
+                "light" -> false
+                else -> isSystemInDarkTheme()
+            }
+
             EBookReaderTheme(darkTheme = isDark) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     val viewModel: SettingsViewModel = hiltViewModel()
