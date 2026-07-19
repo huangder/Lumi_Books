@@ -67,6 +67,9 @@ class ReadView(context: Context) : FrameLayout(context) {
 
     /** 设置已保存的笔记/高亮并刷新当前页。 */
     fun setSavedNotes(notes: List<Note>) {
+        // 🔥 引用相同或内容相同则跳过，防止 Compose recomposition 触发无意义的页面刷新
+        if (notes === savedNotes) return
+        if (notes == savedNotes) return
         savedNotes = notes
         slotManager.refreshCurrentHighlights()
     }
@@ -77,6 +80,7 @@ class ReadView(context: Context) : FrameLayout(context) {
     private var rvTouchDownTime = 0L
     private var rvHasMoved = false
     private var rvIsEdgeTouch = false
+    private var rvIsHandlingPageGesture = false
 
     // ── 配置状态 ──
     private var isConfigured = false
@@ -94,6 +98,10 @@ class ReadView(context: Context) : FrameLayout(context) {
     private var currentPageTransition: String = "slide"
     private var pendingStartChapter: Int = 0
     private var pendingStartPage: Int = 0
+
+    /** 当前阅读背景色（供 CurlPageAnim 背面绘制使用）。 */
+    var bgColor: Int = 0xFFFBFBFC.toInt()
+        private set
 
     init {
         isClickable = true
@@ -255,6 +263,7 @@ class ReadView(context: Context) : FrameLayout(context) {
             view.setBackgroundColor(bgColor)
         }
         setBackgroundColor(bgColor)
+        this.bgColor = bgColor
     }
 
     // ── 配置 ──
@@ -419,10 +428,14 @@ class ReadView(context: Context) : FrameLayout(context) {
         if (currentPageTransition == mode) return
         currentPageTransition = mode
 
-        animationController.abortAnim()
+        val oldController = animationController
+        oldController.abortAnim()
+        (oldController as? CurlPageAnim)?.destroy()
 
         val newController = when (mode) {
             "fade" -> FadePageAnim(this)
+            "scroll" -> ScrollPageAnim(this)
+            "curl" -> CurlPageAnim(this)
             else -> SlidePageAnim(this)
         }
         // 重新绑定回调
@@ -468,20 +481,25 @@ class ReadView(context: Context) : FrameLayout(context) {
      * - 中间短 UP → 触发 callbacks.onMenuToggle（菜单切换）
      * - 长按（>500ms 或无明显移动）→ 不拦截，TextView 原生触发选词
      */
-    override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 rvTouchStartX = ev.x
                 rvTouchStartY = ev.y
                 rvTouchDownTime = System.currentTimeMillis()
                 rvHasMoved = false
+                rvIsHandlingPageGesture = false
                 val w = width.toFloat()
                 rvIsEdgeTouch = w > 0 && (ev.x / w < 0.3f || ev.x / w > 0.7f)
-                // 🔥 不拦截任何 DOWN，全部穿透给 TextView（支持全区域长按选词）
-                return false
+                return super.dispatchTouchEvent(ev)
             }
 
             MotionEvent.ACTION_MOVE -> {
+                if (rvIsHandlingPageGesture) {
+                    animationController.onTouchEvent(ev)
+                    return true
+                }
+
                 val dx = abs(ev.x - rvTouchStartX)
                 val dy = abs(ev.y - rvTouchStartY)
                 val dt = System.currentTimeMillis() - rvTouchDownTime
@@ -489,21 +507,46 @@ class ReadView(context: Context) : FrameLayout(context) {
                 if (dx > 24f || dy > 24f) rvHasMoved = true
 
                 // 仅在 500ms 窗口内拦截水平滑动（超过 500ms 视为选择扩展，不拦截）
-                // 放宽条件：dx > 16f && dx > dy * 0.5f（允许一定垂直分量）
-                if (dt < 500L && dx > 16f && dx > dy * 0.5f) {
-                    Log.d(TAG, "Intercept swipe at dx=$dx dy=$dy dt=$dt")
-                    // 🔥 合成 DOWN 事件传递给动画控制器（拦截后 onTouchEvent 收到的第一个事件是 MOVE 不是 DOWN）
+                // dx > dy * 0.3f：允许更自然的斜向拖拽（拇指弧线有垂直分量）
+                if (dt < 500L && dx > 16f && dx > dy * 0.3f) {
+                    Log.d(TAG, "Handle page swipe at dx=$dx dy=$dy dt=$dt")
+                    rvIsHandlingPageGesture = true
+                    clearCurrentSelection()
+
+                    // 先取消子 TextView 的原生触摸序列，再把完整序列交给动画控制器。
+                    val cancelEvent = MotionEvent.obtain(ev)
+                    cancelEvent.action = MotionEvent.ACTION_CANCEL
+                    super.dispatchTouchEvent(cancelEvent)
+                    cancelEvent.recycle()
+
                     val downEvent = MotionEvent.obtain(
-                        rvTouchDownTime, System.currentTimeMillis(),
-                        MotionEvent.ACTION_DOWN, rvTouchStartX, rvTouchStartY, 0
+                        ev.downTime,
+                        ev.eventTime,
+                        MotionEvent.ACTION_DOWN,
+                        rvTouchStartX,
+                        rvTouchStartY,
+                        ev.metaState
                     )
                     animationController.onTouchEvent(downEvent)
                     downEvent.recycle()
+                    animationController.onTouchEvent(ev)
                     return true
                 }
-                return false
             }
 
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (rvIsHandlingPageGesture) {
+                    rvIsHandlingPageGesture = false
+                    animationController.onTouchEvent(ev)
+                    return true
+                }
+            }
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
+    override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+        when (ev.actionMasked) {
             MotionEvent.ACTION_UP -> {
                 if (!rvHasMoved && System.currentTimeMillis() - rvTouchDownTime < 300L) {
                     if (rvIsEdgeTouch) {
@@ -521,11 +564,6 @@ class ReadView(context: Context) : FrameLayout(context) {
                         callbacks?.onMenuToggle()
                     }
                 }
-                return false
-            }
-
-            MotionEvent.ACTION_CANCEL -> {
-                return false
             }
         }
         return false
@@ -563,15 +601,22 @@ class ReadView(context: Context) : FrameLayout(context) {
     // ── 绘制 ──
 
     override fun dispatchDraw(canvas: android.graphics.Canvas) {
-        // 先设置子 View 的 translationX/Y（翻页动画位置）
-        animationController.onDraw(canvas)
-        // 绘制子 View（PageContentView 包含的 TextView）
-        super.dispatchDraw(canvas)
-        // 再绘制阴影叠加层（在子 View 之上）
-        when (val ctrl = animationController) {
-            is SlidePageAnim -> ctrl.drawOverlay(canvas)
-            is ScrollPageAnim -> ctrl.drawOverlay(canvas)
-            is FadePageAnim -> ctrl.drawOverlay(canvas)
+        if (animationController.drawsDirectlyOnCanvas &&
+            (animationController.isRunning || animationController.isDragging)) {
+            // 仿真翻页活动期完全由稳定快照绘制，避免实时子 View 从裁剪路径中漏出。
+            animationController.onDraw(canvas)
+        } else {
+            // 先设置子 View 的 translationX/Y（翻页动画位置）
+            animationController.onDraw(canvas)
+            // 绘制子 View（PageContentView 包含的 TextView）
+            super.dispatchDraw(canvas)
+            // 再绘制阴影叠加层（在子 View 之上）
+            when (val ctrl = animationController) {
+                is SlidePageAnim -> ctrl.drawOverlay(canvas)
+                is ScrollPageAnim -> ctrl.drawOverlay(canvas)
+                is FadePageAnim -> ctrl.drawOverlay(canvas)
+                is CurlPageAnim -> ctrl.drawOverlay(canvas)
+            }
         }
     }
 
@@ -580,6 +625,7 @@ class ReadView(context: Context) : FrameLayout(context) {
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
         animationController.abortAnim()
+        (animationController as? CurlPageAnim)?.destroy()
         slotManager.destroy()
         layoutEngine.invalidateAll()
     }
@@ -592,6 +638,7 @@ class ReadView(context: Context) : FrameLayout(context) {
             is SlidePageAnim -> ctrl.startFromTap(dir)
             is ScrollPageAnim -> ctrl.startFromTap(dir)
             is FadePageAnim -> ctrl.startFromTap(dir)
+            is CurlPageAnim -> ctrl.startFromTap(dir)
         }
     }
 

@@ -281,6 +281,7 @@
     <string name="today_reading">今日阅读</string>
     <string name="today_reading_label">今日阅读</string>
     <string name="today_reading_time">今日阅读时长</string>
+    <string name="transition_curl">仿真卷曲</string>
     <string name="transition_fade">渐变切换</string>
     <string name="transition_scroll">上下滚动</string>
     <string name="transition_slide">左右滑动</string>

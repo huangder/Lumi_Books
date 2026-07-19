@@ -291,6 +291,7 @@ string today_goal
 string today_reading
 string today_reading_label
 string today_reading_time
+string transition_curl
 string transition_fade
 string transition_scroll
 string transition_slide

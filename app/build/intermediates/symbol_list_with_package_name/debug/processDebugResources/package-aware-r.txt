@@ -594,6 +594,7 @@ string today_reading_label
 string today_reading_time
 string tooltip_description
 string tooltip_label
+string transition_curl
 string transition_fade
 string transition_scroll
 string transition_slide
