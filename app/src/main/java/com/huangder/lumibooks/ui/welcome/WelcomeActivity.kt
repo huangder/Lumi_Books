@@ -23,11 +23,15 @@ import javax.inject.Inject
 /**
  * 欢迎页独立 Activity，与主页 Compose 树完全隔离，从根本上避免 TabBar 穿透问题。
  *
- * 首次启动 → 显示欢迎页 → 点击"继续" → 保存状态 → 跳转 MainActivity
- * 已看过欢迎页 → 直接跳转 MainActivity（无感）
+ * 首次安装显示常规欢迎页，升级到指定引导版本显示更新欢迎页。
+ * 两种入口都会进入支持项目页，完成后再跳转 MainActivity。
  */
 @AndroidEntryPoint
 class WelcomeActivity : ComponentActivity() {
+
+    private companion object {
+        const val CURRENT_WELCOME_FLOW_VERSION = 1
+    }
 
     override fun attachBaseContext(newBase: android.content.Context) {
         super.attachBaseContext(com.huangder.lumibooks.util.LocaleHelper.applyLanguage(newBase))
@@ -40,12 +44,14 @@ class WelcomeActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
-        // 已看过欢迎页 → 直接跳转主页（无闪烁）
-        val hasSeen = runBlocking { dataStoreManager.hasSeenWelcome.first() }
-        if (hasSeen) {
+        val completedFlowVersion = runBlocking {
+            dataStoreManager.completedWelcomeFlowVersion.first()
+        }
+        if (completedFlowVersion >= CURRENT_WELCOME_FLOW_VERSION) {
             startMainActivity()
             return
         }
+        val isAppUpdate = isAppUpdate()
 
         setContent {
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
@@ -61,8 +67,12 @@ class WelcomeActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     WelcomeScreen(
-                        onContinue = {
-                            runBlocking { dataStoreManager.saveHasSeenWelcome(true) }
+                        isUpdate = isAppUpdate,
+                        isDark = isDark,
+                        onFinished = {
+                            runBlocking {
+                                dataStoreManager.completeWelcomeFlow(CURRENT_WELCOME_FLOW_VERSION)
+                            }
                             startMainActivity()
                         },
                         onExit = { finish() }
@@ -75,5 +85,15 @@ class WelcomeActivity : ComponentActivity() {
     private fun startMainActivity() {
         startActivity(Intent(this, MainActivity::class.java))
         finish()
+    }
+
+    private fun isAppUpdate(): Boolean {
+        return try {
+            packageManager.getPackageInfo(packageName, 0).let { packageInfo ->
+                packageInfo.lastUpdateTime > packageInfo.firstInstallTime
+            }
+        } catch (_: Exception) {
+            false
+        }
     }
 }

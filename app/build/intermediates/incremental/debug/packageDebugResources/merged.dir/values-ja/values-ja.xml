@@ -296,8 +296,11 @@
     <string name="welcome_exit">終了</string>
     <string name="welcome_privacy">プライバシーポリシー</string>
     <string name="welcome_privacy_title">プライバシーポリシー</string>
+    <string name="welcome_start_using">使い始める</string>
+    <string name="welcome_support_message">Lumi を気に入っていただけたら、「設定 > スポンサー」から応援していただけるとうれしいです。いただいた寄付はすべて Lumi の継続的な開発と改善に活用します。</string>
     <string name="welcome_terms">利用規約</string>
     <string name="welcome_terms_title">利用規約</string>
     <string name="welcome_title">ようこそ</string>
+    <string name="welcome_update_title">新しいバージョンに更新されました</string>
     <string name="year_format">%d年</string>
 </resources>

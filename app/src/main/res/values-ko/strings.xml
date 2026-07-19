@@ -317,6 +317,7 @@
 
     <!-- 환영 페이지 -->
     <string name="welcome_title">환영합니다</string>
+    <string name="welcome_update_title">새 버전으로 업데이트되었습니다</string>
     <string name="welcome_desc">Lumi는 순수한 로컬 도서 리더입니다. 저희는 허락 없이 어떠한 개인 정보도 수집하지 않으며, 영구적으로 네트워크 계정 서비스를 제공하지 않음을 약속합니다. 모든 독서 데이터는 로컬 기기에 저장되므로 정기적으로 데이터를 백업하여 분실에 대비하세요. Lumi는 최소 권한 원칙을 고수하며, 관련 없는 민감한 권한을 요청하지 않습니다. \"계속\" 버튼을 탭하면 위 내용을 읽고 동의하는 것으로 간주됩니다</string>
     <string name="welcome_privacy">《개인정보 처리방침》</string>
     <string name="welcome_and">및</string>
@@ -325,6 +326,8 @@
     <string name="welcome_continue">계속</string>
     <string name="welcome_privacy_title">개인정보 처리방침</string>
     <string name="welcome_terms_title">이용약관</string>
+    <string name="welcome_support_message">Lumi가 마음에 드셨다면 「설정 > 개발 후원」에서 응원해 주세요. 모든 후원금은 Lumi의 지속적인 개발과 개선에 전액 사용됩니다.</string>
+    <string name="welcome_start_using">시작하기</string>
 
     <!-- PDF 리더 -->
     <string name="pdf_back">뒤로</string>

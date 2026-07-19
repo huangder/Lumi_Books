@@ -296,8 +296,11 @@
     <string name="welcome_exit">退出</string>
     <string name="welcome_privacy">《隱私政策》</string>
     <string name="welcome_privacy_title">隱私政策</string>
+    <string name="welcome_start_using">開始使用</string>
+    <string name="welcome_support_message">喜歡 Lumi？歡迎前往「設定 > 贊助開發」支持我們。每一筆捐贈都將全數用於 Lumi 的持續開發與完善。</string>
     <string name="welcome_terms">《使用者條款》</string>
     <string name="welcome_terms_title">使用者條款</string>
     <string name="welcome_title">歡迎使用</string>
+    <string name="welcome_update_title">你已更新至新版本</string>
     <string name="year_format">%d年</string>
 </resources>

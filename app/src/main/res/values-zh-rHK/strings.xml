@@ -317,6 +317,7 @@
 
     <!-- 歡迎頁 -->
     <string name="welcome_title">歡迎使用</string>
+    <string name="welcome_update_title">你已更新至新版本</string>
     <string name="welcome_desc">Lumi 係一款純粹嘅本地图書閱讀器。我哋絕唔會喺未經許可嘅情況下收集任何個人資訊，亦承諾永久唔設網絡帳號服務。所有嘅閱讀資料都儲存喺你嘅本地裝置入面，請務必定期做好資料備份以防遺失。Lumi 堅持最小權限原則，唔會向你索取任何無關嘅敏感權限。撳\"繼續\"掣，即表示你已閱讀並同意</string>
     <string name="welcome_privacy">《私隱政策》</string>
     <string name="welcome_and">同</string>
@@ -325,6 +326,8 @@
     <string name="welcome_continue">繼續</string>
     <string name="welcome_privacy_title">私隱政策</string>
     <string name="welcome_terms_title">使用條款</string>
+    <string name="welcome_support_message">喜歡 Lumi？歡迎前往「設定 > 贊助開發」支持我哋。每一筆捐贈都會全數用於 Lumi 嘅持續開發同完善。</string>
+    <string name="welcome_start_using">開始使用</string>
 
     <!-- PDF閱讀器 -->
     <string name="pdf_back">返回</string>

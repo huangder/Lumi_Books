@@ -50,6 +50,7 @@ class DataStoreManager @Inject constructor(
         private val DARK_MODE = stringPreferencesKey("dark_mode")
         private val LAST_READ_BOOK = stringPreferencesKey("last_read_book")
         private val HAS_SEEN_WELCOME = booleanPreferencesKey("has_seen_welcome")
+        private val COMPLETED_WELCOME_FLOW_VERSION = intPreferencesKey("completed_welcome_flow_version")
 
         // 应用语言
         private val APP_LANGUAGE = stringPreferencesKey("app_language")
@@ -139,6 +140,10 @@ class DataStoreManager @Inject constructor(
 
     val hasSeenWelcome: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[HAS_SEEN_WELCOME] ?: false
+    }
+
+    val completedWelcomeFlowVersion: Flow<Int> = context.dataStore.data.map { preferences ->
+        preferences[COMPLETED_WELCOME_FLOW_VERSION] ?: 0
     }
 
     // 应用语言
@@ -356,6 +361,13 @@ class DataStoreManager @Inject constructor(
     suspend fun saveHasSeenWelcome(seen: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[HAS_SEEN_WELCOME] = seen
+        }
+    }
+
+    suspend fun completeWelcomeFlow(version: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[HAS_SEEN_WELCOME] = true
+            preferences[COMPLETED_WELCOME_FLOW_VERSION] = version
         }
     }
 

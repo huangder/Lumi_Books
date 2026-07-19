@@ -2,7 +2,7 @@
 2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
 3    package="com.huangder.lumibooks"
 4    android:versionCode="5"
-5    android:versionName="1.1.01" >
+5    android:versionName="1.0.03" >
 6
 7    <uses-sdk
 8        android:minSdkVersion="26"

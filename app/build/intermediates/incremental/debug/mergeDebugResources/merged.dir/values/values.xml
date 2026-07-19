@@ -512,9 +512,12 @@
     <string name="welcome_exit">退出</string>
     <string name="welcome_privacy">《隐私政策》</string>
     <string name="welcome_privacy_title">隐私政策</string>
+    <string name="welcome_start_using">开始使用</string>
+    <string name="welcome_support_message">喜欢 Lumi？欢迎前往「设置 > 赞助开发」支持我们。每一份捐赠都将全部用于 Lumi 的持续开发与完善。</string>
     <string name="welcome_terms">《用户协议》</string>
     <string name="welcome_terms_title">用户协议</string>
     <string name="welcome_title">欢迎使用</string>
+    <string name="welcome_update_title">你已更新到新版本</string>
     <string name="year_format">%d年</string>
     <style name="DialogWindowTheme">
         <item name="android:windowClipToOutline">false</item>
@@ -629,14 +632,23 @@
         <attr format="reference" name="fontProviderCerts"/>
         
         <attr name="fontProviderFetchStrategy">
-            
+            <!-- The blocking font fetch works as follows.
+              First, check the local cache, then if the requested font is not cached, request the
+              font from the provider and wait until it is finished.  You can change the length of
+              the timeout by modifying fontProviderFetchTimeout.  If the timeout happens, the
+              default typeface will be used instead. -->
             <enum name="blocking" value="0"/>
-            
+            <!-- The async font fetch works as follows.
+              First, check the local cache, then if the requested font is not cached, trigger a
+              request the font and continue with layout inflation. Once the font fetch succeeds, the
+              target text view will be refreshed with the downloaded font data. The
+              fontProviderFetchTimeout will be ignored if async loading is specified. -->
             <enum name="async" value="1"/>
         </attr>
         
         <attr format="integer" name="fontProviderFetchTimeout">
-            
+            <!-- A special value for the timeout. In this case, the blocking font fetching will not
+              timeout and wait until a reply is received from the font provider. -->
             <enum name="forever" value="-1"/>
         </attr>
         

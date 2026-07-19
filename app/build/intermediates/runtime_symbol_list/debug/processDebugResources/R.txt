@@ -624,10 +624,13 @@ int string welcome_desc 0x7f0c0185
 int string welcome_exit 0x7f0c0186
 int string welcome_privacy 0x7f0c0187
 int string welcome_privacy_title 0x7f0c0188
-int string welcome_terms 0x7f0c0189
-int string welcome_terms_title 0x7f0c018a
-int string welcome_title 0x7f0c018b
-int string year_format 0x7f0c018c
+int string welcome_start_using 0x7f0c0189
+int string welcome_support_message 0x7f0c018a
+int string welcome_terms 0x7f0c018b
+int string welcome_terms_title 0x7f0c018c
+int string welcome_title 0x7f0c018d
+int string welcome_update_title 0x7f0c018e
+int string year_format 0x7f0c018f
 int style DialogWindowTheme 0x7f0d0000
 int style EdgeToEdgeFloatingDialogTheme 0x7f0d0001
 int style EdgeToEdgeFloatingDialogWindowTheme 0x7f0d0002
