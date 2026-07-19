@@ -238,8 +238,16 @@ string androidx_startup
 string animation_simple
 string animation_slide
 string app_name
+string apply_text_color
 string avatar
 string back
+string background_add
+string background_add_color
+string background_choose_photo
+string background_custom
+string background_hue
+string background_lightness
+string background_saturation
 string backup_complete
 string backup_failed
 string backup_in_progress
@@ -289,6 +297,7 @@ string confirm
 string confirm_action
 string continue_reading
 string currently_reading
+string custom_background_title
 string custom_cover
 string daily_goal
 string dark_mode_dark
@@ -308,6 +317,7 @@ string delete
 string delete_book
 string delete_book_confirm
 string delete_book_title
+string delete_custom_background
 string dropdown_menu
 string edit
 string edit_book_info
@@ -371,6 +381,7 @@ string label_margin_horiz
 string label_margin_vert
 string label_paragraph_spacing
 string label_reader_theme
+string label_text_color
 string label_total_size
 string later
 string letter_spacing
@@ -510,6 +521,7 @@ string remaining_minutes
 string remove_custom_cover
 string remove_favorite
 string remove_favorite_short
+string reset_reader_settings
 string restart
 string restart_prompt
 string restore_failed
@@ -569,6 +581,8 @@ string tap_to_add_bookmark
 string tap_to_change_nickname
 string template_percent
 string terms_of_service
+string text_color_auto
+string text_color_custom
 string theme_day
 string theme_green
 string theme_night

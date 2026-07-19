@@ -122,8 +122,16 @@
     <string name="animation_simple">简洁滑动</string>
     <string name="animation_slide">滑动覆盖</string>
     <string name="app_name">Lumi</string>
+    <string name="apply_text_color">应用文字颜色</string>
     <string name="avatar">头像</string>
     <string name="back">返回</string>
+    <string name="background_add">添加</string>
+    <string name="background_add_color">添加这个颜色</string>
+    <string name="background_choose_photo">选择照片</string>
+    <string name="background_custom">自定义</string>
+    <string name="background_hue">色相</string>
+    <string name="background_lightness">明度</string>
+    <string name="background_saturation">饱和度</string>
     <string name="backup_complete">备份完成 (%s)</string>
     <string name="backup_failed">备份失败: %s</string>
     <string name="backup_in_progress">正在备份...</string>
@@ -173,6 +181,7 @@
     <string name="confirm_action">确认</string>
     <string name="continue_reading">继续阅读</string>
     <string name="currently_reading">正在阅读</string>
+    <string name="custom_background_title">自定义背景</string>
     <string name="custom_cover">自定义封面</string>
     <string name="daily_goal">日目标</string>
     <string name="dark_mode_dark">深色</string>
@@ -192,6 +201,7 @@
     <string name="delete_book">删除</string>
     <string name="delete_book_confirm">确定要从书库中删除《%s》吗？\n此操作不可撤销。</string>
     <string name="delete_book_title">删除图书</string>
+    <string name="delete_custom_background">删除自定义背景</string>
     <string name="dropdown_menu">"Dropdown menu"</string>
     <string name="edit">编辑</string>
     <string name="edit_book_info">修改书本信息</string>
@@ -255,6 +265,7 @@
     <string name="label_margin_vert">上下边距</string>
     <string name="label_paragraph_spacing">段间距</string>
     <string name="label_reader_theme">默认阅读主题</string>
+    <string name="label_text_color">文字颜色</string>
     <string name="label_total_size">总占用空间</string>
     <string name="later">稍后</string>
     <string name="letter_spacing">字间距</string>
@@ -398,6 +409,7 @@
     <string name="remove_custom_cover">移除自定义封面</string>
     <string name="remove_favorite">取消收藏</string>
     <string name="remove_favorite_short">移除收藏</string>
+    <string name="reset_reader_settings">还原设置</string>
     <string name="restart">重启</string>
     <string name="restart_prompt">语言设置将在重启应用后生效，是否立即重启？</string>
     <string name="restore_failed">恢复失败: %s</string>
@@ -457,6 +469,8 @@
     <string name="tap_to_change_nickname">点击修改昵称</string>
     <string name="template_percent"><ns2:g id="percentage">%1$d</ns2:g> percent.</string>
     <string name="terms_of_service">用户协议</string>
+    <string name="text_color_auto">自动</string>
+    <string name="text_color_custom">自定义文字颜色</string>
     <string name="theme_day">日间</string>
     <string name="theme_green">绿色</string>
     <string name="theme_night">夜间</string>
@@ -611,23 +625,14 @@
         <attr format="reference" name="fontProviderCerts"/>
         
         <attr name="fontProviderFetchStrategy">
-            <!-- The blocking font fetch works as follows.
-              First, check the local cache, then if the requested font is not cached, request the
-              font from the provider and wait until it is finished.  You can change the length of
-              the timeout by modifying fontProviderFetchTimeout.  If the timeout happens, the
-              default typeface will be used instead. -->
+            
             <enum name="blocking" value="0"/>
-            <!-- The async font fetch works as follows.
-              First, check the local cache, then if the requested font is not cached, trigger a
-              request the font and continue with layout inflation. Once the font fetch succeeds, the
-              target text view will be refreshed with the downloaded font data. The
-              fontProviderFetchTimeout will be ignored if async loading is specified. -->
+            
             <enum name="async" value="1"/>
         </attr>
         
         <attr format="integer" name="fontProviderFetchTimeout">
-            <!-- A special value for the timeout. In this case, the blocking font fetching will not
-              timeout and wait until a reply is received from the font provider. -->
+            
             <enum name="forever" value="-1"/>
         </attr>
         

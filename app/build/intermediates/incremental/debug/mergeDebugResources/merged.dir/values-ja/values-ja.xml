@@ -6,8 +6,16 @@
     <string name="animation_simple">シンプルスライド</string>
     <string name="animation_slide">スライドオーバー</string>
     <string name="app_name">Lumi</string>
+    <string name="apply_text_color">文字色を適用</string>
     <string name="avatar">アバター</string>
     <string name="back">戻る</string>
+    <string name="background_add">追加</string>
+    <string name="background_add_color">この色を追加</string>
+    <string name="background_choose_photo">写真を選択</string>
+    <string name="background_custom">カスタム</string>
+    <string name="background_hue">色相</string>
+    <string name="background_lightness">明るさ</string>
+    <string name="background_saturation">彩度</string>
     <string name="backup_complete">バックアップ完了（%s）</string>
     <string name="backup_failed">バックアップ失敗：%s</string>
     <string name="backup_in_progress">バックアップ中...</string>
@@ -53,6 +61,7 @@
     <string name="confirm_action">確認</string>
     <string name="continue_reading">続きを読む</string>
     <string name="currently_reading">読書中</string>
+    <string name="custom_background_title">背景をカスタマイズ</string>
     <string name="custom_cover">カスタム表紙</string>
     <string name="daily_goal">日次目標</string>
     <string name="dark_mode_dark">ダーク</string>
@@ -72,6 +81,7 @@
     <string name="delete_book">削除</string>
     <string name="delete_book_confirm">「%s」をライブラリから削除しますか？\nこの操作は取り消せません。</string>
     <string name="delete_book_title">書籍を削除</string>
+    <string name="delete_custom_background">カスタム背景を削除</string>
     <string msgid="1890207353314751437" name="dropdown_menu">"プルダウン メニュー"</string>
     <string name="edit">編集</string>
     <string name="edit_book_info">書籍情報を編集</string>
@@ -133,6 +143,7 @@
     <string name="label_margin_horiz">左右マージン</string>
     <string name="label_margin_vert">上下マージン</string>
     <string name="label_reader_theme">デフォルトテーマ</string>
+    <string name="label_text_color">文字色</string>
     <string name="label_total_size">合計容量</string>
     <string name="later">後で</string>
     <string name="letter_spacing">字間</string>
@@ -271,6 +282,7 @@
     <string name="remove_custom_cover">カスタム表紙を削除</string>
     <string name="remove_favorite">お気に入り解除</string>
     <string name="remove_favorite_short">お気に入り解除</string>
+    <string name="reset_reader_settings">デフォルトに戻す</string>
     <string name="restart">再起動</string>
     <string name="restart_prompt">言語はアプリ再起動後に有効になります。今すぐ再起動しますか？</string>
     <string name="restore_failed">復元失敗：%s</string>
@@ -330,6 +342,8 @@
     <string name="tap_to_change_nickname">タップしてニックネームを変更</string>
     <string msgid="5946805113151406391" name="template_percent">"<ns1:g id="PERCENTAGE">%1$d</ns1:g>パーセント。"</string>
     <string name="terms_of_service">利用規約</string>
+    <string name="text_color_auto">自動</string>
+    <string name="text_color_custom">カスタム文字色</string>
     <string name="theme_day">デイ</string>
     <string name="theme_green">グリーン</string>
     <string name="theme_night">ナイト</string>

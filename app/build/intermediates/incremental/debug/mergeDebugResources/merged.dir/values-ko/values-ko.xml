@@ -6,8 +6,16 @@
     <string name="animation_simple">간단한 슬라이드</string>
     <string name="animation_slide">슬라이드 덮기</string>
     <string name="app_name">Lumi</string>
+    <string name="apply_text_color">글자 색상 적용</string>
     <string name="avatar">프로필</string>
     <string name="back">뒤로</string>
+    <string name="background_add">추가</string>
+    <string name="background_add_color">이 색상 추가</string>
+    <string name="background_choose_photo">사진 선택</string>
+    <string name="background_custom">사용자 지정</string>
+    <string name="background_hue">색조</string>
+    <string name="background_lightness">밝기</string>
+    <string name="background_saturation">채도</string>
     <string name="backup_complete">백업 완료 (%s)</string>
     <string name="backup_failed">백업 실패: %s</string>
     <string name="backup_in_progress">백업 중...</string>
@@ -53,6 +61,7 @@
     <string name="confirm_action">확인</string>
     <string name="continue_reading">계속 읽기</string>
     <string name="currently_reading">읽는 중</string>
+    <string name="custom_background_title">배경 사용자 지정</string>
     <string name="custom_cover">커스텀 표지</string>
     <string name="daily_goal">일일 목표</string>
     <string name="dark_mode_dark">다크</string>
@@ -72,6 +81,7 @@
     <string name="delete_book">삭제</string>
     <string name="delete_book_confirm">서재에서 《%s》을(를) 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.</string>
     <string name="delete_book_title">도서 삭제</string>
+    <string name="delete_custom_background">사용자 지정 배경 삭제</string>
     <string msgid="1890207353314751437" name="dropdown_menu">"드롭다운 메뉴"</string>
     <string name="edit">편집</string>
     <string name="edit_book_info">도서 정보 수정</string>
@@ -133,6 +143,7 @@
     <string name="label_margin_horiz">좌우 여백</string>
     <string name="label_margin_vert">상하 여백</string>
     <string name="label_reader_theme">기본 읽기 테마</string>
+    <string name="label_text_color">글자 색상</string>
     <string name="label_total_size">총 사용 공간</string>
     <string name="later">나중에</string>
     <string name="letter_spacing">자간</string>
@@ -271,6 +282,7 @@
     <string name="remove_custom_cover">커스텀 표지 제거</string>
     <string name="remove_favorite">즐겨찾기 해제</string>
     <string name="remove_favorite_short">즐겨찾기 해제</string>
+    <string name="reset_reader_settings">기본값 복원</string>
     <string name="restart">다시 시작</string>
     <string name="restart_prompt">언어 설정은 앱을 다시 시작한 후 적용됩니다. 지금 다시 시작하시겠습니까?</string>
     <string name="restore_failed">복원 실패: %s</string>
@@ -330,6 +342,8 @@
     <string name="tap_to_change_nickname">탭하여 닉네임 변경</string>
     <string msgid="5946805113151406391" name="template_percent">"<ns1:g id="PERCENTAGE">%1$d</ns1:g>퍼센트"</string>
     <string name="terms_of_service">이용약관</string>
+    <string name="text_color_auto">자동</string>
+    <string name="text_color_custom">사용자 지정 글자 색상</string>
     <string name="theme_day">주간</string>
     <string name="theme_green">그린</string>
     <string name="theme_night">야간</string>
