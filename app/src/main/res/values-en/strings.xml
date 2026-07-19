@@ -326,7 +326,8 @@
     <string name="welcome_continue">Continue</string>
     <string name="welcome_privacy_title">Privacy Policy</string>
     <string name="welcome_terms_title">Terms of Service</string>
-    <string name="welcome_support_message">Enjoying Lumi? You can support us in Settings > Support Development. Every donation goes entirely toward Lumi\'s continued development and improvement.</string>
+    <string name="welcome_support_title">Enjoying Lumi?</string>
+    <string name="welcome_support_message">You can support us in Settings > Support Development. Every donation goes entirely toward Lumi\'s continued development and improvement.</string>
     <string name="welcome_start_using">Get Started</string>
 
     <!-- PDF Reader -->

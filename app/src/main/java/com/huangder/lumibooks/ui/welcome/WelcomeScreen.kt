@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -59,6 +60,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.buildAnnotatedString
@@ -395,14 +397,16 @@ private fun SupportProjectPage(
         entranceStage = 1
         delay(150)
         entranceStage = 2
-        delay(170)
+        delay(160)
         entranceStage = 3
-        delay(150)
+        delay(120)
         entranceStage = 4
+        delay(150)
+        entranceStage = 5
     }
 
     val backgroundColor = if (isDark) DarkBackground else LightBackground
-    val textPrimary = if (isDark) Color.White else Color.Black
+    val textSecondary = if (isDark) DarkTextSecondary else LightTextSecondary
     val supportBackground = if (isDark) DarkSupportBackground else LightSupportBackground
     val panelAlpha by animateFloatAsState(
         targetValue = if (entranceStage >= 1) 1f else 0f,
@@ -425,9 +429,14 @@ private fun SupportProjectPage(
         label = "supportCopyProgress"
     )
     val buttonProgress by animateFloatAsState(
-        targetValue = if (entranceStage >= 4) 1f else 0f,
+        targetValue = if (entranceStage >= 5) 1f else 0f,
         animationSpec = tween(420, easing = AppEasing.Decelerate),
         label = "supportButtonProgress"
+    )
+    val messageProgress by animateFloatAsState(
+        targetValue = if (entranceStage >= 4) 1f else 0f,
+        animationSpec = tween(420, easing = AppEasing.Decelerate),
+        label = "supportMessageProgress"
     )
 
     Column(
@@ -453,30 +462,53 @@ private fun SupportProjectPage(
                 .background(supportBackground),
             contentAlignment = Alignment.Center
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
+            Box(
+                modifier = Modifier.size(width = 112.dp, height = 88.dp),
+                contentAlignment = Alignment.Center
             ) {
-                AnimatedEmoji(
-                    emoji = "✨",
-                    progress = sideEmojiProgress,
-                    rotation = -12f,
-                    fontSize = 28
-                )
-                AnimatedEmoji(
-                    emoji = "📚",
-                    progress = panelAlpha,
-                    rotation = 0f,
-                    fontSize = 40
-                )
                 AnimatedEmoji(
                     emoji = "☕",
                     progress = sideEmojiProgress,
-                    rotation = 10f,
-                    fontSize = 28
+                    rotation = -16f,
+                    fontSize = 30,
+                    containerSize = 42,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .offset(x = 7.dp, y = (-1).dp)
+                        .zIndex(3f)
+                )
+                AnimatedEmoji(
+                    emoji = "📖",
+                    progress = panelAlpha,
+                    rotation = -4f,
+                    fontSize = 50,
+                    containerSize = 66,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .offset(y = 4.dp)
+                        .zIndex(2f)
+                )
+                AnimatedEmoji(
+                    emoji = "✨",
+                    progress = sideEmojiProgress,
+                    rotation = 18f,
+                    fontSize = 28,
+                    containerSize = 38,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = (-2).dp, y = (-1).dp)
+                        .zIndex(3f)
+                )
+                AnimatedEmoji(
+                    emoji = "💗",
+                    progress = sideEmojiProgress,
+                    rotation = 12f,
+                    fontSize = 21,
+                    containerSize = 30,
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .offset(x = 1.dp, y = 23.dp)
+                        .zIndex(4f)
                 )
             }
         }
@@ -484,7 +516,7 @@ private fun SupportProjectPage(
         Spacer(modifier = Modifier.height(28.dp))
 
         Text(
-            text = stringResource(R.string.welcome_support_message),
+            text = stringResource(R.string.welcome_support_title),
             modifier = Modifier
                 .padding(horizontal = 40.dp)
                 .widthIn(max = 360.dp)
@@ -492,18 +524,36 @@ private fun SupportProjectPage(
                     alpha = copyProgress
                     translationY = (1f - copyProgress) * 18.dp.toPx()
                 },
-            fontSize = 16.sp,
-            lineHeight = 25.sp,
-            fontWeight = FontWeight.Medium,
+            fontSize = 25.sp,
+            lineHeight = 32.sp,
+            fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center,
-            color = textPrimary
+            color = AccentColor
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Text(
+            text = stringResource(R.string.welcome_support_message),
+            modifier = Modifier
+                .padding(horizontal = 40.dp)
+                .widthIn(max = 360.dp)
+                .graphicsLayer {
+                    alpha = messageProgress
+                    translationY = (1f - messageProgress) * 16.dp.toPx()
+                },
+            fontSize = 15.sp,
+            lineHeight = 23.sp,
+            fontWeight = FontWeight.Normal,
+            textAlign = TextAlign.Center,
+            color = textSecondary
         )
 
         Spacer(modifier = Modifier.weight(0.58f))
 
         Button(
             onClick = onFinished,
-            enabled = entranceStage >= 4,
+            enabled = entranceStage >= 5,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 32.dp)
@@ -536,12 +586,14 @@ private fun AnimatedEmoji(
     emoji: String,
     progress: Float,
     rotation: Float,
-    fontSize: Int
+    fontSize: Int,
+    containerSize: Int,
+    modifier: Modifier = Modifier
 ) {
     val alpha = progress.coerceIn(0f, 1f)
 
     Box(
-        modifier = Modifier.size(44.dp),
+        modifier = modifier.size(containerSize.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
