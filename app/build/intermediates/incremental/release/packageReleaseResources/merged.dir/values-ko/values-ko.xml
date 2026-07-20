@@ -296,6 +296,8 @@
     <string name="today_reading_label">오늘의 독서</string>
     <string name="today_reading_time">오늘의 독서 시간</string>
     <string name="tuesday_short">화</string>
+    <string name="volume_key_page_turn">음량 키로 페이지 넘기기</string>
+    <string name="volume_key_page_turn_hint">음량 높임은 이전 페이지, 낮춤은 다음 페이지</string>
     <string name="wednesday_short">수</string>
     <string name="welcome_and">및</string>
     <string name="welcome_continue">계속</string>

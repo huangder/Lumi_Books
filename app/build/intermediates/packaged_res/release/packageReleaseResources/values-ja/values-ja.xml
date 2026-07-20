@@ -296,6 +296,8 @@
     <string name="today_reading_label">今日の読書</string>
     <string name="today_reading_time">今日の読書時間</string>
     <string name="tuesday_short">火</string>
+    <string name="volume_key_page_turn">音量キーでページ送り</string>
+    <string name="volume_key_page_turn_hint">音量を上げるキーで前へ、下げるキーで次へ</string>
     <string name="wednesday_short">水</string>
     <string name="welcome_and">と</string>
     <string name="welcome_continue">続行</string>

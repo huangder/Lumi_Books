@@ -296,6 +296,8 @@
     <string name="today_reading_label">今日阅读</string>
     <string name="today_reading_time">今日阅读时长</string>
     <string name="tuesday_short">二</string>
+    <string name="volume_key_page_turn">音量键翻页</string>
+    <string name="volume_key_page_turn_hint">音量加键上一页，音量减键下一页</string>
     <string name="wednesday_short">三</string>
     <string name="welcome_and">和</string>
     <string name="welcome_continue">继续</string>

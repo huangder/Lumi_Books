@@ -381,6 +381,8 @@
     <string msgid="3765533235322692011" name="tooltip_description">"도움말"</string>
     <string msgid="3124740595719787496" name="tooltip_label">"도움말 표시"</string>
     <string name="tuesday_short">화</string>
+    <string name="volume_key_page_turn">음량 키로 페이지 넘기기</string>
+    <string name="volume_key_page_turn_hint">음량 높임은 이전 페이지, 낮춤은 다음 페이지</string>
     <string name="wednesday_short">수</string>
     <string name="welcome_and">및</string>
     <string name="welcome_continue">계속</string>

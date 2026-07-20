@@ -1,6 +1,7 @@
 package com.huangder.lumibooks;
 
 import com.huangder.lumibooks.di.AppModule;
+import com.huangder.lumibooks.service.TtsForegroundService_GeneratedInjector;
 import com.huangder.lumibooks.ui.bookshelf.BookNotesActivity_GeneratedInjector;
 import com.huangder.lumibooks.ui.bookshelf.BookNotesViewModel_HiltModules;
 import com.huangder.lumibooks.ui.home.HomeViewModel_HiltModules;
@@ -156,7 +157,8 @@ public final class EBookReaderApp_HiltComponents {
 
   @Subcomponent
   @ServiceScoped
-  public abstract static class ServiceC implements ServiceComponent,
+  public abstract static class ServiceC implements TtsForegroundService_GeneratedInjector,
+      ServiceComponent,
       GeneratedComponent {
     @Subcomponent.Builder
     abstract interface Builder extends ServiceComponentBuilder {

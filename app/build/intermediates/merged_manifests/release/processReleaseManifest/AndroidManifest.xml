@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.huangder.lumibooks"
     android:versionCode="5"
-    android:versionName="1.0.03" >
+    android:versionName="1.0.04" >
 
     <uses-sdk
         android:minSdkVersion="26"
@@ -17,6 +17,18 @@
     <!-- 网络权限（仅用于检查更新） -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- 语音听书后台播放 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Android 11+ 允许 TextToSpeech 发现并绑定系统语音引擎。 -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
 
     <permission
         android:name="com.huangder.lumibooks.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
@@ -116,6 +128,11 @@
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
             android:theme="@style/Theme.EBookReader"
             android:windowSoftInputMode="adjustResize" />
+
+        <service
+            android:name="com.huangder.lumibooks.service.TtsForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
         <!-- 文件提供者 -->
         <provider

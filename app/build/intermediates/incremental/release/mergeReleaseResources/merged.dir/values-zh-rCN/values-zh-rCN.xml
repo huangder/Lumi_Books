@@ -381,6 +381,8 @@
     <string msgid="3765533235322692011" name="tooltip_description">"提示"</string>
     <string msgid="3124740595719787496" name="tooltip_label">"显示提示"</string>
     <string name="tuesday_short">二</string>
+    <string name="volume_key_page_turn">音量键翻页</string>
+    <string name="volume_key_page_turn_hint">音量加键上一页，音量减键下一页</string>
     <string name="wednesday_short">三</string>
     <string name="welcome_and">和</string>
     <string name="welcome_continue">继续</string>

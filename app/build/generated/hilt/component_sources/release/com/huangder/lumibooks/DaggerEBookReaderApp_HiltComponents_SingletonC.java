@@ -20,8 +20,17 @@ import com.huangder.lumibooks.di.AppModule_ProvideDataStoreManagerFactory;
 import com.huangder.lumibooks.di.AppModule_ProvideNoteDaoFactory;
 import com.huangder.lumibooks.di.AppModule_ProvideReadingRecordDaoFactory;
 import com.huangder.lumibooks.di.AppModule_ProvideReadingRepositoryFactory;
+import com.huangder.lumibooks.di.AppModule_ProvideTtsControllerFactory;
+import com.huangder.lumibooks.di.AppModule_ProvideTtsEngineFactory;
+import com.huangder.lumibooks.di.AppModule_ProvideTtsTextExtractorFactory;
 import com.huangder.lumibooks.domain.repository.BookRepository;
 import com.huangder.lumibooks.domain.repository.ReadingRepository;
+import com.huangder.lumibooks.service.TtsForegroundService;
+import com.huangder.lumibooks.service.TtsForegroundService_MembersInjector;
+import com.huangder.lumibooks.service.TtsNotificationManager;
+import com.huangder.lumibooks.tts.TtsController;
+import com.huangder.lumibooks.tts.TtsEngine;
+import com.huangder.lumibooks.tts.TtsTextExtractor;
 import com.huangder.lumibooks.ui.bookshelf.BookNotesActivity;
 import com.huangder.lumibooks.ui.bookshelf.BookNotesActivity_MembersInjector;
 import com.huangder.lumibooks.ui.bookshelf.BookNotesViewModel;
@@ -507,35 +516,35 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
 
     @IdentifierNameString
     private static final class LazyClassKeyProvider {
-      static String com_huangder_lumibooks_ui_settings_SettingsViewModel = "com.huangder.lumibooks.ui.settings.SettingsViewModel";
+      static String com_huangder_lumibooks_ui_welcome_WelcomeViewModel = "com.huangder.lumibooks.ui.welcome.WelcomeViewModel";
 
       static String com_huangder_lumibooks_ui_reader_ReaderViewModel = "com.huangder.lumibooks.ui.reader.ReaderViewModel";
 
-      static String com_huangder_lumibooks_ui_welcome_WelcomeViewModel = "com.huangder.lumibooks.ui.welcome.WelcomeViewModel";
+      static String com_huangder_lumibooks_ui_bookshelf_BookNotesViewModel = "com.huangder.lumibooks.ui.bookshelf.BookNotesViewModel";
 
-      static String com_huangder_lumibooks_ui_home_HomeViewModel = "com.huangder.lumibooks.ui.home.HomeViewModel";
+      static String com_huangder_lumibooks_ui_settings_SettingsViewModel = "com.huangder.lumibooks.ui.settings.SettingsViewModel";
 
       static String com_huangder_lumibooks_ui_statistics_StatisticsViewModel = "com.huangder.lumibooks.ui.statistics.StatisticsViewModel";
 
-      static String com_huangder_lumibooks_ui_bookshelf_BookNotesViewModel = "com.huangder.lumibooks.ui.bookshelf.BookNotesViewModel";
-
-      @KeepFieldType
-      SettingsViewModel com_huangder_lumibooks_ui_settings_SettingsViewModel2;
-
-      @KeepFieldType
-      ReaderViewModel com_huangder_lumibooks_ui_reader_ReaderViewModel2;
+      static String com_huangder_lumibooks_ui_home_HomeViewModel = "com.huangder.lumibooks.ui.home.HomeViewModel";
 
       @KeepFieldType
       WelcomeViewModel com_huangder_lumibooks_ui_welcome_WelcomeViewModel2;
 
       @KeepFieldType
-      HomeViewModel com_huangder_lumibooks_ui_home_HomeViewModel2;
+      ReaderViewModel com_huangder_lumibooks_ui_reader_ReaderViewModel2;
+
+      @KeepFieldType
+      BookNotesViewModel com_huangder_lumibooks_ui_bookshelf_BookNotesViewModel2;
+
+      @KeepFieldType
+      SettingsViewModel com_huangder_lumibooks_ui_settings_SettingsViewModel2;
 
       @KeepFieldType
       StatisticsViewModel com_huangder_lumibooks_ui_statistics_StatisticsViewModel2;
 
       @KeepFieldType
-      BookNotesViewModel com_huangder_lumibooks_ui_bookshelf_BookNotesViewModel2;
+      HomeViewModel com_huangder_lumibooks_ui_home_HomeViewModel2;
     }
   }
 
@@ -593,35 +602,35 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
 
     @IdentifierNameString
     private static final class LazyClassKeyProvider {
-      static String com_huangder_lumibooks_ui_statistics_StatisticsViewModel = "com.huangder.lumibooks.ui.statistics.StatisticsViewModel";
-
       static String com_huangder_lumibooks_ui_reader_ReaderViewModel = "com.huangder.lumibooks.ui.reader.ReaderViewModel";
-
-      static String com_huangder_lumibooks_ui_bookshelf_BookNotesViewModel = "com.huangder.lumibooks.ui.bookshelf.BookNotesViewModel";
-
-      static String com_huangder_lumibooks_ui_welcome_WelcomeViewModel = "com.huangder.lumibooks.ui.welcome.WelcomeViewModel";
-
-      static String com_huangder_lumibooks_ui_settings_SettingsViewModel = "com.huangder.lumibooks.ui.settings.SettingsViewModel";
 
       static String com_huangder_lumibooks_ui_home_HomeViewModel = "com.huangder.lumibooks.ui.home.HomeViewModel";
 
-      @KeepFieldType
-      StatisticsViewModel com_huangder_lumibooks_ui_statistics_StatisticsViewModel2;
+      static String com_huangder_lumibooks_ui_statistics_StatisticsViewModel = "com.huangder.lumibooks.ui.statistics.StatisticsViewModel";
+
+      static String com_huangder_lumibooks_ui_settings_SettingsViewModel = "com.huangder.lumibooks.ui.settings.SettingsViewModel";
+
+      static String com_huangder_lumibooks_ui_welcome_WelcomeViewModel = "com.huangder.lumibooks.ui.welcome.WelcomeViewModel";
+
+      static String com_huangder_lumibooks_ui_bookshelf_BookNotesViewModel = "com.huangder.lumibooks.ui.bookshelf.BookNotesViewModel";
 
       @KeepFieldType
       ReaderViewModel com_huangder_lumibooks_ui_reader_ReaderViewModel2;
 
       @KeepFieldType
-      BookNotesViewModel com_huangder_lumibooks_ui_bookshelf_BookNotesViewModel2;
+      HomeViewModel com_huangder_lumibooks_ui_home_HomeViewModel2;
 
       @KeepFieldType
-      WelcomeViewModel com_huangder_lumibooks_ui_welcome_WelcomeViewModel2;
+      StatisticsViewModel com_huangder_lumibooks_ui_statistics_StatisticsViewModel2;
 
       @KeepFieldType
       SettingsViewModel com_huangder_lumibooks_ui_settings_SettingsViewModel2;
 
       @KeepFieldType
-      HomeViewModel com_huangder_lumibooks_ui_home_HomeViewModel2;
+      WelcomeViewModel com_huangder_lumibooks_ui_welcome_WelcomeViewModel2;
+
+      @KeepFieldType
+      BookNotesViewModel com_huangder_lumibooks_ui_bookshelf_BookNotesViewModel2;
     }
 
     private static final class SwitchingProvider<T> implements Provider<T> {
@@ -652,7 +661,7 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
           return (T) new HomeViewModel(singletonCImpl.provideBookRepositoryProvider.get(), singletonCImpl.provideReadingRepositoryProvider.get(), singletonCImpl.provideDataStoreManagerProvider.get(), ApplicationContextModule_ProvideApplicationFactory.provideApplication(singletonCImpl.applicationContextModule));
 
           case 2: // com.huangder.lumibooks.ui.reader.ReaderViewModel 
-          return (T) new ReaderViewModel(viewModelCImpl.savedStateHandle, ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule), singletonCImpl.provideBookRepositoryProvider.get(), singletonCImpl.provideReadingRepositoryProvider.get(), singletonCImpl.provideDataStoreManagerProvider.get());
+          return (T) new ReaderViewModel(viewModelCImpl.savedStateHandle, ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule), singletonCImpl.provideBookRepositoryProvider.get(), singletonCImpl.provideReadingRepositoryProvider.get(), singletonCImpl.provideDataStoreManagerProvider.get(), singletonCImpl.provideTtsControllerProvider.get());
 
           case 3: // com.huangder.lumibooks.ui.settings.SettingsViewModel 
           return (T) new SettingsViewModel(singletonCImpl.provideDataStoreManagerProvider.get(), singletonCImpl.provideBookRepositoryProvider.get(), ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
@@ -736,6 +745,17 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
 
 
     }
+
+    @Override
+    public void injectTtsForegroundService(TtsForegroundService ttsForegroundService) {
+      injectTtsForegroundService2(ttsForegroundService);
+    }
+
+    private TtsForegroundService injectTtsForegroundService2(TtsForegroundService instance) {
+      TtsForegroundService_MembersInjector.injectTtsController(instance, singletonCImpl.provideTtsControllerProvider.get());
+      TtsForegroundService_MembersInjector.injectNotificationManager(instance, singletonCImpl.ttsNotificationManagerProvider.get());
+      return instance;
+    }
   }
 
   private static final class SingletonCImpl extends EBookReaderApp_HiltComponents.SingletonC {
@@ -759,6 +779,14 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
 
     private Provider<ReadingRepository> provideReadingRepositoryProvider;
 
+    private Provider<TtsEngine> provideTtsEngineProvider;
+
+    private Provider<TtsTextExtractor> provideTtsTextExtractorProvider;
+
+    private Provider<TtsController> provideTtsControllerProvider;
+
+    private Provider<TtsNotificationManager> ttsNotificationManagerProvider;
+
     private SingletonCImpl(ApplicationContextModule applicationContextModuleParam) {
       this.applicationContextModule = applicationContextModuleParam;
       initialize(applicationContextModuleParam);
@@ -775,6 +803,10 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
       this.provideBookmarkDaoProvider = DoubleCheck.provider(new SwitchingProvider<BookmarkDao>(singletonCImpl, 6));
       this.provideNoteDaoProvider = DoubleCheck.provider(new SwitchingProvider<NoteDao>(singletonCImpl, 7));
       this.provideReadingRepositoryProvider = DoubleCheck.provider(new SwitchingProvider<ReadingRepository>(singletonCImpl, 4));
+      this.provideTtsEngineProvider = DoubleCheck.provider(new SwitchingProvider<TtsEngine>(singletonCImpl, 9));
+      this.provideTtsTextExtractorProvider = DoubleCheck.provider(new SwitchingProvider<TtsTextExtractor>(singletonCImpl, 10));
+      this.provideTtsControllerProvider = DoubleCheck.provider(new SwitchingProvider<TtsController>(singletonCImpl, 8));
+      this.ttsNotificationManagerProvider = DoubleCheck.provider(new SwitchingProvider<TtsNotificationManager>(singletonCImpl, 11));
     }
 
     @Override
@@ -833,6 +865,18 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
 
           case 7: // com.huangder.lumibooks.data.local.dao.NoteDao 
           return (T) AppModule_ProvideNoteDaoFactory.provideNoteDao(singletonCImpl.provideAppDatabaseProvider.get());
+
+          case 8: // com.huangder.lumibooks.tts.TtsController 
+          return (T) AppModule_ProvideTtsControllerFactory.provideTtsController(singletonCImpl.provideTtsEngineProvider.get(), singletonCImpl.provideTtsTextExtractorProvider.get(), singletonCImpl.provideDataStoreManagerProvider.get());
+
+          case 9: // com.huangder.lumibooks.tts.TtsEngine 
+          return (T) AppModule_ProvideTtsEngineFactory.provideTtsEngine(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
+
+          case 10: // com.huangder.lumibooks.tts.TtsTextExtractor 
+          return (T) AppModule_ProvideTtsTextExtractorFactory.provideTtsTextExtractor();
+
+          case 11: // com.huangder.lumibooks.service.TtsNotificationManager 
+          return (T) new TtsNotificationManager(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
 
           default: throw new AssertionError(id);
         }
