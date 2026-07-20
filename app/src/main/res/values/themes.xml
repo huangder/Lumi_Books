@@ -4,9 +4,17 @@
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">true</item>
-        <item name="android:windowBackground">@android:color/white</item>
+        <item name="android:windowBackground">@color/app_window_background</item>
         <!-- 🔥 覆盖原生绿色，使用蓝色系（全局默认） -->
         <item name="android:colorAccent">@color/primary</item>
         <item name="android:colorControlActivated">@color/primary</item>
+    </style>
+
+    <style name="Theme.EBookReader.Launch" parent="Theme.EBookReader">
+        <item name="android:windowBackground">@drawable/splash_background</item>
+    </style>
+
+    <style name="Theme.EBookReader.NoPreview" parent="Theme.EBookReader">
+        <item name="android:windowDisablePreview">true</item>
     </style>
 </resources>

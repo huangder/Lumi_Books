@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Lumi</string>
+    <string name="app_name">LUMI</string>
 
     <!-- Home -->
     <string name="home_title">Home</string>
@@ -134,6 +134,7 @@
     <!-- Check Update -->
     <string name="check_update">Check for Updates</string>
     <string name="checking_update">Checking...</string>
+    <string name="update_already_latest">You already have the latest version</string>
     <string name="network_error">Network connection failed. Please try again later</string>
     <string name="privacy_policy">Privacy Policy</string>
     <string name="terms_of_service">Terms of Service</string>
@@ -150,7 +151,6 @@
     <string name="sponsor_quote">"If you like it, buy me a meal😊"</string>
     <string name="sponsor_code_label">Donation code for Yufu</string>
     <string name="sponsor_thanks_title">Special Thanks (in no particular order)</string>
-    <string name="sponsor_tech_title">Technical Support (in no particular order)</string>
     <string name="sponsor_dev_title">Developers</string>
 
     <!-- Feedback -->
@@ -159,6 +159,8 @@
     <string name="feedback_qr_desc">Feedback Form QR Code</string>
     <string name="feedback_thanks">Thank you for supporting Lumi!</string>
     <string name="feedback_website">Website</string>
+    <string name="feedback_github_issues">GitHub Issues</string>
+    <string name="feedback_github_issues_desc">Report an issue or suggestion</string>
 
     <!-- Home -->
     <string name="section_previously_read">Previously Read</string>
@@ -284,6 +286,17 @@
     <string name="show_reader_battery_hint">Battery icon and percentage</string>
     <string name="volume_key_page_turn">Turn pages with volume keys</string>
     <string name="volume_key_page_turn_hint">Volume up for previous, volume down for next</string>
+    <string name="reader_page_layout">Reader page information</string>
+    <string name="reader_page_layout_hint">Choose what appears in each corner</string>
+    <string name="reader_corner_top_left">Top left</string>
+    <string name="reader_corner_top_right">Top right</string>
+    <string name="reader_corner_bottom_left">Bottom left</string>
+    <string name="reader_corner_bottom_right">Bottom right</string>
+    <string name="reader_corner_content_none">Hidden</string>
+    <string name="reader_corner_content_chapter">Chapter information</string>
+    <string name="reader_corner_content_book_progress">Book progress</string>
+    <string name="reader_corner_content_page_number">Page number</string>
+    <string name="reader_corner_content_battery">Battery</string>
     <string name="search_placeholder">Enter keywords</string>
     <string name="search_results_found">Found %d results</string>
     <string name="search_no_results">No matching results</string>
@@ -379,4 +392,7 @@
     <string name="day_friday">Fri</string>
     <string name="day_saturday">Sat</string>
     <string name="day_sunday">Sun</string>
+    <string name="label_splash_screen">Launch Screen</string>
+    <string name="splash_screen_description">Show the branded screen when the app starts</string>
+    <string name="splash_setting_next_launch">Takes effect the next time the app starts</string>
 </resources>

@@ -20,6 +20,9 @@ import com.huangder.lumibooks.domain.model.Note
 import com.huangder.lumibooks.domain.model.ReadingRecord
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
+import com.huangder.lumibooks.domain.model.ReaderCornerContent
+import com.huangder.lumibooks.domain.model.ReaderPageCorner
+import com.huangder.lumibooks.domain.model.defaultReaderCornerContent
 import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.domain.repository.ReadingRepository
 import com.huangder.lumibooks.util.TimeUtils
@@ -104,11 +107,42 @@ data class ReaderUiState(
     val showReaderPageNumber: Boolean = true,
     val showReaderBattery: Boolean = true,
     val volumeKeyPageTurnEnabled: Boolean = false,
+    val readerTopLeftContent: ReaderCornerContent = defaultReaderCornerContent(ReaderPageCorner.TOP_LEFT),
+    val readerTopRightContent: ReaderCornerContent = defaultReaderCornerContent(ReaderPageCorner.TOP_RIGHT),
+    val readerBottomLeftContent: ReaderCornerContent = defaultReaderCornerContent(ReaderPageCorner.BOTTOM_LEFT),
+    val readerBottomRightContent: ReaderCornerContent = defaultReaderCornerContent(ReaderPageCorner.BOTTOM_RIGHT),
     val ttsPlaybackState: TtsPlaybackState = TtsPlaybackState.IDLE,
     val ttsSpeechRate: Float = 1f,
     val ttsActiveBookId: String? = null,
     val ttsErrorMessage: String? = null
 )
+
+internal fun ReaderUiState.withReaderCornerContent(
+    corner: ReaderPageCorner,
+    content: ReaderCornerContent
+): ReaderUiState {
+    var updated = this
+    if (content != ReaderCornerContent.NONE) {
+        if (corner != ReaderPageCorner.TOP_LEFT && updated.readerTopLeftContent == content) {
+            updated = updated.copy(readerTopLeftContent = ReaderCornerContent.NONE)
+        }
+        if (corner != ReaderPageCorner.TOP_RIGHT && updated.readerTopRightContent == content) {
+            updated = updated.copy(readerTopRightContent = ReaderCornerContent.NONE)
+        }
+        if (corner != ReaderPageCorner.BOTTOM_LEFT && updated.readerBottomLeftContent == content) {
+            updated = updated.copy(readerBottomLeftContent = ReaderCornerContent.NONE)
+        }
+        if (corner != ReaderPageCorner.BOTTOM_RIGHT && updated.readerBottomRightContent == content) {
+            updated = updated.copy(readerBottomRightContent = ReaderCornerContent.NONE)
+        }
+    }
+    return when (corner) {
+        ReaderPageCorner.TOP_LEFT -> updated.copy(readerTopLeftContent = content)
+        ReaderPageCorner.TOP_RIGHT -> updated.copy(readerTopRightContent = content)
+        ReaderPageCorner.BOTTOM_LEFT -> updated.copy(readerBottomLeftContent = content)
+        ReaderPageCorner.BOTTOM_RIGHT -> updated.copy(readerBottomRightContent = content)
+    }
+}
 
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
@@ -294,6 +328,26 @@ class ReaderViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(volumeKeyPageTurnEnabled = enabled)
             }
         }
+        viewModelScope.launch {
+            dataStoreManager.readerCornerContent(ReaderPageCorner.TOP_LEFT).collectLatest { content ->
+                _uiState.value = _uiState.value.copy(readerTopLeftContent = content)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.readerCornerContent(ReaderPageCorner.TOP_RIGHT).collectLatest { content ->
+                _uiState.value = _uiState.value.copy(readerTopRightContent = content)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.readerCornerContent(ReaderPageCorner.BOTTOM_LEFT).collectLatest { content ->
+                _uiState.value = _uiState.value.copy(readerBottomLeftContent = content)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.readerCornerContent(ReaderPageCorner.BOTTOM_RIGHT).collectLatest { content ->
+                _uiState.value = _uiState.value.copy(readerBottomRightContent = content)
+            }
+        }
     }
 
     fun saveFontSize(size: Float) {
@@ -324,6 +378,15 @@ class ReaderViewModel @Inject constructor(
     fun saveMarginVert(mv: Float) {
         _uiState.value = _uiState.value.copy(marginVertDp = mv)
         viewModelScope.launch { dataStoreManager.saveMarginVert(mv) }
+    }
+
+    fun updateReaderContentWidth(widthPx: Int) {
+        val activeParser = parser ?: return
+        val normalizedWidth = widthPx.coerceAtLeast(1)
+        if (activeParser.contentWidth == normalizedWidth) return
+        activeParser.contentWidth = normalizedWidth
+        activeParser.clearHtmlCache()
+        preloadCache.clear()
     }
 
     fun saveReaderTheme(theme: String) {
@@ -510,6 +573,11 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch { dataStoreManager.saveVolumeKeyPageTurnEnabled(enabled) }
     }
 
+    fun saveReaderCornerContent(corner: ReaderPageCorner, content: ReaderCornerContent) {
+        _uiState.value = _uiState.value.withReaderCornerContent(corner, content)
+        viewModelScope.launch { dataStoreManager.saveReaderCornerContent(corner, content) }
+    }
+
     fun saveParagraphSpacing(value: Float) {
         parser?.paragraphSpacingDp = value
         parser?.clearHtmlCache()  // 同步清缓存，确保 configure() 重新分页时拿到新内容
@@ -546,7 +614,11 @@ class ReaderViewModel @Inject constructor(
             showReaderChapterProgress = true,
             showReaderPageNumber = true,
             showReaderBattery = true,
-            volumeKeyPageTurnEnabled = false
+            volumeKeyPageTurnEnabled = false,
+            readerTopLeftContent = defaultReaderCornerContent(ReaderPageCorner.TOP_LEFT),
+            readerTopRightContent = defaultReaderCornerContent(ReaderPageCorner.TOP_RIGHT),
+            readerBottomLeftContent = defaultReaderCornerContent(ReaderPageCorner.BOTTOM_LEFT),
+            readerBottomRightContent = defaultReaderCornerContent(ReaderPageCorner.BOTTOM_RIGHT)
         )
         viewModelScope.launch {
             dataStoreManager.resetAdvancedReaderSettings()
@@ -666,7 +738,6 @@ class ReaderViewModel @Inject constructor(
     /**
      * 🔥 激进预加载：进入章节后立即在后台拉取前后相邻章节的HTML到 preloadCache。
      * 不阻塞当前章节渲染，fire-and-forget。
-     * 参考 HiReader 的 3 章节缓冲区设计——永远保持相邻章节已加载。
      */
     private fun eagerPreloadAdjacent(chapterIdx: Int) {
         val state = _uiState.value

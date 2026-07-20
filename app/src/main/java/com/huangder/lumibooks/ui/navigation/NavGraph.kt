@@ -29,6 +29,8 @@ import com.huangder.lumibooks.ui.bookshelf.BookshelfScreen
 import com.huangder.lumibooks.ui.components.BookTransitionOverlay
 import com.huangder.lumibooks.ui.components.FloatingTabBar
 import com.huangder.lumibooks.ui.home.HomeScreen
+import com.huangder.lumibooks.ui.home.HomeViewModel
+import com.huangder.lumibooks.ui.home.ReadingGoalSheet
 import com.huangder.lumibooks.ui.reader.PdfViewerScreen
 import com.huangder.lumibooks.ui.reader.ReaderScreen
 import com.huangder.lumibooks.ui.reader.PdfViewerScreen
@@ -80,12 +82,21 @@ fun MainNavGraph(navController: NavHostController) {
     var readerReady by remember { mutableStateOf(false) }
     var pendingBookId by remember { mutableStateOf<String?>(null) }
     var tabBarVisible by remember { mutableStateOf(true) }
+    var homeGoalSheetVisible by remember { mutableStateOf(false) }
     val hazeState = remember { HazeState() }
+    val homeViewModel: HomeViewModel = hiltViewModel()
+    val homeUiState by homeViewModel.uiState.collectAsState()
+    val homeLastReadBook = remember(homeUiState.books) {
+        homeUiState.books.sortedByDescending { it.lastReadTime }.firstOrNull()
+    }
 
     // 监听路由变化，从阅读页/设置页返回时延迟显示 TabBar
     val currentEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentEntry?.destination?.route
     LaunchedEffect(currentRoute, showTransition) {
+        if (currentRoute != Screen.Home.route) {
+            homeGoalSheetVisible = false
+        }
         if (currentRoute == Screen.Reader.route || showTransition) {
             tabBarVisible = false
         } else {
@@ -98,6 +109,7 @@ fun MainNavGraph(navController: NavHostController) {
     LaunchedEffect(pendingBookId) {
         val bookId = pendingBookId ?: return@LaunchedEffect
         delay(600) // 等入场动画完成
+        if (pendingBookId != bookId || !showTransition) return@LaunchedEffect
         navController.navigate(Screen.Reader.createRoute(bookId))
         pendingBookId = null
     }
@@ -136,7 +148,11 @@ fun MainNavGraph(navController: NavHostController) {
                             launchSingleTop = true
                             restoreState = true
                         }
-                    }
+                    },
+                    showReadingGoalSheet = homeGoalSheetVisible,
+                    onReadingGoalSheetVisibleChange = { visible -> homeGoalSheetVisible = visible },
+                    renderReadingGoalSheet = false,
+                    viewModel = homeViewModel
                 )
             }
 
@@ -203,11 +219,30 @@ fun MainNavGraph(navController: NavHostController) {
         }
 
         // 过渡动画覆盖层
+        ReadingGoalSheet(
+            visible = homeGoalSheetVisible && currentRoute == Screen.Home.route,
+            todayReadingTime = homeUiState.todayReadingTime,
+            dailyGoal = homeUiState.dailyGoal,
+            currentBook = homeLastReadBook,
+            weeklyData = homeUiState.weeklyData,
+            streakDays = homeUiState.streakDays,
+            onDismiss = { homeGoalSheetVisible = false },
+            onSaveGoal = { minutes -> homeViewModel.saveDailyGoal(minutes) }
+        )
+
         if (showTransition) {
             BookTransitionOverlay(
                 title = transitionTitle,
                 coverPath = transitionCover,
                 isReady = readerReady,
+                onBack = {
+                    pendingBookId = null
+                    readerReady = false
+                    showTransition = false
+                    if (navController.currentDestination?.route == Screen.Reader.route) {
+                        navController.popBackStack()
+                    }
+                },
                 onTransitionComplete = {
                     showTransition = false
                 }

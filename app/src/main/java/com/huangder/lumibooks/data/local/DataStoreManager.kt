@@ -12,6 +12,10 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPresetCodec
+import com.huangder.lumibooks.domain.model.ReaderCornerContent
+import com.huangder.lumibooks.domain.model.ReaderPageCorner
+import com.huangder.lumibooks.domain.model.defaultReaderCornerContent
+import com.huangder.lumibooks.util.LaunchThemeController
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -46,6 +50,10 @@ class DataStoreManager @Inject constructor(
         private val SHOW_READER_PAGE_NUMBER = booleanPreferencesKey("show_reader_page_number")
         private val SHOW_READER_BATTERY = booleanPreferencesKey("show_reader_battery")
         private val VOLUME_KEY_PAGE_TURN = booleanPreferencesKey("volume_key_page_turn")
+        private val READER_TOP_LEFT_CONTENT = stringPreferencesKey("reader_top_left_content")
+        private val READER_TOP_RIGHT_CONTENT = stringPreferencesKey("reader_top_right_content")
+        private val READER_BOTTOM_LEFT_CONTENT = stringPreferencesKey("reader_bottom_left_content")
+        private val READER_BOTTOM_RIGHT_CONTENT = stringPreferencesKey("reader_bottom_right_content")
         private val TTS_SPEECH_RATE = floatPreferencesKey("tts_speech_rate")
         private val TTS_PITCH = floatPreferencesKey("tts_pitch")
 
@@ -54,9 +62,10 @@ class DataStoreManager @Inject constructor(
 
         // 应用设置
         private val DARK_MODE = stringPreferencesKey("dark_mode")
+        private val SPLASH_ENABLED = booleanPreferencesKey("splash_enabled")
         private val LAST_READ_BOOK = stringPreferencesKey("last_read_book")
         private val HAS_SEEN_WELCOME = booleanPreferencesKey("has_seen_welcome")
-        private val COMPLETED_WELCOME_FLOW_VERSION = intPreferencesKey("completed_welcome_flow_version")
+        private val COMPLETED_WELCOME_INSTALL_TIME = longPreferencesKey("completed_welcome_install_time")
 
         // 应用语言
         private val APP_LANGUAGE = stringPreferencesKey("app_language")
@@ -146,6 +155,13 @@ class DataStoreManager @Inject constructor(
         preferences[VOLUME_KEY_PAGE_TURN] ?: false
     }
 
+    fun readerCornerContent(corner: ReaderPageCorner): Flow<ReaderCornerContent> =
+        context.dataStore.data.map { preferences ->
+            val stored = preferences[readerCornerKey(corner)]
+            if (stored == null) defaultReaderCornerContent(corner)
+            else ReaderCornerContent.fromKey(stored)
+        }
+
     val ttsSpeechRate: Flow<Float> = context.dataStore.data.map { preferences ->
         (preferences[TTS_SPEECH_RATE] ?: 1f).coerceIn(0.5f, 2f)
     }
@@ -164,6 +180,10 @@ class DataStoreManager @Inject constructor(
         preferences[DARK_MODE] ?: "system"
     }
 
+    val splashEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[SPLASH_ENABLED] ?: true
+    }
+
     val lastReadBook: Flow<String?> = context.dataStore.data.map { preferences ->
         preferences[LAST_READ_BOOK]
     }
@@ -172,8 +192,8 @@ class DataStoreManager @Inject constructor(
         preferences[HAS_SEEN_WELCOME] ?: false
     }
 
-    val completedWelcomeFlowVersion: Flow<Int> = context.dataStore.data.map { preferences ->
-        preferences[COMPLETED_WELCOME_FLOW_VERSION] ?: 0
+    val completedWelcomeInstallTime: Flow<Long> = context.dataStore.data.map { preferences ->
+        preferences[COMPLETED_WELCOME_INSTALL_TIME] ?: 0L
     }
 
     // 应用语言
@@ -295,6 +315,26 @@ class DataStoreManager @Inject constructor(
         }
     }
 
+    suspend fun saveReaderCornerContent(
+        corner: ReaderPageCorner,
+        content: ReaderCornerContent
+    ) {
+        context.dataStore.edit { preferences ->
+            if (content != ReaderCornerContent.NONE) {
+                ReaderPageCorner.entries
+                    .filter { it != corner }
+                    .forEach { otherCorner ->
+                        val key = readerCornerKey(otherCorner)
+                        val current = preferences[key]
+                            ?.let(ReaderCornerContent::fromKey)
+                            ?: defaultReaderCornerContent(otherCorner)
+                        if (current == content) preferences[key] = ReaderCornerContent.NONE.key
+                    }
+            }
+            preferences[readerCornerKey(corner)] = content.key
+        }
+    }
+
     suspend fun saveTtsSpeechRate(rate: Float) {
         context.dataStore.edit { preferences ->
             preferences[TTS_SPEECH_RATE] = rate.coerceIn(0.5f, 2f)
@@ -320,8 +360,18 @@ class DataStoreManager @Inject constructor(
             preferences[SHOW_READER_PAGE_NUMBER] = true
             preferences[SHOW_READER_BATTERY] = true
             preferences[VOLUME_KEY_PAGE_TURN] = false
+            ReaderPageCorner.entries.forEach { corner ->
+                preferences[readerCornerKey(corner)] = defaultReaderCornerContent(corner).key
+            }
             preferences.remove(READER_TEXT_COLOR)
         }
+    }
+
+    private fun readerCornerKey(corner: ReaderPageCorner): Preferences.Key<String> = when (corner) {
+        ReaderPageCorner.TOP_LEFT -> READER_TOP_LEFT_CONTENT
+        ReaderPageCorner.TOP_RIGHT -> READER_TOP_RIGHT_CONTENT
+        ReaderPageCorner.BOTTOM_LEFT -> READER_BOTTOM_LEFT_CONTENT
+        ReaderPageCorner.BOTTOM_RIGHT -> READER_BOTTOM_RIGHT_CONTENT
     }
 
     suspend fun migrateAdvancedReaderDefaults() {
@@ -422,6 +472,13 @@ class DataStoreManager @Inject constructor(
         }
     }
 
+    suspend fun saveSplashEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[SPLASH_ENABLED] = enabled
+        }
+        LaunchThemeController.deferSplashEnabled(context, enabled)
+    }
+
     suspend fun saveLastReadBook(bookId: String) {
         context.dataStore.edit { preferences ->
             preferences[LAST_READ_BOOK] = bookId
@@ -434,10 +491,10 @@ class DataStoreManager @Inject constructor(
         }
     }
 
-    suspend fun completeWelcomeFlow(version: Int) {
+    suspend fun completeWelcomeFlow(installTime: Long) {
         context.dataStore.edit { preferences ->
             preferences[HAS_SEEN_WELCOME] = true
-            preferences[COMPLETED_WELCOME_FLOW_VERSION] = version
+            preferences[COMPLETED_WELCOME_INSTALL_TIME] = installTime
         }
     }
 
@@ -496,5 +553,6 @@ class DataStoreManager @Inject constructor(
     /** 清除所有偏好设置 */
     suspend fun clearAll() {
         context.dataStore.edit { it.clear() }
+        LaunchThemeController.deferSplashEnabled(context, true)
     }
 }

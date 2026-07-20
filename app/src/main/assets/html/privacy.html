@@ -30,7 +30,7 @@ a { color:var(--accent); }
 </head>
 <body>
 <h1>隐私政策</h1>
-<p class="meta">生效日期：2026年6月29日 · 最近更新：2026年7月19日</p>
+<p class="meta">生效日期：2026年6月29日 · 最近更新：2026年7月20日</p>
 
 <h2>一、引言</h2>
 <p>Lumi（以下简称"本应用"）是一款本地电子书阅读器，以 MIT 许可证开源发布。我们深知隐私对您的重要性，本隐私政策旨在向您说明我们如何处理您的个人信息。</p>
@@ -47,6 +47,7 @@ a { color:var(--accent); }
 <ul>
 <li><span class="cross">✕</span> 位置信息权限</li>
 <li><span class="cross">✕</span> 相机/麦克风权限</li>
+<li style="list-style:none;margin-top:4px;font-size:13px;color:var(--text2)">💡 TTS 语音朗读使用 Android 系统文字转语音引擎，文本内容在设备本地处理，不采集、不录制、不上传任何音频数据。</li>
 <li><span class="cross">✕</span> 通讯录权限</li>
 <li><span class="cross">✕</span> 电话状态权限</li>
 <li><span class="cross">✕</span> 写入外部存储权限</li>
@@ -62,6 +63,7 @@ a { color:var(--accent); }
 <tr><td>书签记录</td><td>手动添加的书签</td><td>Room/SQLite</td></tr>
 <tr><td>阅读时长</td><td>开始/结束时间、时长</td><td>Room/SQLite</td></tr>
 <tr><td>阅读偏好</td><td>字号、主题、行距等</td><td>DataStore</td></tr>
+<tr><td>TTS 朗读文本</td><td>传递给系统 TTS 引擎的电子书文本（仅内存中处理，不持久化存储）</td><td>本地内存（不存储）</td></tr>
 <tr><td>最近阅读</td><td>最近打开的书籍列表及时间</td><td>Room/SQLite</td></tr></table>
 
 <h3>3.2 网络使用说明</h3>

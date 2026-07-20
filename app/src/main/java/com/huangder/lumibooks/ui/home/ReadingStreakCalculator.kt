@@ -8,16 +8,19 @@ internal object ReadingStreakCalculator {
         today: LocalDate,
         goalDurationMs: Long
     ): Int {
-        if (goalDurationMs <= 0) return 0
+        fun isGoalMet(date: LocalDate): Boolean {
+            val duration = dailyDurations[date.toString()] ?: 0L
+            return if (goalDurationMs > 0) duration >= goalDurationMs else duration > 0L
+        }
 
         var date = today
-        if ((dailyDurations[date.toString()] ?: 0L) < goalDurationMs) {
+        if (!isGoalMet(date)) {
             // An unfinished current day does not end the streak earned through yesterday.
             date = date.minusDays(1)
         }
 
         var streakDays = 0
-        while ((dailyDurations[date.toString()] ?: 0L) >= goalDurationMs) {
+        while (isGoalMet(date)) {
             streakDays++
             date = date.minusDays(1)
         }

@@ -367,7 +367,6 @@ object SlideCoverAnimation : PageFlipAnimation {
                 return;
             }
             // 🔥 无预渲染：展示 loading 占位层 + 1:1 跟手拖拽（无阻力！）
-            // 参考 HiReader：动画不等内容加载，展示 loading 状态，异步注入内容后替换
             // botLayer 显示 loading spinner，topLayer 显示当前页克隆
             // 拖拽参数与 Hit Path 完全相同（1:1跟手，无视差阻力）
             var adjIdx2 = isF ? window.__currentChapterIdx + 1 : window.__currentChapterIdx - 1;

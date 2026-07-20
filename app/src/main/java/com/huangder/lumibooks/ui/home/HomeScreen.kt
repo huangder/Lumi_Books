@@ -92,11 +92,22 @@ fun HomeScreen(
     onNavigateToStatistics: () -> Unit,
     onNavigateToBookshelf: () -> Unit,
     onTabBarVisibleChange: (Boolean) -> Unit = {},
+    showReadingGoalSheet: Boolean = false,
+    onReadingGoalSheetVisibleChange: (Boolean) -> Unit = {},
+    renderReadingGoalSheet: Boolean = true,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
-    var showGoalSheet by remember { mutableStateOf(false) }
+    var localShowGoalSheet by remember { mutableStateOf(false) }
+    val showGoalSheet = if (renderReadingGoalSheet) localShowGoalSheet else showReadingGoalSheet
+    val setShowGoalSheet: (Boolean) -> Unit = { visible ->
+        if (renderReadingGoalSheet) {
+            localShowGoalSheet = visible
+        } else {
+            onReadingGoalSheetVisibleChange(visible)
+        }
+    }
     val booksByLastRead = remember(uiState.books) {
         uiState.books.sortedByDescending { it.lastReadTime }
     }
@@ -178,7 +189,7 @@ fun HomeScreen(
                         readingTime = uiState.todayReadingTime,
                         dailyGoal = uiState.dailyGoal,
                         weeklyData = uiState.weeklyData,
-                        onCardClick = { showGoalSheet = true },
+                        onCardClick = { setShowGoalSheet(true) },
                         onContinueClick = {
                             lastReadBook?.let { onNavigateToReader(it.id, it.coverPath, it.title) }
                         }
@@ -204,33 +215,32 @@ fun HomeScreen(
 
         StatusGradientOverlay()
 
-        ReadingGoalSheet(
-            visible = showGoalSheet,
-            todayReadingTime = uiState.todayReadingTime,
-            dailyGoal = uiState.dailyGoal,
-            currentBook = lastReadBook,
-            weeklyData = uiState.weeklyData,
-            streakDays = uiState.streakDays,
-            onDismiss = { showGoalSheet = false },
-            onSaveGoal = { minutes -> viewModel.saveDailyGoal(minutes) },
-            onTabBarVisibleChange = onTabBarVisibleChange
-        )
+        if (renderReadingGoalSheet) {
+            ReadingGoalSheet(
+                visible = showGoalSheet,
+                todayReadingTime = uiState.todayReadingTime,
+                dailyGoal = uiState.dailyGoal,
+                currentBook = lastReadBook,
+                weeklyData = uiState.weeklyData,
+                streakDays = uiState.streakDays,
+                onDismiss = { setShowGoalSheet(false) },
+                onSaveGoal = { minutes -> viewModel.saveDailyGoal(minutes) }
+            )
+        }
 
         // 导入 FAB
-        if (!showGoalSheet) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 24.dp, bottom = 100.dp)
-                    .size(56.dp)
-                    .shadow(8.dp, CircleShape, ambientColor = AppColors.Shadow)
-                    .clip(CircleShape)
-                    .background(Color.Black)
-                    .clickable { launcher.launch("*/*") },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.Add, stringResource(R.string.import_books), tint = Color.White, modifier = Modifier.size(24.dp))
-            }
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 24.dp, bottom = 100.dp)
+                .size(56.dp)
+                .shadow(8.dp, CircleShape, ambientColor = AppColors.Shadow)
+                .clip(CircleShape)
+                .background(Color.Black)
+                .clickable { launcher.launch("*/*") },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Default.Add, stringResource(R.string.import_books), tint = Color.White, modifier = Modifier.size(24.dp))
         }
     } // 外层 Box 结束
 }
@@ -524,8 +534,12 @@ private fun ReadingGoalCard(
     onCardClick: () -> Unit,
     onContinueClick: () -> Unit
 ) {
-    val goalMs = dailyGoal * 60 * 1000L
-    val progress = (readingTime.toFloat() / goalMs).coerceIn(0f, 1f)
+    val hasGoal = dailyGoal > 0
+    val goalMs = if (hasGoal) dailyGoal * 60 * 1000L else 0L
+    val progress = if (hasGoal) (readingTime.toFloat() / goalMs).coerceIn(0f, 1f) else 0f
+    val hasReadToday = readingTime > 0L
+    val todayStatusText = if (hasReadToday) "今日已阅读" else "今日未阅读"
+    val todayEmoji = if (hasReadToday) "📖 ✨ 🌿" else "🌙 ☕ 📚"
 
     Column(
         modifier = Modifier
@@ -540,6 +554,7 @@ private fun ReadingGoalCard(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // 半圆弧进度条
+        if (hasGoal) {
         ArcProgressBar(
             progress = progress,
             modifier = Modifier
@@ -561,6 +576,27 @@ private fun ReadingGoalCard(
             fontSize = AppType.Caption,
             color = AppColors.TextSecondary
         )
+        } else {
+            Spacer(Modifier.height(AppSpace.sm))
+            Text(
+                text = todayEmoji,
+                fontSize = 34.sp,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(AppSpace.sm))
+            Text(
+                text = todayStatusText,
+                fontSize = AppType.Section,
+                fontWeight = FontWeight.Bold,
+                color = AppColors.TextPrimary
+            )
+            Text(
+                text = if (hasReadToday) "今天已经和书页碰面了" else "今天还没留下阅读记录",
+                fontSize = AppType.Caption,
+                color = AppColors.TextSecondary
+            )
+        }
 
         Spacer(Modifier.height(AppSpace.lg))
 
@@ -631,6 +667,7 @@ private fun WeeklyCheckIn(weeklyData: List<DailyReading> = emptyList(), dailyGoa
     // weeklyData 是固定日历周 [日, 一, 二, 三, 四, 五, 六]
     // todayIndex 基于今天是星期几
     val todayIndex = Calendar.getInstance().get(Calendar.DAY_OF_WEEK) - 1  // 0=周日
+    val hasGoal = dailyGoal > 0
     val goalMs = dailyGoal * 60 * 1000L
     val accentColor = AppColors.Accent
 
@@ -642,7 +679,7 @@ private fun WeeklyCheckIn(weeklyData: List<DailyReading> = emptyList(), dailyGoa
             val isPast = index < todayIndex
             val isToday = index == todayIndex
             val isFuture = index > todayIndex
-            val goalMet = data.duration >= goalMs
+            val goalMet = if (hasGoal) data.duration >= goalMs else data.duration > 0L
 
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(
@@ -650,7 +687,7 @@ private fun WeeklyCheckIn(weeklyData: List<DailyReading> = emptyList(), dailyGoa
                     contentAlignment = Alignment.Center
                 ) {
                     if (isPast || isToday) {
-                        if (goalMet || isToday) {
+                        if (goalMet || (hasGoal && isToday)) {
                             // 达标或今天：实心圆
                             Box(
                                 modifier = Modifier
@@ -676,11 +713,11 @@ private fun WeeklyCheckIn(weeklyData: List<DailyReading> = emptyList(), dailyGoa
                         fontSize = 11.sp,
                         color = when {
                             isToday -> Color.White
-                            goalMet && isPast -> Color.White
+                            goalMet && (isPast || !hasGoal) -> Color.White
                             isPast -> AppColors.TextSecondary
                             else -> AppColors.TextSecondary
                         },
-                        fontWeight = if ((goalMet && isPast) || isToday) FontWeight.Bold else FontWeight.Normal
+                        fontWeight = if ((goalMet && (isPast || !hasGoal)) || (hasGoal && isToday)) FontWeight.Bold else FontWeight.Normal
                     )
                 }
             }

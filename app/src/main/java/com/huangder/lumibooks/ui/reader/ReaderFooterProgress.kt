@@ -1,14 +1,14 @@
 package com.huangder.lumibooks.ui.reader
 
-import kotlin.math.roundToInt
+import java.util.Locale
 
 internal fun calculateBookProgressPercent(
     chapterIndex: Int,
     chapterCount: Int,
     pageIndex: Int,
     chapterPageCount: Int
-): Int {
-    if (chapterCount <= 0) return 0
+): Float {
+    if (chapterCount <= 0) return 0f
 
     val safeChapterIndex = chapterIndex.coerceIn(0, chapterCount - 1)
     val pageFraction = if (chapterPageCount > 0) {
@@ -17,6 +17,8 @@ internal fun calculateBookProgressPercent(
         0f
     }
     return (((safeChapterIndex + pageFraction) / chapterCount) * 100f)
-        .roundToInt()
-        .coerceIn(0, 100)
+        .coerceIn(0f, 100f)
 }
+
+internal fun formatReadingProgressPercent(progressPercent: Float): String =
+    String.format(Locale.ROOT, "%.2f%%", progressPercent.coerceIn(0f, 100f))

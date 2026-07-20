@@ -39,12 +39,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.ui.theme.AppColors
@@ -86,7 +90,12 @@ fun BookContextMenuOverlay(
     val menuAlpha = state.menuAlpha.value
     val actionsAlpha = state.actionsAlpha.value
     val scrimAlpha = state.scrimAlpha.value
+    val configuration = LocalConfiguration.current
 
+    Popup(
+        alignment = Alignment.TopStart,
+        properties = PopupProperties(focusable = false, clippingEnabled = false)
+    ) {
     Box(modifier = Modifier.fillMaxSize().graphicsLayer { }) { // 空 graphicsLayer 确保与 OverscrollBounce 同一合成管线
         // ── 1. 半透明背景 + 点击关闭 ──
         Box(
@@ -131,6 +140,7 @@ fun BookContextMenuOverlay(
             )
         }
     }
+    }
 }
 
 // ─── 高亮封面 ─────────────────────────────────────────────────────
@@ -147,6 +157,7 @@ private fun HighlightedCover(
     val coverTopDp = with(density) { coverBounds.top.toDp() }
     val coverWidthDp = with(density) { coverBounds.width.toDp() }
     val coverHeightDp = with(density) { coverBounds.height.toDp() }
+    val context = LocalContext.current
 
     Box(
         modifier = Modifier
@@ -167,7 +178,10 @@ private fun HighlightedCover(
     ) {
         if (book.coverPath != null) {
             AsyncImage(
-                model = book.coverPath,
+                model = ImageRequest.Builder(context)
+                    .data(book.coverPath)
+                    .memoryCacheKey("${book.id}_${book.coverPath}")
+                    .build(),
                 contentDescription = book.title,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop

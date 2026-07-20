@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Lumi</string>
+    <string name="app_name">LUMI</string>
 
     <!-- ホーム -->
     <string name="home_title">ホーム</string>
@@ -134,6 +134,7 @@
     <!-- 更新チェック -->
     <string name="check_update">更新を確認</string>
     <string name="checking_update">確認中...</string>
+    <string name="update_already_latest">現在のバージョンが最新です</string>
     <string name="network_error">ネットワークエラー、後でもう一度お試しください</string>
     <string name="privacy_policy">プライバシーポリシー</string>
     <string name="terms_of_service">利用規約</string>
@@ -150,7 +151,6 @@
     <string name="sponsor_quote">「気に入ったら、おごってください😊」</string>
     <string name="sponsor_code_label">Yufu の赞赏码</string>
     <string name="sponsor_thanks_title">スペシャルサンクス</string>
-    <string name="sponsor_tech_title">技術サポート</string>
     <string name="sponsor_dev_title">開発者</string>
 
     <!-- フィードバック -->
@@ -159,6 +159,8 @@
     <string name="feedback_qr_desc">フィードバックフォームQRコード</string>
     <string name="feedback_thanks">Lumi の開発をサポートしていただきありがとうございます！</string>
     <string name="feedback_website">ウェブサイト</string>
+    <string name="feedback_github_issues">GitHub Issues</string>
+    <string name="feedback_github_issues_desc">問題や提案を送信</string>
 
     <!-- ホームページ -->
     <string name="section_previously_read">以前読んだ</string>
@@ -272,6 +274,17 @@
     <string name="show_reader_battery_hint">バッテリーアイコンと残量</string>
     <string name="volume_key_page_turn">音量キーでページ送り</string>
     <string name="volume_key_page_turn_hint">音量を上げるキーで前へ、下げるキーで次へ</string>
+    <string name="reader_page_layout">読書ページ情報</string>
+    <string name="reader_page_layout_hint">四隅に表示する内容を選択</string>
+    <string name="reader_corner_top_left">左上</string>
+    <string name="reader_corner_top_right">右上</string>
+    <string name="reader_corner_bottom_left">左下</string>
+    <string name="reader_corner_bottom_right">右下</string>
+    <string name="reader_corner_content_none">表示しない</string>
+    <string name="reader_corner_content_chapter">章情報</string>
+    <string name="reader_corner_content_book_progress">全体の進捗</string>
+    <string name="reader_corner_content_page_number">ページ番号</string>
+    <string name="reader_corner_content_battery">バッテリー</string>
     <string name="search_placeholder">キーワードを入力</string>
     <string name="search_results_found">%d件見つかりました</string>
     <string name="search_no_results">一致する結果が見つかりません</string>
@@ -367,4 +380,7 @@
     <string name="day_friday">金</string>
     <string name="day_saturday">土</string>
     <string name="day_sunday">日</string>
+    <string name="label_splash_screen">起動画面</string>
+    <string name="splash_screen_description">アプリ起動時にブランド画面を表示します</string>
+    <string name="splash_setting_next_launch">次回の起動時に適用されます</string>
 </resources>

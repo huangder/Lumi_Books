@@ -24,9 +24,9 @@ object LocaleHelper {
     val LANGUAGE_DISPLAY_NAMES = mapOf(
         "system" to "跟隨系統設定",
         "zh-CN" to "简体中文（中国大陆）",
-        "zh-TW" to "繁體中文（中国台湾）",
-        "zh-HK" to "繁體中文（中国香港）",
-        "zh-MO" to "繁體中文（中国澳门）",
+        "zh-TW" to "繁體中文（中國台灣）",
+        "zh-HK" to "繁體中文（中國香港）",
+        "zh-MO" to "繁體中文（中國澳門）",
         "ko" to "한국어",
         "ja" to "日本語",
         "en" to "English"

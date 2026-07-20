@@ -58,4 +58,38 @@ class JustifiedTextViewTest {
         assertTrue(pageStartsMidParagraph(text, 3))
         assertFalse(pageStartsMidParagraph(text, text.indexOf("第二段")))
     }
+
+    @Test
+    fun restoresLetterSpacingThatSingleCharacterDrawingDoesNotRender() {
+        assertEquals(2f, readerExplicitLetterSpacing(letterSpacingEm = 0.05f, textSizePx = 40f), 0.001f)
+
+        val characterWidths = 360f
+        val gapCount = 9
+        val availableWidth = 450f
+        val configuredSpacing = readerExplicitLetterSpacing(0.05f, 40f)
+        val staticLayoutWidth = characterWidths + configuredSpacing * gapCount
+        val justificationExtra = (availableWidth - staticLayoutWidth) / gapCount
+        val customDrawWidth = characterWidths +
+            (configuredSpacing + justificationExtra) * gapCount
+
+        assertEquals(availableWidth, customDrawWidth, 0.001f)
+    }
+
+    @Test
+    fun splitsFullPageLineRemainderBetweenTopAndBottom() {
+        assertEquals(
+            5f,
+            calculateReaderVerticalBalanceOffset(
+                availableHeightPx = 100f,
+                lineHeightPx = 30f,
+                maxShiftPx = 20f
+            ),
+            0.001f
+        )
+        assertEquals(
+            0f,
+            calculateReaderVerticalBalanceOffset(90f, 30f, 20f),
+            0.001f
+        )
+    }
 }

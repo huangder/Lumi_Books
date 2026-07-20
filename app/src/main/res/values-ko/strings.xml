@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Lumi</string>
+    <string name="app_name">LUMI</string>
 
     <!-- 홈 -->
     <string name="home_title">홈</string>
@@ -134,6 +134,7 @@
     <!-- 업데이트 확인 -->
     <string name="check_update">업데이트 확인</string>
     <string name="checking_update">확인 중...</string>
+    <string name="update_already_latest">현재 최신 버전입니다</string>
     <string name="network_error">네트워크 연결에 실패했습니다. 나중에 다시 시도해 주세요</string>
     <string name="privacy_policy">개인정보 처리방침</string>
     <string name="terms_of_service">이용약관</string>
@@ -150,7 +151,6 @@
     <string name="sponsor_quote">"마음에 드셨다면 밥 한 번 사주세요😊"</string>
     <string name="sponsor_code_label">屿浮 님께 보내는 후원 코드</string>
     <string name="sponsor_thanks_title">감사 목록 (순서 무관)</string>
-    <string name="sponsor_tech_title">기술 지원 (순서 무관)</string>
     <string name="sponsor_dev_title">개발자</string>
 
     <!-- 피드백 -->
@@ -159,6 +159,8 @@
     <string name="feedback_qr_desc">피드백 양식 QR 코드</string>
     <string name="feedback_thanks">Lumi 개발을 지원해 주셔서 감사합니다!</string>
     <string name="feedback_website">공식 웹사이트</string>
+    <string name="feedback_github_issues">GitHub Issues</string>
+    <string name="feedback_github_issues_desc">문제 또는 제안 제출</string>
 
     <!-- 홈 -->
     <string name="section_previously_read">이전에 읽은 책</string>
@@ -272,6 +274,17 @@
     <string name="show_reader_battery_hint">배터리 아이콘과 잔량</string>
     <string name="volume_key_page_turn">음량 키로 페이지 넘기기</string>
     <string name="volume_key_page_turn_hint">음량 높임은 이전 페이지, 낮춤은 다음 페이지</string>
+    <string name="reader_page_layout">읽기 페이지 정보</string>
+    <string name="reader_page_layout_hint">네 모서리에 표시할 내용을 선택하세요</string>
+    <string name="reader_corner_top_left">왼쪽 위</string>
+    <string name="reader_corner_top_right">오른쪽 위</string>
+    <string name="reader_corner_bottom_left">왼쪽 아래</string>
+    <string name="reader_corner_bottom_right">오른쪽 아래</string>
+    <string name="reader_corner_content_none">표시 안 함</string>
+    <string name="reader_corner_content_chapter">장 정보</string>
+    <string name="reader_corner_content_book_progress">전체 진행률</string>
+    <string name="reader_corner_content_page_number">페이지 번호</string>
+    <string name="reader_corner_content_battery">배터리</string>
     <string name="search_placeholder">키워드 입력</string>
     <string name="search_results_found">%d개 결과를 찾았습니다</string>
     <string name="search_no_results">일치하는 결과가 없습니다</string>
@@ -367,4 +380,7 @@
     <string name="day_friday">금</string>
     <string name="day_saturday">토</string>
     <string name="day_sunday">일</string>
+    <string name="label_splash_screen">시작 화면</string>
+    <string name="splash_screen_description">앱을 시작할 때 브랜드 화면 표시</string>
+    <string name="splash_setting_next_launch">다음 앱 시작 시 적용됩니다</string>
 </resources>

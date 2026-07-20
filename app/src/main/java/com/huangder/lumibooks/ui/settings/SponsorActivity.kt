@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.settings
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -19,11 +21,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -37,7 +41,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -83,6 +89,8 @@ class SponsorActivity : ComponentActivity() {
 
 @Composable
 private fun SponsorPage(onBack: () -> Unit) {
+    val context = LocalContext.current
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -102,10 +110,10 @@ private fun SponsorPage(onBack: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回", tint = AppColors.TextPrimary)
+                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.back), tint = AppColors.TextPrimary)
                 }
                 Spacer(Modifier.weight(1f))
-                Text("赞助开发", fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = FangSong, color = AppColors.TextPrimary)
+                Text(stringResource(R.string.sponsor_title), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = FangSong, color = AppColors.TextPrimary)
                 Spacer(Modifier.weight(1f))
                 Spacer(Modifier.size(48.dp))
             }
@@ -114,7 +122,7 @@ private fun SponsorPage(onBack: () -> Unit) {
 
             // 副标题
             Text(
-                text = "捐赠：如果你觉得不错的话，欢迎支持开发",
+                text = stringResource(R.string.sponsor_desc),
                 fontSize = AppType.BodySmall,
                 color = AppColors.TextSecondary,
                 modifier = Modifier.padding(horizontal = AppSpace.lg)
@@ -136,7 +144,7 @@ private fun SponsorPage(onBack: () -> Unit) {
                 // 二维码
                 Image(
                     painter = painterResource(id = R.drawable.donation_qr),
-                    contentDescription = "捐赠二维码",
+                    contentDescription = stringResource(R.string.sponsor_qr_desc),
                     modifier = Modifier
                         .size(220.dp)
                         .clip(RoundedCornerShape(AppRadius.md)),
@@ -147,7 +155,7 @@ private fun SponsorPage(onBack: () -> Unit) {
 
                 // 文案
                 Text(
-                    text = "\"如果觉得不错，请我吃个饭吧😊\"",
+                    text = stringResource(R.string.sponsor_quote),
                     fontSize = AppType.Body,
                     fontWeight = FontWeight.Medium,
                     color = AppColors.TextPrimary,
@@ -176,7 +184,7 @@ private fun SponsorPage(onBack: () -> Unit) {
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "给屿浮 的赞赏码",
+                        text = stringResource(R.string.sponsor_code_label),
                         fontSize = AppType.Body,
                         fontWeight = FontWeight.SemiBold,
                         color = Color.White
@@ -188,27 +196,71 @@ private fun SponsorPage(onBack: () -> Unit) {
 
             // 感谢列表
             CreditSection(
-                title = "感谢列表（排名不分先后）",
-                names = listOf("雋乂")
-            )
-
-            Spacer(Modifier.height(AppSpace.md))
-
-            // 技术支持
-            CreditSection(
-                title = "技术支持（排名不分先后）",
-                names = listOf("Corundum-Ling")
+                title = stringResource(R.string.sponsor_thanks_title),
+                names = listOf("雋乂、匿名")
             )
 
             Spacer(Modifier.height(AppSpace.md))
 
             // 开发人员
-            CreditSection(
-                title = "开发人员",
-                names = listOf("huangder")
+            DeveloperSection(
+                onHuangderClick = {
+                    context.startActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse("https://xhslink.com/m/5AbhNhfh7hE"))
+                    )
+                }
             )
 
             Spacer(Modifier.height(120.dp))
+        }
+    }
+}
+
+@Composable
+private fun DeveloperSection(onHuangderClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AppSpace.lg)
+    ) {
+        Text(
+            text = stringResource(R.string.sponsor_dev_title),
+            fontSize = AppType.Caption,
+            color = AppColors.TextSecondary,
+            modifier = Modifier.padding(bottom = AppSpace.xs)
+        )
+        DeveloperCard(name = "huangder", onClick = onHuangderClick)
+        Spacer(Modifier.height(AppSpace.sm))
+        DeveloperCard(name = "Corundum-Ling")
+    }
+}
+
+@Composable
+private fun DeveloperCard(name: String, onClick: (() -> Unit)? = null) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(6.dp, RoundedCornerShape(AppRadius.md), ambientColor = Color(0x04000000), spotColor = Color(0x04000000))
+            .clip(RoundedCornerShape(AppRadius.md))
+            .background(AppColors.CardBg)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(AppSpace.md),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = name,
+            fontSize = AppType.Body,
+            color = AppColors.TextPrimary,
+            modifier = Modifier.weight(1f)
+        )
+        if (onClick != null) {
+            Spacer(Modifier.width(AppSpace.sm))
+            Icon(
+                imageVector = Icons.Outlined.ChevronRight,
+                contentDescription = null,
+                tint = AppColors.TextSecondary,
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }

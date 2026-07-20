@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.components
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -15,9 +16,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -36,10 +43,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.huangder.lumibooks.R
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.KaiTi
+import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
@@ -57,12 +66,21 @@ fun BookTransitionOverlay(
     title: String,
     coverPath: String? = null,
     isReady: Boolean,
+    onBack: () -> Unit,
     onTransitionComplete: () -> Unit
 ) {
     val scrimAlpha = remember { Animatable(0f) }
     val sheetAlpha = remember { Animatable(0f) }
     val sheetScale = remember { Animatable(0.9f) }
     val isClosing = remember { mutableStateOf(false) }
+    val requestBack = {
+        if (!isClosing.value) {
+            isClosing.value = true
+            onBack()
+        }
+    }
+
+    BackHandler(enabled = !isClosing.value, onBack = requestBack)
 
     // 入场动画：遮罩 + 页面同步淡入放大
     LaunchedEffect(Unit) {
@@ -112,6 +130,25 @@ fun BookTransitionOverlay(
                     .background(AppColors.CardBg)
             ) {
                 val navBarPadding = WindowInsets.navigationBars.asPaddingValues()
+
+                IconButton(
+                    onClick = requestBack,
+                    enabled = !isClosing.value,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .statusBarsPadding()
+                        .padding(start = AppSpace.lg, top = AppSpace.sm)
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(AppColors.BgGray)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.reader_back),
+                        tint = AppColors.TextPrimary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
 
                 Column(
                     modifier = Modifier

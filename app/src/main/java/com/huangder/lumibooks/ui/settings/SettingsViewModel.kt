@@ -5,6 +5,7 @@ import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import coil.Coil
+import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.util.FileUtils
@@ -90,6 +91,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.darkMode.collectLatest { mode ->
                 _uiState.value = _uiState.value.copy(darkMode = mode)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.splashEnabled.collectLatest { enabled ->
+                _uiState.value = _uiState.value.copy(splashEnabled = enabled)
             }
         }
         viewModelScope.launch {
@@ -189,6 +195,14 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.saveDarkMode(mode)
             _uiState.value = _uiState.value.copy(darkMode = mode)
+        }
+    }
+
+    fun saveSplashEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            dataStoreManager.saveSplashEnabled(enabled)
+            _uiState.value = _uiState.value.copy(splashEnabled = enabled)
+            Toast.makeText(context, R.string.splash_setting_next_launch, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -475,6 +489,10 @@ class SettingsViewModel @Inject constructor(
                     showAppUpdateDialog = showAppDialog && !isAutoCheck
                 )
             )
+
+            if (!isAutoCheck && !result.hasAppUpdate && !hasPolicyUpdate) {
+                Toast.makeText(context, R.string.update_already_latest, Toast.LENGTH_SHORT).show()
+            }
         }
     }
 

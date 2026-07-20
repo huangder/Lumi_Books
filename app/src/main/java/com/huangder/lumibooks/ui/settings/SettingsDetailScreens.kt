@@ -4,10 +4,14 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -29,6 +33,7 @@ import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.FontDownload
 import androidx.compose.material.icons.outlined.FormatSize
 import androidx.compose.material.icons.outlined.Info
@@ -36,6 +41,7 @@ import androidx.compose.material.icons.outlined.Landscape
 import androidx.compose.material.icons.outlined.LineWeight
 import androidx.compose.material.icons.outlined.NightsStay
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.outlined.Title
@@ -44,11 +50,13 @@ import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material.icons.outlined.SystemUpdateAlt
-import androidx.compose.material.icons.outlined.Upgrade
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -65,6 +73,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import com.huangder.lumibooks.R
@@ -141,22 +151,76 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
 @Composable
 fun DisplayDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
+    val darkModeOptions = listOf(
+        "system" to stringResource(R.string.dark_mode_system),
+        "light" to stringResource(R.string.dark_mode_light),
+        "dark" to stringResource(R.string.dark_mode_dark)
+    )
+    val themeOptions = listOf(
+        "day" to stringResource(R.string.theme_day),
+        "night" to stringResource(R.string.theme_night),
+        "sepia" to stringResource(R.string.theme_sepia),
+        "green" to stringResource(R.string.theme_green)
+    )
 
     DetailCard {
-        val darkModeOptions = listOf(
-            "system" to stringResource(R.string.dark_mode_system),
-            "light" to stringResource(R.string.dark_mode_light),
-            "dark" to stringResource(R.string.dark_mode_dark)
+        DropdownSettingRow(
+            icon = Icons.Outlined.Brightness6,
+            label = stringResource(R.string.label_dark_mode),
+            options = darkModeOptions,
+            selected = uiState.darkMode,
+            onSelect = viewModel::saveDarkMode
         )
-        OptionRow(Icons.Outlined.Brightness6, stringResource(R.string.label_dark_mode), darkModeOptions, uiState.darkMode) { viewModel.saveDarkMode(it) }
-        SettingsDivider()
-        val themeOptions = listOf(
-            "day" to stringResource(R.string.theme_day),
-            "night" to stringResource(R.string.theme_night),
-            "sepia" to stringResource(R.string.theme_sepia),
-            "green" to stringResource(R.string.theme_green)
+    }
+
+    Spacer(Modifier.height(12.dp))
+
+    DetailCard {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { viewModel.saveSplashEnabled(!uiState.splashEnabled) }
+                .padding(AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Outlined.PhoneAndroid,
+                contentDescription = null,
+                tint = AppColors.TextSecondary,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(Modifier.width(AppSpace.md))
+            Text(
+                stringResource(R.string.label_splash_screen),
+                fontSize = AppType.Body,
+                color = AppColors.TextPrimary,
+                modifier = Modifier.weight(1f)
+            )
+            Switch(
+                checked = uiState.splashEnabled,
+                onCheckedChange = null,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = AppColors.Accent,
+                    checkedBorderColor = AppColors.Accent,
+                    uncheckedThumbColor = AppColors.TextSecondary,
+                    uncheckedTrackColor = AppColors.BgGray,
+                    uncheckedBorderColor = AppColors.Divider
+                )
+            )
+        }
+    }
+
+    Spacer(Modifier.height(12.dp))
+
+    DetailCard {
+        DropdownSettingRow(
+            icon = Icons.Outlined.Palette,
+            label = stringResource(R.string.label_reader_theme),
+            options = themeOptions,
+            selected = uiState.readerTheme,
+            onSelect = viewModel::saveReaderTheme
         )
-        OptionRow(Icons.Outlined.Palette, stringResource(R.string.label_reader_theme), themeOptions, uiState.readerTheme) { viewModel.saveReaderTheme(it) }
     }
 }
 
@@ -534,66 +598,69 @@ fun AboutDetail(viewModel: SettingsViewModel) {
         )
     }
 
-    // ── 版本信息 Card ──
-    DetailCard {
-        // 版本
-        Row(Modifier.fillMaxWidth().padding(AppSpace.md), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Outlined.Info, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
-            Spacer(Modifier.width(AppSpace.md))
-            Text("版本", fontSize = AppType.Body, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
-            Text("1.0.04", fontSize = AppType.BodySmall, color = AppColors.TextSecondary)
+    val currentVersion = remember(context) {
+        try {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.05"
+        } catch (_: Exception) {
+            "1.0.05"
         }
-        SettingsDivider()
-        // 更新日志
-        ActionRow(Icons.Outlined.SystemUpdateAlt, "更新日志") {
-            context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "changelog"))
-        }
-        SettingsDivider()
-        // 隐私声明
-        Row(Modifier.fillMaxWidth().padding(AppSpace.md), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Outlined.NightsStay, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
-            Spacer(Modifier.width(AppSpace.md))
-            Column(modifier = Modifier.weight(1f)) {
-                Text("隐私声明", fontSize = AppType.Body, color = AppColors.TextPrimary)
-                Text("网络仅用于检查更新，无数据收集", fontSize = AppType.Caption, color = AppColors.TextSecondary)
+    }
+
+    // ── 版本主视觉与就地更新检查 ──
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AppSpace.md)
+            .aspectRatio(1.46f)
+            .shadow(8.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .clip(RoundedCornerShape(AppRadius.lg))
+    ) {
+        Image(
+            painter = painterResource(R.drawable.about_header),
+            contentDescription = null,
+            modifier = Modifier.matchParentSize(),
+            contentScale = ContentScale.Crop
+        )
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = AppSpace.lg, bottom = AppSpace.lg)
+        ) {
+            Text(
+                text = currentVersion,
+                color = Color.White,
+                fontSize = 40.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(AppSpace.sm))
+            Box(
+                modifier = Modifier
+                    .width(120.dp)
+                    .height(40.dp)
+                    .clip(RoundedCornerShape(AppRadius.capsule))
+                    .background(Color.White.copy(alpha = 0.36f))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        enabled = !update.isChecking
+                    ) { viewModel.checkUpdate(isAutoCheck = false) },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = if (update.isChecking) "正在查更新" else stringResource(R.string.check_update),
+                    color = Color.White,
+                    fontSize = AppType.BodySmall,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
     }
 
-    Spacer(Modifier.height(AppSpace.lg))
+    Spacer(Modifier.height(AppSpace.md))
 
-    // ── 检查更新 Card ──
     DetailCard {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    enabled = !update.isChecking
-                ) { viewModel.checkUpdate(isAutoCheck = false) }
-                .padding(AppSpace.md),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Outlined.Upgrade, null, tint = AppColors.Accent, modifier = Modifier.size(22.dp))
-            Spacer(Modifier.width(AppSpace.md))
-            Text(
-                if (update.isChecking) "正在检查更新..." else "检查更新",
-                fontSize = AppType.Body,
-                color = AppColors.TextPrimary,
-                modifier = Modifier.weight(1f)
-            )
-            if (update.isChecking) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(18.dp),
-                    strokeWidth = 2.dp,
-                    color = AppColors.Accent
-                )
-            } else {
-                Icon(Icons.Outlined.ChevronRight, null,
-                    tint = AppColors.TextSecondary,
-                    modifier = Modifier.size(22.dp))
-            }
+        ActionRow(Icons.Outlined.SystemUpdateAlt, stringResource(R.string.title_changelog)) {
+            context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "changelog"))
         }
     }
 
@@ -771,19 +838,86 @@ private fun FontTypeRow(selected: String, onSelect: (String) -> Unit) {
 }
 
 @Composable
-private fun OptionRow(icon: ImageVector, label: String, options: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = AppSpace.md, vertical = AppSpace.md), verticalAlignment = Alignment.CenterVertically) {
+private fun DropdownSettingRow(
+    icon: ImageVector,
+    label: String,
+    options: List<Pair<String, String>>,
+    selected: String,
+    onSelect: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selectedLabel = options.firstOrNull { it.first == selected }?.second.orEmpty()
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(AppSpace.md),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Icon(icon, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
         Spacer(Modifier.width(AppSpace.md))
-        Text(label, fontSize = AppType.Body, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
-        Row(horizontalArrangement = Arrangement.spacedBy(AppSpace.xs)) {
-            options.forEach { (key, disp) ->
-                val sel = key == selected
-                Box(
-                    Modifier.clip(RoundedCornerShape(AppRadius.sm)).background(if (sel) AppColors.Accent else AppColors.BgGray)
-                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onSelect(key) }
-                        .padding(horizontal = AppSpace.sm, vertical = AppSpace.xs)
-                ) { Text(disp, fontSize = AppType.Caption, color = if (sel) Color.White else AppColors.TextSecondary, fontWeight = if (sel) FontWeight.Medium else FontWeight.Normal) }
+        Text(
+            label,
+            fontSize = AppType.Body,
+            color = AppColors.TextPrimary,
+            modifier = Modifier.weight(1f)
+        )
+        Box {
+            Row(
+                modifier = Modifier
+                    .width(138.dp)
+                    .height(42.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(AppColors.WindowBg)
+                    .border(1.dp, AppColors.Divider, RoundedCornerShape(14.dp))
+                    .clickable { expanded = true }
+                    .padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    selectedLabel,
+                    fontSize = AppType.BodySmall,
+                    color = AppColors.TextPrimary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(
+                    Icons.Outlined.ExpandMore,
+                    contentDescription = null,
+                    tint = AppColors.TextSecondary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                modifier = Modifier.width(138.dp),
+                shape = RoundedCornerShape(16.dp),
+                containerColor = AppColors.WindowBg,
+                border = BorderStroke(1.dp, AppColors.Divider),
+                shadowElevation = 0.dp,
+                tonalElevation = 0.dp
+            ) {
+                options.forEach { (key, display) ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                display,
+                                modifier = Modifier.fillMaxWidth(),
+                                color = if (key == selected) AppColors.Accent else AppColors.TextPrimary,
+                                fontSize = AppType.BodySmall,
+                                fontWeight = if (key == selected) FontWeight.SemiBold else FontWeight.Normal,
+                                textAlign = TextAlign.Center
+                            )
+                        },
+                        onClick = {
+                            onSelect(key)
+                            expanded = false
+                        }
+                    )
+                }
             }
         }
     }
