@@ -786,6 +786,14 @@ fun AdvancedSettingsSheet(
     currentFirstLineIndent: Float = 0f,
     onParagraphSpacingChange: (Float) -> Unit = {},
     onFirstLineIndentChange: (Float) -> Unit = {},
+    showReaderChapterProgress: Boolean = true,
+    showReaderPageNumber: Boolean = true,
+    showReaderBattery: Boolean = true,
+    volumeKeyPageTurnEnabled: Boolean = false,
+    onShowReaderChapterProgressChange: (Boolean) -> Unit = {},
+    onShowReaderPageNumberChange: (Boolean) -> Unit = {},
+    onShowReaderBatteryChange: (Boolean) -> Unit = {},
+    onVolumeKeyPageTurnEnabledChange: (Boolean) -> Unit = {},
     onTextColorChange: (Int?) -> Unit,
     onResetSettings: () -> Unit,
     onDismiss: () -> Unit
@@ -830,8 +838,8 @@ fun AdvancedSettingsSheet(
     val previewParagraphs = remember(resolvedPreviewText) {
         buildPreviewParagraphs(resolvedPreviewText)
     }
-    val previewHorizontalPadding = (currentMarginHoriz / 2f).coerceIn(10f, 40f).dp
-    val previewVerticalPadding = (currentMarginVert / 3f).coerceIn(10f, 40f).dp
+    val previewHorizontalPadding = currentMarginHoriz.coerceIn(0f, 80f).dp
+    val previewVerticalPadding = (currentMarginVert / 3f).coerceIn(0f, 40f).dp
 
     Box(Modifier.fillMaxSize()) {
         // 遮罩
@@ -874,9 +882,9 @@ fun AdvancedSettingsSheet(
                         .padding(
                             horizontal = previewHorizontalPadding,
                             vertical = previewVerticalPadding
-                        ),
+                    ),
                     verticalArrangement = Arrangement.spacedBy(
-                        (currentParagraphSpacing * 3f).coerceIn(0f, 36f).dp
+                        currentParagraphSpacing.coerceIn(0f, 30f).dp
                     )
                 ) {
                     previewParagraphs.forEach { paragraph ->
@@ -956,20 +964,59 @@ fun AdvancedSettingsSheet(
                 Spacer(Modifier.height(12.dp))
 
                 // 左右边距
-                SettingSlider(stringResource(R.string.label_margin_horiz), currentMarginHoriz, 20f..80f, 2f, { "${it.toInt()} dp" }, onMarginHorizChange)
+                SettingSlider(stringResource(R.string.label_margin_horiz), currentMarginHoriz, 0f..80f, 2f, { "${it.toInt()} dp" }, onMarginHorizChange)
                 Spacer(Modifier.height(12.dp))
 
                 // 上下边距
-                SettingSlider(stringResource(R.string.label_margin_vert), currentMarginVert, 32f..120f, 2f, { "${it.toInt()} dp" }, onMarginVertChange)
+                SettingSlider(stringResource(R.string.label_margin_vert), currentMarginVert, 0f..120f, 2f, { "${it.toInt()} dp" }, onMarginVertChange)
                 Spacer(Modifier.height(12.dp))
 
                 // 段间距
-                SettingSlider(stringResource(R.string.label_paragraph_spacing), currentParagraphSpacing, 0f..30f, 1f, { "${it.toInt()} dp" }, onParagraphSpacingChange)
+                SettingSlider(
+                    stringResource(R.string.label_paragraph_spacing),
+                    currentParagraphSpacing,
+                    0f..30f,
+                    0.5f,
+                    {
+                        if (it % 1f == 0f) "${it.toInt()} dp"
+                        else String.format("%.1f dp", it)
+                    },
+                    onParagraphSpacingChange
+                )
                 Spacer(Modifier.height(12.dp))
 
                 // 首行缩进
                 SettingSlider(stringResource(R.string.label_first_line_indent), currentFirstLineIndent, 0f..4f, 0.5f, { "${it} 字符" }, onFirstLineIndentChange)
                 Spacer(Modifier.height(16.dp))
+
+                AdvancedToggleRow(
+                    title = stringResource(R.string.show_reader_chapter_progress),
+                    hint = stringResource(R.string.show_reader_chapter_progress_hint),
+                    checked = showReaderChapterProgress,
+                    onCheckedChange = onShowReaderChapterProgressChange
+                )
+                Spacer(Modifier.height(12.dp))
+                AdvancedToggleRow(
+                    title = stringResource(R.string.show_reader_page_number),
+                    hint = stringResource(R.string.show_reader_page_number_hint),
+                    checked = showReaderPageNumber,
+                    onCheckedChange = onShowReaderPageNumberChange
+                )
+                Spacer(Modifier.height(12.dp))
+                AdvancedToggleRow(
+                    title = stringResource(R.string.show_reader_battery),
+                    hint = stringResource(R.string.show_reader_battery_hint),
+                    checked = showReaderBattery,
+                    onCheckedChange = onShowReaderBatteryChange
+                )
+                Spacer(Modifier.height(12.dp))
+                AdvancedToggleRow(
+                    title = stringResource(R.string.volume_key_page_turn),
+                    hint = stringResource(R.string.volume_key_page_turn_hint),
+                    checked = volumeKeyPageTurnEnabled,
+                    onCheckedChange = onVolumeKeyPageTurnEnabledChange
+                )
+                Spacer(Modifier.height(20.dp))
 
                 // 字体选择
                 Text(stringResource(R.string.font_label), fontSize = 14.sp, color = LightTextSecondary)
@@ -999,6 +1046,36 @@ fun AdvancedSettingsSheet(
                 Spacer(Modifier.height(8.dp))
             }
         }
+    }
+}
+
+@Composable
+private fun AdvancedToggleRow(
+    title: String,
+    hint: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, fontSize = 14.sp, color = Color.Black)
+            Spacer(Modifier.height(2.dp))
+            Text(hint, fontSize = 12.sp, color = LightTextSecondary)
+        }
+        androidx.compose.material3.Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = androidx.compose.material3.SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = Color(0xFF34C759),
+                uncheckedThumbColor = Color.White,
+                uncheckedTrackColor = Color(0xFFE5E5EA),
+                uncheckedBorderColor = Color(0xFFE5E5EA)
+            )
+        )
     }
 }
 

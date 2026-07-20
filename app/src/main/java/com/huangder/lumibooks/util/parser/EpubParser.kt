@@ -650,7 +650,7 @@ class EpubParser(private val context: Context? = null) : BookParser {
                 ssb.setSpan(
                     ParagraphLineHeightSpan(spacingPx),
                     nl + 1, nl + 2,
-                    android.text.Spannable.SPAN_INCLUSIVE_INCLUSIVE
+                    android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
                 )
             }
         }
@@ -712,6 +712,13 @@ class EpubParser(private val context: Context? = null) : BookParser {
             spanstartv: Int, lineHeight: Int,
             fm: android.graphics.Paint.FontMetricsInt
         ) {
+            // 间距 Span 只能压缩专用空白行。分页切片边界即使残留了异常 Span，
+            // 也绝不能把含正文的行高压成几像素，否则会出现整段文字重叠。
+            val isSpacerLine = start < end && (start until end).all { index ->
+                text[index] == '\n' || text[index] == '\r'
+            }
+            if (!isSpacerLine) return
+
             val origAscent = fm.ascent
             val origDescent = fm.descent
             // 强制覆盖字体度量，精确控制空行高度

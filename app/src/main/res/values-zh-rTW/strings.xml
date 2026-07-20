@@ -263,6 +263,15 @@
     <string name="reader_toc">目錄</string>
     <string name="reader_close">關閉</string>
     <string name="reader_chapter_fallback">第%d章</string>
+    <string name="reader_battery_level">電量 %d%%</string>
+    <string name="show_reader_chapter_progress">顯示章節進度</string>
+    <string name="show_reader_chapter_progress_hint">目前章節名稱與全書百分比</string>
+    <string name="show_reader_page_number">顯示頁碼</string>
+    <string name="show_reader_page_number_hint">目前章節頁碼</string>
+    <string name="show_reader_battery">顯示電量</string>
+    <string name="show_reader_battery_hint">電量圖示與百分比</string>
+    <string name="volume_key_page_turn">音量鍵翻頁</string>
+    <string name="volume_key_page_turn_hint">音量增加鍵上一頁，音量減少鍵下一頁</string>
     <string name="search_placeholder">輸入關鍵詞</string>
     <string name="search_results_found">找到 %d 條結果</string>
     <string name="search_no_results">未找到匹配結果</string>

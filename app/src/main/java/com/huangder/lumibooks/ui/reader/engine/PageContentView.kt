@@ -19,6 +19,10 @@ import coil.load
 import java.io.File
 import kotlin.math.abs
 
+internal fun pageStartsMidParagraph(text: CharSequence, start: Int): Boolean {
+    return start > 0 && start <= text.length && text[start - 1] != '\n'
+}
+
 /**
  * 单页内容 View，替代 PageSurfaceView（Bitmap 容器）。
  *
@@ -139,6 +143,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
 
     /** 原始 spannable（含真实 BitmapDrawable ImageSpan），供 syncText/moveSlot 使用 */
     private var originalSpannable: Spannable? = null
+    private var justifyLastLine: Boolean = false
 
     fun setPageContent(
         fullText: CharSequence,
@@ -149,6 +154,8 @@ class PageContentView(context: Context) : FrameLayout(context) {
         if (startChar < 0 || endChar > fullText.length || startChar >= endChar) {
             chapterStartOffset = startChar
             textView.text = ""
+            justifyLastLine = false
+            justifiedView.justifyLastLine = false
             justifiedView.text = null
             return
         }
@@ -166,9 +173,17 @@ class PageContentView(context: Context) : FrameLayout(context) {
 
         if (actualStart >= endChar) {
             textView.text = ""
+            justifyLastLine = false
+            justifiedView.justifyLastLine = false
             justifiedView.text = null
             return
         }
+
+        justifyLastLine = endChar < fullText.length &&
+            endChar > actualStart &&
+            fullText[endChar - 1] != '\n' &&
+            fullText[endChar - 1] != '\r'
+        justifiedView.justifyLastLine = justifyLastLine
 
         val subText = fullText.subSequence(actualStart, endChar)
         Log.d(TAG, "setPageContent: subText type=${subText.javaClass.simpleName} isSpanned=${subText is android.text.Spanned}")
@@ -190,9 +205,19 @@ class PageContentView(context: Context) : FrameLayout(context) {
             SpannableStringBuilder(pageText)
         }
         if (subText is android.text.Spanned) {
+            // SpannableStringBuilder(pageText) 已复制原段落的 LeadingMarginSpan。
+            // 必须先移除，再按页面是否从段落中间开始重新挂载。
+            spannable.getSpans(0, spannable.length, android.text.style.LeadingMarginSpan::class.java)
+                .forEach(spannable::removeSpan)
+            spannable.getSpans(
+                0,
+                spannable.length,
+                com.huangder.lumibooks.util.parser.EpubParser.ParagraphLineHeightSpan::class.java
+            ).forEach(spannable::removeSpan)
+
             // 恢复 LeadingMarginSpan（首行缩进）
             // 如果页面从段落中间开始（前一个字符不是 \n），跳过开头到第一个 \n 的缩进
-            val startsMidParagraph = actualStart > 0 && fullText[actualStart - 1] != '\n'
+            val startsMidParagraph = pageStartsMidParagraph(fullText, actualStart)
             val lms = subText.getSpans(0, subText.length, android.text.style.LeadingMarginSpan::class.java)
             for (lm in lms) {
                 val start = subText.getSpanStart(lm).coerceIn(0, spannable.length)
@@ -215,8 +240,12 @@ class PageContentView(context: Context) : FrameLayout(context) {
             for (lh in lhs) {
                 val start = subText.getSpanStart(lh).coerceIn(0, spannable.length)
                 val end = subText.getSpanEnd(lh).coerceIn(0, spannable.length)
-                if (start < end) {
-                    spannable.setSpan(lh, start, end, Spannable.SPAN_INCLUSIVE_INCLUSIVE)
+                val coversOnlySpacerLine = start < end &&
+                    (start until end).all { index ->
+                        spannable[index] == '\n' || spannable[index] == '\r'
+                    }
+                if (coversOnlySpacerLine) {
+                    spannable.setSpan(lh, start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                 }
             }
             Log.d(TAG, "setPageContent: restored ${lms.size} LeadingMarginSpans, ${lhs.size} ParagraphLineHeightSpans")
@@ -453,12 +482,16 @@ class PageContentView(context: Context) : FrameLayout(context) {
     /** 清除内容 */
     fun clear() {
         textView.text = ""
+        justifyLastLine = false
+        justifiedView.justifyLastLine = false
         justifiedView.text = null
         originalSpannable = null
     }
 
     /** 获取原始 spannable（含真实 ImageSpan），供 moveSlot 使用 */
     fun getJustifiedText(): Spannable? = originalSpannable
+
+    fun shouldJustifyLastLine(): Boolean = justifyLastLine
 
     /**
      * 同步设置文本到 textView 和 justifiedView。
@@ -467,7 +500,13 @@ class PageContentView(context: Context) : FrameLayout(context) {
      * @param textViewText 设置给隐藏 textView 的文本（可含透明 ImageSpan）
      * @param justifiedText 设置给可见 justifiedView 的文本（应含真实 ImageSpan），null 时回退到 textViewText
      */
-    fun syncText(textViewText: CharSequence?, justifiedText: Spannable? = null) {
+    fun syncText(
+        textViewText: CharSequence?,
+        justifiedText: Spannable? = null,
+        justifyLastLine: Boolean = false
+    ) {
+        this.justifyLastLine = justifyLastLine
+        justifiedView.justifyLastLine = justifyLastLine
         // 🔥 先设置 justifiedView（只 invalidate，不触发父布局），再设置 textView（可能触发父布局）
         // 确保 textView 触发的 layout pass 中，justifiedView 已有正确内容供 onSizeChanged → rebuildLayout 使用
         justifiedView.text = justifiedText

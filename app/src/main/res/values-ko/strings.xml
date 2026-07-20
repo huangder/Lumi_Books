@@ -263,6 +263,15 @@
     <string name="reader_toc">목차</string>
     <string name="reader_close">닫기</string>
     <string name="reader_chapter_fallback">제%d장</string>
+    <string name="reader_battery_level">배터리 %d%%</string>
+    <string name="show_reader_chapter_progress">장 진행률 표시</string>
+    <string name="show_reader_chapter_progress_hint">현재 장 이름과 전체 책 진행률</string>
+    <string name="show_reader_page_number">페이지 번호 표시</string>
+    <string name="show_reader_page_number_hint">현재 장의 페이지 번호</string>
+    <string name="show_reader_battery">배터리 표시</string>
+    <string name="show_reader_battery_hint">배터리 아이콘과 잔량</string>
+    <string name="volume_key_page_turn">음량 키로 페이지 넘기기</string>
+    <string name="volume_key_page_turn_hint">음량 높임은 이전 페이지, 낮춤은 다음 페이지</string>
     <string name="search_placeholder">키워드 입력</string>
     <string name="search_results_found">%d개 결과를 찾았습니다</string>
     <string name="search_no_results">일치하는 결과가 없습니다</string>

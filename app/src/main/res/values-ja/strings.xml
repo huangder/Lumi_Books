@@ -263,6 +263,15 @@
     <string name="reader_toc">目次</string>
     <string name="reader_close">閉じる</string>
     <string name="reader_chapter_fallback">第%d章</string>
+    <string name="reader_battery_level">バッテリー %d%%</string>
+    <string name="show_reader_chapter_progress">章の進捗を表示</string>
+    <string name="show_reader_chapter_progress_hint">現在の章名と本全体の進捗率</string>
+    <string name="show_reader_page_number">ページ番号を表示</string>
+    <string name="show_reader_page_number_hint">現在の章のページ番号</string>
+    <string name="show_reader_battery">バッテリーを表示</string>
+    <string name="show_reader_battery_hint">バッテリーアイコンと残量</string>
+    <string name="volume_key_page_turn">音量キーでページ送り</string>
+    <string name="volume_key_page_turn_hint">音量を上げるキーで前へ、下げるキーで次へ</string>
     <string name="search_placeholder">キーワードを入力</string>
     <string name="search_results_found">%d件見つかりました</string>
     <string name="search_no_results">一致する結果が見つかりません</string>

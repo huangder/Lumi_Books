@@ -26,6 +26,7 @@ import com.huangder.lumibooks.util.parser.BookParser
 import com.huangder.lumibooks.util.parser.BookParserFactory
 import com.huangder.lumibooks.util.parser.BookLinkTarget
 import com.huangder.lumibooks.util.parser.PdfParser
+import com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -40,6 +41,14 @@ import javax.inject.Inject
 import java.io.File
 import java.util.Locale
 import java.util.UUID
+
+internal fun shouldStyleTxtChapterTitle(firstLine: String, chapterTitle: String): Boolean {
+    val normalizedFirstLine = firstLine.trim()
+    val normalizedChapterTitle = chapterTitle.trim()
+    return normalizedFirstLine.isNotEmpty() &&
+        normalizedFirstLine.length <= 80 &&
+        normalizedFirstLine == normalizedChapterTitle
+}
 
 data class ReaderUiState(
     val book: Book? = null,
@@ -84,7 +93,11 @@ data class ReaderUiState(
     /** 首行缩进字符数，默认 2 */
     val firstLineIndent: Float = 2f,
     /** PDF 阅读方向："vertical" | "horizontal" */
-    val pdfPageMode: String = "vertical"
+    val pdfPageMode: String = "vertical",
+    val showReaderChapterProgress: Boolean = true,
+    val showReaderPageNumber: Boolean = true,
+    val showReaderBattery: Boolean = true,
+    val volumeKeyPageTurnEnabled: Boolean = false
 )
 
 @HiltViewModel
@@ -224,6 +237,26 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.pdfPageMode.collectLatest { mode ->
                 _uiState.value = _uiState.value.copy(pdfPageMode = mode)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.showReaderChapterProgress.collectLatest { show ->
+                _uiState.value = _uiState.value.copy(showReaderChapterProgress = show)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.showReaderPageNumber.collectLatest { show ->
+                _uiState.value = _uiState.value.copy(showReaderPageNumber = show)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.showReaderBattery.collectLatest { show ->
+                _uiState.value = _uiState.value.copy(showReaderBattery = show)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.volumeKeyPageTurnEnabled.collectLatest { enabled ->
+                _uiState.value = _uiState.value.copy(volumeKeyPageTurnEnabled = enabled)
             }
         }
     }
@@ -422,6 +455,26 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch { dataStoreManager.savePdfPageMode(nextMode) }
     }
 
+    fun saveShowReaderChapterProgress(show: Boolean) {
+        _uiState.value = _uiState.value.copy(showReaderChapterProgress = show)
+        viewModelScope.launch { dataStoreManager.saveShowReaderChapterProgress(show) }
+    }
+
+    fun saveShowReaderPageNumber(show: Boolean) {
+        _uiState.value = _uiState.value.copy(showReaderPageNumber = show)
+        viewModelScope.launch { dataStoreManager.saveShowReaderPageNumber(show) }
+    }
+
+    fun saveShowReaderBattery(show: Boolean) {
+        _uiState.value = _uiState.value.copy(showReaderBattery = show)
+        viewModelScope.launch { dataStoreManager.saveShowReaderBattery(show) }
+    }
+
+    fun saveVolumeKeyPageTurnEnabled(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(volumeKeyPageTurnEnabled = enabled)
+        viewModelScope.launch { dataStoreManager.saveVolumeKeyPageTurnEnabled(enabled) }
+    }
+
     fun saveParagraphSpacing(value: Float) {
         parser?.paragraphSpacingDp = value
         parser?.clearHtmlCache()  // 同步清缓存，确保 configure() 重新分页时拿到新内容
@@ -454,7 +507,11 @@ class ReaderViewModel @Inject constructor(
             marginVertDp = 64f,
             paragraphSpacing = 2f,
             firstLineIndent = 2f,
-            readerTextColor = null
+            readerTextColor = null,
+            showReaderChapterProgress = true,
+            showReaderPageNumber = true,
+            showReaderBattery = true,
+            volumeKeyPageTurnEnabled = false
         )
         viewModelScope.launch {
             dataStoreManager.resetAdvancedReaderSettings()
@@ -814,23 +871,41 @@ class ReaderViewModel @Inject constructor(
         val raw = try { parser?.getChapterContent(index) } catch (_: Exception) { null } ?: return null
         if (raw.isEmpty()) return raw
 
-        // EPUB: 已由 Html.fromHtml() 生成 Spanned（含标题/粗体/斜体/链接/分段），直接返回
-        if (raw is Spanned) return raw
-
-        // TXT: 纯文本无格式，首行标题加大加粗 + 后空一行
-        val newlineIdx = raw.indexOf('\n')
-        return if (newlineIdx > 0) {
-            val title = raw.substring(0, newlineIdx)
-            val body = raw.substring(newlineIdx + 1)
-            val spannable = SpannableString("$title\n\n$body")
-            // 标题：1.5x 字号 + 粗体
-            val titleEnd = title.length
-            spannable.setSpan(AbsoluteSizeSpan(22, true), 0, titleEnd, 0)  // 22sp
-            spannable.setSpan(StyleSpan(Typeface.BOLD), 0, titleEnd, 0)
-            spannable
+        val isTxt = raw !is Spanned
+        var skipFirstParagraphIndent = false
+        val chapterText = if (isTxt) {
+            // 只有解析器识别出的真实章节标题才加大加粗。无目录 TXT 的章节标题是
+            // “第 N 章 + 正文摘要”的合成值，不能把原始首段整行误当成标题。
+            val newlineIdx = raw.indexOf('\n')
+            if (newlineIdx > 0) {
+                val title = raw.substring(0, newlineIdx)
+                val parsedChapterTitle = _uiState.value.chapterTitles.getOrNull(index).orEmpty()
+                if (shouldStyleTxtChapterTitle(title, parsedChapterTitle)) {
+                    skipFirstParagraphIndent = true
+                    val body = raw.substring(newlineIdx + 1)
+                    val spannable = SpannableString("$title\n\n$body")
+                    val titleEnd = title.length
+                    spannable.setSpan(AbsoluteSizeSpan(22, true), 0, titleEnd, 0)
+                    spannable.setSpan(StyleSpan(Typeface.BOLD), 0, titleEnd, 0)
+                    spannable
+                } else {
+                    raw
+                }
+            } else {
+                raw
+            }
         } else {
-            raw  // 无换行，保持原样
+            raw
         }
+
+        val state = _uiState.value
+        return ReaderParagraphFormatter.applyFirstLineIndent(
+            text = chapterText,
+            indentCharacters = state.firstLineIndent,
+            textSizePx = state.fontSize * context.resources.displayMetrics.scaledDensity,
+            paragraphSpacingPx = state.paragraphSpacing * context.resources.displayMetrics.density,
+            skipFirstNonEmptyParagraph = skipFirstParagraphIndent
+        )
     }
 
     /** 在 IO 线程解析 EPUB 相对路径/锚点，返回原生阅读引擎可跳转的位置。 */

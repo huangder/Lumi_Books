@@ -1,10 +1,12 @@
 package com.huangder.lumibooks.ui.reader.engine
 
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -33,8 +35,10 @@ class PageSlotManager(
         SlotState(-1, -1, -1, false, nextView)
     )
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private var loadingJob: Job? = null
+    private val supervisorJob = SupervisorJob()
+    private val scope = CoroutineScope(supervisorJob + Dispatchers.Main)
+    private val slotJobs = arrayOfNulls<Job>(3)
+    private val requestTokens = LongArray(3)
     private var chapterCount: Int = 0
 
     /** 字号变化时暂存当前页的字符起始偏移，供 loadSlot 搜索修正后的页码 */
@@ -66,11 +70,7 @@ class PageSlotManager(
      */
     fun initialize(startChapter: Int, startPageInChapter: Int) {
         for (i in 0..2) {
-            slots[i].chapterIndex = -1
-            slots[i].pageIndex = -1
-            slots[i].globalPageIndex = -1
-            slots[i].isLoaded = false
-            slots[i].contentView.clear()
+            recycleSlot(i)
         }
 
         currentChapterIndex = startChapter
@@ -91,6 +91,9 @@ class PageSlotManager(
             return
         }
 
+        invalidateRequest(slotIdx)
+        val requestToken = requestTokens[slotIdx]
+
         slot.chapterIndex = chapterIndex
         slot.pageIndex = pageInChapter
         slot.isLoaded = false
@@ -99,6 +102,7 @@ class PageSlotManager(
         val thisJob = scope.launch {
             try {
                 val text = withContext(Dispatchers.IO) { contentProvider?.invoke(chapterIndex) }
+                if (!isCurrentRequest(slotIdx, requestToken)) return@launch
                 if (text.isNullOrEmpty()) {
                     Log.w(TAG, "Empty text for slot $slotIdx ch=$chapterIndex")
                     slot.isLoaded = false
@@ -106,6 +110,13 @@ class PageSlotManager(
                     return@launch
                 }
                 val chapterLayout = layoutEngine.layout(chapterIndex, text)
+                if (!isCurrentRequest(slotIdx, requestToken)) return@launch
+
+                if (chapterLayout.totalPages <= 0) {
+                    slot.isLoaded = false
+                    if (slotIdx == SLOT_CUR) notifyPageChanged()
+                    return@launch
+                }
 
                 var actualPage = pageInChapter
 
@@ -130,20 +141,22 @@ class PageSlotManager(
                 if (actualPage < 0 || actualPage >= chapterLayout.totalPages) {
                     val clampedPage = actualPage.coerceIn(0, chapterLayout.totalPages - 1)
                     Log.w(TAG, "Page clamped: slot=$slotIdx ch=$chapterIndex pg=$actualPage->$clampedPage")
+                    actualPage = clampedPage
                     slot.pageIndex = clampedPage
-                    loadSlot(slotIdx, chapterIndex, clampedPage)
-                    return@launch
                 }
 
                 // 设置页面文本内容
                 val pageLayout = chapterLayout.pages[actualPage]
                 val highlights = highlightProvider?.invoke(chapterIndex) ?: emptyList()
+                if (!isCurrentRequest(slotIdx, requestToken)) return@launch
                 // 追踪 LeadingMarginSpan 存活情况
                 val lmsBefore = if (text is android.text.Spannable) text.getSpans(0, text.length, android.text.style.LeadingMarginSpan::class.java) else emptyArray()
                 Log.d(TAG, "loadSlot: text type=${text.javaClass.simpleName} LeadingMarginSpans=${lmsBefore.size} startChar=${pageLayout.startCharOffset} endChar=${pageLayout.endCharOffset}")
                 slot.contentView.setPageContent(text, pageLayout.startCharOffset, pageLayout.endCharOffset, highlights)
 
-                if (slot.chapterIndex == chapterIndex && slot.pageIndex == actualPage) {
+                if (isCurrentRequest(slotIdx, requestToken) &&
+                    slot.chapterIndex == chapterIndex && slot.pageIndex == actualPage
+                ) {
                     slot.globalPageIndex = layoutEngine.localToGlobal(chapterIndex, actualPage)
                     slot.isLoaded = true
                     Log.d(TAG, "Slot $slotIdx loaded: ch=$chapterIndex pg=$actualPage")
@@ -155,16 +168,22 @@ class PageSlotManager(
                         val (nextCh, nextPg) = resolveNextPage()
                         if (nextCh >= 0 && nextPg >= 0) loadSlot(SLOT_NEXT, nextCh, nextPg)
                     }
-                } else {
-                    slot.contentView.clear()
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to load slot $slotIdx ch=$chapterIndex", e)
-                slot.isLoaded = false
-                if (slotIdx == SLOT_CUR) notifyPageChanged()
+                if (isCurrentRequest(slotIdx, requestToken)) {
+                    slot.isLoaded = false
+                    if (slotIdx == SLOT_CUR) notifyPageChanged()
+                }
+            } finally {
+                if (isCurrentRequest(slotIdx, requestToken)) {
+                    slotJobs[slotIdx] = null
+                }
             }
         }
-        loadingJob = thisJob
+        slotJobs[slotIdx] = thisJob
     }
 
     /**
@@ -190,6 +209,7 @@ class PageSlotManager(
         val pi = cur.pageIndex
         val cl = layoutEngine.getChapterLayout(ci) ?: return
         val pageLayout = cl.pages.getOrNull(pi) ?: return
+        val requestToken = requestTokens[SLOT_CUR]
 
         // 🔥 异步加载文本，避免 runBlocking 阻塞主线程
         scope.launch {
@@ -199,7 +219,9 @@ class PageSlotManager(
             withContext(Dispatchers.Main) {
                 // 双重检查：异步加载期间槽位可能已变化（翻页/跳转）
                 val currentCur = slots[SLOT_CUR]
-                if (currentCur.chapterIndex == ci && currentCur.pageIndex == pi && currentCur.isLoaded) {
+                if (isCurrentRequest(SLOT_CUR, requestToken) &&
+                    currentCur.chapterIndex == ci && currentCur.pageIndex == pi && currentCur.isLoaded
+                ) {
                     currentCur.contentView.setPageContent(text, pageLayout.startCharOffset, pageLayout.endCharOffset, highlights)
                 }
             }
@@ -324,6 +346,8 @@ class PageSlotManager(
     }
 
     private fun moveSlot(from: Int, to: Int) {
+        invalidateRequest(from)
+        invalidateRequest(to)
         val fromSlot = slots[from]
         val toSlot = slots[to]
 
@@ -336,7 +360,8 @@ class PageSlotManager(
         // 复制文本内容：textView 用副本（透明 ImageSpan），justifiedView 用原始 spannable（真实 ImageSpan）
         toSlot.contentView.syncText(
             textViewText = fromSlot.contentView.textView.text,
-            justifiedText = fromSlot.contentView.getJustifiedText()
+            justifiedText = fromSlot.contentView.getJustifiedText(),
+            justifyLastLine = fromSlot.contentView.shouldJustifyLastLine()
         )
         // 🔥 诊断：syncText 只 invalidate 了子 View（textView/justifiedView），
         // 但父容器 PageContentView 的硬件 Display List 可能未失效。
@@ -352,12 +377,23 @@ class PageSlotManager(
     }
 
     private fun recycleSlot(slotIdx: Int) {
+        invalidateRequest(slotIdx)
         val slot = slots[slotIdx]
         slot.chapterIndex = -1
         slot.pageIndex = -1
         slot.globalPageIndex = -1
         slot.isLoaded = false
         slot.contentView.clear()
+    }
+
+    private fun invalidateRequest(slotIdx: Int) {
+        requestTokens[slotIdx]++
+        slotJobs[slotIdx]?.cancel()
+        slotJobs[slotIdx] = null
+    }
+
+    private fun isCurrentRequest(slotIdx: Int, requestToken: Long): Boolean {
+        return requestTokens[slotIdx] == requestToken
     }
 
     private fun notifyPageChanged() {
@@ -373,5 +409,6 @@ class PageSlotManager(
 
     fun destroy() {
         for (i in 0..2) recycleSlot(i)
+        scope.cancel()
     }
 }
