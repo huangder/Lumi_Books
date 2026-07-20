@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.huangder.lumibooks.util.parser.TxtParserTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-07-19T14:04:31" hostname="LAPTOP-L6IPGCHS" time="0.634">
+<testsuite name="com.huangder.lumibooks.util.parser.TxtParserTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-07-20T03:26:36" hostname="LAPTOP-L6IPGCHS" time="0.874">
   <properties/>
-  <testcase name="indexesManyLineNovelWithoutOpeningTheFilePerLine" classname="com.huangder.lumibooks.util.parser.TxtParserTest" time="0.362"/>
-  <testcase name="detectsGbkAndUtf16Bom" classname="com.huangder.lumibooks.util.parser.TxtParserTest" time="0.005"/>
-  <testcase name="splitsFallbackTextNearTargetSize" classname="com.huangder.lumibooks.util.parser.TxtParserTest" time="0.024"/>
-  <testcase name="parsesUtf8ChaptersWithoutStoringContentInMetadata" classname="com.huangder.lumibooks.util.parser.TxtParserTest" time="0.003"/>
-  <testcase name="escapesHtmlOnDemand" classname="com.huangder.lumibooks.util.parser.TxtParserTest" time="0.008"/>
-  <testcase name="indexesFourteenMegabyteTxtWithoutReadingWholeBookIntoChapters" classname="com.huangder.lumibooks.util.parser.TxtParserTest" time="0.221"/>
-  <testcase name="preservesUtf8CharactersWhenSplittingOneLongLine" classname="com.huangder.lumibooks.util.parser.TxtParserTest" time="0.011"/>
+  <testcase name="indexesManyLineNovelWithoutOpeningTheFilePerLine" classname="com.huangder.lumibooks.util.parser.TxtParserTest" time="0.537"/>
+  <testcase name="detectsGbkAndUtf16Bom" classname="com.huangder.lumibooks.util.parser.TxtParserTest" time="0.009"/>
+  <testcase name="splitsFallbackTextNearTargetSize" classname="com.huangder.lumibooks.util.parser.TxtParserTest" time="0.028"/>
+  <testcase name="parsesUtf8ChaptersWithoutStoringContentInMetadata" classname="com.huangder.lumibooks.util.parser.TxtParserTest" time="0.005"/>
+  <testcase name="escapesHtmlOnDemand" classname="com.huangder.lumibooks.util.parser.TxtParserTest" time="0.006"/>
+  <testcase name="indexesFourteenMegabyteTxtWithoutReadingWholeBookIntoChapters" classname="com.huangder.lumibooks.util.parser.TxtParserTest" time="0.276"/>
+  <testcase name="preservesUtf8CharactersWhenSplittingOneLongLine" classname="com.huangder.lumibooks.util.parser.TxtParserTest" time="0.013"/>
   <system-out><![CDATA[]]></system-out>
   <system-err><![CDATA[]]></system-err>
 </testsuite>

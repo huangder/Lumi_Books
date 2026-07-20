@@ -266,6 +266,7 @@
     <string msgid="5941395253238309765" name="range_end">"범위 끝"</string>
     <string msgid="7097486360902471446" name="range_start">"범위 시작"</string>
     <string name="reader_back">뒤로</string>
+    <string name="reader_battery_level">배터리 %d%%</string>
     <string name="reader_bookmark">북마크</string>
     <string name="reader_chapter_fallback">제%d장</string>
     <string name="reader_close">닫기</string>
@@ -308,6 +309,12 @@
     <string name="set_goal">목표 설정</string>
     <string name="settings">설정</string>
     <string name="settings_title">설정</string>
+    <string name="show_reader_battery">배터리 표시</string>
+    <string name="show_reader_battery_hint">배터리 아이콘과 잔량</string>
+    <string name="show_reader_chapter_progress">장 진행률 표시</string>
+    <string name="show_reader_chapter_progress_hint">현재 장 이름과 전체 책 진행률</string>
+    <string name="show_reader_page_number">페이지 번호 표시</string>
+    <string name="show_reader_page_number_hint">현재 장의 페이지 번호</string>
     <string name="sponsor_code_label">屿浮 님께 보내는 후원 코드</string>
     <string name="sponsor_desc">기부: 마음에 드셨다면 개발을 후원해 주세요</string>
     <string name="sponsor_dev_title">개발자</string>

@@ -1,13 +1,13 @@
 EXECUTING: F:\SDK\build-tools\34.0.0\aapt.exe dump badging D:\vibe_coding\android_books\app\build\outputs\apk\debug\app-debug.apk
 CURRENT_WORKING_DIRECTORY: D:\vibe_coding\android_books
-START_TIME: 2026-07-19 20:38:04.169
-START_TIME-NANOS: 2026-07-19 20:38:04.169568900
+START_TIME: 2026-07-20 10:00:54.078
+START_TIME-NANOS: 2026-07-20 10:00:54.078080200
 ENVIRONMENT:
 
 *****************************************
 STDOUT/STDERR BELOW
 ===================
-package: name='com.huangder.lumibooks' versionCode='4' versionName='1.0.02.13_Beta' platformBuildVersionName='15' platformBuildVersionCode='35' compileSdkVersion='35' compileSdkVersionCodename='15'
+package: name='com.huangder.lumibooks' versionCode='5' versionName='1.0.03' platformBuildVersionName='15' platformBuildVersionCode='35' compileSdkVersion='35' compileSdkVersionCodename='15'
 sdkVersion:'26'
 targetSdkVersion:'35'
 uses-permission: name='android.permission.READ_EXTERNAL_STORAGE' maxSdkVersion='32'
@@ -125,7 +125,7 @@ locales: '--_--' 'af' 'am' 'ar' 'as' 'az' 'be' 'bg' 'bn' 'bs' 'ca' 'cs' 'da' 'de
 densities: '160' '240' '320' '480' '640' '65535'
 native-code: 'arm64-v8a' 'armeabi-v7a' 'x86' 'x86_64'
 ===================
-END_TIME: 2026-07-19 20:38:04.737
-END_TIME-NANOS: 2026-07-19 20:38:04.737529700
-DURATION: 567ms
+END_TIME: 2026-07-20 10:00:54.165
+END_TIME-NANOS: 2026-07-20 10:00:54.165264200
+DURATION: 87ms
 EXIT CODE: 0

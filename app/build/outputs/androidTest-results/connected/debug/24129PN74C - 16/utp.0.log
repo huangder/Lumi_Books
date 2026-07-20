@@ -12,7 +12,7 @@
     }
     args_map {
       key: "class"
-      value: "com.huangder.lumibooks.util.parser.EpubParserLinkTest"
+      value: "com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest"
     }
   }
 }
@@ -40,4 +40,13 @@ apks_to_install {
 信息: Stop logcat streaming.
 信息: Uninstalling com.huangder.lumibooks for device adb-8874e6ee-ATndxB._adb-tls-connect._tcp.
 信息: Uninstalling com.huangder.lumibooks.test for device adb-8874e6ee-ATndxB._adb-tls-connect._tcp.
-信息: Execute com.huangder.lumibooks.util.parser.EpubParserLinkTest.resolvesCrossChapterAnchorToFinalTextOffset: PASSED
+信息: Execute com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest.continuationPageIndentsOnlyParagraphStartingInsidePage: PASSED
+信息: Execute com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest.continuationOnlyPageDoesNotKeepCopiedFirstLineIndent: PASSED
+信息: Execute com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest.zeroIndentRemovesPreviouslyAppliedReaderIndent: PASSED
+信息: Execute com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest.existingWhitespaceIsSupplementedToRequestedIndent: PASSED
+信息: Execute com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest.zeroParagraphSpacingLeavesOnlyOneParagraphBreak: PASSED
+信息: Execute com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest.paragraphSpacingNormalizesExistingBlankLinesBeforeAddingExactGap: PASSED
+信息: Execute com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest.pageStartingAfterParagraphSpacerDoesNotKeepBoundaryLineHeightSpan: PASSED
+信息: Execute com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest.indentsTxtBodyButNotTitle: PASSED
+信息: Execute com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest.paragraphSpacingSpanNeverCompressesVisibleTextLine: PASSED
+信息: Execute com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest.staticLayoutKeepsSpacerSmallAndVisibleLinesAtNormalHeight: PASSED

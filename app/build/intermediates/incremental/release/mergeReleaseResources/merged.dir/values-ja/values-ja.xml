@@ -266,6 +266,7 @@
     <string msgid="5941395253238309765" name="range_end">"範囲の末尾"</string>
     <string msgid="7097486360902471446" name="range_start">"範囲の先頭"</string>
     <string name="reader_back">戻る</string>
+    <string name="reader_battery_level">バッテリー %d%%</string>
     <string name="reader_bookmark">ブックマーク</string>
     <string name="reader_chapter_fallback">第%d章</string>
     <string name="reader_close">閉じる</string>
@@ -308,6 +309,12 @@
     <string name="set_goal">目標を設定</string>
     <string name="settings">設定</string>
     <string name="settings_title">設定</string>
+    <string name="show_reader_battery">バッテリーを表示</string>
+    <string name="show_reader_battery_hint">バッテリーアイコンと残量</string>
+    <string name="show_reader_chapter_progress">章の進捗を表示</string>
+    <string name="show_reader_chapter_progress_hint">現在の章名と本全体の進捗率</string>
+    <string name="show_reader_page_number">ページ番号を表示</string>
+    <string name="show_reader_page_number_hint">現在の章のページ番号</string>
     <string name="sponsor_code_label">Yufu の赞赏码</string>
     <string name="sponsor_desc">寄付：気に入ったら開発をサポートしてください</string>
     <string name="sponsor_dev_title">開発者</string>

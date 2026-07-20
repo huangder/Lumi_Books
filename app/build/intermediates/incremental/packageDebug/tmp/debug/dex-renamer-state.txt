@@ -1,4 +1,4 @@
-#Sun Jul 19 23:03:27 CST 2026
+#Mon Jul 20 11:42:59 CST 2026
 base.0=D\:\\vibe_coding\\android_books\\app\\build\\intermediates\\dex\\debug\\mergeExtDexDebug\\classes.dex
 base.1=D\:\\vibe_coding\\android_books\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\0\\classes.dex
 base.10=D\:\\vibe_coding\\android_books\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\6\\classes.dex
@@ -7,6 +7,7 @@ base.12=D\:\\vibe_coding\\android_books\\app\\build\\intermediates\\dex\\debug\\
 base.13=D\:\\vibe_coding\\android_books\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\9\\classes.dex
 base.14=D\:\\vibe_coding\\android_books\\app\\build\\intermediates\\dex\\debug\\mergeExtDexDebug\\classes2.dex
 base.15=D\:\\vibe_coding\\android_books\\app\\build\\intermediates\\dex\\debug\\mergeExtDexDebug\\classes3.dex
+base.16=D\:\\vibe_coding\\android_books\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\5\\classes.dex
 base.2=D\:\\vibe_coding\\android_books\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\10\\classes.dex
 base.3=D\:\\vibe_coding\\android_books\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\11\\classes.dex
 base.4=D\:\\vibe_coding\\android_books\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\12\\classes.dex
@@ -23,6 +24,7 @@ path.12=8/classes.dex
 path.13=9/classes.dex
 path.14=classes2.dex
 path.15=classes3.dex
+path.16=5/classes.dex
 path.2=10/classes.dex
 path.3=11/classes.dex
 path.4=12/classes.dex
@@ -39,6 +41,7 @@ renamed.12=classes13.dex
 renamed.13=classes14.dex
 renamed.14=classes15.dex
 renamed.15=classes16.dex
+renamed.16=classes17.dex
 renamed.2=classes3.dex
 renamed.3=classes4.dex
 renamed.4=classes5.dex

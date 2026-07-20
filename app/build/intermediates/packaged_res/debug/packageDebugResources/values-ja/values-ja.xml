@@ -191,6 +191,7 @@
     <string name="preview_text">落霞と孤鶩が一緒に飛び、秋水は空と一体になる。漁舟の夕暮れの歌は、彭蠡のほとりに響き渡る。</string>
     <string name="privacy_policy">プライバシーポリシー</string>
     <string name="reader_back">戻る</string>
+    <string name="reader_battery_level">バッテリー %d%%</string>
     <string name="reader_bookmark">ブックマーク</string>
     <string name="reader_chapter_fallback">第%d章</string>
     <string name="reader_close">閉じる</string>
@@ -232,6 +233,12 @@
     <string name="set_goal">目標を設定</string>
     <string name="settings">設定</string>
     <string name="settings_title">設定</string>
+    <string name="show_reader_battery">バッテリーを表示</string>
+    <string name="show_reader_battery_hint">バッテリーアイコンと残量</string>
+    <string name="show_reader_chapter_progress">章の進捗を表示</string>
+    <string name="show_reader_chapter_progress_hint">現在の章名と本全体の進捗率</string>
+    <string name="show_reader_page_number">ページ番号を表示</string>
+    <string name="show_reader_page_number_hint">現在の章のページ番号</string>
     <string name="sponsor_code_label">Yufu の赞赏码</string>
     <string name="sponsor_desc">寄付：気に入ったら開発をサポートしてください</string>
     <string name="sponsor_dev_title">開発者</string>
@@ -289,6 +296,8 @@
     <string name="today_reading_label">今日の読書</string>
     <string name="today_reading_time">今日の読書時間</string>
     <string name="tuesday_short">火</string>
+    <string name="volume_key_page_turn">音量キーでページ送り</string>
+    <string name="volume_key_page_turn_hint">音量を上げるキーで前へ、下げるキーで次へ</string>
     <string name="wednesday_short">水</string>
     <string name="welcome_and">と</string>
     <string name="welcome_continue">続行</string>

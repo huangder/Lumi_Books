@@ -1,20 +1,20 @@
-# 2026-07-19T12:38:06.429959500Z:
+# 2026-07-20T02:00:55.126462600Z:
 test_suite_meta_data {
-  scheduled_test_case_count: 1
+  scheduled_test_case_count: 10
 }
 test_status: PASSED
 test_result {
   test_case {
-    test_class: "EpubParserLinkTest"
-    test_package: "com.huangder.lumibooks.util.parser"
-    test_method: "resolvesCrossChapterAnchorToFinalTextOffset"
+    test_class: "ReaderParagraphFormatterTest"
+    test_package: "com.huangder.lumibooks.ui.reader.engine"
+    test_method: "continuationPageIndentsOnlyParagraphStartingInsidePage"
     start_time {
-      seconds: 1784464683
-      nanos: 783000000
+      seconds: 1784512853
+      nanos: 478000000
     }
     end_time {
-      seconds: 1784464683
-      nanos: 856000000
+      seconds: 1784512853
+      nanos: 540000000
     }
   }
   test_status: PASSED
@@ -24,7 +24,475 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\logcat-com.huangder.lumibooks.util.parser.EpubParserLinkTest-resolvesCrossChapterAnchorToFinalTextOffset.txt"
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\logcat-com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest-continuationPageIndentsOnlyParagraphStartingInsidePage.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ReaderParagraphFormatterTest"
+    test_package: "com.huangder.lumibooks.ui.reader.engine"
+    test_method: "continuationOnlyPageDoesNotKeepCopiedFirstLineIndent"
+    start_time {
+      seconds: 1784512853
+      nanos: 577000000
+    }
+    end_time {
+      seconds: 1784512853
+      nanos: 587000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\logcat-com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest-continuationOnlyPageDoesNotKeepCopiedFirstLineIndent.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ReaderParagraphFormatterTest"
+    test_package: "com.huangder.lumibooks.ui.reader.engine"
+    test_method: "zeroIndentRemovesPreviouslyAppliedReaderIndent"
+    start_time {
+      seconds: 1784512853
+      nanos: 592000000
+    }
+    end_time {
+      seconds: 1784512853
+      nanos: 598000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\logcat-com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest-zeroIndentRemovesPreviouslyAppliedReaderIndent.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ReaderParagraphFormatterTest"
+    test_package: "com.huangder.lumibooks.ui.reader.engine"
+    test_method: "existingWhitespaceIsSupplementedToRequestedIndent"
+    start_time {
+      seconds: 1784512853
+      nanos: 605000000
+    }
+    end_time {
+      seconds: 1784512853
+      nanos: 613000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\logcat-com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest-existingWhitespaceIsSupplementedToRequestedIndent.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ReaderParagraphFormatterTest"
+    test_package: "com.huangder.lumibooks.ui.reader.engine"
+    test_method: "zeroParagraphSpacingLeavesOnlyOneParagraphBreak"
+    start_time {
+      seconds: 1784512853
+      nanos: 617000000
+    }
+    end_time {
+      seconds: 1784512853
+      nanos: 626000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\logcat-com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest-zeroParagraphSpacingLeavesOnlyOneParagraphBreak.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ReaderParagraphFormatterTest"
+    test_package: "com.huangder.lumibooks.ui.reader.engine"
+    test_method: "paragraphSpacingNormalizesExistingBlankLinesBeforeAddingExactGap"
+    start_time {
+      seconds: 1784512853
+      nanos: 628000000
+    }
+    end_time {
+      seconds: 1784512853
+      nanos: 638000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\logcat-com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest-paragraphSpacingNormalizesExistingBlankLinesBeforeAddingExactGap.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ReaderParagraphFormatterTest"
+    test_package: "com.huangder.lumibooks.ui.reader.engine"
+    test_method: "pageStartingAfterParagraphSpacerDoesNotKeepBoundaryLineHeightSpan"
+    start_time {
+      seconds: 1784512853
+      nanos: 640000000
+    }
+    end_time {
+      seconds: 1784512853
+      nanos: 648000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\logcat-com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest-pageStartingAfterParagraphSpacerDoesNotKeepBoundaryLineHeightSpan.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ReaderParagraphFormatterTest"
+    test_package: "com.huangder.lumibooks.ui.reader.engine"
+    test_method: "indentsTxtBodyButNotTitle"
+    start_time {
+      seconds: 1784512853
+      nanos: 654000000
+    }
+    end_time {
+      seconds: 1784512853
+      nanos: 660000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\logcat-com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest-indentsTxtBodyButNotTitle.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ReaderParagraphFormatterTest"
+    test_package: "com.huangder.lumibooks.ui.reader.engine"
+    test_method: "paragraphSpacingSpanNeverCompressesVisibleTextLine"
+    start_time {
+      seconds: 1784512853
+      nanos: 664000000
+    }
+    end_time {
+      seconds: 1784512853
+      nanos: 672000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\logcat-com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest-paragraphSpacingSpanNeverCompressesVisibleTextLine.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ReaderParagraphFormatterTest"
+    test_package: "com.huangder.lumibooks.ui.reader.engine"
+    test_method: "staticLayoutKeepsSpacerSmallAndVisibleLinesAtNormalHeight"
+    start_time {
+      seconds: 1784512853
+      nanos: 676000000
+    }
+    end_time {
+      seconds: 1784512853
+      nanos: 685000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "D:\\vibe_coding\\android_books\\app\\build\\outputs\\androidTest-results\\connected\\debug\\24129PN74C - 16\\logcat-com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest-staticLayoutKeepsSpacerSmallAndVisibleLinesAtNormalHeight.txt"
     }
   }
   output_artifact {

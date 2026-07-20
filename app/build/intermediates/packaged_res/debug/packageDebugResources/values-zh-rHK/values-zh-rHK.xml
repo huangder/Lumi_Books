@@ -191,6 +191,7 @@
     <string name="preview_text">落霞與孤鶩齊飛，秋水共長天一色。漁舟唱晚，響窮彭蠡之濱；雁陣驚寒，聲斷衡陽之浦。</string>
     <string name="privacy_policy">私隱政策</string>
     <string name="reader_back">返回</string>
+    <string name="reader_battery_level">電量 %d%%</string>
     <string name="reader_bookmark">書籤</string>
     <string name="reader_chapter_fallback">第%d章</string>
     <string name="reader_close">關閉</string>
@@ -232,6 +233,12 @@
     <string name="set_goal">設定目標</string>
     <string name="settings">設定</string>
     <string name="settings_title">設定</string>
+    <string name="show_reader_battery">顯示電量</string>
+    <string name="show_reader_battery_hint">電量圖示與百分比</string>
+    <string name="show_reader_chapter_progress">顯示章節進度</string>
+    <string name="show_reader_chapter_progress_hint">目前章節名稱與全書百分比</string>
+    <string name="show_reader_page_number">顯示頁碼</string>
+    <string name="show_reader_page_number_hint">目前章節頁碼</string>
     <string name="sponsor_code_label">畀嶼浮 的讚賞碼</string>
     <string name="sponsor_desc">捐贈：如果你覺得不錯的話，歡迎支持開發</string>
     <string name="sponsor_dev_title">開發人員</string>
@@ -289,6 +296,8 @@
     <string name="today_reading_label">今日閱讀</string>
     <string name="today_reading_time">今日閱讀時長</string>
     <string name="tuesday_short">二</string>
+    <string name="volume_key_page_turn">音量鍵翻頁</string>
+    <string name="volume_key_page_turn_hint">音量增加鍵上一頁，音量減少鍵下一頁</string>
     <string name="wednesday_short">三</string>
     <string name="welcome_and">同</string>
     <string name="welcome_continue">繼續</string>

@@ -191,6 +191,7 @@
     <string name="preview_text">The setting sun and the rising moon fly together, the autumn waters merge with the vast sky in one hue. Fishing boats sing at dusk, echoing across the shores of Pengli; geese formations startle at the cold, their cries fading at Hengyang\'s shore.</string>
     <string name="privacy_policy">Privacy Policy</string>
     <string name="reader_back">Back</string>
+    <string name="reader_battery_level">Battery %d%%</string>
     <string name="reader_bookmark">Bookmark</string>
     <string name="reader_chapter_fallback">Ch.%d</string>
     <string name="reader_close">Close</string>
@@ -232,6 +233,12 @@
     <string name="set_goal">Set Goal</string>
     <string name="settings">Settings</string>
     <string name="settings_title">Settings</string>
+    <string name="show_reader_battery">Show battery</string>
+    <string name="show_reader_battery_hint">Battery icon and percentage</string>
+    <string name="show_reader_chapter_progress">Show chapter progress</string>
+    <string name="show_reader_chapter_progress_hint">Current chapter and whole-book percentage</string>
+    <string name="show_reader_page_number">Show page number</string>
+    <string name="show_reader_page_number_hint">Current chapter page number</string>
     <string name="sponsor_code_label">Donation code for Yufu</string>
     <string name="sponsor_desc">Donations: If you enjoy using this app, feel free to support its development</string>
     <string name="sponsor_dev_title">Developers</string>

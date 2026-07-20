@@ -1,0 +1,2 @@
+07-20 10:00:54.295 25019 25061 I TestRunner: started: indentsTxtBodyButNotTitle(com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest)
+07-20 10:00:54.298 25019 25061 I TestRunner: finished: indentsTxtBodyButNotTitle(com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest)

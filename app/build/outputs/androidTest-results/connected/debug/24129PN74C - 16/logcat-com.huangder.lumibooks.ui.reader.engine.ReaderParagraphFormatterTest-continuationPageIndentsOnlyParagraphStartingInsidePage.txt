@@ -1,0 +1,11 @@
+07-20 10:00:54.223 25019 25061 I TestRunner: started: continuationPageIndentsOnlyParagraphStartingInsidePage(com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest)
+07-20 10:00:54.234 25019 25019 D ngder.lumibooks: blurUtils, initBackgroundBlurMinInterval processName(com.huangder.lumibooks), inWhiteLists(0)
+07-20 10:00:54.238 25019 25019 D CompatChangeReporter: Compat change id reported: 63938206; UID 10567; state: ENABLED
+07-20 10:00:54.240 25019 25019 D CompatChangeReporter: Compat change id reported: 352594277; UID 10567; state: ENABLED
+07-20 10:00:54.243  4722 10439 I MiSensorServiceImpl: LightFovOptimizationSensor::screen_angle: -1.288535 -1.015155 9.674182 80.426254 58.255302 0.000000 0 58.255302 1 58.255302 58.255302
+07-20 10:00:54.245 25019 25019 D PageSlotManager: setPageContent: fullText type=SpannableStringBuilder LeadingMarginSpans=2 start=4 end=17
+07-20 10:00:54.245 25019 25019 D PageContentView: setPageContent: subText type=SpannableStringBuilder isSpanned=true
+07-20 10:00:54.245 25019 25019 D PageContentView: setPageContent: pageText type=SpannableStringBuilder isSpanned=true
+07-20 10:00:54.246 25019 25019 D PageContentView: setPageContent: restored 2 LeadingMarginSpans, 0 ParagraphLineHeightSpans
+07-20 10:00:54.246 25019 25019 D PageContentView: setPageContent: start=4 end=17 len=13 LMS=1 ImageSpan=0
+07-20 10:00:54.261 25019 25061 I TestRunner: finished: continuationPageIndentsOnlyParagraphStartingInsidePage(com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest)

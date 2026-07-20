@@ -202,6 +202,7 @@
     <string name="preview_text">落霞与孤鹜齐飞，秋水共长天一色。渔舟唱晚，响穷彭蠡之滨；雁阵惊寒，声断衡阳之浦。</string>
     <string name="privacy_policy">隐私政策</string>
     <string name="reader_back">返回</string>
+    <string name="reader_battery_level">电量 %d%%</string>
     <string name="reader_bookmark">书签</string>
     <string name="reader_chapter_fallback">第%d章</string>
     <string name="reader_close">关闭</string>
@@ -243,6 +244,12 @@
     <string name="set_goal">设置目标</string>
     <string name="settings">设置</string>
     <string name="settings_title">设置</string>
+    <string name="show_reader_battery">显示电量</string>
+    <string name="show_reader_battery_hint">电量图标和百分比</string>
+    <string name="show_reader_chapter_progress">显示章节进度</string>
+    <string name="show_reader_chapter_progress_hint">当前章节名和全书百分比</string>
+    <string name="show_reader_page_number">显示页码</string>
+    <string name="show_reader_page_number_hint">当前章节页码</string>
     <string name="sponsor_code_label">给屿浮 的赞赏码</string>
     <string name="sponsor_desc">捐赠：如果你觉得不错的话，欢迎支持开发</string>
     <string name="sponsor_dev_title">开发人员</string>

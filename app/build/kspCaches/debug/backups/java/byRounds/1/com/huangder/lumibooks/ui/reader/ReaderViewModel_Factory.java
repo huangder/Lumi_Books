@@ -5,6 +5,7 @@ import androidx.lifecycle.SavedStateHandle;
 import com.huangder.lumibooks.data.local.DataStoreManager;
 import com.huangder.lumibooks.domain.repository.BookRepository;
 import com.huangder.lumibooks.domain.repository.ReadingRepository;
+import com.huangder.lumibooks.tts.TtsController;
 import dagger.internal.DaggerGenerated;
 import dagger.internal.Factory;
 import dagger.internal.QualifierMetadata;
@@ -38,32 +39,37 @@ public final class ReaderViewModel_Factory implements Factory<ReaderViewModel> {
 
   private final Provider<DataStoreManager> dataStoreManagerProvider;
 
+  private final Provider<TtsController> ttsControllerProvider;
+
   public ReaderViewModel_Factory(Provider<SavedStateHandle> savedStateHandleProvider,
       Provider<Context> contextProvider, Provider<BookRepository> bookRepositoryProvider,
       Provider<ReadingRepository> readingRepositoryProvider,
-      Provider<DataStoreManager> dataStoreManagerProvider) {
+      Provider<DataStoreManager> dataStoreManagerProvider,
+      Provider<TtsController> ttsControllerProvider) {
     this.savedStateHandleProvider = savedStateHandleProvider;
     this.contextProvider = contextProvider;
     this.bookRepositoryProvider = bookRepositoryProvider;
     this.readingRepositoryProvider = readingRepositoryProvider;
     this.dataStoreManagerProvider = dataStoreManagerProvider;
+    this.ttsControllerProvider = ttsControllerProvider;
   }
 
   @Override
   public ReaderViewModel get() {
-    return newInstance(savedStateHandleProvider.get(), contextProvider.get(), bookRepositoryProvider.get(), readingRepositoryProvider.get(), dataStoreManagerProvider.get());
+    return newInstance(savedStateHandleProvider.get(), contextProvider.get(), bookRepositoryProvider.get(), readingRepositoryProvider.get(), dataStoreManagerProvider.get(), ttsControllerProvider.get());
   }
 
   public static ReaderViewModel_Factory create(Provider<SavedStateHandle> savedStateHandleProvider,
       Provider<Context> contextProvider, Provider<BookRepository> bookRepositoryProvider,
       Provider<ReadingRepository> readingRepositoryProvider,
-      Provider<DataStoreManager> dataStoreManagerProvider) {
-    return new ReaderViewModel_Factory(savedStateHandleProvider, contextProvider, bookRepositoryProvider, readingRepositoryProvider, dataStoreManagerProvider);
+      Provider<DataStoreManager> dataStoreManagerProvider,
+      Provider<TtsController> ttsControllerProvider) {
+    return new ReaderViewModel_Factory(savedStateHandleProvider, contextProvider, bookRepositoryProvider, readingRepositoryProvider, dataStoreManagerProvider, ttsControllerProvider);
   }
 
   public static ReaderViewModel newInstance(SavedStateHandle savedStateHandle, Context context,
       BookRepository bookRepository, ReadingRepository readingRepository,
-      DataStoreManager dataStoreManager) {
-    return new ReaderViewModel(savedStateHandle, context, bookRepository, readingRepository, dataStoreManager);
+      DataStoreManager dataStoreManager, TtsController ttsController) {
+    return new ReaderViewModel(savedStateHandle, context, bookRepository, readingRepository, dataStoreManager, ttsController);
   }
 }

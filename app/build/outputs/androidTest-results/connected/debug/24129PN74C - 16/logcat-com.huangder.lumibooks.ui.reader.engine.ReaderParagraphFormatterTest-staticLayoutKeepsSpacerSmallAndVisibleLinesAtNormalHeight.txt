@@ -1,0 +1,3 @@
+07-20 10:00:54.301 25019 25061 I TestRunner: started: staticLayoutKeepsSpacerSmallAndVisibleLinesAtNormalHeight(com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest)
+07-20 10:00:54.303 25019 25061 D EpubParser: chooseHeight: extraPx=4 origAscent=-33 origDescent=9 lineHeight=42 -> newDescent=4
+07-20 10:00:54.303 25019 25061 I TestRunner: finished: staticLayoutKeepsSpacerSmallAndVisibleLinesAtNormalHeight(com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest)

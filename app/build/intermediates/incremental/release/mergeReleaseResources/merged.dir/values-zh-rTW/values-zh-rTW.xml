@@ -266,6 +266,7 @@
     <string msgid="5941395253238309765" name="range_end">"範圍終點"</string>
     <string msgid="7097486360902471446" name="range_start">"範圍起點"</string>
     <string name="reader_back">返回</string>
+    <string name="reader_battery_level">電量 %d%%</string>
     <string name="reader_bookmark">書籤</string>
     <string name="reader_chapter_fallback">第%d章</string>
     <string name="reader_close">關閉</string>
@@ -308,6 +309,12 @@
     <string name="set_goal">設定目標</string>
     <string name="settings">設定</string>
     <string name="settings_title">設定</string>
+    <string name="show_reader_battery">顯示電量</string>
+    <string name="show_reader_battery_hint">電量圖示與百分比</string>
+    <string name="show_reader_chapter_progress">顯示章節進度</string>
+    <string name="show_reader_chapter_progress_hint">目前章節名稱與全書百分比</string>
+    <string name="show_reader_page_number">顯示頁碼</string>
+    <string name="show_reader_page_number_hint">目前章節頁碼</string>
     <string name="sponsor_code_label">給嶼浮 的讚賞碼</string>
     <string name="sponsor_desc">捐贈：如果你覺得不錯的話，歡迎支持開發</string>
     <string name="sponsor_dev_title">開發人員</string>

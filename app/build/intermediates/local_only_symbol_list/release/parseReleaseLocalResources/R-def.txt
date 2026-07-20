@@ -212,6 +212,7 @@ string preview
 string preview_text
 string privacy_policy
 string reader_back
+string reader_battery_level
 string reader_bookmark
 string reader_chapter_fallback
 string reader_close
@@ -253,6 +254,12 @@ string set_daily_goal
 string set_goal
 string settings
 string settings_title
+string show_reader_battery
+string show_reader_battery_hint
+string show_reader_chapter_progress
+string show_reader_chapter_progress_hint
+string show_reader_page_number
+string show_reader_page_number_hint
 string sponsor_code_label
 string sponsor_desc
 string sponsor_dev_title

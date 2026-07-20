@@ -541,7 +541,7 @@ fun AboutDetail(viewModel: SettingsViewModel) {
             Icon(Icons.Outlined.Info, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
             Spacer(Modifier.width(AppSpace.md))
             Text("版本", fontSize = AppType.Body, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
-            Text("1.0.03", fontSize = AppType.BodySmall, color = AppColors.TextSecondary)
+            Text("1.0.04", fontSize = AppType.BodySmall, color = AppColors.TextSecondary)
         }
         SettingsDivider()
         // 更新日志
