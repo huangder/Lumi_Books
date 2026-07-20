@@ -29,6 +29,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Brightness6
+import androidx.compose.material.icons.outlined.Animation
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.DeleteSweep
@@ -43,6 +44,7 @@ import androidx.compose.material.icons.outlined.NightsStay
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.Speed
+import androidx.compose.material.icons.outlined.SwipeRightAlt
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material.icons.outlined.Upload
@@ -151,6 +153,10 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
 @Composable
 fun DisplayDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
+    val appThemeOptions = listOf(
+        "lumi" to stringResource(R.string.app_theme_lumi),
+        "material3" to stringResource(R.string.app_theme_material3)
+    )
     val darkModeOptions = listOf(
         "system" to stringResource(R.string.dark_mode_system),
         "light" to stringResource(R.string.dark_mode_light),
@@ -165,12 +171,106 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
 
     DetailCard {
         DropdownSettingRow(
+            icon = Icons.Outlined.Palette,
+            label = stringResource(R.string.label_app_theme),
+            options = appThemeOptions,
+            selected = uiState.appTheme,
+            onSelect = viewModel::saveAppTheme
+        )
+    }
+
+    Spacer(Modifier.height(12.dp))
+
+    DetailCard {
+        DropdownSettingRow(
             icon = Icons.Outlined.Brightness6,
             label = stringResource(R.string.label_dark_mode),
             options = darkModeOptions,
             selected = uiState.darkMode,
             onSelect = viewModel::saveDarkMode
         )
+    }
+
+    Spacer(Modifier.height(12.dp))
+
+    DetailCard {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Outlined.SwipeRightAlt,
+                contentDescription = null,
+                tint = AppColors.TextSecondary,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(Modifier.width(AppSpace.md))
+            Text(
+                stringResource(R.string.label_predictive_back),
+                fontSize = AppType.Body,
+                color = AppColors.TextPrimary,
+                modifier = Modifier.weight(1f)
+            )
+            Switch(
+                checked = uiState.predictiveBackEnabled,
+                onCheckedChange = viewModel::savePredictiveBackEnabled,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = AppColors.OnAccent,
+                    checkedTrackColor = AppColors.Accent,
+                    checkedBorderColor = AppColors.Accent,
+                    uncheckedThumbColor = AppColors.TextSecondary,
+                    uncheckedTrackColor = AppColors.BgGray,
+                    uncheckedBorderColor = AppColors.Divider
+                )
+            )
+        }
+    }
+
+    Spacer(Modifier.height(12.dp))
+
+    DetailCard {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Outlined.Animation,
+                contentDescription = null,
+                tint = AppColors.TextSecondary,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(Modifier.width(AppSpace.md))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.label_entrance_animations),
+                    fontSize = AppType.Body,
+                    color = AppColors.TextPrimary
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    stringResource(R.string.entrance_animations_description),
+                    fontSize = AppType.Caption,
+                    color = AppColors.TextSecondary
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Switch(
+                checked = uiState.entranceAnimationsEnabled,
+                onCheckedChange = viewModel::saveEntranceAnimationsEnabled,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = AppColors.OnAccent,
+                    checkedTrackColor = AppColors.Accent,
+                    checkedBorderColor = AppColors.Accent,
+                    uncheckedThumbColor = AppColors.TextSecondary,
+                    uncheckedTrackColor = AppColors.BgGray,
+                    uncheckedBorderColor = AppColors.Divider
+                )
+            )
+        }
     }
 
     Spacer(Modifier.height(12.dp))

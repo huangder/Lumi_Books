@@ -52,7 +52,10 @@ data class SettingsUiState(
     val marginVert: Float = 64f,
 
     // 显示与外观
+    val appTheme: String = "lumi",         // "lumi" / "material3"
     val darkMode: String = "system",       // "system" / "light" / "dark"
+    val entranceAnimationsEnabled: Boolean = true,
+    val predictiveBackEnabled: Boolean = true,
     val splashEnabled: Boolean = true,
     val readerTheme: String = "day",       // "day" / "night" / "sepia" / "green"
 

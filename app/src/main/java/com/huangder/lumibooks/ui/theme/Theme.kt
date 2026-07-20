@@ -97,7 +97,10 @@ fun EBookReaderTheme(
         }
     }
 
-    CompositionLocalProvider(LocalIsDarkTheme provides darkTheme) {
+    CompositionLocalProvider(
+        LocalIsDarkTheme provides darkTheme,
+        LocalUseMaterial3Theme provides dynamicColor
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = Typography,

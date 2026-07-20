@@ -66,7 +66,13 @@ class WebViewActivity : ComponentActivity() {
         val file = intent.getStringExtra("file") ?: "privacy.html"
 
         // 同步读取避免闪白：手动深色模式下第一个 frame 就渲染深色
-        val darkMode = runBlocking { dataStoreManager.darkMode.first() }
+        val (darkMode, appTheme, predictiveBackEnabled) = runBlocking {
+            Triple(
+                dataStoreManager.darkMode.first(),
+                dataStoreManager.appTheme.first(),
+                dataStoreManager.predictiveBackEnabled.first()
+            )
+        }
         val isSystemDark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
         val isDark = when (darkMode) {
             "dark" -> true
@@ -75,7 +81,14 @@ class WebViewActivity : ComponentActivity() {
         }
 
         setContent {
-            EBookReaderTheme(darkTheme = isDark) {
+            EBookReaderTheme(
+                darkTheme = isDark,
+                dynamicColor = appTheme == "material3"
+            ) {
+                com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
+                    predictiveBackEnabled = predictiveBackEnabled,
+                    onBack = { finish() }
+                )
                 WebViewPage(title = title, assetFile = file, isDark = isDark, onBack = { finish() })
             }
         }

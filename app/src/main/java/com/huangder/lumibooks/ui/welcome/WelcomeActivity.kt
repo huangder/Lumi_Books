@@ -9,9 +9,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import com.huangder.lumibooks.data.local.DataStoreManager
+import com.huangder.lumibooks.ui.components.LocalPredictiveBackEnabled
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.util.LaunchThemeController
 import dagger.hilt.android.AndroidEntryPoint
@@ -52,29 +54,40 @@ class WelcomeActivity : ComponentActivity() {
         }
 
         setContent {
+            val appTheme by dataStoreManager.appTheme.collectAsState(initial = "lumi")
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
+            val predictiveBackEnabled by dataStoreManager.predictiveBackEnabled.collectAsState(initial = true)
             val isDark = when (darkMode) {
                 "dark" -> true
                 "light" -> false
                 else -> isSystemInDarkTheme()
             }
 
-            EBookReaderTheme(darkTheme = isDark) {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    WelcomeScreen(
-                        isUpdate = installState.isUpdate,
-                        isDark = isDark,
-                        onFinished = {
-                            runBlocking {
-                                dataStoreManager.completeWelcomeFlow(installState.installMarker)
-                            }
-                            startMainActivity(splashEnabled)
-                        },
-                        onExit = { finish() }
-                    )
+            EBookReaderTheme(
+                darkTheme = isDark,
+                dynamicColor = appTheme == "material3"
+            ) {
+                com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
+                    predictiveBackEnabled = predictiveBackEnabled,
+                    onBack = { finish() }
+                )
+                CompositionLocalProvider(LocalPredictiveBackEnabled provides predictiveBackEnabled) {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.background
+                    ) {
+                        WelcomeScreen(
+                            isUpdate = installState.isUpdate,
+                            isDark = isDark,
+                            onFinished = {
+                                runBlocking {
+                                    dataStoreManager.completeWelcomeFlow(installState.installMarker)
+                                }
+                                startMainActivity(splashEnabled)
+                            },
+                            onExit = { finish() }
+                        )
+                    }
                 }
             }
         }

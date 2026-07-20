@@ -18,10 +18,12 @@ interface ReadingRepository {
     fun getBookmarksByBookId(bookId: String): Flow<List<Bookmark>>
     suspend fun insertBookmark(bookmark: Bookmark)
     suspend fun deleteBookmark(bookmark: Bookmark)
+    suspend fun deleteAllBookmarksByBookId(bookId: String)
     fun getNotesByBookId(bookId: String): Flow<List<Note>>
     suspend fun insertNote(note: Note)
     suspend fun updateNote(note: Note)
     suspend fun deleteNote(note: Note)
+    suspend fun deleteAllNotesByBookId(bookId: String)
     fun getMostReadBooks(limit: Int = 5): Flow<List<BookDuration>>
     fun getDailyTotalsBetween(startDate: String, endDate: String): Flow<List<DailyTotal>>
 }

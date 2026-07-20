@@ -1,6 +1,5 @@
 package com.huangder.lumibooks.ui.welcome
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -71,7 +70,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.ui.animation.AppEasing
+import com.huangder.lumibooks.ui.components.ConfigurableBackHandler
 import com.huangder.lumibooks.ui.theme.KaiTi
+import com.huangder.lumibooks.ui.theme.AppColors
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.delay
 
@@ -105,7 +106,9 @@ fun WelcomeScreen(
     var currentPage by rememberSaveable { mutableStateOf(WelcomePage.INTRODUCTION) }
     val backgroundColor = if (isDark) DarkBackground else LightBackground
 
-    BackHandler(enabled = currentPage == WelcomePage.SUPPORT) {
+    val predictiveBackProgress = ConfigurableBackHandler(
+        enabled = currentPage == WelcomePage.SUPPORT
+    ) {
         currentPage = WelcomePage.INTRODUCTION
     }
 
@@ -113,7 +116,11 @@ fun WelcomeScreen(
         targetState = currentPage,
         modifier = Modifier
             .fillMaxSize()
-            .background(backgroundColor),
+            .background(backgroundColor)
+            .graphicsLayer {
+                translationX = predictiveBackProgress * size.width * 0.12f
+                alpha = 1f - predictiveBackProgress * 0.1f
+            },
         transitionSpec = {
             if (targetState == WelcomePage.SUPPORT) {
                 (slideInHorizontally(
@@ -169,13 +176,6 @@ private fun WelcomeIntroductionPage(
     val textSecondary = if (isDark) DarkTextSecondary else LightTextSecondary
     val bgGray = if (isDark) DarkBgGray else LightBgGray
     val cardBg = if (isDark) DarkCardBg else LightCardBg
-
-    // 处理返回键：如果容器打开则关闭容器，否则退出应用
-    val isSheetOpen = showPrivacyPolicy || showTermsOfService
-    BackHandler(enabled = isSheetOpen) {
-        showPrivacyPolicy = false
-        showTermsOfService = false
-    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -618,13 +618,14 @@ private fun PolicyBottomSheet(
     visible: Boolean,
     onDismiss: () -> Unit
 ) {
-    val textPrimary = if (isDark) Color.White else Color.Black
-    val textSecondary = if (isDark) DarkTextSecondary else LightTextSecondary
-    val bgGray = if (isDark) DarkBgGray else LightBgGray
-    val cardBg = if (isDark) DarkCardBg else LightCardBg
+    val textPrimary = AppColors.TextPrimary
+    val textSecondary = AppColors.TextSecondary
+    val bgGray = AppColors.BgGray
+    val cardBg = AppColors.CardBg
 
     // 容器滑入动画（独立于遮罩）
     val containerOffsetY = remember { androidx.compose.animation.core.Animatable(1f) }
+    val predictiveBackProgress = ConfigurableBackHandler(onBack = onDismiss)
 
     LaunchedEffect(visible) {
         if (visible) {
@@ -647,7 +648,11 @@ private fun PolicyBottomSheet(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = if (isDark) 0.4f else 0.1f))
+                .background(
+                    AppColors.Scrim.copy(
+                        alpha = (if (isDark) 0.4f else 0.2f) * (1f - predictiveBackProgress)
+                    )
+                )
                 .pointerInput(Unit) {
                     detectTapGestures { onDismiss() }
                 }
@@ -660,7 +665,7 @@ private fun PolicyBottomSheet(
                 .fillMaxHeight(0.88f)
                 .align(Alignment.BottomCenter)
                 .graphicsLayer {
-                    translationY = containerOffsetY.value * size.height
+                    translationY = maxOf(containerOffsetY.value, predictiveBackProgress) * size.height
                 }
                 .shadow(
                     elevation = 24.dp,

@@ -13,6 +13,8 @@ import com.huangder.lumibooks.util.UpdateChecker
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,6 +43,8 @@ class SettingsViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
+    private var predictiveBackVisualOverride: Boolean? = null
+    private var predictiveBackTransitionJob: Job? = null
 
     init {
         collectAllPreferences()
@@ -89,8 +93,25 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            dataStoreManager.appTheme.collectLatest { theme ->
+                _uiState.value = _uiState.value.copy(appTheme = theme)
+            }
+        }
+        viewModelScope.launch {
             dataStoreManager.darkMode.collectLatest { mode ->
                 _uiState.value = _uiState.value.copy(darkMode = mode)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.entranceAnimationsEnabled.collectLatest { enabled ->
+                _uiState.value = _uiState.value.copy(entranceAnimationsEnabled = enabled)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.predictiveBackEnabled.collectLatest { enabled ->
+                _uiState.value = _uiState.value.copy(
+                    predictiveBackEnabled = predictiveBackVisualOverride ?: enabled
+                )
             }
         }
         viewModelScope.launch {
@@ -191,11 +212,55 @@ class SettingsViewModel @Inject constructor(
 
     // ─── 显示与外观 ───
 
+    fun saveAppTheme(theme: String) {
+        viewModelScope.launch {
+            dataStoreManager.saveAppTheme(theme)
+            _uiState.value = _uiState.value.copy(appTheme = theme)
+        }
+    }
+
     fun saveDarkMode(mode: String) {
         viewModelScope.launch {
             dataStoreManager.saveDarkMode(mode)
             _uiState.value = _uiState.value.copy(darkMode = mode)
         }
+    }
+
+    fun saveEntranceAnimationsEnabled(enabled: Boolean) {
+        if (_uiState.value.entranceAnimationsEnabled == enabled) return
+        _uiState.value = _uiState.value.copy(entranceAnimationsEnabled = enabled)
+        viewModelScope.launch {
+            dataStoreManager.saveEntranceAnimationsEnabled(enabled)
+        }
+    }
+
+    fun savePredictiveBackEnabled(enabled: Boolean) {
+        if (_uiState.value.predictiveBackEnabled == enabled) return
+        predictiveBackTransitionJob?.cancel()
+        predictiveBackTransitionJob = viewModelScope.launch {
+            if (enabled) {
+                // Let the thumb finish moving before predictive callbacks recompose the screen.
+                predictiveBackVisualOverride = true
+                _uiState.value = _uiState.value.copy(predictiveBackEnabled = true)
+                delay(PREDICTIVE_BACK_SWITCH_ANIMATION_MILLIS)
+                dataStoreManager.savePredictiveBackEnabled(true)
+                predictiveBackVisualOverride = null
+            } else {
+                // Remove predictive callbacks first, then animate the visual switch one frame later.
+                predictiveBackVisualOverride = true
+                dataStoreManager.savePredictiveBackEnabled(false)
+                delay(PREDICTIVE_BACK_DISABLE_SETTLE_MILLIS)
+                predictiveBackVisualOverride = false
+                _uiState.value = _uiState.value.copy(predictiveBackEnabled = false)
+                delay(PREDICTIVE_BACK_SWITCH_ANIMATION_MILLIS)
+                predictiveBackVisualOverride = null
+            }
+        }
+    }
+
+    private companion object {
+        const val PREDICTIVE_BACK_SWITCH_ANIMATION_MILLIS = 250L
+        const val PREDICTIVE_BACK_DISABLE_SETTLE_MILLIS = 34L
     }
 
     fun saveSplashEnabled(enabled: Boolean) {

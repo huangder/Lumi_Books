@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
@@ -13,6 +14,7 @@ import com.huangder.lumibooks.R
 
 /** 全局深色模式状态，由 MainActivity 根据 DataStore 设置注入 */
 val LocalIsDarkTheme = staticCompositionLocalOf { false }
+val LocalUseMaterial3Theme = staticCompositionLocalOf { false }
 
 // ─── 字体 ───
 val FangSong = FontFamily(Font(R.font.fandol_fang, FontWeight.Normal))
@@ -40,16 +42,30 @@ object AppColors {
     // 强调色（粉红/珊瑚 #E85D5D）
     private val LightAccent = Color(0xFFE85D5D)
     private val DarkAccent = Color(0xFFFF8A80)
-    val Accent: Color @Composable get() = if (LocalIsDarkTheme.current) DarkAccent else LightAccent
+    val Accent: Color @Composable get() = if (LocalUseMaterial3Theme.current) {
+        MaterialTheme.colorScheme.primary
+    } else if (LocalIsDarkTheme.current) DarkAccent else LightAccent
+    val OnAccent: Color @Composable get() = if (LocalUseMaterial3Theme.current) {
+        MaterialTheme.colorScheme.onPrimary
+    } else Color.White
+    val ControlActive: Color @Composable get() = if (LocalUseMaterial3Theme.current) {
+        MaterialTheme.colorScheme.primary
+    } else if (LocalIsDarkTheme.current) DarkTextPrimary else LightTextPrimary
+    val Scrim: Color @Composable get() = if (LocalUseMaterial3Theme.current) {
+        MaterialTheme.colorScheme.scrim
+    } else Color.Black
     val Shadow = Color(0x08000000)
+    val CardShadow: Color @Composable get() = if (LocalUseMaterial3Theme.current) {
+        Color.Black.copy(alpha = 0.18f)
+    } else Color(0x06000000)
 
-    // 动态颜色（跟随 DataStore 深色模式设置）
-    val WindowBg: Color @Composable get() = if (LocalIsDarkTheme.current) DarkWindowBg else LightWindowBg
-    val CardBg: Color @Composable get() = if (LocalIsDarkTheme.current) DarkCardBg else LightCardBg
-    val TextPrimary: Color @Composable get() = if (LocalIsDarkTheme.current) DarkTextPrimary else LightTextPrimary
-    val TextSecondary: Color @Composable get() = if (LocalIsDarkTheme.current) DarkTextSecondary else LightTextSecondary
-    val BgGray: Color @Composable get() = if (LocalIsDarkTheme.current) DarkBgGray else LightBgGray
-    val Divider: Color @Composable get() = if (LocalIsDarkTheme.current) DarkDivider else LightDivider
+    // Material 3 模式使用系统动态色板；Lumi 模式保留原有粉色方案。
+    val WindowBg: Color @Composable get() = if (LocalUseMaterial3Theme.current) MaterialTheme.colorScheme.background else if (LocalIsDarkTheme.current) DarkWindowBg else LightWindowBg
+    val CardBg: Color @Composable get() = if (LocalUseMaterial3Theme.current) MaterialTheme.colorScheme.surfaceContainerLow else if (LocalIsDarkTheme.current) DarkCardBg else LightCardBg
+    val TextPrimary: Color @Composable get() = if (LocalUseMaterial3Theme.current) MaterialTheme.colorScheme.onBackground else if (LocalIsDarkTheme.current) DarkTextPrimary else LightTextPrimary
+    val TextSecondary: Color @Composable get() = if (LocalUseMaterial3Theme.current) MaterialTheme.colorScheme.onSurfaceVariant else if (LocalIsDarkTheme.current) DarkTextSecondary else LightTextSecondary
+    val BgGray: Color @Composable get() = if (LocalUseMaterial3Theme.current) MaterialTheme.colorScheme.surfaceVariant else if (LocalIsDarkTheme.current) DarkBgGray else LightBgGray
+    val Divider: Color @Composable get() = if (LocalUseMaterial3Theme.current) MaterialTheme.colorScheme.outlineVariant else if (LocalIsDarkTheme.current) DarkDivider else LightDivider
 }
 
 // ─── 字阶 ───

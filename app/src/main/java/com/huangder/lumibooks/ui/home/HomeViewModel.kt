@@ -14,6 +14,7 @@ import com.huangder.lumibooks.domain.repository.ReadingRepository
 import com.huangder.lumibooks.util.FileUtils
 import com.huangder.lumibooks.util.TimeUtils
 import com.huangder.lumibooks.util.parser.BookParserFactory
+import com.huangder.lumibooks.pdfconversion.PdfConversionContract
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -285,7 +286,15 @@ class HomeViewModel @Inject constructor(
     fun deleteBook(book: Book) {
         viewModelScope.launch {
             try {
+                val isConvertedPdfBook = PdfConversionContract.isConvertedBook(application, book)
                 bookRepository.deleteBook(book)
+                if (isConvertedPdfBook) {
+                    runCatching { readingRepository.deleteAllBookmarksByBookId(book.id) }
+                    runCatching { readingRepository.deleteAllNotesByBookId(book.id) }
+                    withContext(Dispatchers.IO) {
+                        FileUtils.deleteFile(java.io.File(book.filePath))
+                    }
+                }
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = e.message)
             }

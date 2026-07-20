@@ -35,14 +35,23 @@ class BookNotesActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
+            val appTheme by dataStoreManager.appTheme.collectAsState(initial = "lumi")
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
+            val predictiveBackEnabled by dataStoreManager.predictiveBackEnabled.collectAsState(initial = true)
             val isDark = when (darkMode) {
                 "dark" -> true
                 "light" -> false
                 else -> isSystemInDarkTheme()
             }
 
-            EBookReaderTheme(darkTheme = isDark) {
+            EBookReaderTheme(
+                darkTheme = isDark,
+                dynamicColor = appTheme == "material3"
+            ) {
+                com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
+                    predictiveBackEnabled = predictiveBackEnabled,
+                    onBack = { finish() }
+                )
                 Surface(modifier = Modifier.fillMaxSize()) {
                     BookNotesScreen(
                         onNavigateBack = { finish() }

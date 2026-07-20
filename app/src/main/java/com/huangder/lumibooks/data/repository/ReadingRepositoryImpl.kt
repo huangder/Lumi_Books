@@ -68,6 +68,10 @@ class ReadingRepositoryImpl @Inject constructor(
         bookmarkDao.deleteBookmark(bookmark.toEntity())
     }
 
+    override suspend fun deleteAllBookmarksByBookId(bookId: String) {
+        bookmarkDao.deleteAllBookmarksByBookId(bookId)
+    }
+
     override fun getNotesByBookId(bookId: String): Flow<List<Note>> {
         return noteDao.getNotesByBookId(bookId).map { entities ->
             entities.map { it.toDomain() }
@@ -84,6 +88,10 @@ class ReadingRepositoryImpl @Inject constructor(
 
     override suspend fun deleteNote(note: Note) {
         noteDao.deleteNote(note.toEntity())
+    }
+
+    override suspend fun deleteAllNotesByBookId(bookId: String) {
+        noteDao.deleteAllNotesByBookId(bookId)
     }
 
     override fun getMostReadBooks(limit: Int): Flow<List<BookDuration>> {

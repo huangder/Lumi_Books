@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.navigation
 
+import android.os.SystemClock
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -28,9 +29,14 @@ import kotlinx.coroutines.delay
 import com.huangder.lumibooks.ui.bookshelf.BookshelfScreen
 import com.huangder.lumibooks.ui.components.BookTransitionOverlay
 import com.huangder.lumibooks.ui.components.FloatingTabBar
+import com.huangder.lumibooks.ui.components.ImmersiveMode
+import com.huangder.lumibooks.ui.components.ConfigurableNavigationBack
+import com.huangder.lumibooks.ui.components.LocalPredictiveBackEnabled
 import com.huangder.lumibooks.ui.home.HomeScreen
 import com.huangder.lumibooks.ui.home.HomeViewModel
 import com.huangder.lumibooks.ui.home.ReadingGoalSheet
+import com.huangder.lumibooks.ui.animation.PageEntranceTracker
+import com.huangder.lumibooks.ui.animation.PAGE_ENTRANCE_PLAYBACK_MILLIS
 import com.huangder.lumibooks.ui.reader.PdfViewerScreen
 import com.huangder.lumibooks.ui.reader.ReaderScreen
 import com.huangder.lumibooks.ui.reader.PdfViewerScreen
@@ -38,6 +44,8 @@ import com.huangder.lumibooks.ui.reader.ReaderViewModel
 import com.huangder.lumibooks.ui.statistics.StatisticsScreen
 import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
+import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
+import com.huangder.lumibooks.ui.theme.LocalUseMaterial3Theme
 import com.huangder.lumibooks.ui.theme.LocalReaderColors
 import com.huangder.lumibooks.ui.theme.ReaderColors
 import androidx.compose.runtime.CompositionLocalProvider
@@ -54,17 +62,25 @@ import kotlinx.coroutines.delay
 private fun ReaderRouter(
     bookId: String,
     onNavigateBack: () -> Unit,
-    onLoadingComplete: () -> Unit
+    onLoadingComplete: () -> Unit,
+    onOpenBook: (String) -> Unit
 ) {
     val viewModel: ReaderViewModel = hiltViewModel()
     val uiState by viewModel.uiState.collectAsState()
     val isPdf = uiState.book?.format?.name == "PDF"
+    val isAppDarkTheme = LocalIsDarkTheme.current
+    val useMaterial3Theme = LocalUseMaterial3Theme.current
 
-    // 阅读页强制浅色模式 + 阅读页专用颜色
-    EBookReaderTheme(darkTheme = false) {
+    // 正文颜色由阅读主题控制，弹层和应用级控件继承全局主题。
+    EBookReaderTheme(darkTheme = isAppDarkTheme, dynamicColor = useMaterial3Theme) {
         CompositionLocalProvider(LocalReaderColors provides ReaderColors.Light) {
             if (isPdf) {
-                PdfViewerScreen(bookId = bookId, onNavigateBack = onNavigateBack, viewModel = viewModel)
+                PdfViewerScreen(
+                    bookId = bookId,
+                    onNavigateBack = onNavigateBack,
+                    onOpenBook = onOpenBook,
+                    viewModel = viewModel
+                )
                 LaunchedEffect(Unit) { onLoadingComplete() }
             } else {
                 ReaderScreen(bookId = bookId, onNavigateBack = onNavigateBack, onLoadingComplete = onLoadingComplete, viewModel = viewModel)
@@ -74,7 +90,34 @@ private fun ReaderRouter(
 }
 
 @Composable
-fun MainNavGraph(navController: NavHostController) {
+private fun rememberPageEntrancePlayback(
+    pageKey: String,
+    entryKey: Any,
+    enabled: Boolean,
+    tracker: PageEntranceTracker
+): Boolean {
+    var play by remember(entryKey, enabled) {
+        mutableStateOf(
+            enabled && tracker.shouldPlay(pageKey, SystemClock.elapsedRealtime())
+        )
+    }
+    LaunchedEffect(play) {
+        if (play) {
+            delay(PAGE_ENTRANCE_PLAYBACK_MILLIS)
+            play = false
+        }
+    }
+    return play
+}
+
+@Composable
+fun MainNavGraph(
+    navController: NavHostController,
+    entranceAnimationsEnabled: Boolean = true,
+    predictiveBackEnabled: Boolean = true,
+    requestedOpenBookId: String? = null,
+    onOpenBookRequestConsumed: () -> Unit = {}
+) {
     var selectedTab by remember { mutableIntStateOf(0) }
     var showTransition by remember { mutableStateOf(false) }
     var transitionCover by remember { mutableStateOf<String?>(null) }
@@ -83,6 +126,7 @@ fun MainNavGraph(navController: NavHostController) {
     var pendingBookId by remember { mutableStateOf<String?>(null) }
     var tabBarVisible by remember { mutableStateOf(true) }
     var homeGoalSheetVisible by remember { mutableStateOf(false) }
+    val entranceTracker = remember { PageEntranceTracker() }
     val hazeState = remember { HazeState() }
     val homeViewModel: HomeViewModel = hiltViewModel()
     val homeUiState by homeViewModel.uiState.collectAsState()
@@ -90,10 +134,32 @@ fun MainNavGraph(navController: NavHostController) {
         homeUiState.books.sortedByDescending { it.lastReadTime }.firstOrNull()
     }
 
+    LaunchedEffect(requestedOpenBookId) {
+        val requestedId = requestedOpenBookId ?: return@LaunchedEffect
+        val currentReaderBookId = navController.currentBackStackEntry
+            ?.arguments
+            ?.getString("bookId")
+        if (currentReaderBookId != requestedId) {
+            navController.navigate(Screen.Reader.createRoute(requestedId))
+        }
+        onOpenBookRequestConsumed()
+    }
+
     // 监听路由变化，从阅读页/设置页返回时延迟显示 TabBar
     val currentEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentEntry?.destination?.route
+
+    if (currentRoute == Screen.Reader.route) {
+        // Keep one owner while switching between PDF and parsed TXT reader entries.
+        ImmersiveMode()
+    }
     LaunchedEffect(currentRoute, showTransition) {
+        selectedTab = when (currentRoute) {
+            Screen.Home.route -> 0
+            Screen.Bookshelf.route -> 1
+            Screen.Statistics.route -> 2
+            else -> selectedTab
+        }
         if (currentRoute != Screen.Home.route) {
             homeGoalSheetVisible = false
         }
@@ -114,17 +180,29 @@ fun MainNavGraph(navController: NavHostController) {
         pendingBookId = null
     }
 
+    CompositionLocalProvider(LocalPredictiveBackEnabled provides predictiveBackEnabled) {
     Box(modifier = Modifier.fillMaxSize()) {
-        // 主内容
-        NavHost(
-            navController = navController,
-            startDestination = Screen.Home.route,
-            modifier = Modifier
-                .fillMaxSize()
-                .haze(hazeState)
+        ConfigurableNavigationBack(
+            predictiveBackEnabled = predictiveBackEnabled,
+            bridgeEnabled = currentRoute != null && currentRoute != Screen.Home.route
         ) {
-            composable(Screen.Home.route) {
+            // 主内容
+            NavHost(
+                navController = navController,
+                startDestination = Screen.Home.route,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .haze(hazeState)
+            ) {
+            composable(Screen.Home.route) { backStackEntry ->
+                val playEntranceAnimation = rememberPageEntrancePlayback(
+                    pageKey = Screen.Home.route,
+                    entryKey = backStackEntry,
+                    enabled = entranceAnimationsEnabled,
+                    tracker = entranceTracker
+                )
                 HomeScreen(
+                    playEntranceAnimation = playEntranceAnimation,
                     onNavigateToReader = { bookId, coverPath, title ->
                         transitionCover = coverPath
                         transitionTitle = title
@@ -156,8 +234,15 @@ fun MainNavGraph(navController: NavHostController) {
                 )
             }
 
-            composable(Screen.Bookshelf.route) {
+            composable(Screen.Bookshelf.route) { backStackEntry ->
+                val playEntranceAnimation = rememberPageEntrancePlayback(
+                    pageKey = Screen.Bookshelf.route,
+                    entryKey = backStackEntry,
+                    enabled = entranceAnimationsEnabled,
+                    tracker = entranceTracker
+                )
                 BookshelfScreen(
+                    playEntranceAnimation = playEntranceAnimation,
                     onNavigateToReader = { bookId, coverPath, title ->
                         transitionCover = coverPath
                         transitionTitle = title
@@ -169,8 +254,16 @@ fun MainNavGraph(navController: NavHostController) {
                 )
             }
 
-            composable(Screen.Statistics.route) {
-                StatisticsScreen()
+            composable(Screen.Statistics.route) { backStackEntry ->
+                val playEntranceAnimation = rememberPageEntrancePlayback(
+                    pageKey = Screen.Statistics.route,
+                    entryKey = backStackEntry,
+                    enabled = entranceAnimationsEnabled,
+                    tracker = entranceTracker
+                )
+                StatisticsScreen(
+                    playEntranceAnimation = playEntranceAnimation
+                )
             }
 
             composable(
@@ -184,10 +277,14 @@ fun MainNavGraph(navController: NavHostController) {
                         showTransition = false
                         navController.popBackStack()
                     },
-                    onLoadingComplete = { readerReady = true }
+                    onLoadingComplete = { readerReady = true },
+                    onOpenBook = { targetBookId ->
+                        navController.navigate(Screen.Reader.createRoute(targetBookId))
+                    }
                 )
             }
 
+            }
         }
 
 
@@ -248,5 +345,6 @@ fun MainNavGraph(navController: NavHostController) {
                 }
             )
         }
+    }
     }
 }
