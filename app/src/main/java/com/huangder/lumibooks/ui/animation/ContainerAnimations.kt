@@ -25,6 +25,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
+import com.huangder.lumibooks.ui.theme.AppColors
 
 /**
  * 底部弹出容器（背景压暗 + 模糊，卡片从底部滑入）
@@ -71,7 +72,7 @@ fun ScrimOverlay(
         modifier = Modifier
             .fillMaxSize()
             .alpha(alpha)
-            .background(Color.Black.copy(alpha = 0.4f))
+            .background(AppColors.Scrim.copy(alpha = 0.4f))
             .then(
                 if (Build.VERSION.SDK_INT >= 31) {
                     Modifier.graphicsLayer {

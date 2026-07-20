@@ -1,6 +1,5 @@
 package com.huangder.lumibooks.ui.components
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -80,7 +79,10 @@ fun BookTransitionOverlay(
         }
     }
 
-    BackHandler(enabled = !isClosing.value, onBack = requestBack)
+    val predictiveBackProgress = ConfigurableBackHandler(
+        enabled = !isClosing.value,
+        onBack = requestBack
+    )
 
     // 入场动画：遮罩 + 页面同步淡入放大
     LaunchedEffect(Unit) {
@@ -108,7 +110,7 @@ fun BookTransitionOverlay(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .alpha(scrimAlpha.value)
+                .alpha(scrimAlpha.value * (1f - predictiveBackProgress))
                 .background(Color.Black.copy(alpha = 0.55f))
         )
 
@@ -121,9 +123,11 @@ fun BookTransitionOverlay(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
-                        scaleX = sheetScale.value
-                        scaleY = sheetScale.value
-                        alpha = sheetAlpha.value
+                        val backScale = 1f - predictiveBackProgress * 0.05f
+                        scaleX = sheetScale.value * backScale
+                        scaleY = sheetScale.value * backScale
+                        alpha = sheetAlpha.value * (1f - predictiveBackProgress * 0.12f)
+                        translationX = predictiveBackProgress * 48.dp.toPx()
                         // transformOrigin 默认居中，不需要额外设置
                     }
                     .clip(RoundedCornerShape(28.dp))

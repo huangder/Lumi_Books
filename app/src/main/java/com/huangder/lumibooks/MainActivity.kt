@@ -73,7 +73,12 @@ enum class ReaderPageDirection {
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
+    companion object {
+        const val EXTRA_OPEN_BOOK_ID = "open_book_id"
+    }
+
     private var systemDarkMode by mutableStateOf(false)
+    private var requestedOpenBookId by mutableStateOf<String?>(null)
 
     override fun attachBaseContext(newBase: android.content.Context) {
         super.attachBaseContext(com.huangder.lumibooks.util.LocaleHelper.applyLanguage(newBase))
@@ -115,7 +120,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
+        handleOpenBookIntent(intent)
         handleImportIntent(intent)
+    }
+
+    private fun handleOpenBookIntent(intent: Intent?) {
+        requestedOpenBookId = intent?.getStringExtra(EXTRA_OPEN_BOOK_ID)?.takeIf { it.isNotBlank() }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -181,6 +192,7 @@ class MainActivity : ComponentActivity() {
         systemDarkMode = resources.configuration.isNightModeEnabled()
 
         // 处理外部文件打开（冷启动）
+        handleOpenBookIntent(intent)
         handleImportIntent(intent)
 
         // 启动时自动检查更新（静默执行，有变更时弹窗）
@@ -193,7 +205,10 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
+            val appTheme by dataStoreManager.appTheme.collectAsState(initial = "lumi")
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
+            val entranceAnimationsEnabled by dataStoreManager.entranceAnimationsEnabled.collectAsState(initial = true)
+            val predictiveBackEnabled by dataStoreManager.predictiveBackEnabled.collectAsState(initial = true)
             val isDark = when (darkMode) {
                 "dark" -> true
                 "light" -> false
@@ -234,7 +249,10 @@ class MainActivity : ComponentActivity() {
                 pendingPolicyUpdate = null
             }
 
-            EBookReaderTheme(darkTheme = isDark) {
+            EBookReaderTheme(
+                darkTheme = isDark,
+                dynamicColor = appTheme == "material3"
+            ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -251,7 +269,13 @@ class MainActivity : ComponentActivity() {
                                     translationY = mainContentOffset.toPx()
                                 }
                         ) {
-                            MainNavGraph(navController = navController)
+                            MainNavGraph(
+                                navController = navController,
+                                entranceAnimationsEnabled = entranceAnimationsEnabled && !showSplash,
+                                predictiveBackEnabled = predictiveBackEnabled,
+                                requestedOpenBookId = requestedOpenBookId,
+                                onOpenBookRequestConsumed = { requestedOpenBookId = null }
+                            )
                         }
 
                     // ── 条款/政策更新弹窗 ──

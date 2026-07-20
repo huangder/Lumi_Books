@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="label_predictive_back">預測返回</string>
+    <string name="label_entrance_animations">動效 Pro (Beta)</string>
+    <string name="entrance_animations_description">為部分頁面加入元素\n動效，這可能會影響效能</string>
+    <string name="label_app_theme">主題</string>
+    <string name="app_theme_lumi">Lumi 粉</string>
+    <string name="app_theme_material3">Material 3</string>
     <string name="app_name">LUMI</string>
 
     <!-- 首頁 -->
@@ -360,6 +366,38 @@
     <string name="pdf_page_desc">第%d頁</string>
     <string name="pdf_switch_to_horizontal">切換為左右翻頁</string>
     <string name="pdf_switch_to_vertical">切換為上下翻頁</string>
+    <string name="pdf_convert_action">將 PDF 解析為電子書</string>
+    <string name="pdf_convert_running">正在解析 %d%%</string>
+    <string name="pdf_convert_sheet_title">解析為電子書</string>
+    <string name="pdf_convert_sheet_body">僅支援帶文字層的 PDF。圖片、表格、公式和複雜多欄排版可能無法保留，掃描版 PDF 無法解析。轉換會在裝置本地背景進行，原 PDF 不受影響。</string>
+    <string name="pdf_convert_start">開始解析</string>
+    <string name="pdf_convert_existing_title">已有解析後版本</string>
+    <string name="pdf_convert_existing_body">你可以開啟已有版本，或重新解析並取代。重新解析會重設閱讀進度，並清除其中的書籤與筆記。</string>
+    <string name="pdf_convert_open_existing">開啟已有版本</string>
+    <string name="pdf_convert_replace">重新解析並取代</string>
+    <string name="pdf_convert_cancel_title">取消解析？</string>
+    <string name="pdf_convert_cancel_body">取消後會刪除本次暫存結果；已有解析版本不會受到影響。</string>
+    <string name="pdf_convert_cancel_action">取消解析</string>
+    <string name="pdf_convert_keep_running">繼續背景解析</string>
+    <string name="pdf_convert_failed_title">PDF 解析失敗</string>
+    <string name="pdf_convert_error_no_text">未偵測到可提取的文字層。掃描版或純圖片 PDF 暫不支援解析。</string>
+    <string name="pdf_convert_error_encrypted">此 PDF 已加密或受密碼保護，無法提取文字。</string>
+    <string name="pdf_convert_error_file_missing">原 PDF 檔案不存在或已無法存取。</string>
+    <string name="pdf_convert_error_storage">讀取 PDF 或寫入轉換檔案時失敗，請檢查儲存空間後重試。</string>
+    <string name="pdf_convert_error_unknown">解析時發生未知錯誤，請稍後重試。</string>
+    <string name="pdf_convert_success">已提取 %1$d / %2$d 頁文字</string>
+    <string name="pdf_convert_progress_title">正在解析 PDF</string>
+    <string name="pdf_convert_progress_pages">第 %1$d / %2$d 頁</string>
+    <string name="pdf_convert_complete_title">解析完成</string>
+    <string name="pdf_convert_complete_body">已從 %1$d / %2$d 頁提取文字。你可以留在目前 PDF，或前往解析後的書本檢查排版效果。</string>
+    <string name="pdf_convert_stay_pdf">留在 PDF 頁面</string>
+    <string name="pdf_convert_open_result">前往解析後的書本</string>
+    <string name="pdf_convert_preparing">正在準備 PDF…</string>
+    <string name="pdf_convert_notification_title">正在解析 PDF</string>
+    <string name="pdf_convert_notification_progress">正在解析第 %1$d / %2$d 頁</string>
+    <string name="pdf_convert_notification_complete">已提取 %1$d / %2$d 頁文字，點按開始閱讀</string>
+    <string name="pdf_convert_notification_channel">PDF 解析</string>
+    <string name="pdf_convert_notification_channel_description">顯示 PDF 轉換進度和完成結果</string>
     <string name="reader_load_failed">書籍載入失敗</string>
 
     <!-- 其他 -->

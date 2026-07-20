@@ -34,7 +34,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -77,6 +77,7 @@ import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.ui.animation.AppEasing
 import com.huangder.lumibooks.ui.animation.OverscrollBounce
+import com.huangder.lumibooks.ui.animation.PageEntranceItem
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
 import com.huangder.lumibooks.ui.home.HomeViewModel
 import com.huangder.lumibooks.ui.theme.AppColors
@@ -92,6 +93,7 @@ import java.io.File
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun BookshelfScreen(
+    playEntranceAnimation: Boolean = false,
     onNavigateToReader: (bookId: String, coverPath: String?, title: String) -> Unit,
     onOverlayActiveChange: (Boolean) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
@@ -178,33 +180,45 @@ fun BookshelfScreen(
                         .fillMaxSize()
                 ) {
                     Spacer(modifier = Modifier.height(AppSpace.md))
-                    Text(
-                        text = stringResource(R.string.bookshelf_title),
-                        fontSize = AppType.Display,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = KaiTi,
-                        letterSpacing = (-0.02).sp,
-                        color = AppColors.TextPrimary,
-                        modifier = Modifier.padding(horizontal = AppSpace.lg, vertical = AppSpace.md)
-                    )
+                    PageEntranceItem(
+                        play = playEntranceAnimation,
+                        index = 0,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = stringResource(R.string.bookshelf_title),
+                            fontSize = AppType.Display,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = KaiTi,
+                            letterSpacing = (-0.02).sp,
+                            color = AppColors.TextPrimary,
+                            modifier = Modifier.padding(horizontal = AppSpace.lg, vertical = AppSpace.md)
+                        )
+                    }
 
                     // ── 筛选标签（可横向滚动） ──
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState())
-                            .padding(horizontal = AppSpace.lg, vertical = AppSpace.sm),
-                        horizontalArrangement = Arrangement.spacedBy(AppSpace.lg)
+                    PageEntranceItem(
+                        play = playEntranceAnimation,
+                        index = 1,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        filterTabs.forEachIndexed { index, label ->
-                            val isSelected = index == selectedFilter
-                            Text(
-                                text = label,
-                                fontSize = AppType.Body,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isSelected) AppColors.TextPrimary else AppColors.TextSecondary,
-                                modifier = Modifier.clickable { selectedFilter = index }
-                            )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(horizontal = AppSpace.lg, vertical = AppSpace.sm),
+                            horizontalArrangement = Arrangement.spacedBy(AppSpace.lg)
+                        ) {
+                            filterTabs.forEachIndexed { index, label ->
+                                val isSelected = index == selectedFilter
+                                Text(
+                                    text = label,
+                                    fontSize = AppType.Body,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) AppColors.TextPrimary else AppColors.TextSecondary,
+                                    modifier = Modifier.clickable { selectedFilter = index }
+                                )
+                            }
                         }
                     }
 
@@ -218,22 +232,29 @@ fun BookshelfScreen(
                         verticalArrangement = Arrangement.spacedBy(AppSpace.lg),
                         modifier = Modifier.weight(1f)
                     ) {
-                        items(filteredBooks, key = { it.id }) { book ->
-                            AnimatedBookGridItem(
-                                book = book,
-                                isDeleting = deletingBookId == book.id,
-                                onDeleteFinished = {
-                                    viewModel.deleteBook(book)
-                                    deletingBookId = null
-                                },
-                                contextMenuState = contextMenuState,
-                                onHaptic = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
-                                onClick = { onNavigateToReader(book.id, book.coverPath, book.title) }
-                            )
+                        itemsIndexed(filteredBooks, key = { _, book -> book.id }) { index, book ->
+                            PageEntranceItem(play = playEntranceAnimation, index = index + 2) {
+                                AnimatedBookGridItem(
+                                    book = book,
+                                    isDeleting = deletingBookId == book.id,
+                                    onDeleteFinished = {
+                                        viewModel.deleteBook(book)
+                                        deletingBookId = null
+                                    },
+                                    contextMenuState = contextMenuState,
+                                    onHaptic = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
+                                    onClick = { onNavigateToReader(book.id, book.coverPath, book.title) }
+                                )
+                            }
                         }
                         // 添加按钮
-                        item {
-                            AddBookItem(onClick = { launcher.launch("*/*") })
+                        item(key = "add_book") {
+                            PageEntranceItem(
+                                play = playEntranceAnimation,
+                                index = filteredBooks.size + 2
+                            ) {
+                                AddBookItem(onClick = { launcher.launch("*/*") })
+                            }
                         }
                     }
                 } // Column 结束

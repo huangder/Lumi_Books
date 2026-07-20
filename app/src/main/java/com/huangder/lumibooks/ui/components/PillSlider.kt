@@ -39,7 +39,7 @@ fun PillSlider(
     modifier: Modifier = Modifier,
     step: Float = 0.1f,
     trackHeight: androidx.compose.ui.unit.Dp = 28.dp,
-    activeColor: Color = AppColors.TextPrimary,
+    activeColor: Color = AppColors.ControlActive,
     inactiveColor: Color = AppColors.BgGray
 ) {
     val latestValue by rememberUpdatedState(value)

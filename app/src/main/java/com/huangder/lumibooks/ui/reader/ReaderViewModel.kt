@@ -25,6 +25,8 @@ import com.huangder.lumibooks.domain.model.ReaderPageCorner
 import com.huangder.lumibooks.domain.model.defaultReaderCornerContent
 import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.domain.repository.ReadingRepository
+import com.huangder.lumibooks.pdfconversion.PdfConversionManager
+import com.huangder.lumibooks.pdfconversion.PdfConversionState
 import com.huangder.lumibooks.util.TimeUtils
 import com.huangder.lumibooks.util.parser.BookParser
 import com.huangder.lumibooks.util.parser.BookParserFactory
@@ -151,7 +153,8 @@ class ReaderViewModel @Inject constructor(
     private val bookRepository: BookRepository,
     private val readingRepository: ReadingRepository,
     private val dataStoreManager: DataStoreManager,
-    private val ttsController: TtsController
+    private val ttsController: TtsController,
+    private val pdfConversionManager: PdfConversionManager
 ) : ViewModel() {
 
     private val bookId: String = savedStateHandle.get<String>("bookId") ?: ""
@@ -164,6 +167,9 @@ class ReaderViewModel @Inject constructor(
 
     private val _notes = MutableStateFlow<List<Note>>(emptyList())
     val notes: StateFlow<List<Note>> = _notes.asStateFlow()
+
+    private val _pdfConversionState = MutableStateFlow<PdfConversionState>(PdfConversionState.Idle)
+    val pdfConversionState: StateFlow<PdfConversionState> = _pdfConversionState.asStateFlow()
 
     val ttsPageTurnRequests = ttsController.pageTurnRequests
 
@@ -222,6 +228,28 @@ class ReaderViewModel @Inject constructor(
                 )
             }
         }
+        viewModelScope.launch {
+            pdfConversionManager.observe(bookId).collectLatest { state ->
+                _pdfConversionState.value = state
+            }
+        }
+    }
+
+    suspend fun findConvertedPdfBookId(): String? {
+        return pdfConversionManager.findConvertedBookId(bookId)
+    }
+
+    fun startPdfConversion(replaceExisting: Boolean) {
+        _pdfConversionState.value = PdfConversionState.Running(0, 0, 0)
+        pdfConversionManager.enqueue(bookId, replaceExisting)
+    }
+
+    fun cancelPdfConversion() {
+        pdfConversionManager.cancel(bookId)
+    }
+
+    fun consumePdfConversionResult() {
+        pdfConversionManager.dismissResultNotification(bookId)
     }
 
     private fun loadReaderSettings() {
@@ -1046,8 +1074,18 @@ class ReaderViewModel @Inject constructor(
                     val body = raw.substring(newlineIdx + 1)
                     val spannable = SpannableString("$title\n\n$body")
                     val titleEnd = title.length
-                    spannable.setSpan(AbsoluteSizeSpan(22, true), 0, titleEnd, 0)
-                    spannable.setSpan(StyleSpan(Typeface.BOLD), 0, titleEnd, 0)
+                    spannable.setSpan(
+                        AbsoluteSizeSpan(22, true),
+                        0,
+                        titleEnd,
+                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
+                    spannable.setSpan(
+                        StyleSpan(Typeface.BOLD),
+                        0,
+                        titleEnd,
+                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
                     spannable
                 } else {
                     raw

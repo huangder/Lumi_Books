@@ -1,6 +1,5 @@
 package com.huangder.lumibooks.ui.home
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -8,7 +7,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -61,20 +59,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.Book
+import com.huangder.lumibooks.ui.components.ConfigurableBackHandler
+import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.KaiTi
+import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import java.util.Calendar
 import kotlinx.coroutines.launch
-
-private val AccentColor = Color(0xFFE85D5D)
-private val LightTextSecondary = Color(0xFF6E6E73)
-private val LightBgGray = Color(0xFFF2F2F7)
-private val LightCardBg = Color.White
-private val LightDivider = Color(0xFFE5E5EA)
-private val DarkTextSecondary = Color(0xFF98989D)
-private val DarkBgGray = Color(0xFF2C2C2E)
-private val DarkCardBg = Color(0xFF1C1C1E)
-private val DarkDivider = Color(0xFF38383A)
-private val StreakBlue = Color(0xFF4FC3F7)
 
 @Composable
 fun ReadingGoalSheet(
@@ -87,10 +77,10 @@ fun ReadingGoalSheet(
     onDismiss: () -> Unit,
     onSaveGoal: (Int) -> Unit
 ) {
-    val isDark = isSystemInDarkTheme()
-    val textSecondary = if (isDark) DarkTextSecondary else LightTextSecondary
-    val bgGray = if (isDark) DarkBgGray else LightBgGray
-    val cardBg = if (isDark) DarkCardBg else LightCardBg
+    val isDark = LocalIsDarkTheme.current
+    val textSecondary = AppColors.TextSecondary
+    val bgGray = AppColors.BgGray
+    val cardBg = AppColors.CardBg
     val containerOffsetY = remember { Animatable(1f) }
     val coroutineScope = rememberCoroutineScope()
     val sheetScrollState = rememberScrollState()
@@ -106,7 +96,9 @@ fun ReadingGoalSheet(
         }
     }
 
-    BackHandler(enabled = visible) { onDismiss() }
+    val predictiveBackProgress = ConfigurableBackHandler(
+        enabled = visible || containerOffsetY.value < 1f
+    ) { onDismiss() }
 
     if (!visible && containerOffsetY.value >= 1f) return
 
@@ -142,7 +134,11 @@ fun ReadingGoalSheet(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = if (isDark) 0.4f else 0.1f))
+                .background(
+                    Color.Black.copy(
+                        alpha = (if (isDark) 0.4f else 0.1f) * (1f - predictiveBackProgress)
+                    )
+                )
                 .pointerInput(Unit) { detectTapGestures { onDismiss() } }
         )
 
@@ -151,7 +147,9 @@ fun ReadingGoalSheet(
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
                 .heightIn(max = maxSheetHeight)
-                .graphicsLayer { translationY = containerOffsetY.value * size.height }
+                .graphicsLayer {
+                    translationY = maxOf(containerOffsetY.value, predictiveBackProgress) * size.height
+                }
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(cardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .imePadding()
@@ -184,7 +182,6 @@ fun ReadingGoalSheet(
             if (showGoalPicker) {
                 GoalPicker(
                     currentMinutes = dailyGoal,
-                    isDark = isDark,
                     onConfirm = { minutes -> saveGoalAndReturn(minutes) },
                     onCancel = { showContainerContent(false) }
                 )
@@ -197,7 +194,6 @@ fun ReadingGoalSheet(
                     currentBook = currentBook,
                     weeklyData = weeklyData,
                     streakDays = streakDays,
-                    isDark = isDark,
                     onChangeGoal = { showContainerContent(true) }
                 )
             }
@@ -214,13 +210,12 @@ private fun TodayReadingContent(
     currentBook: Book?,
     weeklyData: List<DailyReading>,
     streakDays: Int,
-    isDark: Boolean,
     onChangeGoal: () -> Unit
 ) {
-    val textPrimary = if (isDark) Color.White else Color.Black
-    val textSecondary = if (isDark) DarkTextSecondary else LightTextSecondary
-    val bgGray = if (isDark) DarkBgGray else LightBgGray
-    val dividerColor = if (isDark) DarkDivider else LightDivider
+    val textPrimary = AppColors.TextPrimary
+    val textSecondary = AppColors.TextSecondary
+    val bgGray = AppColors.BgGray
+    val dividerColor = AppColors.Divider
     val hasGoal = dailyGoal > 0
     val hasReadToday = totalMinutes > 0
     val todayStatusText = if (hasReadToday) "今日已阅读" else "今日未阅读"
@@ -246,7 +241,7 @@ private fun TodayReadingContent(
                 text = "$totalMinutes",
                 fontSize = 56.sp,
                 fontWeight = FontWeight.Bold,
-                color = AccentColor
+                color = AppColors.Accent
             )
             Spacer(modifier = Modifier.width(4.dp))
             Text(
@@ -273,7 +268,7 @@ private fun TodayReadingContent(
                 .fillMaxWidth()
                 .height(6.dp)
                 .clip(RoundedCornerShape(3.dp)),
-            color = AccentColor,
+            color = AppColors.Accent,
             trackColor = bgGray
         )
 
@@ -344,7 +339,7 @@ private fun TodayReadingContent(
         Spacer(modifier = Modifier.height(16.dp))
     }
 
-    WeeklyCheckIn(weeklyData, dailyGoal, isDark, dividerColor, streakDays)
+    WeeklyCheckIn(weeklyData, dailyGoal, dividerColor, streakDays)
 
     Spacer(modifier = Modifier.height(16.dp))
 
@@ -372,11 +367,10 @@ private fun TodayReadingContent(
 private fun WeeklyCheckIn(
     weeklyData: List<DailyReading>,
     dailyGoal: Int,
-    isDark: Boolean,
     dividerColor: Color,
     streakDays: Int
 ) {
-    val textSecondary = if (isDark) DarkTextSecondary else LightTextSecondary
+    val textSecondary = AppColors.TextSecondary
     val todayIndex = Calendar.getInstance().get(Calendar.DAY_OF_WEEK) - 1
     val goalMs = dailyGoal * 60 * 1000L
 
@@ -392,8 +386,8 @@ private fun WeeklyCheckIn(
                     modifier = Modifier
                         .size(28.dp)
                         .clip(CircleShape)
-                        .background(if (achieved) StreakBlue else Color.Transparent)
-                        .border(1.dp, if (achieved) StreakBlue else dividerColor, CircleShape),
+                        .background(if (achieved) AppColors.Accent else Color.Transparent)
+                        .border(1.dp, if (achieved) AppColors.Accent else dividerColor, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     if (achieved) {
@@ -420,14 +414,13 @@ private fun WeeklyCheckIn(
 @Composable
 private fun GoalPicker(
     currentMinutes: Int,
-    isDark: Boolean,
     onConfirm: (Int) -> Unit,
     onCancel: () -> Unit
 ) {
-    val textPrimary = if (isDark) Color.White else Color.Black
-    val textSecondary = if (isDark) DarkTextSecondary else LightTextSecondary
-    val bgGray = if (isDark) DarkBgGray else LightBgGray
-    val dividerColor = if (isDark) DarkDivider else LightDivider
+    val textPrimary = AppColors.TextPrimary
+    val textSecondary = AppColors.TextSecondary
+    val bgGray = AppColors.BgGray
+    val dividerColor = AppColors.Divider
     var customMode by remember { mutableStateOf(false) }
     var customMinutesText by remember(currentMinutes) {
         mutableStateOf(if (currentMinutes > 0) currentMinutes.toString() else "")
@@ -448,7 +441,6 @@ private fun GoalPicker(
     GoalOptionButton(
         title = "不设置目标",
         subtitle = "首页只显示今日是否阅读",
-        isDark = isDark,
         onClick = { onConfirm(0) }
     )
 
@@ -517,7 +509,7 @@ private fun GoalPicker(
                     modifier = Modifier
                         .height(36.dp)
                         .clip(RoundedCornerShape(18.dp))
-                        .background(if (isCustomValid) AccentColor else textSecondary.copy(alpha = 0.22f))
+                        .background(if (isCustomValid) AppColors.Accent else textSecondary.copy(alpha = 0.22f))
                         .clickable(enabled = isCustomValid) { onConfirm(customMinutes!!) }
                         .padding(horizontal = 14.dp),
                     contentAlignment = Alignment.Center
@@ -526,7 +518,7 @@ private fun GoalPicker(
                         text = stringResource(R.string.confirm),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = if (isCustomValid) Color.White else textSecondary
+                        color = if (isCustomValid) AppColors.OnAccent else textSecondary
                     )
                 }
             }
@@ -534,7 +526,7 @@ private fun GoalPicker(
             Text(
                 text = "请输入 1-1439 分钟",
                 fontSize = 12.sp,
-                color = if (customMinutesText.isBlank() || isCustomValid) textSecondary else AccentColor
+                color = if (customMinutesText.isBlank() || isCustomValid) textSecondary else AppColors.Accent
             )
         }
     } else {
@@ -545,7 +537,6 @@ private fun GoalPicker(
             } else {
                 "输入 1-1439 分钟"
             },
-            isDark = isDark,
             onClick = { customMode = true }
         )
     }
@@ -569,13 +560,12 @@ private fun GoalPicker(
 private fun GoalOptionButton(
     title: String,
     subtitle: String,
-    isDark: Boolean,
     onClick: () -> Unit
 ) {
-    val textPrimary = if (isDark) Color.White else Color.Black
-    val textSecondary = if (isDark) DarkTextSecondary else LightTextSecondary
-    val bgGray = if (isDark) DarkBgGray else LightBgGray
-    val dividerColor = if (isDark) DarkDivider else LightDivider
+    val textPrimary = AppColors.TextPrimary
+    val textSecondary = AppColors.TextSecondary
+    val bgGray = AppColors.BgGray
+    val dividerColor = AppColors.Divider
 
     Column(
         modifier = Modifier

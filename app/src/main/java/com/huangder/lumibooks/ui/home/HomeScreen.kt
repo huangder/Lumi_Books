@@ -83,11 +83,13 @@ import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.SansSerif
+import com.huangder.lumibooks.ui.animation.PageEntranceItem
 import com.huangder.lumibooks.util.TimeUtils
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun HomeScreen(
+    playEntranceAnimation: Boolean = false,
     onNavigateToReader: (bookId: String, coverPath: String?, title: String) -> Unit,
     onNavigateToStatistics: () -> Unit,
     onNavigateToBookshelf: () -> Unit,
@@ -137,47 +139,57 @@ fun HomeScreen(
             LazyColumn(modifier = Modifier.fillMaxSize()) {
                 item(key = "header") {
                     Spacer(Modifier.height(AppSpace.md)) // 和状态栏/遮罩拉开距离
-                    HomeHeader(
-                        avatarUri = uiState.avatarUri,
-                        onAvatarClick = {
-                            context.startActivity(
-                                android.content.Intent(context, com.huangder.lumibooks.ui.settings.SettingsActivity::class.java)
-                            )
-                        }
-                    )
+                    PageEntranceItem(play = playEntranceAnimation, index = 0) {
+                        HomeHeader(
+                            avatarUri = uiState.avatarUri,
+                            onAvatarClick = {
+                                context.startActivity(
+                                    android.content.Intent(context, com.huangder.lumibooks.ui.settings.SettingsActivity::class.java)
+                                )
+                            }
+                        )
+                    }
                     Spacer(Modifier.height(AppSpace.lg))
                 }
 
                 item(key = "import_hint") {
-                    ImportHint()
+                    PageEntranceItem(play = playEntranceAnimation, index = 1) {
+                        ImportHint()
+                    }
                     Spacer(Modifier.height(AppSpace.lg))
                 }
 
                 if (lastReadBook != null) {
                     item(key = "continue_reading") {
-                        ContinueReadingCard(
-                            book = lastReadBook,
-                            onClick = { onNavigateToReader(lastReadBook.id, lastReadBook.coverPath, lastReadBook.title) },
-                            onToggleFavorite = { viewModel.updateBook(lastReadBook.copy(isFavorite = !lastReadBook.isFavorite)) },
-                            onDelete = { viewModel.deleteBook(lastReadBook) }
-                        )
+                        PageEntranceItem(play = playEntranceAnimation, index = 2) {
+                            ContinueReadingCard(
+                                book = lastReadBook,
+                                onClick = { onNavigateToReader(lastReadBook.id, lastReadBook.coverPath, lastReadBook.title) },
+                                onToggleFavorite = { viewModel.updateBook(lastReadBook.copy(isFavorite = !lastReadBook.isFavorite)) },
+                                onDelete = { viewModel.deleteBook(lastReadBook) }
+                            )
+                        }
                         Spacer(Modifier.height(AppSpace.lg))
                     }
                 }
 
                 if (otherBooks.isNotEmpty()) {
                     item(key = "previously_read") {
-                        SectionHeader(stringResource(R.string.section_previously_read))
-                        Spacer(Modifier.height(AppSpace.md))
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = AppSpace.lg),
-                            horizontalArrangement = Arrangement.spacedBy(AppSpace.md)
-                        ) {
-                            items(otherBooks, key = { it.id }) { book ->
-                                RecentBookCard(
-                                    book = book,
-                                    onClick = { onNavigateToReader(book.id, book.coverPath, book.title) }
-                                )
+                        PageEntranceItem(play = playEntranceAnimation, index = 3) {
+                            Column {
+                                SectionHeader(stringResource(R.string.section_previously_read))
+                                Spacer(Modifier.height(AppSpace.md))
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = AppSpace.lg),
+                                    horizontalArrangement = Arrangement.spacedBy(AppSpace.md)
+                                ) {
+                                    items(otherBooks, key = { it.id }) { book ->
+                                        RecentBookCard(
+                                            book = book,
+                                            onClick = { onNavigateToReader(book.id, book.coverPath, book.title) }
+                                        )
+                                    }
+                                }
                             }
                         }
                         Spacer(Modifier.height(AppSpace.lg))
@@ -185,26 +197,32 @@ fun HomeScreen(
                 }
 
                 item(key = "reading_goal") {
-                    ReadingGoalCard(
-                        readingTime = uiState.todayReadingTime,
-                        dailyGoal = uiState.dailyGoal,
-                        weeklyData = uiState.weeklyData,
-                        onCardClick = { setShowGoalSheet(true) },
-                        onContinueClick = {
-                            lastReadBook?.let { onNavigateToReader(it.id, it.coverPath, it.title) }
-                        }
-                    )
+                    PageEntranceItem(play = playEntranceAnimation, index = 4) {
+                        ReadingGoalCard(
+                            readingTime = uiState.todayReadingTime,
+                            dailyGoal = uiState.dailyGoal,
+                            weeklyData = uiState.weeklyData,
+                            onCardClick = { setShowGoalSheet(true) },
+                            onContinueClick = {
+                                lastReadBook?.let { onNavigateToReader(it.id, it.coverPath, it.title) }
+                            }
+                        )
+                    }
                     Spacer(Modifier.height(AppSpace.lg))
                 }
 
                 if (booksThisYear.isNotEmpty()) {
                     item(key = "recently_read") {
-                        SectionHeader(stringResource(R.string.section_recently_read))
-                        Spacer(Modifier.height(AppSpace.md))
-                        BooksReadGrid(
-                            books = booksThisYear,
-                            modifier = Modifier.padding(horizontal = AppSpace.lg)
-                        )
+                        PageEntranceItem(play = playEntranceAnimation, index = 5) {
+                            Column {
+                                SectionHeader(stringResource(R.string.section_recently_read))
+                                Spacer(Modifier.height(AppSpace.md))
+                                BooksReadGrid(
+                                    books = booksThisYear,
+                                    modifier = Modifier.padding(horizontal = AppSpace.lg)
+                                )
+                            }
+                        }
                     }
                 }
                 item(key = "bottom_spacing") {
@@ -229,18 +247,24 @@ fun HomeScreen(
         }
 
         // 导入 FAB
-        Box(
+        PageEntranceItem(
+            play = playEntranceAnimation,
+            index = 5,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = 24.dp, bottom = 100.dp)
+        ) {
+            Box(
+                modifier = Modifier
                 .size(56.dp)
                 .shadow(8.dp, CircleShape, ambientColor = AppColors.Shadow)
                 .clip(CircleShape)
                 .background(Color.Black)
                 .clickable { launcher.launch("*/*") },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(Icons.Default.Add, stringResource(R.string.import_books), tint = Color.White, modifier = Modifier.size(24.dp))
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Add, stringResource(R.string.import_books), tint = Color.White, modifier = Modifier.size(24.dp))
+            }
         }
     } // 外层 Box 结束
 }
@@ -340,7 +364,7 @@ private fun ContinueReadingCard(book: Book, onClick: () -> Unit, onToggleFavorit
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = AppSpace.lg)
-            .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
             .clip(RoundedCornerShape(AppRadius.lg))
             .background(AppColors.CardBg)
             .cardPressEffect()
@@ -482,7 +506,7 @@ private fun RecentBookCard(book: Book, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .width(260.dp)
-            .shadow(10.dp, RoundedCornerShape(AppRadius.md), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .shadow(10.dp, RoundedCornerShape(AppRadius.md), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
             .clip(RoundedCornerShape(AppRadius.md))
             .background(AppColors.CardBg)
             .cardPressEffect()
@@ -545,7 +569,7 @@ private fun ReadingGoalCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = AppSpace.lg)
-            .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
             .clip(RoundedCornerShape(AppRadius.lg))
             .background(AppColors.CardBg)
             .cardPressEffect()

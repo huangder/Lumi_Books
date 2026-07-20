@@ -1,14 +1,24 @@
 package com.huangder.lumibooks.ui.reader
 
+import android.Manifest
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
+import android.os.Build
 import android.os.ParcelFileDescriptor
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -20,6 +30,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,12 +40,14 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -48,6 +61,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ViewAgenda
@@ -83,17 +97,22 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.core.content.ContextCompat
 import com.huangder.lumibooks.ui.animation.AppEasing
 import com.huangder.lumibooks.ui.animation.cardPressEffect
-import com.huangder.lumibooks.ui.components.ImmersiveMode
+import com.huangder.lumibooks.ui.components.ConfigurableBackHandler
+import com.huangder.lumibooks.ui.components.ReaderSystemBarStyle
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.R
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import com.huangder.lumibooks.MainActivity
 import com.huangder.lumibooks.ReaderPageDirection
+import com.huangder.lumibooks.pdfconversion.PdfConversionContract
+import com.huangder.lumibooks.pdfconversion.PdfConversionState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -115,24 +134,86 @@ private class PdfRendererHolder(
     }
 }
 
+private sealed interface PdfConversionSheet {
+    data object Confirm : PdfConversionSheet
+    data class Existing(val convertedBookId: String) : PdfConversionSheet
+    data object Progress : PdfConversionSheet
+    data class Completed(
+        val convertedBookId: String,
+        val textPages: Int,
+        val totalPages: Int
+    ) : PdfConversionSheet
+    data object Cancel : PdfConversionSheet
+    data class Failure(val errorCode: String) : PdfConversionSheet
+}
+
 @Composable
 fun PdfViewerScreen(
     bookId: String,
     onNavigateBack: () -> Unit,
+    onOpenBook: (String) -> Unit,
     viewModel: ReaderViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val bookmarks by viewModel.bookmarks.collectAsState()
+    val conversionState by viewModel.pdfConversionState.collectAsState()
     val scope = rememberCoroutineScope()
-    val activity = LocalContext.current as? MainActivity
-    ImmersiveMode()
+    val context = LocalContext.current
+    val activity = context as? MainActivity
+    ReaderSystemBarStyle(
+        backgroundColor = com.huangder.lumibooks.ui.theme.ReaderColors.Light.background,
+        useDarkIcons = true
+    )
 
     val book = uiState.book
     val filePath = book?.filePath
     val pageCount = uiState.chapterCount
+    val bookmarkedPages = remember(bookmarks) {
+        bookmarks.mapTo(mutableSetOf()) { it.chapterIndex }
+    }
     var showMenu by remember { mutableStateOf(false) }
     var showPdfToc by remember { mutableStateOf(false) }
+    var conversionSheet by remember { mutableStateOf<PdfConversionSheet?>(null) }
+    var observedActiveConversion by remember { mutableStateOf(false) }
     var pendingModePage by remember { mutableStateOf<Int?>(null) }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+
+    fun startConversion(replaceExisting: Boolean) {
+        observedActiveConversion = true
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        viewModel.startPdfConversion(replaceExisting)
+    }
+
+    LaunchedEffect(conversionState) {
+        when (val state = conversionState) {
+            is PdfConversionState.Running -> observedActiveConversion = true
+            is PdfConversionState.Succeeded -> {
+                if (observedActiveConversion && state.bookId.isNotEmpty()) {
+                    conversionSheet = PdfConversionSheet.Completed(
+                        convertedBookId = state.bookId,
+                        textPages = state.textPages,
+                        totalPages = state.totalPages
+                    )
+                    observedActiveConversion = false
+                }
+            }
+            is PdfConversionState.Failed -> {
+                if (observedActiveConversion) {
+                    conversionSheet = PdfConversionSheet.Failure(state.errorCode)
+                    observedActiveConversion = false
+                }
+            }
+            PdfConversionState.Cancelled -> observedActiveConversion = false
+            PdfConversionState.Idle -> Unit
+        }
+    }
 
     if (filePath == null || pageCount <= 0) {
         Box(Modifier.fillMaxSize().background(com.huangder.lumibooks.ui.theme.ReaderColors.Light.background), Alignment.Center) {
@@ -187,6 +268,7 @@ fun PdfViewerScreen(
     val shouldHandleVolumePageTurn = uiState.volumeKeyPageTurnEnabled &&
         !showMenu &&
         !showPdfToc &&
+        conversionSheet == null &&
         scale <= 1.01f
 
     DisposableEffect(
@@ -246,7 +328,14 @@ fun PdfViewerScreen(
         }
     }
 
-    Box(Modifier.fillMaxSize().background(com.huangder.lumibooks.ui.theme.ReaderColors.Light.background)) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(
+                if (isHorizontal) AppColors.WindowBg
+                else com.huangder.lumibooks.ui.theme.ReaderColors.Light.background
+            )
+    ) {
         // PDF 页面（上下连续滚动 / 相册式左右分页）
         Box(
             modifier = Modifier
@@ -379,17 +468,17 @@ fun PdfViewerScreen(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(220.dp)
+                .height(280.dp)
                 .align(Alignment.BottomCenter)
                 .graphicsLayer { alpha = menuAlpha.value }
                 .background(
                     Brush.verticalGradient(
                         colorStops = arrayOf(
-                            0.0f to Color.White.copy(alpha = 0f),
-                            0.2f to Color.White.copy(alpha = 0.4f),
-                            0.5f to Color.White.copy(alpha = 0.8f),
-                            0.8f to Color.White.copy(alpha = 0.95f),
-                            1.0f to Color.White
+                            0.0f to AppColors.WindowBg.copy(alpha = 0f),
+                            0.2f to AppColors.WindowBg.copy(alpha = 0.4f),
+                            0.5f to AppColors.WindowBg.copy(alpha = 0.8f),
+                            0.8f to AppColors.WindowBg.copy(alpha = 0.95f),
+                            1.0f to AppColors.WindowBg
                         )
                     )
                 )
@@ -408,6 +497,21 @@ fun PdfViewerScreen(
                 } else {
                     0f
                 },
+                conversionState = conversionState,
+                onConversionClick = {
+                    if (conversionState is PdfConversionState.Running) {
+                        conversionSheet = PdfConversionSheet.Progress
+                    } else {
+                        scope.launch {
+                            val convertedBookId = viewModel.findConvertedPdfBookId()
+                            conversionSheet = if (convertedBookId == null) {
+                                PdfConversionSheet.Confirm
+                            } else {
+                                PdfConversionSheet.Existing(convertedBookId)
+                            }
+                        }
+                    }
+                },
                 onCatalogClick = { showPdfToc = true },
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
@@ -419,6 +523,7 @@ fun PdfViewerScreen(
             filePath = filePath,
             pageCount = pageCount,
             currentPage = currentPage,
+            bookmarkedPages = bookmarkedPages,
             onPageSelected = { page ->
                 scope.launch {
                     if (isHorizontal) pagerState.scrollToPage(page) else listState.scrollToItem(page)
@@ -427,6 +532,24 @@ fun PdfViewerScreen(
             },
             onDismiss = { showPdfToc = false }
         )
+
+        conversionSheet?.let { sheet ->
+            PdfConversionBottomSheet(
+                sheet = sheet,
+                conversionState = conversionState,
+                onDismiss = { conversionSheet = null },
+                onSheetChange = { conversionSheet = it },
+                onStart = { startConversion(replaceExisting = false) },
+                onOpenExisting = onOpenBook,
+                onReplace = { startConversion(replaceExisting = true) },
+                onCancelConversion = viewModel::cancelPdfConversion,
+                onStayPdf = viewModel::consumePdfConversionResult,
+                onOpenConverted = { convertedBookId ->
+                    viewModel.consumePdfConversionResult()
+                    onOpenBook(convertedBookId)
+                }
+            )
+        }
     }
 }
 
@@ -449,10 +572,10 @@ private fun PdfTopBar(
             .background(
                 Brush.verticalGradient(
                     colorStops = arrayOf(
-                        0.0f to Color.White,
-                        0.3f to Color.White,
-                        0.6f to Color.White.copy(alpha = 0.85f),
-                        1.0f to Color.White.copy(alpha = 0f)
+                        0.0f to AppColors.WindowBg,
+                        0.3f to AppColors.WindowBg,
+                        0.6f to AppColors.WindowBg.copy(alpha = 0.85f),
+                        1.0f to AppColors.WindowBg.copy(alpha = 0f)
                     )
                 )
             )
@@ -555,6 +678,8 @@ private fun PdfTopBar(
 private fun PdfBottomMenu(
     chapterTitle: String,
     chapterProgress: Float,
+    conversionState: PdfConversionState,
+    onConversionClick: () -> Unit,
     onCatalogClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -562,10 +687,393 @@ private fun PdfBottomMenu(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 24.dp, vertical = 12.dp)
-            .padding(bottom = 24.dp)
+            .padding(bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        PdfConversionCapsule(conversionState = conversionState, onClick = onConversionClick)
         // 目录胶囊
         PdfCatalogCapsule(title = chapterTitle, progress = chapterProgress, onClick = onCatalogClick)
+    }
+}
+
+@Composable
+private fun PdfConversionCapsule(conversionState: PdfConversionState, onClick: () -> Unit) {
+    val running = conversionState as? PdfConversionState.Running
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .background(AppColors.BgGray)
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() }
+            ) { onClick() }
+            .padding(horizontal = 24.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (running != null) {
+            CircularProgressIndicator(
+                progress = { running.progress / 100f },
+                modifier = Modifier.size(18.dp),
+                color = AppColors.Accent,
+                strokeWidth = 2.dp
+            )
+        } else {
+            Icon(
+                Icons.Default.AutoStories,
+                contentDescription = null,
+                tint = AppColors.TextPrimary,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = if (running == null) {
+                stringResource(R.string.pdf_convert_action)
+            } else {
+                stringResource(R.string.pdf_convert_running, running.progress)
+            },
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = AppColors.TextPrimary
+        )
+        if (running != null && running.totalPages > 0) {
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = "${running.currentPage} / ${running.totalPages}",
+                fontSize = 12.sp,
+                color = AppColors.TextSecondary
+            )
+        }
+    }
+}
+
+@Composable
+private fun PdfConversionBottomSheet(
+    sheet: PdfConversionSheet,
+    conversionState: PdfConversionState,
+    onDismiss: () -> Unit,
+    onSheetChange: (PdfConversionSheet) -> Unit,
+    onStart: () -> Unit,
+    onOpenExisting: (String) -> Unit,
+    onReplace: () -> Unit,
+    onCancelConversion: () -> Unit,
+    onStayPdf: () -> Unit,
+    onOpenConverted: (String) -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    val offset = remember { Animatable(1f) }
+    var isClosing by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        offset.snapTo(1f)
+        offset.animateTo(0f, tween(300, easing = FastOutSlowInEasing))
+    }
+
+    fun closeThen(action: () -> Unit = {}) {
+        if (isClosing) return
+        isClosing = true
+        scope.launch {
+            offset.animateTo(1f, tween(240, easing = FastOutSlowInEasing))
+            onDismiss()
+            action()
+        }
+    }
+
+    fun dismissForCurrentState() {
+        when (sheet) {
+            PdfConversionSheet.Cancel -> onSheetChange(PdfConversionSheet.Progress)
+            is PdfConversionSheet.Completed -> closeThen(onStayPdf)
+            else -> closeThen()
+        }
+    }
+
+    val predictiveBackProgress = ConfigurableBackHandler { dismissForCurrentState() }
+
+    Box(Modifier.fillMaxSize()) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    AppColors.Scrim.copy(
+                        alpha = 0.28f * (1f - maxOf(offset.value, predictiveBackProgress))
+                    )
+                )
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() }
+                ) { dismissForCurrentState() }
+        )
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .heightIn(max = LocalConfiguration.current.screenHeightDp.dp * 0.85f)
+                .graphicsLayer {
+                    translationY = maxOf(offset.value, predictiveBackProgress) * size.height
+                }
+                .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .background(
+                    AppColors.CardBg,
+                    RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+                )
+                .navigationBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .size(width = 36.dp, height = 4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(AppColors.TextSecondary.copy(alpha = 0.25f))
+            )
+            Spacer(Modifier.height(4.dp))
+            AnimatedContent(
+                targetState = sheet,
+                transitionSpec = {
+                    (fadeIn(tween(220)) + slideInVertically(tween(260)) { it / 5 })
+                        .togetherWith(
+                            fadeOut(tween(160)) + slideOutVertically(tween(200)) { -it / 5 }
+                        )
+                        .using(SizeTransform(clip = true))
+                },
+                label = "pdfConversionSheetContent"
+            ) { currentSheet ->
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    when (currentSheet) {
+                        PdfConversionSheet.Confirm -> {
+                            PdfSheetText(
+                                title = stringResource(R.string.pdf_convert_sheet_title),
+                                message = stringResource(R.string.pdf_convert_sheet_body)
+                            )
+                            PdfSheetButton(
+                                label = stringResource(R.string.pdf_convert_start),
+                                primary = true,
+                                onClick = {
+                                    onStart()
+                                    onSheetChange(PdfConversionSheet.Progress)
+                                }
+                            )
+                            PdfSheetButton(
+                                label = stringResource(R.string.cancel),
+                                onClick = { closeThen() }
+                            )
+                        }
+                        is PdfConversionSheet.Existing -> {
+                            PdfSheetText(
+                                title = stringResource(R.string.pdf_convert_existing_title),
+                                message = stringResource(R.string.pdf_convert_existing_body)
+                            )
+                            PdfSheetButton(
+                                label = stringResource(R.string.pdf_convert_open_existing),
+                                primary = true,
+                                onClick = {
+                                    closeThen { onOpenExisting(currentSheet.convertedBookId) }
+                                }
+                            )
+                            PdfSheetButton(
+                                label = stringResource(R.string.pdf_convert_replace),
+                                destructive = true,
+                                onClick = {
+                                    onReplace()
+                                    onSheetChange(PdfConversionSheet.Progress)
+                                }
+                            )
+                            PdfSheetButton(
+                                label = stringResource(R.string.cancel),
+                                onClick = { closeThen() }
+                            )
+                        }
+                        PdfConversionSheet.Progress -> {
+                            val running = conversionState as? PdfConversionState.Running
+                            PdfConversionProgressContent(running)
+                            PdfSheetButton(
+                                label = stringResource(R.string.pdf_convert_cancel_action),
+                                onClick = { onSheetChange(PdfConversionSheet.Cancel) }
+                            )
+                        }
+                        is PdfConversionSheet.Completed -> {
+                            PdfSheetText(
+                                title = stringResource(R.string.pdf_convert_complete_title),
+                                message = stringResource(
+                                    R.string.pdf_convert_complete_body,
+                                    currentSheet.textPages,
+                                    currentSheet.totalPages
+                                )
+                            )
+                            PdfSheetButton(
+                                label = stringResource(R.string.pdf_convert_open_result),
+                                primary = true,
+                                onClick = {
+                                    closeThen {
+                                        onOpenConverted(currentSheet.convertedBookId)
+                                    }
+                                }
+                            )
+                            PdfSheetButton(
+                                label = stringResource(R.string.pdf_convert_stay_pdf),
+                                onClick = { closeThen(onStayPdf) }
+                            )
+                        }
+                        PdfConversionSheet.Cancel -> {
+                            PdfSheetText(
+                                title = stringResource(R.string.pdf_convert_cancel_title),
+                                message = stringResource(R.string.pdf_convert_cancel_body)
+                            )
+                            PdfSheetButton(
+                                label = stringResource(R.string.pdf_convert_cancel_action),
+                                destructive = true,
+                                onClick = { closeThen(onCancelConversion) }
+                            )
+                            PdfSheetButton(
+                                label = stringResource(R.string.pdf_convert_keep_running),
+                                primary = true,
+                                onClick = { onSheetChange(PdfConversionSheet.Progress) }
+                            )
+                        }
+                        is PdfConversionSheet.Failure -> {
+                            PdfSheetText(
+                                title = stringResource(R.string.pdf_convert_failed_title),
+                                message = stringResource(
+                                    pdfConversionErrorResource(currentSheet.errorCode)
+                                )
+                            )
+                            PdfSheetButton(
+                                label = stringResource(R.string.close),
+                                primary = true,
+                                onClick = { closeThen() }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PdfSheetText(title: String, message: String) {
+    Text(
+        text = title,
+        fontSize = 20.sp,
+        fontWeight = FontWeight.Bold,
+        fontFamily = KaiTi,
+        color = AppColors.TextPrimary
+    )
+    Text(
+        text = message,
+        fontSize = 14.sp,
+        lineHeight = 22.sp,
+        color = AppColors.TextSecondary
+    )
+    Spacer(Modifier.height(4.dp))
+}
+
+@Composable
+private fun androidx.compose.foundation.layout.ColumnScope.PdfConversionProgressContent(
+    running: PdfConversionState.Running?
+) {
+    val progress = running?.progress?.coerceIn(0, 100) ?: 0
+    Text(
+        text = stringResource(R.string.pdf_convert_progress_title),
+        fontSize = 20.sp,
+        fontWeight = FontWeight.Bold,
+        fontFamily = KaiTi,
+        color = AppColors.TextPrimary
+    )
+    Box(
+        modifier = Modifier
+            .align(Alignment.CenterHorizontally)
+            .size(76.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        if (running == null || running.totalPages <= 0) {
+            CircularProgressIndicator(
+                modifier = Modifier.fillMaxSize(),
+                color = AppColors.Accent,
+                strokeWidth = 5.dp
+            )
+        } else {
+            CircularProgressIndicator(
+                progress = { progress / 100f },
+                modifier = Modifier.fillMaxSize(),
+                color = AppColors.Accent,
+                trackColor = AppColors.BgGray,
+                strokeWidth = 5.dp
+            )
+            Text(
+                text = "$progress%",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = AppColors.TextPrimary
+            )
+        }
+    }
+    Text(
+        text = if (running != null && running.totalPages > 0) {
+            stringResource(
+                R.string.pdf_convert_progress_pages,
+                running.currentPage,
+                running.totalPages
+            )
+        } else {
+            stringResource(R.string.pdf_convert_preparing)
+        },
+        modifier = Modifier.align(Alignment.CenterHorizontally),
+        fontSize = 13.sp,
+        color = AppColors.TextSecondary
+    )
+    Spacer(Modifier.height(4.dp))
+}
+
+@Composable
+private fun PdfSheetButton(
+    label: String,
+    primary: Boolean = false,
+    destructive: Boolean = false,
+    onClick: () -> Unit
+) {
+    val background = when {
+        destructive -> Color(0xFFE85D5D)
+        primary -> AppColors.Accent
+        else -> AppColors.BgGray
+    }
+    val contentColor = if (primary) AppColors.OnAccent else if (destructive) Color.White else AppColors.TextPrimary
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .background(background)
+            .cardPressEffect()
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() }
+            ) { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = contentColor
+        )
+    }
+}
+
+private fun pdfConversionErrorResource(errorCode: String): Int {
+    return when (errorCode) {
+        PdfConversionContract.ERROR_NO_TEXT -> R.string.pdf_convert_error_no_text
+        PdfConversionContract.ERROR_ENCRYPTED -> R.string.pdf_convert_error_encrypted
+        PdfConversionContract.ERROR_FILE_MISSING -> R.string.pdf_convert_error_file_missing
+        PdfConversionContract.ERROR_STORAGE -> R.string.pdf_convert_error_storage
+        else -> R.string.pdf_convert_error_unknown
     }
 }
 
@@ -688,6 +1196,7 @@ private fun PdfTocSheet(
     filePath: String,
     pageCount: Int,
     currentPage: Int,
+    bookmarkedPages: Set<Int>,
     onPageSelected: (Int) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -696,6 +1205,7 @@ private fun PdfTocSheet(
     val sheetOffset = remember { Animatable(1f) }
     var isClosing by remember { mutableStateOf(false) }
     var pendingPage by remember { mutableStateOf<Int?>(null) }
+    val predictiveBackProgress = ConfigurableBackHandler { isClosing = true }
 
     LaunchedEffect(visible) {
         if (visible) {
@@ -739,7 +1249,7 @@ private fun PdfTocSheet(
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.2f))
+                .background(AppColors.Scrim.copy(alpha = 0.24f * (1f - predictiveBackProgress)))
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                     isClosing = true
                 }
@@ -751,9 +1261,11 @@ private fun PdfTocSheet(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .fillMaxHeight(0.7f)
-                .graphicsLayer { translationY = sheetOffset.value * size.height }
+                .graphicsLayer {
+                    translationY = maxOf(sheetOffset.value, predictiveBackProgress) * size.height
+                }
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .background(Color.White, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .background(AppColors.CardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .navigationBarsPadding()
                 .padding(24.dp)
         ) {
@@ -764,14 +1276,14 @@ private fun PdfTocSheet(
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = KaiTi,
-                    color = Color.Black
+                    color = AppColors.TextPrimary
                 )
                 Spacer(Modifier.weight(1f))
                 Box(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFFF2F2F7))
+                        .background(AppColors.BgGray)
                         .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                             isClosing = true
                         },
@@ -780,7 +1292,7 @@ private fun PdfTocSheet(
                     Icon(
                         Icons.Default.Close,
                         stringResource(R.string.pdf_close),
-                        tint = Color(0xFF6E6E73),
+                        tint = AppColors.TextSecondary,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -800,6 +1312,7 @@ private fun PdfTocSheet(
                         renderer = rendererHolder?.renderer,
                         pageIndex = pageIdx,
                         isCurrentPage = pageIdx == currentPage,
+                        isBookmarked = pageIdx in bookmarkedPages,
                         onClick = {
                             pendingPage = pageIdx
                             isClosing = true
@@ -816,9 +1329,10 @@ private fun PdfThumbnailItem(
     renderer: PdfRenderer?,
     pageIndex: Int,
     isCurrentPage: Boolean,
+    isBookmarked: Boolean,
     onClick: () -> Unit
 ) {
-    val accentColor = Color(0xFFE85D5D)
+    val accentColor = AppColors.Accent
     var thumbnail by remember(pageIndex) { mutableStateOf<Bitmap?>(null) }
 
     LaunchedEffect(pageIndex, renderer) {
@@ -843,7 +1357,7 @@ private fun PdfThumbnailItem(
                     if (isCurrentPage) Modifier.border(3.dp, accentColor, RoundedCornerShape(8.dp))
                     else Modifier
                 )
-                .background(Color(0xFFF0F0F0))
+                .background(AppColors.BgGray)
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                     onClick()
                 },
@@ -859,17 +1373,31 @@ private fun PdfThumbnailItem(
             } else {
                 CircularProgressIndicator(
                     Modifier.size(16.dp), strokeWidth = 2.dp,
-                    color = Color(0xFF6E6E73).copy(alpha = 0.4f)
+                    color = AppColors.TextSecondary.copy(alpha = 0.4f)
                 )
             }
         }
         Spacer(Modifier.height(4.dp))
-        Text(
-            "${pageIndex + 1}",
-            fontSize = 11.sp,
-            color = Color(0xFF6E6E73),
-            maxLines = 1
-        )
+        Row(
+            modifier = Modifier.height(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "${pageIndex + 1}",
+                fontSize = 11.sp,
+                color = AppColors.TextSecondary,
+                maxLines = 1
+            )
+            if (isBookmarked) {
+                Icon(
+                    imageVector = Icons.Default.Bookmark,
+                    contentDescription = stringResource(R.string.pdf_bookmark),
+                    tint = accentColor,
+                    modifier = Modifier.size(12.dp)
+                )
+            }
+        }
     }
 }
 

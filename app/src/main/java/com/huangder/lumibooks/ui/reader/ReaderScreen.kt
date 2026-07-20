@@ -16,7 +16,6 @@ import android.text.Spannable
 import android.webkit.WebView
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
@@ -130,7 +129,8 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import com.huangder.lumibooks.ui.animation.AppEasing
 import com.huangder.lumibooks.ui.animation.cardPressEffect
-import com.huangder.lumibooks.ui.components.ImmersiveMode
+import com.huangder.lumibooks.ui.components.ConfigurableBackHandler
+import com.huangder.lumibooks.ui.components.ReaderSystemBarStyle
 import com.huangder.lumibooks.ui.reader.engine.ReadView
 import com.huangder.lumibooks.ui.reader.engine.ReadViewCallbacks
 import com.huangder.lumibooks.ui.theme.AppColors
@@ -398,16 +398,6 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         }
     }
 
-    BackHandler(enabled = isAnySheetOpen) {
-        when {
-            showNotesList -> requestCloseNotesList = true
-            showNoteInput -> showNoteInput = false  // 笔记输入没有动画，直接关闭
-            showToc -> requestCloseToc = true
-            showThemeSheet -> requestCloseTheme = true
-            showAdvancedSheet -> requestCloseAdvanced = true
-            showSearch -> requestCloseSearch = true
-        }
-    }
     val returnToLinkedSource = {
         linkReturnLocation?.let { source ->
             linkReturnLocation = null
@@ -415,7 +405,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         }
         Unit
     }
-    BackHandler(enabled = !isAnySheetOpen && linkReturnLocation != null) {
+    ConfigurableBackHandler(enabled = !isAnySheetOpen && linkReturnLocation != null) {
         returnToLinkedSource()
     }
     var searchQuery by remember { mutableStateOf("") }
@@ -487,9 +477,6 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         else -> Color(0xFFD0D0D0)
     }
 
-    // 全屏沉浸
-    ImmersiveMode()
-
     val loadError = uiState.error
     if (!uiState.isLoading && loadError != null) {
         Box(
@@ -524,7 +511,11 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     }
 
     // 主题背景色
-    val composeBgColor = Color(readerBackgroundColorInt)
+    val composeBgColor = Color(customBackgroundThemeColorInt)
+    ReaderSystemBarStyle(
+        backgroundColor = composeBgColor,
+        useDarkIcons = ColorUtils.calculateLuminance(customBackgroundThemeColorInt) >= 0.42
+    )
 
     Box(Modifier.fillMaxSize().background(composeBgColor)) {
         // ── 新 Canvas 引擎（TXT/EPUB） ──
@@ -725,8 +716,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         customFontPath = uiState.customFontPath,
                         marginHorizDp = uiState.marginHorizDp,
                         marginVertDp = uiState.marginVertDp,
-                        topOverlayInsetDp = if (hasTopReaderStatus) 28f else 0f,
-                        bottomOverlayInsetDp = if (hasBottomReaderStatus) 28f else 0f,
+                        topOverlayInsetDp = if (hasTopReaderStatus) 38f else 0f,
+                        bottomOverlayInsetDp = if (hasBottomReaderStatus) 38f else 0f,
                         paragraphSpacingDp = uiState.paragraphSpacing
                     )
                     readView.setReaderBackground(
@@ -1263,7 +1254,7 @@ private fun ReaderPageCornerOverlay(
                     .align(Alignment.TopCenter)
                     .padding(
                         start = horizontalMarginDp.coerceAtLeast(0f).dp,
-                        top = 10.dp,
+                        top = 20.dp,
                         end = horizontalMarginDp.coerceAtLeast(0f).dp
                     )
             )
@@ -1973,6 +1964,7 @@ private fun TocSheet(
 
     var isClosing by remember { mutableStateOf(false) }
     var pendingJumpIndex by remember { mutableStateOf<Int?>(null) }
+    val predictiveBackProgress = ConfigurableBackHandler { isClosing = true }
 
     // 监听 requestClose 状态，触发动画关闭
     LaunchedEffect(requestClose) {
@@ -1994,7 +1986,7 @@ private fun TocSheet(
         // 遮罩
         Box(
             Modifier.fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.1f))
+                .background(AppColors.Scrim.copy(alpha = 0.20f * (1f - predictiveBackProgress)))
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { isClosing = true }
         )
 
@@ -2003,9 +1995,11 @@ private fun TocSheet(
             Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .fillMaxHeight(0.7f)
-                .graphicsLayer { translationY = sheetOffset.value * size.height }
+                .graphicsLayer {
+                    translationY = maxOf(sheetOffset.value, predictiveBackProgress) * size.height
+                }
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .background(Color.White, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .background(AppColors.CardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .navigationBarsPadding()
                 .padding(24.dp)
         ) {
@@ -2016,7 +2010,7 @@ private fun TocSheet(
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = KaiTi,
-                    color = Color.Black
+                    color = AppColors.TextPrimary
                 )
                 Spacer(Modifier.weight(1f))
                 // 关闭按钮
@@ -2080,7 +2074,7 @@ private fun TocSheet(
                                 text = entry.title.ifBlank { stringResource(R.string.reader_chapter_fallback, entry.chapterIndex + 1) },
                                 fontSize = 15.sp,
                                 fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isCurrent) AccentColor else Color.Black,
+                                color = if (isCurrent) AccentColor else AppColors.TextPrimary,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -2121,6 +2115,7 @@ private fun SearchSheet(
     }
 
     var isClosing by remember { mutableStateOf(false) }
+    val predictiveBackProgress = ConfigurableBackHandler { isClosing = true }
 
     // 监听 requestClose 状态，触发动画关闭
     LaunchedEffect(requestClose) {
@@ -2140,7 +2135,7 @@ private fun SearchSheet(
         // 遮罩
         Box(
             Modifier.fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.1f))
+                .background(AppColors.Scrim.copy(alpha = 0.20f * (1f - predictiveBackProgress)))
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { isClosing = true }
         )
 
@@ -2148,9 +2143,11 @@ private fun SearchSheet(
         Box(
             Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .graphicsLayer { translationY = sheetOffset.value * size.height }
+                .graphicsLayer {
+                    translationY = maxOf(sheetOffset.value, predictiveBackProgress) * size.height
+                }
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .background(Color.White, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .background(AppColors.CardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .imePadding()
                 .navigationBarsPadding()
                 .padding(24.dp)
@@ -2163,7 +2160,7 @@ private fun SearchSheet(
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = KaiTi,
-                        color = Color.Black
+                        color = AppColors.TextPrimary
                     )
                     Spacer(Modifier.weight(1f))
                     // 关闭按钮
@@ -2196,7 +2193,7 @@ private fun SearchSheet(
                             value = query,
                             onValueChange = onQueryChange,
                             placeholder = { Text(stringResource(R.string.search_placeholder), fontSize = 14.sp, color = LightTextSecondary) },
-                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = Color.Black),
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = AppColors.TextPrimary),
                             singleLine = true,
                             colors = androidx.compose.material3.TextFieldDefaults.colors(
                                 focusedContainerColor = Color.Transparent,
@@ -2218,9 +2215,9 @@ private fun SearchSheet(
                         contentAlignment = Alignment.Center
                     ) {
                         if (isSearching) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = AppColors.OnAccent)
                         } else {
-                            Text(stringResource(R.string.reader_search), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = if (query.isNotBlank()) Color.White else LightTextSecondary)
+                            Text(stringResource(R.string.reader_search), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = if (query.isNotBlank()) AppColors.OnAccent else LightTextSecondary)
                         }
                     }
                 }
@@ -2265,7 +2262,7 @@ private fun SearchSheet(
                                     Text(
                                         text = r.context,
                                         fontSize = 14.sp,
-                                        color = Color.Black,
+                                        color = AppColors.TextPrimary,
                                         maxLines = 2,
                                         overflow = TextOverflow.Ellipsis
                                     )
@@ -2565,6 +2562,7 @@ private fun NoteInputSheet(
 
     val sheetAlpha = remember { Animatable(0f) }
     val sheetOffset = remember { Animatable(1f) }
+    val predictiveBackProgress = ConfigurableBackHandler(onBack = onCancel)
 
     LaunchedEffect(visible) {
         if (visible) {
@@ -2578,8 +2576,8 @@ private fun NoteInputSheet(
     Box(Modifier.fillMaxSize()) {
         Box(
             Modifier.fillMaxSize()
-                .graphicsLayer { alpha = sheetAlpha.value }
-                .background(Color.Black.copy(alpha = 0.1f))
+                .graphicsLayer { alpha = sheetAlpha.value * (1f - predictiveBackProgress) }
+                .background(AppColors.Scrim.copy(alpha = 0.20f))
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onCancel() }
         )
 
@@ -2587,7 +2585,10 @@ private fun NoteInputSheet(
             Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .fillMaxHeight(0.6f)
-                .graphicsLayer { translationY = sheetOffset.value * size.height; alpha = sheetAlpha.value }
+                .graphicsLayer {
+                    translationY = maxOf(sheetOffset.value, predictiveBackProgress) * size.height
+                    alpha = sheetAlpha.value
+                }
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(AppColors.CardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .padding(bottom = 16.dp)
@@ -2630,12 +2631,12 @@ private fun NoteInputSheet(
 // ── 笔记/高亮列表弹窗（Page5 设计规范）──
 
 // 设计规范颜色
-private val AccentColor = Color(0xFFE85D5D)
+private val AccentColor: Color @Composable get() = AppColors.Accent
 private val HighlightYellow = Color(0xFFFFEB3B)
 private val HighlightBg = Color(0xFFFFFBF0)
-private val LightTextSecondary = Color(0xFF6E6E73)
-private val LightBgGray = Color(0xFFF2F2F7)
-private val LightCardBg = Color.White
+private val LightTextSecondary: Color @Composable get() = AppColors.TextSecondary
+private val LightBgGray: Color @Composable get() = AppColors.BgGray
+private val LightCardBg: Color @Composable get() = AppColors.CardBg
 
 @Composable
 private fun NotesListSheet(
@@ -2662,6 +2663,7 @@ private fun NotesListSheet(
 
     var isClosing by remember { mutableStateOf(false) }
     var pendingJumpNote by remember { mutableStateOf<com.huangder.lumibooks.domain.model.Note?>(null) }
+    val predictiveBackProgress = ConfigurableBackHandler { isClosing = true }
 
     // 监听 requestClose 状态，触发动画关闭
     LaunchedEffect(requestClose) {
@@ -2690,7 +2692,7 @@ private fun NotesListSheet(
         // 遮罩层：有滑开项时先关闭滑开项，否则关闭整个弹窗
         Box(
             Modifier.fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.1f))
+                .background(AppColors.Scrim.copy(alpha = 0.20f * (1f - predictiveBackProgress)))
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                     if (anyItemRevealed) resetRevealedKey = resetRevealedKey + 1 else isClosing = true
                 }
@@ -2701,9 +2703,11 @@ private fun NotesListSheet(
             Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .fillMaxHeight(0.6f)
-                .graphicsLayer { translationY = sheetOffset.value * size.height }
+                .graphicsLayer {
+                    translationY = maxOf(sheetOffset.value, predictiveBackProgress) * size.height
+                }
                 .background(LightCardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .border(0.5.dp, Color.Black.copy(alpha = 0.06f), RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .border(0.5.dp, AppColors.Divider, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .navigationBarsPadding()
                 .padding(24.dp)
         ) {
@@ -2714,7 +2718,7 @@ private fun NotesListSheet(
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = KaiTi,
-                    color = Color.Black
+                    color = AppColors.TextPrimary
                 )
                 Spacer(Modifier.weight(1f))
                 // 关闭按钮
@@ -2842,7 +2846,7 @@ private fun HighlightNoteTabSwitcher(
                 .width(tabWidth)
                 .offset(x = indicatorOffset)
                 .clip(RoundedCornerShape(18.dp))
-                .background(Color.White)
+                .background(AppColors.CardBg)
         )
 
         // Tab 文字
@@ -2859,7 +2863,7 @@ private fun HighlightNoteTabSwitcher(
                     stringResource(R.string.highlights_count, highlightCount),
                     fontSize = 14.sp,
                     fontWeight = if (activeTag == "highlight") FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (activeTag == "highlight") Color.Black else LightTextSecondary
+                    color = if (activeTag == "highlight") AppColors.TextPrimary else LightTextSecondary
                 )
             }
             Box(
@@ -2873,7 +2877,7 @@ private fun HighlightNoteTabSwitcher(
                     stringResource(R.string.notes_count, noteCount),
                     fontSize = 14.sp,
                     fontWeight = if (activeTag == "note") FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (activeTag == "note") Color.Black else LightTextSecondary
+                    color = if (activeTag == "note") AppColors.TextPrimary else LightTextSecondary
                 )
             }
             // 书签
@@ -2888,7 +2892,7 @@ private fun HighlightNoteTabSwitcher(
                     stringResource(R.string.bookmarks_count, bookmarkCount),
                     fontSize = 14.sp,
                     fontWeight = if (activeTag == "bookmark") FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (activeTag == "bookmark") Color.Black else LightTextSecondary
+                    color = if (activeTag == "bookmark") AppColors.TextPrimary else LightTextSecondary
                 )
             }
         }
@@ -2950,7 +2954,7 @@ private fun BookmarkListItem(
                     if (isDeleting) alpha = 1f - (-displayOffset / deletePx).coerceIn(0f, 1f)
                     if (progress > 1f) scaleX = 1f - (progress - 1f) * 0.01f
                 }
-                .background(Color(0xFFFFF8E1), RoundedCornerShape(12.dp))
+                .background(AppColors.BgGray, RoundedCornerShape(12.dp))
                 .pointerInput(Unit) {
                     detectHorizontalDragGestures(
                         onDragStart = { rawOffset = animOffset.value; isDragging = true },
@@ -3000,7 +3004,7 @@ private fun BookmarkListItem(
             Spacer(Modifier.width(12.dp))
             // 内容
             Column(modifier = Modifier.weight(1f)) {
-                Text(bookmark.title, fontSize = 14.sp, color = Color.Black, maxLines = 1)
+                Text(bookmark.title, fontSize = 14.sp, color = AppColors.TextPrimary, maxLines = 1)
                 Spacer(Modifier.height(4.dp))
                 Text(
                     java.text.SimpleDateFormat("MM/dd", java.util.Locale.getDefault()).format(java.util.Date(bookmark.createdAt)),
@@ -3186,7 +3190,7 @@ private fun HighlightNoteItem(
                 Text(
                     item.selectedText,
                     fontSize = 14.sp,
-                    color = Color.Black,
+                    color = AppColors.TextPrimary,
                     maxLines = 2
                 )
                 if (item.note.isNotEmpty()) {

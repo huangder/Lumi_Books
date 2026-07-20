@@ -61,7 +61,10 @@ class DataStoreManager @Inject constructor(
         private val DAILY_GOAL = intPreferencesKey("daily_goal")
 
         // 应用设置
+        private val APP_THEME = stringPreferencesKey("app_theme")
         private val DARK_MODE = stringPreferencesKey("dark_mode")
+        private val ENTRANCE_ANIMATIONS_ENABLED = booleanPreferencesKey("entrance_animations_enabled")
+        private val PREDICTIVE_BACK_ENABLED = booleanPreferencesKey("predictive_back_enabled")
         private val SPLASH_ENABLED = booleanPreferencesKey("splash_enabled")
         private val LAST_READ_BOOK = stringPreferencesKey("last_read_book")
         private val HAS_SEEN_WELCOME = booleanPreferencesKey("has_seen_welcome")
@@ -176,8 +179,20 @@ class DataStoreManager @Inject constructor(
     }
 
     // 应用设置
+    val appTheme: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[APP_THEME] ?: "lumi"
+    }
+
     val darkMode: Flow<String> = context.dataStore.data.map { preferences ->
         preferences[DARK_MODE] ?: "system"
+    }
+
+    val entranceAnimationsEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[ENTRANCE_ANIMATIONS_ENABLED] ?: true
+    }
+
+    val predictiveBackEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PREDICTIVE_BACK_ENABLED] ?: true
     }
 
     val splashEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
@@ -466,9 +481,27 @@ class DataStoreManager @Inject constructor(
         }
     }
 
+    suspend fun saveAppTheme(theme: String) {
+        context.dataStore.edit { preferences ->
+            preferences[APP_THEME] = theme
+        }
+    }
+
     suspend fun saveDarkMode(mode: String) {
         context.dataStore.edit { preferences ->
             preferences[DARK_MODE] = mode
+        }
+    }
+
+    suspend fun saveEntranceAnimationsEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[ENTRANCE_ANIMATIONS_ENABLED] = enabled
+        }
+    }
+
+    suspend fun savePredictiveBackEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PREDICTIVE_BACK_ENABLED] = enabled
         }
     }
 

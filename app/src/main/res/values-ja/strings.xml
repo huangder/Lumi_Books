@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="label_predictive_back">予測型「戻る」</string>
+    <string name="label_entrance_animations">モーション Pro (Beta)</string>
+    <string name="entrance_animations_description">一部のページに要素アニメーションを追加します。\n性能に影響する場合があります</string>
+    <string name="label_app_theme">テーマ</string>
+    <string name="app_theme_lumi">Lumi ピンク</string>
+    <string name="app_theme_material3">Material 3</string>
     <string name="app_name">LUMI</string>
 
     <!-- ホーム -->
@@ -360,6 +366,38 @@
     <string name="pdf_page_desc">第%d頁</string>
     <string name="pdf_switch_to_horizontal">左右ページ送りに切り替え</string>
     <string name="pdf_switch_to_vertical">上下スクロールに切り替え</string>
+    <string name="pdf_convert_action">PDFを電子書籍に変換</string>
+    <string name="pdf_convert_running">変換中 %d%%</string>
+    <string name="pdf_convert_sheet_title">電子書籍に変換</string>
+    <string name="pdf_convert_sheet_body">テキストレイヤーを持つPDFのみ対応しています。画像、表、数式、複雑な段組みは保持されない場合があります。スキャンPDFは変換できません。変換は端末内のバックグラウンドで行われ、元のPDFは変更されません。</string>
+    <string name="pdf_convert_start">変換を開始</string>
+    <string name="pdf_convert_existing_title">変換済みの書籍があります</string>
+    <string name="pdf_convert_existing_body">既存版を開くか、再変換して置き換えられます。置き換えると読書進捗がリセットされ、ブックマークとメモが削除されます。</string>
+    <string name="pdf_convert_open_existing">既存版を開く</string>
+    <string name="pdf_convert_replace">再変換して置き換える</string>
+    <string name="pdf_convert_cancel_title">変換をキャンセルしますか？</string>
+    <string name="pdf_convert_cancel_body">今回の一時ファイルを削除します。既存の変換済み書籍には影響しません。</string>
+    <string name="pdf_convert_cancel_action">変換をキャンセル</string>
+    <string name="pdf_convert_keep_running">バックグラウンドで続行</string>
+    <string name="pdf_convert_failed_title">PDFの変換に失敗しました</string>
+    <string name="pdf_convert_error_no_text">抽出可能なテキストレイヤーが見つかりません。スキャンPDFと画像のみのPDFにはまだ対応していません。</string>
+    <string name="pdf_convert_error_encrypted">このPDFは暗号化またはパスワード保護されているため、テキストを抽出できません。</string>
+    <string name="pdf_convert_error_file_missing">元のPDFが見つからないか、アクセスできません。</string>
+    <string name="pdf_convert_error_storage">PDFの読み込みまたは変換ファイルの書き込みに失敗しました。空き容量を確認して再試行してください。</string>
+    <string name="pdf_convert_error_unknown">変換中に予期しないエラーが発生しました。後でもう一度お試しください。</string>
+    <string name="pdf_convert_success">%2$dページ中%1$dページの文字を抽出しました</string>
+    <string name="pdf_convert_progress_title">PDFを変換中</string>
+    <string name="pdf_convert_progress_pages">%2$dページ中%1$dページ</string>
+    <string name="pdf_convert_complete_title">変換が完了しました</string>
+    <string name="pdf_convert_complete_body">%2$dページ中%1$dページから文字を抽出しました。PDFに留まるか、変換済みの書籍を開いてレイアウトを確認できます。</string>
+    <string name="pdf_convert_stay_pdf">PDFページに留まる</string>
+    <string name="pdf_convert_open_result">変換済みの書籍を開く</string>
+    <string name="pdf_convert_preparing">PDFを準備中…</string>
+    <string name="pdf_convert_notification_title">PDFを変換中</string>
+    <string name="pdf_convert_notification_progress">%2$dページ中%1$dページを変換中</string>
+    <string name="pdf_convert_notification_complete">%2$dページ中%1$dページを抽出しました。タップして読む</string>
+    <string name="pdf_convert_notification_channel">PDF変換</string>
+    <string name="pdf_convert_notification_channel_description">PDF変換の進捗と結果</string>
     <string name="reader_load_failed">書籍を読み込めませんでした</string>
 
     <!-- その他 -->

@@ -4,12 +4,24 @@ import android.app.Application
 import android.app.Activity
 import android.content.Context
 import android.os.Bundle
+import androidx.hilt.work.HiltWorkerFactory
+import androidx.work.Configuration
 import com.huangder.lumibooks.util.LaunchThemeController
 import com.huangder.lumibooks.util.LocaleHelper
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import dagger.hilt.android.HiltAndroidApp
+import javax.inject.Inject
 
 @HiltAndroidApp
-class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks {
+class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Configuration.Provider {
+
+    @Inject
+    lateinit var workerFactory: HiltWorkerFactory
+
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder()
+            .setWorkerFactory(workerFactory)
+            .build()
 
     private var startedActivityCount = 0
 
@@ -19,6 +31,7 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks {
 
     override fun onCreate() {
         super.onCreate()
+        PDFBoxResourceLoader.init(this)
         registerActivityLifecycleCallbacks(this)
     }
 

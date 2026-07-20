@@ -50,6 +50,7 @@ import com.huangder.lumibooks.ui.animation.OverscrollBounce
 import com.huangder.lumibooks.ui.animation.cardPressEffect
 import androidx.compose.ui.res.stringResource
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
+import com.huangder.lumibooks.ui.animation.PageEntranceItem
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
@@ -60,6 +61,7 @@ import java.util.Calendar
 
 @Composable
 fun StatisticsScreen(
+    playEntranceAnimation: Boolean = false,
     viewModel: StatisticsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -69,15 +71,17 @@ fun StatisticsScreen(
             LazyColumn(modifier = Modifier.fillMaxSize()) {
                 item(key = "header") {
                     Spacer(Modifier.height(AppSpace.md))
-                    Text(
-                        text = stringResource(R.string.stats_title),
-                        fontSize = AppType.Display,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = KaiTi,
-                        letterSpacing = (-0.02).sp,
-                        color = AppColors.TextPrimary,
-                        modifier = Modifier.padding(horizontal = AppSpace.lg, vertical = AppSpace.md)
-                    )
+                    PageEntranceItem(play = playEntranceAnimation, index = 0) {
+                        Text(
+                            text = stringResource(R.string.stats_title),
+                            fontSize = AppType.Display,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = KaiTi,
+                            letterSpacing = (-0.02).sp,
+                            color = AppColors.TextPrimary,
+                            modifier = Modifier.padding(horizontal = AppSpace.lg, vertical = AppSpace.md)
+                        )
+                    }
                     Spacer(Modifier.height(AppSpace.xl))
                 }
 
@@ -87,46 +91,62 @@ fun StatisticsScreen(
                         stringResource(R.string.tab_month),
                         stringResource(R.string.tab_year)
                     )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = AppSpace.lg, vertical = AppSpace.sm),
-                        horizontalArrangement = Arrangement.spacedBy(AppSpace.lg)
-                    ) {
-                        tabs.forEachIndexed { index, label ->
-                            val isSelected = index == uiState.selectedTab
-                            Text(
-                                text = label,
-                                fontSize = AppType.Body,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isSelected) AppColors.TextPrimary else AppColors.TextSecondary,
-                                modifier = Modifier.clickable(
-                                    indication = null,
-                                    interactionSource = remember { MutableInteractionSource() }
-                                ) { viewModel.selectTab(index) }
-                            )
+                    PageEntranceItem(play = playEntranceAnimation, index = 1) {
+                        Column {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = AppSpace.lg, vertical = AppSpace.sm),
+                                horizontalArrangement = Arrangement.spacedBy(AppSpace.lg)
+                            ) {
+                                tabs.forEachIndexed { index, label ->
+                                    val isSelected = index == uiState.selectedTab
+                                    Text(
+                                        text = label,
+                                        fontSize = AppType.Body,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSelected) AppColors.TextPrimary else AppColors.TextSecondary,
+                                        modifier = Modifier.clickable(
+                                            indication = null,
+                                            interactionSource = remember { MutableInteractionSource() }
+                                        ) { viewModel.selectTab(index) }
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(AppSpace.lg))
                         }
                     }
-                    Spacer(Modifier.height(AppSpace.lg))
                 }
 
                 item(key = "overview_${uiState.selectedTab}") {
-                    when (uiState.selectedTab) {
-                        0 -> WeeklyOverview(uiState, viewModel)
-                        1 -> MonthlyHeatmap(uiState, viewModel)
-                        2 -> YearlyHeatmap(uiState, viewModel)
+                    PageEntranceItem(play = playEntranceAnimation, index = 2) {
+                        Column {
+                            when (uiState.selectedTab) {
+                                0 -> WeeklyOverview(uiState, viewModel)
+                                1 -> MonthlyHeatmap(uiState, viewModel)
+                                2 -> YearlyHeatmap(uiState, viewModel)
+                            }
+                            Spacer(Modifier.height(AppSpace.lg))
+                        }
                     }
-                    Spacer(Modifier.height(AppSpace.lg))
                 }
 
                 item(key = "most_read") {
-                    MostReadBooks(uiState.mostReadBooks)
-                    Spacer(Modifier.height(AppSpace.lg))
+                    PageEntranceItem(play = playEntranceAnimation, index = 3) {
+                        Column {
+                            MostReadBooks(uiState.mostReadBooks)
+                            Spacer(Modifier.height(AppSpace.lg))
+                        }
+                    }
                 }
 
                 item(key = "completion") {
-                    CompletionProgress(uiState)
-                    Spacer(Modifier.height(120.dp))
+                    PageEntranceItem(play = playEntranceAnimation, index = 4) {
+                        Column {
+                            CompletionProgress(uiState)
+                            Spacer(Modifier.height(120.dp))
+                        }
+                    }
                 }
             }
         } // OverscrollBounce 结束

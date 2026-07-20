@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="label_predictive_back">Predictive back</string>
+    <string name="label_entrance_animations">Motion Pro (Beta)</string>
+    <string name="entrance_animations_description">Adds element animations to selected pages\nand may affect performance</string>
+    <string name="label_app_theme">Theme</string>
+    <string name="app_theme_lumi">Lumi Pink</string>
+    <string name="app_theme_material3">Material 3</string>
     <string name="app_name">LUMI</string>
 
     <!-- Home -->
@@ -372,6 +378,38 @@
     <string name="pdf_page_desc">Page %d</string>
     <string name="pdf_switch_to_horizontal">Switch to horizontal paging</string>
     <string name="pdf_switch_to_vertical">Switch to vertical scrolling</string>
+    <string name="pdf_convert_action">Convert PDF to ebook</string>
+    <string name="pdf_convert_running">Converting %d%%</string>
+    <string name="pdf_convert_sheet_title">Convert to ebook</string>
+    <string name="pdf_convert_sheet_body">Only PDFs with a text layer are supported. Images, tables, formulas, and complex multi-column layouts may not be preserved. Scanned PDFs cannot be converted. Conversion runs locally in the background and does not change the original PDF.</string>
+    <string name="pdf_convert_start">Start conversion</string>
+    <string name="pdf_convert_existing_title">Converted version found</string>
+    <string name="pdf_convert_existing_body">Open the existing version or convert again and replace it. Replacing resets its reading progress and removes its bookmarks and notes.</string>
+    <string name="pdf_convert_open_existing">Open existing version</string>
+    <string name="pdf_convert_replace">Convert again and replace</string>
+    <string name="pdf_convert_cancel_title">Cancel conversion?</string>
+    <string name="pdf_convert_cancel_body">The temporary result will be deleted. An existing converted version will not be affected.</string>
+    <string name="pdf_convert_cancel_action">Cancel conversion</string>
+    <string name="pdf_convert_keep_running">Keep converting</string>
+    <string name="pdf_convert_failed_title">PDF conversion failed</string>
+    <string name="pdf_convert_error_no_text">No extractable text layer was found. Scanned and image-only PDFs are not supported yet.</string>
+    <string name="pdf_convert_error_encrypted">This PDF is encrypted or password protected, so its text cannot be extracted.</string>
+    <string name="pdf_convert_error_file_missing">The original PDF is missing or can no longer be accessed.</string>
+    <string name="pdf_convert_error_storage">The PDF could not be read or the converted file could not be written. Check available storage and try again.</string>
+    <string name="pdf_convert_error_unknown">An unexpected error occurred during conversion. Try again later.</string>
+    <string name="pdf_convert_success">Extracted text from %1$d of %2$d pages</string>
+    <string name="pdf_convert_progress_title">Converting PDF</string>
+    <string name="pdf_convert_progress_pages">Page %1$d of %2$d</string>
+    <string name="pdf_convert_complete_title">Conversion complete</string>
+    <string name="pdf_convert_complete_body">Text was extracted from %1$d of %2$d pages. Stay on the PDF or open the converted book to review the layout.</string>
+    <string name="pdf_convert_stay_pdf">Stay on PDF</string>
+    <string name="pdf_convert_open_result">Open converted book</string>
+    <string name="pdf_convert_preparing">Preparing PDF…</string>
+    <string name="pdf_convert_notification_title">Converting PDF</string>
+    <string name="pdf_convert_notification_progress">Converting page %1$d of %2$d</string>
+    <string name="pdf_convert_notification_complete">Extracted %1$d of %2$d pages. Tap to read.</string>
+    <string name="pdf_convert_notification_channel">PDF conversion</string>
+    <string name="pdf_convert_notification_channel_description">PDF conversion progress and results</string>
     <string name="reader_load_failed">Failed to load book</string>
 
     <!-- Other -->

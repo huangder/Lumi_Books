@@ -71,22 +71,24 @@ import coil.compose.AsyncImage
 import androidx.core.graphics.ColorUtils
 import com.huangder.lumibooks.ui.theme.FangSong
 import com.huangder.lumibooks.ui.theme.KaiTi
+import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
 import com.huangder.lumibooks.domain.model.ReaderPageCorner
+import com.huangder.lumibooks.ui.components.ConfigurableBackHandler
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import java.io.File
 
 // 设计规范颜色
-private val AccentColor = Color(0xFFE85D5D)
-private val LightTextSecondary = Color(0xFF6E6E73)
-private val LightBgGray = Color(0xFFF2F2F7)
-private val LightCardBg = Color.White
-private val LightDivider = Color(0xFFE5E5EA)
+private val AccentColor: Color @Composable get() = AppColors.Accent
+private val LightTextSecondary: Color @Composable get() = AppColors.TextSecondary
+private val LightBgGray: Color @Composable get() = AppColors.BgGray
+private val LightCardBg: Color @Composable get() = AppColors.CardBg
+private val LightDivider: Color @Composable get() = AppColors.Divider
 
 // 阅读主题颜色
 private val ReaderDayBg = Color(0xFFFFFFFF)
@@ -138,6 +140,7 @@ fun ThemeSettingsSheet(
     }
 
     var isClosing by remember { mutableStateOf(false) }
+    val predictiveBackProgress = ConfigurableBackHandler { isClosing = true }
 
     // 监听 requestClose 状态，触发动画关闭
     LaunchedEffect(requestClose) {
@@ -160,7 +163,7 @@ fun ThemeSettingsSheet(
         // 遮罩
         Box(
             Modifier.fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.1f))
+                .background(AppColors.Scrim.copy(alpha = 0.20f * (1f - predictiveBackProgress)))
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { isClosing = true }
         )
 
@@ -168,7 +171,9 @@ fun ThemeSettingsSheet(
         Column(
             Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .graphicsLayer { translationY = sheetOffset.value * size.height }
+                .graphicsLayer {
+                    translationY = maxOf(sheetOffset.value, predictiveBackProgress) * size.height
+                }
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(LightCardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .navigationBarsPadding()
@@ -185,7 +190,7 @@ fun ThemeSettingsSheet(
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = KaiTi,
-                    color = Color.Black
+                    color = AppColors.TextPrimary
                 )
                 Spacer(Modifier.weight(1f))
                 // 关闭按钮
@@ -257,9 +262,9 @@ fun ThemeSettingsSheet(
                         .clip(CircleShape)
                         .then(
                             if (isAutoBrightness) {
-                                Modifier.background(Color.Black)
+                                Modifier.background(AppColors.Accent)
                             } else {
-                                Modifier.border(1.5.dp, Color.Black, CircleShape)
+                                Modifier.border(1.5.dp, AppColors.TextPrimary, CircleShape)
                             }
                         )
                         .semantics { contentDescription = autoBrightnessDescription }
@@ -270,7 +275,7 @@ fun ThemeSettingsSheet(
                 ) {
                     Text(
                         text = "A",
-                        color = if (isAutoBrightness) Color.White else Color.Black,
+                        color = if (isAutoBrightness) AppColors.OnAccent else AppColors.TextPrimary,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -358,7 +363,7 @@ fun ThemeSettingsSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text(stringResource(R.string.optimize_layout), fontSize = 14.sp, color = Color.Black)
+                    Text(stringResource(R.string.optimize_layout), fontSize = 14.sp, color = AppColors.TextPrimary)
                     Spacer(Modifier.height(2.dp))
                     Text(stringResource(R.string.optimize_layout_hint), fontSize = 12.sp, color = LightTextSecondary)
                 }
@@ -366,11 +371,11 @@ fun ThemeSettingsSheet(
                     checked = currentOptimizeLayout,
                     onCheckedChange = onOptimizeLayoutChange,
                     colors = androidx.compose.material3.SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = Color(0xFF34C759),
-                        uncheckedThumbColor = Color.White,
-                        uncheckedTrackColor = Color(0xFFE5E5EA),
-                        uncheckedBorderColor = Color(0xFFE5E5EA)
+                        checkedThumbColor = AppColors.OnAccent,
+                        checkedTrackColor = AppColors.Accent,
+                        uncheckedThumbColor = AppColors.TextSecondary,
+                        uncheckedTrackColor = AppColors.BgGray,
+                        uncheckedBorderColor = AppColors.Divider
                     )
                 )
             }
@@ -392,7 +397,7 @@ fun ThemeSettingsSheet(
                     stringResource(R.string.advanced_settings),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = Color.Black
+                    color = AppColors.TextPrimary
                 )
             }
         }
@@ -481,10 +486,11 @@ private fun ReaderBackgroundSelector(
             ) {
                 when (preset.type) {
                     ReaderBackgroundType.COLOR -> {
-                        val color = remember(preset.value) {
+                        val fallbackColor = LightBgGray
+                        val color = remember(preset.value, fallbackColor) {
                             runCatching {
                                 Color(android.graphics.Color.parseColor(preset.value))
-                            }.getOrDefault(LightBgGray)
+                            }.getOrDefault(fallbackColor)
                         }
                         Box(Modifier.fillMaxSize().background(color))
                     }
@@ -590,7 +596,7 @@ private fun BackgroundPresetItem(
         Text(
             text = label,
             fontSize = 11.sp,
-            color = if (isSelected) Color.Black else LightTextSecondary,
+            color = if (isSelected) AppColors.TextPrimary else LightTextSecondary,
             maxLines = 1,
             textAlign = TextAlign.Center
         )
@@ -614,7 +620,7 @@ private fun CustomBackgroundDialog(
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
-            color = Color.White
+            color = AppColors.CardBg
         ) {
             Column(Modifier.padding(20.dp)) {
                 Row(
@@ -625,7 +631,7 @@ private fun CustomBackgroundDialog(
                         text = stringResource(R.string.custom_background_title),
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color.Black
+                            color = AppColors.TextPrimary
                     )
                     Spacer(Modifier.weight(1f))
                     TextButton(onClick = onDismiss) {
@@ -671,7 +677,7 @@ private fun CustomBackgroundDialog(
                 ) {
                     Text(
                         text = stringResource(R.string.background_add_color),
-                        color = Color.White,
+                        color = AppColors.OnAccent,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -690,13 +696,13 @@ private fun CustomBackgroundDialog(
                         Icon(
                             imageVector = Icons.Outlined.Image,
                             contentDescription = null,
-                            tint = Color.Black,
+                            tint = AppColors.TextPrimary,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
                             text = stringResource(R.string.background_choose_photo),
-                            color = Color.Black,
+                            color = AppColors.TextPrimary,
                             fontSize = 14.sp
                         )
                     }
@@ -779,10 +785,10 @@ private fun ModeButton(
             .height(44.dp)
             .clip(RoundedCornerShape(12.dp))
             .then(
-                if (isSelected) Modifier.border(1.5.dp, Color.Black, RoundedCornerShape(12.dp))
+                if (isSelected) Modifier.border(1.5.dp, AppColors.TextPrimary, RoundedCornerShape(12.dp))
                 else Modifier
             )
-            .background(if (isSelected) LightBgGray else Color.White)
+            .background(if (isSelected) LightBgGray else AppColors.CardBg)
             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() },
         contentAlignment = Alignment.Center
     ) {
@@ -790,7 +796,7 @@ private fun ModeButton(
             label,
             fontSize = 14.sp,
             fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-            color = Color.Black
+            color = AppColors.TextPrimary
         )
     }
 }
@@ -850,6 +856,7 @@ fun AdvancedSettingsSheet(
     }
 
     var isClosing by remember { mutableStateOf(false) }
+    val predictiveBackProgress = ConfigurableBackHandler { isClosing = true }
 
     // 监听 requestClose 状态，触发动画关闭
     LaunchedEffect(requestClose) {
@@ -883,7 +890,7 @@ fun AdvancedSettingsSheet(
         // 遮罩
         Box(
             Modifier.fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.1f))
+                .background(AppColors.Scrim.copy(alpha = 0.20f * (1f - predictiveBackProgress)))
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { isClosing = true }
         )
 
@@ -892,7 +899,9 @@ fun AdvancedSettingsSheet(
             Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .fillMaxHeight(0.90f)
-                .graphicsLayer { translationY = sheetOffset.value * size.height }
+                .graphicsLayer {
+                    translationY = maxOf(sheetOffset.value, predictiveBackProgress) * size.height
+                }
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(LightCardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
@@ -970,11 +979,11 @@ fun AdvancedSettingsSheet(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.92f))
+                            .background(AppColors.Accent)
                             .clickable { isClosing = true },
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("✓", fontSize = 16.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("✓", fontSize = 16.sp, color = AppColors.OnAccent, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -1086,7 +1095,7 @@ private fun AdvancedToggleRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(Modifier.weight(1f)) {
-            Text(title, fontSize = 14.sp, color = Color.Black)
+            Text(title, fontSize = 14.sp, color = AppColors.TextPrimary)
             Spacer(Modifier.height(2.dp))
             Text(hint, fontSize = 12.sp, color = LightTextSecondary)
         }
@@ -1094,11 +1103,11 @@ private fun AdvancedToggleRow(
             checked = checked,
             onCheckedChange = onCheckedChange,
             colors = androidx.compose.material3.SwitchDefaults.colors(
-                checkedThumbColor = Color.White,
-                checkedTrackColor = Color(0xFF34C759),
-                uncheckedThumbColor = Color.White,
-                uncheckedTrackColor = Color(0xFFE5E5EA),
-                uncheckedBorderColor = Color(0xFFE5E5EA)
+                checkedThumbColor = AppColors.OnAccent,
+                checkedTrackColor = AppColors.Accent,
+                uncheckedThumbColor = AppColors.TextSecondary,
+                uncheckedTrackColor = AppColors.BgGray,
+                uncheckedBorderColor = AppColors.Divider
             )
         )
     }
@@ -1115,7 +1124,7 @@ private fun ReaderCornerLayoutSettings(
     Text(
         text = stringResource(R.string.reader_page_layout),
         fontSize = 14.sp,
-        color = Color.Black,
+        color = AppColors.TextPrimary,
         fontWeight = FontWeight.SemiBold
     )
     Spacer(Modifier.height(2.dp))
@@ -1163,7 +1172,7 @@ private fun ReaderCornerSelectionRow(
             .height(44.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, fontSize = 13.sp, color = Color.Black, modifier = Modifier.weight(1f))
+        Text(label, fontSize = 13.sp, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
         Box {
             Box(
                 modifier = Modifier
@@ -1178,7 +1187,7 @@ private fun ReaderCornerSelectionRow(
                 Text(
                     text = readerCornerContentLabel(selected),
                     fontSize = 12.sp,
-                    color = Color.Black,
+                    color = AppColors.TextPrimary,
                     textAlign = TextAlign.Center,
                     maxLines = 1,
                     modifier = Modifier.fillMaxWidth()
@@ -1259,7 +1268,7 @@ private fun TextColorSetting(
     val isCustomColor = currentOverride != null && currentOverride !in presetColors
 
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(stringResource(R.string.label_text_color), fontSize = 14.sp, color = Color.Black)
+        Text(stringResource(R.string.label_text_color), fontSize = 14.sp, color = AppColors.TextPrimary)
         Spacer(Modifier.weight(1f))
         Text(
             text = if (currentOverride == null) {
@@ -1377,7 +1386,7 @@ private fun TextColorDialog(
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
-            color = Color.White
+            color = AppColors.CardBg
         ) {
             Column(Modifier.padding(20.dp)) {
                 Row(
@@ -1388,7 +1397,7 @@ private fun TextColorDialog(
                         text = stringResource(R.string.text_color_custom),
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color.Black
+                        color = AppColors.TextPrimary
                     )
                     Spacer(Modifier.weight(1f))
                     TextButton(onClick = onDismiss) {
@@ -1434,7 +1443,7 @@ private fun TextColorDialog(
                 ) {
                     Text(
                         text = stringResource(R.string.apply_text_color),
-                        color = Color.White,
+                        color = AppColors.OnAccent,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -1456,9 +1465,9 @@ private fun SettingSlider(
     var sliderValue by remember(value) { mutableFloatStateOf(value) }
 
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, fontSize = 14.sp, color = Color.Black)
+        Text(label, fontSize = 14.sp, color = AppColors.TextPrimary)
         Spacer(Modifier.weight(1f))
-        Text(format(sliderValue), fontSize = 14.sp, color = Color.Black)
+        Text(format(sliderValue), fontSize = 14.sp, color = AppColors.TextPrimary)
     }
     Spacer(Modifier.height(4.dp))
     com.huangder.lumibooks.ui.components.PillSlider(
@@ -1547,7 +1556,7 @@ private fun FontSelector(currentFont: String, customFontPath: String? = null, on
                         else
                             Modifier.border(1.dp, LightTextSecondary, RoundedCornerShape(12.dp))
                     )
-                    .background(Color.White)
+                    .background(AppColors.CardBg)
                     .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                         if (hasCustomFont) {
                             onFontChange("custom")
@@ -1583,7 +1592,7 @@ private fun FontButton(
             .clip(RoundedCornerShape(12.dp))
             .then(
                 if (isSelected) {
-                    Modifier.border(1.dp, Color.Black, RoundedCornerShape(12.dp))
+                    Modifier.border(1.dp, AppColors.TextPrimary, RoundedCornerShape(12.dp))
                 } else {
                     Modifier
                 }
@@ -1597,7 +1606,7 @@ private fun FontButton(
             fontSize = 14.sp,
             fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
             fontFamily = fontFamily,
-            color = Color.Black
+            color = AppColors.TextPrimary
         )
     }
 }
