@@ -91,6 +91,9 @@ import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.R
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalContext
+import com.huangder.lumibooks.MainActivity
+import com.huangder.lumibooks.ReaderPageDirection
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -121,6 +124,7 @@ fun PdfViewerScreen(
     val uiState by viewModel.uiState.collectAsState()
     val bookmarks by viewModel.bookmarks.collectAsState()
     val scope = rememberCoroutineScope()
+    val activity = LocalContext.current as? MainActivity
     ImmersiveMode()
 
     val book = uiState.book
@@ -180,6 +184,41 @@ fun PdfViewerScreen(
     var scale by remember { mutableStateOf(1f) }
     var offsetX by remember { mutableStateOf(0f) }
     var offsetY by remember { mutableStateOf(0f) }
+
+    DisposableEffect(
+        activity,
+        uiState.volumeKeyPageTurnEnabled,
+        showPdfToc,
+        isHorizontal,
+        currentPage,
+        pageCount,
+        scale
+    ) {
+        if (!uiState.volumeKeyPageTurnEnabled || activity == null) {
+            return@DisposableEffect onDispose { }
+        }
+
+        val handler: (ReaderPageDirection) -> Unit = handler@{ direction ->
+            if (showPdfToc || scale > 1.01f) return@handler
+            val pageDelta = if (direction == ReaderPageDirection.PREVIOUS) -1 else 1
+            val targetPage = (currentPage + pageDelta).coerceIn(0, pageCount - 1)
+            if (targetPage == currentPage) return@handler
+
+            scope.launch {
+                if (isHorizontal) {
+                    pagerState.animateScrollToPage(targetPage)
+                } else {
+                    listState.animateScrollToItem(targetPage)
+                }
+            }
+        }
+        activity.readerVolumeKeyHandler = handler
+        onDispose {
+            if (activity.readerVolumeKeyHandler === handler) {
+                activity.readerVolumeKeyHandler = null
+            }
+        }
+    }
 
     LaunchedEffect(pagerState.currentPage, isHorizontal) {
         if (isHorizontal) {

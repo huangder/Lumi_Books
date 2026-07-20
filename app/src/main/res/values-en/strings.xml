@@ -263,6 +263,15 @@
     <string name="reader_toc">Contents</string>
     <string name="reader_close">Close</string>
     <string name="reader_chapter_fallback">Ch.%d</string>
+    <string name="reader_battery_level">Battery %d%%</string>
+    <string name="show_reader_chapter_progress">Show chapter progress</string>
+    <string name="show_reader_chapter_progress_hint">Current chapter and whole-book percentage</string>
+    <string name="show_reader_page_number">Show page number</string>
+    <string name="show_reader_page_number_hint">Current chapter page number</string>
+    <string name="show_reader_battery">Show battery</string>
+    <string name="show_reader_battery_hint">Battery icon and percentage</string>
+    <string name="volume_key_page_turn">Turn pages with volume keys</string>
+    <string name="volume_key_page_turn_hint">Volume up for previous, volume down for next</string>
     <string name="search_placeholder">Enter keywords</string>
     <string name="search_results_found">Found %d results</string>
     <string name="search_no_results">No matching results</string>

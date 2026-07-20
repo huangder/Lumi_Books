@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import android.view.ActionMode
+import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -52,6 +53,11 @@ private data class PendingPolicyUpdate(
     val privacyVersion: Int
 )
 
+enum class ReaderPageDirection {
+    PREVIOUS,
+    NEXT
+}
+
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
@@ -72,6 +78,25 @@ class MainActivity : ComponentActivity() {
      * 确保 ActionMode 拦截只在阅读页生效，不影响其他页面。
      */
     var isInReaderScreen = false
+
+    /** 非空时由当前阅读页接管音量键；阅读页离开或设置关闭时恢复系统音量行为。 */
+    var readerVolumeKeyHandler: ((ReaderPageDirection) -> Unit)? = null
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val handler = readerVolumeKeyHandler
+        val direction = when (event.keyCode) {
+            KeyEvent.KEYCODE_VOLUME_UP -> ReaderPageDirection.PREVIOUS
+            KeyEvent.KEYCODE_VOLUME_DOWN -> ReaderPageDirection.NEXT
+            else -> null
+        }
+        if (handler != null && direction != null) {
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                handler(direction)
+            }
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
 
     /** 待处理的条款/政策更新（非 null 时弹窗） */
     private var pendingPolicyUpdate: PendingPolicyUpdate? = null

@@ -101,6 +101,8 @@ class ReadView(context: Context) : FrameLayout(context) {
     private var currentReaderTextColor: Int? = null
     private var pendingStartChapter: Int = 0
     private var pendingStartPage: Int = 0
+    private var configuredWidth: Int = 0
+    private var configuredHeight: Int = 0
 
     /** 当前阅读背景色（供 CurlPageAnim 背面绘制使用）。 */
     var bgColor: Int = 0xFFFBFBFC.toInt()
@@ -152,28 +154,14 @@ class ReadView(context: Context) : FrameLayout(context) {
         }
 
         animationController.onTapLeft = {
-            clearCurrentSelection()
-            val cur = slotManager.getCurSlot()
-            val isBookFirstPage = cur.chapterIndex == 0 && cur.pageIndex == 0
-            if (!isBookFirstPage) {
-                slotManager.getPrevSlot().let { slot ->
-                    if (slot.isLoaded) {
-                        startTapAnimation(PageAnimationController.Direction.PREV)
-                    }
-                }
-            }
+            turnToPreviousPage()
         }
         animationController.onTapCenter = {
             clearCurrentSelection()
             callbacks?.onMenuToggle()
         }
         animationController.onTapRight = {
-            clearCurrentSelection()
-            slotManager.getNextSlot().let { slot ->
-                if (slot.isLoaded) {
-                    startTapAnimation(PageAnimationController.Direction.NEXT)
-                }
-            }
+            turnToNextPage()
         }
 
         // 🔥 长按回调保留（边缘长按时触发），执行程序化选词
@@ -337,7 +325,7 @@ class ReadView(context: Context) : FrameLayout(context) {
         val marginHorizChanged = Math.abs(currentMarginHorizDp - marginHorizDp) > 0.5f
         val marginVertChanged = Math.abs(currentMarginVertDp - marginVertDp) > 0.5f
         val paragraphSpacingChanged = Math.abs(currentParagraphSpacingDp - paragraphSpacingDp) > 0.01f
-        val sizeChanged = !isConfigured
+        val sizeChanged = !isConfigured || configuredWidth != width || configuredHeight != height
         val needsRelayout = themeChanged || chapterCountChanged || fontSizeChanged || lineHeightChanged ||
                 letterSpacingChanged || fontTypeChanged || marginHorizChanged ||
                 marginVertChanged || paragraphSpacingChanged || sizeChanged
@@ -355,6 +343,8 @@ class ReadView(context: Context) : FrameLayout(context) {
         currentMarginHorizDp = marginHorizDp
         currentMarginVertDp = marginVertDp
         currentParagraphSpacingDp = paragraphSpacingDp
+        configuredWidth = width
+        configuredHeight = height
 
         val (_, textColor, _) = getThemeColors(theme)
         val density = resources.displayMetrics.density
@@ -515,6 +505,23 @@ class ReadView(context: Context) : FrameLayout(context) {
     /** 获取指定章节的页数（需已布局） */
     fun getChapterPageCount(chapterIndex: Int): Int {
         return layoutEngine.getChapterPageCount(chapterIndex)
+    }
+
+    fun turnToPreviousPage(): Boolean {
+        if (animationController.isRunning) return false
+        val current = slotManager.getCurSlot()
+        val isBookFirstPage = current.chapterIndex == 0 && current.pageIndex == 0
+        if (isBookFirstPage || !slotManager.getPrevSlot().isLoaded) return false
+        clearCurrentSelection()
+        startTapAnimation(PageAnimationController.Direction.PREV)
+        return true
+    }
+
+    fun turnToNextPage(): Boolean {
+        if (animationController.isRunning || !slotManager.getNextSlot().isLoaded) return false
+        clearCurrentSelection()
+        startTapAnimation(PageAnimationController.Direction.NEXT)
+        return true
     }
 
     // ── 触摸 ──
@@ -714,7 +721,11 @@ class ReadView(context: Context) : FrameLayout(context) {
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         super.onLayout(changed, left, top, right, bottom)
-        if (changed && !isConfigured && currentChapterCount > 0) {
+        val layoutWidth = right - left
+        val layoutHeight = bottom - top
+        if (changed && currentChapterCount > 0 &&
+            (!isConfigured || configuredWidth != layoutWidth || configuredHeight != layoutHeight)
+        ) {
             configure(
                 fontSizePx = currentFontSizePx,
                 theme = currentTheme,
@@ -728,8 +739,8 @@ class ReadView(context: Context) : FrameLayout(context) {
                 marginHorizDp = currentMarginHorizDp,
                 marginVertDp = currentMarginVertDp,
                 paragraphSpacingDp = currentParagraphSpacingDp,
-                width = right - left,
-                height = bottom - top
+                width = layoutWidth,
+                height = layoutHeight
             )
         }
     }

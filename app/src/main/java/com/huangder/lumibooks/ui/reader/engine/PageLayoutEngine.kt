@@ -19,6 +19,13 @@ import kotlinx.coroutines.withContext
  */
 class PageLayoutEngine {
 
+    private data class LayoutInput(
+        val generation: Long,
+        val visibleWidth: Int,
+        val visibleHeight: Int,
+        val textPaint: TextPaint
+    )
+
     // ── 排版参数 ──
     private var textWidth: Int = 1080
     private var textHeight: Int = 1920
@@ -59,6 +66,8 @@ class PageLayoutEngine {
             return size > 5
         }
     }
+    private val cacheLock = Any()
+    private var layoutGeneration: Long = 0L
 
     /** 各章累计页数前缀和，用于全局页码转换 */
     private val cumulativePageTotals = mutableListOf<Int>()
@@ -131,11 +140,17 @@ class PageLayoutEngine {
         chapterIndex: Int,
         text: CharSequence
     ): ChapterLayout = withContext(Dispatchers.IO) {
-        // 检查缓存
-        layoutCache[chapterIndex]?.let { return@withContext it }
+        val input = synchronized(cacheLock) {
+            layoutCache[chapterIndex]?.let { return@withContext it }
+            LayoutInput(
+                generation = layoutGeneration,
+                visibleWidth = visibleWidth,
+                visibleHeight = visibleHeight,
+                textPaint = TextPaint(activeTextPaint)
+            )
+        }
 
-        val vw = visibleWidth
-        val sl = StaticLayout.Builder.obtain(text, 0, text.length, activeTextPaint, vw)
+        val sl = StaticLayout.Builder.obtain(text, 0, text.length, input.textPaint, input.visibleWidth)
             .setAlignment(Layout.Alignment.ALIGN_NORMAL)
             .setLineSpacing(lineSpacingExtra, lineSpacingMultiplier)
             .setIncludePad(false)  // 关闭额外 padding，由 marginTop/marginBottom 精确控制
@@ -144,9 +159,8 @@ class PageLayoutEngine {
             .build()
 
         val pages = mutableListOf<PageLayout>()
-        val vh = visibleHeight
-        // 🔥 TextPaint 已共享，字体度量完全一致，无需安全边距
-        val effectiveVh = vh.toFloat()
+        // 留出 1px 舍入余量，避免 TextView 与 StaticLayout 的取整差异把字形压到下边界外。
+        val effectiveVh = (input.visibleHeight - 1).coerceAtLeast(1).toFloat()
         var pageStartLine = 0
         var pageIdx = 0
         var globalCharOffset = 0
@@ -160,18 +174,6 @@ class PageLayoutEngine {
                 val lineTop = sl.getLineTop(pageEndLine)
                 val lineHeight = (lineBottom - lineTop).toFloat()
                 if (accumulatedHeight + lineHeight > effectiveVh && pageEndLine > pageStartLine) {
-                    // 🔥 溢出容忍：剩余空间 > 50% 行高时允许当前行纳入（轻微溢出到 margin 区域）
-                    val remaining = effectiveVh - accumulatedHeight
-                    if (remaining > lineHeight * 0.5f) {
-                        // 检查是否是图片行（行高异常大，防止图片被截断）
-                        val isImageLine = lineHeight > (sl.getLineBottom(pageEndLine - 1).coerceAtLeast(1) - sl.getLineTop(pageEndLine - 1)).toFloat() * 3f ||
-                                pageEndLine == pageStartLine
-                        if (!isImageLine || accumulatedHeight == 0f) {
-                            // 允许纳入：文本行溢出容忍，或图片是页面唯一内容时允许
-                            accumulatedHeight += lineHeight
-                            pageEndLine++
-                        }
-                    }
                     break
                 }
                 accumulatedHeight += lineHeight
@@ -215,22 +217,31 @@ class PageLayoutEngine {
             pageIdx++
         }
 
-        val cumulativeBefore = if (chapterIndex > 0) {
-            // 计算前面章节的累计页数
-            var sum = 0
-            for (i in 0 until chapterIndex) {
-                layoutCache[i]?.let { sum += it.totalPages }
+        val cumulativeBefore = synchronized(cacheLock) {
+            if (chapterIndex > 0) {
+                var sum = 0
+                for (i in 0 until chapterIndex) {
+                    layoutCache[i]?.let { sum += it.totalPages }
+                }
+                sum
+            } else {
+                0
             }
-            sum
-        } else 0
+        }
 
-        ChapterLayout(
+        val result = ChapterLayout(
             chapterIndex = chapterIndex,
             pages = pages,
             staticLayout = sl,
             totalPages = pages.size,
             cumulativePagesBefore = cumulativeBefore
-        ).also { layoutCache[chapterIndex] = it }
+        )
+        synchronized(cacheLock) {
+            if (input.generation == layoutGeneration) {
+                layoutCache[chapterIndex] = result
+            }
+        }
+        result
     }
 
     // ── 全局页码转换 ──
@@ -240,29 +251,32 @@ class PageLayoutEngine {
      * 遍历缓存计算累计页数。时间复杂度 O(n)，n=章数，通常 < 2000。
      */
     fun globalToLocal(globalPageIndex: Int): Pair<Int, Int> {
-        var remaining = globalPageIndex
-        for (ci in 0 until chapterCount) {
-            val cl = layoutCache[ci]
-            if (cl != null) {
-                if (remaining < cl.totalPages) {
-                    return ci to remaining
+        return synchronized(cacheLock) {
+            var remaining = globalPageIndex
+            for (ci in 0 until chapterCount) {
+                val cl = layoutCache[ci]
+                if (cl != null) {
+                    if (remaining < cl.totalPages) {
+                        return@synchronized ci to remaining
+                    }
+                    remaining -= cl.totalPages
                 }
-                remaining -= cl.totalPages
             }
+            (chapterCount - 1).coerceAtLeast(0) to 0
         }
-        // 如果全局页码超出范围，返回最后一章最后一页
-        return (chapterCount - 1).coerceAtLeast(0) to 0
     }
 
     /**
      * (章节索引, 章内页码) → 全局页码
      */
     fun localToGlobal(chapterIndex: Int, pageInChapter: Int): Int {
-        var global = 0
-        for (ci in 0 until chapterIndex.coerceAtMost(chapterCount)) {
-            layoutCache[ci]?.let { global += it.totalPages }
+        return synchronized(cacheLock) {
+            var global = 0
+            for (ci in 0 until chapterIndex.coerceAtMost(chapterCount)) {
+                layoutCache[ci]?.let { global += it.totalPages }
+            }
+            global + pageInChapter
         }
-        return global + pageInChapter
     }
 
     /**
@@ -274,32 +288,36 @@ class PageLayoutEngine {
      * 获取总页数（跨所有已布局章节）
      */
     fun getTotalPages(): Int {
-        var total = 0
-        for (ci in 0 until chapterCount) {
-            layoutCache[ci]?.let { total += it.totalPages }
+        return synchronized(cacheLock) {
+            var total = 0
+            for (ci in 0 until chapterCount) {
+                layoutCache[ci]?.let { total += it.totalPages }
+            }
+            total
         }
-        return total
     }
 
     /**
      * 获取指定章的页数
      */
     fun getChapterPageCount(chapterIndex: Int): Int {
-        return layoutCache[chapterIndex]?.totalPages ?: 0
+        return synchronized(cacheLock) { layoutCache[chapterIndex]?.totalPages ?: 0 }
     }
 
     /**
      * 获取章节布局（从缓存）
      */
     fun getChapterLayout(chapterIndex: Int): ChapterLayout? {
-        return layoutCache[chapterIndex]
+        return synchronized(cacheLock) { layoutCache[chapterIndex] }
     }
 
     /**
      * 获取章内某页的布局信息
      */
     fun getPageLayout(chapterIndex: Int, pageInChapter: Int): PageLayout? {
-        return layoutCache[chapterIndex]?.pages?.getOrNull(pageInChapter)
+        return synchronized(cacheLock) {
+            layoutCache[chapterIndex]?.pages?.getOrNull(pageInChapter)
+        }
     }
 
     /**
@@ -307,7 +325,7 @@ class PageLayoutEngine {
      * @return 字符偏移量，如果坐标不在文本区域则返回 null
      */
     fun getCharOffsetAtPoint(chapterIndex: Int, pageInChapter: Int, x: Float, y: Float): Int? {
-        val chapterLayout = layoutCache[chapterIndex] ?: return null
+        val chapterLayout = synchronized(cacheLock) { layoutCache[chapterIndex] } ?: return null
         val pageLayout = chapterLayout.pages.getOrNull(pageInChapter) ?: return null
         val sl = chapterLayout.staticLayout
 
@@ -329,7 +347,7 @@ class PageLayoutEngine {
      * @return (left, top, right, bottom) 或 null
      */
     fun getCharBounds(chapterIndex: Int, charOffset: Int): android.graphics.Rect? {
-        val chapterLayout = layoutCache[chapterIndex] ?: return null
+        val chapterLayout = synchronized(cacheLock) { layoutCache[chapterIndex] } ?: return null
         val sl = chapterLayout.staticLayout
         if (charOffset < 0 || charOffset > sl.text.length) return null
         val line = sl.getLineForOffset(charOffset)
@@ -342,11 +360,17 @@ class PageLayoutEngine {
     // ── 缓存管理 ──
 
     fun invalidateChapter(chapterIndex: Int) {
-        layoutCache.remove(chapterIndex)
+        synchronized(cacheLock) {
+            layoutGeneration++
+            layoutCache.remove(chapterIndex)
+        }
     }
 
     fun invalidateAll() {
-        layoutCache.clear()
-        cumulativePageTotals.clear()
+        synchronized(cacheLock) {
+            layoutGeneration++
+            layoutCache.clear()
+            cumulativePageTotals.clear()
+        }
     }
 }

@@ -265,6 +265,15 @@
     <string name="reader_toc">目录</string>
     <string name="reader_close">关闭</string>
     <string name="reader_chapter_fallback">第%d章</string>
+    <string name="reader_battery_level">电量 %d%%</string>
+    <string name="show_reader_chapter_progress">显示章节进度</string>
+    <string name="show_reader_chapter_progress_hint">当前章节名和全书百分比</string>
+    <string name="show_reader_page_number">显示页码</string>
+    <string name="show_reader_page_number_hint">当前章节页码</string>
+    <string name="show_reader_battery">显示电量</string>
+    <string name="show_reader_battery_hint">电量图标和百分比</string>
+    <string name="volume_key_page_turn">音量键翻页</string>
+    <string name="volume_key_page_turn_hint">音量加键上一页，音量减键下一页</string>
     <string name="search_placeholder">输入关键词</string>
     <string name="search_results_found">找到 %d 条结果</string>
     <string name="search_no_results">未找到匹配结果</string>

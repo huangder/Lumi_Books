@@ -42,6 +42,10 @@ class DataStoreManager @Inject constructor(
         private val FIRST_LINE_INDENT = floatPreferencesKey("first_line_indent")
         private val ADVANCED_DEFAULTS_VERSION = intPreferencesKey("advanced_defaults_version")
         private val PDF_PAGE_MODE = stringPreferencesKey("pdf_page_mode")
+        private val SHOW_READER_CHAPTER_PROGRESS = booleanPreferencesKey("show_reader_chapter_progress")
+        private val SHOW_READER_PAGE_NUMBER = booleanPreferencesKey("show_reader_page_number")
+        private val SHOW_READER_BATTERY = booleanPreferencesKey("show_reader_battery")
+        private val VOLUME_KEY_PAGE_TURN = booleanPreferencesKey("volume_key_page_turn")
 
         // 统计设置
         private val DAILY_GOAL = intPreferencesKey("daily_goal")
@@ -122,6 +126,22 @@ class DataStoreManager @Inject constructor(
     /** PDF 阅读方向："vertical" | "horizontal"，所有 PDF 共用。 */
     val pdfPageMode: Flow<String> = context.dataStore.data.map { preferences ->
         preferences[PDF_PAGE_MODE].takeIf { it == "horizontal" } ?: "vertical"
+    }
+
+    val showReaderChapterProgress: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[SHOW_READER_CHAPTER_PROGRESS] ?: true
+    }
+
+    val showReaderPageNumber: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[SHOW_READER_PAGE_NUMBER] ?: true
+    }
+
+    val showReaderBattery: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[SHOW_READER_BATTERY] ?: true
+    }
+
+    val volumeKeyPageTurnEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[VOLUME_KEY_PAGE_TURN] ?: false
     }
 
     // 统计设置
@@ -241,6 +261,30 @@ class DataStoreManager @Inject constructor(
         }
     }
 
+    suspend fun saveShowReaderChapterProgress(show: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[SHOW_READER_CHAPTER_PROGRESS] = show
+        }
+    }
+
+    suspend fun saveShowReaderPageNumber(show: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[SHOW_READER_PAGE_NUMBER] = show
+        }
+    }
+
+    suspend fun saveShowReaderBattery(show: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[SHOW_READER_BATTERY] = show
+        }
+    }
+
+    suspend fun saveVolumeKeyPageTurnEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[VOLUME_KEY_PAGE_TURN] = enabled
+        }
+    }
+
     suspend fun resetAdvancedReaderSettings() {
         context.dataStore.edit { preferences ->
             preferences[LINE_HEIGHT] = 1.5f
@@ -250,6 +294,10 @@ class DataStoreManager @Inject constructor(
             preferences[MARGIN_VERT] = 64f
             preferences[PARAGRAPH_SPACING] = 2f
             preferences[FIRST_LINE_INDENT] = 2f
+            preferences[SHOW_READER_CHAPTER_PROGRESS] = true
+            preferences[SHOW_READER_PAGE_NUMBER] = true
+            preferences[SHOW_READER_BATTERY] = true
+            preferences[VOLUME_KEY_PAGE_TURN] = false
             preferences.remove(READER_TEXT_COLOR)
         }
     }

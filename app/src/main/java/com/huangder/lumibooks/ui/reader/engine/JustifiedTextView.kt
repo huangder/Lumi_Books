@@ -26,7 +26,26 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 
+internal fun readerLineContentEnd(
+    text: CharSequence,
+    lineStart: Int,
+    rawLineEnd: Int
+): Int {
+    var end = rawLineEnd
+    if (end > lineStart && text[end - 1] == '\n') end--
+    while (end > lineStart && (text[end - 1] == ' ' || text[end - 1] == '\t' || text[end - 1] == '\r' || text[end - 1] == '\u3000')) {
+        end--
+    }
+    return end
+}
 
+internal fun shouldJustifyReaderLine(
+    lineIndex: Int,
+    lineCount: Int,
+    endsWithParagraphBreak: Boolean,
+    pageEndsMidParagraph: Boolean
+): Boolean = !endsWithParagraphBreak &&
+    (lineIndex < lineCount - 1 || pageEndsMidParagraph)
 
 /**
  * 中文两端对齐 TextView。
@@ -59,6 +78,13 @@ class JustifiedTextView @JvmOverloads constructor(
 
     private var spannable: Spannable? = null
     private var layout: StaticLayout? = null
+
+    var justifyLastLine: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            invalidate()
+        }
 
     // ── 配置 ──
     private var gravity = Gravity.TOP
@@ -164,22 +190,16 @@ class JustifiedTextView @JvmOverloads constructor(
             var indentPx = 0f
             run {
                 val spans = s.getSpans(lineStart, lineStart + 1, LeadingMarginSpan::class.java)
+                val isFirstLineOfParagraph = i == 0 ||
+                    (lineStart > 0 && textStr[lineStart - 1] == '\n')
                 for (span in spans) {
-                    // LeadingMarginSpan.Standard(first, rest)：首行用 first，续行用 rest
-                    val isFirstLineOfParagraph = (i == 0 || (lineStart > 0 && textStr[lineStart - 1] == '\n'))
-                    indentPx = if (isFirstLineOfParagraph) {
-                        // 需要获取 first 参数，但 LeadingMarginSpan 接口没有直接暴露
-                        // 使用 getLeadingMargin(true) 获取首行缩进
-                        span.getLeadingMargin(true).toFloat()
-                    } else {
-                        span.getLeadingMargin(false).toFloat()
-                    }
-                    break  // 只取第一个
+                    indentPx += span.getLeadingMargin(isFirstLineOfParagraph).toFloat()
                 }
             }
 
-            // 去掉末尾换行符的宽度
-            val effectiveEnd = if (lineEnd > lineStart && textStr[lineEnd - 1] == '\n') lineEnd - 1 else lineEnd
+            val endsWithParagraphBreak = lineEnd > lineStart && textStr[lineEnd - 1] == '\n'
+            // 换行点前的空格只参与语义，不参与可见字符的两端对齐。
+            val effectiveEnd = readerLineContentEnd(textStr, lineStart, lineEnd)
             if (effectiveEnd <= lineStart) continue
 
             // 检查行内是否有 ImageSpan（图片行不做两端对齐）
@@ -224,13 +244,24 @@ class JustifiedTextView @JvmOverloads constructor(
 
             // 普通文字行：逐字绘制 + 两端对齐
             // 用 StaticLayout.getLineWidth 获取精确行宽（已考虑所有 span）
-            val lineWidth = sl.getLineWidth(i)
+            val trailingWhitespaceWidth = if (effectiveEnd < lineEnd) {
+                textPaint.measureText(textStr, effectiveEnd, lineEnd)
+            } else {
+                0f
+            }
+            val lineWidth = (sl.getLineWidth(i) - trailingWhitespaceWidth).coerceAtLeast(0f)
             // 计算有效字符数（排除 U+FFFC 对象替换字符，这些是加载失败的图片占位符）
             val effectiveCharCount = (lineStart until effectiveEnd).count { textStr[it] != '￼' }
             val gapCount = if (effectiveCharCount > 1) effectiveCharCount - 1 else 0
             val availableWidth = viewWidth - indentPx
             val extraSpace = availableWidth - lineWidth
-            val extraPerChar = if (extraSpace > 0f && gapCount > 0 && extraSpace < viewWidth * 0.15f) {
+            val shouldJustify = shouldJustifyReaderLine(
+                lineIndex = i,
+                lineCount = sl.lineCount,
+                endsWithParagraphBreak = endsWithParagraphBreak,
+                pageEndsMidParagraph = justifyLastLine
+            )
+            val extraPerChar = if (shouldJustify && extraSpace > 0f && gapCount > 0) {
                 extraSpace / gapCount
             } else {
                 0f
@@ -328,28 +359,32 @@ class JustifiedTextView @JvmOverloads constructor(
         val line = sl.getLineForVertical(ty.toInt())
         val lineStart = sl.getLineStart(line)
         val rawLineEnd = sl.getLineEnd(line)
-        val lineEnd = if (rawLineEnd > lineStart && text[rawLineEnd - 1] == '\n') {
-            rawLineEnd - 1
-        } else {
-            rawLineEnd
-        }
+        val endsWithParagraphBreak = rawLineEnd > lineStart && text[rawLineEnd - 1] == '\n'
+        val lineEnd = readerLineContentEnd(text, lineStart, rawLineEnd)
         if (lineStart >= lineEnd) return null
 
-        var indentPx = 0f
-        text.getSpans(lineStart, lineStart + 1, LeadingMarginSpan::class.java)
-            .firstOrNull()
-            ?.let { span ->
-                val isFirstLine = line == 0 || (lineStart > 0 && text[lineStart - 1] == '\n')
-                indentPx = span.getLeadingMargin(isFirstLine).toFloat()
-            }
+        val isFirstLine = line == 0 || (lineStart > 0 && text[lineStart - 1] == '\n')
+        val indentPx = text.getSpans(lineStart, lineStart + 1, LeadingMarginSpan::class.java)
+            .sumOf { span -> span.getLeadingMargin(isFirstLine).toDouble() }
+            .toFloat()
 
         val contentWidth = (width - paddingLeft - paddingRight).toFloat()
         val visibleCharacterCount = (lineStart until lineEnd).count { text[it] != '￼' }
         val gapCount = (visibleCharacterCount - 1).coerceAtLeast(0)
-        val extraSpace = contentWidth - indentPx - sl.getLineWidth(line)
-        val extraPerCharacter = if (
-            extraSpace > 0f && gapCount > 0 && extraSpace < contentWidth * 0.15f
-        ) {
+        val trailingWhitespaceWidth = if (lineEnd < rawLineEnd) {
+            textPaint.measureText(text, lineEnd, rawLineEnd)
+        } else {
+            0f
+        }
+        val lineWidth = (sl.getLineWidth(line) - trailingWhitespaceWidth).coerceAtLeast(0f)
+        val extraSpace = contentWidth - indentPx - lineWidth
+        val shouldJustify = shouldJustifyReaderLine(
+            lineIndex = line,
+            lineCount = sl.lineCount,
+            endsWithParagraphBreak = endsWithParagraphBreak,
+            pageEndsMidParagraph = justifyLastLine
+        )
+        val extraPerCharacter = if (shouldJustify && extraSpace > 0f && gapCount > 0) {
             extraSpace / gapCount
         } else {
             0f
