@@ -700,9 +700,9 @@ fun AboutDetail(viewModel: SettingsViewModel) {
 
     val currentVersion = remember(context) {
         try {
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.05"
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.06"
         } catch (_: Exception) {
-            "1.0.05"
+            "1.0.06"
         }
     }
 
