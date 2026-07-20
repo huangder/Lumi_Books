@@ -8,6 +8,7 @@ import android.text.Spanned
 import android.text.style.AbsoluteSizeSpan
 import android.text.style.StyleSpan
 import android.graphics.Typeface
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -27,6 +28,11 @@ import com.huangder.lumibooks.util.parser.BookParserFactory
 import com.huangder.lumibooks.util.parser.BookLinkTarget
 import com.huangder.lumibooks.util.parser.PdfParser
 import com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatter
+import com.huangder.lumibooks.R
+import com.huangder.lumibooks.service.TtsForegroundService
+import com.huangder.lumibooks.tts.TtsController
+import com.huangder.lumibooks.tts.TtsPageContent
+import com.huangder.lumibooks.tts.TtsPlaybackState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -97,7 +103,11 @@ data class ReaderUiState(
     val showReaderChapterProgress: Boolean = true,
     val showReaderPageNumber: Boolean = true,
     val showReaderBattery: Boolean = true,
-    val volumeKeyPageTurnEnabled: Boolean = false
+    val volumeKeyPageTurnEnabled: Boolean = false,
+    val ttsPlaybackState: TtsPlaybackState = TtsPlaybackState.IDLE,
+    val ttsSpeechRate: Float = 1f,
+    val ttsActiveBookId: String? = null,
+    val ttsErrorMessage: String? = null
 )
 
 @HiltViewModel
@@ -106,7 +116,8 @@ class ReaderViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val bookRepository: BookRepository,
     private val readingRepository: ReadingRepository,
-    private val dataStoreManager: DataStoreManager
+    private val dataStoreManager: DataStoreManager,
+    private val ttsController: TtsController
 ) : ViewModel() {
 
     private val bookId: String = savedStateHandle.get<String>("bookId") ?: ""
@@ -119,6 +130,8 @@ class ReaderViewModel @Inject constructor(
 
     private val _notes = MutableStateFlow<List<Note>>(emptyList())
     val notes: StateFlow<List<Note>> = _notes.asStateFlow()
+
+    val ttsPageTurnRequests = ttsController.pageTurnRequests
 
     private var parser: BookParser? = null
     private var sessionStartTime: Long = System.currentTimeMillis()
@@ -152,6 +165,28 @@ class ReaderViewModel @Inject constructor(
             dataStoreManager.migrateAdvancedReaderDefaults()
             loadBook()
             loadReaderSettings()
+        }
+        viewModelScope.launch {
+            ttsController.playbackState.collectLatest { state ->
+                _uiState.value = _uiState.value.copy(ttsPlaybackState = state)
+            }
+        }
+        viewModelScope.launch {
+            ttsController.speechRate.collectLatest { rate ->
+                _uiState.value = _uiState.value.copy(ttsSpeechRate = rate)
+            }
+        }
+        viewModelScope.launch {
+            ttsController.activeBookId.collectLatest { activeBookId ->
+                _uiState.value = _uiState.value.copy(ttsActiveBookId = activeBookId)
+            }
+        }
+        viewModelScope.launch {
+            ttsController.errors.collectLatest {
+                _uiState.value = _uiState.value.copy(
+                    ttsErrorMessage = context.getString(R.string.tts_playback_error)
+                )
+            }
         }
     }
 
@@ -739,6 +774,7 @@ class ReaderViewModel @Inject constructor(
             totalPages = chapterTotalPages,
             pageReady = true
         )
+        ttsController.onPageVisible(bookId, chapterIndex, pageInChapter)
         if (_uiState.value.isLoading) {
             _uiState.value = _uiState.value.copy(isLoading = false)
             // 🔥 如果是恢复进度（pendingPageFraction > 0），不在此处 saveProgress
@@ -749,6 +785,60 @@ class ReaderViewModel @Inject constructor(
             return
         }
         saveProgress()
+    }
+
+    fun startTts(
+        pageProvider: suspend (chapterIndex: Int, pageIndex: Int) -> TtsPageContent?
+    ) {
+        val state = _uiState.value
+        val book = state.book ?: return
+        if (!state.useNewEngine || state.isLoading) return
+
+        ContextCompat.startForegroundService(
+            context,
+            TtsForegroundService.startIntent(context, book.title)
+        )
+        viewModelScope.launch {
+            val result = ttsController.start(
+                bookId = book.id,
+                provider = pageProvider,
+                startChapter = state.currentChapterIndex,
+                startPage = state.currentPageIndex
+            )
+            if (result.isFailure) {
+                _uiState.value = _uiState.value.copy(
+                    ttsErrorMessage = context.getString(R.string.tts_unavailable)
+                )
+            }
+        }
+    }
+
+    fun stopTts() {
+        ttsController.stop()
+    }
+
+    fun toggleTtsPlayPause() {
+        when (_uiState.value.ttsPlaybackState) {
+            TtsPlaybackState.PLAYING -> ttsController.pause()
+            TtsPlaybackState.PAUSED -> ttsController.resume()
+            else -> Unit
+        }
+    }
+
+    fun ttsSkipForward() {
+        ttsController.skip(forward = true)
+    }
+
+    fun ttsSkipBackward() {
+        ttsController.skip(forward = false)
+    }
+
+    fun setTtsSpeechRate(rate: Float) {
+        viewModelScope.launch { ttsController.setSpeechRate(rate) }
+    }
+
+    fun clearTtsError() {
+        _uiState.value = _uiState.value.copy(ttsErrorMessage = null)
     }
 
     /** WebView 分页完成后调用 */

@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.components
 
+import android.graphics.Paint
+import android.graphics.RectF
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -28,9 +30,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.ui.theme.AppColors
@@ -77,15 +82,15 @@ fun FloatingTabBar(
     val borderBrush = if (isDark) {
         Brush.verticalGradient(
             colors = listOf(
-                Color.White.copy(alpha = 0.22f),
-                Color.White.copy(alpha = 0.06f)
+                Color.White.copy(alpha = 0.34f),
+                Color.White.copy(alpha = 0.10f)
             )
         )
     } else {
         Brush.verticalGradient(
             colors = listOf(
-                Color.White.copy(alpha = 0.88f),
-                Color.Black.copy(alpha = 0.08f)
+                Color.White.copy(alpha = 0.96f),
+                Color.White.copy(alpha = 0.30f)
             )
         )
     }
@@ -94,16 +99,21 @@ fun FloatingTabBar(
             backgroundColor = if (isDark) Color(0xFF1C1C1E) else Color.White
             tints = listOf(
                 HazeTint(
-                    if (isDark) Color(0x661C1C1E) else Color(0x88FFFFFF)
+                    if (isDark) Color(0x521C1C1E) else Color(0x5CFFFFFF)
                 )
             )
-            blurRadius = 24.dp
-            noiseFactor = 0.06f
+            blurRadius = 36.dp
+            noiseFactor = 0.08f
             fallbackTint = HazeTint(
-                if (isDark) Color(0xD01C1C1E) else Color(0xDFFFFFFF)
+                if (isDark) Color(0xC81C1C1E) else Color(0xCCFFFFFF)
             )
         }
     } ?: Modifier
+    val shadowColor = if (isDark) {
+        Color.White.copy(alpha = 0.10f)
+    } else {
+        Color.Black.copy(alpha = 0.14f)
+    }
 
     Box(
         modifier = modifier
@@ -111,16 +121,32 @@ fun FloatingTabBar(
             .navigationBarsPadding()
             .padding(horizontal = 80.dp, vertical = 14.dp)
     ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .drawBehind {
+                    val shadowRadius = 28.dp.toPx()
+                    val cornerRadius = size.height / 2f
+                    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        color = Color.White.copy(alpha = 0.01f).toArgb()
+                        setShadowLayer(shadowRadius, 0f, 0f, shadowColor.toArgb())
+                    }
+                    drawIntoCanvas { canvas ->
+                        canvas.nativeCanvas.drawRoundRect(
+                            RectF(0f, 0f, size.width, size.height),
+                            cornerRadius,
+                            cornerRadius,
+                            paint
+                        )
+                    }
+                }
+        )
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp)
-                .shadow(
-                    elevation = 14.dp,
-                    shape = glassShape,
-                    ambientColor = if (isDark) Color(0x22000000) else Color(0x16000000),
-                    spotColor = if (isDark) Color(0x18000000) else Color(0x10000000)
-                )
                 .clip(glassShape)
                 .then(hazeModifier)
                 .background(glassBrush)

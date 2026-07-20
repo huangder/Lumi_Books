@@ -3,6 +3,7 @@ package com.huangder.lumibooks.ui.home
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -39,7 +40,6 @@ import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -380,38 +380,50 @@ private fun ContinueReadingCard(book: Book, onClick: () -> Unit, onToggleFavorit
             }
             DropdownMenu(
                 expanded = menuExpanded,
-                onDismissRequest = { menuExpanded = false }
+                onDismissRequest = { menuExpanded = false },
+                modifier = Modifier.width(116.dp),
+                shape = RoundedCornerShape(AppRadius.xl),
+                containerColor = AppColors.WindowBg,
+                border = BorderStroke(1.dp, AppColors.Divider),
+                shadowElevation = 0.dp,
+                tonalElevation = 0.dp
             ) {
-                DropdownMenuItem(
-                    text = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Outlined.FavoriteBorder, null, modifier = Modifier.size(18.dp), tint = AppColors.TextSecondary)
-                            Spacer(Modifier.width(AppSpace.sm))
-                            Text(
-                                if (book.isFavorite) stringResource(R.string.remove_favorite) else stringResource(R.string.add_favorite),
-                                fontSize = AppType.BodySmall,
-                                color = AppColors.TextPrimary
-                            )
-                        }
-                    },
-                    onClick = {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(40.dp)
+                        .clip(RoundedCornerShape(AppRadius.lg))
+                        .clickable {
                         menuExpanded = false
                         onToggleFavorite()
-                    }
-                )
-                DropdownMenuItem(
-                    text = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Outlined.Delete, null, modifier = Modifier.size(18.dp), tint = AppColors.Accent)
-                            Spacer(Modifier.width(AppSpace.sm))
-                            Text(stringResource(R.string.delete_book), fontSize = AppType.BodySmall, color = AppColors.Accent)
-                        }
                     },
-                    onClick = {
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Outlined.FavoriteBorder, null, modifier = Modifier.size(17.dp), tint = AppColors.TextSecondary)
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        if (book.isFavorite) stringResource(R.string.remove_favorite) else stringResource(R.string.add_favorite),
+                        fontSize = AppType.BodySmall,
+                        color = AppColors.TextPrimary
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(40.dp)
+                        .clip(RoundedCornerShape(AppRadius.lg))
+                        .clickable {
                         menuExpanded = false
                         showDeleteConfirm = true
-                    }
-                )
+                    },
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Outlined.Delete, null, modifier = Modifier.size(17.dp), tint = AppColors.Accent)
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.delete_book), fontSize = AppType.BodySmall, color = AppColors.Accent)
+                }
             }
         }
     }

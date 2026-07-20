@@ -46,6 +46,8 @@ class DataStoreManager @Inject constructor(
         private val SHOW_READER_PAGE_NUMBER = booleanPreferencesKey("show_reader_page_number")
         private val SHOW_READER_BATTERY = booleanPreferencesKey("show_reader_battery")
         private val VOLUME_KEY_PAGE_TURN = booleanPreferencesKey("volume_key_page_turn")
+        private val TTS_SPEECH_RATE = floatPreferencesKey("tts_speech_rate")
+        private val TTS_PITCH = floatPreferencesKey("tts_pitch")
 
         // 统计设置
         private val DAILY_GOAL = intPreferencesKey("daily_goal")
@@ -142,6 +144,14 @@ class DataStoreManager @Inject constructor(
 
     val volumeKeyPageTurnEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[VOLUME_KEY_PAGE_TURN] ?: false
+    }
+
+    val ttsSpeechRate: Flow<Float> = context.dataStore.data.map { preferences ->
+        (preferences[TTS_SPEECH_RATE] ?: 1f).coerceIn(0.5f, 2f)
+    }
+
+    val ttsPitch: Flow<Float> = context.dataStore.data.map { preferences ->
+        (preferences[TTS_PITCH] ?: 1f).coerceIn(0.5f, 2f)
     }
 
     // 统计设置
@@ -282,6 +292,18 @@ class DataStoreManager @Inject constructor(
     suspend fun saveVolumeKeyPageTurnEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[VOLUME_KEY_PAGE_TURN] = enabled
+        }
+    }
+
+    suspend fun saveTtsSpeechRate(rate: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[TTS_SPEECH_RATE] = rate.coerceIn(0.5f, 2f)
+        }
+    }
+
+    suspend fun saveTtsPitch(pitch: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[TTS_PITCH] = pitch.coerceIn(0.5f, 2f)
         }
     }
 
