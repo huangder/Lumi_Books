@@ -11,6 +11,18 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- 语音听书后台播放 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Android 11+ 允许 TextToSpeech 发现并绑定系统语音引擎。 -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
+
     <application
         android:name=".EBookReaderApp"
         android:allowBackup="true"
@@ -103,6 +115,11 @@
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
             android:theme="@style/Theme.EBookReader"
             android:windowSoftInputMode="adjustResize" />
+
+        <service
+            android:name=".service.TtsForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
         <!-- 文件提供者 -->
         <provider

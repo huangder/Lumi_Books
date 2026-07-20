@@ -1,17 +1,23 @@
 package com.huangder.lumibooks.ui.reader
 
+import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.os.BatteryManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.text.Selection
 import android.text.SpanWatcher
 import android.text.Spannable
 import android.webkit.WebView
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -21,6 +27,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -55,6 +63,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
@@ -127,6 +136,7 @@ import com.huangder.lumibooks.ReaderPageDirection
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
+import com.huangder.lumibooks.tts.TtsPlaybackState
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -156,6 +166,55 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
 
     // ReadView 引用
     val readViewRef = remember { mutableStateOf<ReadView?>(null) }
+
+    val startTtsFromCurrentPage: () -> Unit = {
+        val readView = readViewRef.value
+        if (readView == null) {
+            Toast.makeText(context, R.string.tts_page_not_ready, Toast.LENGTH_SHORT).show()
+        } else {
+            viewModel.startTts(readView::getTtsPageContent)
+        }
+    }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) {
+        // 通知权限被拒绝时，Android 仍允许前台媒体播放，只是不展示普通通知。
+        startTtsFromCurrentPage()
+    }
+    val requestTtsStart: () -> Unit = {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            startTtsFromCurrentPage()
+        }
+    }
+
+    LaunchedEffect(bookId) {
+        viewModel.ttsPageTurnRequests.collect { request ->
+            if (request.bookId != bookId) return@collect
+            var readView = readViewRef.value
+            repeat(60) {
+                if (readView != null) return@repeat
+                kotlinx.coroutines.delay(16L)
+                readView = readViewRef.value
+            }
+            val activeReadView = readView ?: return@collect
+            val current = activeReadView.getCurrentLocation()
+            val target = request.location.chapterIndex to request.location.pageIndex
+            if (current == target) return@collect
+
+            val movedWithAnimation = when (target) {
+                activeReadView.getNextPageLocation() -> activeReadView.turnToNextPage()
+                activeReadView.getPrevPageLocation() -> activeReadView.turnToPreviousPage()
+                else -> false
+            }
+            if (!movedWithAnimation) {
+                activeReadView.jumpToChapter(target.first, target.second)
+            }
+        }
+    }
 
     // MainActivity 引用（用于注册 ActionMode 拦截回调）
     val activity = context as? MainActivity
@@ -217,6 +276,12 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     // 监听 loading 状态，完成后通知 NavGraph 关闭过渡页
     LaunchedEffect(uiState.isLoading) {
         if (!uiState.isLoading) onLoadingComplete()
+    }
+
+    LaunchedEffect(uiState.ttsErrorMessage) {
+        val message = uiState.ttsErrorMessage ?: return@LaunchedEffect
+        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+        viewModel.clearTtsError()
     }
 
     // 恢复阅读进度：pendingPageFraction > 0 时跳转到目标页
@@ -703,6 +768,17 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     onBack = onNavigateBack,
                     bgColor = menuBgColor,
                     contentColor = menuContentColor,
+                    isTtsActive = uiState.ttsActiveBookId == uiState.book?.id &&
+                        uiState.ttsPlaybackState != TtsPlaybackState.IDLE,
+                    onTtsClick = {
+                        if (uiState.ttsActiveBookId == uiState.book?.id &&
+                            uiState.ttsPlaybackState != TtsPlaybackState.IDLE
+                        ) {
+                            viewModel.toggleTtsPlayPause()
+                        } else {
+                            requestTtsStart()
+                        }
+                    },
                     isBookmarked = isCurrentPageBookmarked,
                     onBookmarkToggle = {
                         if (isCurrentPageBookmarked) {
@@ -807,6 +883,30 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         modifier = Modifier.align(Alignment.BottomCenter)
                     )
                 }
+            }
+
+            AnimatedVisibility(
+                visible = uiState.ttsActiveBookId == uiState.book?.id &&
+                    uiState.ttsPlaybackState != TtsPlaybackState.IDLE,
+                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = if (uiState.isMenuVisible) 154.dp else 44.dp)
+            ) {
+                TtsPlayerPanel(
+                    playbackState = uiState.ttsPlaybackState,
+                    speechRate = uiState.ttsSpeechRate,
+                    onPlayPause = viewModel::toggleTtsPlayPause,
+                    onStop = viewModel::stopTts,
+                    onSkipForward = viewModel::ttsSkipForward,
+                    onSkipBackward = viewModel::ttsSkipBackward,
+                    onRateChange = viewModel::setTtsSpeechRate,
+                    readerBackgroundColor = composeBgColor,
+                    readerContentColor = Color(readerTextColorInt)
+                )
             }
 
             // 目录底部弹出
@@ -1381,6 +1481,8 @@ private fun ReaderTopBar(
     onBack: () -> Unit,
     bgColor: Color = Color.White,
     contentColor: Color = AppColors.TextPrimary,
+    isTtsActive: Boolean = false,
+    onTtsClick: () -> Unit = {},
     isBookmarked: Boolean = false,
     onBookmarkToggle: () -> Unit = {}
 ) {
@@ -1416,58 +1518,79 @@ private fun ReaderTopBar(
                 .padding(horizontal = 28.dp, vertical = 20.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 左侧：返回按钮
             Box(
                 modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(controlBackground)
-                    .cardPressEffect()
-                    .clickable(
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() }
-                    ) { onBack() },
-                contentAlignment = Alignment.Center
+                    .width(82.dp),
+                contentAlignment = Alignment.CenterStart
             ) {
-                Icon(
-                    Icons.Default.KeyboardArrowLeft,
+                ReaderTopBarButton(
+                    icon = Icons.Default.KeyboardArrowLeft,
                     contentDescription = stringResource(R.string.reader_back),
                     tint = contentColor,
-                    modifier = Modifier.size(18.dp)
+                    backgroundColor = controlBackground,
+                    onClick = onBack
                 )
             }
-            Spacer(Modifier.weight(1f))
-            // 中间：书名
             Text(
                 text = title,
                 fontSize = 12.sp,
                 color = contentColor.copy(alpha = 0.7f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.width(180.dp)
+                textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f)
             )
-            Spacer(Modifier.weight(1f))
-            // 右侧：书签按钮（与返回按钮对称）
-            Box(
+            Row(
                 modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(controlBackground)
-                    .cardPressEffect()
-                    .clickable(
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() }
-                    ) { onBookmarkToggle() },
-                contentAlignment = Alignment.Center
+                    .width(82.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    if (isBookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder,
+                ReaderTopBarButton(
+                    icon = Icons.Default.Headphones,
+                    contentDescription = stringResource(R.string.tts_listen),
+                    tint = if (isTtsActive) AppColors.Accent else contentColor,
+                    backgroundColor = controlBackground,
+                    onClick = onTtsClick
+                )
+                ReaderTopBarButton(
+                    icon = if (isBookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder,
                     contentDescription = stringResource(R.string.reader_bookmark),
                     tint = if (isBookmarked) AppColors.Accent else contentColor,
-                    modifier = Modifier.size(18.dp)
+                    backgroundColor = controlBackground,
+                    onClick = onBookmarkToggle
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun ReaderTopBarButton(
+    icon: ImageVector,
+    contentDescription: String,
+    tint: Color,
+    backgroundColor: Color,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .background(backgroundColor)
+            .cardPressEffect()
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() }
+            ) { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = tint,
+            modifier = Modifier.size(18.dp)
+        )
     }
 }
 

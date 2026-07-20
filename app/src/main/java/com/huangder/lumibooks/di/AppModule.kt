@@ -12,6 +12,9 @@ import com.huangder.lumibooks.data.repository.BookRepositoryImpl
 import com.huangder.lumibooks.data.repository.ReadingRepositoryImpl
 import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.domain.repository.ReadingRepository
+import com.huangder.lumibooks.tts.TtsController
+import com.huangder.lumibooks.tts.TtsEngine
+import com.huangder.lumibooks.tts.TtsTextExtractor
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -78,5 +81,27 @@ object AppModule {
     @Singleton
     fun provideDataStoreManager(@ApplicationContext context: Context): DataStoreManager {
         return DataStoreManager(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideTtsEngine(@ApplicationContext context: Context): TtsEngine {
+        return TtsEngine(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideTtsTextExtractor(): TtsTextExtractor {
+        return TtsTextExtractor()
+    }
+
+    @Provides
+    @Singleton
+    fun provideTtsController(
+        ttsEngine: TtsEngine,
+        textExtractor: TtsTextExtractor,
+        dataStoreManager: DataStoreManager
+    ): TtsController {
+        return TtsController(ttsEngine, textExtractor, dataStoreManager)
     }
 }
