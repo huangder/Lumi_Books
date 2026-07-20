@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.huangder.lumibooks.app-mergeDebugResources-68:/values-bg/values-bg.xml",
+            "outputFile": "com.huangder.lumibooks.app-mergeDebugResources-74:/values-bg/values-bg.xml",
             "map": [
                 {
                     "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.9\\transforms\\e5ff5fc370625606275ba2ae3f11162f\\transformed\\core-1.15.0\\res\\values-bg\\values-bg.xml",

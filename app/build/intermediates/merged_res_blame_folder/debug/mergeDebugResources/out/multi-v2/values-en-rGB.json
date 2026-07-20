@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.huangder.lumibooks.app-mergeDebugResources-68:/values-en-rGB/values-en-rGB.xml",
+            "outputFile": "com.huangder.lumibooks.app-mergeDebugResources-74:/values-en-rGB/values-en-rGB.xml",
             "map": [
                 {
                     "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.9\\transforms\\91d9b7eeac7439eceef19660890d9a0d\\transformed\\material3-release\\res\\values-en-rGB\\values-en-rGB.xml",

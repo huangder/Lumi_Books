@@ -1,2 +1,0 @@
-07-20 10:00:54.273 25019 25061 I TestRunner: started: zeroIndentRemovesPreviouslyAppliedReaderIndent(com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest)
-07-20 10:00:54.275 25019 25061 I TestRunner: finished: zeroIndentRemovesPreviouslyAppliedReaderIndent(com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest)

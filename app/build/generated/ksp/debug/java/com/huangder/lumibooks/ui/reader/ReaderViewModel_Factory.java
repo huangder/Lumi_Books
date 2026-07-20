@@ -5,6 +5,7 @@ import androidx.lifecycle.SavedStateHandle;
 import com.huangder.lumibooks.data.local.DataStoreManager;
 import com.huangder.lumibooks.domain.repository.BookRepository;
 import com.huangder.lumibooks.domain.repository.ReadingRepository;
+import com.huangder.lumibooks.pdfconversion.PdfConversionManager;
 import com.huangder.lumibooks.tts.TtsController;
 import dagger.internal.DaggerGenerated;
 import dagger.internal.Factory;
@@ -41,35 +42,41 @@ public final class ReaderViewModel_Factory implements Factory<ReaderViewModel> {
 
   private final Provider<TtsController> ttsControllerProvider;
 
+  private final Provider<PdfConversionManager> pdfConversionManagerProvider;
+
   public ReaderViewModel_Factory(Provider<SavedStateHandle> savedStateHandleProvider,
       Provider<Context> contextProvider, Provider<BookRepository> bookRepositoryProvider,
       Provider<ReadingRepository> readingRepositoryProvider,
       Provider<DataStoreManager> dataStoreManagerProvider,
-      Provider<TtsController> ttsControllerProvider) {
+      Provider<TtsController> ttsControllerProvider,
+      Provider<PdfConversionManager> pdfConversionManagerProvider) {
     this.savedStateHandleProvider = savedStateHandleProvider;
     this.contextProvider = contextProvider;
     this.bookRepositoryProvider = bookRepositoryProvider;
     this.readingRepositoryProvider = readingRepositoryProvider;
     this.dataStoreManagerProvider = dataStoreManagerProvider;
     this.ttsControllerProvider = ttsControllerProvider;
+    this.pdfConversionManagerProvider = pdfConversionManagerProvider;
   }
 
   @Override
   public ReaderViewModel get() {
-    return newInstance(savedStateHandleProvider.get(), contextProvider.get(), bookRepositoryProvider.get(), readingRepositoryProvider.get(), dataStoreManagerProvider.get(), ttsControllerProvider.get());
+    return newInstance(savedStateHandleProvider.get(), contextProvider.get(), bookRepositoryProvider.get(), readingRepositoryProvider.get(), dataStoreManagerProvider.get(), ttsControllerProvider.get(), pdfConversionManagerProvider.get());
   }
 
   public static ReaderViewModel_Factory create(Provider<SavedStateHandle> savedStateHandleProvider,
       Provider<Context> contextProvider, Provider<BookRepository> bookRepositoryProvider,
       Provider<ReadingRepository> readingRepositoryProvider,
       Provider<DataStoreManager> dataStoreManagerProvider,
-      Provider<TtsController> ttsControllerProvider) {
-    return new ReaderViewModel_Factory(savedStateHandleProvider, contextProvider, bookRepositoryProvider, readingRepositoryProvider, dataStoreManagerProvider, ttsControllerProvider);
+      Provider<TtsController> ttsControllerProvider,
+      Provider<PdfConversionManager> pdfConversionManagerProvider) {
+    return new ReaderViewModel_Factory(savedStateHandleProvider, contextProvider, bookRepositoryProvider, readingRepositoryProvider, dataStoreManagerProvider, ttsControllerProvider, pdfConversionManagerProvider);
   }
 
   public static ReaderViewModel newInstance(SavedStateHandle savedStateHandle, Context context,
       BookRepository bookRepository, ReadingRepository readingRepository,
-      DataStoreManager dataStoreManager, TtsController ttsController) {
-    return new ReaderViewModel(savedStateHandle, context, bookRepository, readingRepository, dataStoreManager, ttsController);
+      DataStoreManager dataStoreManager, TtsController ttsController,
+      PdfConversionManager pdfConversionManager) {
+    return new ReaderViewModel(savedStateHandle, context, bookRepository, readingRepository, dataStoreManager, ttsController, pdfConversionManager);
   }
 }

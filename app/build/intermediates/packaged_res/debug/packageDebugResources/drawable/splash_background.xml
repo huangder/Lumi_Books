@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@color/white" />
-    <item
-        android:gravity="center"
-        android:drawable="@drawable/ic_launcher_foreground" />
+    <item>
+        <bitmap
+            android:src="@drawable/splash_light"
+            android:gravity="fill"
+            android:filter="true" />
+    </item>
 </layer-list>

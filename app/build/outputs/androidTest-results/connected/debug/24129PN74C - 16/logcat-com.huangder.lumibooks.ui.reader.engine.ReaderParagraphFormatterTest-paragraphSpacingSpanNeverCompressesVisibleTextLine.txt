@@ -1,3 +1,0 @@
-07-20 10:00:54.299 25019 25061 I TestRunner: started: paragraphSpacingSpanNeverCompressesVisibleTextLine(com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest)
-07-20 10:00:54.300 25019 25061 D EpubParser: chooseHeight: extraPx=4 origAscent=-20 origDescent=5 lineHeight=0 -> newDescent=4
-07-20 10:00:54.300 25019 25061 I TestRunner: finished: paragraphSpacingSpanNeverCompressesVisibleTextLine(com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest)

@@ -1,2 +1,0 @@
-07-20 10:00:54.285 25019 25061 I TestRunner: started: paragraphSpacingNormalizesExistingBlankLinesBeforeAddingExactGap(com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest)
-07-20 10:00:54.288 25019 25061 I TestRunner: finished: paragraphSpacingNormalizesExistingBlankLinesBeforeAddingExactGap(com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest)

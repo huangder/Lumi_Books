@@ -1,8 +1,0 @@
-07-20 10:00:54.288 25019 25061 I TestRunner: started: pageStartingAfterParagraphSpacerDoesNotKeepBoundaryLineHeightSpan(com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest)
-07-20 10:00:54.292 25019 25019 D PageSlotManager: setPageContent: fullText type=SpannableStringBuilder LeadingMarginSpans=3 start=5 end=13
-07-20 10:00:54.292 25019 25019 D PageContentView: setPageContent: subText type=SpannableStringBuilder isSpanned=true
-07-20 10:00:54.292 25019 25019 D PageContentView: setPageContent: pageText type=SpannableStringBuilder isSpanned=true
-07-20 10:00:54.293 25019 25019 D PageContentView: setPageContent: restored 2 LeadingMarginSpans, 1 ParagraphLineHeightSpans
-07-20 10:00:54.293 25019 25019 D PageContentView: setPageContent: start=5 end=13 len=8 LMS=2 ImageSpan=0
-07-20 10:00:54.294 25019 25019 D EpubParser: chooseHeight: extraPx=4 origAscent=-58 origDescent=16 lineHeight=444 -> newDescent=4
-07-20 10:00:54.295 25019 25061 I TestRunner: finished: pageStartingAfterParagraphSpacerDoesNotKeepBoundaryLineHeightSpan(com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatterTest)

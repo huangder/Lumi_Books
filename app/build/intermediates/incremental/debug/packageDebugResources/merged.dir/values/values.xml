@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <color name="app_window_background">#FFFBFBFC</color>
     <color name="black">#FF000000</color>
+    <color name="launch_background">#FFFFF5F5</color>
     <color name="primary">#FF007AFF</color>
     <color name="primary_dark">#FF0A84FF</color>
     <color name="white">#FFFFFFFF</color>
@@ -9,7 +11,9 @@
     <string name="advanced_settings">高级设置</string>
     <string name="animation_simple">简洁滑动</string>
     <string name="animation_slide">滑动覆盖</string>
-    <string name="app_name">Lumi</string>
+    <string name="app_name">LUMI</string>
+    <string name="app_theme_lumi">Lumi 粉</string>
+    <string name="app_theme_material3">Material 3</string>
     <string name="apply_text_color">应用文字颜色</string>
     <string name="avatar">头像</string>
     <string name="back">返回</string>
@@ -83,9 +87,12 @@
     <string name="edit_book_info">修改书本信息</string>
     <string name="edit_daily_goal">修改每日目标</string>
     <string name="edit_nickname">修改昵称</string>
+    <string name="entrance_animations_description">为部分页面添加元素\n动效，这可能会影响性能</string>
     <string name="error">错误</string>
     <string name="favorite">收藏</string>
     <string name="feedback_desc">欢迎提交 Bug 报告或功能建议，帮助我们做得更好</string>
+    <string name="feedback_github_issues">GitHub Issues</string>
+    <string name="feedback_github_issues_desc">提交问题与建议</string>
     <string name="feedback_qr_desc">反馈表单二维码</string>
     <string name="feedback_thanks">感谢您支持 Lumi 开发！</string>
     <string name="feedback_title">问题反馈</string>
@@ -128,8 +135,10 @@
     <string name="import_complete">导入完成</string>
     <string name="import_failed">导入失败：%s</string>
     <string name="importing">正在导入…</string>
+    <string name="label_app_theme">主题</string>
     <string name="label_daily_goal">每日目标</string>
     <string name="label_dark_mode">深色模式</string>
+    <string name="label_entrance_animations">动效 Pro (Beta)</string>
     <string name="label_first_line_indent">首行缩进</string>
     <string name="label_font_size">字号</string>
     <string name="label_font_type">字体类型</string>
@@ -138,7 +147,9 @@
     <string name="label_margin_horiz">左右边距</string>
     <string name="label_margin_vert">上下边距</string>
     <string name="label_paragraph_spacing">段间距</string>
+    <string name="label_predictive_back">预见性返回</string>
     <string name="label_reader_theme">默认阅读主题</string>
+    <string name="label_splash_screen">开屏页</string>
     <string name="label_text_color">文字颜色</string>
     <string name="label_total_size">总占用空间</string>
     <string name="later">稍后</string>
@@ -194,6 +205,38 @@
     <string name="pdf_back">返回</string>
     <string name="pdf_bookmark">书签</string>
     <string name="pdf_close">关闭</string>
+    <string name="pdf_convert_action">将 PDF 解析为电子书</string>
+    <string name="pdf_convert_cancel_action">取消解析</string>
+    <string name="pdf_convert_cancel_body">取消后会删除本次临时结果；已有解析版本不会受到影响。</string>
+    <string name="pdf_convert_cancel_title">取消解析？</string>
+    <string name="pdf_convert_complete_body">已从 %1$d / %2$d 页提取文字。你可以留在当前 PDF，或前往解析后的书本检查排版效果。</string>
+    <string name="pdf_convert_complete_title">解析完成</string>
+    <string name="pdf_convert_error_encrypted">该 PDF 已加密或受密码保护，无法提取文字。</string>
+    <string name="pdf_convert_error_file_missing">原 PDF 文件不存在或已无法访问。</string>
+    <string name="pdf_convert_error_no_text">未检测到可提取的文字层。扫描版或纯图片 PDF 暂不支持解析。</string>
+    <string name="pdf_convert_error_storage">读取 PDF 或写入转换文件时失败，请检查存储空间后重试。</string>
+    <string name="pdf_convert_error_unknown">解析时发生未知错误，请稍后重试。</string>
+    <string name="pdf_convert_existing_body">你可以打开已有版本，或重新解析并替换。重新解析会重置解析版的阅读进度，并清除其中的书签与笔记。</string>
+    <string name="pdf_convert_existing_title">已有解析后版本</string>
+    <string name="pdf_convert_failed_title">PDF 解析失败</string>
+    <string name="pdf_convert_keep_running">继续后台解析</string>
+    <string name="pdf_convert_notification_channel">PDF 解析</string>
+    <string name="pdf_convert_notification_channel_description">显示 PDF 转换进度和完成结果</string>
+    <string name="pdf_convert_notification_complete">已提取 %1$d / %2$d 页文字，点击开始阅读</string>
+    <string name="pdf_convert_notification_progress">正在解析第 %1$d / %2$d 页</string>
+    <string name="pdf_convert_notification_title">正在解析 PDF</string>
+    <string name="pdf_convert_open_existing">打开已有版本</string>
+    <string name="pdf_convert_open_result">前往解析后的书本</string>
+    <string name="pdf_convert_preparing">正在准备 PDF…</string>
+    <string name="pdf_convert_progress_pages">第 %1$d / %2$d 页</string>
+    <string name="pdf_convert_progress_title">正在解析 PDF</string>
+    <string name="pdf_convert_replace">重新解析并替换</string>
+    <string name="pdf_convert_running">正在解析 %d%%</string>
+    <string name="pdf_convert_sheet_body">仅支持带文字层的 PDF。图片、表格、公式和复杂多栏排版可能无法保留，扫描版 PDF 无法解析。转换将在设备本地后台进行，原 PDF 不受影响。</string>
+    <string name="pdf_convert_sheet_title">解析为电子书</string>
+    <string name="pdf_convert_start">开始解析</string>
+    <string name="pdf_convert_stay_pdf">留在 PDF 页面</string>
+    <string name="pdf_convert_success">已提取 %1$d / %2$d 页文字</string>
     <string name="pdf_page_desc">第%d页</string>
     <string name="pdf_switch_to_horizontal">切换为左右翻页</string>
     <string name="pdf_switch_to_vertical">切换为上下翻页</string>
@@ -206,9 +249,20 @@
     <string name="reader_bookmark">书签</string>
     <string name="reader_chapter_fallback">第%d章</string>
     <string name="reader_close">关闭</string>
+    <string name="reader_corner_bottom_left">左下</string>
+    <string name="reader_corner_bottom_right">右下</string>
+    <string name="reader_corner_content_battery">电量</string>
+    <string name="reader_corner_content_book_progress">全书进度</string>
+    <string name="reader_corner_content_chapter">章节信息</string>
+    <string name="reader_corner_content_none">不显示</string>
+    <string name="reader_corner_content_page_number">页码</string>
+    <string name="reader_corner_top_left">左上</string>
+    <string name="reader_corner_top_right">右上</string>
     <string name="reader_link_return">返回到刚才页</string>
     <string name="reader_load_failed">书籍加载失败</string>
     <string name="reader_notes">笔记</string>
+    <string name="reader_page_layout">阅读页信息</string>
+    <string name="reader_page_layout_hint">选择阅读页四个角显示的内容</string>
     <string name="reader_search">搜索</string>
     <string name="reader_theme">主题</string>
     <string name="reader_title">阅读器</string>
@@ -250,12 +304,13 @@
     <string name="show_reader_chapter_progress_hint">当前章节名和全书百分比</string>
     <string name="show_reader_page_number">显示页码</string>
     <string name="show_reader_page_number_hint">当前章节页码</string>
+    <string name="splash_screen_description">启动时显示品牌开屏画面</string>
+    <string name="splash_setting_next_launch">将在下次启动时生效</string>
     <string name="sponsor_code_label">给屿浮 的赞赏码</string>
     <string name="sponsor_desc">捐赠：如果你觉得不错的话，欢迎支持开发</string>
     <string name="sponsor_dev_title">开发人员</string>
     <string name="sponsor_qr_desc">捐赠二维码</string>
     <string name="sponsor_quote">"如果觉得不错，请我吃个饭吧😊"</string>
-    <string name="sponsor_tech_title">技术支持（排名不分先后）</string>
     <string name="sponsor_thanks_title">感谢列表（排名不分先后）</string>
     <string name="sponsor_title">赞助开发</string>
     <string name="statistics_title">统计</string>
@@ -323,6 +378,7 @@
     <string name="tts_stop">停止听书</string>
     <string name="tts_unavailable">无法启动文字转语音，请检查系统语音引擎和语言数据</string>
     <string name="tuesday_short">二</string>
+    <string name="update_already_latest">目前已是最新版本</string>
     <string name="volume_key_page_turn">音量键翻页</string>
     <string name="volume_key_page_turn_hint">音量加键上一页，音量减键下一页</string>
     <string name="wednesday_short">三</string>
@@ -344,9 +400,15 @@
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">true</item>
-        <item name="android:windowBackground">@android:color/white</item>
+        <item name="android:windowBackground">@color/app_window_background</item>
         
         <item name="android:colorAccent">@color/primary</item>
         <item name="android:colorControlActivated">@color/primary</item>
+    </style>
+    <style name="Theme.EBookReader.Launch" parent="Theme.EBookReader">
+        <item name="android:windowBackground">@drawable/splash_background</item>
+    </style>
+    <style name="Theme.EBookReader.NoPreview" parent="Theme.EBookReader">
+        <item name="android:windowDisablePreview">true</item>
     </style>
 </resources>
