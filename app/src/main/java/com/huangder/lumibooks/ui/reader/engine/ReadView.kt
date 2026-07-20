@@ -15,6 +15,18 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
+internal fun calculateReaderVerticalBalanceOffset(
+    availableHeightPx: Float,
+    lineHeightPx: Float,
+    maxShiftPx: Float
+): Float {
+    if (availableHeightPx <= 0f || lineHeightPx <= 0f || maxShiftPx <= 0f) return 0f
+    val completeLines = (availableHeightPx / lineHeightPx).toInt()
+    if (completeLines <= 0) return 0f
+    val remainder = availableHeightPx - completeLines * lineHeightPx
+    return (remainder / 2f).coerceIn(0f, maxShiftPx)
+}
+
 /**
  * 核心阅读视图。
  *
@@ -98,6 +110,8 @@ class ReadView(context: Context) : FrameLayout(context) {
     private var currentCustomFontPath: String? = null
     private var currentMarginHorizDp: Float = 38f
     private var currentMarginVertDp: Float = 64f
+    private var currentTopOverlayInsetDp: Float = 0f
+    private var currentBottomOverlayInsetDp: Float = 0f
     private var currentParagraphSpacingDp: Float = 0f
     private var currentChineseMode: String = "original"
     private var currentPageTransition: String = "slide"
@@ -220,7 +234,8 @@ class ReadView(context: Context) : FrameLayout(context) {
         val density = resources.displayMetrics.density
         val marginHoriz = currentMarginHorizDp * density
         val marginVert = currentMarginVertDp * density
-        val marginTop = marginVert   // includeFontPadding 已关闭，无需补偿
+        val baseMarginTop = marginVert + currentTopOverlayInsetDp * density
+        val baseMarginBottom = marginVert + currentBottomOverlayInsetDp * density
         val lineSpacingExtra = 2.5f * density
 
         // 选择高亮色jian
@@ -241,6 +256,14 @@ class ReadView(context: Context) : FrameLayout(context) {
             }
             else -> android.graphics.Typeface.DEFAULT
         }
+        val (marginTop, marginBottom) = balancedVerticalMargins(
+            baseMarginTop = baseMarginTop,
+            baseMarginBottom = baseMarginBottom,
+            fontSizePx = currentFontSizePx,
+            lineHeightMultiplier = currentLineHeightMult,
+            lineSpacingExtraPx = lineSpacingExtra,
+            typeface = customTypeface
+        )
 
         // 三个槽位都配置，确保翻页时样式一致
         for (view in listOf(prevPageView, curPageView, nextPageView)) {
@@ -254,7 +277,7 @@ class ReadView(context: Context) : FrameLayout(context) {
                 marginLeftPx = marginHoriz,
                 marginTopPx = marginTop,
                 marginRightPx = marginHoriz,
-                marginBottomPx = marginVert,
+                marginBottomPx = marginBottom,
                 highlightColor = highlightColor,
                 accentColor = accentColor
             )
@@ -301,6 +324,8 @@ class ReadView(context: Context) : FrameLayout(context) {
         customFontPath: String? = null,
         marginHorizDp: Float = 38f,
         marginVertDp: Float = 64f,
+        topOverlayInsetDp: Float = 0f,
+        bottomOverlayInsetDp: Float = 0f,
         paragraphSpacingDp: Float = 2f,
         width: Int = this.width,
         height: Int = this.height
@@ -317,6 +342,8 @@ class ReadView(context: Context) : FrameLayout(context) {
             currentCustomFontPath = customFontPath
             currentMarginHorizDp = marginHorizDp
             currentMarginVertDp = marginVertDp
+            currentTopOverlayInsetDp = topOverlayInsetDp
+            currentBottomOverlayInsetDp = bottomOverlayInsetDp
             currentParagraphSpacingDp = paragraphSpacingDp
             return
         }
@@ -329,11 +356,13 @@ class ReadView(context: Context) : FrameLayout(context) {
         val fontTypeChanged = currentFontType != fontType
         val marginHorizChanged = Math.abs(currentMarginHorizDp - marginHorizDp) > 0.5f
         val marginVertChanged = Math.abs(currentMarginVertDp - marginVertDp) > 0.5f
+        val overlayInsetChanged = Math.abs(currentTopOverlayInsetDp - topOverlayInsetDp) > 0.5f ||
+            Math.abs(currentBottomOverlayInsetDp - bottomOverlayInsetDp) > 0.5f
         val paragraphSpacingChanged = Math.abs(currentParagraphSpacingDp - paragraphSpacingDp) > 0.01f
         val sizeChanged = !isConfigured || configuredWidth != width || configuredHeight != height
         val needsRelayout = themeChanged || chapterCountChanged || fontSizeChanged || lineHeightChanged ||
                 letterSpacingChanged || fontTypeChanged || marginHorizChanged ||
-                marginVertChanged || paragraphSpacingChanged || sizeChanged
+                marginVertChanged || overlayInsetChanged || paragraphSpacingChanged || sizeChanged
 
         // 🔥 无变化时提前返回，避免菜单切换等 recomposition 触发不必要的重配置
         if (isConfigured && !needsRelayout) return
@@ -347,6 +376,8 @@ class ReadView(context: Context) : FrameLayout(context) {
         currentCustomFontPath = customFontPath
         currentMarginHorizDp = marginHorizDp
         currentMarginVertDp = marginVertDp
+        currentTopOverlayInsetDp = topOverlayInsetDp
+        currentBottomOverlayInsetDp = bottomOverlayInsetDp
         currentParagraphSpacingDp = paragraphSpacingDp
         configuredWidth = width
         configuredHeight = height
@@ -355,11 +386,13 @@ class ReadView(context: Context) : FrameLayout(context) {
         val density = resources.displayMetrics.density
         val marginHoriz = marginHorizDp * density
         val marginVert = marginVertDp * density
-        val marginTop = marginVert   // includeFontPadding 已关闭，无需补偿
+        val baseMarginTop = marginVert + topOverlayInsetDp * density
+        val baseMarginBottom = marginVert + bottomOverlayInsetDp * density
         val lineSpacing = 2.5f * density
         val lsPx = letterSpacingDp * density
 
         val customTypeface = when (fontType) {
+            "serif" -> android.graphics.Typeface.SERIF
             "fangsong" -> try { androidx.core.content.res.ResourcesCompat.getFont(context, com.huangder.lumibooks.R.font.fandol_fang) }
                 catch (_: Exception) { null }
             "kaiti" -> try { androidx.core.content.res.ResourcesCompat.getFont(context, com.huangder.lumibooks.R.font.lxgw_wenkai) }
@@ -372,6 +405,14 @@ class ReadView(context: Context) : FrameLayout(context) {
             }
             else -> null
         }
+        val (marginTop, marginBottom) = balancedVerticalMargins(
+            baseMarginTop = baseMarginTop,
+            baseMarginBottom = baseMarginBottom,
+            fontSizePx = fontSizePx,
+            lineHeightMultiplier = lineHeightMult,
+            lineSpacingExtraPx = lineSpacing,
+            typeface = customTypeface ?: android.graphics.Typeface.DEFAULT
+        )
 
         layoutEngine.configure(
             width = width,
@@ -385,7 +426,7 @@ class ReadView(context: Context) : FrameLayout(context) {
             marginLeftPx = marginHoriz,
             marginRightPx = marginHoriz,
             marginTopPx = marginTop,
-            marginBottomPx = marginVert,
+            marginBottomPx = marginBottom,
             textColor = textColor,
             chapterCount = chapterCount
         )
@@ -523,7 +564,6 @@ class ReadView(context: Context) : FrameLayout(context) {
             chapterIndex + 1 < currentChapterCount -> TtsPageLocation(chapterIndex + 1, 0)
             else -> null
         }
-
         return TtsPageContent(
             location = TtsPageLocation(chapterIndex, pageIndex),
             text = pageText,
@@ -784,6 +824,29 @@ class ReadView(context: Context) : FrameLayout(context) {
             is FadePageAnim -> ctrl.startFromTap(dir)
             is CurlPageAnim -> ctrl.startFromTap(dir)
         }
+    }
+
+    private fun balancedVerticalMargins(
+        baseMarginTop: Float,
+        baseMarginBottom: Float,
+        fontSizePx: Float,
+        lineHeightMultiplier: Float,
+        lineSpacingExtraPx: Float,
+        typeface: android.graphics.Typeface
+    ): Pair<Float, Float> {
+        val fontSpacing = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).run {
+            textSize = fontSizePx
+            this.typeface = typeface
+            fontSpacing
+        }
+        val estimatedLineHeight = fontSpacing * lineHeightMultiplier + lineSpacingExtraPx
+        val availableHeight = height - baseMarginTop - baseMarginBottom
+        val shift = calculateReaderVerticalBalanceOffset(
+            availableHeightPx = availableHeight,
+            lineHeightPx = estimatedLineHeight,
+            maxShiftPx = baseMarginBottom
+        )
+        return (baseMarginTop + shift) to (baseMarginBottom - shift)
     }
 
     /** @return Triple(backgroundColor, textColor, accentColor) */

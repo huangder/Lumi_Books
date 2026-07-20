@@ -1,6 +1,5 @@
 package com.huangder.lumibooks.ui.welcome
 
-import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -12,26 +11,23 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import com.huangder.lumibooks.MainActivity
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
+import com.huangder.lumibooks.util.LaunchThemeController
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import java.io.File
 import javax.inject.Inject
 
 /**
  * 欢迎页独立 Activity，与主页 Compose 树完全隔离，从根本上避免 TabBar 穿透问题。
  *
- * 首次安装显示常规欢迎页，升级到指定引导版本显示更新欢迎页。
- * 两种入口都会进入支持项目页，完成后再跳转 MainActivity。
+ * 首次安装显示常规欢迎页，覆盖安装或版本更新显示更新欢迎页。
+ * 每次安装只展示一次，完成支持项目页后再跳转 MainActivity。
  */
 @AndroidEntryPoint
 class WelcomeActivity : ComponentActivity() {
-
-    private companion object {
-        const val CURRENT_WELCOME_FLOW_VERSION = 1
-    }
 
     override fun attachBaseContext(newBase: android.content.Context) {
         super.attachBaseContext(com.huangder.lumibooks.util.LocaleHelper.applyLanguage(newBase))
@@ -44,14 +40,16 @@ class WelcomeActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
-        val completedFlowVersion = runBlocking {
-            dataStoreManager.completedWelcomeFlowVersion.first()
+        val installState = readInstallState()
+        val (completedInstallTime, splashEnabled) = runBlocking {
+            dataStoreManager.completedWelcomeInstallTime.first() to
+                dataStoreManager.splashEnabled.first()
         }
-        if (completedFlowVersion >= CURRENT_WELCOME_FLOW_VERSION) {
-            startMainActivity()
+        LaunchThemeController.deferSplashEnabled(this, splashEnabled)
+        if (!installState.shouldShowWelcome(completedInstallTime)) {
+            startMainActivity(splashEnabled)
             return
         }
-        val isAppUpdate = isAppUpdate()
 
         setContent {
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
@@ -67,13 +65,13 @@ class WelcomeActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     WelcomeScreen(
-                        isUpdate = isAppUpdate,
+                        isUpdate = installState.isUpdate,
                         isDark = isDark,
                         onFinished = {
                             runBlocking {
-                                dataStoreManager.completeWelcomeFlow(CURRENT_WELCOME_FLOW_VERSION)
+                                dataStoreManager.completeWelcomeFlow(installState.installMarker)
                             }
-                            startMainActivity()
+                            startMainActivity(splashEnabled)
                         },
                         onExit = { finish() }
                     )
@@ -82,18 +80,24 @@ class WelcomeActivity : ComponentActivity() {
         }
     }
 
-    private fun startMainActivity() {
-        startActivity(Intent(this, MainActivity::class.java))
+    private fun startMainActivity(splashEnabled: Boolean) {
+        startActivity(LaunchThemeController.mainIntent(this, splashEnabled))
         finish()
     }
 
-    private fun isAppUpdate(): Boolean {
+    private fun readInstallState(): WelcomeInstallState {
         return try {
             packageManager.getPackageInfo(packageName, 0).let { packageInfo ->
-                packageInfo.lastUpdateTime > packageInfo.firstInstallTime
+                WelcomeInstallState(
+                    firstInstallTime = packageInfo.firstInstallTime,
+                    lastUpdateTime = packageInfo.lastUpdateTime
+                )
             }
         } catch (_: Exception) {
-            false
+            WelcomeInstallState(
+                firstInstallTime = 0L,
+                lastUpdateTime = File(applicationInfo.sourceDir).lastModified()
+            )
         }
     }
 }

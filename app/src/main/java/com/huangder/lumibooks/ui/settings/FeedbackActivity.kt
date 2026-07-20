@@ -20,11 +20,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -39,9 +41,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.local.DataStoreManager
@@ -106,10 +108,10 @@ private fun FeedbackPage(onBack: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回", tint = AppColors.TextPrimary)
+                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.back), tint = AppColors.TextPrimary)
                 }
                 Spacer(Modifier.weight(1f))
-                Text("问题反馈", fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = FangSong, color = AppColors.TextPrimary)
+                Text(stringResource(R.string.feedback_title), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = FangSong, color = AppColors.TextPrimary)
                 Spacer(Modifier.weight(1f))
                 Spacer(Modifier.size(48.dp))
             }
@@ -118,7 +120,7 @@ private fun FeedbackPage(onBack: () -> Unit) {
 
             // 副标题
             Text(
-                text = "欢迎提交 Bug 报告或功能建议，帮助我们做得更好",
+                text = stringResource(R.string.feedback_desc),
                 fontSize = AppType.BodySmall,
                 color = AppColors.TextSecondary,
                 modifier = Modifier.padding(horizontal = AppSpace.lg)
@@ -140,7 +142,7 @@ private fun FeedbackPage(onBack: () -> Unit) {
                 // 二维码
                 Image(
                     painter = painterResource(id = R.drawable.feedback_qr),
-                    contentDescription = "反馈表单二维码",
+                    contentDescription = stringResource(R.string.feedback_qr_desc),
                     modifier = Modifier
                         .size(220.dp)
                         .clip(RoundedCornerShape(AppRadius.md)),
@@ -151,7 +153,7 @@ private fun FeedbackPage(onBack: () -> Unit) {
 
                 // 文案
                 Text(
-                    text = "感谢您支持 Lumi 开发！",
+                    text = stringResource(R.string.feedback_thanks),
                     fontSize = AppType.Body,
                     fontWeight = FontWeight.Medium,
                     color = AppColors.TextPrimary,
@@ -161,40 +163,71 @@ private fun FeedbackPage(onBack: () -> Unit) {
 
             Spacer(Modifier.height(AppSpace.lg))
 
-            // 官网链接
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = AppSpace.lg)
-            ) {
-                Text(
-                    text = "官网",
-                    fontSize = AppType.Caption,
-                    color = AppColors.TextSecondary,
-                    modifier = Modifier.padding(bottom = AppSpace.xs)
-                )
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .shadow(6.dp, RoundedCornerShape(AppRadius.md), ambientColor = Color(0x04000000), spotColor = Color(0x04000000))
-                        .clip(RoundedCornerShape(AppRadius.md))
-                        .background(AppColors.CardBg)
-                        .clickable {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://huangder.top"))
-                            context.startActivity(intent)
-                        }
-                        .padding(AppSpace.md)
-                ) {
-                    Text(
-                        text = "huangder.top",
-                        fontSize = AppType.Body,
-                        color = AppColors.Accent,
-                        textDecoration = TextDecoration.Underline
+            FeedbackLinkSection(
+                label = stringResource(R.string.feedback_website),
+                title = "huangder.top",
+                onClick = {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://huangder.top")))
+                }
+            )
+
+            Spacer(Modifier.height(AppSpace.md))
+
+            FeedbackLinkSection(
+                label = stringResource(R.string.feedback_github_issues),
+                title = stringResource(R.string.feedback_github_issues_desc),
+                onClick = {
+                    context.startActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/huangder/Lumi_Books/issues"))
                     )
                 }
-            }
+            )
 
             Spacer(Modifier.height(120.dp))
+        }
+    }
+}
+
+@Composable
+private fun FeedbackLinkSection(
+    label: String,
+    title: String,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AppSpace.lg)
+    ) {
+        Text(
+            text = label,
+            fontSize = AppType.Caption,
+            color = AppColors.TextSecondary,
+            modifier = Modifier.padding(bottom = AppSpace.xs)
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .shadow(6.dp, RoundedCornerShape(AppRadius.md), ambientColor = Color(0x04000000), spotColor = Color(0x04000000))
+                .clip(RoundedCornerShape(AppRadius.md))
+                .background(AppColors.CardBg)
+                .clickable(onClick = onClick)
+                .padding(AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = title,
+                fontSize = AppType.Body,
+                color = AppColors.TextPrimary,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(Modifier.width(AppSpace.sm))
+            Icon(
+                imageVector = Icons.Outlined.ChevronRight,
+                contentDescription = null,
+                tint = AppColors.TextSecondary,
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }

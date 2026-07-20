@@ -184,22 +184,23 @@ fun PdfViewerScreen(
     var scale by remember { mutableStateOf(1f) }
     var offsetX by remember { mutableStateOf(0f) }
     var offsetY by remember { mutableStateOf(0f) }
+    val shouldHandleVolumePageTurn = uiState.volumeKeyPageTurnEnabled &&
+        !showMenu &&
+        !showPdfToc &&
+        scale <= 1.01f
 
     DisposableEffect(
         activity,
-        uiState.volumeKeyPageTurnEnabled,
-        showPdfToc,
+        shouldHandleVolumePageTurn,
         isHorizontal,
         currentPage,
-        pageCount,
-        scale
+        pageCount
     ) {
-        if (!uiState.volumeKeyPageTurnEnabled || activity == null) {
+        if (!shouldHandleVolumePageTurn || activity == null) {
             return@DisposableEffect onDispose { }
         }
 
         val handler: (ReaderPageDirection) -> Unit = handler@{ direction ->
-            if (showPdfToc || scale > 1.01f) return@handler
             val pageDelta = if (direction == ReaderPageDirection.PREVIOUS) -1 else 1
             val targetPage = (currentPage + pageDelta).coerceIn(0, pageCount - 1)
             if (targetPage == currentPage) return@handler
@@ -402,7 +403,11 @@ fun PdfViewerScreen(
         ) {
             PdfBottomMenu(
                 chapterTitle = book?.title ?: "",
-                chapterProgress = if (pageCount > 0) ((currentPage.toFloat() / pageCount) * 100).toInt() else 0,
+                chapterProgress = if (pageCount > 0) {
+                    (currentPage.toFloat() / pageCount * 100f).coerceIn(0f, 100f)
+                } else {
+                    0f
+                },
                 onCatalogClick = { showPdfToc = true },
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
@@ -549,7 +554,7 @@ private fun PdfTopBar(
 @Composable
 private fun PdfBottomMenu(
     chapterTitle: String,
-    chapterProgress: Int,
+    chapterProgress: Float,
     onCatalogClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -565,7 +570,7 @@ private fun PdfBottomMenu(
 }
 
 @Composable
-private fun PdfCatalogCapsule(title: String, progress: Int, onClick: () -> Unit) {
+private fun PdfCatalogCapsule(title: String, progress: Float, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -585,11 +590,11 @@ private fun PdfCatalogCapsule(title: String, progress: Int, onClick: () -> Unit)
             modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Default.Bookmark, null, tint = if (progress > 5) Color.White else AppColors.TextPrimary, modifier = Modifier.size(18.dp))
+            Icon(Icons.Default.Bookmark, null, tint = if (progress > 5f) Color.White else AppColors.TextPrimary, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.pdf_toc), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = if (progress > 5) Color.White else AppColors.TextPrimary)
+            Text(stringResource(R.string.pdf_toc), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = if (progress > 5f) Color.White else AppColors.TextPrimary)
             Spacer(Modifier.weight(1f))
-            Text("$progress%", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (progress > 70) Color.White.copy(alpha = 0.9f) else AppColors.TextSecondary)
+            Text(formatReadingProgressPercent(progress), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (progress > 70f) Color.White.copy(alpha = 0.9f) else AppColors.TextSecondary)
         }
     }
 }

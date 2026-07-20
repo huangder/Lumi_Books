@@ -35,6 +35,9 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
@@ -71,6 +74,8 @@ import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
+import com.huangder.lumibooks.domain.model.ReaderCornerContent
+import com.huangder.lumibooks.domain.model.ReaderPageCorner
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -231,12 +236,46 @@ fun ThemeSettingsSheet(
                 )
             }
             Spacer(Modifier.height(4.dp))
-            com.huangder.lumibooks.ui.components.PillSlider(
-                value = brightnessPercent,
-                onValueChange = { pct -> onBrightnessChange(pct / 100f) },
-                valueRange = 0f..100f,
-                modifier = Modifier.padding(end = 24.dp)
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(end = 24.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                com.huangder.lumibooks.ui.components.PillSlider(
+                    value = brightnessPercent,
+                    onValueChange = { pct -> onBrightnessChange(pct / 100f) },
+                    valueRange = 0f..100f,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(12.dp))
+                val isAutoBrightness = currentBrightness < 0f
+                val autoBrightnessDescription = stringResource(R.string.brightness_auto)
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .then(
+                            if (isAutoBrightness) {
+                                Modifier.background(Color.Black)
+                            } else {
+                                Modifier.border(1.5.dp, Color.Black, CircleShape)
+                            }
+                        )
+                        .semantics { contentDescription = autoBrightnessDescription }
+                        .clickable {
+                            onBrightnessChange(if (isAutoBrightness) brightnessPercent / 100f else -1f)
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "A",
+                        color = if (isAutoBrightness) Color.White else Color.Black,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
 
             Spacer(Modifier.height(16.dp))
 
@@ -786,13 +825,12 @@ fun AdvancedSettingsSheet(
     currentFirstLineIndent: Float = 0f,
     onParagraphSpacingChange: (Float) -> Unit = {},
     onFirstLineIndentChange: (Float) -> Unit = {},
-    showReaderChapterProgress: Boolean = true,
-    showReaderPageNumber: Boolean = true,
-    showReaderBattery: Boolean = true,
+    readerTopLeftContent: ReaderCornerContent,
+    readerTopRightContent: ReaderCornerContent,
+    readerBottomLeftContent: ReaderCornerContent,
+    readerBottomRightContent: ReaderCornerContent,
     volumeKeyPageTurnEnabled: Boolean = false,
-    onShowReaderChapterProgressChange: (Boolean) -> Unit = {},
-    onShowReaderPageNumberChange: (Boolean) -> Unit = {},
-    onShowReaderBatteryChange: (Boolean) -> Unit = {},
+    onReaderCornerContentChange: (ReaderPageCorner, ReaderCornerContent) -> Unit,
     onVolumeKeyPageTurnEnabledChange: (Boolean) -> Unit = {},
     onTextColorChange: (Int?) -> Unit,
     onResetSettings: () -> Unit,
@@ -989,27 +1027,14 @@ fun AdvancedSettingsSheet(
                 SettingSlider(stringResource(R.string.label_first_line_indent), currentFirstLineIndent, 0f..4f, 0.5f, { "${it} 字符" }, onFirstLineIndentChange)
                 Spacer(Modifier.height(16.dp))
 
-                AdvancedToggleRow(
-                    title = stringResource(R.string.show_reader_chapter_progress),
-                    hint = stringResource(R.string.show_reader_chapter_progress_hint),
-                    checked = showReaderChapterProgress,
-                    onCheckedChange = onShowReaderChapterProgressChange
+                ReaderCornerLayoutSettings(
+                    topLeft = readerTopLeftContent,
+                    topRight = readerTopRightContent,
+                    bottomLeft = readerBottomLeftContent,
+                    bottomRight = readerBottomRightContent,
+                    onContentChange = onReaderCornerContentChange
                 )
-                Spacer(Modifier.height(12.dp))
-                AdvancedToggleRow(
-                    title = stringResource(R.string.show_reader_page_number),
-                    hint = stringResource(R.string.show_reader_page_number_hint),
-                    checked = showReaderPageNumber,
-                    onCheckedChange = onShowReaderPageNumberChange
-                )
-                Spacer(Modifier.height(12.dp))
-                AdvancedToggleRow(
-                    title = stringResource(R.string.show_reader_battery),
-                    hint = stringResource(R.string.show_reader_battery_hint),
-                    checked = showReaderBattery,
-                    onCheckedChange = onShowReaderBatteryChange
-                )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(16.dp))
                 AdvancedToggleRow(
                     title = stringResource(R.string.volume_key_page_turn),
                     hint = stringResource(R.string.volume_key_page_turn_hint),
@@ -1078,6 +1103,134 @@ private fun AdvancedToggleRow(
         )
     }
 }
+
+@Composable
+private fun ReaderCornerLayoutSettings(
+    topLeft: ReaderCornerContent,
+    topRight: ReaderCornerContent,
+    bottomLeft: ReaderCornerContent,
+    bottomRight: ReaderCornerContent,
+    onContentChange: (ReaderPageCorner, ReaderCornerContent) -> Unit
+) {
+    Text(
+        text = stringResource(R.string.reader_page_layout),
+        fontSize = 14.sp,
+        color = Color.Black,
+        fontWeight = FontWeight.SemiBold
+    )
+    Spacer(Modifier.height(2.dp))
+    Text(
+        text = stringResource(R.string.reader_page_layout_hint),
+        fontSize = 12.sp,
+        color = LightTextSecondary
+    )
+    Spacer(Modifier.height(8.dp))
+
+    ReaderCornerSelectionRow(
+        label = stringResource(R.string.reader_corner_top_left),
+        selected = topLeft,
+        onSelected = { onContentChange(ReaderPageCorner.TOP_LEFT, it) }
+    )
+    ReaderCornerSelectionRow(
+        label = stringResource(R.string.reader_corner_top_right),
+        selected = topRight,
+        onSelected = { onContentChange(ReaderPageCorner.TOP_RIGHT, it) }
+    )
+    ReaderCornerSelectionRow(
+        label = stringResource(R.string.reader_corner_bottom_left),
+        selected = bottomLeft,
+        onSelected = { onContentChange(ReaderPageCorner.BOTTOM_LEFT, it) }
+    )
+    ReaderCornerSelectionRow(
+        label = stringResource(R.string.reader_corner_bottom_right),
+        selected = bottomRight,
+        onSelected = { onContentChange(ReaderPageCorner.BOTTOM_RIGHT, it) }
+    )
+}
+
+@Composable
+private fun ReaderCornerSelectionRow(
+    label: String,
+    selected: ReaderCornerContent,
+    onSelected: (ReaderCornerContent) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val options = ReaderCornerContent.entries
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(44.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, fontSize = 13.sp, color = Color.Black, modifier = Modifier.weight(1f))
+        Box {
+            Box(
+                modifier = Modifier
+                    .width(158.dp)
+                    .height(36.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(LightBgGray)
+                    .clickable { expanded = true }
+                    .padding(horizontal = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = readerCornerContentLabel(selected),
+                    fontSize = 12.sp,
+                    color = Color.Black,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = LightTextSecondary,
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .size(16.dp)
+                )
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                shape = RoundedCornerShape(18.dp),
+                containerColor = LightCardBg,
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp
+            ) {
+                options.forEach { option ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = readerCornerContentLabel(option),
+                                fontSize = 13.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        },
+                        onClick = {
+                            expanded = false
+                            onSelected(option)
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun readerCornerContentLabel(content: ReaderCornerContent): String = stringResource(
+    when (content) {
+        ReaderCornerContent.NONE -> R.string.reader_corner_content_none
+        ReaderCornerContent.CHAPTER_INFO -> R.string.reader_corner_content_chapter
+        ReaderCornerContent.BOOK_PROGRESS -> R.string.reader_corner_content_book_progress
+        ReaderCornerContent.PAGE_NUMBER -> R.string.reader_corner_content_page_number
+        ReaderCornerContent.BATTERY -> R.string.reader_corner_content_battery
+    }
+)
 
 private fun buildPreviewParagraphs(text: String): List<String> {
     val lines = text.lineSequence().map(String::trim).filter(String::isNotEmpty).toList()

@@ -1,17 +1,19 @@
 package com.huangder.lumibooks.ui.home
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,17 +22,16 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -38,43 +39,41 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.res.stringResource
-import com.huangder.lumibooks.R
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.ui.theme.KaiTi
+import java.util.Calendar
 import kotlinx.coroutines.launch
 
-// 设计规范颜色 - 浅色模式
 private val AccentColor = Color(0xFFE85D5D)
 private val LightTextSecondary = Color(0xFF6E6E73)
 private val LightBgGray = Color(0xFFF2F2F7)
-private val LightBackground = Color(0xFFFBFBFC)
 private val LightCardBg = Color.White
 private val LightDivider = Color(0xFFE5E5EA)
-
-// 深色模式颜色
 private val DarkTextSecondary = Color(0xFF98989D)
 private val DarkBgGray = Color(0xFF2C2C2E)
-private val DarkBackground = Color(0xFF000000)
 private val DarkCardBg = Color(0xFF1C1C1E)
 private val DarkDivider = Color(0xFF38383A)
-
-// 打卡颜色
 private val StreakBlue = Color(0xFF4FC3F7)
 
 @Composable
@@ -86,88 +85,85 @@ fun ReadingGoalSheet(
     weeklyData: List<DailyReading> = emptyList(),
     streakDays: Int = 0,
     onDismiss: () -> Unit,
-    onSaveGoal: (Int) -> Unit,
-    onTabBarVisibleChange: (Boolean) -> Unit
+    onSaveGoal: (Int) -> Unit
 ) {
     val isDark = isSystemInDarkTheme()
-    var showGoalPicker by remember { mutableStateOf(false) }
-
-    // 根据深浅模式动态获取颜色
-    val textPrimary = if (isDark) Color.White else Color.Black
     val textSecondary = if (isDark) DarkTextSecondary else LightTextSecondary
     val bgGray = if (isDark) DarkBgGray else LightBgGray
     val cardBg = if (isDark) DarkCardBg else LightCardBg
-    val dividerColor = if (isDark) DarkDivider else LightDivider
-
-    // 容器滑入动画
     val containerOffsetY = remember { Animatable(1f) }
+    val coroutineScope = rememberCoroutineScope()
+    val sheetScrollState = rememberScrollState()
+    val maxSheetHeight = (LocalConfiguration.current.screenHeightDp * 0.84f).dp
+    var showGoalPicker by remember { mutableStateOf(false) }
 
     LaunchedEffect(visible) {
         if (visible) {
-            onTabBarVisibleChange(false)
-            // 滑入动画
-            containerOffsetY.animateTo(
-                targetValue = 0f,
-                animationSpec = tween(300, easing = FastOutSlowInEasing)
-            )
+            showGoalPicker = false
+            containerOffsetY.animateTo(0f, tween(300, easing = FastOutSlowInEasing))
         } else {
-            // 滑出动画
-            containerOffsetY.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(250, easing = FastOutSlowInEasing)
-            )
-            onTabBarVisibleChange(true)
+            containerOffsetY.animateTo(1f, tween(250, easing = FastOutSlowInEasing))
         }
     }
 
-    // 处理返回键
-    BackHandler(enabled = visible) {
-        onDismiss()
-    }
+    BackHandler(enabled = visible) { onDismiss() }
 
     if (!visible && containerOffsetY.value >= 1f) return
 
-    // 计算阅读数据
     val totalMinutes = (todayReadingTime / 1000 / 60).toInt()
-    val goalMs = dailyGoal * 60 * 1000L
-    val progress = (todayReadingTime.toFloat() / goalMs).coerceIn(0f, 1f)
-    val remaining = ((goalMs - todayReadingTime) / 1000 / 60).coerceAtLeast(0).toInt()
+    val hasGoal = dailyGoal > 0
+    val goalMs = if (hasGoal) dailyGoal * 60 * 1000L else 0L
+    val progress = if (hasGoal) (todayReadingTime.toFloat() / goalMs).coerceIn(0f, 1f) else 0f
+    val remaining = if (hasGoal) ((goalMs - todayReadingTime) / 1000 / 60).coerceAtLeast(0).toInt() else 0
+
+    fun showContainerContent(goalPicker: Boolean) {
+        if (showGoalPicker == goalPicker) return
+        coroutineScope.launch {
+            containerOffsetY.animateTo(1f, tween(180, easing = FastOutSlowInEasing))
+            showGoalPicker = goalPicker
+            sheetScrollState.scrollTo(0)
+            containerOffsetY.snapTo(1f)
+            containerOffsetY.animateTo(0f, tween(300, easing = FastOutSlowInEasing))
+        }
+    }
+
+    fun saveGoalAndReturn(minutes: Int) {
+        coroutineScope.launch {
+            containerOffsetY.animateTo(1f, tween(180, easing = FastOutSlowInEasing))
+            onSaveGoal(minutes)
+            showGoalPicker = false
+            sheetScrollState.scrollTo(0)
+            containerOffsetY.snapTo(1f)
+            containerOffsetY.animateTo(0f, tween(300, easing = FastOutSlowInEasing))
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // 遮罩层（由外层 AnimatedVisibility 控制渐显/渐隐）
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color.Black.copy(alpha = if (isDark) 0.4f else 0.1f))
-                .pointerInput(Unit) {
-                    detectTapGestures { onDismiss() }
-                }
+                .pointerInput(Unit) { detectTapGestures { onDismiss() } }
         )
 
-        // 容器层（滑入动画）
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
-                .graphicsLayer {
-                    translationY = containerOffsetY.value * size.height
-                }
-                .shadow(
-                    elevation = 24.dp,
-                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
-                )
+                .heightIn(max = maxSheetHeight)
+                .graphicsLayer { translationY = containerOffsetY.value * size.height }
+                .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(cardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .imePadding()
                 .navigationBarsPadding()
+                .verticalScroll(sheetScrollState)
                 .padding(24.dp)
         ) {
-            // 标题栏
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Spacer(modifier = Modifier.weight(1f))
-
-                // 关闭按钮
                 IconButton(
                     onClick = onDismiss,
                     modifier = Modifier
@@ -186,18 +182,13 @@ fun ReadingGoalSheet(
             Spacer(modifier = Modifier.height(16.dp))
 
             if (showGoalPicker) {
-                // 目标选择器
                 GoalPicker(
                     currentMinutes = dailyGoal,
                     isDark = isDark,
-                    onConfirm = { minutes ->
-                        onSaveGoal(minutes)
-                        showGoalPicker = false
-                    },
-                    onCancel = { showGoalPicker = false }
+                    onConfirm = { minutes -> saveGoalAndReturn(minutes) },
+                    onCancel = { showContainerContent(false) }
                 )
             } else {
-                // 今日阅读内容
                 TodayReadingContent(
                     totalMinutes = totalMinutes,
                     dailyGoal = dailyGoal,
@@ -207,7 +198,7 @@ fun ReadingGoalSheet(
                     weeklyData = weeklyData,
                     streakDays = streakDays,
                     isDark = isDark,
-                    onChangeGoal = { showGoalPicker = true }
+                    onChangeGoal = { showContainerContent(true) }
                 )
             }
         }
@@ -230,10 +221,13 @@ private fun TodayReadingContent(
     val textSecondary = if (isDark) DarkTextSecondary else LightTextSecondary
     val bgGray = if (isDark) DarkBgGray else LightBgGray
     val dividerColor = if (isDark) DarkDivider else LightDivider
+    val hasGoal = dailyGoal > 0
+    val hasReadToday = totalMinutes > 0
+    val todayStatusText = if (hasReadToday) "今日已阅读" else "今日未阅读"
+    val todayEmoji = if (hasReadToday) "📖 ✅ 🌿" else "🌙 ☕ 📚"
 
-    // 标题
     Text(
-        text = stringResource(R.string.today_reading_label),
+        text = if (hasGoal) stringResource(R.string.today_reading_label) else todayStatusText,
         fontSize = 20.sp,
         fontWeight = FontWeight.Bold,
         fontFamily = KaiTi,
@@ -242,149 +236,118 @@ private fun TodayReadingContent(
 
     Spacer(modifier = Modifier.height(32.dp))
 
-    // 阅读时间数字
-    Row(
-        verticalAlignment = Alignment.Bottom,
-        horizontalArrangement = Arrangement.Center,
-        modifier = Modifier.fillMaxWidth()
-    ) {
+    if (hasGoal) {
+        Row(
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.Center,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = "$totalMinutes",
+                fontSize = 56.sp,
+                fontWeight = FontWeight.Bold,
+                color = AccentColor
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = stringResource(R.string.minutes_label),
+                fontSize = 16.sp,
+                color = textSecondary,
+                modifier = Modifier.padding(bottom = 10.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "$totalMinutes",
-            fontSize = 48.sp,
-            fontWeight = FontWeight.Bold,
-            color = textPrimary
-        )
-        Spacer(modifier = Modifier.width(4.dp))
-        Text(
-            text = stringResource(R.string.minutes_label),
-            fontSize = 16.sp,
+            text = stringResource(R.string.goal_minutes_label, dailyGoal),
+            fontSize = 14.sp,
             color = textSecondary,
-            modifier = Modifier.padding(bottom = 8.dp)
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp)),
+            color = AccentColor,
+            trackColor = bgGray
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = if (remaining > 0) {
+                stringResource(R.string.remaining_minutes, remaining)
+            } else {
+                stringResource(R.string.goal_reached)
+            },
+            fontSize = 12.sp,
+            color = textSecondary,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center
+        )
+    } else {
+        Text(
+            text = todayEmoji,
+            fontSize = 40.sp,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+        Text(
+            text = todayStatusText,
+            fontSize = 32.sp,
+            fontWeight = FontWeight.Bold,
+            color = textPrimary,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = if (hasReadToday) "今天已经和书页碰面了" else "今天还没有留下阅读记录",
+            fontSize = 13.sp,
+            color = textSecondary,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center
         )
     }
 
-    Spacer(modifier = Modifier.height(8.dp))
-
-    // 目标提示
-    Text(
-        text = stringResource(R.string.goal_minutes_label, dailyGoal),
-        fontSize = 14.sp,
-        color = textSecondary,
-        modifier = Modifier.fillMaxWidth(),
-        textAlign = TextAlign.Center
-    )
-
     Spacer(modifier = Modifier.height(24.dp))
 
-    // 进度条
-    LinearProgressIndicator(
-        progress = { progress },
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(8.dp)
-            .clip(RoundedCornerShape(4.dp)),
-        color = AccentColor,
-        trackColor = dividerColor
-    )
-
-    Spacer(modifier = Modifier.height(8.dp))
-
-    // 剩余时间提示
-    Text(
-        text = if (remaining > 0) stringResource(R.string.remaining_minutes, remaining) else stringResource(R.string.goal_reached),
-        fontSize = 12.sp,
-        color = if (remaining > 0) textSecondary else AccentColor,
-        modifier = Modifier.fillMaxWidth(),
-        textAlign = TextAlign.Center
-    )
-
-    Spacer(modifier = Modifier.height(24.dp))
-
-    // 正在阅读卡片
     if (currentBook != null) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(16.dp))
                 .background(bgGray)
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(stringResource(R.string.currently_reading), fontSize = 12.sp, color = textSecondary)
                 Text(
                     text = currentBook.title,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = textPrimary,
-                    maxLines = 1
+                    color = textPrimary
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "${(currentBook.readingProgress * 100).toInt()}%",
+                    fontSize = 13.sp,
+                    color = textSecondary
                 )
             }
-            Text(
-                text = "${(currentBook.readingProgress * 100).toInt()}%",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = AccentColor
-            )
         }
-
         Spacer(modifier = Modifier.height(16.dp))
     }
 
-    // 连续阅读打卡区域
-    val goalMs = dailyGoal * 60 * 1000L
-    // weeklyData 是固定日历周 [日, 一, 二, 三, 四, 五, 六]
-    // todayIndex 基于今天是星期几
-    val todayIndex = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK) - 1  // 0=周日
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        weeklyData.forEachIndexed { index, data ->
-            val isPast = index < todayIndex
-            val isToday = index == todayIndex
-            val goalMet = data.duration >= goalMs
-            val achieved = goalMet || isToday
-
-            Box(
-                modifier = Modifier
-                    .size(28.dp)
-                    .then(
-                        if (achieved) {
-                            Modifier.background(StreakBlue, CircleShape)
-                        } else {
-                            Modifier.border(1.dp, dividerColor, CircleShape)
-                        }
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = data.dayLabel,
-                    fontSize = 10.sp,
-                    color = if (achieved) Color.White else textSecondary,
-                    fontWeight = if (achieved) FontWeight.Bold else FontWeight.Normal
-                )
-            }
-            if (index < weeklyData.size - 1) {
-                Spacer(modifier = Modifier.weight(1f))
-            }
-        }
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        // 连胜天数
-        Text(
-            text = stringResource(R.string.streak_days, streakDays),
-            fontSize = 14.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = StreakBlue
-        )
-    }
+    WeeklyCheckIn(weeklyData, dailyGoal, isDark, dividerColor, streakDays)
 
     Spacer(modifier = Modifier.height(16.dp))
 
-    // 底部按钮区域
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -402,8 +365,56 @@ private fun TodayReadingContent(
         )
     }
 
-    // 底部额外间距
     Spacer(modifier = Modifier.height(16.dp))
+}
+
+@Composable
+private fun WeeklyCheckIn(
+    weeklyData: List<DailyReading>,
+    dailyGoal: Int,
+    isDark: Boolean,
+    dividerColor: Color,
+    streakDays: Int
+) {
+    val textSecondary = if (isDark) DarkTextSecondary else LightTextSecondary
+    val todayIndex = Calendar.getInstance().get(Calendar.DAY_OF_WEEK) - 1
+    val goalMs = dailyGoal * 60 * 1000L
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        weeklyData.forEachIndexed { index, data ->
+            val goalMet = if (dailyGoal > 0) data.duration >= goalMs else data.duration > 0L
+            val achieved = if (dailyGoal > 0) goalMet || index == todayIndex else goalMet
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(if (achieved) StreakBlue else Color.Transparent)
+                        .border(1.dp, if (achieved) StreakBlue else dividerColor, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (achieved) {
+                        Text("✓", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(text = data.dayLabel, fontSize = 11.sp, color = textSecondary)
+            }
+        }
+    }
+
+    Spacer(modifier = Modifier.height(14.dp))
+    Text(
+        text = stringResource(R.string.streak_days, streakDays),
+        fontSize = 14.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = textSecondary,
+        modifier = Modifier.fillMaxWidth(),
+        textAlign = TextAlign.End
+    )
 }
 
 @Composable
@@ -416,9 +427,13 @@ private fun GoalPicker(
     val textPrimary = if (isDark) Color.White else Color.Black
     val textSecondary = if (isDark) DarkTextSecondary else LightTextSecondary
     val bgGray = if (isDark) DarkBgGray else LightBgGray
-
-    val presets = listOf(5, 10, 15, 20, 30, 45, 60, 90, 120)
-    var selectedMinutes by remember { mutableIntStateOf(currentMinutes) }
+    val dividerColor = if (isDark) DarkDivider else LightDivider
+    var customMode by remember { mutableStateOf(false) }
+    var customMinutesText by remember(currentMinutes) {
+        mutableStateOf(if (currentMinutes > 0) currentMinutes.toString() else "")
+    }
+    val customMinutes = customMinutesText.toIntOrNull()
+    val isCustomValid = customMinutes != null && customMinutes in 1..1439
 
     Text(
         text = stringResource(R.string.set_daily_goal),
@@ -430,121 +445,158 @@ private fun GoalPicker(
 
     Spacer(modifier = Modifier.height(32.dp))
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.Bottom
-    ) {
-        Text(
-            text = "$selectedMinutes",
-            fontSize = 48.sp,
-            fontWeight = FontWeight.Bold,
-            color = AccentColor
-        )
-        Spacer(modifier = Modifier.width(4.dp))
-        Text(
-            text = stringResource(R.string.minutes_label),
-            fontSize = 16.sp,
-            color = textSecondary,
-            modifier = Modifier.padding(bottom = 8.dp)
+    GoalOptionButton(
+        title = "不设置目标",
+        subtitle = "首页只显示今日是否阅读",
+        isDark = isDark,
+        onClick = { onConfirm(0) }
+    )
+
+    Spacer(modifier = Modifier.height(12.dp))
+
+    if (customMode) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .background(bgGray)
+                .border(1.dp, dividerColor, RoundedCornerShape(18.dp))
+                .padding(horizontal = 16.dp, vertical = 14.dp)
+        ) {
+            Text(
+                text = "自定义目标",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = textPrimary
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                BasicTextField(
+                    value = customMinutesText,
+                    onValueChange = { raw ->
+                        customMinutesText = raw.filter { it.isDigit() }.take(4)
+                    },
+                    singleLine = true,
+                    textStyle = TextStyle(
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = textPrimary
+                    ),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Done
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = { if (isCustomValid) onConfirm(customMinutes!!) }
+                    ),
+                    modifier = Modifier.weight(1f),
+                    decorationBox = { innerTextField ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            if (customMinutesText.isBlank()) {
+                                Text("输入分钟数", fontSize = 16.sp, color = textSecondary)
+                            }
+                            innerTextField()
+                        }
+                    }
+                )
+                Text(
+                    text = stringResource(R.string.minutes_label),
+                    fontSize = 14.sp,
+                    color = textSecondary
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Box(
+                    modifier = Modifier
+                        .height(36.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(if (isCustomValid) AccentColor else textSecondary.copy(alpha = 0.22f))
+                        .clickable(enabled = isCustomValid) { onConfirm(customMinutes!!) }
+                        .padding(horizontal = 14.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = stringResource(R.string.confirm),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (isCustomValid) Color.White else textSecondary
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "请输入 1-1439 分钟",
+                fontSize = 12.sp,
+                color = if (customMinutesText.isBlank() || isCustomValid) textSecondary else AccentColor
+            )
+        }
+    } else {
+        GoalOptionButton(
+            title = "自定义目标",
+            subtitle = if (currentMinutes > 0) {
+                "当前 $currentMinutes 分钟，可改为 1-1439 分钟"
+            } else {
+                "输入 1-1439 分钟"
+            },
+            isDark = isDark,
+            onClick = { customMode = true }
         )
     }
 
     Spacer(modifier = Modifier.height(24.dp))
 
-    WheelPicker(
-        items = presets,
-        initialItem = presets.indexOf(currentMinutes).coerceAtLeast(0),
-        isDark = isDark,
-        onItemSelected = { selectedMinutes = it },
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(180.dp)
-    )
-
-    Spacer(modifier = Modifier.height(32.dp))
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
+            .height(48.dp)
+            .clip(RoundedCornerShape(28.dp))
+            .background(bgGray)
+            .clickable(onClick = onCancel),
+        contentAlignment = Alignment.Center
     ) {
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .height(48.dp)
-                .clip(RoundedCornerShape(28.dp))
-                .background(bgGray)
-                .clickable(onClick = onCancel),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(stringResource(R.string.cancel), fontSize = 16.sp, color = textSecondary)
-        }
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .height(48.dp)
-                .clip(RoundedCornerShape(28.dp))
-                .background(AccentColor)
-                .clickable { onConfirm(selectedMinutes) },
-            contentAlignment = Alignment.Center
-        ) {
-            Text(stringResource(R.string.confirm), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
-        }
+        Text(stringResource(R.string.cancel), fontSize = 16.sp, color = textSecondary)
     }
 }
 
 @Composable
-private fun WheelPicker(
-    items: List<Int>,
-    initialItem: Int,
+private fun GoalOptionButton(
+    title: String,
+    subtitle: String,
     isDark: Boolean,
-    onItemSelected: (Int) -> Unit,
-    modifier: Modifier = Modifier
+    onClick: () -> Unit
 ) {
     val textPrimary = if (isDark) Color.White else Color.Black
     val textSecondary = if (isDark) DarkTextSecondary else LightTextSecondary
     val bgGray = if (isDark) DarkBgGray else LightBgGray
+    val dividerColor = if (isDark) DarkDivider else LightDivider
 
-    val itemHeight = 48.dp
-    val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialItem)
-
-    val centerIndex = listState.firstVisibleItemIndex
-    LaunchedEffect(centerIndex) {
-        if (centerIndex in items.indices) onItemSelected(items[centerIndex])
-    }
-
-    Box(modifier = modifier) {
-        // 选中项背景
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .fillMaxWidth()
-                .height(itemHeight)
-                .clip(RoundedCornerShape(8.dp))
-                .background(bgGray)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(bgGray)
+            .border(1.dp, dividerColor, RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 14.dp)
+    ) {
+        Text(
+            text = title,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = textPrimary
         )
-
-        LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-            item { Spacer(Modifier.height(itemHeight)) }
-            items.forEach { value ->
-                item {
-                    val isSelected = value == items.getOrNull(listState.firstVisibleItemIndex)
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(itemHeight),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = stringResource(R.string.goal_minutes_label, value),
-                            fontSize = if (isSelected) 22.sp else 18.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSelected) textPrimary else textSecondary
-                        )
-                    }
-                }
-            }
-            item { Spacer(Modifier.height(itemHeight)) }
-        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = subtitle,
+            fontSize = 12.sp,
+            color = textSecondary
+        )
     }
 }

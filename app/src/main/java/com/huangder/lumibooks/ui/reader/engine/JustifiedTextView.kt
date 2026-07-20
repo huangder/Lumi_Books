@@ -47,6 +47,9 @@ internal fun shouldJustifyReaderLine(
 ): Boolean = !endsWithParagraphBreak &&
     (lineIndex < lineCount - 1 || pageEndsMidParagraph)
 
+internal fun readerExplicitLetterSpacing(letterSpacingEm: Float, textSizePx: Float): Float =
+    letterSpacingEm * textSizePx
+
 /**
  * 中文两端对齐 TextView。
  *
@@ -269,6 +272,7 @@ class JustifiedTextView @JvmOverloads constructor(
 
             // 逐字绘制（从缩进位置开始）
             var x = indentPx
+            var visibleCharacterIndex = 0
             for (idx in lineStart until effectiveEnd) {
                 // 跳过 U+FFFC（图片加载失败的占位字符，避免显示 "obj"）
                 if (textStr[idx] == '￼') {
@@ -282,7 +286,14 @@ class JustifiedTextView @JvmOverloads constructor(
                 canvas.drawText(charStr, x, baseline, textPaint)
 
                 val charWidth = textPaint.measureText(charStr)
-                x += charWidth + extraPerChar
+                val hasFollowingCharacter = visibleCharacterIndex < effectiveCharCount - 1
+                x += charWidth
+                if (hasFollowingCharacter) {
+                    // 单字符 drawText 不会绘制 TextPaint.letterSpacing，必须显式补回。
+                    x += readerExplicitLetterSpacing(textPaint.letterSpacing, textPaint.textSize)
+                    x += extraPerChar
+                }
+                visibleCharacterIndex++
 
                 resetPaintStyle()
             }
@@ -391,11 +402,17 @@ class JustifiedTextView @JvmOverloads constructor(
         }
 
         var cursorX = indentPx
+        var visibleCharacterIndex = 0
         for (index in lineStart until lineEnd) {
             if (text[index] == '￼') continue
             applySpanStyles(text, index, textPaint)
             val characterWidth = textPaint.measureText(text, index, index + 1)
-            val hitEnd = cursorX + characterWidth + extraPerCharacter
+            val hasFollowingCharacter = visibleCharacterIndex < visibleCharacterCount - 1
+            val hitEnd = cursorX + characterWidth + if (hasFollowingCharacter) {
+                readerExplicitLetterSpacing(textPaint.letterSpacing, textPaint.textSize) + extraPerCharacter
+            } else {
+                0f
+            }
             val link = if (tx >= cursorX && tx <= hitEnd) {
                 text.getSpans(index, index + 1, URLSpan::class.java).firstOrNull()?.url
             } else {
@@ -404,6 +421,7 @@ class JustifiedTextView @JvmOverloads constructor(
             resetPaintStyle()
             if (link != null) return link
             cursorX = hitEnd
+            visibleCharacterIndex++
         }
         return null
     }

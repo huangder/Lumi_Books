@@ -53,6 +53,7 @@ data class SettingsUiState(
 
     // 显示与外观
     val darkMode: String = "system",       // "system" / "light" / "dark"
+    val splashEnabled: Boolean = true,
     val readerTheme: String = "day",       // "day" / "night" / "sepia" / "green"
 
     // 语言

@@ -4,4 +4,6 @@
     <color name="black">#FF000000</color>
     <color name="primary">#FF007AFF</color>
     <color name="primary_dark">#FF0A84FF</color>
+    <color name="launch_background">#FFFFF5F5</color>
+    <color name="app_window_background">#FFFBFBFC</color>
 </resources>

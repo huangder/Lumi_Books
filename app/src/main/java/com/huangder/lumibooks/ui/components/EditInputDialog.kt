@@ -39,7 +39,6 @@ import com.huangder.lumibooks.ui.theme.KaiTi
 
 /**
  * 贝塞尔 G2 连续曲线圆角——曲率在连接处平滑过渡，比普通圆角更圆润有机
- * (类似 Apple 的 squircle / 超椭圆风格)
  */
 private class G2ContinuousShape(private val cornerRadius: Float) : Shape {
     override fun createOutline(size: Size, layoutDirection: androidx.compose.ui.unit.LayoutDirection, density: androidx.compose.ui.unit.Density): Outline {

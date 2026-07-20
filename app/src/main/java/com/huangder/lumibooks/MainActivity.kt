@@ -11,6 +11,12 @@ import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
@@ -19,13 +25,16 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.rememberNavController
 import com.huangder.lumibooks.data.local.DataStoreManager
@@ -33,12 +42,15 @@ import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.ui.navigation.MainNavGraph
+import com.huangder.lumibooks.ui.splash.SplashScreen
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.util.FileUtils
+import com.huangder.lumibooks.util.LaunchThemeController
 import com.huangder.lumibooks.util.UpdateChecker
 import com.huangder.lumibooks.util.parser.BookParserFactory
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -174,6 +186,12 @@ class MainActivity : ComponentActivity() {
         // 启动时自动检查更新（静默执行，有变更时弹窗）
         performStartupUpdateCheck()
 
+        val splashEnabledAtLaunch = if (intent.hasExtra(LaunchThemeController.EXTRA_SPLASH_ENABLED)) {
+            intent.getBooleanExtra(LaunchThemeController.EXTRA_SPLASH_ENABLED, false)
+        } else {
+            kotlinx.coroutines.runBlocking { dataStoreManager.splashEnabled.first() }
+        }
+
         setContent {
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
             val isDark = when (darkMode) {
@@ -184,6 +202,30 @@ class MainActivity : ComponentActivity() {
 
             // 条款/政策更新弹窗状态
             var policyDialog by remember { mutableStateOf<PendingPolicyUpdate?>(null) }
+            var showSplash by remember { mutableStateOf(splashEnabledAtLaunch) }
+
+            LaunchedEffect(Unit) {
+                if (splashEnabledAtLaunch) {
+                    delay(1_100)
+                }
+                showSplash = false
+            }
+
+            val mainContentAlpha by animateFloatAsState(
+                targetValue = if (showSplash) 0f else 1f,
+                animationSpec = tween(460),
+                label = "mainContentAlpha"
+            )
+            val mainContentScale by animateFloatAsState(
+                targetValue = if (showSplash) 0.985f else 1f,
+                animationSpec = tween(520),
+                label = "mainContentScale"
+            )
+            val mainContentOffset by animateDpAsState(
+                targetValue = if (showSplash) 12.dp else 0.dp,
+                animationSpec = tween(520),
+                label = "mainContentOffset"
+            )
 
             // 监听后台检查结果
             val pending = pendingPolicyUpdate
@@ -197,11 +239,23 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    val navController = rememberNavController()
-                    MainNavGraph(navController = navController)
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        val navController = rememberNavController()
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    alpha = mainContentAlpha
+                                    scaleX = mainContentScale
+                                    scaleY = mainContentScale
+                                    translationY = mainContentOffset.toPx()
+                                }
+                        ) {
+                            MainNavGraph(navController = navController)
+                        }
 
                     // ── 条款/政策更新弹窗 ──
-                    policyDialog?.let { update ->
+                        policyDialog?.let { update ->
                         val title = when {
                             update.hasTermsUpdate && update.hasPrivacyUpdate -> "用户协议与隐私政策已更新"
                             update.hasTermsUpdate -> "用户协议已更新"
@@ -234,6 +288,15 @@ class MainActivity : ComponentActivity() {
                                 }) { Text("不同意并退出", color = Color.Gray) }
                             }
                         )
+                        }
+
+                        AnimatedVisibility(
+                            visible = showSplash,
+                            exit = fadeOut(animationSpec = tween(260)),
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            SplashScreen(isDark = isDark)
+                        }
                     }
                 }
             }

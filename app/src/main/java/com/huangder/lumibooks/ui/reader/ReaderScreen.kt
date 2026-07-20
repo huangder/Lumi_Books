@@ -46,6 +46,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -67,7 +68,6 @@ import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.outlined.BatteryStd
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -92,6 +92,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.first
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -99,6 +100,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -107,6 +109,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
@@ -119,6 +123,8 @@ import androidx.core.content.ContextCompat
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
@@ -136,6 +142,7 @@ import com.huangder.lumibooks.ReaderPageDirection
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
+import com.huangder.lumibooks.domain.model.ReaderCornerContent
 import com.huangder.lumibooks.tts.TtsPlaybackState
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.coroutineScope
@@ -155,6 +162,9 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val density = LocalDensity.current
+    val readerScreenWidthPx = with(density) {
+        LocalConfiguration.current.screenWidthDp.dp.toPx().toInt()
+    }
 
     // 字号拖拽去抖：避免 PillSlider 拖拽时每秒触发 20-50 次重排
     var debouncedFontSize by remember { mutableFloatStateOf(uiState.fontSize) }
@@ -361,23 +371,23 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
 
     // 处理返回键：触发退出动画，而不是直接关闭
     val isAnySheetOpen = showNotesList || showNoteInput || showToc || showThemeSheet || showAdvancedSheet || showSearch
+    val shouldHandleVolumePageTurn = uiState.volumeKeyPageTurnEnabled &&
+        !uiState.isMenuVisible &&
+        !isAnySheetOpen &&
+        selectionState == null
 
     DisposableEffect(
         activity,
-        uiState.volumeKeyPageTurnEnabled,
-        isAnySheetOpen,
-        selectionState != null
+        shouldHandleVolumePageTurn
     ) {
-        if (!uiState.volumeKeyPageTurnEnabled || activity == null) {
+        if (!shouldHandleVolumePageTurn || activity == null) {
             return@DisposableEffect onDispose { }
         }
 
         val handler: (ReaderPageDirection) -> Unit = { direction ->
-            if (!isAnySheetOpen && selectionState == null) {
-                when (direction) {
-                    ReaderPageDirection.PREVIOUS -> readViewRef.value?.turnToPreviousPage()
-                    ReaderPageDirection.NEXT -> readViewRef.value?.turnToNextPage()
-                }
+            when (direction) {
+                ReaderPageDirection.PREVIOUS -> readViewRef.value?.turnToPreviousPage()
+                ReaderPageDirection.NEXT -> readViewRef.value?.turnToNextPage()
             }
         }
         activity.readerVolumeKeyHandler = handler
@@ -444,6 +454,10 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         else -> 0xFF333333.toInt()
     }
     val readerTextColorInt = uiState.readerTextColor ?: automaticReaderTextColorInt
+    val hasTopReaderStatus = uiState.readerTopLeftContent != ReaderCornerContent.NONE ||
+        uiState.readerTopRightContent != ReaderCornerContent.NONE
+    val hasBottomReaderStatus = uiState.readerBottomLeftContent != ReaderCornerContent.NONE ||
+        uiState.readerBottomRightContent != ReaderCornerContent.NONE
 
     val menuBgColorInt = selectedCustomBackground?.dominantColor ?: readerBackgroundColorInt
     val menuBgColor = Color(menuBgColorInt)
@@ -694,6 +708,11 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 },
                 update = { readView ->
                     val fontSizePx = debouncedFontSize * density.density
+                    val measuredWidth = readView.width.takeIf { it > 0 } ?: readerScreenWidthPx
+                    val contentWidthPx = (
+                        measuredWidth - (uiState.marginHorizDp * density.density * 2f).toInt()
+                    ).coerceAtLeast(1)
+                    viewModel.updateReaderContentWidth(contentWidthPx)
                     readView.configure(
                         fontSizePx = fontSizePx,
                         theme = uiState.readerTheme,
@@ -706,6 +725,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         customFontPath = uiState.customFontPath,
                         marginHorizDp = uiState.marginHorizDp,
                         marginVertDp = uiState.marginVertDp,
+                        topOverlayInsetDp = if (hasTopReaderStatus) 28f else 0f,
+                        bottomOverlayInsetDp = if (hasBottomReaderStatus) 28f else 0f,
                         paragraphSpacingDp = uiState.paragraphSpacing
                     )
                     readView.setReaderBackground(
@@ -794,10 +815,22 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             }
 
             if (uiState.totalPages > 0 || uiState.useNewEngine) {
-                val chapterTitle = uiState.book?.title ?: ""
-                val chapterProgress = if (uiState.chapterCount > 0) {
-                    ((uiState.currentChapterIndex.toFloat() / uiState.chapterCount) * 100).toInt()
-                } else 0
+                val chapterTitle = uiState.chapterTitles
+                    .getOrNull(uiState.currentChapterIndex)
+                    ?.trim()
+                    .orEmpty()
+                    .ifBlank {
+                        stringResource(
+                            R.string.reader_chapter_fallback,
+                            uiState.currentChapterIndex + 1
+                        )
+                    }
+                val bookProgressPercent = calculateBookProgressPercent(
+                    chapterIndex = uiState.currentChapterIndex,
+                    chapterCount = uiState.chapterCount,
+                    pageIndex = uiState.currentPageIndex,
+                    chapterPageCount = uiState.totalPages
+                )
 
                 // 底部渐变遮罩
                 val menuAlpha = remember { Animatable(0f) }
@@ -841,7 +874,9 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     FloatingReaderMenu(
                         visible = uiState.isMenuVisible,
                         chapterTitle = chapterTitle,
-                        chapterProgress = chapterProgress,
+                        bookProgressPercent = bookProgressPercent,
+                        currentPage = uiState.currentPageIndex + 1,
+                        chapterPageCount = uiState.totalPages,
                         capsuleBgColor = capsuleBgColor,
                         capsuleContentColor = capsuleContentColor,
                         catalogProgressColor = catalogProgressColor,
@@ -855,32 +890,22 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
 
                 // 底部阅读状态
                 if (!uiState.isMenuVisible) {
-                    val footerChapterTitle = uiState.chapterTitles
-                        .getOrNull(uiState.currentChapterIndex)
-                        ?.trim()
-                        .orEmpty()
-                        .ifBlank {
-                            stringResource(
-                                R.string.reader_chapter_fallback,
-                                uiState.currentChapterIndex + 1
-                            )
-                        }
-                    ReaderFooter(
-                        chapterTitle = footerChapterTitle,
-                        bookProgressPercent = calculateBookProgressPercent(
-                            chapterIndex = uiState.currentChapterIndex,
-                            chapterCount = uiState.chapterCount,
-                            pageIndex = uiState.currentPageIndex,
-                            chapterPageCount = uiState.totalPages
-                        ),
+                    ReaderPageCornerOverlay(
+                        chapterTitle = chapterTitle,
+                        bookProgressPercent = bookProgressPercent,
                         currentPage = uiState.currentPageIndex + 1,
                         chapterPageCount = uiState.totalPages,
                         horizontalMarginDp = uiState.marginHorizDp,
-                        showChapterProgress = uiState.showReaderChapterProgress,
-                        showPageNumber = uiState.showReaderPageNumber,
-                        showBattery = uiState.showReaderBattery,
+                        topLeft = if (linkReturnLocation == null) {
+                            uiState.readerTopLeftContent
+                        } else {
+                            ReaderCornerContent.NONE
+                        },
+                        topRight = uiState.readerTopRightContent,
+                        bottomLeft = uiState.readerBottomLeftContent,
+                        bottomRight = uiState.readerBottomRightContent,
                         contentColor = Color(readerTextColorInt).copy(alpha = 0.45f),
-                        modifier = Modifier.align(Alignment.BottomCenter)
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
             }
@@ -894,7 +919,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
                     .padding(horizontal = 24.dp)
-                    .padding(bottom = if (uiState.isMenuVisible) 154.dp else 44.dp)
+                    .padding(bottom = if (uiState.isMenuVisible) 204.dp else 44.dp)
             ) {
                 TtsPlayerPanel(
                     playbackState = uiState.ttsPlaybackState,
@@ -996,6 +1021,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             val previewText = remember(uiState.currentChapterIndex) {
                 viewModel.getChapterText(uiState.currentChapterIndex)
                     ?.toString()
+                    ?.replace('\uFFFC', ' ')
                     ?.take(420) ?: ""
             }
             AdvancedSettingsSheet(
@@ -1031,13 +1057,12 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 currentFirstLineIndent = uiState.firstLineIndent,
                 onParagraphSpacingChange = { viewModel.saveParagraphSpacing(it) },
                 onFirstLineIndentChange = { viewModel.saveFirstLineIndent(it) },
-                showReaderChapterProgress = uiState.showReaderChapterProgress,
-                showReaderPageNumber = uiState.showReaderPageNumber,
-                showReaderBattery = uiState.showReaderBattery,
+                readerTopLeftContent = uiState.readerTopLeftContent,
+                readerTopRightContent = uiState.readerTopRightContent,
+                readerBottomLeftContent = uiState.readerBottomLeftContent,
+                readerBottomRightContent = uiState.readerBottomRightContent,
                 volumeKeyPageTurnEnabled = uiState.volumeKeyPageTurnEnabled,
-                onShowReaderChapterProgressChange = { viewModel.saveShowReaderChapterProgress(it) },
-                onShowReaderPageNumberChange = { viewModel.saveShowReaderPageNumber(it) },
-                onShowReaderBatteryChange = { viewModel.saveShowReaderBattery(it) },
+                onReaderCornerContentChange = viewModel::saveReaderCornerContent,
                 onVolumeKeyPageTurnEnabledChange = { viewModel.saveVolumeKeyPageTurnEnabled(it) },
                 onTextColorChange = { viewModel.saveReaderTextColor(it) },
                 onResetSettings = { viewModel.resetAdvancedReaderSettings() },
@@ -1211,87 +1236,201 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
 }
 
 @Composable
-private fun ReaderFooter(
+private fun ReaderPageCornerOverlay(
     chapterTitle: String,
-    bookProgressPercent: Int,
+    bookProgressPercent: Float,
     currentPage: Int,
     chapterPageCount: Int,
     horizontalMarginDp: Float,
-    showChapterProgress: Boolean,
-    showPageNumber: Boolean,
-    showBattery: Boolean,
+    topLeft: ReaderCornerContent,
+    topRight: ReaderCornerContent,
+    bottomLeft: ReaderCornerContent,
+    bottomRight: ReaderCornerContent,
     contentColor: Color,
     modifier: Modifier = Modifier
 ) {
-    if (!showChapterProgress && !showPageNumber && !showBattery) return
-
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(
-                start = horizontalMarginDp.coerceAtLeast(0f).dp,
-                end = horizontalMarginDp.coerceAtLeast(0f).dp,
-                bottom = 20.dp
+    Box(modifier = modifier) {
+        if (topLeft != ReaderCornerContent.NONE || topRight != ReaderCornerContent.NONE) {
+            ReaderCornerStatusRow(
+                left = topLeft,
+                right = topRight,
+                chapterTitle = chapterTitle,
+                bookProgressPercent = bookProgressPercent,
+                currentPage = currentPage,
+                chapterPageCount = chapterPageCount,
+                contentColor = contentColor,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(
+                        start = horizontalMarginDp.coerceAtLeast(0f).dp,
+                        top = 10.dp,
+                        end = horizontalMarginDp.coerceAtLeast(0f).dp
+                    )
             )
-            .height(18.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier.weight(1f)
-        ) {
-            if (showChapterProgress) {
-                Text(
-                    text = "$chapterTitle · $bookProgressPercent%",
-                    color = contentColor,
-                    fontSize = AppType.Caption,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
         }
-        Box(
-            modifier = Modifier.width(72.dp)
-        ) {
-            if (showPageNumber) {
-                Text(
-                    text = "$currentPage / $chapterPageCount",
-                    color = contentColor,
-                    fontSize = AppType.Caption,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        }
-        Box(
-            modifier = Modifier.weight(1f),
-            contentAlignment = Alignment.CenterEnd
-        ) {
-            if (showBattery) {
-                ReaderBatteryStatus(contentColor)
-            }
+        if (bottomLeft != ReaderCornerContent.NONE || bottomRight != ReaderCornerContent.NONE) {
+            ReaderCornerStatusRow(
+                left = bottomLeft,
+                right = bottomRight,
+                chapterTitle = chapterTitle,
+                bookProgressPercent = bookProgressPercent,
+                currentPage = currentPage,
+                chapterPageCount = chapterPageCount,
+                contentColor = contentColor,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(
+                        start = horizontalMarginDp.coerceAtLeast(0f).dp,
+                        end = horizontalMarginDp.coerceAtLeast(0f).dp,
+                        bottom = 20.dp
+                    )
+            )
         }
     }
 }
 
 @Composable
-private fun ReaderBatteryStatus(contentColor: Color) {
-    val batteryPercent = rememberBatteryPercentage()
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(
-            imageVector = Icons.Outlined.BatteryStd,
-            contentDescription = stringResource(R.string.reader_battery_level, batteryPercent),
-            tint = contentColor,
-            modifier = Modifier.size(14.dp)
+private fun ReaderCornerStatusRow(
+    left: ReaderCornerContent,
+    right: ReaderCornerContent,
+    chapterTitle: String,
+    bookProgressPercent: Float,
+    currentPage: Int,
+    chapterPageCount: Int,
+    contentColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(18.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier.weight(1f),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            ReaderCornerContentValue(
+                content = left,
+                chapterTitle = chapterTitle,
+                bookProgressPercent = bookProgressPercent,
+                currentPage = currentPage,
+                chapterPageCount = chapterPageCount,
+                contentColor = contentColor,
+                alignEnd = false
+            )
+        }
+        Box(
+            modifier = Modifier.weight(1f),
+            contentAlignment = Alignment.CenterEnd
+        ) {
+            ReaderCornerContentValue(
+                content = right,
+                chapterTitle = chapterTitle,
+                bookProgressPercent = bookProgressPercent,
+                currentPage = currentPage,
+                chapterPageCount = chapterPageCount,
+                contentColor = contentColor,
+                alignEnd = true
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReaderCornerContentValue(
+    content: ReaderCornerContent,
+    chapterTitle: String,
+    bookProgressPercent: Float,
+    currentPage: Int,
+    chapterPageCount: Int,
+    contentColor: Color,
+    alignEnd: Boolean
+) {
+    when (content) {
+        ReaderCornerContent.NONE -> Unit
+        ReaderCornerContent.BATTERY -> ReaderBatteryStatus(contentColor)
+        else -> Text(
+            text = when (content) {
+                ReaderCornerContent.CHAPTER_INFO -> chapterTitle
+                ReaderCornerContent.BOOK_PROGRESS -> formatReadingProgressPercent(bookProgressPercent)
+                ReaderCornerContent.PAGE_NUMBER -> "$currentPage / ${chapterPageCount.coerceAtLeast(1)}"
+                else -> ""
+            },
+            color = contentColor,
+            fontSize = AppType.Caption,
+            textAlign = if (alignEnd) TextAlign.End else TextAlign.Start,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth()
         )
-        Spacer(Modifier.width(2.dp))
+    }
+}
+
+@Composable
+private fun ReaderBatteryStatus(contentColor: Color, modifier: Modifier = Modifier) {
+    val batteryPercent = rememberBatteryPercentage()
+    val batteryDescription = stringResource(R.string.reader_battery_level, batteryPercent)
+    Row(
+        modifier = modifier.semantics(mergeDescendants = true) {
+            contentDescription = batteryDescription
+        },
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        HorizontalBatteryIcon(
+            batteryPercent = batteryPercent,
+            color = contentColor,
+            modifier = Modifier
+                .alignBy { it.measuredHeight }
+                .offset(y = 1.dp)
+        )
+        Spacer(Modifier.width(3.dp))
         Text(
             text = "$batteryPercent%",
             color = contentColor,
             fontSize = AppType.Caption,
-            maxLines = 1
+            lineHeight = AppType.Caption,
+            maxLines = 1,
+            modifier = Modifier.alignByBaseline()
+        )
+    }
+}
+
+@Composable
+private fun HorizontalBatteryIcon(
+    batteryPercent: Int,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier.width(21.dp).height(11.dp)) {
+        val strokeWidth = 1.dp.toPx()
+        val terminalWidth = 1.5.dp.toPx()
+        val terminalGap = 0.75.dp.toPx()
+        val bodyWidth = size.width - terminalWidth - terminalGap
+        val radius = 3.dp.toPx()
+        drawRoundRect(
+            color = color.copy(alpha = 0.62f),
+            size = Size(bodyWidth, size.height),
+            cornerRadius = CornerRadius(radius, radius),
+            style = Stroke(width = strokeWidth)
+        )
+        val innerPadding = 1.75.dp.toPx()
+        val fillWidth = ((bodyWidth - innerPadding * 2f) *
+            (batteryPercent.coerceIn(0, 100) / 100f)).coerceAtLeast(0f)
+        if (fillWidth > 0f) {
+            drawRoundRect(
+                color = if (batteryPercent <= 20) Color(0xFFFF453A) else color,
+                topLeft = Offset(innerPadding, innerPadding),
+                size = Size(fillWidth, (size.height - innerPadding * 2f).coerceAtLeast(0f)),
+                cornerRadius = CornerRadius(1.5.dp.toPx(), 1.5.dp.toPx())
+            )
+        }
+        drawRoundRect(
+            color = color.copy(alpha = 0.62f),
+            topLeft = Offset(bodyWidth + terminalGap, size.height * 0.32f),
+            size = Size(terminalWidth, size.height * 0.4f),
+            cornerRadius = CornerRadius(terminalWidth / 2f, terminalWidth / 2f)
         )
     }
 }
@@ -1598,7 +1737,9 @@ private fun ReaderTopBarButton(
 private fun FloatingReaderMenu(
     visible: Boolean,
     chapterTitle: String,
-    chapterProgress: Int,
+    bookProgressPercent: Float,
+    currentPage: Int,
+    chapterPageCount: Int,
     capsuleBgColor: Color,
     capsuleContentColor: Color,
     catalogProgressColor: Color,
@@ -1649,8 +1790,15 @@ private fun FloatingReaderMenu(
             alpha = alpha0.value
             translationY = offset0.value
         }) {
-            CatalogCapsule(chapterTitle, chapterProgress, capsuleBgColor, capsuleContentColor, catalogProgressColor, onCatalogClick)
+            CatalogCapsule(chapterTitle, bookProgressPercent, capsuleBgColor, capsuleContentColor, catalogProgressColor, onCatalogClick)
         }
+        ReaderMenuStatus(
+            chapterTitle = chapterTitle,
+            bookProgressPercent = bookProgressPercent,
+            currentPage = currentPage,
+            chapterPageCount = chapterPageCount,
+            contentColor = capsuleContentColor
+        )
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -1675,9 +1823,50 @@ private fun FloatingReaderMenu(
 }
 
 @Composable
+private fun ReaderMenuStatus(
+    chapterTitle: String,
+    bookProgressPercent: Float,
+    currentPage: Int,
+    chapterPageCount: Int,
+    contentColor: Color
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(28.dp)
+            .padding(horizontal = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = chapterTitle,
+            color = contentColor.copy(alpha = 0.68f),
+            fontSize = 11.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = formatReadingProgressPercent(bookProgressPercent),
+            color = contentColor.copy(alpha = 0.68f),
+            fontSize = 11.sp,
+            maxLines = 1
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text = "$currentPage / ${chapterPageCount.coerceAtLeast(1)}",
+            color = contentColor.copy(alpha = 0.68f),
+            fontSize = 11.sp,
+            maxLines = 1
+        )
+        Spacer(Modifier.width(12.dp))
+        ReaderBatteryStatus(contentColor.copy(alpha = 0.68f))
+    }
+}
+
+@Composable
 private fun CatalogCapsule(
     title: String,
-    progress: Int,
+    progress: Float,
     bgColor: Color,
     contentColor: Color,
     progressColor: Color,
@@ -1699,8 +1888,8 @@ private fun CatalogCapsule(
                 .clip(RoundedCornerShape(24.dp))
                 .background(progressColor)
         )
-        val leftColor = if (progress > 5) Color.White else contentColor
-        val rightColor = if (progress > 70) Color.White.copy(alpha = 0.9f) else contentColor.copy(alpha = 0.5f)
+        val leftColor = if (progress > 5f) Color.White else contentColor
+        val rightColor = if (progress > 70f) Color.White.copy(alpha = 0.9f) else contentColor.copy(alpha = 0.5f)
         Row(
             modifier = Modifier
                 .fillMaxSize()
@@ -1711,7 +1900,7 @@ private fun CatalogCapsule(
             Spacer(Modifier.width(8.dp))
             Text(stringResource(R.string.reader_toc), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = leftColor)
             Spacer(Modifier.weight(1f))
-            Text("$progress%", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = rightColor)
+            Text(formatReadingProgressPercent(progress), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = rightColor)
         }
     }
 }
@@ -1754,6 +1943,26 @@ private fun TocSheet(
     if (!visible) return
 
     val sheetOffset = remember { Animatable(1f) }
+    val currentEntryIndex = remember(tocEntries, currentChapter) {
+        tocEntries.indexOfFirst { !it.isGroup && it.chapterIndex == currentChapter }
+    }
+    val tocListState = rememberLazyListState(
+        initialFirstVisibleItemIndex = currentEntryIndex.coerceAtLeast(0)
+    )
+
+    LaunchedEffect(currentEntryIndex) {
+        if (currentEntryIndex < 0) return@LaunchedEffect
+        snapshotFlow { tocListState.layoutInfo.viewportSize.height }
+            .first { it > 0 }
+
+        val currentItem = tocListState.layoutInfo.visibleItemsInfo
+            .firstOrNull { it.index == currentEntryIndex }
+            ?: return@LaunchedEffect
+        val layoutInfo = tocListState.layoutInfo
+        val centeredItemOffset = layoutInfo.viewportStartOffset +
+            (layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset - currentItem.size) / 2
+        tocListState.scrollBy((currentItem.offset - centeredItemOffset).toFloat())
+    }
 
     LaunchedEffect(visible) {
         if (visible) {
@@ -1826,7 +2035,10 @@ private fun TocSheet(
             Spacer(Modifier.height(16.dp))
 
             // 目录列表（支持层级：分组标题 + 缩进章节）
-            LazyColumn(modifier = Modifier.weight(1f)) {
+            LazyColumn(
+                state = tocListState,
+                modifier = Modifier.weight(1f)
+            ) {
                 items(tocEntries.size) { index ->
                     val entry = tocEntries[index]
 

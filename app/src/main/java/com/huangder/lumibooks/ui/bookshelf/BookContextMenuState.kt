@@ -106,7 +106,12 @@ class BookContextMenuState(private val scope: CoroutineScope) {
         phase = ContextMenuPhase.Enlarging
 
         // 立即隐藏原位书本
-        scope.launch { itemAlpha.snapTo(0f) }
+        scope.launch {
+            itemAlpha.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(120, easing = AppEasing.Decelerate)
+            )
+        }
 
         // 触发震动
         onHaptic()

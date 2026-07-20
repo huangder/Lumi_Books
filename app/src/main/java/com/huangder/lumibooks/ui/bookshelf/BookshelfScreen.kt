@@ -117,10 +117,6 @@ fun BookshelfScreen(
     }
 
     // 通知 NavGraph 隐藏/显示底部 TabBar
-    LaunchedEffect(contextMenuState.phase) {
-        onOverlayActiveChange(contextMenuState.phase != ContextMenuPhase.Idle)
-    }
-
     // 编辑书本信息对话框状态
     var showEditDialog by remember { mutableStateOf(false) }
     var editingBook by remember { mutableStateOf<Book?>(null) }

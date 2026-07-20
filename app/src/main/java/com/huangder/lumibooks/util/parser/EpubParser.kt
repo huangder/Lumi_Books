@@ -1185,9 +1185,14 @@ class EpubParser(private val context: Context? = null) : BookParser {
                 val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return null
 
                 // 缩放至页面宽度
-                val dm = android.content.res.Resources.getSystem().displayMetrics
-                val marginPx = (44 * dm.density).toInt()
-                val pageW = dm.widthPixels - marginPx * 2
+                val dm = context?.resources?.displayMetrics
+                    ?: android.content.res.Resources.getSystem().displayMetrics
+                val pageW = if (pageContentWidth > 0) {
+                    pageContentWidth
+                } else {
+                    val marginPx = (38 * dm.density).toInt()
+                    dm.widthPixels - marginPx * 2
+                }
                 // 🔥 统一缩放到 pageW：无论图片原始尺寸大还是小，都缩放到内容宽度
                 val ratio = pageW.toFloat() / bitmap.width.coerceAtLeast(1)
                 val drawW = pageW
