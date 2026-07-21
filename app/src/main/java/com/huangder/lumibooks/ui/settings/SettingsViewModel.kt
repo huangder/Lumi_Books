@@ -247,11 +247,16 @@ class SettingsViewModel @Inject constructor(
 
     fun saveLiquidGlassTransparency(transparency: Float) {
         val clamped = transparency.coerceIn(0f, 1f)
-        if (_uiState.value.liquidGlassTransparency == clamped) return
         _uiState.value = _uiState.value.copy(liquidGlassTransparency = clamped)
         viewModelScope.launch {
             dataStoreManager.saveLiquidGlassTransparency(clamped)
         }
+    }
+
+    fun previewLiquidGlassTransparency(transparency: Float) {
+        _uiState.value = _uiState.value.copy(
+            liquidGlassTransparency = transparency.coerceIn(0f, 1f)
+        )
     }
 
     fun saveDarkMode(mode: String) {

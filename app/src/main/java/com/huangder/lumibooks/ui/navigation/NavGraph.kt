@@ -19,12 +19,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
@@ -41,6 +44,7 @@ import com.huangder.lumibooks.ui.components.LiquidGlassImportButton
 import com.huangder.lumibooks.ui.components.ImmersiveMode
 import com.huangder.lumibooks.ui.components.ConfigurableNavigationBack
 import com.huangder.lumibooks.ui.components.LocalPredictiveBackEnabled
+import com.huangder.lumibooks.ui.components.LiquidGlassMenuHost
 import com.huangder.lumibooks.ui.home.HomeScreen
 import com.huangder.lumibooks.ui.home.HomeViewModel
 import com.huangder.lumibooks.ui.home.ReadingGoalSheet
@@ -145,6 +149,7 @@ fun MainNavGraph(
     var readerReady by remember { mutableStateOf(false) }
     var pendingBookId by remember { mutableStateOf<String?>(null) }
     var tabBarVisible by remember { mutableStateOf(true) }
+    var bookshelfOverlayProgress by remember { mutableFloatStateOf(0f) }
     var homeGoalSheetVisible by remember { mutableStateOf(false) }
     val entranceTracker = remember { PageEntranceTracker() }
     val hazeState = remember { HazeState() }
@@ -191,6 +196,9 @@ fun MainNavGraph(
         if (currentRoute != Screen.Home.route) {
             homeGoalSheetVisible = false
         }
+        if (currentRoute != Screen.Bookshelf.route) {
+            bookshelfOverlayProgress = 0f
+        }
         if (currentRoute == Screen.Reader.route || showTransition) {
             tabBarVisible = false
         } else {
@@ -209,7 +217,10 @@ fun MainNavGraph(
     }
 
     CompositionLocalProvider(LocalPredictiveBackEnabled provides predictiveBackEnabled) {
-    Box(modifier = Modifier.fillMaxSize()) {
+    LiquidGlassMenuHost(
+        modifier = Modifier.fillMaxSize(),
+        backdrop = liquidGlassBackdrop.takeIf { isLiquidGlass }
+    ) {
         ConfigurableNavigationBack(
             predictiveBackEnabled = predictiveBackEnabled,
             bridgeEnabled = currentRoute != null && currentRoute != Screen.Home.route
@@ -286,7 +297,9 @@ fun MainNavGraph(
                         showTransition = true
                         pendingBookId = bookId
                     },
-                    onOverlayActiveChange = { active -> tabBarVisible = !active }
+                    onOverlayProgressChange = { progress ->
+                        bookshelfOverlayProgress = progress.coerceIn(0f, 1f)
+                    }
                 )
             }
 
@@ -325,6 +338,24 @@ fun MainNavGraph(
 
 
         // 浮动导航栏（渐隐渐显）
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    renderEffect = if (
+                        bookshelfOverlayProgress > 0.01f &&
+                        android.os.Build.VERSION.SDK_INT >= 31
+                    ) {
+                        android.graphics.RenderEffect.createBlurEffect(
+                            20f * bookshelfOverlayProgress,
+                            20f * bookshelfOverlayProgress,
+                            android.graphics.Shader.TileMode.CLAMP
+                        ).asComposeRenderEffect()
+                    } else {
+                        null
+                    }
+                }
+        ) {
         AnimatedVisibility(
             visible = tabBarVisible,
             enter = fadeIn(animationSpec = tween(400)),
@@ -367,6 +398,7 @@ fun MainNavGraph(
         }
 
         // 过渡动画覆盖层
+        }
         ReadingGoalSheet(
             visible = homeGoalSheetVisible && currentRoute == Screen.Home.route,
             todayReadingTime = homeUiState.todayReadingTime,

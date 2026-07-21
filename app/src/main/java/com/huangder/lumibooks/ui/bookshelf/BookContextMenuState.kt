@@ -45,6 +45,7 @@ class BookContextMenuState(private val scope: CoroutineScope) {
     // 动画值
     val pressScale = Animatable(1f)
     val coverScale = Animatable(1f)
+    val coverPositionProgress = Animatable(0f)
     val scrimAlpha = Animatable(0f)
     /** 信息面板（书名+作者+编辑）alpha */
     val menuAlpha = Animatable(0f)
@@ -129,6 +130,16 @@ class BookContextMenuState(private val scope: CoroutineScope) {
                         )
                     )
                 }
+                launch {
+                    coverPositionProgress.snapTo(0f)
+                    coverPositionProgress.animateTo(
+                        targetValue = 1f,
+                        animationSpec = spring(
+                            dampingRatio = 0.72f,
+                            stiffness = 260f
+                        )
+                    )
+                }
                 // 遮罩淡入
                 launch {
                     scrimAlpha.animateTo(
@@ -143,20 +154,25 @@ class BookContextMenuState(private val scope: CoroutineScope) {
                         animationSpec = tween(200, easing = AppEasing.Decelerate)
                     )
                 }
-                // 信息面板淡入（延迟 150ms）
+                // 两个玻璃面板作为完整单元先后弹性进入。
                 launch {
-                    delay(150)
+                    delay(80)
                     menuAlpha.animateTo(
                         targetValue = 1f,
-                        animationSpec = tween(300, easing = AppEasing.Decelerate)
+                        animationSpec = spring(
+                            dampingRatio = 0.70f,
+                            stiffness = 145f
+                        )
                     )
                 }
-                // 操作面板整体淡入（延迟 350ms，内部单项在 composable 层交错）
                 launch {
-                    delay(350)
+                    delay(190)
                     actionsAlpha.animateTo(
                         targetValue = 1f,
-                        animationSpec = tween(400, easing = AppEasing.Decelerate)
+                        animationSpec = spring(
+                            dampingRatio = 0.70f,
+                            stiffness = 145f
+                        )
                     )
                 }
             }
@@ -168,8 +184,8 @@ class BookContextMenuState(private val scope: CoroutineScope) {
      * 关闭菜单
      *
      * 退出时序：
-     * 0ms   - 操作项依次消失
-     * 150ms - 信息面板消失
+     * 0ms   - 操作面板缩小退出
+     * 80ms  - 信息面板缩小退出
      * 200ms - 封面归位 + 遮罩消失
      * 460ms - 原位书本渐显
      */
@@ -183,14 +199,20 @@ class BookContextMenuState(private val scope: CoroutineScope) {
                 launch {
                     actionsAlpha.animateTo(
                         targetValue = 0f,
-                        animationSpec = tween(200, easing = AppEasing.Accelerate)
+                        animationSpec = spring(
+                            dampingRatio = 0.86f,
+                            stiffness = 240f
+                        )
                     )
                 }
                 launch {
                     delay(80)
                     menuAlpha.animateTo(
                         targetValue = 0f,
-                        animationSpec = tween(200, easing = AppEasing.Accelerate)
+                        animationSpec = spring(
+                            dampingRatio = 0.86f,
+                            stiffness = 240f
+                        )
                     )
                 }
             }
@@ -199,6 +221,12 @@ class BookContextMenuState(private val scope: CoroutineScope) {
                 launch {
                     coverScale.animateTo(
                         targetValue = 1f,
+                        animationSpec = tween(400, easing = AppEasing.Decelerate)
+                    )
+                }
+                launch {
+                    coverPositionProgress.animateTo(
+                        targetValue = 0f,
                         animationSpec = tween(400, easing = AppEasing.Decelerate)
                     )
                 }
@@ -214,6 +242,7 @@ class BookContextMenuState(private val scope: CoroutineScope) {
             // ④ 切 Idle，overlay 消失，原位书本已就位
             pressScale.snapTo(1f)
             coverScale.snapTo(1f)
+            coverPositionProgress.snapTo(0f)
             scrimAlpha.snapTo(0f)
             menuAlpha.snapTo(0f)
             actionsAlpha.snapTo(0f)
