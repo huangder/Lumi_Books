@@ -26,6 +26,10 @@ import com.huangder.lumibooks.domain.model.defaultReaderCornerContent
 import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.domain.repository.ReadingRepository
 import com.huangder.lumibooks.pdfconversion.PdfConversionManager
+import com.huangder.lumibooks.pdfconversion.PdfConversionEngine
+import com.huangder.lumibooks.mineru.MineruConfig
+import com.huangder.lumibooks.mineru.MineruMode
+import com.huangder.lumibooks.mineru.MineruTokenStore
 import com.huangder.lumibooks.pdfconversion.PdfConversionState
 import com.huangder.lumibooks.util.TimeUtils
 import com.huangder.lumibooks.util.parser.BookParser
@@ -45,6 +49,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -156,7 +161,8 @@ class ReaderViewModel @Inject constructor(
     private val readingRepository: ReadingRepository,
     private val dataStoreManager: DataStoreManager,
     private val ttsController: TtsController,
-    private val pdfConversionManager: PdfConversionManager
+    private val pdfConversionManager: PdfConversionManager,
+    private val mineruTokenStore: MineruTokenStore
 ) : ViewModel() {
 
     private val bookId: String = savedStateHandle.get<String>("bookId") ?: ""
@@ -172,6 +178,8 @@ class ReaderViewModel @Inject constructor(
 
     private val _pdfConversionState = MutableStateFlow<PdfConversionState>(PdfConversionState.Idle)
     val pdfConversionState: StateFlow<PdfConversionState> = _pdfConversionState.asStateFlow()
+    private val _mineruMode = MutableStateFlow(MineruMode.DISABLED)
+    val mineruMode: StateFlow<MineruMode> = _mineruMode.asStateFlow()
 
     val ttsPageTurnRequests = ttsController.pageTurnRequests
 
@@ -235,15 +243,36 @@ class ReaderViewModel @Inject constructor(
                 _pdfConversionState.value = state
             }
         }
+        viewModelScope.launch {
+            combine(
+                dataStoreManager.mineruMode,
+                dataStoreManager.mineruConsentVersion
+            ) { mode, consentVersion ->
+                mode to consentVersion
+            }.collectLatest { (modeKey, consentVersion) ->
+                val mode = MineruMode.fromKey(modeKey)
+                _mineruMode.value = withContext(Dispatchers.IO) {
+                    when {
+                        consentVersion < MineruConfig.CONSENT_VERSION -> MineruMode.DISABLED
+                        mode == MineruMode.PRECISE && !mineruTokenStore.hasToken() -> MineruMode.DISABLED
+                        else -> mode
+                    }
+                }
+            }
+        }
     }
 
     suspend fun findConvertedPdfBookId(): String? {
         return pdfConversionManager.findConvertedBookId(bookId)
     }
 
-    fun startPdfConversion(replaceExisting: Boolean) {
+    fun startPdfConversion(
+        replaceExisting: Boolean,
+        engine: PdfConversionEngine = PdfConversionEngine.LOCAL,
+        mineruMode: MineruMode = MineruMode.DISABLED
+    ) {
         _pdfConversionState.value = PdfConversionState.Running(0, 0, 0)
-        pdfConversionManager.enqueue(bookId, replaceExisting)
+        pdfConversionManager.enqueue(bookId, replaceExisting, engine, mineruMode.key)
     }
 
     fun cancelPdfConversion() {

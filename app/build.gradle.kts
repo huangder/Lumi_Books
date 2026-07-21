@@ -90,6 +90,11 @@ dependencies {
     implementation("androidx.hilt:hilt-work:1.2.0")
     ksp("androidx.hilt:hilt-compiler:1.2.0")
 
+    // MinerU Markdown results -> safe local EPUB
+    implementation("org.commonmark:commonmark:0.24.0")
+    // Direct dependency: MinerU signed-URL uploads use OkHttp's streaming request body.
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
     // Coil (Image Loading)
     implementation("io.coil-kt:coil:2.7.0")
     implementation("io.coil-kt:coil-compose:2.7.0")

@@ -1,14 +1,16 @@
 package com.huangder.lumibooks.ui.settings
 
 import android.os.Bundle
+import android.content.res.Configuration
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -22,12 +24,14 @@ import javax.inject.Inject
  * 设置二级页面 — 统一 Activity
  *
  * 根据 intent extra "category" 渲染不同内容：
- * reading / display / goal / storage / about
+ * reading / display / goal / storage / third_party_services / mineru / about
  *
  * 过渡动画：继承系统默认（各 OEM 原生动画），不自定义。
  */
 @AndroidEntryPoint
 class DetailActivity : ComponentActivity() {
+
+    private var systemDarkMode by mutableStateOf(false)
 
     override fun attachBaseContext(newBase: android.content.Context) {
         super.attachBaseContext(com.huangder.lumibooks.util.LocaleHelper.applyLanguage(newBase))
@@ -39,29 +43,29 @@ class DetailActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        systemDarkMode = resources.configuration.isNightModeEnabled()
 
         val category = intent.getStringExtra("category") ?: "about"
 
         setContent {
-            val appTheme by dataStoreManager.appTheme.collectAsState(initial = "lumi")
-            val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
+            val viewModel: SettingsViewModel = hiltViewModel()
+            val uiState by viewModel.uiState.collectAsState()
             val predictiveBackEnabled by dataStoreManager.predictiveBackEnabled.collectAsState(initial = true)
-            val isDark = when (darkMode) {
+            val isDark = when (uiState.darkMode) {
                 "dark" -> true
                 "light" -> false
-                else -> isSystemInDarkTheme()
+                else -> systemDarkMode
             }
 
             EBookReaderTheme(
                 darkTheme = isDark,
-                dynamicColor = appTheme == "material3"
+                dynamicColor = uiState.appTheme == "material3"
             ) {
                 com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
                     predictiveBackEnabled = predictiveBackEnabled,
                     onBack = { finish() }
                 )
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    val viewModel: SettingsViewModel = hiltViewModel()
                     val onBack = { finish() }
 
                     when (category) {
@@ -71,11 +75,24 @@ class DetailActivity : ComponentActivity() {
                         "goal" -> DetailPage(stringResource(R.string.title_reading_goal), onBack) { ReadingGoalDetail(viewModel) }
                         "storage" -> DetailPage(stringResource(R.string.title_storage), onBack) { StorageDetail(viewModel) }
                         "backup" -> DetailPage(stringResource(R.string.title_backup), onBack) { BackupRestoreDetail(viewModel) }
+                        "third_party_services" -> DetailPage(stringResource(R.string.title_third_party_services), onBack) {
+                            ThirdPartyServicesDetail(viewModel)
+                        }
+                        "mineru" -> DetailPage(stringResource(R.string.title_mineru), onBack) { MineruSettingsDetail(viewModel) }
                         "changelog" -> DetailPage(stringResource(R.string.title_changelog), onBack) { ChangelogDetail() }
                         else -> DetailPage(stringResource(R.string.title_about), onBack) { AboutDetail(viewModel) }
                     }
                 }
             }
         }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        systemDarkMode = newConfig.isNightModeEnabled()
+    }
+
+    private fun Configuration.isNightModeEnabled(): Boolean {
+        return (uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
     }
 }

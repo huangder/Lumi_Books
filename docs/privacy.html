@@ -223,11 +223,11 @@
 
 <div class="container">
     <h1>隐私政策</h1>
-    <p class="meta">生效日期：2026年6月29日 · 最近更新：2026年7月20日</p>
+    <p class="meta">生效日期：2026年6月29日 · 最近更新：2026年7月21日</p>
 
     <h2>一、引言</h2>
     <p>Lumi（以下简称"本应用"）是一款本地电子书阅读器。我们深知隐私对您的重要性，本隐私政策旨在向您说明我们如何处理您的个人信息。</p>
-    <p><strong>核心原则：本应用仅在检查更新时连接 GitHub 服务器，不收集、不上传任何个人信息。</strong></p>
+    <p><strong>核心原则：本应用坚持本地优先。只有在您主动启用并选择 MinerU 云端解析时，您选定的 PDF 才会上传至第三方服务；本应用不会在后台自动上传文件。</strong></p>
     <p><strong>开源透明：本应用为开源项目，完整源代码公开可审查。</strong>您可以随时查阅源代码，验证本隐私政策所述内容的真实性。我们相信，代码透明是最好的隐私保障。</p>
 
     <h2>二、权限说明</h2>
@@ -236,7 +236,7 @@
         <tr><th>权限</th><th>用途</th><th>是否必要</th></tr>
         <tr><td>READ_EXTERNAL_STORAGE（Android 12 及以下）</td><td>读取您设备上的电子书文件（EPUB、TXT、PDF）</td><td>是</td></tr>
         <tr><td>READ_MEDIA_IMAGES（Android 13 及以上）</td><td>读取电子书中的封面图片资源</td><td>是</td></tr>
-        <tr><td>INTERNET</td><td>检查应用更新及条款/政策变更（仅请求 GitHub Raw 上的配置文件）</td><td>否（可选功能）</td></tr>
+        <tr><td>INTERNET</td><td>检查应用更新及条款/政策变更；在用户主动选择时连接 MinerU 云端解析</td><td>否（可选功能）</td></tr>
     </table>
     <p><strong>本应用不申请以下权限：</strong></p>
     <ul>
@@ -252,7 +252,7 @@
     <h2>三、数据处理说明</h2>
 
     <h3>3.1 本应用处理的数据</h3>
-    <p>以下数据仅存储在您的本地设备上，不会被传输至任何外部服务器：</p>
+    <p>以下应用设置和阅读数据存储在您的本地设备上；主动使用 MinerU 时的文件传输另见 3.2：</p>
     <table>
         <tr><th>数据类型</th><th>说明</th><th>存储方式</th></tr>
         <tr><td>电子书文件</td><td>您主动选择打开的 EPUB、TXT、PDF 文件</td><td>本地文件</td></tr>
@@ -260,6 +260,7 @@
         <tr><td>书签记录</td><td>您手动添加的书签</td><td>Room/SQLite</td></tr>
         <tr><td>阅读时长</td><td>每次阅读的开始时间、结束时间、持续时长</td><td>Room/SQLite</td></tr>
         <tr><td>阅读偏好</td><td>字号、主题、行距等显示设置</td><td>DataStore</td></tr>
+        <tr><td>MinerU 设置</td><td>解析模式、同意版本和时间；个人 Token 使用 Android Keystore 加密</td><td>本地 DataStore/加密存储</td></tr>
         <tr><td>TTS 朗读文本</td><td>传递给系统 TTS 引擎的电子书文本（仅内存中处理，不持久化存储）</td><td>本地内存（不存储）</td></tr>
         <tr><td>最近阅读</td><td>最近打开的书籍列表及时间</td><td>Room/SQLite</td></tr>
     </table>
@@ -270,30 +271,32 @@
             <ul>
                 <li>启动时或手动触发"检查更新"——请求 GitHub Raw 上的 <code>update_config.json</code></li>
                 <li>打开 GitHub Releases 页面下载新版本（需用户手动点击）</li>
+                <li>用户主动选择 MinerU 云端解析——向 MinerU API 申请上传地址，将所选 PDF 上传至其 OSS 存储，轮询解析进度并从 CDN 下载结果</li>
             </ul>
         </li>
-        <li>上述请求不携带任何个人信息、设备标识或使用数据</li>
-        <li>不进行数据上传、同步或任何形式的用户追踪</li>
+        <li>更新检查请求不携带个人信息、设备标识或使用数据</li>
+        <li>MinerU 请求会向第三方传输所选 PDF、随机化文件名、网络 IP、解析参数和任务标识；精准解析还会传输用户个人 Token</li>
+        <li>本应用不使用分析、广告或用户追踪 SDK，也不会将 Token 或 PDF 发送给 LumiBooks 开发者</li>
     </ul>
 
     <h3>3.3 本应用不处理的数据</h3>
     <ul>
         <li>不收集您的个人身份信息（姓名、邮箱、电话等）</li>
         <li>不收集您的设备标识信息（IMEI、Android ID、MAC 地址等）</li>
-        <li>不收集您的阅读内容或阅读行为数据</li>
+        <li>不收集或接收您的阅读内容；启用 MinerU 时，文件由设备直接发送给 MinerU</li>
         <li>不使用任何分析或追踪工具（如 Google Analytics、Firebase 等）</li>
         <li>不使用任何广告 SDK</li>
-        <li>不进行任何数据上传或同步</li>
+        <li>除您明确发起的 MinerU 解析外，不进行文件上传或云同步</li>
     </ul>
 
     <h2>四、数据存储与安全</h2>
 
     <h3>4.1 存储方式</h3>
-    <p>所有数据均存储在应用的私有沙盒目录中，遵循 Android 系统的应用隔离机制。其他应用无法直接访问本应用的私有数据。</p>
+    <p>本地阅读数据存储在应用的私有沙盒目录中，遵循 Android 系统的应用隔离机制。MinerU Token 使用 Android Keystore 加密并排除系统备份。</p>
 
     <h3>4.2 数据安全</h3>
     <ul>
-        <li>应用仅在检查更新时连接 GitHub，不进行其他网络通信</li>
+        <li>应用仅在检查更新及您主动选择 MinerU 云端解析时联网</li>
         <li>数据存储在 Android 应用沙盒中，受系统级隔离保护</li>
         <li>本应用不收集任何可识别您身份的信息</li>
     </ul>
@@ -306,7 +309,9 @@
     </ul>
 
     <h2>五、第三方服务</h2>
-    <p>本应用不集成任何第三方服务，包括但不限于：</p>
+    <p>本应用不集成分析、广告、推送、云同步或崩溃报告服务。您可以主动启用由上海人工智能创新中心运营的 OpenDataLab/MinerU 云端解析服务。MinerU 与 LumiBooks 独立运营，使用该服务受其<a href="https://webpub.shlab.tech/dps/opendatalab-web/odl_v5.1690/service.html">服务协议</a>和<a href="https://webpub.shlab.tech/dps/opendatalab-web/odl_v5.1690/privacy.html">个人信息保护政策</a>约束。</p>
+    <p>如不希望文件离开设备，请保持 MinerU 关闭并使用本地解析。您可随时停用 MinerU、清除个人 Token，并联系其运营方行使平台数据权利。</p>
+    <p>除此之外，本应用：</p>
     <ul>
         <li>无第三方分析服务</li>
         <li>无第三方广告服务</li>

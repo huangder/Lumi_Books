@@ -59,6 +59,11 @@ data class SettingsUiState(
     val splashEnabled: Boolean = true,
     val readerTheme: String = "day",       // "day" / "night" / "sepia" / "green"
 
+    // MinerU 第三方云解析
+    val mineruMode: String = "disabled",   // "disabled" / "agent" / "precise"
+    val mineruConsentVersion: Int = 0,
+    val mineruHasToken: Boolean = false,
+
     // 语言
     val appLanguage: String = "system",    // "system" / "zh-CN" / "zh-TW" / "zh-HK" / "zh-MO" / "ko" / "ja" / "en"
 

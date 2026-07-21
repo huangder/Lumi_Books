@@ -17,13 +17,22 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.huangder.lumibooks.MainActivity
 import com.huangder.lumibooks.R
+import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.data.local.database.AppDatabase
 import com.huangder.lumibooks.data.local.entity.BookEntity
 import com.huangder.lumibooks.domain.repository.BookRepository
+import com.huangder.lumibooks.mineru.MineruApiClient
+import com.huangder.lumibooks.mineru.MineruApiException
+import com.huangder.lumibooks.mineru.MineruConfig
+import com.huangder.lumibooks.mineru.MineruEpubBuilder
+import com.huangder.lumibooks.mineru.MineruMode
+import com.huangder.lumibooks.mineru.MineruTokenStore
+import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
@@ -32,18 +41,33 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
 @HiltWorker
-class PdfConversionWorker @AssistedInject constructor(
+class MineruPdfConversionWorker @AssistedInject constructor(
     @Assisted appContext: Context,
     @Assisted workerParameters: WorkerParameters,
     private val bookRepository: BookRepository,
     private val database: AppDatabase,
-    private val textExtractor: PdfTextExtractor
+    private val dataStoreManager: DataStoreManager,
+    private val apiClient: MineruApiClient,
+    private val epubBuilder: MineruEpubBuilder,
+    private val tokenStore: MineruTokenStore
 ) : CoroutineWorker(appContext, workerParameters) {
 
     override suspend fun doWork(): Result {
         val sourceBookId = inputData.getString(PdfConversionContract.KEY_SOURCE_BOOK_ID)
             ?: return failure(PdfConversionContract.ERROR_FILE_MISSING)
         val replaceExisting = inputData.getBoolean(PdfConversionContract.KEY_REPLACE_EXISTING, false)
+        val mode = MineruMode.fromKey(inputData.getString(PdfConversionContract.KEY_MINERU_MODE))
+        val configuredMode = MineruMode.fromKey(dataStoreManager.mineruMode.first())
+        val consentVersion = dataStoreManager.mineruConsentVersion.first()
+        val preciseToken = if (mode == MineruMode.PRECISE) tokenStore.read() else null
+        if (mode == MineruMode.DISABLED ||
+            configuredMode != mode ||
+            consentVersion < MineruConfig.CONSENT_VERSION ||
+            (mode == MineruMode.PRECISE && preciseToken == null)
+        ) {
+            return failAndNotify(sourceBookId, PdfConversionContract.ERROR_MINERU_NOT_CONFIGURED)
+        }
+
         val sourceBook = bookRepository.getBookById(sourceBookId)
             ?: return failAndNotify(sourceBookId, PdfConversionContract.ERROR_FILE_MISSING)
         val sourceFile = File(sourceBook.filePath)
@@ -63,32 +87,46 @@ class PdfConversionWorker @AssistedInject constructor(
             )
         }
 
-        val temporaryFile = PdfConversionContract.temporaryFile(applicationContext, sourceBookId)
-        val outputFile = PdfConversionContract.outputFile(applicationContext, sourceBookId)
-        val backupFile = PdfConversionContract.backupFile(applicationContext, sourceBookId)
+        val outputFile = PdfConversionContract.mineruOutputFile(applicationContext, sourceBookId)
+        val temporaryFile = PdfConversionContract.mineruTemporaryFile(applicationContext, sourceBookId)
+        val backupFile = PdfConversionContract.mineruBackupFile(applicationContext, sourceBookId)
+        val workDirectory = File(applicationContext.cacheDir, "mineru/${safePart(sourceBookId)}")
         temporaryFile.delete()
+        workDirectory.deleteRecursively()
+        workDirectory.mkdirs()
         if (backupFile.exists()) {
             if (outputFile.exists()) backupFile.delete() else moveReplacing(backupFile, outputFile)
         }
 
         return try {
-            setForeground(createForegroundInfo(sourceBookId, 0, 0, 0))
-            var lastNotifiedProgress = -1
-            val extraction = textExtractor.extract(sourceFile, temporaryFile) { page, total, progress ->
-                setProgress(
-                    workDataOf(
-                        PdfConversionContract.KEY_CURRENT_PAGE to page,
-                        PdfConversionContract.KEY_TOTAL_PAGES to total,
-                        PdfConversionContract.KEY_PROGRESS to progress
-                    )
-                )
-                if (progress != lastNotifiedProgress) {
-                    setForeground(createForegroundInfo(sourceBookId, page, total, progress))
-                    lastNotifiedProgress = progress
-                }
+            setForeground(createForegroundInfo(sourceBookId, 0))
+            val pageCount = readAndValidatePdf(sourceFile, mode)
+            updateProgress(sourceBookId, 2, pageCount)
+
+            val result = apiClient.parse(
+                source = sourceFile,
+                mode = mode,
+                token = preciseToken,
+                workDirectory = workDirectory
+            ) { progress ->
+                updateProgress(sourceBookId, progress, pageCount)
             }
+            updateProgress(sourceBookId, 94, pageCount)
+
+            epubBuilder.build(
+                remoteResult = result,
+                outputFile = temporaryFile,
+                workDirectory = workDirectory,
+                title = sourceBook.title,
+                author = sourceBook.author
+            )
+            updateProgress(sourceBookId, 98, pageCount)
 
             installOutputFile(temporaryFile, outputFile, backupFile)
+            val convertedTitle = applicationContext.getString(
+                R.string.pdf_convert_mineru_book_title,
+                sourceBook.title
+            )
             try {
                 val now = System.currentTimeMillis()
                 database.withTransaction {
@@ -99,11 +137,11 @@ class PdfConversionWorker @AssistedInject constructor(
                     database.bookDao().insertBook(
                         BookEntity(
                             id = convertedBookId,
-                            title = sourceBook.title + "（解析后）",
+                            title = convertedTitle,
                             author = sourceBook.author,
                             filePath = outputFile.absolutePath,
                             coverPath = existingBook?.coverPath ?: sourceBook.coverPath,
-                            format = "TXT",
+                            format = "EPUB",
                             lastReadTime = now,
                             readingProgress = 0f,
                             createdAt = existingBook?.createdAt ?: now,
@@ -116,73 +154,69 @@ class PdfConversionWorker @AssistedInject constructor(
                 throw error
             }
             backupFile.delete()
-            existingBook?.filePath?.let { previousPath ->
-                val previousFile = File(previousPath)
-                if (previousFile.absolutePath != outputFile.absolutePath &&
-                    PdfConversionContract.isManagedConvertedFile(applicationContext, previousFile)
-                ) {
-                    previousFile.delete()
-                }
-            }
+            deletePreviousConvertedFile(existingBook?.filePath, outputFile)
+            updateProgress(sourceBookId, 100, pageCount)
 
-            notifyCompleted(
-                sourceBookId = sourceBookId,
-                convertedBookId = convertedBookId,
-                bookTitle = sourceBook.title + "（解析后）",
-                textPages = extraction.textPageCount,
-                totalPages = extraction.totalPageCount
-            )
+            notifyCompleted(sourceBookId, convertedBookId, convertedTitle, pageCount)
             Result.success(
                 workDataOf(
                     PdfConversionContract.KEY_CONVERTED_BOOK_ID to convertedBookId,
-                    PdfConversionContract.KEY_TEXT_PAGES to extraction.textPageCount,
-                    PdfConversionContract.KEY_TOTAL_PAGES to extraction.totalPageCount
+                    PdfConversionContract.KEY_TEXT_PAGES to pageCount,
+                    PdfConversionContract.KEY_TOTAL_PAGES to pageCount
                 )
             )
         } catch (error: CancellationException) {
             temporaryFile.delete()
             if (backupFile.exists()) restorePreviousOutput(outputFile, backupFile)
             throw error
-        } catch (_: NoPdfTextException) {
-            temporaryFile.delete()
-            failAndNotify(sourceBookId, PdfConversionContract.ERROR_NO_TEXT)
         } catch (_: InvalidPasswordException) {
-            temporaryFile.delete()
             failAndNotify(sourceBookId, PdfConversionContract.ERROR_ENCRYPTED)
         } catch (_: FileNotFoundException) {
-            temporaryFile.delete()
             failAndNotify(sourceBookId, PdfConversionContract.ERROR_FILE_MISSING)
+        } catch (error: MineruApiException) {
+            failAndNotify(sourceBookId, error.toErrorCode())
         } catch (_: IOException) {
-            temporaryFile.delete()
             failAndNotify(sourceBookId, PdfConversionContract.ERROR_STORAGE)
         } catch (_: Throwable) {
-            temporaryFile.delete()
             failAndNotify(sourceBookId, PdfConversionContract.ERROR_UNKNOWN)
+        } finally {
+            temporaryFile.delete()
+            workDirectory.deleteRecursively()
         }
     }
 
-    private fun createForegroundInfo(
-        sourceBookId: String,
-        currentPage: Int,
-        totalPages: Int,
-        progress: Int
-    ): ForegroundInfo {
+    private fun readAndValidatePdf(source: File, mode: MineruMode): Int {
+        val maxBytes = if (mode == MineruMode.AGENT) AGENT_MAX_BYTES else PRECISE_MAX_BYTES
+        if (source.length() > maxBytes) {
+            throw MineruApiException(MineruApiException.Kind.FILE_LIMIT, "PDF exceeds MinerU file limit")
+        }
+        val pages = PDDocument.load(source).use { it.numberOfPages }
+        val maxPages = if (mode == MineruMode.AGENT) AGENT_MAX_PAGES else PRECISE_MAX_PAGES
+        if (pages > maxPages) {
+            throw MineruApiException(MineruApiException.Kind.PAGE_LIMIT, "PDF exceeds MinerU page limit")
+        }
+        return pages
+    }
+
+    private suspend fun updateProgress(sourceBookId: String, progress: Int, totalPages: Int) {
+        val normalized = progress.coerceIn(0, 100)
+        setProgress(
+            workDataOf(
+                PdfConversionContract.KEY_CURRENT_PAGE to 0,
+                PdfConversionContract.KEY_TOTAL_PAGES to totalPages,
+                PdfConversionContract.KEY_PROGRESS to normalized
+            )
+        )
+        setForeground(createForegroundInfo(sourceBookId, normalized))
+    }
+
+    private fun createForegroundInfo(sourceBookId: String, progress: Int): ForegroundInfo {
         createNotificationChannel()
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle(applicationContext.getString(R.string.pdf_convert_notification_title))
-            .setContentText(
-                if (totalPages > 0) {
-                    applicationContext.getString(
-                        R.string.pdf_convert_notification_progress,
-                        currentPage,
-                        totalPages
-                    )
-                } else {
-                    applicationContext.getString(R.string.pdf_convert_preparing)
-                }
-            )
-            .setProgress(100, progress.coerceIn(0, 100), totalPages <= 0)
+            .setContentTitle(applicationContext.getString(R.string.pdf_convert_mineru_notification_title))
+            .setContentText(applicationContext.getString(R.string.pdf_convert_mineru_notification_progress, progress))
+            .setProgress(100, progress.coerceIn(0, 100), progress <= 0)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
@@ -204,8 +238,7 @@ class PdfConversionWorker @AssistedInject constructor(
         sourceBookId: String,
         convertedBookId: String,
         bookTitle: String,
-        textPages: Int,
-        totalPages: Int
+        pageCount: Int
     ) {
         createNotificationChannel()
         val openBookIntent = Intent(applicationContext, MainActivity::class.java).apply {
@@ -221,13 +254,7 @@ class PdfConversionWorker @AssistedInject constructor(
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(bookTitle)
-            .setContentText(
-                applicationContext.getString(
-                    R.string.pdf_convert_notification_complete,
-                    textPages,
-                    totalPages
-                )
-            )
+            .setContentText(applicationContext.getString(R.string.pdf_convert_mineru_notification_complete, pageCount))
             .setContentIntent(contentIntent)
             .setAutoCancel(true)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
@@ -254,14 +281,31 @@ class PdfConversionWorker @AssistedInject constructor(
         return Result.failure(workDataOf(PdfConversionContract.KEY_ERROR_CODE to errorCode))
     }
 
-    private fun errorMessageResource(errorCode: String): Int {
-        return when (errorCode) {
-            PdfConversionContract.ERROR_NO_TEXT -> R.string.pdf_convert_error_no_text
-            PdfConversionContract.ERROR_ENCRYPTED -> R.string.pdf_convert_error_encrypted
-            PdfConversionContract.ERROR_FILE_MISSING -> R.string.pdf_convert_error_file_missing
-            PdfConversionContract.ERROR_STORAGE -> R.string.pdf_convert_error_storage
-            else -> R.string.pdf_convert_error_unknown
-        }
+    private fun MineruApiException.toErrorCode(): String = when (kind) {
+        MineruApiException.Kind.AUTH -> PdfConversionContract.ERROR_MINERU_AUTH
+        MineruApiException.Kind.RATE_LIMIT -> PdfConversionContract.ERROR_MINERU_RATE_LIMIT
+        MineruApiException.Kind.FILE_LIMIT -> PdfConversionContract.ERROR_MINERU_FILE_LIMIT
+        MineruApiException.Kind.PAGE_LIMIT -> PdfConversionContract.ERROR_MINERU_PAGE_LIMIT
+        MineruApiException.Kind.NETWORK -> PdfConversionContract.ERROR_MINERU_NETWORK
+        MineruApiException.Kind.UPLOAD -> PdfConversionContract.ERROR_MINERU_UPLOAD
+        MineruApiException.Kind.INVALID_RESULT -> PdfConversionContract.ERROR_MINERU_RESULT
+        MineruApiException.Kind.SERVICE -> PdfConversionContract.ERROR_MINERU_SERVICE
+    }
+
+    private fun errorMessageResource(errorCode: String): Int = when (errorCode) {
+        PdfConversionContract.ERROR_ENCRYPTED -> R.string.pdf_convert_error_encrypted
+        PdfConversionContract.ERROR_FILE_MISSING -> R.string.pdf_convert_error_file_missing
+        PdfConversionContract.ERROR_MINERU_NOT_CONFIGURED -> R.string.pdf_convert_error_mineru_not_configured
+        PdfConversionContract.ERROR_MINERU_FILE_LIMIT -> R.string.pdf_convert_error_mineru_file_limit
+        PdfConversionContract.ERROR_MINERU_PAGE_LIMIT -> R.string.pdf_convert_error_mineru_page_limit
+        PdfConversionContract.ERROR_MINERU_AUTH -> R.string.pdf_convert_error_mineru_auth
+        PdfConversionContract.ERROR_MINERU_RATE_LIMIT -> R.string.pdf_convert_error_mineru_rate_limit
+        PdfConversionContract.ERROR_MINERU_NETWORK -> R.string.pdf_convert_error_mineru_network
+        PdfConversionContract.ERROR_MINERU_UPLOAD -> R.string.pdf_convert_error_mineru_upload
+        PdfConversionContract.ERROR_MINERU_SERVICE -> R.string.pdf_convert_error_mineru_service
+        PdfConversionContract.ERROR_MINERU_RESULT -> R.string.pdf_convert_error_mineru_result
+        PdfConversionContract.ERROR_STORAGE -> R.string.pdf_convert_error_storage
+        else -> R.string.pdf_convert_error_unknown
     }
 
     private fun createNotificationChannel() {
@@ -293,6 +337,16 @@ class PdfConversionWorker @AssistedInject constructor(
         if (backupFile.exists()) moveReplacing(backupFile, outputFile)
     }
 
+    private fun deletePreviousConvertedFile(previousPath: String?, installedFile: File) {
+        if (previousPath.isNullOrBlank()) return
+        val previous = File(previousPath)
+        if (previous.absolutePath != installedFile.absolutePath &&
+            PdfConversionContract.isManagedConvertedFile(applicationContext, previous)
+        ) {
+            previous.delete()
+        }
+    }
+
     private fun moveReplacing(source: File, target: File) {
         target.parentFile?.mkdirs()
         try {
@@ -307,7 +361,13 @@ class PdfConversionWorker @AssistedInject constructor(
         }
     }
 
+    private fun safePart(value: String): String = value.replace(Regex("[^A-Za-z0-9._-]"), "_")
+
     private companion object {
         const val CHANNEL_ID = "pdf_conversion"
+        const val AGENT_MAX_BYTES = 10L * 1_024L * 1_024L
+        const val PRECISE_MAX_BYTES = 200L * 1_024L * 1_024L
+        const val AGENT_MAX_PAGES = 20
+        const val PRECISE_MAX_PAGES = 200
     }
 }

@@ -39,6 +39,7 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.outlined.Translate
+import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -111,7 +112,6 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
-                .verticalScroll(rememberScrollState())
         ) {
             // 顶栏
             Row(
@@ -129,19 +129,25 @@ fun SettingsScreen(
                 Spacer(Modifier.size(48.dp))
             }
 
-            Spacer(Modifier.height(AppSpace.sm))
-
-            // 头像快捷入口
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = AppSpace.md)
-                    .shadow(8.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
-                    .clip(RoundedCornerShape(AppRadius.lg))
-                    .background(AppColors.CardBg)
-                    .padding(AppSpace.md),
-                verticalAlignment = Alignment.CenterVertically
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
             ) {
+                Spacer(Modifier.height(AppSpace.sm))
+
+                // 头像快捷入口
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = AppSpace.md)
+                        .shadow(8.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+                        .clip(RoundedCornerShape(AppRadius.lg))
+                        .background(AppColors.CardBg)
+                        .padding(AppSpace.md),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                 // 头像——点击打开相册
                 Box(
                     modifier = Modifier
@@ -182,32 +188,36 @@ fun SettingsScreen(
                 Icon(Icons.Outlined.ChevronRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
             }
 
-            Spacer(Modifier.height(AppSpace.lg))
+                Spacer(Modifier.height(AppSpace.lg))
 
-            // 分类列表
-            CategoryItem(Icons.Outlined.Brightness6, stringResource(R.string.category_display)) {
-                context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "display"))
-            }
-            CategoryItem(Icons.Outlined.Translate, stringResource(R.string.category_language)) {
-                context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "language"))
-            }
-            CategoryItem(Icons.Outlined.DeleteSweep, stringResource(R.string.category_storage)) {
-                context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "storage"))
-            }
-            CategoryItem(Icons.Outlined.Backup, stringResource(R.string.category_backup)) {
-                context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "backup"))
-            }
-            CategoryItem(Icons.Outlined.Info, stringResource(R.string.category_about)) {
-                context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "about"))
-            }
-            CategoryItem(Icons.Outlined.FavoriteBorder, stringResource(R.string.category_sponsor)) {
-                context.startActivity(Intent(context, SponsorActivity::class.java))
-            }
-            CategoryItem(Icons.Outlined.BugReport, stringResource(R.string.category_feedback)) {
-                context.startActivity(Intent(context, FeedbackActivity::class.java))
-            }
+                // 分类列表
+                CategoryItem(Icons.Outlined.Brightness6, stringResource(R.string.category_display)) {
+                    context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "display"))
+                }
+                CategoryItem(Icons.Outlined.Translate, stringResource(R.string.category_language)) {
+                    context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "language"))
+                }
+                CategoryItem(Icons.Outlined.DeleteSweep, stringResource(R.string.category_storage)) {
+                    context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "storage"))
+                }
+                CategoryItem(Icons.Outlined.Backup, stringResource(R.string.category_backup)) {
+                    context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "backup"))
+                }
+                CategoryItem(Icons.Outlined.Cloud, stringResource(R.string.category_third_party_services)) {
+                    context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "third_party_services"))
+                }
+                CategoryItem(Icons.Outlined.Info, stringResource(R.string.category_about)) {
+                    context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "about"))
+                }
+                CategoryItem(Icons.Outlined.FavoriteBorder, stringResource(R.string.category_sponsor)) {
+                    context.startActivity(Intent(context, SponsorActivity::class.java))
+                }
+                CategoryItem(Icons.Outlined.BugReport, stringResource(R.string.category_feedback)) {
+                    context.startActivity(Intent(context, FeedbackActivity::class.java))
+                }
 
-            Spacer(Modifier.height(120.dp))
+                Spacer(Modifier.height(120.dp))
+            }
         }
     }
 
@@ -256,10 +266,33 @@ fun SettingsScreen(
     }
 }
 
+@Composable
+fun ThirdPartyServicesDetail(viewModel: SettingsViewModel) {
+    val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+
+    CategoryItem(
+        icon = Icons.Outlined.Cloud,
+        label = stringResource(R.string.category_mineru),
+        supportingText = when (uiState.mineruMode) {
+            "agent" -> stringResource(R.string.mineru_mode_agent_short)
+            "precise" -> stringResource(R.string.mineru_mode_precise_short)
+            else -> stringResource(R.string.mineru_not_configured)
+        }
+    ) {
+        context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "mineru"))
+    }
+}
+
 // ─── 分类条目 ──────────────────────────────────────────────────
 
 @Composable
-private fun CategoryItem(icon: ImageVector, label: String, onClick: () -> Unit) {
+private fun CategoryItem(
+    icon: ImageVector,
+    label: String,
+    supportingText: String? = null,
+    onClick: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -273,8 +306,13 @@ private fun CategoryItem(icon: ImageVector, label: String, onClick: () -> Unit) 
     ) {
         Icon(icon, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
         Spacer(Modifier.width(AppSpace.md))
-        Text(label, fontSize = AppType.Body, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
+        Column(Modifier.weight(1f)) {
+            Text(label, fontSize = AppType.Body, color = AppColors.TextPrimary)
+            if (supportingText != null) {
+                Spacer(Modifier.height(2.dp))
+                Text(supportingText, fontSize = AppType.Caption, color = AppColors.TextSecondary)
+            }
+        }
         Icon(Icons.Outlined.ChevronRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
     }
 }
-

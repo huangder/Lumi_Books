@@ -97,10 +97,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.core.content.ContextCompat
 import com.huangder.lumibooks.ui.animation.AppEasing
 import com.huangder.lumibooks.ui.animation.cardPressEffect
-import com.huangder.lumibooks.ui.components.ConfigurableBackHandler
+import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
+import com.huangder.lumibooks.ui.components.materialBottomSheetMotion
 import com.huangder.lumibooks.ui.components.ReaderSystemBarStyle
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppType
@@ -112,7 +115,10 @@ import androidx.compose.ui.platform.LocalConfiguration
 import com.huangder.lumibooks.MainActivity
 import com.huangder.lumibooks.ReaderPageDirection
 import com.huangder.lumibooks.pdfconversion.PdfConversionContract
+import com.huangder.lumibooks.pdfconversion.PdfConversionEngine
 import com.huangder.lumibooks.pdfconversion.PdfConversionState
+import com.huangder.lumibooks.mineru.MineruMode
+import com.huangder.lumibooks.ui.settings.DetailActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -135,8 +141,9 @@ private class PdfRendererHolder(
 }
 
 private sealed interface PdfConversionSheet {
-    data object Confirm : PdfConversionSheet
+    data class Confirm(val replaceExisting: Boolean = false) : PdfConversionSheet
     data class Existing(val convertedBookId: String) : PdfConversionSheet
+    data class MineruNotConfigured(val replaceExisting: Boolean) : PdfConversionSheet
     data object Progress : PdfConversionSheet
     data class Completed(
         val convertedBookId: String,
@@ -157,6 +164,7 @@ fun PdfViewerScreen(
     val uiState by viewModel.uiState.collectAsState()
     val bookmarks by viewModel.bookmarks.collectAsState()
     val conversionState by viewModel.pdfConversionState.collectAsState()
+    val mineruMode by viewModel.mineruMode.collectAsState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val activity = context as? MainActivity
@@ -174,13 +182,23 @@ fun PdfViewerScreen(
     var showMenu by remember { mutableStateOf(false) }
     var showPdfToc by remember { mutableStateOf(false) }
     var conversionSheet by remember { mutableStateOf<PdfConversionSheet?>(null) }
+    var pendingReplaceAfterMineruSettings by remember { mutableStateOf(false) }
     var observedActiveConversion by remember { mutableStateOf(false) }
     var pendingModePage by remember { mutableStateOf<Int?>(null) }
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { }
+    val mineruSettingsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        conversionSheet = PdfConversionSheet.Confirm(pendingReplaceAfterMineruSettings)
+    }
 
-    fun startConversion(replaceExisting: Boolean) {
+    fun startConversion(
+        replaceExisting: Boolean,
+        engine: PdfConversionEngine,
+        selectedMineruMode: MineruMode = MineruMode.DISABLED
+    ) {
         observedActiveConversion = true
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
@@ -188,7 +206,7 @@ fun PdfViewerScreen(
         ) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
-        viewModel.startPdfConversion(replaceExisting)
+        viewModel.startPdfConversion(replaceExisting, engine, selectedMineruMode)
     }
 
     LaunchedEffect(conversionState) {
@@ -505,7 +523,7 @@ fun PdfViewerScreen(
                         scope.launch {
                             val convertedBookId = viewModel.findConvertedPdfBookId()
                             conversionSheet = if (convertedBookId == null) {
-                                PdfConversionSheet.Confirm
+                                PdfConversionSheet.Confirm()
                             } else {
                                 PdfConversionSheet.Existing(convertedBookId)
                             }
@@ -539,9 +557,28 @@ fun PdfViewerScreen(
                 conversionState = conversionState,
                 onDismiss = { conversionSheet = null },
                 onSheetChange = { conversionSheet = it },
-                onStart = { startConversion(replaceExisting = false) },
+                mineruMode = mineruMode,
+                onStartLocal = { replaceExisting ->
+                    startConversion(
+                        replaceExisting = replaceExisting,
+                        engine = PdfConversionEngine.LOCAL
+                    )
+                },
+                onStartMineru = { replaceExisting, selectedMode ->
+                    startConversion(
+                        replaceExisting = replaceExisting,
+                        engine = PdfConversionEngine.MINERU,
+                        selectedMineruMode = selectedMode
+                    )
+                },
+                onOpenMineruSettings = { replaceExisting ->
+                    pendingReplaceAfterMineruSettings = replaceExisting
+                    mineruSettingsLauncher.launch(
+                        android.content.Intent(context, DetailActivity::class.java)
+                            .putExtra("category", "mineru")
+                    )
+                },
                 onOpenExisting = onOpenBook,
-                onReplace = { startConversion(replaceExisting = true) },
                 onCancelConversion = viewModel::cancelPdfConversion,
                 onStayPdf = viewModel::consumePdfConversionResult,
                 onOpenConverted = { convertedBookId ->
@@ -758,9 +795,11 @@ private fun PdfConversionBottomSheet(
     conversionState: PdfConversionState,
     onDismiss: () -> Unit,
     onSheetChange: (PdfConversionSheet) -> Unit,
-    onStart: () -> Unit,
+    mineruMode: MineruMode,
+    onStartLocal: (Boolean) -> Unit,
+    onStartMineru: (Boolean, MineruMode) -> Unit,
+    onOpenMineruSettings: (Boolean) -> Unit,
     onOpenExisting: (String) -> Unit,
-    onReplace: () -> Unit,
     onCancelConversion: () -> Unit,
     onStayPdf: () -> Unit,
     onOpenConverted: (String) -> Unit
@@ -792,7 +831,7 @@ private fun PdfConversionBottomSheet(
         }
     }
 
-    val predictiveBackProgress = ConfigurableBackHandler { dismissForCurrentState() }
+    val predictiveBackProgress = ConfigurableBottomSheetBackHandler { dismissForCurrentState() }
 
     Box(Modifier.fillMaxSize()) {
         Box(
@@ -800,7 +839,7 @@ private fun PdfConversionBottomSheet(
                 .fillMaxSize()
                 .background(
                     AppColors.Scrim.copy(
-                        alpha = 0.28f * (1f - maxOf(offset.value, predictiveBackProgress))
+                        alpha = 0.28f * (1f - offset.value)
                     )
                 )
                 .clickable(
@@ -813,9 +852,7 @@ private fun PdfConversionBottomSheet(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .heightIn(max = LocalConfiguration.current.screenHeightDp.dp * 0.85f)
-                .graphicsLayer {
-                    translationY = maxOf(offset.value, predictiveBackProgress) * size.height
-                }
+                .materialBottomSheetMotion(offset.value, predictiveBackProgress)
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(
                     AppColors.CardBg,
@@ -850,17 +887,64 @@ private fun PdfConversionBottomSheet(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     when (currentSheet) {
-                        PdfConversionSheet.Confirm -> {
+                        is PdfConversionSheet.Confirm -> {
                             PdfSheetText(
-                                title = stringResource(R.string.pdf_convert_sheet_title),
-                                message = stringResource(R.string.pdf_convert_sheet_body)
+                                title = stringResource(R.string.pdf_convert_choose_method_title),
+                                message = stringResource(R.string.pdf_convert_choose_method_body)
+                            )
+                            PdfConversionMethodButton(
+                                icon = Icons.Outlined.PhoneAndroid,
+                                title = stringResource(R.string.pdf_convert_local_title),
+                                description = stringResource(R.string.pdf_convert_sheet_body),
+                                onClick = {
+                                    onStartLocal(currentSheet.replaceExisting)
+                                    onSheetChange(PdfConversionSheet.Progress)
+                                }
+                            )
+                            PdfConversionMethodButton(
+                                icon = Icons.Outlined.CloudUpload,
+                                title = stringResource(R.string.pdf_convert_mineru_title),
+                                description = if (mineruMode == MineruMode.DISABLED) {
+                                    stringResource(R.string.pdf_convert_mineru_not_configured_short)
+                                } else {
+                                    stringResource(
+                                        R.string.pdf_convert_mineru_mode_description,
+                                        if (mineruMode == MineruMode.AGENT) {
+                                            stringResource(R.string.mineru_mode_agent_short)
+                                        } else {
+                                            stringResource(R.string.mineru_mode_precise_short)
+                                        }
+                                    )
+                                },
+                                cloud = true,
+                                onClick = {
+                                    if (mineruMode == MineruMode.DISABLED) {
+                                        onSheetChange(
+                                            PdfConversionSheet.MineruNotConfigured(
+                                                currentSheet.replaceExisting
+                                            )
+                                        )
+                                    } else {
+                                        onStartMineru(currentSheet.replaceExisting, mineruMode)
+                                        onSheetChange(PdfConversionSheet.Progress)
+                                    }
+                                }
                             )
                             PdfSheetButton(
-                                label = stringResource(R.string.pdf_convert_start),
+                                label = stringResource(R.string.cancel),
+                                onClick = { closeThen() }
+                            )
+                        }
+                        is PdfConversionSheet.MineruNotConfigured -> {
+                            PdfSheetText(
+                                title = stringResource(R.string.pdf_convert_mineru_not_configured_title),
+                                message = stringResource(R.string.pdf_convert_mineru_not_configured_body)
+                            )
+                            PdfSheetButton(
+                                label = stringResource(R.string.pdf_convert_go_to_mineru_settings),
                                 primary = true,
                                 onClick = {
-                                    onStart()
-                                    onSheetChange(PdfConversionSheet.Progress)
+                                    closeThen { onOpenMineruSettings(currentSheet.replaceExisting) }
                                 }
                             )
                             PdfSheetButton(
@@ -883,10 +967,7 @@ private fun PdfConversionBottomSheet(
                             PdfSheetButton(
                                 label = stringResource(R.string.pdf_convert_replace),
                                 destructive = true,
-                                onClick = {
-                                    onReplace()
-                                    onSheetChange(PdfConversionSheet.Progress)
-                                }
+                                onClick = { onSheetChange(PdfConversionSheet.Confirm(replaceExisting = true)) }
                             )
                             PdfSheetButton(
                                 label = stringResource(R.string.cancel),
@@ -956,6 +1037,52 @@ private fun PdfConversionBottomSheet(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun PdfConversionMethodButton(
+    icon: ImageVector,
+    title: String,
+    description: String,
+    cloud: Boolean = false,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(AppColors.BgGray)
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = onClick
+            )
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = if (cloud) AppColors.Accent else AppColors.TextPrimary,
+            modifier = Modifier.size(22.dp)
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = title,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = AppColors.TextPrimary
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = description,
+                fontSize = 12.sp,
+                lineHeight = 18.sp,
+                color = AppColors.TextSecondary
+            )
         }
     }
 }
@@ -1076,6 +1203,15 @@ private fun pdfConversionErrorResource(errorCode: String): Int {
         PdfConversionContract.ERROR_ENCRYPTED -> R.string.pdf_convert_error_encrypted
         PdfConversionContract.ERROR_FILE_MISSING -> R.string.pdf_convert_error_file_missing
         PdfConversionContract.ERROR_STORAGE -> R.string.pdf_convert_error_storage
+        PdfConversionContract.ERROR_MINERU_NOT_CONFIGURED -> R.string.pdf_convert_error_mineru_not_configured
+        PdfConversionContract.ERROR_MINERU_FILE_LIMIT -> R.string.pdf_convert_error_mineru_file_limit
+        PdfConversionContract.ERROR_MINERU_PAGE_LIMIT -> R.string.pdf_convert_error_mineru_page_limit
+        PdfConversionContract.ERROR_MINERU_AUTH -> R.string.pdf_convert_error_mineru_auth
+        PdfConversionContract.ERROR_MINERU_RATE_LIMIT -> R.string.pdf_convert_error_mineru_rate_limit
+        PdfConversionContract.ERROR_MINERU_NETWORK -> R.string.pdf_convert_error_mineru_network
+        PdfConversionContract.ERROR_MINERU_UPLOAD -> R.string.pdf_convert_error_mineru_upload
+        PdfConversionContract.ERROR_MINERU_SERVICE -> R.string.pdf_convert_error_mineru_service
+        PdfConversionContract.ERROR_MINERU_RESULT -> R.string.pdf_convert_error_mineru_result
         else -> R.string.pdf_convert_error_unknown
     }
 }
@@ -1208,7 +1344,7 @@ private fun PdfTocSheet(
     val sheetOffset = remember { Animatable(1f) }
     var isClosing by remember { mutableStateOf(false) }
     var pendingPage by remember { mutableStateOf<Int?>(null) }
-    val predictiveBackProgress = ConfigurableBackHandler { isClosing = true }
+    val predictiveBackProgress = ConfigurableBottomSheetBackHandler { isClosing = true }
 
     LaunchedEffect(visible) {
         if (visible) {
@@ -1252,7 +1388,7 @@ private fun PdfTocSheet(
         Box(
             Modifier
                 .fillMaxSize()
-                .background(AppColors.Scrim.copy(alpha = 0.24f * (1f - predictiveBackProgress)))
+                .background(AppColors.Scrim.copy(alpha = 0.24f))
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                     isClosing = true
                 }
@@ -1264,9 +1400,7 @@ private fun PdfTocSheet(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .fillMaxHeight(0.7f)
-                .graphicsLayer {
-                    translationY = maxOf(sheetOffset.value, predictiveBackProgress) * size.height
-                }
+                .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress)
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(AppColors.CardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .navigationBarsPadding()

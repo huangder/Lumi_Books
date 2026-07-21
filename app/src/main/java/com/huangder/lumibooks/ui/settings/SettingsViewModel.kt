@@ -33,11 +33,15 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import javax.inject.Inject
+import com.huangder.lumibooks.mineru.MineruConfig
+import com.huangder.lumibooks.mineru.MineruMode
+import com.huangder.lumibooks.mineru.MineruTokenStore
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val dataStoreManager: DataStoreManager,
     private val bookRepository: BookRepository,
+    private val mineruTokenStore: MineruTokenStore,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -117,6 +121,19 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.splashEnabled.collectLatest { enabled ->
                 _uiState.value = _uiState.value.copy(splashEnabled = enabled)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.mineruMode.collectLatest { mode ->
+                _uiState.value = _uiState.value.copy(
+                    mineruMode = MineruMode.fromKey(mode).key,
+                    mineruHasToken = mineruTokenStore.hasToken()
+                )
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.mineruConsentVersion.collectLatest { version ->
+                _uiState.value = _uiState.value.copy(mineruConsentVersion = version)
             }
         }
         viewModelScope.launch {
@@ -213,16 +230,18 @@ class SettingsViewModel @Inject constructor(
     // ─── 显示与外观 ───
 
     fun saveAppTheme(theme: String) {
+        if (_uiState.value.appTheme == theme) return
+        _uiState.value = _uiState.value.copy(appTheme = theme)
         viewModelScope.launch {
             dataStoreManager.saveAppTheme(theme)
-            _uiState.value = _uiState.value.copy(appTheme = theme)
         }
     }
 
     fun saveDarkMode(mode: String) {
+        if (_uiState.value.darkMode == mode) return
+        _uiState.value = _uiState.value.copy(darkMode = mode)
         viewModelScope.launch {
             dataStoreManager.saveDarkMode(mode)
-            _uiState.value = _uiState.value.copy(darkMode = mode)
         }
     }
 
@@ -268,6 +287,67 @@ class SettingsViewModel @Inject constructor(
             dataStoreManager.saveSplashEnabled(enabled)
             _uiState.value = _uiState.value.copy(splashEnabled = enabled)
             Toast.makeText(context, R.string.splash_setting_next_launch, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun enableMineru(mode: MineruMode, token: String? = null, acceptConsent: Boolean = false) {
+        require(mode != MineruMode.DISABLED)
+        viewModelScope.launch(Dispatchers.IO) {
+            if (mode == MineruMode.PRECISE) {
+                val normalizedToken = token?.trim().orEmpty()
+                if (normalizedToken.isNotEmpty()) {
+                    mineruTokenStore.save(normalizedToken)
+                }
+                if (!mineruTokenStore.hasToken()) return@launch
+            }
+            if (acceptConsent) {
+                dataStoreManager.acceptMineruConsent(MineruConfig.CONSENT_VERSION)
+            }
+            dataStoreManager.saveMineruMode(mode.key)
+            _uiState.value = _uiState.value.copy(
+                mineruMode = mode.key,
+                mineruConsentVersion = if (acceptConsent) {
+                    MineruConfig.CONSENT_VERSION
+                } else {
+                    _uiState.value.mineruConsentVersion
+                },
+                mineruHasToken = mineruTokenStore.hasToken()
+            )
+        }
+    }
+
+    fun disableMineru(clearToken: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (clearToken) mineruTokenStore.clear()
+            dataStoreManager.disableMineru()
+            _uiState.value = _uiState.value.copy(
+                mineruMode = MineruMode.DISABLED.key,
+                mineruConsentVersion = 0,
+                mineruHasToken = mineruTokenStore.hasToken()
+            )
+        }
+    }
+
+    fun clearMineruToken() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val wasPrecise = _uiState.value.mineruMode == MineruMode.PRECISE.key
+            mineruTokenStore.clear()
+            if (wasPrecise) {
+                dataStoreManager.disableMineru()
+            }
+            _uiState.value = _uiState.value.copy(
+                mineruMode = if (wasPrecise) {
+                    MineruMode.DISABLED.key
+                } else {
+                    _uiState.value.mineruMode
+                },
+                mineruConsentVersion = if (wasPrecise) {
+                    0
+                } else {
+                    _uiState.value.mineruConsentVersion
+                },
+                mineruHasToken = false
+            )
         }
     }
 

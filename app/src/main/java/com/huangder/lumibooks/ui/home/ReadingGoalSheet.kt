@@ -46,7 +46,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
@@ -59,7 +58,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.Book
-import com.huangder.lumibooks.ui.components.ConfigurableBackHandler
+import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
+import com.huangder.lumibooks.ui.components.materialBottomSheetMotion
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
@@ -96,7 +96,7 @@ fun ReadingGoalSheet(
         }
     }
 
-    val predictiveBackProgress = ConfigurableBackHandler(
+    val predictiveBackProgress = ConfigurableBottomSheetBackHandler(
         enabled = visible || containerOffsetY.value < 1f
     ) { onDismiss() }
 
@@ -135,9 +135,7 @@ fun ReadingGoalSheet(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
-                    Color.Black.copy(
-                        alpha = (if (isDark) 0.4f else 0.1f) * (1f - predictiveBackProgress)
-                    )
+                    Color.Black.copy(alpha = if (isDark) 0.4f else 0.1f)
                 )
                 .pointerInput(Unit) { detectTapGestures { onDismiss() } }
         )
@@ -147,9 +145,7 @@ fun ReadingGoalSheet(
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
                 .heightIn(max = maxSheetHeight)
-                .graphicsLayer {
-                    translationY = maxOf(containerOffsetY.value, predictiveBackProgress) * size.height
-                }
+                .materialBottomSheetMotion(containerOffsetY.value, predictiveBackProgress)
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(cardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .imePadding()

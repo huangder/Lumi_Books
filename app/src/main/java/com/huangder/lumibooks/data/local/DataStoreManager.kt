@@ -74,6 +74,11 @@ class DataStoreManager @Inject constructor(
         private val HAS_SEEN_WELCOME = booleanPreferencesKey("has_seen_welcome")
         private val COMPLETED_WELCOME_INSTALL_TIME = longPreferencesKey("completed_welcome_install_time")
 
+        // MinerU 第三方云解析设置
+        private val MINERU_MODE = stringPreferencesKey("mineru_mode")
+        private val MINERU_CONSENT_VERSION = intPreferencesKey("mineru_consent_version")
+        private val MINERU_CONSENT_ACCEPTED_AT = longPreferencesKey("mineru_consent_accepted_at")
+
         // 应用语言
         private val APP_LANGUAGE = stringPreferencesKey("app_language")
 
@@ -231,6 +236,18 @@ class DataStoreManager @Inject constructor(
 
     val completedWelcomeInstallTime: Flow<Long> = context.dataStore.data.map { preferences ->
         preferences[COMPLETED_WELCOME_INSTALL_TIME] ?: 0L
+    }
+
+    val mineruMode: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[MINERU_MODE] ?: "disabled"
+    }
+
+    val mineruConsentVersion: Flow<Int> = context.dataStore.data.map { preferences ->
+        preferences[MINERU_CONSENT_VERSION] ?: 0
+    }
+
+    val mineruConsentAcceptedAt: Flow<Long> = context.dataStore.data.map { preferences ->
+        preferences[MINERU_CONSENT_ACCEPTED_AT] ?: 0L
     }
 
     // 应用语言
@@ -600,6 +617,30 @@ class DataStoreManager @Inject constructor(
         context.dataStore.edit { preferences ->
             preferences[HAS_SEEN_WELCOME] = true
             preferences[COMPLETED_WELCOME_INSTALL_TIME] = installTime
+        }
+    }
+
+    suspend fun saveMineruMode(mode: String) {
+        context.dataStore.edit { preferences ->
+            preferences[MINERU_MODE] = when (mode) {
+                "agent", "precise" -> mode
+                else -> "disabled"
+            }
+        }
+    }
+
+    suspend fun acceptMineruConsent(version: Int, acceptedAt: Long = System.currentTimeMillis()) {
+        context.dataStore.edit { preferences ->
+            preferences[MINERU_CONSENT_VERSION] = version.coerceAtLeast(0)
+            preferences[MINERU_CONSENT_ACCEPTED_AT] = acceptedAt.coerceAtLeast(0L)
+        }
+    }
+
+    suspend fun disableMineru() {
+        context.dataStore.edit { preferences ->
+            preferences[MINERU_MODE] = "disabled"
+            preferences[MINERU_CONSENT_VERSION] = 0
+            preferences[MINERU_CONSENT_ACCEPTED_AT] = 0L
         }
     }
 

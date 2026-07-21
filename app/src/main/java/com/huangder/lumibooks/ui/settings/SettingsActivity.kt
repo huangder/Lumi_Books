@@ -1,14 +1,16 @@
 package com.huangder.lumibooks.ui.settings
 
 import android.os.Bundle
+import android.content.res.Configuration
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
@@ -25,6 +27,8 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class SettingsActivity : ComponentActivity() {
 
+    private var systemDarkMode by mutableStateOf(false)
+
     override fun attachBaseContext(newBase: android.content.Context) {
         super.attachBaseContext(com.huangder.lumibooks.util.LocaleHelper.applyLanguage(newBase))
     }
@@ -35,6 +39,7 @@ class SettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        systemDarkMode = resources.configuration.isNightModeEnabled()
 
         setContent {
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = "lumi")
@@ -43,7 +48,7 @@ class SettingsActivity : ComponentActivity() {
             val isDark = when (darkMode) {
                 "dark" -> true
                 "light" -> false
-                else -> isSystemInDarkTheme()
+                else -> systemDarkMode
             }
 
             EBookReaderTheme(
@@ -62,5 +67,15 @@ class SettingsActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        systemDarkMode = newConfig.isNightModeEnabled()
+    }
+
+    private fun Configuration.isNightModeEnabled(): Boolean {
+        return (uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+    }
+
     // finish() 不再覆写 — 系统默认返回动画由 OEM 自行控制
 }

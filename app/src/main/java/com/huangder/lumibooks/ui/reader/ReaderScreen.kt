@@ -131,6 +131,8 @@ import androidx.compose.ui.window.PopupProperties
 import com.huangder.lumibooks.ui.animation.AppEasing
 import com.huangder.lumibooks.ui.animation.cardPressEffect
 import com.huangder.lumibooks.ui.components.ConfigurableBackHandler
+import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
+import com.huangder.lumibooks.ui.components.materialBottomSheetMotion
 import com.huangder.lumibooks.ui.components.ReaderSystemBarStyle
 import com.huangder.lumibooks.ui.reader.engine.ReadView
 import com.huangder.lumibooks.ui.reader.engine.ReadViewCallbacks
@@ -1973,7 +1975,7 @@ private fun TocSheet(
 
     var isClosing by remember { mutableStateOf(false) }
     var pendingJumpIndex by remember { mutableStateOf<Int?>(null) }
-    val predictiveBackProgress = ConfigurableBackHandler { isClosing = true }
+    val predictiveBackProgress = ConfigurableBottomSheetBackHandler { isClosing = true }
 
     // 监听 requestClose 状态，触发动画关闭
     LaunchedEffect(requestClose) {
@@ -1995,7 +1997,7 @@ private fun TocSheet(
         // 遮罩
         Box(
             Modifier.fillMaxSize()
-                .background(AppColors.Scrim.copy(alpha = 0.20f * (1f - predictiveBackProgress)))
+                .background(AppColors.Scrim.copy(alpha = 0.20f))
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { isClosing = true }
         )
 
@@ -2004,9 +2006,7 @@ private fun TocSheet(
             Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .fillMaxHeight(0.7f)
-                .graphicsLayer {
-                    translationY = maxOf(sheetOffset.value, predictiveBackProgress) * size.height
-                }
+                .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress)
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(AppColors.CardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .navigationBarsPadding()
@@ -2124,7 +2124,7 @@ private fun SearchSheet(
     }
 
     var isClosing by remember { mutableStateOf(false) }
-    val predictiveBackProgress = ConfigurableBackHandler { isClosing = true }
+    val predictiveBackProgress = ConfigurableBottomSheetBackHandler { isClosing = true }
 
     // 监听 requestClose 状态，触发动画关闭
     LaunchedEffect(requestClose) {
@@ -2144,7 +2144,7 @@ private fun SearchSheet(
         // 遮罩
         Box(
             Modifier.fillMaxSize()
-                .background(AppColors.Scrim.copy(alpha = 0.20f * (1f - predictiveBackProgress)))
+                .background(AppColors.Scrim.copy(alpha = 0.20f))
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { isClosing = true }
         )
 
@@ -2152,9 +2152,7 @@ private fun SearchSheet(
         Box(
             Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .graphicsLayer {
-                    translationY = maxOf(sheetOffset.value, predictiveBackProgress) * size.height
-                }
+                .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress)
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(AppColors.CardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .imePadding()
@@ -2571,7 +2569,7 @@ private fun NoteInputSheet(
 
     val sheetAlpha = remember { Animatable(0f) }
     val sheetOffset = remember { Animatable(1f) }
-    val predictiveBackProgress = ConfigurableBackHandler(onBack = onCancel)
+    val predictiveBackProgress = ConfigurableBottomSheetBackHandler(onBack = onCancel)
 
     LaunchedEffect(visible) {
         if (visible) {
@@ -2585,7 +2583,7 @@ private fun NoteInputSheet(
     Box(Modifier.fillMaxSize()) {
         Box(
             Modifier.fillMaxSize()
-                .graphicsLayer { alpha = sheetAlpha.value * (1f - predictiveBackProgress) }
+                .graphicsLayer { alpha = sheetAlpha.value }
                 .background(AppColors.Scrim.copy(alpha = 0.20f))
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onCancel() }
         )
@@ -2594,10 +2592,11 @@ private fun NoteInputSheet(
             Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .fillMaxHeight(0.6f)
-                .graphicsLayer {
-                    translationY = maxOf(sheetOffset.value, predictiveBackProgress) * size.height
+                .materialBottomSheetMotion(
+                    entryOffset = sheetOffset.value,
+                    predictiveBackProgress = predictiveBackProgress,
                     alpha = sheetAlpha.value
-                }
+                )
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(AppColors.CardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .padding(bottom = 16.dp)
@@ -2672,7 +2671,7 @@ private fun NotesListSheet(
 
     var isClosing by remember { mutableStateOf(false) }
     var pendingJumpNote by remember { mutableStateOf<com.huangder.lumibooks.domain.model.Note?>(null) }
-    val predictiveBackProgress = ConfigurableBackHandler { isClosing = true }
+    val predictiveBackProgress = ConfigurableBottomSheetBackHandler { isClosing = true }
 
     // 监听 requestClose 状态，触发动画关闭
     LaunchedEffect(requestClose) {
@@ -2701,7 +2700,7 @@ private fun NotesListSheet(
         // 遮罩层：有滑开项时先关闭滑开项，否则关闭整个弹窗
         Box(
             Modifier.fillMaxSize()
-                .background(AppColors.Scrim.copy(alpha = 0.20f * (1f - predictiveBackProgress)))
+                .background(AppColors.Scrim.copy(alpha = 0.20f))
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                     if (anyItemRevealed) resetRevealedKey = resetRevealedKey + 1 else isClosing = true
                 }
@@ -2712,9 +2711,7 @@ private fun NotesListSheet(
             Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .fillMaxHeight(0.6f)
-                .graphicsLayer {
-                    translationY = maxOf(sheetOffset.value, predictiveBackProgress) * size.height
-                }
+                .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress)
                 .background(LightCardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .border(0.5.dp, AppColors.Divider, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .navigationBarsPadding()
