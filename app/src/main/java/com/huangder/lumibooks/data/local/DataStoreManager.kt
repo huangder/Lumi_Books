@@ -37,6 +37,10 @@ class DataStoreManager @Inject constructor(
         private val READER_THEME = stringPreferencesKey("reader_theme")
         private val MARGIN_HORIZ = floatPreferencesKey("margin_horiz")
         private val MARGIN_VERT = floatPreferencesKey("margin_vert")
+        private val MARGIN_LEFT = floatPreferencesKey("margin_left")
+        private val MARGIN_RIGHT = floatPreferencesKey("margin_right")
+        private val MARGIN_TOP = floatPreferencesKey("margin_top")
+        private val MARGIN_BOTTOM = floatPreferencesKey("margin_bottom")
         private val BRIGHTNESS = floatPreferencesKey("brightness")
         private val CUSTOM_FONT_PATH = stringPreferencesKey("custom_font_path")
         private val READER_BACKGROUND_SELECTION = stringPreferencesKey("reader_background_selection")
@@ -103,11 +107,29 @@ class DataStoreManager @Inject constructor(
     }
 
     val marginHoriz: Flow<Float> = context.dataStore.data.map { preferences ->
-        preferences[MARGIN_HORIZ] ?: 38f
+        val fallback = preferences[MARGIN_HORIZ] ?: 38f
+        ((preferences[MARGIN_LEFT] ?: fallback) + (preferences[MARGIN_RIGHT] ?: fallback)) / 2f
     }
 
     val marginVert: Flow<Float> = context.dataStore.data.map { preferences ->
-        preferences[MARGIN_VERT] ?: 64f
+        val fallback = preferences[MARGIN_VERT] ?: 64f
+        ((preferences[MARGIN_TOP] ?: fallback) + (preferences[MARGIN_BOTTOM] ?: fallback)) / 2f
+    }
+
+    val marginLeft: Flow<Float> = context.dataStore.data.map { preferences ->
+        preferences[MARGIN_LEFT] ?: preferences[MARGIN_HORIZ] ?: 38f
+    }
+
+    val marginRight: Flow<Float> = context.dataStore.data.map { preferences ->
+        preferences[MARGIN_RIGHT] ?: preferences[MARGIN_HORIZ] ?: 38f
+    }
+
+    val marginTop: Flow<Float> = context.dataStore.data.map { preferences ->
+        preferences[MARGIN_TOP] ?: preferences[MARGIN_VERT] ?: 64f
+    }
+
+    val marginBottom: Flow<Float> = context.dataStore.data.map { preferences ->
+        preferences[MARGIN_BOTTOM] ?: preferences[MARGIN_VERT] ?: 64f
     }
 
     val readerTheme: Flow<String> = context.dataStore.data.map { preferences ->
@@ -253,12 +275,48 @@ class DataStoreManager @Inject constructor(
     suspend fun saveMarginHoriz(marginHoriz: Float) {
         context.dataStore.edit { preferences ->
             preferences[MARGIN_HORIZ] = marginHoriz
+            preferences[MARGIN_LEFT] = marginHoriz
+            preferences[MARGIN_RIGHT] = marginHoriz
         }
     }
 
     suspend fun saveMarginVert(marginVert: Float) {
         context.dataStore.edit { preferences ->
             preferences[MARGIN_VERT] = marginVert
+            preferences[MARGIN_TOP] = marginVert
+            preferences[MARGIN_BOTTOM] = marginVert
+        }
+    }
+
+    suspend fun saveMarginLeft(marginLeft: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[MARGIN_LEFT] = marginLeft
+            val right = preferences[MARGIN_RIGHT] ?: preferences[MARGIN_HORIZ] ?: 38f
+            preferences[MARGIN_HORIZ] = (marginLeft + right) / 2f
+        }
+    }
+
+    suspend fun saveMarginRight(marginRight: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[MARGIN_RIGHT] = marginRight
+            val left = preferences[MARGIN_LEFT] ?: preferences[MARGIN_HORIZ] ?: 38f
+            preferences[MARGIN_HORIZ] = (left + marginRight) / 2f
+        }
+    }
+
+    suspend fun saveMarginTop(marginTop: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[MARGIN_TOP] = marginTop
+            val bottom = preferences[MARGIN_BOTTOM] ?: preferences[MARGIN_VERT] ?: 64f
+            preferences[MARGIN_VERT] = (marginTop + bottom) / 2f
+        }
+    }
+
+    suspend fun saveMarginBottom(marginBottom: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[MARGIN_BOTTOM] = marginBottom
+            val top = preferences[MARGIN_TOP] ?: preferences[MARGIN_VERT] ?: 64f
+            preferences[MARGIN_VERT] = (top + marginBottom) / 2f
         }
     }
 
@@ -369,6 +427,10 @@ class DataStoreManager @Inject constructor(
             preferences[FONT_TYPE] = "system"
             preferences[MARGIN_HORIZ] = 38f
             preferences[MARGIN_VERT] = 64f
+            preferences[MARGIN_LEFT] = 38f
+            preferences[MARGIN_RIGHT] = 38f
+            preferences[MARGIN_TOP] = 64f
+            preferences[MARGIN_BOTTOM] = 64f
             preferences[PARAGRAPH_SPACING] = 2f
             preferences[FIRST_LINE_INDENT] = 2f
             preferences[SHOW_READER_CHAPTER_PROGRESS] = true
@@ -391,18 +453,28 @@ class DataStoreManager @Inject constructor(
 
     suspend fun migrateAdvancedReaderDefaults() {
         context.dataStore.edit { preferences ->
-            if ((preferences[ADVANCED_DEFAULTS_VERSION] ?: 0) >= 1) return@edit
+            val currentVersion = preferences[ADVANCED_DEFAULTS_VERSION] ?: 0
+            if (currentVersion >= 2) return@edit
 
-            if (preferences[PARAGRAPH_SPACING] == 8f) {
-                preferences[PARAGRAPH_SPACING] = 2f
+            if (currentVersion < 1) {
+                if (preferences[PARAGRAPH_SPACING] == 8f) {
+                    preferences[PARAGRAPH_SPACING] = 2f
+                }
+                if (preferences[MARGIN_HORIZ] == 44f || preferences[MARGIN_HORIZ] == 40f) {
+                    preferences[MARGIN_HORIZ] = 38f
+                }
+                if (preferences[MARGIN_VERT] == 72f || preferences[MARGIN_VERT] == 68f) {
+                    preferences[MARGIN_VERT] = 64f
+                }
             }
-            if (preferences[MARGIN_HORIZ] == 44f || preferences[MARGIN_HORIZ] == 40f) {
-                preferences[MARGIN_HORIZ] = 38f
-            }
-            if (preferences[MARGIN_VERT] == 72f || preferences[MARGIN_VERT] == 68f) {
-                preferences[MARGIN_VERT] = 64f
-            }
-            preferences[ADVANCED_DEFAULTS_VERSION] = 1
+
+            val horizontal = preferences[MARGIN_HORIZ] ?: 38f
+            val vertical = preferences[MARGIN_VERT] ?: 64f
+            if (preferences[MARGIN_LEFT] == null) preferences[MARGIN_LEFT] = horizontal
+            if (preferences[MARGIN_RIGHT] == null) preferences[MARGIN_RIGHT] = horizontal
+            if (preferences[MARGIN_TOP] == null) preferences[MARGIN_TOP] = vertical
+            if (preferences[MARGIN_BOTTOM] == null) preferences[MARGIN_BOTTOM] = vertical
+            preferences[ADVANCED_DEFAULTS_VERSION] = 2
         }
     }
 

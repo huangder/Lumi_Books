@@ -99,6 +99,10 @@
     <string name="label_font_type">字体类型</string>
     <string name="label_margin_horiz">左右边距</string>
     <string name="label_margin_vert">上下边距</string>
+    <string name="label_margin_left">左边距</string>
+    <string name="label_margin_right">右边距</string>
+    <string name="label_margin_top">上边距</string>
+    <string name="label_margin_bottom">下边距</string>
     <string name="label_paragraph_spacing">段间距</string>
     <string name="label_first_line_indent">首行缩进</string>
 

@@ -133,7 +133,11 @@
     <string name="label_font_type">字型</string>
     <string name="label_letter_spacing">字距</string>
     <string name="label_line_height">行距</string>
+    <string name="label_margin_bottom">下邊距</string>
     <string name="label_margin_horiz">左右邊距</string>
+    <string name="label_margin_left">左邊距</string>
+    <string name="label_margin_right">右邊距</string>
+    <string name="label_margin_top">上邊距</string>
     <string name="label_margin_vert">上下邊距</string>
     <string name="label_predictive_back">預測返回</string>
     <string name="label_reader_theme">預設閱讀主題</string>

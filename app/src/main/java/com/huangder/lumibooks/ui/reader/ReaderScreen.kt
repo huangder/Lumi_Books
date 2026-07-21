@@ -104,6 +104,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.graphicsLayer
@@ -446,15 +447,12 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     val readerTextColorInt = uiState.readerTextColor ?: automaticReaderTextColorInt
     val hasTopReaderStatus = uiState.readerTopLeftContent != ReaderCornerContent.NONE ||
         uiState.readerTopRightContent != ReaderCornerContent.NONE
-    val hasBottomReaderStatus = uiState.readerBottomLeftContent != ReaderCornerContent.NONE ||
-        uiState.readerBottomRightContent != ReaderCornerContent.NONE
-
     val menuBgColorInt = selectedCustomBackground?.dominantColor ?: readerBackgroundColorInt
     val menuBgColor = Color(menuBgColorInt)
     val menuContentColor = if (ColorUtils.calculateLuminance(menuBgColorInt) < 0.4) {
         Color.White
     } else {
-        AppColors.TextPrimary
+        Color(0xFF1C1C1E)
     }
     // 胶囊按钮背景色：基于阅读主题而非系统深色模式
     val capsuleBgColor = when (uiState.readerTheme) {
@@ -463,11 +461,10 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         "green" -> Color(0xFFC8E6C9)
         else -> Color(0xFFEEEEEE)
     }
-    val capsuleContentColor = when (uiState.readerTheme) {
-        "night" -> Color(0xFFCCCCCC)
-        "sepia" -> Color(0xFF4A3728)
-        "green" -> Color(0xFF2E7D32)
-        else -> AppColors.TextPrimary
+    val capsuleContentColor = if (ColorUtils.calculateLuminance(capsuleBgColor.toArgb()) < 0.4) {
+        Color.White
+    } else {
+        Color(0xFF1C1C1E)
     }
     // 目录进度条颜色：比文字深，跟随阅读主题
     val catalogProgressColor = when (uiState.readerTheme) {
@@ -701,7 +698,9 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     val fontSizePx = debouncedFontSize * density.density
                     val measuredWidth = readView.width.takeIf { it > 0 } ?: readerScreenWidthPx
                     val contentWidthPx = (
-                        measuredWidth - (uiState.marginHorizDp * density.density * 2f).toInt()
+                        measuredWidth - (
+                            (uiState.marginLeftDp + uiState.marginRightDp) * density.density
+                        ).toInt()
                     ).coerceAtLeast(1)
                     viewModel.updateReaderContentWidth(contentWidthPx)
                     readView.configure(
@@ -714,10 +713,12 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         letterSpacingDp = uiState.letterSpacing,
                         fontType = uiState.fontType,
                         customFontPath = uiState.customFontPath,
-                        marginHorizDp = uiState.marginHorizDp,
-                        marginVertDp = uiState.marginVertDp,
+                        marginLeftDp = uiState.marginLeftDp,
+                        marginRightDp = uiState.marginRightDp,
+                        marginTopDp = uiState.marginTopDp,
+                        marginBottomDp = uiState.marginBottomDp,
                         topOverlayInsetDp = if (hasTopReaderStatus) 38f else 0f,
-                        bottomOverlayInsetDp = if (hasBottomReaderStatus) 38f else 0f,
+                        bottomOverlayInsetDp = 0f,
                         paragraphSpacingDp = uiState.paragraphSpacing
                     )
                     readView.setReaderBackground(
@@ -870,6 +871,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         chapterPageCount = uiState.totalPages,
                         capsuleBgColor = capsuleBgColor,
                         capsuleContentColor = capsuleContentColor,
+                        readerContentColor = menuContentColor,
                         catalogProgressColor = catalogProgressColor,
                         onCatalogClick = { showToc = true },
                         onBookmarkClick = { showNotesList = true },
@@ -886,7 +888,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         bookProgressPercent = bookProgressPercent,
                         currentPage = uiState.currentPageIndex + 1,
                         chapterPageCount = uiState.totalPages,
-                        horizontalMarginDp = uiState.marginHorizDp,
+                        leftMarginDp = uiState.marginLeftDp,
+                        rightMarginDp = uiState.marginRightDp,
                         topLeft = if (linkReturnLocation == null) {
                             uiState.readerTopLeftContent
                         } else {
@@ -1023,8 +1026,10 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 currentLetterSpacing = uiState.letterSpacing,
                 currentFontType = uiState.fontType,
                 customFontPath = uiState.customFontPath,
-                currentMarginHoriz = uiState.marginHorizDp,
-                currentMarginVert = uiState.marginVertDp,
+                currentMarginLeft = uiState.marginLeftDp,
+                currentMarginRight = uiState.marginRightDp,
+                currentMarginTop = uiState.marginTopDp,
+                currentMarginBottom = uiState.marginBottomDp,
                 currentBgColor = Color(readerBackgroundColorInt),
                 currentBackgroundImagePath = readerBackgroundImagePath,
                 currentTextColor = Color(readerTextColorInt),
@@ -1042,8 +1047,10 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         }
                     }
                 },
-                onMarginHorizChange = { viewModel.saveMarginHoriz(it) },
-                onMarginVertChange = { viewModel.saveMarginVert(it) },
+                onMarginLeftChange = { viewModel.saveMarginLeft(it) },
+                onMarginRightChange = { viewModel.saveMarginRight(it) },
+                onMarginTopChange = { viewModel.saveMarginTop(it) },
+                onMarginBottomChange = { viewModel.saveMarginBottom(it) },
                 currentParagraphSpacing = uiState.paragraphSpacing,
                 currentFirstLineIndent = uiState.firstLineIndent,
                 onParagraphSpacingChange = { viewModel.saveParagraphSpacing(it) },
@@ -1232,7 +1239,8 @@ private fun ReaderPageCornerOverlay(
     bookProgressPercent: Float,
     currentPage: Int,
     chapterPageCount: Int,
-    horizontalMarginDp: Float,
+    leftMarginDp: Float,
+    rightMarginDp: Float,
     topLeft: ReaderCornerContent,
     topRight: ReaderCornerContent,
     bottomLeft: ReaderCornerContent,
@@ -1253,9 +1261,9 @@ private fun ReaderPageCornerOverlay(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .padding(
-                        start = horizontalMarginDp.coerceAtLeast(0f).dp,
+                        start = leftMarginDp.coerceAtLeast(0f).dp,
                         top = 20.dp,
-                        end = horizontalMarginDp.coerceAtLeast(0f).dp
+                        end = rightMarginDp.coerceAtLeast(0f).dp
                     )
             )
         }
@@ -1272,8 +1280,8 @@ private fun ReaderPageCornerOverlay(
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
                     .padding(
-                        start = horizontalMarginDp.coerceAtLeast(0f).dp,
-                        end = horizontalMarginDp.coerceAtLeast(0f).dp,
+                        start = leftMarginDp.coerceAtLeast(0f).dp,
+                        end = rightMarginDp.coerceAtLeast(0f).dp,
                         bottom = 20.dp
                     )
             )
@@ -1619,12 +1627,11 @@ private fun ReaderTopBar(
     val controlBackground = if (contentColor == Color.White) {
         Color.Black.copy(alpha = 0.28f)
     } else {
-        AppColors.BgGray.copy(alpha = 0.8f)
+        Color(0xFFF2F2F7).copy(alpha = 0.8f)
     }
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .statusBarsPadding()
             .height(140.dp)
     ) {
         Box(
@@ -1645,6 +1652,7 @@ private fun ReaderTopBar(
         Row(
             modifier = Modifier
                 .fillMaxSize()
+                .statusBarsPadding()
                 .padding(horizontal = 28.dp, vertical = 20.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1733,6 +1741,7 @@ private fun FloatingReaderMenu(
     chapterPageCount: Int,
     capsuleBgColor: Color,
     capsuleContentColor: Color,
+    readerContentColor: Color,
     catalogProgressColor: Color,
     onCatalogClick: () -> Unit,
     onBookmarkClick: () -> Unit,
@@ -1788,7 +1797,7 @@ private fun FloatingReaderMenu(
             bookProgressPercent = bookProgressPercent,
             currentPage = currentPage,
             chapterPageCount = chapterPageCount,
-            contentColor = capsuleContentColor
+            contentColor = readerContentColor
         )
         Row(
             modifier = Modifier.fillMaxWidth(),

@@ -78,8 +78,10 @@ data class ReaderUiState(
     val lineHeight: Float = 1.5f,
     val letterSpacing: Float = 0f,
     val fontType: String = "system",
-    val marginHorizDp: Float = 38f,
-    val marginVertDp: Float = 64f,
+    val marginLeftDp: Float = 38f,
+    val marginRightDp: Float = 38f,
+    val marginTopDp: Float = 64f,
+    val marginBottomDp: Float = 64f,
     val readerTheme: String = "day",
     /** 亮度 0f~1f，-1f 跟随系统 */
     val brightness: Float = -1f,
@@ -279,13 +281,23 @@ class ReaderViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            dataStoreManager.marginHoriz.collectLatest { mh ->
-                _uiState.value = _uiState.value.copy(marginHorizDp = mh)
+            dataStoreManager.marginLeft.collectLatest { margin ->
+                _uiState.value = _uiState.value.copy(marginLeftDp = margin)
             }
         }
         viewModelScope.launch {
-            dataStoreManager.marginVert.collectLatest { mv ->
-                _uiState.value = _uiState.value.copy(marginVertDp = mv)
+            dataStoreManager.marginRight.collectLatest { margin ->
+                _uiState.value = _uiState.value.copy(marginRightDp = margin)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.marginTop.collectLatest { margin ->
+                _uiState.value = _uiState.value.copy(marginTopDp = margin)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.marginBottom.collectLatest { margin ->
+                _uiState.value = _uiState.value.copy(marginBottomDp = margin)
             }
         }
         viewModelScope.launch {
@@ -398,14 +410,24 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch { dataStoreManager.saveFontType(ft) }
     }
 
-    fun saveMarginHoriz(mh: Float) {
-        _uiState.value = _uiState.value.copy(marginHorizDp = mh)
-        viewModelScope.launch { dataStoreManager.saveMarginHoriz(mh) }
+    fun saveMarginLeft(value: Float) {
+        _uiState.value = _uiState.value.copy(marginLeftDp = value)
+        viewModelScope.launch { dataStoreManager.saveMarginLeft(value) }
     }
 
-    fun saveMarginVert(mv: Float) {
-        _uiState.value = _uiState.value.copy(marginVertDp = mv)
-        viewModelScope.launch { dataStoreManager.saveMarginVert(mv) }
+    fun saveMarginRight(value: Float) {
+        _uiState.value = _uiState.value.copy(marginRightDp = value)
+        viewModelScope.launch { dataStoreManager.saveMarginRight(value) }
+    }
+
+    fun saveMarginTop(value: Float) {
+        _uiState.value = _uiState.value.copy(marginTopDp = value)
+        viewModelScope.launch { dataStoreManager.saveMarginTop(value) }
+    }
+
+    fun saveMarginBottom(value: Float) {
+        _uiState.value = _uiState.value.copy(marginBottomDp = value)
+        viewModelScope.launch { dataStoreManager.saveMarginBottom(value) }
     }
 
     fun updateReaderContentWidth(widthPx: Int) {
@@ -634,8 +656,10 @@ class ReaderViewModel @Inject constructor(
             lineHeight = 1.5f,
             letterSpacing = 0f,
             fontType = "system",
-            marginHorizDp = 38f,
-            marginVertDp = 64f,
+            marginLeftDp = 38f,
+            marginRightDp = 38f,
+            marginTopDp = 64f,
+            marginBottomDp = 64f,
             paragraphSpacing = 2f,
             firstLineIndent = 2f,
             readerTextColor = null,

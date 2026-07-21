@@ -581,7 +581,10 @@ private fun PdfTopBar(
             )
     ) {
         Row(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 28.dp, vertical = 28.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .padding(horizontal = 28.dp, vertical = 28.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // 左侧：返回按钮 + 页码

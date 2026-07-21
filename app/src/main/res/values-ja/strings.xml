@@ -99,6 +99,10 @@
     <string name="label_font_type">フォント</string>
     <string name="label_margin_horiz">左右マージン</string>
     <string name="label_margin_vert">上下マージン</string>
+    <string name="label_margin_left">左余白</string>
+    <string name="label_margin_right">右余白</string>
+    <string name="label_margin_top">上余白</string>
+    <string name="label_margin_bottom">下余白</string>
 
     <!-- 表示と外観 -->
     <string name="label_dark_mode">ダークモード</string>

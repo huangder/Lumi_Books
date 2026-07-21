@@ -814,8 +814,10 @@ fun AdvancedSettingsSheet(
     currentLetterSpacing: Float,
     currentFontType: String,
     customFontPath: String? = null,
-    currentMarginHoriz: Float,
-    currentMarginVert: Float,
+    currentMarginLeft: Float,
+    currentMarginRight: Float,
+    currentMarginTop: Float,
+    currentMarginBottom: Float,
     currentBgColor: Color,
     currentBackgroundImagePath: String?,
     currentTextColor: Color,
@@ -825,8 +827,10 @@ fun AdvancedSettingsSheet(
     onLetterSpacingChange: (Float) -> Unit,
     onFontTypeChange: (String) -> Unit,
     onImportFont: (android.net.Uri) -> Unit = {},
-    onMarginHorizChange: (Float) -> Unit,
-    onMarginVertChange: (Float) -> Unit,
+    onMarginLeftChange: (Float) -> Unit,
+    onMarginRightChange: (Float) -> Unit,
+    onMarginTopChange: (Float) -> Unit,
+    onMarginBottomChange: (Float) -> Unit,
     currentParagraphSpacing: Float = 0f,
     currentFirstLineIndent: Float = 0f,
     onParagraphSpacingChange: (Float) -> Unit = {},
@@ -883,8 +887,10 @@ fun AdvancedSettingsSheet(
     val previewParagraphs = remember(resolvedPreviewText) {
         buildPreviewParagraphs(resolvedPreviewText)
     }
-    val previewHorizontalPadding = currentMarginHoriz.coerceIn(0f, 80f).dp
-    val previewVerticalPadding = (currentMarginVert / 3f).coerceIn(0f, 40f).dp
+    val previewLeftPadding = currentMarginLeft.coerceIn(0f, 80f).dp
+    val previewRightPadding = currentMarginRight.coerceIn(0f, 80f).dp
+    val previewTopPadding = (currentMarginTop / 3f).coerceIn(0f, 40f).dp
+    val previewBottomPadding = (currentMarginBottom / 3f).coerceIn(0f, 40f).dp
 
     Box(Modifier.fillMaxSize()) {
         // 遮罩
@@ -927,9 +933,11 @@ fun AdvancedSettingsSheet(
                         .fillMaxSize()
                         .padding(top = 62.dp)
                         .padding(
-                            horizontal = previewHorizontalPadding,
-                            vertical = previewVerticalPadding
-                    ),
+                            start = previewLeftPadding,
+                            top = previewTopPadding,
+                            end = previewRightPadding,
+                            bottom = previewBottomPadding
+                        ),
                     verticalArrangement = Arrangement.spacedBy(
                         currentParagraphSpacing.coerceIn(0f, 30f).dp
                     )
@@ -1010,12 +1018,20 @@ fun AdvancedSettingsSheet(
                 SettingSlider(stringResource(R.string.label_letter_spacing), currentLetterSpacing, 0f..10f, 0.5f, { String.format("%.1f sp", it) }, onLetterSpacingChange)
                 Spacer(Modifier.height(12.dp))
 
-                // 左右边距
-                SettingSlider(stringResource(R.string.label_margin_horiz), currentMarginHoriz, 0f..80f, 2f, { "${it.toInt()} dp" }, onMarginHorizChange)
+                // 上边距
+                SettingSlider(stringResource(R.string.label_margin_top), currentMarginTop, 0f..120f, 2f, { "${it.toInt()} dp" }, onMarginTopChange)
                 Spacer(Modifier.height(12.dp))
 
-                // 上下边距
-                SettingSlider(stringResource(R.string.label_margin_vert), currentMarginVert, 0f..120f, 2f, { "${it.toInt()} dp" }, onMarginVertChange)
+                // 下边距
+                SettingSlider(stringResource(R.string.label_margin_bottom), currentMarginBottom, 0f..120f, 2f, { "${it.toInt()} dp" }, onMarginBottomChange)
+                Spacer(Modifier.height(12.dp))
+
+                // 左边距
+                SettingSlider(stringResource(R.string.label_margin_left), currentMarginLeft, 0f..80f, 2f, { "${it.toInt()} dp" }, onMarginLeftChange)
+                Spacer(Modifier.height(12.dp))
+
+                // 右边距
+                SettingSlider(stringResource(R.string.label_margin_right), currentMarginRight, 0f..80f, 2f, { "${it.toInt()} dp" }, onMarginRightChange)
                 Spacer(Modifier.height(12.dp))
 
                 // 段间距

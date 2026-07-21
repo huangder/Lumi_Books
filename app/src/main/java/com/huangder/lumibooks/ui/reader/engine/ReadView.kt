@@ -108,8 +108,10 @@ class ReadView(context: Context) : FrameLayout(context) {
     private var currentLetterSpacingDp: Float = 0f
     private var currentFontType: String = "system"
     private var currentCustomFontPath: String? = null
-    private var currentMarginHorizDp: Float = 38f
-    private var currentMarginVertDp: Float = 64f
+    private var currentMarginLeftDp: Float = 38f
+    private var currentMarginRightDp: Float = 38f
+    private var currentMarginTopDp: Float = 64f
+    private var currentMarginBottomDp: Float = 64f
     private var currentTopOverlayInsetDp: Float = 0f
     private var currentBottomOverlayInsetDp: Float = 0f
     private var currentParagraphSpacingDp: Float = 0f
@@ -232,10 +234,10 @@ class ReadView(context: Context) : FrameLayout(context) {
         val bgColor = currentReaderBackgroundColor ?: themeBgColor
         val textColor = currentReaderTextColor ?: themeTextColor
         val density = resources.displayMetrics.density
-        val marginHoriz = currentMarginHorizDp * density
-        val marginVert = currentMarginVertDp * density
-        val baseMarginTop = marginVert + currentTopOverlayInsetDp * density
-        val baseMarginBottom = marginVert + currentBottomOverlayInsetDp * density
+        val marginLeft = currentMarginLeftDp * density
+        val marginRight = currentMarginRightDp * density
+        val baseMarginTop = (currentMarginTopDp + currentTopOverlayInsetDp) * density
+        val baseMarginBottom = (currentMarginBottomDp + currentBottomOverlayInsetDp) * density
         val lineSpacingExtra = 2.5f * density
 
         // 选择高亮色jian
@@ -274,9 +276,9 @@ class ReadView(context: Context) : FrameLayout(context) {
                 lineSpacingExtraPx = lineSpacingExtra,
                 letterSpacingPx = currentLetterSpacingDp * density,
                 typeface = customTypeface,
-                marginLeftPx = marginHoriz,
+                marginLeftPx = marginLeft,
                 marginTopPx = marginTop,
-                marginRightPx = marginHoriz,
+                marginRightPx = marginRight,
                 marginBottomPx = marginBottom,
                 highlightColor = highlightColor,
                 accentColor = accentColor
@@ -322,8 +324,10 @@ class ReadView(context: Context) : FrameLayout(context) {
         letterSpacingDp: Float = 0f,
         fontType: String = "system",
         customFontPath: String? = null,
-        marginHorizDp: Float = 38f,
-        marginVertDp: Float = 64f,
+        marginLeftDp: Float = 38f,
+        marginRightDp: Float = 38f,
+        marginTopDp: Float = 64f,
+        marginBottomDp: Float = 64f,
         topOverlayInsetDp: Float = 0f,
         bottomOverlayInsetDp: Float = 0f,
         paragraphSpacingDp: Float = 2f,
@@ -340,8 +344,10 @@ class ReadView(context: Context) : FrameLayout(context) {
             currentLetterSpacingDp = letterSpacingDp
             currentFontType = fontType
             currentCustomFontPath = customFontPath
-            currentMarginHorizDp = marginHorizDp
-            currentMarginVertDp = marginVertDp
+            currentMarginLeftDp = marginLeftDp
+            currentMarginRightDp = marginRightDp
+            currentMarginTopDp = marginTopDp
+            currentMarginBottomDp = marginBottomDp
             currentTopOverlayInsetDp = topOverlayInsetDp
             currentBottomOverlayInsetDp = bottomOverlayInsetDp
             currentParagraphSpacingDp = paragraphSpacingDp
@@ -354,15 +360,17 @@ class ReadView(context: Context) : FrameLayout(context) {
         val lineHeightChanged = Math.abs(currentLineHeightMult - lineHeightMult) > 0.01f
         val letterSpacingChanged = Math.abs(currentLetterSpacingDp - letterSpacingDp) > 0.05f
         val fontTypeChanged = currentFontType != fontType
-        val marginHorizChanged = Math.abs(currentMarginHorizDp - marginHorizDp) > 0.5f
-        val marginVertChanged = Math.abs(currentMarginVertDp - marginVertDp) > 0.5f
+        val marginChanged = Math.abs(currentMarginLeftDp - marginLeftDp) > 0.5f ||
+            Math.abs(currentMarginRightDp - marginRightDp) > 0.5f ||
+            Math.abs(currentMarginTopDp - marginTopDp) > 0.5f ||
+            Math.abs(currentMarginBottomDp - marginBottomDp) > 0.5f
         val overlayInsetChanged = Math.abs(currentTopOverlayInsetDp - topOverlayInsetDp) > 0.5f ||
             Math.abs(currentBottomOverlayInsetDp - bottomOverlayInsetDp) > 0.5f
         val paragraphSpacingChanged = Math.abs(currentParagraphSpacingDp - paragraphSpacingDp) > 0.01f
         val sizeChanged = !isConfigured || configuredWidth != width || configuredHeight != height
         val needsRelayout = themeChanged || chapterCountChanged || fontSizeChanged || lineHeightChanged ||
-                letterSpacingChanged || fontTypeChanged || marginHorizChanged ||
-                marginVertChanged || overlayInsetChanged || paragraphSpacingChanged || sizeChanged
+                letterSpacingChanged || fontTypeChanged || marginChanged || overlayInsetChanged ||
+                paragraphSpacingChanged || sizeChanged
 
         // 🔥 无变化时提前返回，避免菜单切换等 recomposition 触发不必要的重配置
         if (isConfigured && !needsRelayout) return
@@ -374,8 +382,10 @@ class ReadView(context: Context) : FrameLayout(context) {
         currentLetterSpacingDp = letterSpacingDp
         currentFontType = fontType
         currentCustomFontPath = customFontPath
-        currentMarginHorizDp = marginHorizDp
-        currentMarginVertDp = marginVertDp
+        currentMarginLeftDp = marginLeftDp
+        currentMarginRightDp = marginRightDp
+        currentMarginTopDp = marginTopDp
+        currentMarginBottomDp = marginBottomDp
         currentTopOverlayInsetDp = topOverlayInsetDp
         currentBottomOverlayInsetDp = bottomOverlayInsetDp
         currentParagraphSpacingDp = paragraphSpacingDp
@@ -384,10 +394,10 @@ class ReadView(context: Context) : FrameLayout(context) {
 
         val (_, textColor, _) = getThemeColors(theme)
         val density = resources.displayMetrics.density
-        val marginHoriz = marginHorizDp * density
-        val marginVert = marginVertDp * density
-        val baseMarginTop = marginVert + topOverlayInsetDp * density
-        val baseMarginBottom = marginVert + bottomOverlayInsetDp * density
+        val marginLeft = marginLeftDp * density
+        val marginRight = marginRightDp * density
+        val baseMarginTop = (marginTopDp + topOverlayInsetDp) * density
+        val baseMarginBottom = (marginBottomDp + bottomOverlayInsetDp) * density
         val lineSpacing = 2.5f * density
         val lsPx = letterSpacingDp * density
 
@@ -423,8 +433,8 @@ class ReadView(context: Context) : FrameLayout(context) {
             letterSpacingPx = lsPx,
             fontType = fontType,
             customTypeface = customTypeface,
-            marginLeftPx = marginHoriz,
-            marginRightPx = marginHoriz,
+            marginLeftPx = marginLeft,
+            marginRightPx = marginRight,
             marginTopPx = marginTop,
             marginBottomPx = marginBottom,
             textColor = textColor,
@@ -876,8 +886,12 @@ class ReadView(context: Context) : FrameLayout(context) {
                 letterSpacingDp = currentLetterSpacingDp,
                 fontType = currentFontType,
                 customFontPath = currentCustomFontPath,
-                marginHorizDp = currentMarginHorizDp,
-                marginVertDp = currentMarginVertDp,
+                marginLeftDp = currentMarginLeftDp,
+                marginRightDp = currentMarginRightDp,
+                marginTopDp = currentMarginTopDp,
+                marginBottomDp = currentMarginBottomDp,
+                topOverlayInsetDp = currentTopOverlayInsetDp,
+                bottomOverlayInsetDp = currentBottomOverlayInsetDp,
                 paragraphSpacingDp = currentParagraphSpacingDp,
                 width = layoutWidth,
                 height = layoutHeight

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.huangder.lumibooks.ui.home.ReadingStreakCalculatorTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-07-21T02:34:15" hostname="LAPTOP-L6IPGCHS" time="0.002">
+  <properties/>
+  <testcase name="noGoalModeKeepsPreviousStreakWhenTodayHasNoReadingYet" classname="com.huangder.lumibooks.ui.home.ReadingStreakCalculatorTest" time="0.001"/>
+  <testcase name="keepsStreakAcrossCalendarWeekWhenTodayIsIncomplete" classname="com.huangder.lumibooks.ui.home.ReadingStreakCalculatorTest" time="0.0"/>
+  <testcase name="includesTodayWhenTodayMeetsGoal" classname="com.huangder.lumibooks.ui.home.ReadingStreakCalculatorTest" time="0.001"/>
+  <testcase name="stopsAtFirstMissedHistoricalDay" classname="com.huangder.lumibooks.ui.home.ReadingStreakCalculatorTest" time="0.0"/>
+  <testcase name="noGoalModeCountsAnyReadingAsCompleted" classname="com.huangder.lumibooks.ui.home.ReadingStreakCalculatorTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

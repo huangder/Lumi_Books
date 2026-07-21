@@ -157,7 +157,11 @@ string label_font_size
 string label_font_type
 string label_letter_spacing
 string label_line_height
+string label_margin_bottom
 string label_margin_horiz
+string label_margin_left
+string label_margin_right
+string label_margin_top
 string label_margin_vert
 string label_paragraph_spacing
 string label_predictive_back

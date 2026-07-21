@@ -142,9 +142,9 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
         SettingsDivider()
         FontTypeRow(uiState.fontType) { viewModel.saveFontType(it) }
         SettingsDivider()
-        SettingsSliderItem(Icons.Outlined.Landscape, stringResource(R.string.label_margin_horiz), uiState.marginHoriz, 20f..60f, "${uiState.marginHoriz.toInt()} dp") { viewModel.saveMarginHoriz(it) }
+        SettingsSliderItem(Icons.Outlined.Landscape, stringResource(R.string.label_margin_horiz), uiState.marginHoriz, 0f..80f, "${uiState.marginHoriz.toInt()} dp") { viewModel.saveMarginHoriz(it) }
         SettingsDivider()
-        SettingsSliderItem(Icons.Outlined.Landscape, stringResource(R.string.label_margin_vert), uiState.marginVert, 40f..100f, "${uiState.marginVert.toInt()} dp") { viewModel.saveMarginVert(it) }
+        SettingsSliderItem(Icons.Outlined.Landscape, stringResource(R.string.label_margin_vert), uiState.marginVert, 0f..120f, "${uiState.marginVert.toInt()} dp") { viewModel.saveMarginVert(it) }
     }
 }
 
