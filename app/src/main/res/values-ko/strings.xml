@@ -99,6 +99,10 @@
     <string name="label_font_type">글꼴 종류</string>
     <string name="label_margin_horiz">좌우 여백</string>
     <string name="label_margin_vert">상하 여백</string>
+    <string name="label_margin_left">왼쪽 여백</string>
+    <string name="label_margin_right">오른쪽 여백</string>
+    <string name="label_margin_top">위쪽 여백</string>
+    <string name="label_margin_bottom">아래쪽 여백</string>
 
     <!-- 표시 및 외관 -->
     <string name="label_dark_mode">다크 모드</string>

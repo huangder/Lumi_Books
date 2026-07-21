@@ -99,6 +99,10 @@
     <string name="label_font_type">字型</string>
     <string name="label_margin_horiz">左右邊距</string>
     <string name="label_margin_vert">上下邊距</string>
+    <string name="label_margin_left">左邊距</string>
+    <string name="label_margin_right">右邊距</string>
+    <string name="label_margin_top">上邊距</string>
+    <string name="label_margin_bottom">下邊距</string>
 
     <!-- 顯示與外觀 -->
     <string name="label_dark_mode">深色模式</string>

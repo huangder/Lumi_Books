@@ -99,6 +99,10 @@
     <string name="label_font_type">Font Type</string>
     <string name="label_margin_horiz">Horizontal Margin</string>
     <string name="label_margin_vert">Vertical Margin</string>
+    <string name="label_margin_left">Left Margin</string>
+    <string name="label_margin_right">Right Margin</string>
+    <string name="label_margin_top">Top Margin</string>
+    <string name="label_margin_bottom">Bottom Margin</string>
 
     <!-- Display & Appearance -->
     <string name="label_dark_mode">Dark Mode</string>
