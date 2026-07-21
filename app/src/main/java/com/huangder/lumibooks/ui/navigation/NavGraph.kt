@@ -1,6 +1,9 @@
 package com.huangder.lumibooks.ui.navigation
 
+import android.net.Uri
 import android.os.SystemClock
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -10,6 +13,9 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -19,6 +25,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -29,6 +37,7 @@ import kotlinx.coroutines.delay
 import com.huangder.lumibooks.ui.bookshelf.BookshelfScreen
 import com.huangder.lumibooks.ui.components.BookTransitionOverlay
 import com.huangder.lumibooks.ui.components.FloatingTabBar
+import com.huangder.lumibooks.ui.components.LiquidGlassImportButton
 import com.huangder.lumibooks.ui.components.ImmersiveMode
 import com.huangder.lumibooks.ui.components.ConfigurableNavigationBack
 import com.huangder.lumibooks.ui.components.LocalPredictiveBackEnabled
@@ -142,6 +151,12 @@ fun MainNavGraph(
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val liquidGlassBackdrop = rememberLayerBackdrop()
     val homeViewModel: HomeViewModel = hiltViewModel()
+    val context = LocalContext.current
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let { homeViewModel.importBook(context, it) }
+    }
     val homeUiState by homeViewModel.uiState.collectAsState()
     val homeLastReadBook = remember(homeUiState.books) {
         homeUiState.books.sortedByDescending { it.lastReadTime }.firstOrNull()
@@ -246,6 +261,8 @@ fun MainNavGraph(
                             restoreState = true
                         }
                     },
+                    onImportClick = { importLauncher.launch("*/*") },
+                    showImportButton = !isLiquidGlass,
                     showReadingGoalSheet = homeGoalSheetVisible,
                     onReadingGoalSheetVisibleChange = { visible -> homeGoalSheetVisible = visible },
                     renderReadingGoalSheet = false,
@@ -314,25 +331,39 @@ fun MainNavGraph(
             exit = fadeOut(animationSpec = tween(300)),
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
-            FloatingTabBar(
-                selectedIndex = selectedTab,
-                hazeState = hazeState,
-                liquidGlassBackdrop = liquidGlassBackdrop,
-                onTabSelected = { index ->
-                    selectedTab = index
-                    val r = when (index) {
-                        0 -> Screen.Home.route
-                        1 -> Screen.Bookshelf.route
-                        2 -> Screen.Statistics.route
-                        else -> Screen.Home.route
+            val showLiquidImport = isLiquidGlass
+            Box(modifier = Modifier.fillMaxWidth()) {
+                FloatingTabBar(
+                    selectedIndex = selectedTab,
+                    hazeState = hazeState,
+                    liquidGlassBackdrop = liquidGlassBackdrop,
+                    reserveImportButtonSpace = showLiquidImport,
+                    onTabSelected = { index ->
+                        selectedTab = index
+                        val r = when (index) {
+                            0 -> Screen.Home.route
+                            1 -> Screen.Bookshelf.route
+                            2 -> Screen.Statistics.route
+                            else -> Screen.Home.route
+                        }
+                        navController.navigate(r) {
+                            popUpTo(Screen.Home.route) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
                     }
-                    navController.navigate(r) {
-                        popUpTo(Screen.Home.route) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
+                )
+                if (showLiquidImport) {
+                    LiquidGlassImportButton(
+                        onClick = { importLauncher.launch("*/*") },
+                        liquidGlassBackdrop = liquidGlassBackdrop,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .navigationBarsPadding()
+                            .padding(end = 24.dp, top = 10.dp, bottom = 10.dp)
+                    )
                 }
-            )
+            }
         }
 
         // 过渡动画覆盖层

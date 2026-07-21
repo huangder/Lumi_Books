@@ -17,6 +17,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
@@ -43,12 +44,93 @@ fun ProvideLiquidGlassBackdrop(
     CompositionLocalProvider(LocalLiquidGlassBackdrop provides backdrop, content = content)
 }
 
+fun Modifier.liquidGlassBackdrop(
+    backdrop: Backdrop,
+    shape: Shape,
+    isDark: Boolean,
+    transparency: Float,
+    contentScrimColor: Color = Color.Transparent,
+    pressProgress: Float = 0f,
+    scaleOnPress: Boolean = true
+): Modifier {
+    val surfaceColor = if (isDark) {
+        Color(0xFF101012).copy(alpha = 0.34f - transparency * 0.24f)
+    } else {
+        Color.White.copy(alpha = 0.32f - transparency * 0.28f)
+    }
+    val borderBrush = if (isDark) {
+        Brush.verticalGradient(
+            colors = listOf(
+                Color.White.copy(alpha = 0.34f + pressProgress * 0.14f),
+                Color.White.copy(alpha = 0.10f + pressProgress * 0.08f)
+            )
+        )
+    } else {
+        Brush.verticalGradient(
+            colors = listOf(
+                Color.White.copy(alpha = 0.82f + pressProgress * 0.14f),
+                Color.White.copy(alpha = 0.22f + pressProgress * 0.12f)
+            )
+        )
+    }
+    val scale = if (scaleOnPress) 1f + 0.045f * pressProgress else 1f
+
+    return drawBackdrop(
+        backdrop = backdrop,
+        shape = { shape },
+        effects = {
+            vibrancy()
+            blur((1.dp + 5.dp * (1f - transparency)).toPx())
+            lens(
+                (12.dp + 4.dp * pressProgress).toPx(),
+                (24.dp + 4.dp * pressProgress).toPx(),
+                chromaticAberration = pressProgress > 0.05f
+            )
+        },
+        layerBlock = {
+            scaleX = scale
+            scaleY = scale
+        },
+        highlight = {
+            Highlight.Default.copy(alpha = 0.18f + pressProgress * 0.46f)
+        },
+        shadow = {
+            Shadow(
+                radius = 14.dp + 4.dp * pressProgress,
+                alpha = 0.24f + pressProgress * 0.10f
+            )
+        },
+        innerShadow = {
+            InnerShadow(
+                radius = 5.dp + 3.dp * pressProgress,
+                alpha = 0.14f + pressProgress * 0.32f
+            )
+        },
+        onDrawSurface = {
+            drawRect(surfaceColor)
+            if (contentScrimColor.alpha > 0f) {
+                drawRect(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            contentScrimColor.copy(
+                                alpha = (contentScrimColor.alpha * 1.28f).coerceAtMost(1f)
+                            ),
+                            contentScrimColor.copy(alpha = contentScrimColor.alpha * 0.72f)
+                        )
+                    )
+                )
+            }
+        }
+    ).border(0.8.dp, borderBrush, shape)
+}
+
 @Composable
 fun LiquidGlassSurface(
     shape: Shape,
     fallbackColor: Color,
     modifier: Modifier = Modifier,
     backdrop: Backdrop? = null,
+    contentScrimColor: Color = Color.Transparent,
     enabled: Boolean = true,
     onClick: (() -> Unit)? = null,
     contentAlignment: Alignment = Alignment.Center,
@@ -65,55 +147,18 @@ fun LiquidGlassSurface(
         animationSpec = spring(dampingRatio = 0.72f, stiffness = 420f),
         label = "liquidGlassSurfacePress"
     )
-    val scale = 1f + 0.045f * pressProgress
 
     val surfaceModifier = if (isLiquidGlass && activeBackdrop != null) {
-        val surfaceColor = if (isDark) {
-            Color(0xFF101012).copy(alpha = 0.34f - transparency * 0.24f)
-        } else {
-            Color.White.copy(alpha = 0.32f - transparency * 0.28f)
-        }
-        val borderColor = if (isDark) {
-            Color.White.copy(alpha = 0.16f + pressProgress * 0.12f)
-        } else {
-            Color.White.copy(alpha = 0.48f + pressProgress * 0.20f)
-        }
-        Modifier
-            .drawBackdrop(
-                backdrop = activeBackdrop,
-                shape = { shape },
-                effects = {
-                    vibrancy()
-                    blur((1.dp + 5.dp * (1f - transparency)).toPx())
-                    lens(
-                        (12.dp + 4.dp * pressProgress).toPx(),
-                        (24.dp + 4.dp * pressProgress).toPx(),
-                        chromaticAberration = pressProgress > 0.05f
-                    )
-                },
-                layerBlock = {
-                    scaleX = scale
-                    scaleY = scale
-                },
-                highlight = {
-                    Highlight.Default.copy(alpha = 0.18f + pressProgress * 0.46f)
-                },
-                shadow = {
-                    Shadow(
-                        radius = 12.dp + 4.dp * pressProgress,
-                        alpha = 0.18f + pressProgress * 0.10f
-                    )
-                },
-                innerShadow = {
-                    InnerShadow(
-                        radius = 5.dp + 3.dp * pressProgress,
-                        alpha = 0.14f + pressProgress * 0.32f
-                    )
-                },
-                onDrawSurface = { drawRect(surfaceColor) }
-            )
-            .border(0.7.dp, borderColor, shape)
+        Modifier.liquidGlassBackdrop(
+            backdrop = activeBackdrop,
+            shape = shape,
+            isDark = isDark,
+            transparency = transparency,
+            contentScrimColor = contentScrimColor,
+            pressProgress = pressProgress
+        )
     } else {
+        val scale = 1f + 0.045f * pressProgress
         Modifier
             .clip(shape)
             .background(fallbackColor)

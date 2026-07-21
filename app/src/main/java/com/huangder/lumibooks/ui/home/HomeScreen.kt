@@ -1,8 +1,5 @@
 package com.huangder.lumibooks.ui.home
 
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -93,6 +90,8 @@ fun HomeScreen(
     onNavigateToReader: (bookId: String, coverPath: String?, title: String) -> Unit,
     onNavigateToStatistics: () -> Unit,
     onNavigateToBookshelf: () -> Unit,
+    onImportClick: () -> Unit,
+    showImportButton: Boolean = true,
     onTabBarVisibleChange: (Boolean) -> Unit = {},
     showReadingGoalSheet: Boolean = false,
     onReadingGoalSheetVisibleChange: (Boolean) -> Unit = {},
@@ -116,12 +115,6 @@ fun HomeScreen(
     val lastReadBook = booksByLastRead.firstOrNull()
     val otherBooks = booksByLastRead.drop(1)
     val booksThisYear = booksByLastRead.take(3)
-
-    val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        uri?.let { viewModel.importBook(context, it) }
-    }
 
     LaunchedEffect(uiState.importMessage) {
         uiState.importMessage?.let {
@@ -246,24 +239,26 @@ fun HomeScreen(
             )
         }
 
-        // 导入 FAB
-        PageEntranceItem(
-            play = playEntranceAnimation,
-            index = 5,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 24.dp, bottom = 100.dp)
-        ) {
-            Box(
+        if (showImportButton) {
+            // 非液态主题沿用原有导入 FAB；液态按钮由导航层与 Tab 同排绘制。
+            PageEntranceItem(
+                play = playEntranceAnimation,
+                index = 5,
                 modifier = Modifier
-                .size(56.dp)
-                .shadow(8.dp, CircleShape, ambientColor = AppColors.Shadow)
-                .clip(CircleShape)
-                .background(Color.Black)
-                .clickable { launcher.launch("*/*") },
-                contentAlignment = Alignment.Center
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 24.dp, bottom = 100.dp)
             ) {
-                Icon(Icons.Default.Add, stringResource(R.string.import_books), tint = Color.White, modifier = Modifier.size(24.dp))
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .shadow(8.dp, CircleShape, ambientColor = AppColors.Shadow)
+                        .clip(CircleShape)
+                        .background(Color.Black)
+                        .clickable(onClick = onImportClick),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Add, stringResource(R.string.import_books), tint = Color.White, modifier = Modifier.size(24.dp))
+                }
             }
         }
     } // 外层 Box 结束

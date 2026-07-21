@@ -1,11 +1,11 @@
 package com.huangder.lumibooks.ui.reader
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -41,6 +41,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.tts.TtsPlaybackState
+import com.huangder.lumibooks.ui.components.LocalLiquidGlassBackdrop
+import com.huangder.lumibooks.ui.components.LiquidGlassSurface
+import com.huangder.lumibooks.ui.components.liquidGlassBackdrop
+import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
+import com.huangder.lumibooks.ui.theme.LocalLiquidGlassTransparency
 import java.util.Locale
 
 @Composable
@@ -60,113 +66,150 @@ fun TtsPlayerPanel(
     var showRateMenu by remember { mutableStateOf(false) }
     val capsuleShape = RoundedCornerShape(28.dp)
     val rateMenuShape = RoundedCornerShape(16.dp)
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val isDark = LocalIsDarkTheme.current
+    val transparency = LocalLiquidGlassTransparency.current
+    val liquidGlassBackdrop = LocalLiquidGlassBackdrop.current
+    val hasLiquidGlassRateMenu = isLiquidGlass && liquidGlassBackdrop != null
+    val rateMenuModifier = Modifier
+        .width(112.dp)
+        .then(
+            if (isLiquidGlass && liquidGlassBackdrop != null) {
+                Modifier.liquidGlassBackdrop(
+                    backdrop = liquidGlassBackdrop,
+                    shape = rateMenuShape,
+                    isDark = isDark,
+                    transparency = transparency,
+                    contentScrimColor = readerBackgroundColor.copy(alpha = 0.85f),
+                    scaleOnPress = false
+                )
+            } else {
+                Modifier
+            }
+        )
 
-    Row(
+    LiquidGlassSurface(
+        shape = capsuleShape,
+        fallbackColor = readerBackgroundColor,
+        contentScrimColor = readerBackgroundColor.copy(alpha = 0.85f),
         modifier = modifier
             .fillMaxWidth()
             .height(56.dp)
-            .shadow(
-                elevation = 8.dp,
-                shape = capsuleShape,
-                ambientColor = Color.Black.copy(alpha = 0.10f),
-                spotColor = Color.Black.copy(alpha = 0.14f)
+            .then(
+                if (isLiquidGlass) {
+                    Modifier
+                } else {
+                    Modifier.shadow(
+                        elevation = 8.dp,
+                        shape = capsuleShape,
+                        ambientColor = Color.Black.copy(alpha = 0.10f),
+                        spotColor = Color.Black.copy(alpha = 0.14f)
+                    )
+                }
             )
-            .clip(capsuleShape)
-            .background(readerBackgroundColor)
-            .padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(onClick = onSkipBackward, modifier = Modifier.size(40.dp)) {
-            Icon(
-                Icons.Default.SkipPrevious,
-                contentDescription = stringResource(R.string.tts_previous_sentence),
-                tint = readerContentColor
-            )
-        }
-
-        IconButton(
-            onClick = onPlayPause,
-            enabled = playbackState != TtsPlaybackState.INITIALIZING,
-            modifier = Modifier.size(40.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            if (playbackState == TtsPlaybackState.INITIALIZING) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    strokeWidth = 2.dp,
-                    color = readerContentColor
-                )
-            } else {
+            IconButton(onClick = onSkipBackward, modifier = Modifier.size(40.dp)) {
                 Icon(
-                    if (playbackState == TtsPlaybackState.PLAYING) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = stringResource(
-                        if (playbackState == TtsPlaybackState.PLAYING) R.string.tts_pause else R.string.tts_play
-                    ),
+                    Icons.Default.SkipPrevious,
+                    contentDescription = stringResource(R.string.tts_previous_sentence),
                     tint = readerContentColor
                 )
             }
-        }
 
-        IconButton(onClick = onSkipForward, modifier = Modifier.size(40.dp)) {
-            Icon(
-                Icons.Default.SkipNext,
-                contentDescription = stringResource(R.string.tts_next_sentence),
-                tint = readerContentColor
-            )
-        }
-
-        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .clickable(
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() }
-                    ) { showRateMenu = true }
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                contentAlignment = Alignment.Center
+            IconButton(
+                onClick = onPlayPause,
+                enabled = playbackState != TtsPlaybackState.INITIALIZING,
+                modifier = Modifier.size(40.dp)
             ) {
-                Text(
-                    text = formatSpeechRate(speechRate),
-                    color = readerContentColor,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-            DropdownMenu(
-                expanded = showRateMenu,
-                onDismissRequest = { showRateMenu = false },
-                modifier = Modifier.width(112.dp),
-                shape = rateMenuShape,
-                containerColor = readerBackgroundColor,
-                tonalElevation = 0.dp,
-                shadowElevation = 0.dp,
-                border = BorderStroke(1.dp, Color.Gray.copy(alpha = 0.24f))
-            ) {
-                rateOptions.forEach { rate ->
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                text = formatSpeechRate(rate),
-                                color = readerContentColor,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        },
-                        onClick = {
-                            showRateMenu = false
-                            onRateChange(rate)
-                        }
+                if (playbackState == TtsPlaybackState.INITIALIZING) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = readerContentColor
+                    )
+                } else {
+                    Icon(
+                        if (playbackState == TtsPlaybackState.PLAYING) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = stringResource(
+                            if (playbackState == TtsPlaybackState.PLAYING) R.string.tts_pause else R.string.tts_play
+                        ),
+                        tint = readerContentColor
                     )
                 }
             }
-        }
 
-        IconButton(onClick = onStop, modifier = Modifier.size(40.dp)) {
-            Icon(
-                Icons.Default.Close,
-                contentDescription = stringResource(R.string.tts_stop),
-                tint = readerContentColor
-            )
+            IconButton(onClick = onSkipForward, modifier = Modifier.size(40.dp)) {
+                Icon(
+                    Icons.Default.SkipNext,
+                    contentDescription = stringResource(R.string.tts_next_sentence),
+                    tint = readerContentColor
+                )
+            }
+
+            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) { showRateMenu = true }
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = formatSpeechRate(speechRate),
+                        color = readerContentColor,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                DropdownMenu(
+                    expanded = showRateMenu,
+                    onDismissRequest = { showRateMenu = false },
+                    modifier = rateMenuModifier,
+                    shape = rateMenuShape,
+                    containerColor = if (hasLiquidGlassRateMenu) Color.Transparent else readerBackgroundColor,
+                    tonalElevation = 0.dp,
+                    shadowElevation = 0.dp,
+                    border = if (hasLiquidGlassRateMenu) {
+                        null
+                    } else {
+                        BorderStroke(1.dp, Color.Gray.copy(alpha = 0.24f))
+                    }
+                ) {
+                    rateOptions.forEach { rate ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = formatSpeechRate(rate),
+                                    color = readerContentColor,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            },
+                            onClick = {
+                                showRateMenu = false
+                                onRateChange(rate)
+                            }
+                        )
+                    }
+                }
+            }
+
+            IconButton(onClick = onStop, modifier = Modifier.size(40.dp)) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = stringResource(R.string.tts_stop),
+                    tint = readerContentColor
+                )
+            }
         }
     }
 }

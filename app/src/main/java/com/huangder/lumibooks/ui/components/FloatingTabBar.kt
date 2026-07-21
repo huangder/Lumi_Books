@@ -17,13 +17,13 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoStories
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Leaderboard
@@ -97,7 +97,8 @@ fun FloatingTabBar(
     onTabSelected: (Int) -> Unit,
     modifier: Modifier = Modifier,
     hazeState: HazeState? = null,
-    liquidGlassBackdrop: Backdrop? = null
+    liquidGlassBackdrop: Backdrop? = null,
+    reserveImportButtonSpace: Boolean = false
 ) {
     val isDark = LocalIsDarkTheme.current
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
@@ -110,6 +111,7 @@ fun FloatingTabBar(
     val glassShape = CircleShape
     val barHeight = if (isLiquidGlass) 72.dp else 56.dp
     val horizontalPadding = if (isLiquidGlass) 24.dp else 80.dp
+    val endPadding = if (isLiquidGlass && reserveImportButtonSpace) 108.dp else horizontalPadding
     val glassBrush = if (isLiquidGlass && isDark) {
         val alpha = 0.42f - transparency * 0.24f
         Brush.verticalGradient(
@@ -144,15 +146,17 @@ fun FloatingTabBar(
     val borderBrush = if (isLiquidGlass && isDark) {
         Brush.verticalGradient(
             colors = listOf(
-                Color.White.copy(alpha = 0.58f - transparency * 0.22f),
-                Color.White.copy(alpha = 0.16f)
+                Color.White.copy(alpha = 0.68f - transparency * 0.18f),
+                Color.White.copy(alpha = 0.26f),
+                Color.White.copy(alpha = 0.08f)
             )
         )
     } else if (isLiquidGlass) {
         Brush.verticalGradient(
             colors = listOf(
-                Color.White.copy(alpha = 0.96f),
-                Color.White.copy(alpha = 0.34f + transparency * 0.18f)
+                Color.White.copy(alpha = 0.98f),
+                Color.White.copy(alpha = 0.58f + transparency * 0.10f),
+                Color.White.copy(alpha = 0.18f + transparency * 0.08f)
             )
         )
     } else if (isDark) {
@@ -209,6 +213,9 @@ fun FloatingTabBar(
                 blur((2.dp + 4.dp * (1f - transparency)).toPx())
                 lens(16.dp.toPx(), 28.dp.toPx())
             },
+            highlight = {
+                Highlight.Default.copy(alpha = 0.26f)
+            },
             onDrawSurface = { drawRect(liquidSurfaceColor) }
         )
     } else {
@@ -226,7 +233,12 @@ fun FloatingTabBar(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = horizontalPadding, vertical = if (isLiquidGlass) 10.dp else 14.dp)
+            .padding(
+                start = horizontalPadding,
+                end = endPadding,
+                top = if (isLiquidGlass) 10.dp else 14.dp,
+                bottom = if (isLiquidGlass) 10.dp else 14.dp
+            )
     ) {
         Box(
             modifier = Modifier
@@ -255,12 +267,15 @@ fun FloatingTabBar(
                 .fillMaxWidth()
                 .height(barHeight),
         ) {
-            val contentPadding = 0.dp
+            // Keep the original three-column rhythm, with only a subtle inset.
+            val contentPadding = if (isLiquidGlass) 6.dp else 0.dp
             val contentPaddingPx = with(density) { contentPadding.toPx() }
             val contentWidth = maxWidth - contentPadding * 2
             val contentWidthPx = with(density) { contentWidth.toPx() }
             val indicatorWidth = contentWidth / tabs.size
             val indicatorWidthPx = with(density) { indicatorWidth.toPx() }
+            val indicatorExtraWidth = 12.dp
+            val indicatorExtraWidthPx = with(density) { indicatorExtraWidth.toPx() }
             val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
             var currentIndex by remember { mutableIntStateOf(selectedIndex) }
             val dragState = remember(animationScope, indicatorWidthPx) {
@@ -299,7 +314,7 @@ fun FloatingTabBar(
                         else Modifier.clip(glassShape)
                     )
                     .then(outerGlassModifier)
-                    .border(width = 0.8.dp, brush = borderBrush, shape = glassShape)
+                    .border(width = if (isLiquidGlass) 1.dp else 0.8.dp, brush = borderBrush, shape = glassShape)
             )
 
             Row(
@@ -366,14 +381,16 @@ fun FloatingTabBar(
             if (isLiquidGlass) {
                 Box(
                     modifier = Modifier
-                        .width(indicatorWidth)
+                        .width(indicatorWidth + indicatorExtraWidth)
                         .fillMaxHeight()
                         .graphicsLayer {
                             translationX = if (isLtr) {
-                                contentPaddingPx + dragState.value * indicatorWidthPx
+                                contentPaddingPx - indicatorExtraWidthPx / 2f +
+                                    dragState.value * indicatorWidthPx
                             } else {
                                 contentPaddingPx + contentWidthPx -
-                                    (dragState.value + 1f) * indicatorWidthPx
+                                    (dragState.value + 1f) * indicatorWidthPx -
+                                    indicatorExtraWidthPx / 2f
                             }
                             scaleX = dragState.scaleX
                             scaleY = dragState.scaleY
@@ -435,6 +452,30 @@ fun FloatingTabBar(
 }
 
 @Composable
+fun LiquidGlassImportButton(
+    onClick: () -> Unit,
+    liquidGlassBackdrop: Backdrop,
+    modifier: Modifier = Modifier
+) {
+    LiquidGlassSurface(
+        shape = CircleShape,
+        fallbackColor = Color.Black,
+        backdrop = liquidGlassBackdrop,
+        contentScrimColor = Color.Black.copy(alpha = 0.85f),
+        modifier = modifier.size(72.dp),
+        onClick = onClick,
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.Add,
+            contentDescription = stringResource(R.string.import_books),
+            tint = Color.White,
+            modifier = Modifier.size(36.dp)
+        )
+    }
+}
+
+@Composable
 private fun TabItemView(
     tab: TabItem,
     isSelected: Boolean,
@@ -447,7 +488,6 @@ private fun TabItemView(
         Column(
             modifier = modifier
                 .fillMaxSize()
-                .offset(y = (-4).dp)
                 .padding(vertical = 5.dp)
                 .clip(CircleShape)
                 .then(

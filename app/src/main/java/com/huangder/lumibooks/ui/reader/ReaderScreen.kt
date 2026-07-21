@@ -517,6 +517,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     // 主题背景色
     val composeBgColor = Color(customBackgroundThemeColorInt)
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val readerGlassContentScrim = menuBgColor.copy(alpha = 0.18f)
     val readerGlassBackdrop = rememberLayerBackdrop()
     ReaderSystemBarStyle(
         backgroundColor = composeBgColor,
@@ -802,6 +803,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     onBack = onNavigateBack,
                     bgColor = menuBgColor,
                     contentColor = menuContentColor,
+                    glassContentScrimColor = readerGlassContentScrim,
                     isTtsActive = uiState.ttsActiveBookId == uiState.book?.id &&
                         uiState.ttsPlaybackState != TtsPlaybackState.IDLE,
                     onTtsClick = {
@@ -893,9 +895,10 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         currentPage = uiState.currentPageIndex + 1,
                         chapterPageCount = uiState.totalPages,
                         capsuleBgColor = capsuleBgColor,
-                        capsuleContentColor = capsuleContentColor,
+                        capsuleContentColor = if (isLiquidGlass) menuContentColor else capsuleContentColor,
                         readerContentColor = menuContentColor,
                         catalogProgressColor = catalogProgressColor,
+                        glassContentScrimColor = readerGlassContentScrim,
                         onCatalogClick = {
                             viewModel.hideMenu()
                             showToc = true
@@ -1655,6 +1658,7 @@ private fun ReaderTopBar(
     onBack: () -> Unit,
     bgColor: Color = Color.White,
     contentColor: Color = AppColors.TextPrimary,
+    glassContentScrimColor: Color = Color.Transparent,
     isTtsActive: Boolean = false,
     onTtsClick: () -> Unit = {},
     isBookmarked: Boolean = false,
@@ -1705,6 +1709,7 @@ private fun ReaderTopBar(
                     contentDescription = stringResource(R.string.reader_back),
                     tint = contentColor,
                     backgroundColor = controlBackground,
+                    contentScrimColor = glassContentScrimColor,
                     onClick = onBack
                 )
             }
@@ -1728,6 +1733,7 @@ private fun ReaderTopBar(
                     contentDescription = stringResource(R.string.tts_listen),
                     tint = if (isTtsActive) AppColors.Accent else contentColor,
                     backgroundColor = controlBackground,
+                    contentScrimColor = glassContentScrimColor,
                     onClick = onTtsClick
                 )
                 ReaderTopBarButton(
@@ -1735,6 +1741,7 @@ private fun ReaderTopBar(
                     contentDescription = stringResource(R.string.reader_bookmark),
                     tint = if (isBookmarked) AppColors.Accent else contentColor,
                     backgroundColor = controlBackground,
+                    contentScrimColor = glassContentScrimColor,
                     onClick = onBookmarkToggle
                 )
             }
@@ -1748,11 +1755,13 @@ private fun ReaderTopBarButton(
     contentDescription: String,
     tint: Color,
     backgroundColor: Color,
+    contentScrimColor: Color,
     onClick: () -> Unit
 ) {
     LiquidGlassSurface(
         shape = CircleShape,
         fallbackColor = backgroundColor,
+        contentScrimColor = contentScrimColor,
         modifier = Modifier
             .size(36.dp),
         onClick = onClick,
@@ -1778,6 +1787,7 @@ private fun FloatingReaderMenu(
     capsuleContentColor: Color,
     readerContentColor: Color,
     catalogProgressColor: Color,
+    glassContentScrimColor: Color,
     onCatalogClick: () -> Unit,
     onBookmarkClick: () -> Unit,
     onSearchClick: () -> Unit,
@@ -1825,7 +1835,15 @@ private fun FloatingReaderMenu(
             alpha = alpha0.value
             translationY = offset0.value
         }) {
-            CatalogCapsule(chapterTitle, bookProgressPercent, capsuleBgColor, capsuleContentColor, catalogProgressColor, onCatalogClick)
+            CatalogCapsule(
+                title = chapterTitle,
+                progress = bookProgressPercent,
+                bgColor = capsuleBgColor,
+                contentColor = capsuleContentColor,
+                progressColor = catalogProgressColor,
+                glassContentScrimColor = glassContentScrimColor,
+                onClick = onCatalogClick
+            )
         }
         ReaderMenuStatus(
             chapterTitle = chapterTitle,
@@ -1841,17 +1859,17 @@ private fun FloatingReaderMenu(
             Box(modifier = Modifier.weight(1f).graphicsLayer {
                 alpha = alpha1.value; translationY = offset1.value
             }) {
-                ActionCapsule(Icons.Default.Bookmark, stringResource(R.string.reader_notes), capsuleBgColor, capsuleContentColor, Modifier.fillMaxWidth(), onBookmarkClick)
+                ActionCapsule(Icons.Default.Bookmark, stringResource(R.string.reader_notes), capsuleBgColor, capsuleContentColor, glassContentScrimColor, Modifier.fillMaxWidth(), onBookmarkClick)
             }
             Box(modifier = Modifier.weight(1f).graphicsLayer {
                 alpha = alpha2.value; translationY = offset2.value
             }) {
-                ActionCapsule(Icons.Default.Search, stringResource(R.string.reader_search), capsuleBgColor, capsuleContentColor, Modifier.fillMaxWidth(), onSearchClick)
+                ActionCapsule(Icons.Default.Search, stringResource(R.string.reader_search), capsuleBgColor, capsuleContentColor, glassContentScrimColor, Modifier.fillMaxWidth(), onSearchClick)
             }
             Box(modifier = Modifier.weight(1f).graphicsLayer {
                 alpha = alpha3.value; translationY = offset3.value
             }) {
-                ActionCapsule(Icons.Default.Settings, stringResource(R.string.reader_theme), capsuleBgColor, capsuleContentColor, Modifier.fillMaxWidth(), onThemeClick)
+                ActionCapsule(Icons.Default.Settings, stringResource(R.string.reader_theme), capsuleBgColor, capsuleContentColor, glassContentScrimColor, Modifier.fillMaxWidth(), onThemeClick)
             }
         }
     }
@@ -1905,12 +1923,14 @@ private fun CatalogCapsule(
     bgColor: Color,
     contentColor: Color,
     progressColor: Color,
+    glassContentScrimColor: Color,
     onClick: () -> Unit
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     LiquidGlassSurface(
         shape = RoundedCornerShape(24.dp),
         fallbackColor = bgColor,
+        contentScrimColor = glassContentScrimColor,
         modifier = Modifier
             .fillMaxWidth()
             .height(48.dp),
@@ -1979,12 +1999,14 @@ private fun ActionCapsule(
     label: String,
     bgColor: Color,
     contentColor: Color,
+    glassContentScrimColor: Color,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     LiquidGlassSurface(
         shape = RoundedCornerShape(22.dp),
         fallbackColor = bgColor,
+        contentScrimColor = glassContentScrimColor,
         modifier = modifier
             .height(44.dp),
         onClick = onClick

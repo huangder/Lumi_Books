@@ -196,6 +196,7 @@ fun PdfViewerScreen(
     var observedActiveConversion by remember { mutableStateOf(false) }
     var pendingModePage by remember { mutableStateOf<Int?>(null) }
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val pdfGlassContentScrim = AppColors.WindowBg.copy(alpha = 0.18f)
     val pdfGlassBackdrop = rememberLayerBackdrop()
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -490,6 +491,7 @@ fun PdfViewerScreen(
                 pageCount = pageCount,
                 isBookmarked = isCurrentPageBookmarked,
                 pageMode = uiState.pdfPageMode,
+                glassContentScrimColor = pdfGlassContentScrim,
                 onBack = onNavigateBack,
                 onPageModeToggle = {
                     pendingModePage = currentPage
@@ -545,6 +547,7 @@ fun PdfViewerScreen(
                     0f
                 },
                 conversionState = conversionState,
+                glassContentScrimColor = pdfGlassContentScrim,
                 onConversionClick = {
                     showMenu = false
                     if (conversionState is PdfConversionState.Running) {
@@ -652,6 +655,7 @@ private fun PdfTopBar(
     pageCount: Int,
     isBookmarked: Boolean = false,
     pageMode: String,
+    glassContentScrimColor: Color,
     onBack: () -> Unit,
     onPageModeToggle: () -> Unit,
     onBookmarkToggle: () -> Unit = {}
@@ -689,6 +693,7 @@ private fun PdfTopBar(
             LiquidGlassSurface(
                 shape = CircleShape,
                 fallbackColor = AppColors.BgGray.copy(alpha = 0.8f),
+                contentScrimColor = glassContentScrimColor,
                 modifier = Modifier
                     .size(36.dp),
                 onClick = onBack,
@@ -701,6 +706,7 @@ private fun PdfTopBar(
             LiquidGlassSurface(
                 shape = RoundedCornerShape(16.dp),
                 fallbackColor = Color.Black.copy(alpha = 0.35f),
+                contentScrimColor = glassContentScrimColor,
                 modifier = Modifier
                     .height(28.dp)
             ) {
@@ -729,6 +735,7 @@ private fun PdfTopBar(
             LiquidGlassSurface(
                 shape = CircleShape,
                 fallbackColor = AppColors.BgGray.copy(alpha = 0.8f),
+                contentScrimColor = glassContentScrimColor,
                 modifier = Modifier
                     .size(36.dp),
                 onClick = onPageModeToggle,
@@ -750,6 +757,7 @@ private fun PdfTopBar(
             LiquidGlassSurface(
                 shape = CircleShape,
                 fallbackColor = AppColors.BgGray.copy(alpha = 0.8f),
+                contentScrimColor = glassContentScrimColor,
                 modifier = Modifier
                     .size(36.dp),
                 onClick = onBookmarkToggle,
@@ -772,6 +780,7 @@ private fun PdfBottomMenu(
     chapterTitle: String,
     chapterProgress: Float,
     conversionState: PdfConversionState,
+    glassContentScrimColor: Color,
     onConversionClick: () -> Unit,
     onCatalogClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -783,18 +792,32 @@ private fun PdfBottomMenu(
             .padding(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        PdfConversionCapsule(conversionState = conversionState, onClick = onConversionClick)
+        PdfConversionCapsule(
+            conversionState = conversionState,
+            glassContentScrimColor = glassContentScrimColor,
+            onClick = onConversionClick
+        )
         // 目录胶囊
-        PdfCatalogCapsule(title = chapterTitle, progress = chapterProgress, onClick = onCatalogClick)
+        PdfCatalogCapsule(
+            title = chapterTitle,
+            progress = chapterProgress,
+            glassContentScrimColor = glassContentScrimColor,
+            onClick = onCatalogClick
+        )
     }
 }
 
 @Composable
-private fun PdfConversionCapsule(conversionState: PdfConversionState, onClick: () -> Unit) {
+private fun PdfConversionCapsule(
+    conversionState: PdfConversionState,
+    glassContentScrimColor: Color,
+    onClick: () -> Unit
+) {
     val running = conversionState as? PdfConversionState.Running
     LiquidGlassSurface(
         shape = RoundedCornerShape(24.dp),
         fallbackColor = AppColors.BgGray,
+        contentScrimColor = glassContentScrimColor,
         modifier = Modifier
             .fillMaxWidth()
             .height(48.dp),
@@ -1325,11 +1348,17 @@ private fun pdfConversionErrorResource(errorCode: String): Int {
 }
 
 @Composable
-private fun PdfCatalogCapsule(title: String, progress: Float, onClick: () -> Unit) {
+private fun PdfCatalogCapsule(
+    title: String,
+    progress: Float,
+    glassContentScrimColor: Color,
+    onClick: () -> Unit
+) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     LiquidGlassSurface(
         shape = RoundedCornerShape(24.dp),
         fallbackColor = AppColors.BgGray,
+        contentScrimColor = glassContentScrimColor,
         modifier = Modifier
             .fillMaxWidth()
             .height(48.dp),
@@ -1388,6 +1417,7 @@ private fun PdfActionCapsule(icon: ImageVector, label: String, modifier: Modifie
     LiquidGlassSurface(
         shape = RoundedCornerShape(22.dp),
         fallbackColor = AppColors.BgGray,
+        contentScrimColor = AppColors.WindowBg.copy(alpha = 0.18f),
         modifier = modifier
             .height(44.dp),
         onClick = onClick
