@@ -3,6 +3,7 @@ package com.huangder.lumibooks.ui.settings;
 import android.content.Context;
 import com.huangder.lumibooks.data.local.DataStoreManager;
 import com.huangder.lumibooks.domain.repository.BookRepository;
+import com.huangder.lumibooks.mineru.MineruTokenStore;
 import dagger.internal.DaggerGenerated;
 import dagger.internal.Factory;
 import dagger.internal.QualifierMetadata;
@@ -30,28 +31,33 @@ public final class SettingsViewModel_Factory implements Factory<SettingsViewMode
 
   private final Provider<BookRepository> bookRepositoryProvider;
 
+  private final Provider<MineruTokenStore> mineruTokenStoreProvider;
+
   private final Provider<Context> contextProvider;
 
   public SettingsViewModel_Factory(Provider<DataStoreManager> dataStoreManagerProvider,
-      Provider<BookRepository> bookRepositoryProvider, Provider<Context> contextProvider) {
+      Provider<BookRepository> bookRepositoryProvider,
+      Provider<MineruTokenStore> mineruTokenStoreProvider, Provider<Context> contextProvider) {
     this.dataStoreManagerProvider = dataStoreManagerProvider;
     this.bookRepositoryProvider = bookRepositoryProvider;
+    this.mineruTokenStoreProvider = mineruTokenStoreProvider;
     this.contextProvider = contextProvider;
   }
 
   @Override
   public SettingsViewModel get() {
-    return newInstance(dataStoreManagerProvider.get(), bookRepositoryProvider.get(), contextProvider.get());
+    return newInstance(dataStoreManagerProvider.get(), bookRepositoryProvider.get(), mineruTokenStoreProvider.get(), contextProvider.get());
   }
 
   public static SettingsViewModel_Factory create(
       Provider<DataStoreManager> dataStoreManagerProvider,
-      Provider<BookRepository> bookRepositoryProvider, Provider<Context> contextProvider) {
-    return new SettingsViewModel_Factory(dataStoreManagerProvider, bookRepositoryProvider, contextProvider);
+      Provider<BookRepository> bookRepositoryProvider,
+      Provider<MineruTokenStore> mineruTokenStoreProvider, Provider<Context> contextProvider) {
+    return new SettingsViewModel_Factory(dataStoreManagerProvider, bookRepositoryProvider, mineruTokenStoreProvider, contextProvider);
   }
 
   public static SettingsViewModel newInstance(DataStoreManager dataStoreManager,
-      BookRepository bookRepository, Context context) {
-    return new SettingsViewModel(dataStoreManager, bookRepository, context);
+      BookRepository bookRepository, MineruTokenStore mineruTokenStore, Context context) {
+    return new SettingsViewModel(dataStoreManager, bookRepository, mineruTokenStore, context);
   }
 }

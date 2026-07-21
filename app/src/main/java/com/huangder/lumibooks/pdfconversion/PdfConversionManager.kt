@@ -27,16 +27,28 @@ class PdfConversionManager @Inject constructor(
             .map { workInfos -> workInfos.firstOrNull().toConversionState() }
     }
 
-    fun enqueue(sourceBookId: String, replaceExisting: Boolean) {
-        val request = OneTimeWorkRequestBuilder<PdfConversionWorker>()
-            .setInputData(
-                workDataOf(
-                    PdfConversionContract.KEY_SOURCE_BOOK_ID to sourceBookId,
-                    PdfConversionContract.KEY_REPLACE_EXISTING to replaceExisting
-                )
-            )
-            .addTag(PdfConversionContract.uniqueWorkName(sourceBookId))
-            .build()
+    fun enqueue(
+        sourceBookId: String,
+        replaceExisting: Boolean,
+        engine: PdfConversionEngine,
+        mineruMode: String? = null
+    ) {
+        val input = workDataOf(
+            PdfConversionContract.KEY_SOURCE_BOOK_ID to sourceBookId,
+            PdfConversionContract.KEY_REPLACE_EXISTING to replaceExisting,
+            PdfConversionContract.KEY_ENGINE to engine.key,
+            PdfConversionContract.KEY_MINERU_MODE to mineruMode.orEmpty()
+        )
+        val request = when (engine) {
+            PdfConversionEngine.LOCAL -> OneTimeWorkRequestBuilder<PdfConversionWorker>()
+                .setInputData(input)
+                .addTag(PdfConversionContract.uniqueWorkName(sourceBookId))
+                .build()
+            PdfConversionEngine.MINERU -> OneTimeWorkRequestBuilder<MineruPdfConversionWorker>()
+                .setInputData(input)
+                .addTag(PdfConversionContract.uniqueWorkName(sourceBookId))
+                .build()
+        }
 
         workManager.enqueueUniqueWork(
             PdfConversionContract.uniqueWorkName(sourceBookId),

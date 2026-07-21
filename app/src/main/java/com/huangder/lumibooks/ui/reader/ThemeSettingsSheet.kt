@@ -57,7 +57,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -77,7 +76,8 @@ import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
 import com.huangder.lumibooks.domain.model.ReaderPageCorner
-import com.huangder.lumibooks.ui.components.ConfigurableBackHandler
+import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
+import com.huangder.lumibooks.ui.components.materialBottomSheetMotion
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -140,7 +140,7 @@ fun ThemeSettingsSheet(
     }
 
     var isClosing by remember { mutableStateOf(false) }
-    val predictiveBackProgress = ConfigurableBackHandler { isClosing = true }
+    val predictiveBackProgress = ConfigurableBottomSheetBackHandler { isClosing = true }
 
     // 监听 requestClose 状态，触发动画关闭
     LaunchedEffect(requestClose) {
@@ -163,7 +163,7 @@ fun ThemeSettingsSheet(
         // 遮罩
         Box(
             Modifier.fillMaxSize()
-                .background(AppColors.Scrim.copy(alpha = 0.20f * (1f - predictiveBackProgress)))
+                .background(AppColors.Scrim.copy(alpha = 0.20f))
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { isClosing = true }
         )
 
@@ -171,9 +171,7 @@ fun ThemeSettingsSheet(
         Column(
             Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .graphicsLayer {
-                    translationY = maxOf(sheetOffset.value, predictiveBackProgress) * size.height
-                }
+                .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress)
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(LightCardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .navigationBarsPadding()
@@ -860,7 +858,7 @@ fun AdvancedSettingsSheet(
     }
 
     var isClosing by remember { mutableStateOf(false) }
-    val predictiveBackProgress = ConfigurableBackHandler { isClosing = true }
+    val predictiveBackProgress = ConfigurableBottomSheetBackHandler { isClosing = true }
 
     // 监听 requestClose 状态，触发动画关闭
     LaunchedEffect(requestClose) {
@@ -896,7 +894,7 @@ fun AdvancedSettingsSheet(
         // 遮罩
         Box(
             Modifier.fillMaxSize()
-                .background(AppColors.Scrim.copy(alpha = 0.20f * (1f - predictiveBackProgress)))
+                .background(AppColors.Scrim.copy(alpha = 0.20f))
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { isClosing = true }
         )
 
@@ -905,9 +903,7 @@ fun AdvancedSettingsSheet(
             Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .fillMaxHeight(0.90f)
-                .graphicsLayer {
-                    translationY = maxOf(sheetOffset.value, predictiveBackProgress) * size.height
-                }
+                .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress)
                 .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(LightCardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))

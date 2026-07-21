@@ -8,6 +8,8 @@ import java.io.File
 object PdfConversionContract {
     const val KEY_SOURCE_BOOK_ID = "source_book_id"
     const val KEY_REPLACE_EXISTING = "replace_existing"
+    const val KEY_ENGINE = "engine"
+    const val KEY_MINERU_MODE = "mineru_mode"
     const val KEY_CURRENT_PAGE = "current_page"
     const val KEY_TOTAL_PAGES = "total_pages"
     const val KEY_PROGRESS = "progress"
@@ -20,6 +22,15 @@ object PdfConversionContract {
     const val ERROR_FILE_MISSING = "file_missing"
     const val ERROR_STORAGE = "storage"
     const val ERROR_UNKNOWN = "unknown"
+    const val ERROR_MINERU_NOT_CONFIGURED = "mineru_not_configured"
+    const val ERROR_MINERU_FILE_LIMIT = "mineru_file_limit"
+    const val ERROR_MINERU_PAGE_LIMIT = "mineru_page_limit"
+    const val ERROR_MINERU_AUTH = "mineru_auth"
+    const val ERROR_MINERU_RATE_LIMIT = "mineru_rate_limit"
+    const val ERROR_MINERU_NETWORK = "mineru_network"
+    const val ERROR_MINERU_UPLOAD = "mineru_upload"
+    const val ERROR_MINERU_SERVICE = "mineru_service"
+    const val ERROR_MINERU_RESULT = "mineru_result"
 
     private const val CONVERTED_ID_SUFFIX = "__pdf_parsed"
     private const val CONVERTED_DIRECTORY = "converted_pdf"
@@ -45,6 +56,24 @@ object PdfConversionContract {
         return File(outputFile(context, sourceBookId).absolutePath + ".tmp")
     }
 
+    fun mineruOutputFile(context: Context, sourceBookId: String): File {
+        val directory = File(FileUtils.getBooksDirectory(context), CONVERTED_DIRECTORY).apply { mkdirs() }
+        return File(directory, "${safeFilePart(sourceBookId)}.epub")
+    }
+
+    fun mineruTemporaryFile(context: Context, sourceBookId: String): File {
+        return File(mineruOutputFile(context, sourceBookId).absolutePath + ".tmp")
+    }
+
+    fun mineruBackupFile(context: Context, sourceBookId: String): File {
+        return File(mineruOutputFile(context, sourceBookId).absolutePath + ".bak")
+    }
+
+    fun isManagedConvertedFile(context: Context, file: File): Boolean {
+        val directory = File(FileUtils.getBooksDirectory(context), CONVERTED_DIRECTORY)
+        return runCatching { file.canonicalFile.parentFile == directory.canonicalFile }.getOrDefault(false)
+    }
+
     fun backupFile(context: Context, sourceBookId: String): File {
         return File(outputFile(context, sourceBookId).absolutePath + ".bak")
     }
@@ -62,6 +91,11 @@ object PdfConversionContract {
     }
 
     private fun positiveHash(value: String): Int = value.hashCode() and Int.MAX_VALUE
+}
+
+enum class PdfConversionEngine(val key: String) {
+    LOCAL("local"),
+    MINERU("mineru")
 }
 
 sealed interface PdfConversionState {

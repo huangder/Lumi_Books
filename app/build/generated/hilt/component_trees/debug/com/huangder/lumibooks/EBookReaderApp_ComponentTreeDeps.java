@@ -21,6 +21,7 @@ import hilt_aggregated_deps._androidx_hilt_work_HiltWrapper_WorkerFactoryModule;
 import hilt_aggregated_deps._com_huangder_lumibooks_EBookReaderApp_GeneratedInjector;
 import hilt_aggregated_deps._com_huangder_lumibooks_MainActivity_GeneratedInjector;
 import hilt_aggregated_deps._com_huangder_lumibooks_di_AppModule;
+import hilt_aggregated_deps._com_huangder_lumibooks_pdfconversion_MineruPdfConversionWorker_HiltModule;
 import hilt_aggregated_deps._com_huangder_lumibooks_pdfconversion_PdfConversionWorker_HiltModule;
 import hilt_aggregated_deps._com_huangder_lumibooks_service_TtsForegroundService_GeneratedInjector;
 import hilt_aggregated_deps._com_huangder_lumibooks_ui_bookshelf_BookNotesActivity_GeneratedInjector;
@@ -86,6 +87,7 @@ import hilt_aggregated_deps._dagger_hilt_android_internal_modules_HiltWrapper_Ac
         _com_huangder_lumibooks_EBookReaderApp_GeneratedInjector.class,
         _com_huangder_lumibooks_MainActivity_GeneratedInjector.class,
         _com_huangder_lumibooks_di_AppModule.class,
+        _com_huangder_lumibooks_pdfconversion_MineruPdfConversionWorker_HiltModule.class,
         _com_huangder_lumibooks_pdfconversion_PdfConversionWorker_HiltModule.class,
         _com_huangder_lumibooks_service_TtsForegroundService_GeneratedInjector.class,
         _com_huangder_lumibooks_ui_bookshelf_BookNotesActivity_GeneratedInjector.class,

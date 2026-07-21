@@ -4,6 +4,10 @@
         "source": "com.huangder.lumibooks.app-main-78:/xml/file_paths.xml"
     },
     {
+        "merged": "com.huangder.lumibooks.app-debug-76:/xml_backup_rules.xml.flat",
+        "source": "com.huangder.lumibooks.app-main-78:/xml/backup_rules.xml"
+    },
+    {
         "merged": "com.huangder.lumibooks.app-debug-76:/drawable_ic_launcher_foreground.xml.flat",
         "source": "com.huangder.lumibooks.app-main-78:/drawable/ic_launcher_foreground.xml"
     },
@@ -74,5 +78,9 @@
     {
         "merged": "com.huangder.lumibooks.app-debug-76:/font_fandol_fang.ttf.flat",
         "source": "com.huangder.lumibooks.app-main-78:/font/fandol_fang.ttf"
+    },
+    {
+        "merged": "com.huangder.lumibooks.app-debug-76:/xml_data_extraction_rules.xml.flat",
+        "source": "com.huangder.lumibooks.app-main-78:/xml/data_extraction_rules.xml"
     }
 ]

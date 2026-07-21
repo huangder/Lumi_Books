@@ -116,6 +116,14 @@ class PdfConversionWorker @AssistedInject constructor(
                 throw error
             }
             backupFile.delete()
+            existingBook?.filePath?.let { previousPath ->
+                val previousFile = File(previousPath)
+                if (previousFile.absolutePath != outputFile.absolutePath &&
+                    PdfConversionContract.isManagedConvertedFile(applicationContext, previousFile)
+                ) {
+                    previousFile.delete()
+                }
+            }
 
             notifyCompleted(
                 sourceBookId = sourceBookId,

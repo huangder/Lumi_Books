@@ -5,6 +5,7 @@ import androidx.lifecycle.SavedStateHandle;
 import com.huangder.lumibooks.data.local.DataStoreManager;
 import com.huangder.lumibooks.domain.repository.BookRepository;
 import com.huangder.lumibooks.domain.repository.ReadingRepository;
+import com.huangder.lumibooks.mineru.MineruTokenStore;
 import com.huangder.lumibooks.pdfconversion.PdfConversionManager;
 import com.huangder.lumibooks.tts.TtsController;
 import dagger.internal.DaggerGenerated;
@@ -44,12 +45,15 @@ public final class ReaderViewModel_Factory implements Factory<ReaderViewModel> {
 
   private final Provider<PdfConversionManager> pdfConversionManagerProvider;
 
+  private final Provider<MineruTokenStore> mineruTokenStoreProvider;
+
   public ReaderViewModel_Factory(Provider<SavedStateHandle> savedStateHandleProvider,
       Provider<Context> contextProvider, Provider<BookRepository> bookRepositoryProvider,
       Provider<ReadingRepository> readingRepositoryProvider,
       Provider<DataStoreManager> dataStoreManagerProvider,
       Provider<TtsController> ttsControllerProvider,
-      Provider<PdfConversionManager> pdfConversionManagerProvider) {
+      Provider<PdfConversionManager> pdfConversionManagerProvider,
+      Provider<MineruTokenStore> mineruTokenStoreProvider) {
     this.savedStateHandleProvider = savedStateHandleProvider;
     this.contextProvider = contextProvider;
     this.bookRepositoryProvider = bookRepositoryProvider;
@@ -57,11 +61,12 @@ public final class ReaderViewModel_Factory implements Factory<ReaderViewModel> {
     this.dataStoreManagerProvider = dataStoreManagerProvider;
     this.ttsControllerProvider = ttsControllerProvider;
     this.pdfConversionManagerProvider = pdfConversionManagerProvider;
+    this.mineruTokenStoreProvider = mineruTokenStoreProvider;
   }
 
   @Override
   public ReaderViewModel get() {
-    return newInstance(savedStateHandleProvider.get(), contextProvider.get(), bookRepositoryProvider.get(), readingRepositoryProvider.get(), dataStoreManagerProvider.get(), ttsControllerProvider.get(), pdfConversionManagerProvider.get());
+    return newInstance(savedStateHandleProvider.get(), contextProvider.get(), bookRepositoryProvider.get(), readingRepositoryProvider.get(), dataStoreManagerProvider.get(), ttsControllerProvider.get(), pdfConversionManagerProvider.get(), mineruTokenStoreProvider.get());
   }
 
   public static ReaderViewModel_Factory create(Provider<SavedStateHandle> savedStateHandleProvider,
@@ -69,14 +74,15 @@ public final class ReaderViewModel_Factory implements Factory<ReaderViewModel> {
       Provider<ReadingRepository> readingRepositoryProvider,
       Provider<DataStoreManager> dataStoreManagerProvider,
       Provider<TtsController> ttsControllerProvider,
-      Provider<PdfConversionManager> pdfConversionManagerProvider) {
-    return new ReaderViewModel_Factory(savedStateHandleProvider, contextProvider, bookRepositoryProvider, readingRepositoryProvider, dataStoreManagerProvider, ttsControllerProvider, pdfConversionManagerProvider);
+      Provider<PdfConversionManager> pdfConversionManagerProvider,
+      Provider<MineruTokenStore> mineruTokenStoreProvider) {
+    return new ReaderViewModel_Factory(savedStateHandleProvider, contextProvider, bookRepositoryProvider, readingRepositoryProvider, dataStoreManagerProvider, ttsControllerProvider, pdfConversionManagerProvider, mineruTokenStoreProvider);
   }
 
   public static ReaderViewModel newInstance(SavedStateHandle savedStateHandle, Context context,
       BookRepository bookRepository, ReadingRepository readingRepository,
       DataStoreManager dataStoreManager, TtsController ttsController,
-      PdfConversionManager pdfConversionManager) {
-    return new ReaderViewModel(savedStateHandle, context, bookRepository, readingRepository, dataStoreManager, ttsController, pdfConversionManager);
+      PdfConversionManager pdfConversionManager, MineruTokenStore mineruTokenStore) {
+    return new ReaderViewModel(savedStateHandle, context, bookRepository, readingRepository, dataStoreManager, ttsController, pdfConversionManager, mineruTokenStore);
   }
 }

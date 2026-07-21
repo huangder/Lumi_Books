@@ -2,6 +2,7 @@ package com.huangder.lumibooks;
 
 import androidx.hilt.work.HiltWrapper_WorkerFactoryModule;
 import com.huangder.lumibooks.di.AppModule;
+import com.huangder.lumibooks.pdfconversion.MineruPdfConversionWorker_HiltModule;
 import com.huangder.lumibooks.pdfconversion.PdfConversionWorker_HiltModule;
 import com.huangder.lumibooks.service.TtsForegroundService_GeneratedInjector;
 import com.huangder.lumibooks.ui.bookshelf.BookNotesActivity_GeneratedInjector;
@@ -147,6 +148,7 @@ public final class EBookReaderApp_HiltComponents {
           ServiceCBuilderModule.class,
           HiltWrapper_FragmentGetContextFix_FragmentGetContextFixModule.class,
           HiltWrapper_WorkerFactoryModule.class,
+          MineruPdfConversionWorker_HiltModule.class,
           PdfConversionWorker_HiltModule.class
       }
   )

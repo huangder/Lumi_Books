@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -103,7 +104,6 @@ fun DetailPage(title: String, onBack: () -> Unit, content: @Composable () -> Uni
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
-                .verticalScroll(rememberScrollState())
         ) {
             // 顶栏
             Row(
@@ -120,9 +120,17 @@ fun DetailPage(title: String, onBack: () -> Unit, content: @Composable () -> Uni
                 Spacer(Modifier.weight(1f))
                 Spacer(Modifier.size(48.dp))
             }
-            Spacer(Modifier.height(AppSpace.sm))
-            content()
-            Spacer(Modifier.height(120.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .imePadding()
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Spacer(Modifier.height(AppSpace.sm))
+                content()
+                Spacer(Modifier.height(120.dp))
+            }
         }
     }
 }

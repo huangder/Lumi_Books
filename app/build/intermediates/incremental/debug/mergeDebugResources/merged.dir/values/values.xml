@@ -169,8 +169,10 @@
     <string name="category_display">显示与外观</string>
     <string name="category_feedback">问题反馈</string>
     <string name="category_language">语言</string>
+    <string name="category_mineru">MINERU</string>
     <string name="category_sponsor">赞助开发</string>
     <string name="category_storage">存储管理</string>
+    <string name="category_third_party_services">第三方服务</string>
     <string name="chapter_list">目录</string>
     <string name="chapter_number">第 %d 章</string>
     <string name="check_update">检查更新</string>
@@ -360,6 +362,40 @@
     <string name="menu_remove_highlight">移除高亮</string>
     <string name="menu_search">搜索</string>
     <string name="menu_view_note">查看笔记</string>
+    <string name="mineru_api_limits">MinerU API 限制说明</string>
+    <string name="mineru_choose_mode">选择 PDF 云端解析方式</string>
+    <string name="mineru_clear_token">清除个人 Token</string>
+    <string name="mineru_consent_accept">同意并启用</string>
+    <string name="mineru_consent_checkbox">我已阅读第三方协议，知悉文件将上传，并确认有权处理所选文件。</string>
+    <string name="mineru_consent_countdown">请继续阅读（%1$d 秒）</string>
+    <string name="mineru_consent_subtitle">请完整阅读以下风险与第三方协议。确认按钮将在 30 秒后开放。</string>
+    <string name="mineru_consent_title">启用 MinerU 云端解析</string>
+    <string name="mineru_disable">停用 MinerU</string>
+    <string name="mineru_enable_agent">启用轻量解析</string>
+    <string name="mineru_enable_precise">保存并启用精准解析</string>
+    <string name="mineru_get_token">前往 MinerU API 管理</string>
+    <string name="mineru_mode_agent_description">单文件最大 10MB、20 页，仅返回 Markdown，并受公网 IP 限流约束。</string>
+    <string name="mineru_mode_agent_short">轻量解析</string>
+    <string name="mineru_mode_agent_title">轻量解析（免 Token，目前免费）</string>
+    <string name="mineru_mode_precise_description">支持最大 200MB、200 页，使用 VLM 模型并返回完整结构化结果。</string>
+    <string name="mineru_mode_precise_short">精准解析</string>
+    <string name="mineru_mode_precise_title">精准解析（使用个人 Token）</string>
+    <string name="mineru_not_configured">未配置</string>
+    <string name="mineru_powered_by">Powered by MinerU</string>
+    <string name="mineru_privacy_policy">OpenDataLab 个人信息保护政策</string>
+    <string name="mineru_risk_accuracy">云端解析结果可能遗漏、错识或改变原排版，LumiBooks 不保证结果准确或服务持续可用。</string>
+    <string name="mineru_risk_rights">请勿上传无权处理、受 DRM 保护、包含敏感个人信息、商业秘密或需要严格保密的文件。</string>
+    <string name="mineru_risk_third_party">MinerU 是独立第三方服务，其数据保存、删除、限流、收费和服务变更由运营方决定。</string>
+    <string name="mineru_risk_upload">所选 PDF 的正文、图片、文件名及文档信息将离开设备，上传至 MinerU 和其 OSS/CDN 存储服务。</string>
+    <string name="mineru_service_status">当前状态</string>
+    <string name="mineru_service_terms">OpenDataLab 服务协议</string>
+    <string name="mineru_third_party_notice">MinerU 由第三方独立运营。使用时，所选 PDF 会上传至 MinerU 及其存储服务。LumiBooks 不运营或控制该服务，也不对其可用性、解析准确性、处理时效及政策变化作出保证。上述说明不影响你依法享有的权利，也不免除 LumiBooks 依法应承担的责任。</string>
+    <string name="mineru_third_party_title">第三方服务说明</string>
+    <string name="mineru_token_label">MinerU Token</string>
+    <string name="mineru_token_placeholder">输入个人 Token</string>
+    <string name="mineru_token_required">请先输入个人 Token</string>
+    <string name="mineru_token_saved">已安全保存；留空可继续使用</string>
+    <string name="mineru_token_storage_notice">Token 仅加密保存在本机，不会发送给 LumiBooks。</string>
     <string name="minutes_label">分钟</string>
     <string name="monday_short">一</string>
     <string name="month_april">四月</string>
@@ -407,17 +443,39 @@
     <string name="pdf_convert_cancel_action">取消解析</string>
     <string name="pdf_convert_cancel_body">取消后会删除本次临时结果；已有解析版本不会受到影响。</string>
     <string name="pdf_convert_cancel_title">取消解析？</string>
+    <string name="pdf_convert_choose_method_body">本地解析不会上传文件；MinerU 云端解析会将所选 PDF 发送至第三方服务。</string>
+    <string name="pdf_convert_choose_method_title">选择解析方式</string>
     <string name="pdf_convert_complete_body">已从 %1$d / %2$d 页提取文字。你可以留在当前 PDF，或前往解析后的书本检查排版效果。</string>
     <string name="pdf_convert_complete_title">解析完成</string>
     <string name="pdf_convert_error_encrypted">该 PDF 已加密或受密码保护，无法提取文字。</string>
     <string name="pdf_convert_error_file_missing">原 PDF 文件不存在或已无法访问。</string>
+    <string name="pdf_convert_error_mineru_auth">个人 Token 无效、过期或无权限，请前往 MinerU 设置更新。</string>
+    <string name="pdf_convert_error_mineru_file_limit">PDF 超出当前 MinerU 模式的大小限制：轻量解析 10MB，精准解析 200MB。</string>
+    <string name="pdf_convert_error_mineru_network">网络连接中断或 MinerU 任务等待超时，请检查网络后重试。</string>
+    <string name="pdf_convert_error_mineru_not_configured">MinerU 尚未配置，请先在设置中选择解析模式。</string>
+    <string name="pdf_convert_error_mineru_page_limit">PDF 超出当前 MinerU 模式的页数限制：轻量解析 20 页，精准解析 200 页。</string>
+    <string name="pdf_convert_error_mineru_rate_limit">MinerU 当前请求过多或额度已用完，请稍后重试或切换解析方式。</string>
+    <string name="pdf_convert_error_mineru_result">MinerU 返回的结果不完整或格式异常，无法生成电子书。</string>
+    <string name="pdf_convert_error_mineru_service">MinerU 服务暂时无法完成解析，请稍后重试或改用本地解析。</string>
+    <string name="pdf_convert_error_mineru_upload">MinerU 存储服务拒绝了文件上传，请稍后重试；若持续失败，请改用本地解析。</string>
     <string name="pdf_convert_error_no_text">未检测到可提取的文字层。扫描版或纯图片 PDF 暂不支持解析。</string>
     <string name="pdf_convert_error_storage">读取 PDF 或写入转换文件时失败，请检查存储空间后重试。</string>
     <string name="pdf_convert_error_unknown">解析时发生未知错误，请稍后重试。</string>
     <string name="pdf_convert_existing_body">你可以打开已有版本，或重新解析并替换。重新解析会重置解析版的阅读进度，并清除其中的书签与笔记。</string>
     <string name="pdf_convert_existing_title">已有解析后版本</string>
     <string name="pdf_convert_failed_title">PDF 解析失败</string>
+    <string name="pdf_convert_go_to_mineru_settings">前往 MinerU 设置</string>
     <string name="pdf_convert_keep_running">继续后台解析</string>
+    <string name="pdf_convert_local_title">使用本地文字层解析</string>
+    <string name="pdf_convert_mineru_book_title">%1$s（MinerU 解析）</string>
+    <string name="pdf_convert_mineru_mode_description">使用已配置的%1$s；PDF 将上传至第三方服务。</string>
+    <string name="pdf_convert_mineru_not_configured_body">请先前往设置，选择目前免费的轻量解析，或配置个人 Token 使用精准解析。</string>
+    <string name="pdf_convert_mineru_not_configured_short">尚未配置，点击前往设置</string>
+    <string name="pdf_convert_mineru_not_configured_title">尚未配置 MinerU</string>
+    <string name="pdf_convert_mineru_notification_complete">MinerU 已完成 %1$d 页解析，点击开始阅读</string>
+    <string name="pdf_convert_mineru_notification_progress">上传或云端解析中：%1$d%%</string>
+    <string name="pdf_convert_mineru_notification_title">正在通过 MinerU 解析 PDF</string>
+    <string name="pdf_convert_mineru_title">通过 MinerU 服务解析成电子书</string>
     <string name="pdf_convert_notification_channel">PDF 解析</string>
     <string name="pdf_convert_notification_channel_description">显示 PDF 转换进度和完成结果</string>
     <string name="pdf_convert_notification_complete">已提取 %1$d / %2$d 页文字，点击开始阅读</string>
@@ -562,9 +620,11 @@
     <string name="title_changelog">更新日志</string>
     <string name="title_display">显示与外观</string>
     <string name="title_language">语言</string>
+    <string name="title_mineru">MinerU 云端解析</string>
     <string name="title_reading_goal">阅读目标</string>
     <string name="title_reading_settings">阅读设置</string>
     <string name="title_storage">存储管理</string>
+    <string name="title_third_party_services">第三方服务</string>
     <string name="today_goal">今日目标</string>
     <string name="today_reading">今日阅读</string>
     <string name="today_reading_label">今日阅读</string>
@@ -725,14 +785,23 @@
         <attr format="reference" name="fontProviderCerts"/>
         
         <attr name="fontProviderFetchStrategy">
-            
+            <!-- The blocking font fetch works as follows.
+              First, check the local cache, then if the requested font is not cached, request the
+              font from the provider and wait until it is finished.  You can change the length of
+              the timeout by modifying fontProviderFetchTimeout.  If the timeout happens, the
+              default typeface will be used instead. -->
             <enum name="blocking" value="0"/>
-            
+            <!-- The async font fetch works as follows.
+              First, check the local cache, then if the requested font is not cached, trigger a
+              request the font and continue with layout inflation. Once the font fetch succeeds, the
+              target text view will be refreshed with the downloaded font data. The
+              fontProviderFetchTimeout will be ignored if async loading is specified. -->
             <enum name="async" value="1"/>
         </attr>
         
         <attr format="integer" name="fontProviderFetchTimeout">
-            
+            <!-- A special value for the timeout. In this case, the blocking font fetching will not
+              timeout and wait until a reply is received from the font provider. -->
             <enum name="forever" value="-1"/>
         </attr>
         
