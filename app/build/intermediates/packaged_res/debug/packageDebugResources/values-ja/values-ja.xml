@@ -6,6 +6,7 @@
     <string name="animation_simple">シンプルスライド</string>
     <string name="animation_slide">スライドオーバー</string>
     <string name="app_name">LUMI</string>
+    <string name="app_theme_liquid_glass">リキッドガラス</string>
     <string name="app_theme_lumi">Lumi ピンク</string>
     <string name="app_theme_material3">Material 3</string>
     <string name="apply_text_color">文字色を適用</string>
@@ -149,6 +150,7 @@
     <string name="later">後で</string>
     <string name="letter_spacing">字間</string>
     <string name="line_height">行間</string>
+    <string name="liquid_glass_transparency">ガラスの透明度</string>
     <string name="loading">読み込み中...</string>
     <string name="loading_dots">読み込み中...</string>
     <string name="loading_text">読み込み中</string>
@@ -170,6 +172,16 @@
     <string name="mineru_enable_agent">軽量解析を有効にする</string>
     <string name="mineru_enable_precise">保存して高精度解析を有効にする</string>
     <string name="mineru_get_token">MinerU API管理を開く</string>
+    <string name="mineru_manual_default_title">MinerU手動解析</string>
+    <string name="mineru_manual_description">MinerUサイトでファイルをアップロードして解析し、ダウンロードしたZIPまたはMarkdownの結果をLumiBooksに読み込みます。</string>
+    <string name="mineru_manual_import_failed">読み込みに失敗しました。ファイルが完全であることを確認して再試行してください。</string>
+    <string name="mineru_manual_import_invalid">この結果を認識できません。MinerUからダウンロードしたZIPまたはMarkdownファイルを選択してください。</string>
+    <string name="mineru_manual_import_result">MinerUの結果を読み込む</string>
+    <string name="mineru_manual_import_success">電子書籍を読み込みました：%1$s</string>
+    <string name="mineru_manual_import_too_large">結果ファイルが大きすぎるため、安全に読み込めません。</string>
+    <string name="mineru_manual_importing">結果を読み込み中…</string>
+    <string name="mineru_manual_open_website">MinerUサイトを開く</string>
+    <string name="mineru_manual_title">手動解析（API不要）</string>
     <string name="mineru_mode_agent_description">1ファイル最大10MB・20ページ。Markdownのみを返し、公開IPのレート制限があります。</string>
     <string name="mineru_mode_agent_short">軽量解析</string>
     <string name="mineru_mode_agent_title">軽量解析（トークン不要、現在無料）</string>
@@ -244,6 +256,9 @@
     <string name="pdf_convert_error_file_missing">元のPDFが見つからないか、アクセスできません。</string>
     <string name="pdf_convert_error_mineru_auth">個人トークンが無効、期限切れ、または権限不足です。MinerU設定で更新してください。</string>
     <string name="pdf_convert_error_mineru_file_limit">PDFが上限を超えています：軽量解析10MB、高精度解析200MB。</string>
+    <string name="pdf_convert_error_mineru_manual_format">選択した結果を認識できません。MinerUからダウンロードしたZIPまたはMarkdownファイルを選択してください。</string>
+    <string name="pdf_convert_error_mineru_manual_import">MinerUの結果を読み込めませんでした。ファイルが完全であることを確認して再試行してください。</string>
+    <string name="pdf_convert_error_mineru_manual_too_large">MinerUの結果が大きすぎるため、安全に読み込めません。</string>
     <string name="pdf_convert_error_mineru_network">接続が切れたかMinerUタスクがタイムアウトしました。ネットワークを確認してください。</string>
     <string name="pdf_convert_error_mineru_not_configured">MinerUが未設定です。設定で解析モードを選択してください。</string>
     <string name="pdf_convert_error_mineru_page_limit">PDFが上限を超えています：軽量解析20ページ、高精度解析200ページ。</string>
@@ -261,6 +276,14 @@
     <string name="pdf_convert_keep_running">バックグラウンドで続行</string>
     <string name="pdf_convert_local_title">ローカルのテキスト層を解析</string>
     <string name="pdf_convert_mineru_book_title">%1$s（MinerU解析）</string>
+    <string name="pdf_convert_mineru_manual_complete_body">MinerUの結果を読み込み、電子書籍を作成しました。このPDFに留まるか、作成した電子書籍を開いてレイアウトを確認できます。</string>
+    <string name="pdf_convert_mineru_manual_description">MinerUサイトで解析し、ZIPまたはMarkdownの結果を読み込みます。APIやTokenは不要です。</string>
+    <string name="pdf_convert_mineru_manual_import_hint">MinerUからダウンロードしたZIPまたはMarkdownファイルを選択します。</string>
+    <string name="pdf_convert_mineru_manual_progress_title">MinerUの結果を読み込み中</string>
+    <string name="pdf_convert_mineru_manual_sheet_body">MinerUサイトを開き、このPDFを自分でアップロードします。解析後にZIPまたはMarkdownをダウンロードし、ここに戻って読み込んでください。</string>
+    <string name="pdf_convert_mineru_manual_sheet_title">手動解析</string>
+    <string name="pdf_convert_mineru_manual_title">MinerUを手動で使用</string>
+    <string name="pdf_convert_mineru_manual_website_hint">ブラウザでPDFをアップロードし、解析結果をダウンロードします。</string>
     <string name="pdf_convert_mineru_mode_description">設定済みの%1$sを使用します。PDFは第三者サービスへ送信されます。</string>
     <string name="pdf_convert_mineru_not_configured_body">設定で現在無料の軽量解析を選ぶか、個人トークンを追加して高精度解析を使用してください。</string>
     <string name="pdf_convert_mineru_not_configured_short">未設定です。タップして設定を開く</string>

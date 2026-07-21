@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.huangder.lumibooks.app-mergeDebugResources-74:/values-night-v8/values-night-v8.xml",
+            "outputFile": "com.huangder.lumibooks.app-mergeDebugResources-61:/values-night-v8/values-night-v8.xml",
             "map": [
                 {
                     "source": "D:\\vibe_coding\\android_books\\app\\src\\main\\res\\values-night\\colors.xml",

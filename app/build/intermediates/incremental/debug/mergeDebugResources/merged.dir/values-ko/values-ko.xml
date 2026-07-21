@@ -3,9 +3,12 @@
     <string name="add_bookmark">북마크 추가</string>
     <string name="add_favorite">즐겨찾기</string>
     <string name="advanced_settings">고급 설정</string>
+    <string msgid="8719607706653693137" name="androidx_compose_foundation_autofill">"자동 완성"</string>
+    <string msgid="1150566100598813236" name="androidx_compose_ui_autofill">"자동 완성"</string>
     <string name="animation_simple">간단한 슬라이드</string>
     <string name="animation_slide">슬라이드 덮기</string>
     <string name="app_name">LUMI</string>
+    <string name="app_theme_liquid_glass">리퀴드 글래스</string>
     <string name="app_theme_lumi">Lumi 핑크</string>
     <string name="app_theme_material3">Material 3</string>
     <string name="apply_text_color">글자 색상 적용</string>
@@ -163,6 +166,7 @@
     <string name="later">나중에</string>
     <string name="letter_spacing">자간</string>
     <string name="line_height">줄 간격</string>
+    <string name="liquid_glass_transparency">유리 투명도</string>
     <string name="loading">불러오는 중...</string>
     <string name="loading_dots">불러오는 중...</string>
     <string name="loading_text">불러오는 중</string>
@@ -206,10 +210,15 @@
     <string msgid="3177828188723359358" name="m3c_dropdown_menu_collapsed">"접힘"</string>
     <string msgid="2360841780724299882" name="m3c_dropdown_menu_expanded">"펼침"</string>
     <string msgid="8687821690726149911" name="m3c_dropdown_menu_toggle">"전환 드롭다운 메뉴"</string>
+    <string msgid="6072492480528318635" name="m3c_floating_toolbar_collapse">"툴바 접기"</string>
+    <string msgid="6880757017246780255" name="m3c_floating_toolbar_expand">"툴바 펼치기"</string>
     <string msgid="6152806324422087846" name="m3c_search_bar_search">"검색"</string>
     <string msgid="6152755701819882931" name="m3c_snackbar_dismiss">"닫기"</string>
+    <string msgid="3868801555855510515" name="m3c_snackbar_pane_title">"주의"</string>
     <string msgid="7655536806087401899" name="m3c_suggestions_available">"아래의 추천 검색어"</string>
+    <string msgid="409352516511718051" name="m3c_time_input_dialog_title">"시간 입력"</string>
     <string msgid="2786685010796619560" name="m3c_time_picker_am">"오전"</string>
+    <string msgid="7412665527536641863" name="m3c_time_picker_dialog_title">"시간 선택"</string>
     <string msgid="2349193472625211372" name="m3c_time_picker_hour">"시간"</string>
     <string msgid="9179527532316922345" name="m3c_time_picker_hour_24h_suffix">"%1$d시간"</string>
     <string msgid="8876759303332837035" name="m3c_time_picker_hour_selection">"시간 선택"</string>
@@ -221,8 +230,12 @@
     <string msgid="7661234488295443182" name="m3c_time_picker_minute_text_field">"기간(분)"</string>
     <string msgid="5865171949528594571" name="m3c_time_picker_period_toggle_description">"오전 또는 오후를 선택하세요."</string>
     <string msgid="6616362054113087709" name="m3c_time_picker_pm">"오후"</string>
+    <string msgid="4145073906612931838" name="m3c_time_picker_toggle_keyboard">"시간 입력을 위해 텍스트 입력 모드로 전환합니다."</string>
+    <string msgid="8841786098195101324" name="m3c_time_picker_toggle_touch">"시간 입력을 위해 시계 모드로 전환합니다."</string>
     <string msgid="1805687647081129904" name="m3c_tooltip_long_press_label">"도움말 표시"</string>
     <string msgid="5460405025248574620" name="m3c_tooltip_pane_description">"도움말"</string>
+    <string msgid="6564222473543418073" name="m3c_wide_navigation_rail_close_rail">"레일 닫기"</string>
+    <string msgid="8350283435461615411" name="m3c_wide_navigation_rail_pane_title">"탐색 레일"</string>
     <string name="menu_copy">복사</string>
     <string name="menu_highlight">하이라이트</string>
     <string name="menu_note">메모</string>
@@ -241,6 +254,16 @@
     <string name="mineru_enable_agent">경량 분석 사용</string>
     <string name="mineru_enable_precise">저장하고 정밀 분석 사용</string>
     <string name="mineru_get_token">MinerU API 관리 열기</string>
+    <string name="mineru_manual_default_title">MinerU 수동 분석</string>
+    <string name="mineru_manual_description">MinerU 웹사이트에서 파일을 직접 업로드하고 분석한 뒤, 다운로드한 ZIP 또는 Markdown 결과를 LumiBooks로 가져옵니다.</string>
+    <string name="mineru_manual_import_failed">가져오지 못했습니다. 파일이 완전한지 확인한 후 다시 시도하세요.</string>
+    <string name="mineru_manual_import_invalid">이 결과를 인식할 수 없습니다. MinerU에서 다운로드한 ZIP 또는 Markdown 파일을 선택하세요.</string>
+    <string name="mineru_manual_import_result">MinerU 결과 가져오기</string>
+    <string name="mineru_manual_import_success">전자책을 가져왔습니다: %1$s</string>
+    <string name="mineru_manual_import_too_large">결과 파일이 너무 커서 안전하게 가져올 수 없습니다.</string>
+    <string name="mineru_manual_importing">결과 가져오는 중…</string>
+    <string name="mineru_manual_open_website">MinerU 웹사이트 열기</string>
+    <string name="mineru_manual_title">수동 분석(API 불필요)</string>
     <string name="mineru_mode_agent_description">파일당 최대 10MB, 20페이지이며 Markdown만 반환하고 공인 IP 속도 제한이 적용됩니다.</string>
     <string name="mineru_mode_agent_short">경량 분석</string>
     <string name="mineru_mode_agent_title">경량 분석(토큰 불필요, 현재 무료)</string>
@@ -317,6 +340,9 @@
     <string name="pdf_convert_error_file_missing">원본 PDF가 없거나 더 이상 접근할 수 없습니다.</string>
     <string name="pdf_convert_error_mineru_auth">개인 토큰이 유효하지 않거나 만료되었거나 권한이 없습니다. MinerU 설정에서 업데이트하세요.</string>
     <string name="pdf_convert_error_mineru_file_limit">PDF 크기 제한을 초과했습니다: 경량 10MB, 정밀 200MB.</string>
+    <string name="pdf_convert_error_mineru_manual_format">선택한 결과를 인식할 수 없습니다. MinerU에서 다운로드한 ZIP 또는 Markdown 파일을 선택하세요.</string>
+    <string name="pdf_convert_error_mineru_manual_import">MinerU 결과를 가져오지 못했습니다. 파일이 완전한지 확인한 후 다시 시도하세요.</string>
+    <string name="pdf_convert_error_mineru_manual_too_large">MinerU 결과가 너무 커서 안전하게 가져올 수 없습니다.</string>
     <string name="pdf_convert_error_mineru_network">연결이 끊겼거나 MinerU 작업 시간이 초과되었습니다. 네트워크를 확인하세요.</string>
     <string name="pdf_convert_error_mineru_not_configured">MinerU가 설정되지 않았습니다. 설정에서 분석 모드를 선택하세요.</string>
     <string name="pdf_convert_error_mineru_page_limit">PDF 페이지 제한을 초과했습니다: 경량 20페이지, 정밀 200페이지.</string>
@@ -334,6 +360,14 @@
     <string name="pdf_convert_keep_running">백그라운드에서 계속</string>
     <string name="pdf_convert_local_title">로컬 텍스트 레이어 분석</string>
     <string name="pdf_convert_mineru_book_title">%1$s(MinerU 분석)</string>
+    <string name="pdf_convert_mineru_manual_complete_body">MinerU 결과를 가져와 전자책을 만들었습니다. 현재 PDF에 머물거나 생성된 전자책을 열어 레이아웃을 확인할 수 있습니다.</string>
+    <string name="pdf_convert_mineru_manual_description">MinerU 웹사이트에서 분석한 뒤 ZIP 또는 Markdown 결과를 가져옵니다. API나 Token이 필요하지 않습니다.</string>
+    <string name="pdf_convert_mineru_manual_import_hint">MinerU에서 다운로드한 ZIP 또는 Markdown 파일을 선택합니다.</string>
+    <string name="pdf_convert_mineru_manual_progress_title">MinerU 결과 가져오는 중</string>
+    <string name="pdf_convert_mineru_manual_sheet_body">MinerU 웹사이트를 열고 이 PDF를 직접 업로드하세요. 분석이 끝나면 ZIP 또는 Markdown을 다운로드하고 여기로 돌아와 가져오세요.</string>
+    <string name="pdf_convert_mineru_manual_sheet_title">수동 분석</string>
+    <string name="pdf_convert_mineru_manual_title">MinerU 수동 사용</string>
+    <string name="pdf_convert_mineru_manual_website_hint">브라우저에서 PDF를 업로드하고 분석 결과를 다운로드합니다.</string>
     <string name="pdf_convert_mineru_mode_description">설정된 %1$s을(를) 사용합니다. PDF가 제3자 서비스로 업로드됩니다.</string>
     <string name="pdf_convert_mineru_not_configured_body">설정에서 현재 무료인 경량 분석을 선택하거나 개인 토큰을 추가해 정밀 분석을 사용하세요.</string>
     <string name="pdf_convert_mineru_not_configured_short">설정되지 않음. 탭하여 설정 열기</string>
@@ -429,6 +463,7 @@
     <string name="show_reader_chapter_progress_hint">현재 장 이름과 전체 책 진행률</string>
     <string name="show_reader_page_number">페이지 번호 표시</string>
     <string name="show_reader_page_number_hint">현재 장의 페이지 번호</string>
+    <string msgid="2792228137354697160" name="snackbar_pane_title">"주의"</string>
     <string name="splash_screen_description">앱을 시작할 때 브랜드 화면 표시</string>
     <string name="splash_setting_next_launch">다음 앱 시작 시 적용됩니다</string>
     <string name="sponsor_code_label">屿浮 님께 보내는 후원 코드</string>

@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:ns1="urn:oasis:names:tc:xliff:document:1.2">
+    <string msgid="8719607706653693137" name="androidx_compose_foundation_autofill">"آٹو فل"</string>
+    <string msgid="1150566100598813236" name="androidx_compose_ui_autofill">"آٹو فل"</string>
     <string msgid="881409763997275156" name="call_notification_answer_action">"جواب دیں"</string>
     <string msgid="8793775615905189152" name="call_notification_answer_video_action">"ویڈیو"</string>
     <string msgid="3229508546291798546" name="call_notification_decline_action">"مسترد کریں"</string>
@@ -54,10 +56,15 @@
     <string msgid="3177828188723359358" name="m3c_dropdown_menu_collapsed">"سکیڑا گیا"</string>
     <string msgid="2360841780724299882" name="m3c_dropdown_menu_expanded">"پھیلایا گیا"</string>
     <string msgid="8687821690726149911" name="m3c_dropdown_menu_toggle">"ڈراپ ڈاؤن مینیو کو ٹوگل کریں"</string>
+    <string msgid="6072492480528318635" name="m3c_floating_toolbar_collapse">"ٹول بار کو سکیڑیں"</string>
+    <string msgid="6880757017246780255" name="m3c_floating_toolbar_expand">"ٹول بار کو پھیلائیں"</string>
     <string msgid="6152806324422087846" name="m3c_search_bar_search">"تلاش کریں"</string>
     <string msgid="6152755701819882931" name="m3c_snackbar_dismiss">"برخاست کریں"</string>
+    <string msgid="3868801555855510515" name="m3c_snackbar_pane_title">"الرٹ"</string>
     <string msgid="7655536806087401899" name="m3c_suggestions_available">"تلاش کی تجاویز نیچے دستیاب ہیں"</string>
+    <string msgid="409352516511718051" name="m3c_time_input_dialog_title">"وقت درج کریں"</string>
     <string msgid="2786685010796619560" name="m3c_time_picker_am">"AM"</string>
+    <string msgid="7412665527536641863" name="m3c_time_picker_dialog_title">"وقت منتخب کریں"</string>
     <string msgid="2349193472625211372" name="m3c_time_picker_hour">"گھنٹہ"</string>
     <string msgid="9179527532316922345" name="m3c_time_picker_hour_24h_suffix">"‏‎%1$d گھنٹے"</string>
     <string msgid="8876759303332837035" name="m3c_time_picker_hour_selection">"گھنٹہ منتخب کریں"</string>
@@ -69,13 +76,18 @@
     <string msgid="7661234488295443182" name="m3c_time_picker_minute_text_field">"منٹ کے لیے"</string>
     <string msgid="5865171949528594571" name="m3c_time_picker_period_toggle_description">"‏AM یا PM منتخب کریں"</string>
     <string msgid="6616362054113087709" name="m3c_time_picker_pm">"PM"</string>
+    <string msgid="4145073906612931838" name="m3c_time_picker_toggle_keyboard">"وقت ان پٹ کے لیے ٹیکسٹ اِن پٹ موڈ پر سوئچ کریں"</string>
+    <string msgid="8841786098195101324" name="m3c_time_picker_toggle_touch">"وقت ان پٹ کے لیے گھڑی موڈ پر سوئچ کریں"</string>
     <string msgid="1805687647081129904" name="m3c_tooltip_long_press_label">"ٹول ٹپ دکھائیں"</string>
     <string msgid="5460405025248574620" name="m3c_tooltip_pane_description">"ٹول ٹپ"</string>
+    <string msgid="6564222473543418073" name="m3c_wide_navigation_rail_close_rail">"ریل بند کریں"</string>
+    <string msgid="8350283435461615411" name="m3c_wide_navigation_rail_pane_title">"نیوی گیشن ریل"</string>
     <string msgid="542007171693138492" name="navigation_menu">"نیویگیشن مینیو"</string>
     <string msgid="6610465462668679431" name="not_selected">"غیر منتخب کردہ"</string>
     <string msgid="5941395253238309765" name="range_end">"رینج کا اختتام"</string>
     <string msgid="7097486360902471446" name="range_start">"رینج کی شروعات"</string>
     <string msgid="6043586758067023" name="selected">"منتخب کردہ"</string>
+    <string msgid="2792228137354697160" name="snackbar_pane_title">"الرٹ"</string>
     <string msgid="4139871816613051306" name="state_empty">"خالی ہے"</string>
     <string msgid="5834637030682409883" name="state_off">"آف ہے"</string>
     <string msgid="1490883874751719580" name="state_on">"آن ہے"</string>

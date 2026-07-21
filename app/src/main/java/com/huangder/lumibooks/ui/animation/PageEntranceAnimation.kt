@@ -14,7 +14,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-const val PAGE_ENTRANCE_COOLDOWN_MILLIS = 60 * 1000L
+const val PAGE_ENTRANCE_COOLDOWN_MILLIS = 10_000L
 const val PAGE_ENTRANCE_PLAYBACK_MILLIS = 900L
 class PageEntranceTracker(
     private val cooldownMillis: Long = PAGE_ENTRANCE_COOLDOWN_MILLIS

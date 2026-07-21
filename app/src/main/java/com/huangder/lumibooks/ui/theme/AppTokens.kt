@@ -15,6 +15,8 @@ import com.huangder.lumibooks.R
 /** 全局深色模式状态，由 MainActivity 根据 DataStore 设置注入 */
 val LocalIsDarkTheme = staticCompositionLocalOf { false }
 val LocalUseMaterial3Theme = staticCompositionLocalOf { false }
+val LocalAppTheme = staticCompositionLocalOf { "lumi" }
+val LocalLiquidGlassTransparency = staticCompositionLocalOf { 0.55f }
 
 // ─── 字体 ───
 val FangSong = FontFamily(Font(R.font.fandol_fang, FontWeight.Normal))

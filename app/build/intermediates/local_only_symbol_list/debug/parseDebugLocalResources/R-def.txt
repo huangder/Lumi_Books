@@ -25,6 +25,7 @@ string advanced_settings
 string animation_simple
 string animation_slide
 string app_name
+string app_theme_liquid_glass
 string app_theme_lumi
 string app_theme_material3
 string apply_text_color
@@ -174,6 +175,7 @@ string label_total_size
 string later
 string letter_spacing
 string line_height
+string liquid_glass_transparency
 string loading
 string loading_dots
 string loading_text
@@ -195,6 +197,16 @@ string mineru_disable
 string mineru_enable_agent
 string mineru_enable_precise
 string mineru_get_token
+string mineru_manual_default_title
+string mineru_manual_description
+string mineru_manual_import_failed
+string mineru_manual_import_invalid
+string mineru_manual_import_result
+string mineru_manual_import_success
+string mineru_manual_import_too_large
+string mineru_manual_importing
+string mineru_manual_open_website
+string mineru_manual_title
 string mineru_mode_agent_description
 string mineru_mode_agent_short
 string mineru_mode_agent_title
@@ -270,6 +282,9 @@ string pdf_convert_error_encrypted
 string pdf_convert_error_file_missing
 string pdf_convert_error_mineru_auth
 string pdf_convert_error_mineru_file_limit
+string pdf_convert_error_mineru_manual_format
+string pdf_convert_error_mineru_manual_import
+string pdf_convert_error_mineru_manual_too_large
 string pdf_convert_error_mineru_network
 string pdf_convert_error_mineru_not_configured
 string pdf_convert_error_mineru_page_limit
@@ -287,6 +302,14 @@ string pdf_convert_go_to_mineru_settings
 string pdf_convert_keep_running
 string pdf_convert_local_title
 string pdf_convert_mineru_book_title
+string pdf_convert_mineru_manual_complete_body
+string pdf_convert_mineru_manual_description
+string pdf_convert_mineru_manual_import_hint
+string pdf_convert_mineru_manual_progress_title
+string pdf_convert_mineru_manual_sheet_body
+string pdf_convert_mineru_manual_sheet_title
+string pdf_convert_mineru_manual_title
+string pdf_convert_mineru_manual_website_hint
 string pdf_convert_mineru_mode_description
 string pdf_convert_mineru_not_configured_body
 string pdf_convert_mineru_not_configured_short

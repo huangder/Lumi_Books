@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.huangder.lumibooks.ui.animation.PageEntranceTrackerTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-07-21T07:13:32" hostname="LAPTOP-L6IPGCHS" time="0.0">
+<testsuite name="com.huangder.lumibooks.ui.animation.PageEntranceTrackerTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-07-21T09:13:29.540Z" hostname="LAPTOP-L6IPGCHS" time="0.004">
   <properties/>
-  <testcase name="defaultCooldownIsOneMinute" classname="com.huangder.lumibooks.ui.animation.PageEntranceTrackerTest" time="0.0"/>
-  <testcase name="pageReplaysAfterCooldown" classname="com.huangder.lumibooks.ui.animation.PageEntranceTrackerTest" time="0.0"/>
+  <testcase name="pageReplaysAfterCooldown" classname="com.huangder.lumibooks.ui.animation.PageEntranceTrackerTest" time="0.003"/>
   <testcase name="cooldownIsTrackedPerPage" classname="com.huangder.lumibooks.ui.animation.PageEntranceTrackerTest" time="0.0"/>
+  <testcase name="defaultCooldownIsTenSeconds" classname="com.huangder.lumibooks.ui.animation.PageEntranceTrackerTest" time="0.0"/>
   <testcase name="firstEntryPlaysAndShortReturnDoesNotReplay" classname="com.huangder.lumibooks.ui.animation.PageEntranceTrackerTest" time="0.0"/>
   <system-out><![CDATA[]]></system-out>
   <system-err><![CDATA[]]></system-err>

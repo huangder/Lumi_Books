@@ -59,7 +59,9 @@ class DetailActivity : ComponentActivity() {
 
             EBookReaderTheme(
                 darkTheme = isDark,
-                dynamicColor = uiState.appTheme == "material3"
+                dynamicColor = uiState.appTheme == "material3",
+                appTheme = uiState.appTheme,
+                liquidGlassTransparency = uiState.liquidGlassTransparency
             ) {
                 com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
                     predictiveBackEnabled = predictiveBackEnabled,

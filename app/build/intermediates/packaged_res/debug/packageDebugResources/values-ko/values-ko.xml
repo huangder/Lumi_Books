@@ -6,6 +6,7 @@
     <string name="animation_simple">간단한 슬라이드</string>
     <string name="animation_slide">슬라이드 덮기</string>
     <string name="app_name">LUMI</string>
+    <string name="app_theme_liquid_glass">리퀴드 글래스</string>
     <string name="app_theme_lumi">Lumi 핑크</string>
     <string name="app_theme_material3">Material 3</string>
     <string name="apply_text_color">글자 색상 적용</string>
@@ -149,6 +150,7 @@
     <string name="later">나중에</string>
     <string name="letter_spacing">자간</string>
     <string name="line_height">줄 간격</string>
+    <string name="liquid_glass_transparency">유리 투명도</string>
     <string name="loading">불러오는 중...</string>
     <string name="loading_dots">불러오는 중...</string>
     <string name="loading_text">불러오는 중</string>
@@ -170,6 +172,16 @@
     <string name="mineru_enable_agent">경량 분석 사용</string>
     <string name="mineru_enable_precise">저장하고 정밀 분석 사용</string>
     <string name="mineru_get_token">MinerU API 관리 열기</string>
+    <string name="mineru_manual_default_title">MinerU 수동 분석</string>
+    <string name="mineru_manual_description">MinerU 웹사이트에서 파일을 직접 업로드하고 분석한 뒤, 다운로드한 ZIP 또는 Markdown 결과를 LumiBooks로 가져옵니다.</string>
+    <string name="mineru_manual_import_failed">가져오지 못했습니다. 파일이 완전한지 확인한 후 다시 시도하세요.</string>
+    <string name="mineru_manual_import_invalid">이 결과를 인식할 수 없습니다. MinerU에서 다운로드한 ZIP 또는 Markdown 파일을 선택하세요.</string>
+    <string name="mineru_manual_import_result">MinerU 결과 가져오기</string>
+    <string name="mineru_manual_import_success">전자책을 가져왔습니다: %1$s</string>
+    <string name="mineru_manual_import_too_large">결과 파일이 너무 커서 안전하게 가져올 수 없습니다.</string>
+    <string name="mineru_manual_importing">결과 가져오는 중…</string>
+    <string name="mineru_manual_open_website">MinerU 웹사이트 열기</string>
+    <string name="mineru_manual_title">수동 분석(API 불필요)</string>
     <string name="mineru_mode_agent_description">파일당 최대 10MB, 20페이지이며 Markdown만 반환하고 공인 IP 속도 제한이 적용됩니다.</string>
     <string name="mineru_mode_agent_short">경량 분석</string>
     <string name="mineru_mode_agent_title">경량 분석(토큰 불필요, 현재 무료)</string>
@@ -244,6 +256,9 @@
     <string name="pdf_convert_error_file_missing">원본 PDF가 없거나 더 이상 접근할 수 없습니다.</string>
     <string name="pdf_convert_error_mineru_auth">개인 토큰이 유효하지 않거나 만료되었거나 권한이 없습니다. MinerU 설정에서 업데이트하세요.</string>
     <string name="pdf_convert_error_mineru_file_limit">PDF 크기 제한을 초과했습니다: 경량 10MB, 정밀 200MB.</string>
+    <string name="pdf_convert_error_mineru_manual_format">선택한 결과를 인식할 수 없습니다. MinerU에서 다운로드한 ZIP 또는 Markdown 파일을 선택하세요.</string>
+    <string name="pdf_convert_error_mineru_manual_import">MinerU 결과를 가져오지 못했습니다. 파일이 완전한지 확인한 후 다시 시도하세요.</string>
+    <string name="pdf_convert_error_mineru_manual_too_large">MinerU 결과가 너무 커서 안전하게 가져올 수 없습니다.</string>
     <string name="pdf_convert_error_mineru_network">연결이 끊겼거나 MinerU 작업 시간이 초과되었습니다. 네트워크를 확인하세요.</string>
     <string name="pdf_convert_error_mineru_not_configured">MinerU가 설정되지 않았습니다. 설정에서 분석 모드를 선택하세요.</string>
     <string name="pdf_convert_error_mineru_page_limit">PDF 페이지 제한을 초과했습니다: 경량 20페이지, 정밀 200페이지.</string>
@@ -261,6 +276,14 @@
     <string name="pdf_convert_keep_running">백그라운드에서 계속</string>
     <string name="pdf_convert_local_title">로컬 텍스트 레이어 분석</string>
     <string name="pdf_convert_mineru_book_title">%1$s(MinerU 분석)</string>
+    <string name="pdf_convert_mineru_manual_complete_body">MinerU 결과를 가져와 전자책을 만들었습니다. 현재 PDF에 머물거나 생성된 전자책을 열어 레이아웃을 확인할 수 있습니다.</string>
+    <string name="pdf_convert_mineru_manual_description">MinerU 웹사이트에서 분석한 뒤 ZIP 또는 Markdown 결과를 가져옵니다. API나 Token이 필요하지 않습니다.</string>
+    <string name="pdf_convert_mineru_manual_import_hint">MinerU에서 다운로드한 ZIP 또는 Markdown 파일을 선택합니다.</string>
+    <string name="pdf_convert_mineru_manual_progress_title">MinerU 결과 가져오는 중</string>
+    <string name="pdf_convert_mineru_manual_sheet_body">MinerU 웹사이트를 열고 이 PDF를 직접 업로드하세요. 분석이 끝나면 ZIP 또는 Markdown을 다운로드하고 여기로 돌아와 가져오세요.</string>
+    <string name="pdf_convert_mineru_manual_sheet_title">수동 분석</string>
+    <string name="pdf_convert_mineru_manual_title">MinerU 수동 사용</string>
+    <string name="pdf_convert_mineru_manual_website_hint">브라우저에서 PDF를 업로드하고 분석 결과를 다운로드합니다.</string>
     <string name="pdf_convert_mineru_mode_description">설정된 %1$s을(를) 사용합니다. PDF가 제3자 서비스로 업로드됩니다.</string>
     <string name="pdf_convert_mineru_not_configured_body">설정에서 현재 무료인 경량 분석을 선택하거나 개인 토큰을 추가해 정밀 분석을 사용하세요.</string>
     <string name="pdf_convert_mineru_not_configured_short">설정되지 않음. 탭하여 설정 열기</string>

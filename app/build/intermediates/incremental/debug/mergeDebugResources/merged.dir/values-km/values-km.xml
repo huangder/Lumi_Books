@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:ns1="urn:oasis:names:tc:xliff:document:1.2">
+    <string msgid="8719607706653693137" name="androidx_compose_foundation_autofill">"បំពេញស្វ័យប្រវត្តិ"</string>
+    <string msgid="1150566100598813236" name="androidx_compose_ui_autofill">"បំពេញស្វ័យប្រវត្តិ"</string>
     <string msgid="881409763997275156" name="call_notification_answer_action">"ឆ្លើយ"</string>
     <string msgid="8793775615905189152" name="call_notification_answer_video_action">"វីដេអូ"</string>
     <string msgid="3229508546291798546" name="call_notification_decline_action">"បដិសេធ"</string>
@@ -54,10 +56,15 @@
     <string msgid="3177828188723359358" name="m3c_dropdown_menu_collapsed">"បាន​បង្រួម"</string>
     <string msgid="2360841780724299882" name="m3c_dropdown_menu_expanded">"បាន​ពង្រីក"</string>
     <string msgid="8687821690726149911" name="m3c_dropdown_menu_toggle">"បិទ/បើកម៉ឺនុយ​ធ្លាក់​ចុះ"</string>
+    <string msgid="6072492480528318635" name="m3c_floating_toolbar_collapse">"បង្រួមរបារឧបករណ៍"</string>
+    <string msgid="6880757017246780255" name="m3c_floating_toolbar_expand">"ពង្រីករបារឧបករណ៍"</string>
     <string msgid="6152806324422087846" name="m3c_search_bar_search">"ស្វែងរក"</string>
     <string msgid="6152755701819882931" name="m3c_snackbar_dismiss">"ច្រានចោល"</string>
+    <string msgid="3868801555855510515" name="m3c_snackbar_pane_title">"ជូន​ដំណឹង"</string>
     <string msgid="7655536806087401899" name="m3c_suggestions_available">"ការណែនាំខាងក្រោម"</string>
+    <string msgid="409352516511718051" name="m3c_time_input_dialog_title">"បញ្ចូលម៉ោង"</string>
     <string msgid="2786685010796619560" name="m3c_time_picker_am">"AM"</string>
+    <string msgid="7412665527536641863" name="m3c_time_picker_dialog_title">"ជ្រើសរើស​ពេលវេលា"</string>
     <string msgid="2349193472625211372" name="m3c_time_picker_hour">"ម៉ោង"</string>
     <string msgid="9179527532316922345" name="m3c_time_picker_hour_24h_suffix">"%1$d ម៉ោង"</string>
     <string msgid="8876759303332837035" name="m3c_time_picker_hour_selection">"ជ្រើសរើសម៉ោង"</string>
@@ -69,13 +76,18 @@
     <string msgid="7661234488295443182" name="m3c_time_picker_minute_text_field">"រយៈពេលប៉ុន្មាននាទី"</string>
     <string msgid="5865171949528594571" name="m3c_time_picker_period_toggle_description">"ជ្រើសរើស AM ឬ PM"</string>
     <string msgid="6616362054113087709" name="m3c_time_picker_pm">"PM"</string>
+    <string msgid="4145073906612931838" name="m3c_time_picker_toggle_keyboard">"ប្ដូរ​ទៅ​មុខងារបញ្ចូល​អក្សរសម្រាប់​ការ​បញ្ចូល​ម៉ោង"</string>
+    <string msgid="8841786098195101324" name="m3c_time_picker_toggle_touch">"ប្ដូរ​ទៅ​មុខងារ​នាឡិកា​សម្រាប់​ការ​បញ្ចូល​ម៉ោង"</string>
     <string msgid="1805687647081129904" name="m3c_tooltip_long_press_label">"បង្ហាញ​កំណត់​ពន្យល់"</string>
     <string msgid="5460405025248574620" name="m3c_tooltip_pane_description">"កំណត់​ពន្យល់"</string>
+    <string msgid="6564222473543418073" name="m3c_wide_navigation_rail_close_rail">"បិទខ្សែ"</string>
+    <string msgid="8350283435461615411" name="m3c_wide_navigation_rail_pane_title">"ខ្សែរុករក"</string>
     <string msgid="542007171693138492" name="navigation_menu">"ម៉ឺនុយរុករក"</string>
     <string msgid="6610465462668679431" name="not_selected">"មិនបាន​ជ្រើសរើស"</string>
     <string msgid="5941395253238309765" name="range_end">"ចំណុចបញ្ចប់"</string>
     <string msgid="7097486360902471446" name="range_start">"ចំណុចចាប់ផ្ដើម"</string>
     <string msgid="6043586758067023" name="selected">"បានជ្រើសរើស"</string>
+    <string msgid="2792228137354697160" name="snackbar_pane_title">"ជូន​ដំណឹង"</string>
     <string msgid="4139871816613051306" name="state_empty">"ទទេ"</string>
     <string msgid="5834637030682409883" name="state_off">"បិទ"</string>
     <string msgid="1490883874751719580" name="state_on">"បើក"</string>

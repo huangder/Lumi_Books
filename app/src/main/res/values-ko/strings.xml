@@ -6,6 +6,8 @@
     <string name="label_app_theme">테마</string>
     <string name="app_theme_lumi">Lumi 핑크</string>
     <string name="app_theme_material3">Material 3</string>
+    <string name="app_theme_liquid_glass">리퀴드 글래스</string>
+    <string name="liquid_glass_transparency">유리 투명도</string>
     <string name="app_name">LUMI</string>
 
     <!-- 홈 -->
@@ -431,6 +433,16 @@
     <string name="category_mineru">MINERU</string>
     <string name="title_mineru">MinerU 클라우드 분석</string>
     <string name="mineru_powered_by">Powered by MinerU</string>
+    <string name="mineru_manual_title">수동 분석(API 불필요)</string>
+    <string name="mineru_manual_description">MinerU 웹사이트에서 파일을 직접 업로드하고 분석한 뒤, 다운로드한 ZIP 또는 Markdown 결과를 LumiBooks로 가져옵니다.</string>
+    <string name="mineru_manual_open_website">MinerU 웹사이트 열기</string>
+    <string name="mineru_manual_import_result">MinerU 결과 가져오기</string>
+    <string name="mineru_manual_importing">결과 가져오는 중…</string>
+    <string name="mineru_manual_default_title">MinerU 수동 분석</string>
+    <string name="mineru_manual_import_success">전자책을 가져왔습니다: %1$s</string>
+    <string name="mineru_manual_import_invalid">이 결과를 인식할 수 없습니다. MinerU에서 다운로드한 ZIP 또는 Markdown 파일을 선택하세요.</string>
+    <string name="mineru_manual_import_too_large">결과 파일이 너무 커서 안전하게 가져올 수 없습니다.</string>
+    <string name="mineru_manual_import_failed">가져오지 못했습니다. 파일이 완전한지 확인한 후 다시 시도하세요.</string>
     <string name="mineru_not_configured">설정되지 않음</string>
     <string name="mineru_mode_agent_short">경량 분석</string>
     <string name="mineru_mode_precise_short">정밀 분석</string>
@@ -468,6 +480,14 @@
     <string name="pdf_convert_choose_method_body">로컬 분석은 파일을 업로드하지 않습니다. MinerU 분석은 PDF를 제3자 서비스로 전송합니다.</string>
     <string name="pdf_convert_local_title">로컬 텍스트 레이어 분석</string>
     <string name="pdf_convert_mineru_title">MinerU로 전자책 만들기</string>
+    <string name="pdf_convert_mineru_manual_title">MinerU 수동 사용</string>
+    <string name="pdf_convert_mineru_manual_description">MinerU 웹사이트에서 분석한 뒤 ZIP 또는 Markdown 결과를 가져옵니다. API나 Token이 필요하지 않습니다.</string>
+    <string name="pdf_convert_mineru_manual_sheet_title">수동 분석</string>
+    <string name="pdf_convert_mineru_manual_sheet_body">MinerU 웹사이트를 열고 이 PDF를 직접 업로드하세요. 분석이 끝나면 ZIP 또는 Markdown을 다운로드하고 여기로 돌아와 가져오세요.</string>
+    <string name="pdf_convert_mineru_manual_website_hint">브라우저에서 PDF를 업로드하고 분석 결과를 다운로드합니다.</string>
+    <string name="pdf_convert_mineru_manual_import_hint">MinerU에서 다운로드한 ZIP 또는 Markdown 파일을 선택합니다.</string>
+    <string name="pdf_convert_mineru_manual_progress_title">MinerU 결과 가져오는 중</string>
+    <string name="pdf_convert_mineru_manual_complete_body">MinerU 결과를 가져와 전자책을 만들었습니다. 현재 PDF에 머물거나 생성된 전자책을 열어 레이아웃을 확인할 수 있습니다.</string>
     <string name="pdf_convert_mineru_not_configured_short">설정되지 않음. 탭하여 설정 열기</string>
     <string name="pdf_convert_mineru_mode_description">설정된 %1$s을(를) 사용합니다. PDF가 제3자 서비스로 업로드됩니다.</string>
     <string name="pdf_convert_mineru_not_configured_title">MinerU가 설정되지 않았습니다</string>
@@ -486,4 +506,7 @@
     <string name="pdf_convert_error_mineru_upload">MinerU 저장소가 파일 업로드를 거부했습니다. 나중에 다시 시도하고 계속되면 로컬 분석을 사용하세요.</string>
     <string name="pdf_convert_error_mineru_service">MinerU가 현재 작업을 완료할 수 없습니다. 나중에 다시 시도하거나 로컬 분석을 사용하세요.</string>
     <string name="pdf_convert_error_mineru_result">MinerU 결과가 불완전하거나 잘못되어 전자책을 만들 수 없습니다.</string>
+    <string name="pdf_convert_error_mineru_manual_format">선택한 결과를 인식할 수 없습니다. MinerU에서 다운로드한 ZIP 또는 Markdown 파일을 선택하세요.</string>
+    <string name="pdf_convert_error_mineru_manual_too_large">MinerU 결과가 너무 커서 안전하게 가져올 수 없습니다.</string>
+    <string name="pdf_convert_error_mineru_manual_import">MinerU 결과를 가져오지 못했습니다. 파일이 완전한지 확인한 후 다시 시도하세요.</string>
 </resources>

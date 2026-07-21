@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:ns1="urn:oasis:names:tc:xliff:document:1.2">
+    <string msgid="8719607706653693137" name="androidx_compose_foundation_autofill">"Avtomatik kiritish"</string>
+    <string msgid="1150566100598813236" name="androidx_compose_ui_autofill">"Avtomatik kiritish"</string>
     <string msgid="881409763997275156" name="call_notification_answer_action">"Javob berish"</string>
     <string msgid="8793775615905189152" name="call_notification_answer_video_action">"Video"</string>
     <string msgid="3229508546291798546" name="call_notification_decline_action">"Rad etish"</string>
@@ -54,10 +56,15 @@
     <string msgid="3177828188723359358" name="m3c_dropdown_menu_collapsed">"Yigʻilgan"</string>
     <string msgid="2360841780724299882" name="m3c_dropdown_menu_expanded">"Yoyilgan"</string>
     <string msgid="8687821690726149911" name="m3c_dropdown_menu_toggle">"Pastga ochiluvchi menyuni koʻrsatish/yashirish"</string>
+    <string msgid="6072492480528318635" name="m3c_floating_toolbar_collapse">"Asboblar panelini yopish"</string>
+    <string msgid="6880757017246780255" name="m3c_floating_toolbar_expand">"Asboblar panelini yoyish"</string>
     <string msgid="6152806324422087846" name="m3c_search_bar_search">"Qidiruv"</string>
     <string msgid="6152755701819882931" name="m3c_snackbar_dismiss">"Yopish"</string>
+    <string msgid="3868801555855510515" name="m3c_snackbar_pane_title">"Signal"</string>
     <string msgid="7655536806087401899" name="m3c_suggestions_available">"Takliflar quyida"</string>
+    <string msgid="409352516511718051" name="m3c_time_input_dialog_title">"Vaqtni kiriting"</string>
     <string msgid="2786685010796619560" name="m3c_time_picker_am">"TO"</string>
+    <string msgid="7412665527536641863" name="m3c_time_picker_dialog_title">"Vaqtni tanlang"</string>
     <string msgid="2349193472625211372" name="m3c_time_picker_hour">"Soat"</string>
     <string msgid="9179527532316922345" name="m3c_time_picker_hour_24h_suffix">"%1$d soat"</string>
     <string msgid="8876759303332837035" name="m3c_time_picker_hour_selection">"Soatni tanlang"</string>
@@ -69,13 +76,18 @@
     <string msgid="7661234488295443182" name="m3c_time_picker_minute_text_field">"bir daqiqa"</string>
     <string msgid="5865171949528594571" name="m3c_time_picker_period_toggle_description">"Tushdan oldin yoki keyinligini tanlang"</string>
     <string msgid="6616362054113087709" name="m3c_time_picker_pm">"TK"</string>
+    <string msgid="4145073906612931838" name="m3c_time_picker_toggle_keyboard">"Vaqtni kiritish uchun matn kiritish rejimiga oʻting"</string>
+    <string msgid="8841786098195101324" name="m3c_time_picker_toggle_touch">"Vaqtni kiritish uchun soat rejimiga oʻting"</string>
     <string msgid="1805687647081129904" name="m3c_tooltip_long_press_label">"Maslahat oynasini koʻrsatish"</string>
     <string msgid="5460405025248574620" name="m3c_tooltip_pane_description">"Maslahat oynasi"</string>
+    <string msgid="6564222473543418073" name="m3c_wide_navigation_rail_close_rail">"Panelni yopish"</string>
+    <string msgid="8350283435461615411" name="m3c_wide_navigation_rail_pane_title">"Navigatsiya paneli"</string>
     <string msgid="542007171693138492" name="navigation_menu">"Navigatsiya menyusi"</string>
     <string msgid="6610465462668679431" name="not_selected">"Tanlanmagan"</string>
     <string msgid="5941395253238309765" name="range_end">"Oraliq oxiri"</string>
     <string msgid="7097486360902471446" name="range_start">"Oraliq boshi"</string>
     <string msgid="6043586758067023" name="selected">"Tanlangan"</string>
+    <string msgid="2792228137354697160" name="snackbar_pane_title">"Signal"</string>
     <string msgid="4139871816613051306" name="state_empty">"Boʻsh"</string>
     <string msgid="5834637030682409883" name="state_off">"Oʻchiq"</string>
     <string msgid="1490883874751719580" name="state_on">"Yoniq"</string>

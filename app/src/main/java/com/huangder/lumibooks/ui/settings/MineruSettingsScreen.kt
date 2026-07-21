@@ -2,6 +2,8 @@ package com.huangder.lumibooks.ui.settings
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -29,6 +31,8 @@ import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.FileOpen
+import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Policy
 import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.Visibility
@@ -77,6 +81,12 @@ import com.huangder.lumibooks.ui.theme.AppType
 @Composable
 fun MineruSettingsDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+    val manualResultPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let(viewModel::importManualMineruResult)
+    }
     val currentMode = MineruMode.fromKey(uiState.mineruMode)
     var selectedMode by rememberSaveable {
         mutableStateOf(if (currentMode == MineruMode.DISABLED) MineruMode.AGENT else currentMode)
@@ -212,6 +222,24 @@ fun MineruSettingsDetail(viewModel: SettingsViewModel) {
             )
         }
 
+        MineruManualSection(
+            importing = uiState.mineruManualImporting,
+            onOpenWebsite = {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(MineruConfig.MANUAL_WEB_URL)))
+            },
+            onImportResult = {
+                manualResultPicker.launch(
+                    arrayOf(
+                        "application/zip",
+                        "application/x-zip-compressed",
+                        "text/markdown",
+                        "text/plain",
+                        "application/octet-stream"
+                    )
+                )
+            }
+        )
+
         MineruDisclosureCard()
         Text(
             text = stringResource(R.string.mineru_powered_by),
@@ -229,6 +257,48 @@ fun MineruSettingsDetail(viewModel: SettingsViewModel) {
                 applyMode(mode, true)
                 pendingMode = null
             }
+        )
+    }
+}
+
+@Composable
+private fun MineruManualSection(
+    importing: Boolean,
+    onOpenWebsite: () -> Unit,
+    onImportResult: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(AppRadius.md))
+            .background(AppColors.CardBg)
+            .border(1.dp, AppColors.Divider, RoundedCornerShape(AppRadius.md))
+            .padding(AppSpace.md),
+        verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
+    ) {
+        Text(
+            text = stringResource(R.string.mineru_manual_title),
+            fontSize = AppType.Body,
+            fontWeight = FontWeight.SemiBold,
+            color = AppColors.TextPrimary
+        )
+        Text(
+            text = stringResource(R.string.mineru_manual_description),
+            fontSize = AppType.BodySmall,
+            color = AppColors.TextSecondary
+        )
+        MineruSecondaryButton(
+            label = stringResource(R.string.mineru_manual_open_website),
+            icon = Icons.Outlined.Public,
+            onClick = onOpenWebsite
+        )
+        MineruSecondaryButton(
+            label = stringResource(
+                if (importing) R.string.mineru_manual_importing else R.string.mineru_manual_import_result
+            ),
+            icon = Icons.Outlined.FileOpen,
+            enabled = !importing,
+            onClick = onImportResult
         )
     }
 }
@@ -395,6 +465,7 @@ private fun MineruSecondaryButton(
     label: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     destructive: Boolean = false,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     Row(
@@ -402,13 +473,17 @@ private fun MineruSecondaryButton(
             .fillMaxWidth()
             .height(48.dp)
             .clip(RoundedCornerShape(AppRadius.md))
-            .background(AppColors.CardBg)
+            .background(if (enabled) AppColors.CardBg else AppColors.BgGray)
             .border(1.dp, AppColors.Divider, RoundedCornerShape(AppRadius.md))
-            .clickable(onClick = onClick),
+            .clickable(enabled = enabled, onClick = onClick),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        val color = if (destructive) MaterialTheme.colorScheme.error else AppColors.TextPrimary
+        val color = when {
+            !enabled -> AppColors.TextSecondary
+            destructive -> MaterialTheme.colorScheme.error
+            else -> AppColors.TextPrimary
+        }
         Icon(icon, null, tint = color, modifier = Modifier.size(18.dp))
         Spacer(Modifier.size(AppSpace.sm))
         Text(label, fontSize = AppType.BodySmall, color = color, fontWeight = FontWeight.SemiBold)

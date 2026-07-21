@@ -3,9 +3,12 @@
     <string name="add_bookmark">加入書籤</string>
     <string name="add_favorite">收藏</string>
     <string name="advanced_settings">進階設定</string>
+    <string msgid="8719607706653693137" name="androidx_compose_foundation_autofill">"自動填入"</string>
+    <string msgid="1150566100598813236" name="androidx_compose_ui_autofill">"自動填入"</string>
     <string name="animation_simple">簡潔滑動</string>
     <string name="animation_slide">滑動覆蓋</string>
     <string name="app_name">LUMI</string>
+    <string name="app_theme_liquid_glass">液態玻璃</string>
     <string name="app_theme_lumi">Lumi 粉</string>
     <string name="app_theme_material3">Material 3</string>
     <string name="apply_text_color">套用文字顏色</string>
@@ -163,6 +166,7 @@
     <string name="later">稍後</string>
     <string name="letter_spacing">字距</string>
     <string name="line_height">行距</string>
+    <string name="liquid_glass_transparency">玻璃通透度</string>
     <string name="loading">載入中...</string>
     <string name="loading_dots">載入中...</string>
     <string name="loading_text">載入中</string>
@@ -206,10 +210,15 @@
     <string msgid="3177828188723359358" name="m3c_dropdown_menu_collapsed">"已收合"</string>
     <string msgid="2360841780724299882" name="m3c_dropdown_menu_expanded">"已展開"</string>
     <string msgid="8687821690726149911" name="m3c_dropdown_menu_toggle">"切換下拉式選單"</string>
+    <string msgid="6072492480528318635" name="m3c_floating_toolbar_collapse">"收埋工具列"</string>
+    <string msgid="6880757017246780255" name="m3c_floating_toolbar_expand">"打展工具列"</string>
     <string msgid="6152806324422087846" name="m3c_search_bar_search">"搜尋"</string>
     <string msgid="6152755701819882931" name="m3c_snackbar_dismiss">"關閉"</string>
+    <string msgid="3868801555855510515" name="m3c_snackbar_pane_title">"警示"</string>
     <string msgid="7655536806087401899" name="m3c_suggestions_available">"建議如下"</string>
+    <string msgid="409352516511718051" name="m3c_time_input_dialog_title">"輸入時間"</string>
     <string msgid="2786685010796619560" name="m3c_time_picker_am">"上午"</string>
+    <string msgid="7412665527536641863" name="m3c_time_picker_dialog_title">"選取時間"</string>
     <string msgid="2349193472625211372" name="m3c_time_picker_hour">"小時"</string>
     <string msgid="9179527532316922345" name="m3c_time_picker_hour_24h_suffix">"%1$d 點"</string>
     <string msgid="8876759303332837035" name="m3c_time_picker_hour_selection">"選取小時"</string>
@@ -221,8 +230,12 @@
     <string msgid="7661234488295443182" name="m3c_time_picker_minute_text_field">"分鐘"</string>
     <string msgid="5865171949528594571" name="m3c_time_picker_period_toggle_description">"選取上午或下午"</string>
     <string msgid="6616362054113087709" name="m3c_time_picker_pm">"下午"</string>
+    <string msgid="4145073906612931838" name="m3c_time_picker_toggle_keyboard">"切換至文字輸入模式即可輸入時間"</string>
+    <string msgid="8841786098195101324" name="m3c_time_picker_toggle_touch">"切換至時鐘模式即可輸入時間"</string>
     <string msgid="1805687647081129904" name="m3c_tooltip_long_press_label">"顯示提示"</string>
     <string msgid="5460405025248574620" name="m3c_tooltip_pane_description">"提示"</string>
+    <string msgid="6564222473543418073" name="m3c_wide_navigation_rail_close_rail">"閂咗個欄"</string>
+    <string msgid="8350283435461615411" name="m3c_wide_navigation_rail_pane_title">"導覽欄"</string>
     <string name="menu_copy">複製</string>
     <string name="menu_highlight">高亮</string>
     <string name="menu_note">筆記</string>
@@ -241,6 +254,16 @@
     <string name="mineru_enable_agent">啟用輕量解析</string>
     <string name="mineru_enable_precise">儲存並啟用精準解析</string>
     <string name="mineru_get_token">前往 MinerU API 管理</string>
+    <string name="mineru_manual_default_title">MinerU 手動解析</string>
+    <string name="mineru_manual_description">在 MinerU 網站自行上傳並解析檔案，下載結果 ZIP 或 Markdown 後匯入 LumiBooks。</string>
+    <string name="mineru_manual_import_failed">匯入失敗，請確認檔案完整後重試。</string>
+    <string name="mineru_manual_import_invalid">無法識別此結果。請選擇從 MinerU 下載的 ZIP 或 Markdown 檔案。</string>
+    <string name="mineru_manual_import_result">匯入 MinerU 解析結果</string>
+    <string name="mineru_manual_import_success">已匯入電子書：%1$s</string>
+    <string name="mineru_manual_import_too_large">結果檔案過大，無法安全匯入。</string>
+    <string name="mineru_manual_importing">正在匯入解析結果…</string>
+    <string name="mineru_manual_open_website">前往 MinerU 網頁解析</string>
+    <string name="mineru_manual_title">手動解析（無需 API）</string>
     <string name="mineru_mode_agent_description">單一檔案上限 10MB、20 頁，僅回傳 Markdown，並受公網 IP 流量限制。</string>
     <string name="mineru_mode_agent_short">輕量解析</string>
     <string name="mineru_mode_agent_title">輕量解析（免 Token，目前免費）</string>
@@ -317,6 +340,9 @@
     <string name="pdf_convert_error_file_missing">原 PDF 檔案不存在或已無法存取。</string>
     <string name="pdf_convert_error_mineru_auth">個人 Token 無效、過期或無權限，請前往 MinerU 設定更新。</string>
     <string name="pdf_convert_error_mineru_file_limit">PDF 超出目前 MinerU 模式的大小限制：輕量解析 10MB，精準解析 200MB。</string>
+    <string name="pdf_convert_error_mineru_manual_format">無法識別所選結果。請選擇從 MinerU 下載的 ZIP 或 Markdown 檔案。</string>
+    <string name="pdf_convert_error_mineru_manual_import">匯入 MinerU 結果失敗，請確認檔案完整後重試。</string>
+    <string name="pdf_convert_error_mineru_manual_too_large">MinerU 結果檔案過大，無法安全匯入。</string>
     <string name="pdf_convert_error_mineru_network">網路連線中斷或 MinerU 任務等待逾時，請檢查網路後重試。</string>
     <string name="pdf_convert_error_mineru_not_configured">MinerU 尚未設定，請先在設定中選擇解析模式。</string>
     <string name="pdf_convert_error_mineru_page_limit">PDF 超出目前 MinerU 模式的頁數限制：輕量解析 20 頁，精準解析 200 頁。</string>
@@ -334,6 +360,14 @@
     <string name="pdf_convert_keep_running">繼續背景解析</string>
     <string name="pdf_convert_local_title">使用本機文字層解析</string>
     <string name="pdf_convert_mineru_book_title">%1$s（MinerU 解析）</string>
+    <string name="pdf_convert_mineru_manual_complete_body">已匯入 MinerU 結果並產生電子書。你可以留在目前的 PDF，或開啟產生的電子書檢查排版效果。</string>
+    <string name="pdf_convert_mineru_manual_description">自行在 MinerU 網站解析，再匯入 ZIP 或 Markdown 結果；無需 API 或 Token。</string>
+    <string name="pdf_convert_mineru_manual_import_hint">選擇從 MinerU 下載的 ZIP 或 Markdown 檔案。</string>
+    <string name="pdf_convert_mineru_manual_progress_title">正在匯入 MinerU 結果</string>
+    <string name="pdf_convert_mineru_manual_sheet_body">先開啟 MinerU 網站並自行上傳目前的 PDF。解析完成後下載 ZIP 或 Markdown，返回此處匯入。</string>
+    <string name="pdf_convert_mineru_manual_sheet_title">手動解析</string>
+    <string name="pdf_convert_mineru_manual_title">手動使用 MinerU</string>
+    <string name="pdf_convert_mineru_manual_website_hint">在瀏覽器中自行上傳 PDF 並下載解析結果。</string>
     <string name="pdf_convert_mineru_mode_description">使用已設定的%1$s；PDF 將上傳至第三方服務。</string>
     <string name="pdf_convert_mineru_not_configured_body">請先前往設定，選擇目前免費的輕量解析，或設定個人 Token 使用精準解析。</string>
     <string name="pdf_convert_mineru_not_configured_short">尚未設定，點按前往設定</string>
@@ -429,6 +463,7 @@
     <string name="show_reader_chapter_progress_hint">目前章節名稱與全書百分比</string>
     <string name="show_reader_page_number">顯示頁碼</string>
     <string name="show_reader_page_number_hint">目前章節頁碼</string>
+    <string msgid="2792228137354697160" name="snackbar_pane_title">"警示"</string>
     <string name="splash_screen_description">啟動時顯示品牌開屏畫面</string>
     <string name="splash_setting_next_launch">將在下次啟動時生效</string>
     <string name="sponsor_code_label">畀嶼浮 的讚賞碼</string>

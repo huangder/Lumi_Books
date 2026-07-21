@@ -6,6 +6,8 @@
     <string name="label_app_theme">テーマ</string>
     <string name="app_theme_lumi">Lumi ピンク</string>
     <string name="app_theme_material3">Material 3</string>
+    <string name="app_theme_liquid_glass">リキッドガラス</string>
+    <string name="liquid_glass_transparency">ガラスの透明度</string>
     <string name="app_name">LUMI</string>
 
     <!-- ホーム -->
@@ -431,6 +433,16 @@
     <string name="category_mineru">MINERU</string>
     <string name="title_mineru">MinerU クラウド解析</string>
     <string name="mineru_powered_by">Powered by MinerU</string>
+    <string name="mineru_manual_title">手動解析（API不要）</string>
+    <string name="mineru_manual_description">MinerUサイトでファイルをアップロードして解析し、ダウンロードしたZIPまたはMarkdownの結果をLumiBooksに読み込みます。</string>
+    <string name="mineru_manual_open_website">MinerUサイトを開く</string>
+    <string name="mineru_manual_import_result">MinerUの結果を読み込む</string>
+    <string name="mineru_manual_importing">結果を読み込み中…</string>
+    <string name="mineru_manual_default_title">MinerU手動解析</string>
+    <string name="mineru_manual_import_success">電子書籍を読み込みました：%1$s</string>
+    <string name="mineru_manual_import_invalid">この結果を認識できません。MinerUからダウンロードしたZIPまたはMarkdownファイルを選択してください。</string>
+    <string name="mineru_manual_import_too_large">結果ファイルが大きすぎるため、安全に読み込めません。</string>
+    <string name="mineru_manual_import_failed">読み込みに失敗しました。ファイルが完全であることを確認して再試行してください。</string>
     <string name="mineru_not_configured">未設定</string>
     <string name="mineru_mode_agent_short">軽量解析</string>
     <string name="mineru_mode_precise_short">高精度解析</string>
@@ -468,6 +480,14 @@
     <string name="pdf_convert_choose_method_body">ローカル解析はアップロードしません。MinerU解析はPDFを第三者サービスへ送信します。</string>
     <string name="pdf_convert_local_title">ローカルのテキスト層を解析</string>
     <string name="pdf_convert_mineru_title">MinerUで電子書籍を作成</string>
+    <string name="pdf_convert_mineru_manual_title">MinerUを手動で使用</string>
+    <string name="pdf_convert_mineru_manual_description">MinerUサイトで解析し、ZIPまたはMarkdownの結果を読み込みます。APIやTokenは不要です。</string>
+    <string name="pdf_convert_mineru_manual_sheet_title">手動解析</string>
+    <string name="pdf_convert_mineru_manual_sheet_body">MinerUサイトを開き、このPDFを自分でアップロードします。解析後にZIPまたはMarkdownをダウンロードし、ここに戻って読み込んでください。</string>
+    <string name="pdf_convert_mineru_manual_website_hint">ブラウザでPDFをアップロードし、解析結果をダウンロードします。</string>
+    <string name="pdf_convert_mineru_manual_import_hint">MinerUからダウンロードしたZIPまたはMarkdownファイルを選択します。</string>
+    <string name="pdf_convert_mineru_manual_progress_title">MinerUの結果を読み込み中</string>
+    <string name="pdf_convert_mineru_manual_complete_body">MinerUの結果を読み込み、電子書籍を作成しました。このPDFに留まるか、作成した電子書籍を開いてレイアウトを確認できます。</string>
     <string name="pdf_convert_mineru_not_configured_short">未設定です。タップして設定を開く</string>
     <string name="pdf_convert_mineru_mode_description">設定済みの%1$sを使用します。PDFは第三者サービスへ送信されます。</string>
     <string name="pdf_convert_mineru_not_configured_title">MinerUが未設定です</string>
@@ -486,4 +506,7 @@
     <string name="pdf_convert_error_mineru_upload">MinerUストレージがファイルのアップロードを拒否しました。後で再試行し、続く場合はローカル解析を使用してください。</string>
     <string name="pdf_convert_error_mineru_service">MinerUは現在処理できません。後で再試行するかローカル解析を使用してください。</string>
     <string name="pdf_convert_error_mineru_result">MinerUの結果が不完全または不正なため、電子書籍を作成できません。</string>
+    <string name="pdf_convert_error_mineru_manual_format">選択した結果を認識できません。MinerUからダウンロードしたZIPまたはMarkdownファイルを選択してください。</string>
+    <string name="pdf_convert_error_mineru_manual_too_large">MinerUの結果が大きすぎるため、安全に読み込めません。</string>
+    <string name="pdf_convert_error_mineru_manual_import">MinerUの結果を読み込めませんでした。ファイルが完全であることを確認して再試行してください。</string>
 </resources>

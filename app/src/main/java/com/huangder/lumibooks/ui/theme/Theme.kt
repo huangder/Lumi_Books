@@ -73,6 +73,8 @@ private val DarkColorScheme = darkColorScheme(
 fun EBookReaderTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = false,
+    appTheme: String = "lumi",
+    liquidGlassTransparency: Float = 0.55f,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
@@ -99,7 +101,9 @@ fun EBookReaderTheme(
 
     CompositionLocalProvider(
         LocalIsDarkTheme provides darkTheme,
-        LocalUseMaterial3Theme provides dynamicColor
+        LocalUseMaterial3Theme provides dynamicColor,
+        LocalAppTheme provides appTheme,
+        LocalLiquidGlassTransparency provides liquidGlassTransparency.coerceIn(0f, 1f)
     ) {
         MaterialTheme(
             colorScheme = colorScheme,

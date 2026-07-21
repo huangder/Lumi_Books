@@ -1,10 +1,10 @@
 {
     "logs": [
         {
-            "outputFile": "com.huangder.lumibooks.app-mergeDebugResources-74:/values-v30/values-v30.xml",
+            "outputFile": "com.huangder.lumibooks.app-mergeDebugResources-61:/values-v30/values-v30.xml",
             "map": [
                 {
-                    "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.9\\transforms\\91d9b7eeac7439eceef19660890d9a0d\\transformed\\material3-release\\res\\values-v30\\values-v30.xml",
+                    "source": "C:\\Users\\Huangder\\.gradle\\caches\\8.14.3\\transforms\\230e3cfbc09d65e205078a6f105450bd\\transformed\\material3\\res\\values-v30\\values-v30.xml",
                     "from": {
                         "startLines": "2",
                         "startColumns": "4",

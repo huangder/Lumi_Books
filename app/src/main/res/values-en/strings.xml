@@ -6,6 +6,8 @@
     <string name="label_app_theme">Theme</string>
     <string name="app_theme_lumi">Lumi Pink</string>
     <string name="app_theme_material3">Material 3</string>
+    <string name="app_theme_liquid_glass">Liquid Glass</string>
+    <string name="liquid_glass_transparency">Glass clarity</string>
     <string name="app_name">LUMI</string>
 
     <!-- Home -->
@@ -443,6 +445,16 @@
     <string name="category_mineru">MINERU</string>
     <string name="title_mineru">MinerU Cloud Parsing</string>
     <string name="mineru_powered_by">Powered by MinerU</string>
+    <string name="mineru_manual_title">Manual parsing (no API required)</string>
+    <string name="mineru_manual_description">Upload and parse the file on the MinerU website, then import the downloaded ZIP or Markdown result into LumiBooks.</string>
+    <string name="mineru_manual_open_website">Open MinerU website</string>
+    <string name="mineru_manual_import_result">Import MinerU result</string>
+    <string name="mineru_manual_importing">Importing result…</string>
+    <string name="mineru_manual_default_title">MinerU manual import</string>
+    <string name="mineru_manual_import_success">Imported ebook: %1$s</string>
+    <string name="mineru_manual_import_invalid">This result is not recognized. Select a ZIP or Markdown file downloaded from MinerU.</string>
+    <string name="mineru_manual_import_too_large">The result file is too large to import safely.</string>
+    <string name="mineru_manual_import_failed">Import failed. Check that the result is complete and try again.</string>
     <string name="mineru_not_configured">Not configured</string>
     <string name="mineru_mode_agent_short">Lightweight parsing</string>
     <string name="mineru_mode_precise_short">Precision parsing</string>
@@ -480,6 +492,14 @@
     <string name="pdf_convert_choose_method_body">Local parsing never uploads the file. MinerU cloud parsing sends the selected PDF to a third-party service.</string>
     <string name="pdf_convert_local_title">Parse the local text layer</string>
     <string name="pdf_convert_mineru_title">Create an ebook with MinerU</string>
+    <string name="pdf_convert_mineru_manual_title">Use MinerU manually</string>
+    <string name="pdf_convert_mineru_manual_description">Parse on the MinerU website and import the ZIP or Markdown result. No API or token is required.</string>
+    <string name="pdf_convert_mineru_manual_sheet_title">Manual parsing</string>
+    <string name="pdf_convert_mineru_manual_sheet_body">Open MinerU and upload this PDF yourself. When parsing finishes, download the ZIP or Markdown result and return here to import it.</string>
+    <string name="pdf_convert_mineru_manual_website_hint">Upload the PDF and download its result in your browser.</string>
+    <string name="pdf_convert_mineru_manual_import_hint">Select the ZIP or Markdown file downloaded from MinerU.</string>
+    <string name="pdf_convert_mineru_manual_progress_title">Importing MinerU result</string>
+    <string name="pdf_convert_mineru_manual_complete_body">The MinerU result was imported and an ebook was generated. Stay in this PDF or open the generated ebook to check its layout.</string>
     <string name="pdf_convert_mineru_not_configured_short">Not configured; tap to open settings</string>
     <string name="pdf_convert_mineru_mode_description">Uses the configured %1$s. The PDF will be uploaded to a third-party service.</string>
     <string name="pdf_convert_mineru_not_configured_title">MinerU is not configured</string>
@@ -498,4 +518,7 @@
     <string name="pdf_convert_error_mineru_upload">MinerU storage rejected the file upload. Try again later, or use local parsing if it continues.</string>
     <string name="pdf_convert_error_mineru_service">MinerU cannot complete the task right now. Try later or use local parsing.</string>
     <string name="pdf_convert_error_mineru_result">The MinerU result is incomplete or malformed and cannot be converted into an ebook.</string>
+    <string name="pdf_convert_error_mineru_manual_format">The selected result is not recognized. Select a ZIP or Markdown file downloaded from MinerU.</string>
+    <string name="pdf_convert_error_mineru_manual_too_large">The MinerU result is too large to import safely.</string>
+    <string name="pdf_convert_error_mineru_manual_import">Could not import the MinerU result. Check that the file is complete and try again.</string>
 </resources>

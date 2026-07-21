@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:ns1="urn:oasis:names:tc:xliff:document:1.2">
+    <string msgid="8719607706653693137" name="androidx_compose_foundation_autofill">"تکمیل خودکار"</string>
+    <string msgid="1150566100598813236" name="androidx_compose_ui_autofill">"تکمیل خودکار"</string>
     <string msgid="881409763997275156" name="call_notification_answer_action">"پاسخ دادن"</string>
     <string msgid="8793775615905189152" name="call_notification_answer_video_action">"ویدیو"</string>
     <string msgid="3229508546291798546" name="call_notification_decline_action">"رد کردن"</string>
@@ -13,7 +15,7 @@
     <string msgid="6312721426453364202" name="default_popup_window_title">"پنجره بالاپر"</string>
     <string msgid="1890207353314751437" name="dropdown_menu">"منوی کرکره‌ای"</string>
     <string msgid="6827826412747255547" name="in_progress">"درحال انجام"</string>
-    <string msgid="7933458017204019916" name="indeterminate">"برخی موارد علامت‌گذاری شده است"</string>
+    <string msgid="7933458017204019916" name="indeterminate">"ناقص علامت زده‌شده"</string>
     <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"جمع کردن برگ زیرین"</string>
     <string msgid="1555567894577437024" name="m3c_bottom_sheet_dismiss_description">"بستن برگ زیرین"</string>
     <string msgid="8403354765404029791" name="m3c_bottom_sheet_drag_handle_description">"دستگیره کشاندن"</string>
@@ -33,15 +35,15 @@
     <string msgid="5811000998184572395" name="m3c_date_picker_no_selection_description">"هیچ‌کدام"</string>
     <string msgid="7813882352367152251" name="m3c_date_picker_scroll_to_earlier_years">"برای نمایش سال‌های قبل پیمایش کنید"</string>
     <string msgid="5727367015496556177" name="m3c_date_picker_scroll_to_later_years">"برای نمایش سال‌های بعد پیمایش کنید"</string>
-    <string msgid="1804346892470238807" name="m3c_date_picker_switch_to_calendar_mode">"رفتن به روش ورودی تقویم"</string>
-    <string msgid="395627960681594326" name="m3c_date_picker_switch_to_day_selection">"برای انتخاب سال، تند بکشید یا برای برگشتن به انتخاب روز، ضربه بزنید"</string>
+    <string msgid="1804346892470238807" name="m3c_date_picker_switch_to_calendar_mode">"تعویض به حالت ورودی تقویم"</string>
+    <string msgid="395627960681594326" name="m3c_date_picker_switch_to_day_selection">"برای انتخاب سال، تند بکشید یا برای برگشتن به انتخاب روز، تک‌ضرب بزنید"</string>
     <string msgid="2219746470065162704" name="m3c_date_picker_switch_to_input_mode">"رفتن به حالت ورودی نوشتاری"</string>
     <string msgid="7142101321095356500" name="m3c_date_picker_switch_to_next_month">"تغییر به ماه بعدی"</string>
     <string msgid="228438865139394590" name="m3c_date_picker_switch_to_previous_month">"تغییر به ماه قبلی"</string>
     <string msgid="791651718641787594" name="m3c_date_picker_switch_to_year_selection">"رفتن به انتخاب سال"</string>
     <string msgid="7430790972741451689" name="m3c_date_picker_title">"انتخاب تاریخ"</string>
     <string msgid="3199387177749801575" name="m3c_date_picker_today_description">"امروز"</string>
-    <string msgid="2068382232816991922" name="m3c_date_picker_year_picker_pane_title">"انتخابگر سال نمایان است"</string>
+    <string msgid="2068382232816991922" name="m3c_date_picker_year_picker_pane_title">"انتخاب‌گر سال نمایان است"</string>
     <string msgid="3190049423327661366" name="m3c_date_range_input_invalid_range_input">"محدوده تاریخ واردشده نامعتبر است"</string>
     <string msgid="3148384720560189467" name="m3c_date_range_input_title">"تاریخ‌ها را وارد کنید"</string>
     <string msgid="2138321128465719402" name="m3c_date_range_picker_day_in_range">"در محدوده"</string>
@@ -54,10 +56,15 @@
     <string msgid="3177828188723359358" name="m3c_dropdown_menu_collapsed">"جمع شد"</string>
     <string msgid="2360841780724299882" name="m3c_dropdown_menu_expanded">"ازهم باز شد"</string>
     <string msgid="8687821690726149911" name="m3c_dropdown_menu_toggle">"جمع کردن/ ازهم باز کردن منوِ کرکره‌ای"</string>
+    <string msgid="6072492480528318635" name="m3c_floating_toolbar_collapse">"جمع کردن نوارابزار"</string>
+    <string msgid="6880757017246780255" name="m3c_floating_toolbar_expand">"ازهم بازکردن نوارابزار"</string>
     <string msgid="6152806324422087846" name="m3c_search_bar_search">"جستجو"</string>
     <string msgid="6152755701819882931" name="m3c_snackbar_dismiss">"بستن"</string>
+    <string msgid="3868801555855510515" name="m3c_snackbar_pane_title">"هشدار"</string>
     <string msgid="7655536806087401899" name="m3c_suggestions_available">"پیشنهادهای زیر"</string>
+    <string msgid="409352516511718051" name="m3c_time_input_dialog_title">"وارد کردن زمان"</string>
     <string msgid="2786685010796619560" name="m3c_time_picker_am">"ق.ظ."</string>
+    <string msgid="7412665527536641863" name="m3c_time_picker_dialog_title">"انتخاب زمان"</string>
     <string msgid="2349193472625211372" name="m3c_time_picker_hour">"ساعت"</string>
     <string msgid="9179527532316922345" name="m3c_time_picker_hour_24h_suffix">"‏%1$d ساعت"</string>
     <string msgid="8876759303332837035" name="m3c_time_picker_hour_selection">"انتخاب ساعت"</string>
@@ -69,19 +76,24 @@
     <string msgid="7661234488295443182" name="m3c_time_picker_minute_text_field">"برای دقیقه"</string>
     <string msgid="5865171949528594571" name="m3c_time_picker_period_toggle_description">"انتخاب ق.ظ. یا ب.ظ."</string>
     <string msgid="6616362054113087709" name="m3c_time_picker_pm">"ب.ظ."</string>
+    <string msgid="4145073906612931838" name="m3c_time_picker_toggle_keyboard">"برای ورودی زمان، به حالت ورودی نوشتاری بروید"</string>
+    <string msgid="8841786098195101324" name="m3c_time_picker_toggle_touch">"برای ورودی زمان، به حالت ساعت بروید"</string>
     <string msgid="1805687647081129904" name="m3c_tooltip_long_press_label">"نمایش نکته‌ابزار"</string>
     <string msgid="5460405025248574620" name="m3c_tooltip_pane_description">"نکته‌ابزار"</string>
+    <string msgid="6564222473543418073" name="m3c_wide_navigation_rail_close_rail">"بستن ریل"</string>
+    <string msgid="8350283435461615411" name="m3c_wide_navigation_rail_pane_title">"ریل پیمایش"</string>
     <string msgid="542007171693138492" name="navigation_menu">"منوی پیمایش"</string>
     <string msgid="6610465462668679431" name="not_selected">"انتخاب‌نشده"</string>
     <string msgid="5941395253238309765" name="range_end">"پایان محدوده"</string>
     <string msgid="7097486360902471446" name="range_start">"شروع محدوده"</string>
     <string msgid="6043586758067023" name="selected">"انتخاب شد"</string>
+    <string msgid="2792228137354697160" name="snackbar_pane_title">"هشدار"</string>
     <string msgid="4139871816613051306" name="state_empty">"خالی"</string>
     <string msgid="5834637030682409883" name="state_off">"خاموش"</string>
     <string msgid="1490883874751719580" name="state_on">"روشن"</string>
     <string msgid="6277540029070332960" name="status_bar_notification_info_overflow">"999+"</string>
     <string msgid="2561197295334830845" name="switch_role">"کلید"</string>
-    <string msgid="1672349317127674378" name="tab">"برگه"</string>
+    <string msgid="1672349317127674378" name="tab">"زبانه"</string>
     <string msgid="5946805113151406391" name="template_percent">"<ns1:g id="PERCENTAGE">%1$d</ns1:g> درصد."</string>
     <string msgid="3765533235322692011" name="tooltip_description">"نکته‌ابزار"</string>
     <string msgid="3124740595719787496" name="tooltip_label">"نمایش نکته‌ابزار"</string>

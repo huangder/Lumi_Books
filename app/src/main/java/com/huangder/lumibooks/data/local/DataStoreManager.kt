@@ -66,6 +66,7 @@ class DataStoreManager @Inject constructor(
 
         // 应用设置
         private val APP_THEME = stringPreferencesKey("app_theme")
+        private val LIQUID_GLASS_TRANSPARENCY = floatPreferencesKey("liquid_glass_transparency")
         private val DARK_MODE = stringPreferencesKey("dark_mode")
         private val ENTRANCE_ANIMATIONS_ENABLED = booleanPreferencesKey("entrance_animations_enabled")
         private val PREDICTIVE_BACK_ENABLED = booleanPreferencesKey("predictive_back_enabled")
@@ -208,6 +209,10 @@ class DataStoreManager @Inject constructor(
     // 应用设置
     val appTheme: Flow<String> = context.dataStore.data.map { preferences ->
         preferences[APP_THEME] ?: "lumi"
+    }
+
+    val liquidGlassTransparency: Flow<Float> = context.dataStore.data.map { preferences ->
+        preferences[LIQUID_GLASS_TRANSPARENCY] ?: 0.55f
     }
 
     val darkMode: Flow<String> = context.dataStore.data.map { preferences ->
@@ -573,6 +578,12 @@ class DataStoreManager @Inject constructor(
     suspend fun saveAppTheme(theme: String) {
         context.dataStore.edit { preferences ->
             preferences[APP_THEME] = theme
+        }
+    }
+
+    suspend fun saveLiquidGlassTransparency(transparency: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[LIQUID_GLASS_TRANSPARENCY] = transparency.coerceIn(0f, 1f)
         }
     }
 

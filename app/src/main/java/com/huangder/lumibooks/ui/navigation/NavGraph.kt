@@ -44,6 +44,7 @@ import com.huangder.lumibooks.ui.reader.ReaderViewModel
 import com.huangder.lumibooks.ui.statistics.StatisticsScreen
 import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
+import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.LocalUseMaterial3Theme
 import com.huangder.lumibooks.ui.theme.LocalReaderColors
@@ -53,6 +54,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.hilt.navigation.compose.hiltViewModel
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.haze
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.delay
 
 /**
@@ -128,6 +131,8 @@ fun MainNavGraph(
     var homeGoalSheetVisible by remember { mutableStateOf(false) }
     val entranceTracker = remember { PageEntranceTracker() }
     val hazeState = remember { HazeState() }
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val liquidGlassBackdrop = rememberLayerBackdrop()
     val homeViewModel: HomeViewModel = hiltViewModel()
     val homeUiState by homeViewModel.uiState.collectAsState()
     val homeLastReadBook = remember(homeUiState.books) {
@@ -192,7 +197,13 @@ fun MainNavGraph(
                 startDestination = Screen.Home.route,
                 modifier = Modifier
                     .fillMaxSize()
-                    .haze(hazeState)
+                    .then(
+                        if (isLiquidGlass) {
+                            Modifier.layerBackdrop(liquidGlassBackdrop)
+                        } else {
+                            Modifier.haze(hazeState)
+                        }
+                    )
             ) {
             composable(Screen.Home.route) { backStackEntry ->
                 val playEntranceAnimation = rememberPageEntrancePlayback(
@@ -298,6 +309,7 @@ fun MainNavGraph(
             FloatingTabBar(
                 selectedIndex = selectedTab,
                 hazeState = hazeState,
+                liquidGlassBackdrop = liquidGlassBackdrop,
                 onTabSelected = { index ->
                     selectedTab = index
                     val r = when (index) {

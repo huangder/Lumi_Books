@@ -18,4 +18,5 @@ object MineruConfig {
         "https://webpub.shlab.tech/dps/opendatalab-web/odl_v5.1690/privacy.html"
     const val API_LIMITS_URL = "https://mineru.net/apiManage/limit"
     const val API_MANAGEMENT_URL = "https://mineru.net/apiManage"
+    const val MANUAL_WEB_URL = "https://mineru.net/"
 }

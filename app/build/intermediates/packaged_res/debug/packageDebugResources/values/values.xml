@@ -12,6 +12,7 @@
     <string name="animation_simple">简洁滑动</string>
     <string name="animation_slide">滑动覆盖</string>
     <string name="app_name">LUMI</string>
+    <string name="app_theme_liquid_glass">液态玻璃</string>
     <string name="app_theme_lumi">Lumi 粉</string>
     <string name="app_theme_material3">Material 3</string>
     <string name="apply_text_color">应用文字颜色</string>
@@ -161,6 +162,7 @@
     <string name="later">稍后</string>
     <string name="letter_spacing">字间距</string>
     <string name="line_height">行距</string>
+    <string name="liquid_glass_transparency">玻璃通透度</string>
     <string name="loading">加载中...</string>
     <string name="loading_dots">加载中...</string>
     <string name="loading_text">加载中</string>
@@ -182,6 +184,16 @@
     <string name="mineru_enable_agent">启用轻量解析</string>
     <string name="mineru_enable_precise">保存并启用精准解析</string>
     <string name="mineru_get_token">前往 MinerU API 管理</string>
+    <string name="mineru_manual_default_title">MinerU 手动解析</string>
+    <string name="mineru_manual_description">在 MinerU 网站自行上传并解析文件，下载结果 ZIP 或 Markdown 后导入 LumiBooks。</string>
+    <string name="mineru_manual_import_failed">导入失败，请确认文件完整并重试。</string>
+    <string name="mineru_manual_import_invalid">无法识别该结果。请选择 MinerU 下载的 ZIP 或 Markdown 文件。</string>
+    <string name="mineru_manual_import_result">导入 MinerU 解析结果</string>
+    <string name="mineru_manual_import_success">已导入电子书：%1$s</string>
+    <string name="mineru_manual_import_too_large">结果文件过大，无法安全导入。</string>
+    <string name="mineru_manual_importing">正在导入解析结果…</string>
+    <string name="mineru_manual_open_website">前往 MinerU 网页解析</string>
+    <string name="mineru_manual_title">手动解析（无需 API）</string>
     <string name="mineru_mode_agent_description">单文件最大 10MB、20 页，仅返回 Markdown，并受公网 IP 限流约束。</string>
     <string name="mineru_mode_agent_short">轻量解析</string>
     <string name="mineru_mode_agent_title">轻量解析（免 Token，目前免费）</string>
@@ -257,6 +269,9 @@
     <string name="pdf_convert_error_file_missing">原 PDF 文件不存在或已无法访问。</string>
     <string name="pdf_convert_error_mineru_auth">个人 Token 无效、过期或无权限，请前往 MinerU 设置更新。</string>
     <string name="pdf_convert_error_mineru_file_limit">PDF 超出当前 MinerU 模式的大小限制：轻量解析 10MB，精准解析 200MB。</string>
+    <string name="pdf_convert_error_mineru_manual_format">无法识别所选结果。请选择 MinerU 下载的 ZIP 或 Markdown 文件。</string>
+    <string name="pdf_convert_error_mineru_manual_import">导入 MinerU 结果失败，请确认文件完整并重试。</string>
+    <string name="pdf_convert_error_mineru_manual_too_large">MinerU 结果文件过大，无法安全导入。</string>
     <string name="pdf_convert_error_mineru_network">网络连接中断或 MinerU 任务等待超时，请检查网络后重试。</string>
     <string name="pdf_convert_error_mineru_not_configured">MinerU 尚未配置，请先在设置中选择解析模式。</string>
     <string name="pdf_convert_error_mineru_page_limit">PDF 超出当前 MinerU 模式的页数限制：轻量解析 20 页，精准解析 200 页。</string>
@@ -274,6 +289,14 @@
     <string name="pdf_convert_keep_running">继续后台解析</string>
     <string name="pdf_convert_local_title">使用本地文字层解析</string>
     <string name="pdf_convert_mineru_book_title">%1$s（MinerU 解析）</string>
+    <string name="pdf_convert_mineru_manual_complete_body">已导入 MinerU 结果并生成电子书。你可以留在当前 PDF，或打开生成的电子书检查排版效果。</string>
+    <string name="pdf_convert_mineru_manual_description">自行在 MinerU 网站解析，再导入 ZIP 或 Markdown 结果；无需 API 或 Token。</string>
+    <string name="pdf_convert_mineru_manual_import_hint">选择 MinerU 下载的 ZIP 或 Markdown 文件。</string>
+    <string name="pdf_convert_mineru_manual_progress_title">正在导入 MinerU 结果</string>
+    <string name="pdf_convert_mineru_manual_sheet_body">先打开 MinerU 网站并自行上传当前 PDF。解析完成后下载 ZIP 或 Markdown，返回这里导入。</string>
+    <string name="pdf_convert_mineru_manual_sheet_title">手动解析</string>
+    <string name="pdf_convert_mineru_manual_title">手动使用 MinerU</string>
+    <string name="pdf_convert_mineru_manual_website_hint">在浏览器中自行上传 PDF 并下载解析结果。</string>
     <string name="pdf_convert_mineru_mode_description">使用已配置的%1$s；PDF 将上传至第三方服务。</string>
     <string name="pdf_convert_mineru_not_configured_body">请先前往设置，选择目前免费的轻量解析，或配置个人 Token 使用精准解析。</string>
     <string name="pdf_convert_mineru_not_configured_short">尚未配置，点击前往设置</string>

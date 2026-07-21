@@ -98,6 +98,8 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material.icons.outlined.FileOpen
+import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.core.content.ContextCompat
 import com.huangder.lumibooks.ui.animation.AppEasing
@@ -144,11 +146,13 @@ private sealed interface PdfConversionSheet {
     data class Confirm(val replaceExisting: Boolean = false) : PdfConversionSheet
     data class Existing(val convertedBookId: String) : PdfConversionSheet
     data class MineruNotConfigured(val replaceExisting: Boolean) : PdfConversionSheet
+    data class MineruManual(val replaceExisting: Boolean) : PdfConversionSheet
     data object Progress : PdfConversionSheet
     data class Completed(
         val convertedBookId: String,
         val textPages: Int,
-        val totalPages: Int
+        val totalPages: Int,
+        val manualImport: Boolean = false
     ) : PdfConversionSheet
     data object Cancel : PdfConversionSheet
     data class Failure(val errorCode: String) : PdfConversionSheet
@@ -183,6 +187,7 @@ fun PdfViewerScreen(
     var showPdfToc by remember { mutableStateOf(false) }
     var conversionSheet by remember { mutableStateOf<PdfConversionSheet?>(null) }
     var pendingReplaceAfterMineruSettings by remember { mutableStateOf(false) }
+    var pendingManualReplace by remember { mutableStateOf(false) }
     var observedActiveConversion by remember { mutableStateOf(false) }
     var pendingModePage by remember { mutableStateOf<Int?>(null) }
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -192,6 +197,15 @@ fun PdfViewerScreen(
         ActivityResultContracts.StartActivityForResult()
     ) {
         conversionSheet = PdfConversionSheet.Confirm(pendingReplaceAfterMineruSettings)
+    }
+    val manualResultPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            observedActiveConversion = true
+            conversionSheet = PdfConversionSheet.Progress
+            viewModel.importManualMineruResult(uri, pendingManualReplace)
+        }
     }
 
     fun startConversion(
@@ -217,7 +231,8 @@ fun PdfViewerScreen(
                     conversionSheet = PdfConversionSheet.Completed(
                         convertedBookId = state.bookId,
                         textPages = state.textPages,
-                        totalPages = state.totalPages
+                        totalPages = state.totalPages,
+                        manualImport = state.manualImport
                     )
                     observedActiveConversion = false
                 }
@@ -578,6 +593,26 @@ fun PdfViewerScreen(
                             .putExtra("category", "mineru")
                     )
                 },
+                onOpenMineruWebsite = {
+                    context.startActivity(
+                        android.content.Intent(
+                            android.content.Intent.ACTION_VIEW,
+                            android.net.Uri.parse(com.huangder.lumibooks.mineru.MineruConfig.MANUAL_WEB_URL)
+                        )
+                    )
+                },
+                onPickManualResult = { replaceExisting ->
+                    pendingManualReplace = replaceExisting
+                    manualResultPicker.launch(
+                        arrayOf(
+                            "application/zip",
+                            "application/x-zip-compressed",
+                            "text/markdown",
+                            "text/plain",
+                            "application/octet-stream"
+                        )
+                    )
+                },
                 onOpenExisting = onOpenBook,
                 onCancelConversion = viewModel::cancelPdfConversion,
                 onStayPdf = viewModel::consumePdfConversionResult,
@@ -799,6 +834,8 @@ private fun PdfConversionBottomSheet(
     onStartLocal: (Boolean) -> Unit,
     onStartMineru: (Boolean, MineruMode) -> Unit,
     onOpenMineruSettings: (Boolean) -> Unit,
+    onOpenMineruWebsite: () -> Unit,
+    onPickManualResult: (Boolean) -> Unit,
     onOpenExisting: (String) -> Unit,
     onCancelConversion: () -> Unit,
     onStayPdf: () -> Unit,
@@ -930,6 +967,17 @@ private fun PdfConversionBottomSheet(
                                     }
                                 }
                             )
+                            PdfConversionMethodButton(
+                                icon = Icons.Outlined.FileOpen,
+                                title = stringResource(R.string.pdf_convert_mineru_manual_title),
+                                description = stringResource(R.string.pdf_convert_mineru_manual_description),
+                                cloud = true,
+                                onClick = {
+                                    onSheetChange(
+                                        PdfConversionSheet.MineruManual(currentSheet.replaceExisting)
+                                    )
+                                }
+                            )
                             PdfSheetButton(
                                 label = stringResource(R.string.cancel),
                                 onClick = { closeThen() }
@@ -950,6 +998,33 @@ private fun PdfConversionBottomSheet(
                             PdfSheetButton(
                                 label = stringResource(R.string.cancel),
                                 onClick = { closeThen() }
+                            )
+                        }
+                        is PdfConversionSheet.MineruManual -> {
+                            PdfSheetText(
+                                title = stringResource(R.string.pdf_convert_mineru_manual_sheet_title),
+                                message = stringResource(R.string.pdf_convert_mineru_manual_sheet_body)
+                            )
+                            PdfConversionMethodButton(
+                                icon = Icons.Outlined.Public,
+                                title = stringResource(R.string.mineru_manual_open_website),
+                                description = stringResource(R.string.pdf_convert_mineru_manual_website_hint),
+                                cloud = true,
+                                onClick = onOpenMineruWebsite
+                            )
+                            PdfConversionMethodButton(
+                                icon = Icons.Outlined.FileOpen,
+                                title = stringResource(R.string.mineru_manual_import_result),
+                                description = stringResource(R.string.pdf_convert_mineru_manual_import_hint),
+                                onClick = { onPickManualResult(currentSheet.replaceExisting) }
+                            )
+                            PdfSheetButton(
+                                label = stringResource(R.string.back),
+                                onClick = {
+                                    onSheetChange(
+                                        PdfConversionSheet.Confirm(currentSheet.replaceExisting)
+                                    )
+                                }
                             )
                         }
                         is PdfConversionSheet.Existing -> {
@@ -985,11 +1060,15 @@ private fun PdfConversionBottomSheet(
                         is PdfConversionSheet.Completed -> {
                             PdfSheetText(
                                 title = stringResource(R.string.pdf_convert_complete_title),
-                                message = stringResource(
-                                    R.string.pdf_convert_complete_body,
-                                    currentSheet.textPages,
-                                    currentSheet.totalPages
-                                )
+                                message = if (currentSheet.manualImport) {
+                                    stringResource(R.string.pdf_convert_mineru_manual_complete_body)
+                                } else {
+                                    stringResource(
+                                        R.string.pdf_convert_complete_body,
+                                        currentSheet.textPages,
+                                        currentSheet.totalPages
+                                    )
+                                }
                             )
                             PdfSheetButton(
                                 label = stringResource(R.string.pdf_convert_open_result),
@@ -1111,7 +1190,13 @@ private fun androidx.compose.foundation.layout.ColumnScope.PdfConversionProgress
 ) {
     val progress = running?.progress?.coerceIn(0, 100) ?: 0
     Text(
-        text = stringResource(R.string.pdf_convert_progress_title),
+        text = stringResource(
+            if (running?.manualImport == true) {
+                R.string.pdf_convert_mineru_manual_progress_title
+            } else {
+                R.string.pdf_convert_progress_title
+            }
+        ),
         fontSize = 20.sp,
         fontWeight = FontWeight.Bold,
         fontFamily = KaiTi,
@@ -1212,6 +1297,9 @@ private fun pdfConversionErrorResource(errorCode: String): Int {
         PdfConversionContract.ERROR_MINERU_UPLOAD -> R.string.pdf_convert_error_mineru_upload
         PdfConversionContract.ERROR_MINERU_SERVICE -> R.string.pdf_convert_error_mineru_service
         PdfConversionContract.ERROR_MINERU_RESULT -> R.string.pdf_convert_error_mineru_result
+        PdfConversionContract.ERROR_MINERU_MANUAL_FORMAT -> R.string.pdf_convert_error_mineru_manual_format
+        PdfConversionContract.ERROR_MINERU_MANUAL_TOO_LARGE -> R.string.pdf_convert_error_mineru_manual_too_large
+        PdfConversionContract.ERROR_MINERU_MANUAL_IMPORT -> R.string.pdf_convert_error_mineru_manual_import
         else -> R.string.pdf_convert_error_unknown
     }
 }

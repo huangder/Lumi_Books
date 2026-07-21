@@ -34,6 +34,8 @@ import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import javax.inject.Inject
 import com.huangder.lumibooks.mineru.MineruConfig
+import com.huangder.lumibooks.mineru.MineruApiException
+import com.huangder.lumibooks.mineru.MineruManualImportManager
 import com.huangder.lumibooks.mineru.MineruMode
 import com.huangder.lumibooks.mineru.MineruTokenStore
 
@@ -42,6 +44,7 @@ class SettingsViewModel @Inject constructor(
     private val dataStoreManager: DataStoreManager,
     private val bookRepository: BookRepository,
     private val mineruTokenStore: MineruTokenStore,
+    private val mineruManualImportManager: MineruManualImportManager,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -99,6 +102,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.appTheme.collectLatest { theme ->
                 _uiState.value = _uiState.value.copy(appTheme = theme)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.liquidGlassTransparency.collectLatest { transparency ->
+                _uiState.value = _uiState.value.copy(liquidGlassTransparency = transparency)
             }
         }
         viewModelScope.launch {
@@ -237,6 +245,15 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun saveLiquidGlassTransparency(transparency: Float) {
+        val clamped = transparency.coerceIn(0f, 1f)
+        if (_uiState.value.liquidGlassTransparency == clamped) return
+        _uiState.value = _uiState.value.copy(liquidGlassTransparency = clamped)
+        viewModelScope.launch {
+            dataStoreManager.saveLiquidGlassTransparency(clamped)
+        }
+    }
+
     fun saveDarkMode(mode: String) {
         if (_uiState.value.darkMode == mode) return
         _uiState.value = _uiState.value.copy(darkMode = mode)
@@ -348,6 +365,35 @@ class SettingsViewModel @Inject constructor(
                 },
                 mineruHasToken = false
             )
+        }
+    }
+
+    fun importManualMineruResult(uri: Uri) {
+        if (_uiState.value.mineruManualImporting) return
+        _uiState.value = _uiState.value.copy(mineruManualImporting = true)
+        viewModelScope.launch {
+            try {
+                val result = mineruManualImportManager.importStandalone(
+                    uri = uri,
+                    fallbackTitle = context.getString(R.string.mineru_manual_default_title),
+                    author = context.getString(R.string.book_author_unknown)
+                )
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.mineru_manual_import_success, result.title),
+                    Toast.LENGTH_LONG
+                ).show()
+            } catch (error: MineruApiException) {
+                val message = when (error.kind) {
+                    MineruApiException.Kind.FILE_LIMIT -> R.string.mineru_manual_import_too_large
+                    else -> R.string.mineru_manual_import_invalid
+                }
+                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            } catch (_: Throwable) {
+                Toast.makeText(context, R.string.mineru_manual_import_failed, Toast.LENGTH_LONG).show()
+            } finally {
+                _uiState.value = _uiState.value.copy(mineruManualImporting = false)
+            }
         }
     }
 

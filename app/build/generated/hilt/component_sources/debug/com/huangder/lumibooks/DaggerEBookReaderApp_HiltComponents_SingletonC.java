@@ -33,6 +33,7 @@ import com.huangder.lumibooks.domain.repository.BookRepository;
 import com.huangder.lumibooks.domain.repository.ReadingRepository;
 import com.huangder.lumibooks.mineru.MineruApiClient;
 import com.huangder.lumibooks.mineru.MineruEpubBuilder;
+import com.huangder.lumibooks.mineru.MineruManualImportManager;
 import com.huangder.lumibooks.mineru.MineruTokenStore;
 import com.huangder.lumibooks.pdfconversion.MineruPdfConversionWorker;
 import com.huangder.lumibooks.pdfconversion.MineruPdfConversionWorker_AssistedFactory;
@@ -50,10 +51,16 @@ import com.huangder.lumibooks.ui.bookshelf.BookNotesActivity;
 import com.huangder.lumibooks.ui.bookshelf.BookNotesActivity_MembersInjector;
 import com.huangder.lumibooks.ui.bookshelf.BookNotesViewModel;
 import com.huangder.lumibooks.ui.bookshelf.BookNotesViewModel_HiltModules;
+import com.huangder.lumibooks.ui.bookshelf.BookNotesViewModel_HiltModules_BindsModule_Binds_LazyMapKey;
+import com.huangder.lumibooks.ui.bookshelf.BookNotesViewModel_HiltModules_KeyModule_Provide_LazyMapKey;
 import com.huangder.lumibooks.ui.home.HomeViewModel;
 import com.huangder.lumibooks.ui.home.HomeViewModel_HiltModules;
+import com.huangder.lumibooks.ui.home.HomeViewModel_HiltModules_BindsModule_Binds_LazyMapKey;
+import com.huangder.lumibooks.ui.home.HomeViewModel_HiltModules_KeyModule_Provide_LazyMapKey;
 import com.huangder.lumibooks.ui.reader.ReaderViewModel;
 import com.huangder.lumibooks.ui.reader.ReaderViewModel_HiltModules;
+import com.huangder.lumibooks.ui.reader.ReaderViewModel_HiltModules_BindsModule_Binds_LazyMapKey;
+import com.huangder.lumibooks.ui.reader.ReaderViewModel_HiltModules_KeyModule_Provide_LazyMapKey;
 import com.huangder.lumibooks.ui.settings.DetailActivity;
 import com.huangder.lumibooks.ui.settings.DetailActivity_MembersInjector;
 import com.huangder.lumibooks.ui.settings.FeedbackActivity;
@@ -62,16 +69,22 @@ import com.huangder.lumibooks.ui.settings.SettingsActivity;
 import com.huangder.lumibooks.ui.settings.SettingsActivity_MembersInjector;
 import com.huangder.lumibooks.ui.settings.SettingsViewModel;
 import com.huangder.lumibooks.ui.settings.SettingsViewModel_HiltModules;
+import com.huangder.lumibooks.ui.settings.SettingsViewModel_HiltModules_BindsModule_Binds_LazyMapKey;
+import com.huangder.lumibooks.ui.settings.SettingsViewModel_HiltModules_KeyModule_Provide_LazyMapKey;
 import com.huangder.lumibooks.ui.settings.SponsorActivity;
 import com.huangder.lumibooks.ui.settings.SponsorActivity_MembersInjector;
 import com.huangder.lumibooks.ui.settings.WebViewActivity;
 import com.huangder.lumibooks.ui.settings.WebViewActivity_MembersInjector;
 import com.huangder.lumibooks.ui.statistics.StatisticsViewModel;
 import com.huangder.lumibooks.ui.statistics.StatisticsViewModel_HiltModules;
+import com.huangder.lumibooks.ui.statistics.StatisticsViewModel_HiltModules_BindsModule_Binds_LazyMapKey;
+import com.huangder.lumibooks.ui.statistics.StatisticsViewModel_HiltModules_KeyModule_Provide_LazyMapKey;
 import com.huangder.lumibooks.ui.welcome.WelcomeActivity;
 import com.huangder.lumibooks.ui.welcome.WelcomeActivity_MembersInjector;
 import com.huangder.lumibooks.ui.welcome.WelcomeViewModel;
 import com.huangder.lumibooks.ui.welcome.WelcomeViewModel_HiltModules;
+import com.huangder.lumibooks.ui.welcome.WelcomeViewModel_HiltModules_BindsModule_Binds_LazyMapKey;
+import com.huangder.lumibooks.ui.welcome.WelcomeViewModel_HiltModules_KeyModule_Provide_LazyMapKey;
 import dagger.hilt.android.ActivityRetainedLifecycle;
 import dagger.hilt.android.ViewModelLifecycle;
 import dagger.hilt.android.internal.builders.ActivityComponentBuilder;
@@ -90,8 +103,6 @@ import dagger.hilt.android.internal.modules.ApplicationContextModule_ProvideAppl
 import dagger.hilt.android.internal.modules.ApplicationContextModule_ProvideContextFactory;
 import dagger.internal.DaggerGenerated;
 import dagger.internal.DoubleCheck;
-import dagger.internal.IdentifierNameString;
-import dagger.internal.KeepFieldType;
 import dagger.internal.LazyClassKeyMap;
 import dagger.internal.MapBuilder;
 import dagger.internal.Preconditions;
@@ -113,7 +124,8 @@ import javax.annotation.processing.Generated;
     "KotlinInternal",
     "KotlinInternalInJava",
     "cast",
-    "deprecation"
+    "deprecation",
+    "nullness:initialization.field.uninitialized"
 })
 public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
   private DaggerEBookReaderApp_HiltComponents_SingletonC() {
@@ -348,7 +360,7 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
 
     private final ViewWithFragmentCImpl viewWithFragmentCImpl = this;
 
-    private ViewWithFragmentCImpl(SingletonCImpl singletonCImpl,
+    ViewWithFragmentCImpl(SingletonCImpl singletonCImpl,
         ActivityRetainedCImpl activityRetainedCImpl, ActivityCImpl activityCImpl,
         FragmentCImpl fragmentCImpl, View viewParam) {
       this.singletonCImpl = singletonCImpl;
@@ -369,9 +381,8 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
 
     private final FragmentCImpl fragmentCImpl = this;
 
-    private FragmentCImpl(SingletonCImpl singletonCImpl,
-        ActivityRetainedCImpl activityRetainedCImpl, ActivityCImpl activityCImpl,
-        Fragment fragmentParam) {
+    FragmentCImpl(SingletonCImpl singletonCImpl, ActivityRetainedCImpl activityRetainedCImpl,
+        ActivityCImpl activityCImpl, Fragment fragmentParam) {
       this.singletonCImpl = singletonCImpl;
       this.activityRetainedCImpl = activityRetainedCImpl;
       this.activityCImpl = activityCImpl;
@@ -399,7 +410,7 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
 
     private final ViewCImpl viewCImpl = this;
 
-    private ViewCImpl(SingletonCImpl singletonCImpl, ActivityRetainedCImpl activityRetainedCImpl,
+    ViewCImpl(SingletonCImpl singletonCImpl, ActivityRetainedCImpl activityRetainedCImpl,
         ActivityCImpl activityCImpl, View viewParam) {
       this.singletonCImpl = singletonCImpl;
       this.activityRetainedCImpl = activityRetainedCImpl;
@@ -416,12 +427,23 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
 
     private final ActivityCImpl activityCImpl = this;
 
-    private ActivityCImpl(SingletonCImpl singletonCImpl,
-        ActivityRetainedCImpl activityRetainedCImpl, Activity activityParam) {
+    ActivityCImpl(SingletonCImpl singletonCImpl, ActivityRetainedCImpl activityRetainedCImpl,
+        Activity activityParam) {
       this.singletonCImpl = singletonCImpl;
       this.activityRetainedCImpl = activityRetainedCImpl;
 
 
+    }
+
+    Map keySetMapOfClassOfAndBooleanBuilder() {
+      MapBuilder mapBuilder = MapBuilder.<String, Boolean>newMapBuilder(6);
+      mapBuilder.put(BookNotesViewModel_HiltModules_KeyModule_Provide_LazyMapKey.lazyClassKeyName, BookNotesViewModel_HiltModules.KeyModule.provide());
+      mapBuilder.put(HomeViewModel_HiltModules_KeyModule_Provide_LazyMapKey.lazyClassKeyName, HomeViewModel_HiltModules.KeyModule.provide());
+      mapBuilder.put(ReaderViewModel_HiltModules_KeyModule_Provide_LazyMapKey.lazyClassKeyName, ReaderViewModel_HiltModules.KeyModule.provide());
+      mapBuilder.put(SettingsViewModel_HiltModules_KeyModule_Provide_LazyMapKey.lazyClassKeyName, SettingsViewModel_HiltModules.KeyModule.provide());
+      mapBuilder.put(StatisticsViewModel_HiltModules_KeyModule_Provide_LazyMapKey.lazyClassKeyName, StatisticsViewModel_HiltModules.KeyModule.provide());
+      mapBuilder.put(WelcomeViewModel_HiltModules_KeyModule_Provide_LazyMapKey.lazyClassKeyName, WelcomeViewModel_HiltModules.KeyModule.provide());
+      return mapBuilder.build();
     }
 
     @Override
@@ -471,7 +493,7 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
 
     @Override
     public Map<Class<?>, Boolean> getViewModelKeys() {
-      return LazyClassKeyMap.<Boolean>of(MapBuilder.<String, Boolean>newMapBuilder(6).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_bookshelf_BookNotesViewModel, BookNotesViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_home_HomeViewModel, HomeViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_reader_ReaderViewModel, ReaderViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_settings_SettingsViewModel, SettingsViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_statistics_StatisticsViewModel, StatisticsViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_welcome_WelcomeViewModel, WelcomeViewModel_HiltModules.KeyModule.provide()).build());
+      return LazyClassKeyMap.<Boolean>of(keySetMapOfClassOfAndBooleanBuilder());
     }
 
     @Override
@@ -529,39 +551,6 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
       WelcomeActivity_MembersInjector.injectDataStoreManager(instance8, singletonCImpl.provideDataStoreManagerProvider.get());
       return instance8;
     }
-
-    @IdentifierNameString
-    private static final class LazyClassKeyProvider {
-      static String com_huangder_lumibooks_ui_welcome_WelcomeViewModel = "com.huangder.lumibooks.ui.welcome.WelcomeViewModel";
-
-      static String com_huangder_lumibooks_ui_home_HomeViewModel = "com.huangder.lumibooks.ui.home.HomeViewModel";
-
-      static String com_huangder_lumibooks_ui_settings_SettingsViewModel = "com.huangder.lumibooks.ui.settings.SettingsViewModel";
-
-      static String com_huangder_lumibooks_ui_statistics_StatisticsViewModel = "com.huangder.lumibooks.ui.statistics.StatisticsViewModel";
-
-      static String com_huangder_lumibooks_ui_reader_ReaderViewModel = "com.huangder.lumibooks.ui.reader.ReaderViewModel";
-
-      static String com_huangder_lumibooks_ui_bookshelf_BookNotesViewModel = "com.huangder.lumibooks.ui.bookshelf.BookNotesViewModel";
-
-      @KeepFieldType
-      WelcomeViewModel com_huangder_lumibooks_ui_welcome_WelcomeViewModel2;
-
-      @KeepFieldType
-      HomeViewModel com_huangder_lumibooks_ui_home_HomeViewModel2;
-
-      @KeepFieldType
-      SettingsViewModel com_huangder_lumibooks_ui_settings_SettingsViewModel2;
-
-      @KeepFieldType
-      StatisticsViewModel com_huangder_lumibooks_ui_statistics_StatisticsViewModel2;
-
-      @KeepFieldType
-      ReaderViewModel com_huangder_lumibooks_ui_reader_ReaderViewModel2;
-
-      @KeepFieldType
-      BookNotesViewModel com_huangder_lumibooks_ui_bookshelf_BookNotesViewModel2;
-    }
   }
 
   private static final class ViewModelCImpl extends EBookReaderApp_HiltComponents.ViewModelC {
@@ -573,26 +562,36 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
 
     private final ViewModelCImpl viewModelCImpl = this;
 
-    private Provider<BookNotesViewModel> bookNotesViewModelProvider;
+    Provider<BookNotesViewModel> bookNotesViewModelProvider;
 
-    private Provider<HomeViewModel> homeViewModelProvider;
+    Provider<HomeViewModel> homeViewModelProvider;
 
-    private Provider<ReaderViewModel> readerViewModelProvider;
+    Provider<ReaderViewModel> readerViewModelProvider;
 
-    private Provider<SettingsViewModel> settingsViewModelProvider;
+    Provider<SettingsViewModel> settingsViewModelProvider;
 
-    private Provider<StatisticsViewModel> statisticsViewModelProvider;
+    Provider<StatisticsViewModel> statisticsViewModelProvider;
 
-    private Provider<WelcomeViewModel> welcomeViewModelProvider;
+    Provider<WelcomeViewModel> welcomeViewModelProvider;
 
-    private ViewModelCImpl(SingletonCImpl singletonCImpl,
-        ActivityRetainedCImpl activityRetainedCImpl, SavedStateHandle savedStateHandleParam,
-        ViewModelLifecycle viewModelLifecycleParam) {
+    ViewModelCImpl(SingletonCImpl singletonCImpl, ActivityRetainedCImpl activityRetainedCImpl,
+        SavedStateHandle savedStateHandleParam, ViewModelLifecycle viewModelLifecycleParam) {
       this.singletonCImpl = singletonCImpl;
       this.activityRetainedCImpl = activityRetainedCImpl;
       this.savedStateHandle = savedStateHandleParam;
       initialize(savedStateHandleParam, viewModelLifecycleParam);
 
+    }
+
+    Map hiltViewModelMapMapOfClassOfAndProviderOfViewModelBuilder() {
+      MapBuilder mapBuilder = MapBuilder.<String, javax.inject.Provider<ViewModel>>newMapBuilder(6);
+      mapBuilder.put(BookNotesViewModel_HiltModules_BindsModule_Binds_LazyMapKey.lazyClassKeyName, ((Provider) (bookNotesViewModelProvider)));
+      mapBuilder.put(HomeViewModel_HiltModules_BindsModule_Binds_LazyMapKey.lazyClassKeyName, ((Provider) (homeViewModelProvider)));
+      mapBuilder.put(ReaderViewModel_HiltModules_BindsModule_Binds_LazyMapKey.lazyClassKeyName, ((Provider) (readerViewModelProvider)));
+      mapBuilder.put(SettingsViewModel_HiltModules_BindsModule_Binds_LazyMapKey.lazyClassKeyName, ((Provider) (settingsViewModelProvider)));
+      mapBuilder.put(StatisticsViewModel_HiltModules_BindsModule_Binds_LazyMapKey.lazyClassKeyName, ((Provider) (statisticsViewModelProvider)));
+      mapBuilder.put(WelcomeViewModel_HiltModules_BindsModule_Binds_LazyMapKey.lazyClassKeyName, ((Provider) (welcomeViewModelProvider)));
+      return mapBuilder.build();
     }
 
     @SuppressWarnings("unchecked")
@@ -608,45 +607,12 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
 
     @Override
     public Map<Class<?>, javax.inject.Provider<ViewModel>> getHiltViewModelMap() {
-      return LazyClassKeyMap.<javax.inject.Provider<ViewModel>>of(MapBuilder.<String, javax.inject.Provider<ViewModel>>newMapBuilder(6).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_bookshelf_BookNotesViewModel, ((Provider) bookNotesViewModelProvider)).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_home_HomeViewModel, ((Provider) homeViewModelProvider)).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_reader_ReaderViewModel, ((Provider) readerViewModelProvider)).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_settings_SettingsViewModel, ((Provider) settingsViewModelProvider)).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_statistics_StatisticsViewModel, ((Provider) statisticsViewModelProvider)).put(LazyClassKeyProvider.com_huangder_lumibooks_ui_welcome_WelcomeViewModel, ((Provider) welcomeViewModelProvider)).build());
+      return LazyClassKeyMap.<javax.inject.Provider<ViewModel>>of(hiltViewModelMapMapOfClassOfAndProviderOfViewModelBuilder());
     }
 
     @Override
     public Map<Class<?>, Object> getHiltViewModelAssistedMap() {
       return Collections.<Class<?>, Object>emptyMap();
-    }
-
-    @IdentifierNameString
-    private static final class LazyClassKeyProvider {
-      static String com_huangder_lumibooks_ui_settings_SettingsViewModel = "com.huangder.lumibooks.ui.settings.SettingsViewModel";
-
-      static String com_huangder_lumibooks_ui_welcome_WelcomeViewModel = "com.huangder.lumibooks.ui.welcome.WelcomeViewModel";
-
-      static String com_huangder_lumibooks_ui_home_HomeViewModel = "com.huangder.lumibooks.ui.home.HomeViewModel";
-
-      static String com_huangder_lumibooks_ui_reader_ReaderViewModel = "com.huangder.lumibooks.ui.reader.ReaderViewModel";
-
-      static String com_huangder_lumibooks_ui_statistics_StatisticsViewModel = "com.huangder.lumibooks.ui.statistics.StatisticsViewModel";
-
-      static String com_huangder_lumibooks_ui_bookshelf_BookNotesViewModel = "com.huangder.lumibooks.ui.bookshelf.BookNotesViewModel";
-
-      @KeepFieldType
-      SettingsViewModel com_huangder_lumibooks_ui_settings_SettingsViewModel2;
-
-      @KeepFieldType
-      WelcomeViewModel com_huangder_lumibooks_ui_welcome_WelcomeViewModel2;
-
-      @KeepFieldType
-      HomeViewModel com_huangder_lumibooks_ui_home_HomeViewModel2;
-
-      @KeepFieldType
-      ReaderViewModel com_huangder_lumibooks_ui_reader_ReaderViewModel2;
-
-      @KeepFieldType
-      StatisticsViewModel com_huangder_lumibooks_ui_statistics_StatisticsViewModel2;
-
-      @KeepFieldType
-      BookNotesViewModel com_huangder_lumibooks_ui_bookshelf_BookNotesViewModel2;
     }
 
     private static final class SwitchingProvider<T> implements Provider<T> {
@@ -666,26 +632,26 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
         this.id = id;
       }
 
-      @SuppressWarnings("unchecked")
       @Override
+      @SuppressWarnings("unchecked")
       public T get() {
         switch (id) {
-          case 0: // com.huangder.lumibooks.ui.bookshelf.BookNotesViewModel 
+          case 0: // com.huangder.lumibooks.ui.bookshelf.BookNotesViewModel
           return (T) new BookNotesViewModel(viewModelCImpl.savedStateHandle, singletonCImpl.provideBookRepositoryProvider.get(), singletonCImpl.provideReadingRepositoryProvider.get());
 
-          case 1: // com.huangder.lumibooks.ui.home.HomeViewModel 
+          case 1: // com.huangder.lumibooks.ui.home.HomeViewModel
           return (T) new HomeViewModel(singletonCImpl.provideBookRepositoryProvider.get(), singletonCImpl.provideReadingRepositoryProvider.get(), singletonCImpl.provideDataStoreManagerProvider.get(), ApplicationContextModule_ProvideApplicationFactory.provideApplication(singletonCImpl.applicationContextModule));
 
-          case 2: // com.huangder.lumibooks.ui.reader.ReaderViewModel 
-          return (T) new ReaderViewModel(viewModelCImpl.savedStateHandle, ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule), singletonCImpl.provideBookRepositoryProvider.get(), singletonCImpl.provideReadingRepositoryProvider.get(), singletonCImpl.provideDataStoreManagerProvider.get(), singletonCImpl.provideTtsControllerProvider.get(), singletonCImpl.pdfConversionManagerProvider.get(), singletonCImpl.mineruTokenStoreProvider.get());
+          case 2: // com.huangder.lumibooks.ui.reader.ReaderViewModel
+          return (T) new ReaderViewModel(viewModelCImpl.savedStateHandle, ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule), singletonCImpl.provideBookRepositoryProvider.get(), singletonCImpl.provideReadingRepositoryProvider.get(), singletonCImpl.provideDataStoreManagerProvider.get(), singletonCImpl.provideTtsControllerProvider.get(), singletonCImpl.pdfConversionManagerProvider.get(), singletonCImpl.mineruManualImportManagerProvider.get(), singletonCImpl.mineruTokenStoreProvider.get());
 
-          case 3: // com.huangder.lumibooks.ui.settings.SettingsViewModel 
-          return (T) new SettingsViewModel(singletonCImpl.provideDataStoreManagerProvider.get(), singletonCImpl.provideBookRepositoryProvider.get(), singletonCImpl.mineruTokenStoreProvider.get(), ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
+          case 3: // com.huangder.lumibooks.ui.settings.SettingsViewModel
+          return (T) new SettingsViewModel(singletonCImpl.provideDataStoreManagerProvider.get(), singletonCImpl.provideBookRepositoryProvider.get(), singletonCImpl.mineruTokenStoreProvider.get(), singletonCImpl.mineruManualImportManagerProvider.get(), ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
 
-          case 4: // com.huangder.lumibooks.ui.statistics.StatisticsViewModel 
+          case 4: // com.huangder.lumibooks.ui.statistics.StatisticsViewModel
           return (T) new StatisticsViewModel(singletonCImpl.provideReadingRepositoryProvider.get(), singletonCImpl.provideBookRepositoryProvider.get(), singletonCImpl.provideDataStoreManagerProvider.get());
 
-          case 5: // com.huangder.lumibooks.ui.welcome.WelcomeViewModel 
+          case 5: // com.huangder.lumibooks.ui.welcome.WelcomeViewModel
           return (T) new WelcomeViewModel(singletonCImpl.provideDataStoreManagerProvider.get());
 
           default: throw new AssertionError(id);
@@ -699,9 +665,9 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
 
     private final ActivityRetainedCImpl activityRetainedCImpl = this;
 
-    private Provider<ActivityRetainedLifecycle> provideActivityRetainedLifecycleProvider;
+    Provider<ActivityRetainedLifecycle> provideActivityRetainedLifecycleProvider;
 
-    private ActivityRetainedCImpl(SingletonCImpl singletonCImpl,
+    ActivityRetainedCImpl(SingletonCImpl singletonCImpl,
         SavedStateHandleHolder savedStateHandleHolderParam) {
       this.singletonCImpl = singletonCImpl;
 
@@ -738,11 +704,11 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
         this.id = id;
       }
 
-      @SuppressWarnings("unchecked")
       @Override
+      @SuppressWarnings("unchecked")
       public T get() {
         switch (id) {
-          case 0: // dagger.hilt.android.ActivityRetainedLifecycle 
+          case 0: // dagger.hilt.android.ActivityRetainedLifecycle
           return (T) ActivityRetainedComponentManager_LifecycleModule_ProvideActivityRetainedLifecycleFactory.provideActivityRetainedLifecycle();
 
           default: throw new AssertionError(id);
@@ -756,7 +722,7 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
 
     private final ServiceCImpl serviceCImpl = this;
 
-    private ServiceCImpl(SingletonCImpl singletonCImpl, Service serviceParam) {
+    ServiceCImpl(SingletonCImpl singletonCImpl, Service serviceParam) {
       this.singletonCImpl = singletonCImpl;
 
 
@@ -779,54 +745,63 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
 
     private final SingletonCImpl singletonCImpl = this;
 
-    private Provider<AppDatabase> provideAppDatabaseProvider;
+    Provider<AppDatabase> provideAppDatabaseProvider;
 
-    private Provider<BookDao> provideBookDaoProvider;
+    Provider<BookDao> provideBookDaoProvider;
 
-    private Provider<BookRepository> provideBookRepositoryProvider;
+    Provider<BookRepository> provideBookRepositoryProvider;
 
-    private Provider<DataStoreManager> provideDataStoreManagerProvider;
+    Provider<DataStoreManager> provideDataStoreManagerProvider;
 
-    private Provider<MineruApiClient> mineruApiClientProvider;
+    Provider<MineruApiClient> mineruApiClientProvider;
 
-    private Provider<MineruEpubBuilder> mineruEpubBuilderProvider;
+    Provider<MineruEpubBuilder> mineruEpubBuilderProvider;
 
-    private Provider<MineruTokenStore> mineruTokenStoreProvider;
+    Provider<MineruTokenStore> mineruTokenStoreProvider;
 
-    private Provider<MineruPdfConversionWorker_AssistedFactory> mineruPdfConversionWorker_AssistedFactoryProvider;
+    Provider<MineruPdfConversionWorker_AssistedFactory> mineruPdfConversionWorker_AssistedFactoryProvider;
 
-    private Provider<PdfConversionWorker_AssistedFactory> pdfConversionWorker_AssistedFactoryProvider;
+    Provider<PdfConversionWorker_AssistedFactory> pdfConversionWorker_AssistedFactoryProvider;
 
-    private Provider<ReadingRecordDao> provideReadingRecordDaoProvider;
+    Provider<ReadingRecordDao> provideReadingRecordDaoProvider;
 
-    private Provider<BookmarkDao> provideBookmarkDaoProvider;
+    Provider<BookmarkDao> provideBookmarkDaoProvider;
 
-    private Provider<NoteDao> provideNoteDaoProvider;
+    Provider<NoteDao> provideNoteDaoProvider;
 
-    private Provider<ReadingRepository> provideReadingRepositoryProvider;
+    Provider<ReadingRepository> provideReadingRepositoryProvider;
 
-    private Provider<TtsEngine> provideTtsEngineProvider;
+    Provider<TtsEngine> provideTtsEngineProvider;
 
-    private Provider<TtsTextExtractor> provideTtsTextExtractorProvider;
+    Provider<TtsTextExtractor> provideTtsTextExtractorProvider;
 
-    private Provider<TtsController> provideTtsControllerProvider;
+    Provider<TtsController> provideTtsControllerProvider;
 
-    private Provider<PdfConversionManager> pdfConversionManagerProvider;
+    Provider<PdfConversionManager> pdfConversionManagerProvider;
 
-    private Provider<TtsNotificationManager> ttsNotificationManagerProvider;
+    Provider<MineruManualImportManager> mineruManualImportManagerProvider;
 
-    private SingletonCImpl(ApplicationContextModule applicationContextModuleParam) {
+    Provider<TtsNotificationManager> ttsNotificationManagerProvider;
+
+    SingletonCImpl(ApplicationContextModule applicationContextModuleParam) {
       this.applicationContextModule = applicationContextModuleParam;
       initialize(applicationContextModuleParam);
 
     }
 
-    private Map<String, javax.inject.Provider<WorkerAssistedFactory<? extends ListenableWorker>>> mapOfStringAndProviderOfWorkerAssistedFactoryOf(
-        ) {
-      return MapBuilder.<String, javax.inject.Provider<WorkerAssistedFactory<? extends ListenableWorker>>>newMapBuilder(2).put("com.huangder.lumibooks.pdfconversion.MineruPdfConversionWorker", ((Provider) mineruPdfConversionWorker_AssistedFactoryProvider)).put("com.huangder.lumibooks.pdfconversion.PdfConversionWorker", ((Provider) pdfConversionWorker_AssistedFactoryProvider)).build();
+    Map mapOfStringAndProviderOfWorkerAssistedFactoryOfBuilder() {
+      MapBuilder mapBuilder = MapBuilder.<String, javax.inject.Provider<WorkerAssistedFactory<? extends ListenableWorker>>>newMapBuilder(2);
+      mapBuilder.put("com.huangder.lumibooks.pdfconversion.MineruPdfConversionWorker", ((Provider) (mineruPdfConversionWorker_AssistedFactoryProvider)));
+      mapBuilder.put("com.huangder.lumibooks.pdfconversion.PdfConversionWorker", ((Provider) (pdfConversionWorker_AssistedFactoryProvider)));
+      return mapBuilder.build();
     }
 
-    private HiltWorkerFactory hiltWorkerFactory() {
+    Map<String, javax.inject.Provider<WorkerAssistedFactory<? extends ListenableWorker>>> mapOfStringAndProviderOfWorkerAssistedFactoryOf(
+        ) {
+      return mapOfStringAndProviderOfWorkerAssistedFactoryOfBuilder();
+    }
+
+    HiltWorkerFactory hiltWorkerFactory() {
       return WorkerFactoryModule_ProvideFactoryFactory.provideFactory(mapOfStringAndProviderOfWorkerAssistedFactoryOf());
     }
 
@@ -849,7 +824,8 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
       this.provideTtsTextExtractorProvider = DoubleCheck.provider(new SwitchingProvider<TtsTextExtractor>(singletonCImpl, 15));
       this.provideTtsControllerProvider = DoubleCheck.provider(new SwitchingProvider<TtsController>(singletonCImpl, 13));
       this.pdfConversionManagerProvider = DoubleCheck.provider(new SwitchingProvider<PdfConversionManager>(singletonCImpl, 16));
-      this.ttsNotificationManagerProvider = DoubleCheck.provider(new SwitchingProvider<TtsNotificationManager>(singletonCImpl, 17));
+      this.mineruManualImportManagerProvider = DoubleCheck.provider(new SwitchingProvider<MineruManualImportManager>(singletonCImpl, 17));
+      this.ttsNotificationManagerProvider = DoubleCheck.provider(new SwitchingProvider<TtsNotificationManager>(singletonCImpl, 18));
     }
 
     @Override
@@ -887,11 +863,11 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
         this.id = id;
       }
 
-      @SuppressWarnings("unchecked")
       @Override
+      @SuppressWarnings("unchecked")
       public T get() {
         switch (id) {
-          case 0: // com.huangder.lumibooks.pdfconversion.MineruPdfConversionWorker_AssistedFactory 
+          case 0: // com.huangder.lumibooks.pdfconversion.MineruPdfConversionWorker_AssistedFactory
           return (T) new MineruPdfConversionWorker_AssistedFactory() {
             @Override
             public MineruPdfConversionWorker create(Context appContext,
@@ -900,28 +876,28 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
             }
           };
 
-          case 1: // com.huangder.lumibooks.domain.repository.BookRepository 
+          case 1: // com.huangder.lumibooks.domain.repository.BookRepository
           return (T) AppModule_ProvideBookRepositoryFactory.provideBookRepository(singletonCImpl.provideBookDaoProvider.get());
 
-          case 2: // com.huangder.lumibooks.data.local.dao.BookDao 
+          case 2: // com.huangder.lumibooks.data.local.dao.BookDao
           return (T) AppModule_ProvideBookDaoFactory.provideBookDao(singletonCImpl.provideAppDatabaseProvider.get());
 
-          case 3: // com.huangder.lumibooks.data.local.database.AppDatabase 
+          case 3: // com.huangder.lumibooks.data.local.database.AppDatabase
           return (T) AppModule_ProvideAppDatabaseFactory.provideAppDatabase(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
 
-          case 4: // com.huangder.lumibooks.data.local.DataStoreManager 
+          case 4: // com.huangder.lumibooks.data.local.DataStoreManager
           return (T) AppModule_ProvideDataStoreManagerFactory.provideDataStoreManager(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
 
-          case 5: // com.huangder.lumibooks.mineru.MineruApiClient 
+          case 5: // com.huangder.lumibooks.mineru.MineruApiClient
           return (T) new MineruApiClient();
 
-          case 6: // com.huangder.lumibooks.mineru.MineruEpubBuilder 
+          case 6: // com.huangder.lumibooks.mineru.MineruEpubBuilder
           return (T) new MineruEpubBuilder();
 
-          case 7: // com.huangder.lumibooks.mineru.MineruTokenStore 
+          case 7: // com.huangder.lumibooks.mineru.MineruTokenStore
           return (T) new MineruTokenStore(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
 
-          case 8: // com.huangder.lumibooks.pdfconversion.PdfConversionWorker_AssistedFactory 
+          case 8: // com.huangder.lumibooks.pdfconversion.PdfConversionWorker_AssistedFactory
           return (T) new PdfConversionWorker_AssistedFactory() {
             @Override
             public PdfConversionWorker create(Context appContext2,
@@ -930,31 +906,34 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
             }
           };
 
-          case 9: // com.huangder.lumibooks.domain.repository.ReadingRepository 
+          case 9: // com.huangder.lumibooks.domain.repository.ReadingRepository
           return (T) AppModule_ProvideReadingRepositoryFactory.provideReadingRepository(singletonCImpl.provideReadingRecordDaoProvider.get(), singletonCImpl.provideBookmarkDaoProvider.get(), singletonCImpl.provideNoteDaoProvider.get());
 
-          case 10: // com.huangder.lumibooks.data.local.dao.ReadingRecordDao 
+          case 10: // com.huangder.lumibooks.data.local.dao.ReadingRecordDao
           return (T) AppModule_ProvideReadingRecordDaoFactory.provideReadingRecordDao(singletonCImpl.provideAppDatabaseProvider.get());
 
-          case 11: // com.huangder.lumibooks.data.local.dao.BookmarkDao 
+          case 11: // com.huangder.lumibooks.data.local.dao.BookmarkDao
           return (T) AppModule_ProvideBookmarkDaoFactory.provideBookmarkDao(singletonCImpl.provideAppDatabaseProvider.get());
 
-          case 12: // com.huangder.lumibooks.data.local.dao.NoteDao 
+          case 12: // com.huangder.lumibooks.data.local.dao.NoteDao
           return (T) AppModule_ProvideNoteDaoFactory.provideNoteDao(singletonCImpl.provideAppDatabaseProvider.get());
 
-          case 13: // com.huangder.lumibooks.tts.TtsController 
+          case 13: // com.huangder.lumibooks.tts.TtsController
           return (T) AppModule_ProvideTtsControllerFactory.provideTtsController(singletonCImpl.provideTtsEngineProvider.get(), singletonCImpl.provideTtsTextExtractorProvider.get(), singletonCImpl.provideDataStoreManagerProvider.get());
 
-          case 14: // com.huangder.lumibooks.tts.TtsEngine 
+          case 14: // com.huangder.lumibooks.tts.TtsEngine
           return (T) AppModule_ProvideTtsEngineFactory.provideTtsEngine(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
 
-          case 15: // com.huangder.lumibooks.tts.TtsTextExtractor 
+          case 15: // com.huangder.lumibooks.tts.TtsTextExtractor
           return (T) AppModule_ProvideTtsTextExtractorFactory.provideTtsTextExtractor();
 
-          case 16: // com.huangder.lumibooks.pdfconversion.PdfConversionManager 
+          case 16: // com.huangder.lumibooks.pdfconversion.PdfConversionManager
           return (T) new PdfConversionManager(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule), singletonCImpl.provideBookRepositoryProvider.get());
 
-          case 17: // com.huangder.lumibooks.service.TtsNotificationManager 
+          case 17: // com.huangder.lumibooks.mineru.MineruManualImportManager
+          return (T) new MineruManualImportManager(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule), singletonCImpl.provideBookRepositoryProvider.get(), singletonCImpl.provideAppDatabaseProvider.get(), singletonCImpl.mineruEpubBuilderProvider.get());
+
+          case 18: // com.huangder.lumibooks.service.TtsNotificationManager
           return (T) new TtsNotificationManager(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
 
           default: throw new AssertionError(id);
