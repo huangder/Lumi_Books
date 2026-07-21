@@ -54,11 +54,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.huangder.lumibooks.R
@@ -74,11 +77,15 @@ import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.ui.animation.OverscrollBounce
 import com.huangder.lumibooks.ui.animation.cardPressEffect
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
+import com.huangder.lumibooks.ui.components.LiquidGlassMenuItem
+import com.huangder.lumibooks.ui.components.LiquidGlassMenuSpec
+import com.huangder.lumibooks.ui.components.LocalLiquidGlassMenuHost
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
+import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.SansSerif
 import com.huangder.lumibooks.ui.animation.PageEntranceItem
 import com.huangder.lumibooks.util.TimeUtils
@@ -354,6 +361,15 @@ private fun ImportHint() {
 private fun ContinueReadingCard(book: Book, onClick: () -> Unit, onToggleFavorite: () -> Unit, onDelete: () -> Unit) {
     var menuExpanded by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var menuAnchorBounds by remember { mutableStateOf(Rect.Zero) }
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val liquidMenuHost = LocalLiquidGlassMenuHost.current
+    val favoriteMenuLabel = if (book.isFavorite) {
+        stringResource(R.string.remove_favorite)
+    } else {
+        stringResource(R.string.add_favorite)
+    }
+    val deleteMenuLabel = stringResource(R.string.delete_book)
 
     Row(
         modifier = Modifier
@@ -404,7 +420,36 @@ private fun ContinueReadingCard(book: Book, onClick: () -> Unit, onToggleFavorit
             )
         }
         Box {
-            IconButton(onClick = { menuExpanded = true }, modifier = Modifier.size(32.dp)) {
+            IconButton(
+                onClick = {
+                    if (isLiquidGlass && liquidMenuHost != null && menuAnchorBounds != Rect.Zero) {
+                        liquidMenuHost.show(
+                            LiquidGlassMenuSpec(
+                                anchorBounds = menuAnchorBounds,
+                                width = 132.dp,
+                                items = listOf(
+                                    LiquidGlassMenuItem(
+                                        label = favoriteMenuLabel,
+                                        icon = Icons.Outlined.FavoriteBorder,
+                                        onClick = onToggleFavorite
+                                    ),
+                                    LiquidGlassMenuItem(
+                                        label = deleteMenuLabel,
+                                        icon = Icons.Outlined.Delete,
+                                        destructive = true,
+                                        onClick = { showDeleteConfirm = true }
+                                    )
+                                )
+                            )
+                        )
+                    } else {
+                        menuExpanded = true
+                    }
+                },
+                modifier = Modifier
+                    .size(32.dp)
+                    .onGloballyPositioned { menuAnchorBounds = it.boundsInRoot() }
+            ) {
                 Icon(Icons.Outlined.MoreVert, null, tint = AppColors.TextSecondary, modifier = Modifier.size(18.dp))
             }
             DropdownMenu(

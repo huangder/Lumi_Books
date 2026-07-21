@@ -47,7 +47,9 @@ import androidx.compose.material3.Text
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -62,7 +64,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.zIndex
-import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
@@ -79,23 +81,27 @@ import com.huangder.lumibooks.ui.animation.AppEasing
 import com.huangder.lumibooks.ui.animation.OverscrollBounce
 import com.huangder.lumibooks.ui.animation.PageEntranceItem
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
+import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.home.HomeViewModel
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
+import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.util.FileUtils
 import androidx.compose.ui.res.stringResource
 import java.io.File
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun BookshelfScreen(
     playEntranceAnimation: Boolean = false,
     onNavigateToReader: (bookId: String, coverPath: String?, title: String) -> Unit,
-    onOverlayActiveChange: (Boolean) -> Unit = {},
+    onOverlayProgressChange: (Float) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -103,6 +109,8 @@ fun BookshelfScreen(
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val contextMenuState = rememberBookContextMenuState()
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val bookshelfBackdrop = rememberLayerBackdrop()
 
     val filterTabs = listOf(
         stringResource(R.string.filter_all),
@@ -156,23 +164,37 @@ fun BookshelfScreen(
         else -> uiState.books
     }
 
+    val overlayProgress = contextMenuState.scrimAlpha.value
+    SideEffect {
+        onOverlayProgressChange(overlayProgress)
+    }
+    DisposableEffect(Unit) {
+        onDispose { onOverlayProgressChange(0f) }
+    }
+
+    ProvideLiquidGlassBackdrop(bookshelfBackdrop.takeIf { isLiquidGlass }) {
     Box(modifier = Modifier.fillMaxSize().background(AppColors.WindowBg)) {
         // ── 内容层（高斯模糊） ──
-        val scrimProgress = contextMenuState.scrimAlpha.value
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .then(
+                    if (isLiquidGlass) Modifier.layerBackdrop(bookshelfBackdrop) else Modifier
+                )
                 .graphicsLayer {
-                    if (scrimProgress > 0.01f && android.os.Build.VERSION.SDK_INT >= 31) {
-                        renderEffect = android.graphics.RenderEffect
-                            .createBlurEffect(
-                                20f * scrimProgress,
-                                20f * scrimProgress,
-                                android.graphics.Shader.TileMode.CLAMP
-                            )
-                            .asComposeRenderEffect()
+                    renderEffect = if (
+                        overlayProgress > 0.01f && android.os.Build.VERSION.SDK_INT >= 31
+                    ) {
+                        android.graphics.RenderEffect.createBlurEffect(
+                            20f * overlayProgress,
+                            20f * overlayProgress,
+                            android.graphics.Shader.TileMode.CLAMP
+                        ).asComposeRenderEffect()
+                    } else {
+                        null
                     }
                 }
+                .background(AppColors.WindowBg)
         ) {
             OverscrollBounce(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
                 Column(
@@ -331,6 +353,7 @@ fun BookshelfScreen(
         }
 
     }
+    }
 }
 
 // ─── 带删除动画的书籍网格项 ──────────────────────────────────────
@@ -391,6 +414,7 @@ private fun BookGridItem(
     onHaptic: () -> Unit,
     onClick: () -> Unit
 ) {
+    val coverCorner = if (LocalAppTheme.current == "liquid_glass") 16.dp else AppRadius.sm
     // 是否为当前操作的目标书本（在组合期间读取，确保触发重组）
     val isTarget = contextMenuState.selectedBook?.id == book.id
     val isOverlayActive = contextMenuState.phase != ContextMenuPhase.Idle && isTarget
@@ -429,7 +453,7 @@ private fun BookGridItem(
                     onHaptic()
                     contextMenuState.onLongPressConfirmed(
                         book = book,
-                        bounds = coverCoordinates[0]?.boundsInWindow()
+                        bounds = coverCoordinates[0]?.boundsInRoot()
                             ?: androidx.compose.ui.geometry.Rect.Zero,
                         onHaptic = onHaptic
                     )
@@ -448,8 +472,8 @@ private fun BookGridItem(
                     scaleX = coverScale
                     scaleY = coverScale
                 }
-                .shadow(12.dp, RoundedCornerShape(AppRadius.sm), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
-                .clip(RoundedCornerShape(AppRadius.sm))
+                .shadow(12.dp, RoundedCornerShape(coverCorner), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+                .clip(RoundedCornerShape(coverCorner))
                 .background(AppColors.BgGray)
         ) {
             if (book.coverPath != null) {
@@ -556,6 +580,7 @@ private fun BookGridItem(
 
 @Composable
 private fun AddBookItem(onClick: () -> Unit) {
+    val coverCorner = if (LocalAppTheme.current == "liquid_glass") 16.dp else AppRadius.sm
     Column(
         modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onClick)
     ) {
@@ -563,7 +588,7 @@ private fun AddBookItem(onClick: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(0.75f)
-                .clip(RoundedCornerShape(AppRadius.sm))
+                .clip(RoundedCornerShape(coverCorner))
                 .background(AppColors.WindowBg),
             contentAlignment = Alignment.Center
         ) {
@@ -571,7 +596,7 @@ private fun AddBookItem(onClick: () -> Unit) {
             val dividerColor = AppColors.Divider
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val pw = 2.dp.toPx()
-                val r = AppRadius.sm.toPx()
+                val r = coverCorner.toPx()
                 val dashW = 8.dp.toPx()
                 val dashGap = 6.dp.toPx()
                 drawRoundRect(

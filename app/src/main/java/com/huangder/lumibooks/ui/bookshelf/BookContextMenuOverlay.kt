@@ -45,8 +45,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.huangder.lumibooks.R
@@ -56,6 +54,8 @@ import androidx.compose.ui.res.stringResource
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
+import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 
 /**
  * 上下文菜单操作类型（UI 阶段仅定义，不接逻辑）
@@ -87,21 +87,14 @@ fun BookContextMenuOverlay(
     val book = state.selectedBook ?: return
     val coverBounds = state.coverBounds
     val coverScale = state.coverScale.value
+    val coverPositionProgress = state.coverPositionProgress.value
     val menuAlpha = state.menuAlpha.value
     val actionsAlpha = state.actionsAlpha.value
-    val scrimAlpha = state.scrimAlpha.value
-    val configuration = LocalConfiguration.current
-
-    Popup(
-        alignment = Alignment.TopStart,
-        properties = PopupProperties(focusable = false, clippingEnabled = false)
-    ) {
     Box(modifier = Modifier.fillMaxSize().graphicsLayer { }) { // 空 graphicsLayer 确保与 OverscrollBounce 同一合成管线
         // ── 1. 半透明背景 + 点击关闭 ──
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.6f * scrimAlpha))
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() }
@@ -112,7 +105,8 @@ fun BookContextMenuOverlay(
         HighlightedCover(
             book = book,
             coverBounds = coverBounds,
-            coverScale = coverScale
+            coverScale = coverScale,
+            positionProgress = coverPositionProgress
         )
 
         // ── 3. 菜单布局（信息面板或操作面板任一可见时显示） ──
@@ -140,7 +134,6 @@ fun BookContextMenuOverlay(
             )
         }
     }
-    }
 }
 
 // ─── 高亮封面 ─────────────────────────────────────────────────────
@@ -149,19 +142,32 @@ fun BookContextMenuOverlay(
 private fun HighlightedCover(
     book: Book,
     coverBounds: Rect,
-    coverScale: Float
+    coverScale: Float,
+    positionProgress: Float
 ) {
     val density = LocalDensity.current
+    val configuration = LocalConfiguration.current
 
     val coverLeftDp = with(density) { coverBounds.left.toDp() }
     val coverTopDp = with(density) { coverBounds.top.toDp() }
     val coverWidthDp = with(density) { coverBounds.width.toDp() }
     val coverHeightDp = with(density) { coverBounds.height.toDp() }
     val context = LocalContext.current
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val coverShape = RoundedCornerShape(if (isLiquidGlass) 16.dp else AppRadius.sm)
+    val finalScaledOverflow = coverHeightDp * 0.08f / 2f
+    val visualBottom = coverTopDp + coverHeightDp + finalScaledOverflow
+    val maxVisualBottom = configuration.screenHeightDp.dp - 196.dp
+    val coverOffsetY = if (isLiquidGlass) {
+        val safeOffset = (visualBottom - maxVisualBottom).coerceAtLeast(0.dp)
+        coverTopDp - safeOffset * positionProgress.coerceIn(0f, 1f)
+    } else {
+        coverTopDp
+    }
 
     Box(
         modifier = Modifier
-            .offset(x = coverLeftDp, y = coverTopDp)
+            .offset(x = coverLeftDp, y = coverOffsetY)
             .size(width = coverWidthDp, height = coverHeightDp)
             .graphicsLayer {
                 scaleX = coverScale
@@ -170,11 +176,11 @@ private fun HighlightedCover(
             }
             .shadow(
                 12.dp,
-                RoundedCornerShape(AppRadius.sm),
+                coverShape,
                 ambientColor = Color(0x06000000),
                 spotColor = Color(0x06000000)
             )
-            .clip(RoundedCornerShape(AppRadius.sm))
+            .clip(coverShape)
     ) {
         if (book.coverPath != null) {
             AsyncImage(
@@ -234,6 +240,7 @@ private fun ContextMenuLayout(
 
     val panelWidth = 170.dp
     val panelGap = 12.dp
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
 
     val panelX = if (isCoverOnLeft) {
         coverLeftDp + coverWidthDp + panelGap
@@ -242,9 +249,9 @@ private fun ContextMenuLayout(
     }
 
     // 菜单面板顶部与封面顶部对齐；如果面板超出屏幕底部，则改为底部对齐
-    // 最低到封面底部，但至少留 48dp 底部边距
+    // 液态主题需要为悬浮 Tag 栏、间距和系统导航区预留完整安全区。
     val estimatedMenuHeight = 400.dp
-    val bottomMargin = 48.dp
+    val bottomMargin = if (isLiquidGlass) 148.dp else 48.dp
     val maxPanelY = (screenHeightDp - estimatedMenuHeight - bottomMargin).coerceAtLeast(0.dp)
     val panelY = if (coverTopDp + estimatedMenuHeight > screenHeightDp - bottomMargin) {
         (coverBottomDp - estimatedMenuHeight).coerceIn(0.dp, maxPanelY)
@@ -286,13 +293,23 @@ private fun BookInfoPanel(
     onEditInfo: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    Column(
-        modifier = modifier
-            .graphicsLayer { this.alpha = alpha }
-            .clip(RoundedCornerShape(AppRadius.md))
-            .background(AppColors.CardBg)
-            .padding(16.dp)
+    val shape = RoundedCornerShape(
+        if (LocalAppTheme.current == "liquid_glass") 24.dp else AppRadius.md
+    )
+    val motionProgress = alpha.coerceIn(-0.08f, 1.08f)
+    LiquidGlassSurface(
+        shape = shape,
+        fallbackColor = AppColors.CardBg,
+        contentScrimColor = AppColors.CardBg.copy(alpha = 0.70f),
+        modifier = modifier.graphicsLayer {
+            this.alpha = motionProgress.coerceIn(0f, 1f)
+            val scale = 0.84f + 0.16f * motionProgress
+            scaleX = scale
+            scaleY = scale
+        },
+        contentAlignment = Alignment.TopStart
     ) {
+        Column(Modifier.fillMaxWidth().padding(16.dp)) {
         Text(
             text = book.title,
             fontSize = AppType.Section,
@@ -344,6 +361,7 @@ private fun BookInfoPanel(
             )
         }
     }
+    }
 }
 
 // ─── 操作面板（4 个选项，从下到上依次淡入） ────────────────────
@@ -356,13 +374,26 @@ private fun MenuActionsPanel(
     hasCustomCover: Boolean = false,
     onAction: (ContextMenuAction) -> Unit
 ) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(AppRadius.md))
-            .background(AppColors.CardBg)
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
+    val shape = RoundedCornerShape(
+        if (LocalAppTheme.current == "liquid_glass") 24.dp else AppRadius.md
+    )
+    val motionProgress = actionsAlpha.coerceIn(-0.08f, 1.08f)
+    LiquidGlassSurface(
+        shape = shape,
+        fallbackColor = AppColors.CardBg,
+        contentScrimColor = AppColors.CardBg.copy(alpha = 0.70f),
+        modifier = modifier.graphicsLayer {
+            alpha = motionProgress.coerceIn(0f, 1f)
+            val scale = 0.84f + 0.16f * motionProgress
+            scaleX = scale
+            scaleY = scale
+        },
+        contentAlignment = Alignment.TopStart
     ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
         val favoriteIcon = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder
         val favoriteLabel = if (isFavorite) stringResource(R.string.remove_favorite_short) else stringResource(R.string.favorite)
 
@@ -379,17 +410,14 @@ private fun MenuActionsPanel(
             add(MenuItem(stringResource(R.string.bookmarks_notes), Icons.Outlined.Bookmark, ContextMenuAction.BookmarksNotes))
         }
 
-        items.forEachIndexed { index, item ->
-            // 每项交错 0.1，渐显窗口 0.5 → 每项约 200ms 渐显
-            val itemDelay = index * 0.1f
-            val delayedAlpha = ((actionsAlpha - itemDelay) / 0.5f).coerceIn(0f, 1f)
+        items.forEach { item ->
             MenuActionItem(
                 label = item.label,
                 icon = item.icon,
-                alpha = delayedAlpha,
                 onClick = { onAction(item.action) }
             )
         }
+    }
     }
 }
 

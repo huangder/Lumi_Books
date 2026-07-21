@@ -56,8 +56,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.semantics.contentDescription
@@ -82,12 +85,20 @@ import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
 import com.huangder.lumibooks.domain.model.ReaderPageCorner
 import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
+import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.components.LiquidGlassSwitch
+import com.huangder.lumibooks.ui.components.LiquidGlassMenuHost
+import com.huangder.lumibooks.ui.components.LiquidGlassMenuItem
+import com.huangder.lumibooks.ui.components.LiquidGlassMenuSpec
+import com.huangder.lumibooks.ui.components.LocalLiquidGlassMenuHost
+import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.components.animateBottomSheetIn
 import com.huangder.lumibooks.ui.components.animateBottomSheetOut
 import com.huangder.lumibooks.ui.components.liquidGlassSheetSurface
 import com.huangder.lumibooks.ui.components.materialBottomSheetMotion
 import androidx.compose.ui.res.stringResource
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import java.io.File
@@ -167,6 +178,9 @@ fun ThemeSettingsSheet(
 
     // 亮度值：-1f=跟随系统，0f~1f=自定义
     val brightnessPercent = if (currentBrightness < 0f) 80f else currentBrightness * 100f
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val isDark = LocalIsDarkTheme.current
+    val sheetContentBackdrop = rememberLayerBackdrop()
 
     Box(Modifier.fillMaxSize()) {
         // 遮罩
@@ -180,22 +194,37 @@ fun ThemeSettingsSheet(
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { isClosing = true }
         )
 
-        // 弹窗容器
-        Column(
+        // 弹窗容器：玻璃底层与控件内容分层，内部控件折射容器而非书页。
+        Box(
             Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress)
-                .liquidGlassSheetSurface(
-                    fallbackColor = LightCardBg,
-                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
-                )
-                .navigationBarsPadding()
-                .padding(start = 24.dp, top = 24.dp, bottom = 24.dp)
-                .verticalScroll(rememberScrollState())
         ) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .then(
+                        if (isLiquidGlass) Modifier.layerBackdrop(sheetContentBackdrop)
+                        else Modifier
+                    )
+                    .liquidGlassSheetSurface(
+                        fallbackColor = LightCardBg,
+                        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+                    )
+            )
+
+            ProvideLiquidGlassBackdrop(sheetContentBackdrop.takeIf { isLiquidGlass }) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = 14.dp, end = 14.dp, bottom = 12.dp)
+                    .navigationBarsPadding()
+                    .padding(top = 24.dp, bottom = 24.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
             // 标题栏
             Row(
-                Modifier.fillMaxWidth().padding(end = 24.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
@@ -223,7 +252,7 @@ fun ThemeSettingsSheet(
 
             // 字号区域
             Row(
-                Modifier.fillMaxWidth().padding(end = 24.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(stringResource(R.string.label_font_size), fontSize = 14.sp, color = LightTextSecondary)
@@ -235,14 +264,15 @@ fun ThemeSettingsSheet(
                 value = currentFontSize,
                 onValueChange = onFontSizeChange,
                 valueRange = 12f..28f,
-                modifier = Modifier.padding(end = 24.dp)
+                step = 1f,
+                modifier = Modifier.padding(horizontal = 24.dp)
             )
 
             Spacer(Modifier.height(16.dp))
 
             // 亮度区域
             Row(
-                Modifier.fillMaxWidth().padding(end = 24.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(stringResource(R.string.brightness), fontSize = 14.sp, color = LightTextSecondary)
@@ -257,48 +287,82 @@ fun ThemeSettingsSheet(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(end = 24.dp),
+                    .padding(horizontal = 24.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 com.huangder.lumibooks.ui.components.PillSlider(
                     value = brightnessPercent,
                     onValueChange = { pct -> onBrightnessChange(pct / 100f) },
                     valueRange = 0f..100f,
+                    step = 1f,
                     modifier = Modifier.weight(1f)
                 )
                 Spacer(Modifier.width(12.dp))
                 val isAutoBrightness = currentBrightness < 0f
                 val autoBrightnessDescription = stringResource(R.string.brightness_auto)
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .then(
-                            if (isAutoBrightness) {
-                                Modifier.background(AppColors.Accent)
-                            } else {
-                                Modifier.border(1.5.dp, AppColors.TextPrimary, CircleShape)
-                            }
-                        )
-                        .semantics { contentDescription = autoBrightnessDescription }
-                        .clickable {
+                if (isLiquidGlass) {
+                    val controlColor = if (isDark) Color.White else Color.Black
+                    LiquidGlassSurface(
+                        shape = CircleShape,
+                        fallbackColor = controlColor,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .semantics { contentDescription = autoBrightnessDescription },
+                        contentScrimColor = controlColor.copy(
+                            alpha = if (isAutoBrightness) 0.58f else 0.24f
+                        ),
+                        onClick = {
                             onBrightnessChange(if (isAutoBrightness) brightnessPercent / 100f else -1f)
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "A",
-                        color = if (isAutoBrightness) AppColors.OnAccent else AppColors.TextPrimary,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                        }
+                    ) {
+                        Text(
+                            text = "A",
+                            color = if (isAutoBrightness) {
+                                if (isDark) Color.Black else Color.White
+                            } else {
+                                AppColors.TextPrimary
+                            },
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .then(
+                                if (isAutoBrightness) {
+                                    Modifier.background(AppColors.Accent)
+                                } else {
+                                    Modifier.border(1.5.dp, AppColors.TextPrimary, CircleShape)
+                                }
+                            )
+                            .semantics { contentDescription = autoBrightnessDescription }
+                            .clickable {
+                                onBrightnessChange(if (isAutoBrightness) brightnessPercent / 100f else -1f)
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "A",
+                            color = if (isAutoBrightness) AppColors.OnAccent else AppColors.TextPrimary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 }
             }
 
             Spacer(Modifier.height(16.dp))
 
             // 阅读背景区域
-            Text(stringResource(R.string.reading_background), fontSize = 14.sp, color = LightTextSecondary)
+            Text(
+                stringResource(R.string.reading_background),
+                fontSize = 14.sp,
+                color = LightTextSecondary,
+                modifier = Modifier.padding(horizontal = 24.dp)
+            )
             Spacer(Modifier.height(12.dp))
 
             ReaderBackgroundSelector(
@@ -313,10 +377,15 @@ fun ThemeSettingsSheet(
             Spacer(Modifier.height(16.dp))
 
             // 简繁转换
-            Text(stringResource(R.string.chinese_convert_label), fontSize = 14.sp, color = LightTextSecondary)
+            Text(
+                stringResource(R.string.chinese_convert_label),
+                fontSize = 14.sp,
+                color = LightTextSecondary,
+                modifier = Modifier.padding(horizontal = 24.dp)
+            )
             Spacer(Modifier.height(12.dp))
             Row(
-                Modifier.fillMaxWidth().padding(end = 24.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 ModeButton(
@@ -342,10 +411,15 @@ fun ThemeSettingsSheet(
             Spacer(Modifier.height(16.dp))
 
             // 翻页效果
-            Text(stringResource(R.string.page_transition_label), fontSize = 14.sp, color = LightTextSecondary)
+            Text(
+                stringResource(R.string.page_transition_label),
+                fontSize = 14.sp,
+                color = LightTextSecondary,
+                modifier = Modifier.padding(horizontal = 24.dp)
+            )
             Spacer(Modifier.height(12.dp))
             Row(
-                Modifier.fillMaxWidth().padding(end = 24.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 ModeButton(
@@ -372,7 +446,7 @@ fun ThemeSettingsSheet(
 
             // 优化书籍排版开关
             Row(
-                Modifier.fillMaxWidth().padding(end = 24.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(Modifier.weight(1f)) {
@@ -392,7 +466,7 @@ fun ThemeSettingsSheet(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(end = 24.dp)
+                    .padding(horizontal = 24.dp)
                     .height(48.dp)
                     .clip(RoundedCornerShape(28.dp))
                     .background(LightBgGray)
@@ -407,6 +481,8 @@ fun ThemeSettingsSheet(
                 )
             }
         }
+    }
+    }
     }
 }
 
@@ -439,7 +515,8 @@ private fun ReaderBackgroundSelector(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         BackgroundPresetItem(
@@ -734,7 +811,9 @@ private fun BackgroundColorSlider(
     com.huangder.lumibooks.ui.components.PillSlider(
         value = value,
         onValueChange = onValueChange,
-        valueRange = range
+        valueRange = range,
+        step = 1f,
+        onDragValueChange = onValueChange
     )
 }
 
@@ -898,7 +977,7 @@ fun AdvancedSettingsSheet(
     val previewTopPadding = (currentMarginTop / 3f).coerceIn(0f, 40f).dp
     val previewBottomPadding = (currentMarginBottom / 3f).coerceIn(0f, 40f).dp
 
-    Box(Modifier.fillMaxSize()) {
+    LiquidGlassMenuHost(modifier = Modifier.fillMaxSize()) {
         // 遮罩
         Box(
             Modifier.fillMaxSize()
@@ -1112,9 +1191,9 @@ private fun AdvancedSettingsGroup(
     val transparency = LocalLiquidGlassTransparency.current
     val shape = RoundedCornerShape(16.dp)
     val surfaceAlpha = if (isDark) {
-        0.38f - transparency * 0.12f
+        0.43f - transparency * 0.12f
     } else {
-        0.54f - transparency * 0.18f
+        0.59f - transparency * 0.18f
     }
     val groupModifier = if (isLiquidGlass) {
         Modifier
@@ -1224,7 +1303,11 @@ private fun ReaderCornerSelectionRow(
     onSelected: (ReaderCornerContent) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var menuAnchorBounds by remember { mutableStateOf(Rect.Zero) }
     val options = ReaderCornerContent.entries
+    val labeledOptions = options.map { option -> option to readerCornerContentLabel(option) }
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val liquidMenuHost = LocalLiquidGlassMenuHost.current
 
     Row(
         modifier = Modifier
@@ -1240,7 +1323,26 @@ private fun ReaderCornerSelectionRow(
                     .height(36.dp)
                     .clip(RoundedCornerShape(14.dp))
                     .background(LightBgGray)
-                    .clickable { expanded = true }
+                    .onGloballyPositioned { menuAnchorBounds = it.boundsInRoot() }
+                    .clickable {
+                        if (isLiquidGlass && liquidMenuHost != null && menuAnchorBounds != Rect.Zero) {
+                            liquidMenuHost.show(
+                                LiquidGlassMenuSpec(
+                                    anchorBounds = menuAnchorBounds,
+                                    width = 158.dp,
+                                    items = labeledOptions.map { (option, optionLabel) ->
+                                        LiquidGlassMenuItem(
+                                            label = optionLabel,
+                                            selected = option == selected,
+                                            onClick = { onSelected(option) }
+                                        )
+                                    }
+                                )
+                            )
+                        } else {
+                            expanded = true
+                        }
+                    }
                     .padding(horizontal = 12.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -1269,11 +1371,11 @@ private fun ReaderCornerSelectionRow(
                 tonalElevation = 0.dp,
                 shadowElevation = 0.dp
             ) {
-                options.forEach { option ->
+                labeledOptions.forEach { (option, optionLabel) ->
                     DropdownMenuItem(
                         text = {
                             Text(
-                                text = readerCornerContentLabel(option),
+                                text = optionLabel,
                                 fontSize = 13.sp,
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.fillMaxWidth()
@@ -1534,7 +1636,8 @@ private fun SettingSlider(
         value = sliderValue,
         onValueChange = { sliderValue = it; onChange(it) },
         valueRange = range,
-        step = step
+        step = step,
+        onDragValueChange = { sliderValue = it }
     )
 }
 

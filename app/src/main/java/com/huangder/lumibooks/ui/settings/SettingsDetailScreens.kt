@@ -82,8 +82,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -98,19 +101,32 @@ import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.FangSong
 import com.huangder.lumibooks.ui.components.LiquidGlassSwitch
+import com.huangder.lumibooks.ui.components.LiquidGlassMenuHost
+import com.huangder.lumibooks.ui.components.LiquidGlassMenuItem
+import com.huangder.lumibooks.ui.components.LiquidGlassMenuSpec
+import com.huangder.lumibooks.ui.components.LocalLiquidGlassMenuHost
+import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 
 // ─── 详情页通用框架 ──────────────────────────────────────────
 
 @Composable
 fun DetailPage(title: String, onBack: () -> Unit, content: @Composable () -> Unit) {
-    Box(
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val pageBackdrop = rememberLayerBackdrop()
+
+    LiquidGlassMenuHost(
         modifier = Modifier
             .fillMaxSize()
-            .background(AppColors.WindowBg)
+            .background(AppColors.WindowBg),
+        backdrop = pageBackdrop.takeIf { isLiquidGlass }
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .then(if (isLiquidGlass) Modifier.layerBackdrop(pageBackdrop) else Modifier)
+                .background(AppColors.WindowBg)
                 .statusBarsPadding()
         ) {
             // 顶栏
@@ -150,17 +166,17 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
 
     DetailCard {
-        SettingsSliderItem(Icons.Outlined.FormatSize, stringResource(R.string.label_font_size), uiState.fontSize, 12f..28f, "${uiState.fontSize.toInt()} sp") { viewModel.saveFontSize(it) }
+        SettingsSliderItem(Icons.Outlined.FormatSize, stringResource(R.string.label_font_size), uiState.fontSize, 12f..28f, "${uiState.fontSize.toInt()} sp", step = 1f) { viewModel.saveFontSize(it) }
         SettingsDivider()
         SettingsSliderItem(Icons.Outlined.LineWeight, stringResource(R.string.label_line_height), uiState.lineHeight, 1.0f..2.5f, String.format("%.1f", uiState.lineHeight)) { viewModel.saveLineHeight(it) }
         SettingsDivider()
-        SettingsSliderItem(Icons.Outlined.Title, stringResource(R.string.label_letter_spacing), uiState.letterSpacing, 0f..0.1f, String.format("%.2f em", uiState.letterSpacing)) { viewModel.saveLetterSpacing(it) }
+        SettingsSliderItem(Icons.Outlined.Title, stringResource(R.string.label_letter_spacing), uiState.letterSpacing, 0f..0.1f, String.format("%.2f em", uiState.letterSpacing), step = 0.01f) { viewModel.saveLetterSpacing(it) }
         SettingsDivider()
         FontTypeRow(uiState.fontType) { viewModel.saveFontType(it) }
         SettingsDivider()
-        SettingsSliderItem(Icons.Outlined.Landscape, stringResource(R.string.label_margin_horiz), uiState.marginHoriz, 0f..80f, "${uiState.marginHoriz.toInt()} dp") { viewModel.saveMarginHoriz(it) }
+        SettingsSliderItem(Icons.Outlined.Landscape, stringResource(R.string.label_margin_horiz), uiState.marginHoriz, 0f..80f, "${uiState.marginHoriz.toInt()} dp", step = 1f) { viewModel.saveMarginHoriz(it) }
         SettingsDivider()
-        SettingsSliderItem(Icons.Outlined.Landscape, stringResource(R.string.label_margin_vert), uiState.marginVert, 0f..120f, "${uiState.marginVert.toInt()} dp") { viewModel.saveMarginVert(it) }
+        SettingsSliderItem(Icons.Outlined.Landscape, stringResource(R.string.label_margin_vert), uiState.marginVert, 0f..120f, "${uiState.marginVert.toInt()} dp", step = 1f) { viewModel.saveMarginVert(it) }
     }
 }
 
@@ -214,6 +230,8 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
                     value = uiState.liquidGlassTransparency,
                     range = 0f..1f,
                     valueText = "${(uiState.liquidGlassTransparency * 100).toInt()}%",
+                    step = 0.05f,
+                    onDragChange = viewModel::previewLiquidGlassTransparency,
                     onChange = viewModel::saveLiquidGlassTransparency
                 )
             }
@@ -917,7 +935,11 @@ private fun SettingsDivider() {
 @Composable
 private fun SettingsSliderItem(
     icon: ImageVector, label: String, value: Float, range: ClosedFloatingPointRange<Float>,
-    valueText: String, steps: Int = 0, onChange: (Float) -> Unit
+    valueText: String,
+    steps: Int = 0,
+    step: Float = 0.1f,
+    onDragChange: ((Float) -> Unit)? = null,
+    onChange: (Float) -> Unit
 ) {
     Column(Modifier.fillMaxWidth().padding(horizontal = AppSpace.md, vertical = AppSpace.sm)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -929,7 +951,13 @@ private fun SettingsSliderItem(
         com.huangder.lumibooks.ui.components.PillSlider(
             value = value,
             onValueChange = onChange,
-            valueRange = range
+            valueRange = range,
+            step = if (steps > 0) {
+                (range.endInclusive - range.start) / (steps + 1)
+            } else {
+                step
+            },
+            onDragValueChange = onDragChange
         )
     }
 }
@@ -963,7 +991,10 @@ private fun DropdownSettingRow(
     onSelect: (String) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var menuAnchorBounds by remember { mutableStateOf(Rect.Zero) }
     val selectedLabel = options.firstOrNull { it.first == selected }?.second.orEmpty()
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val liquidMenuHost = LocalLiquidGlassMenuHost.current
 
     Row(
         modifier = Modifier
@@ -987,7 +1018,26 @@ private fun DropdownSettingRow(
                     .clip(RoundedCornerShape(14.dp))
                     .background(AppColors.WindowBg)
                     .border(1.dp, AppColors.Divider, RoundedCornerShape(14.dp))
-                    .clickable { expanded = true }
+                    .onGloballyPositioned { menuAnchorBounds = it.boundsInRoot() }
+                    .clickable {
+                        if (isLiquidGlass && liquidMenuHost != null && menuAnchorBounds != Rect.Zero) {
+                            liquidMenuHost.show(
+                                LiquidGlassMenuSpec(
+                                    anchorBounds = menuAnchorBounds,
+                                    width = 138.dp,
+                                    items = options.map { (key, display) ->
+                                        LiquidGlassMenuItem(
+                                            label = display,
+                                            selected = key == selected,
+                                            onClick = { onSelect(key) }
+                                        )
+                                    }
+                                )
+                            )
+                        } else {
+                            expanded = true
+                        }
+                    }
                     .padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
