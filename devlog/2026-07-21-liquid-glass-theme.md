@@ -1,0 +1,51 @@
+# 2026-07-21 液态玻璃应用主题（第一阶段）
+
+## 更新内容
+
+- 新增 `liquid_glass` 应用外观主题和 `liquid_glass_transparency` DataStore 偏好，默认通透度为 55%。主题和通透度会实时写入设置状态，应用重启后保持。
+- 在“显示与外观”的主题选择下方增加“玻璃通透度”卡片。仅当选中液态玻璃主题时显示；卡片以展开、上滑和淡入同步进入，后续设置卡片随布局高度平滑下移。
+- 将液态玻璃主题的底部 Tab 栏改为 72dp 图文胶囊：图标在上、标题在下，选中项使用会横向滑动的中性玻璃透镜，不再使用蓝色填充。通透度同时控制表面不透明度和背景模糊强度。
+- 接入 `io.github.kyant0:backdrop:1.0.6` 官方实现。页面内容由 `layerBackdrop` 单独记录，底栏依次执行 `vibrancy -> blur -> lens`，选中透镜再组合页面与底栏的背景；图标和文字在效果层之后绘制，避免折射前景导致重影和重叠。
+- 删除临时自制 AGSL 后处理方案。当前外层胶囊和选中胶囊都使用 Backdrop 的真实背景采样与边缘折射，透明度继续映射到玻璃表面不透明度和模糊半径。
+- 为满足官方 Backdrop 版本要求并兼容本机 Java 24，工具链升级为 Gradle 8.14.3、AGP 8.13.2、Kotlin/Compose Compiler/KSP 2.3.10、Compose BOM 2026.06.01、compileSdk 36。Hilt 同步升级到 2.58，Room 同步升级到 2.8.4；targetSdk 仍为 35，minSdk 仍为 26，源码字节码目标仍为 JVM 17。
+- 修复英文、日文、韩文资源中的重复 `book_author_unknown` 定义。该重复项在新版资源合并器下会直接阻断构建，保留原有较早译文，不改变业务行为。
+- 阅读器快捷菜单、底部面板和可拖拽液态开关尚未接入，将在后续阶段按统一浮层状态机实现。
+
+## 验证
+
+- `compileDebugKotlin`：BUILD SUCCESSFUL。
+- `testDebugUnitTest`：BUILD SUCCESSFUL。
+- `assembleDebug`：BUILD SUCCESSFUL，APK 输出为 `app/build/outputs/apk/debug/app-debug.apk`。
+- 已覆盖安装到连接的 Android API 36 真机并启动，运行时日志未发现崩溃或 Backdrop/RenderEffect 异常。
+- 真机截图确认底栏图标和文字不再重影或重叠；书封等页面内容经过外层玻璃时出现位移、模糊与边缘折射，选中态保持中性透明表面，蓝色仅用于选中图标和文字。
+- 尚需人工拖动透明度滑条并切换三个 Tab，确认连续动画手感；Android 8-12 的兼容表现也需后续在对应设备验证。
+
+## 底部 Tab 拖动交互修正
+
+- 对照 AndroidLiquidGlass 仓库的 `LiquidBottomTabs` 与 `DampedDragAnimation` 示例，移植同类阻尼拖动状态：按下立即产生 `pressProgress`，透镜弹性放大；拖动时同时记录位置与速度并产生方向形变；松手从当前连续位置弹簧吸附到最近 Tab，不再先跳回旧索引。
+- 将液态底栏改为三个独立兄弟图层：外层玻璃、正常黑色图文、由 `layerBackdrop` 记录的蓝色图文。选中透镜通过 `rememberCombinedBackdrop` 采样蓝色图文层，因此经过的图标和文字会在透镜范围内变蓝并参与棱镜折射。
+- 外层玻璃不再作为透镜的父效果层，避免 `drawBackdrop` 的胶囊形状裁剪放大后的透镜。透镜按官方示例比例放大时可以越过底栏上下边界。
+- 液态主题图标调整为圆角 `Home`、`AutoStories`、`Leaderboard`，图标增大到 28dp，标签调整为 11sp 中等字重；浅色选中态使用 10% 中性黑表面，提升白色页面上的辨识度。
+- `compileDebugKotlin` 与 `assembleDebug` 均通过，已覆盖安装到 Android API 36 真机。静止状态截图为 `app/build/liquid-glass-tab-unclipped.png`；真机禁止 ADB 注入触摸，按住和拖动过程由用户直接在设备上验证。
+- 后续真机反馈修正：外层玻璃改为独立兄弟层，放大透镜不再被外轮廓裁剪；图文整体上移 4dp，使图标与标签的组合视觉中心对齐胶囊中心。
+- 取消底栏额外 8dp 横向内容内边距，三等分基于完整胶囊宽度计算；选中透镜统一使用四周 3dp 内边距，首尾选中态与外轮廓的上、下、左/右留白一致。
+- 将拖动跟手弹簧与点击/松手吸附弹簧拆分：跟手维持高刚度，吸附降低到 `dampingRatio=0.80`、`stiffness=240`；透镜进入目标约 5% 范围时即开始缩小，使横向移动与回弹收缩自然重叠，避免到位后停顿。
+- 最终静止状态截图更新为 `app/build/liquid-glass-tab-spacing-fixed.png`，并再次覆盖安装到真机。
+- 液态底栏选中内容由固定蓝色改为 Lumi 粉色。浅色模式的 Backdrop 采样层使用补偿色 `#FF6868`，抵消中性灰表面的约 10% 压暗后，真机视觉接近 Lumi 原始强调色 `#E85D5D`；深色模式沿用 `AppColors.Accent`。验证截图为 `app/build/liquid-glass-tab-lumi-pink.png`。
+
+## 阅读器液态玻璃菜单
+
+- 新增通用 `LiquidGlassSurface`，以 Backdrop 的 `vibrancy -> blur -> lens` 处理阅读页背景，并提供高光、内阴影、外阴影及按压弹性缩放；通透度同时控制玻璃表面色和模糊半径。
+- EPUB/TXT 与 PDF 阅读器分别记录正文背景，将顶部返回、听书、翻页方向、书签按钮以及底部目录、搜索、笔记、主题、PDF 转换等胶囊切换为液态玻璃表面。
+- 修复 `ReaderRouter` 内层主题未透传的问题。此前内层 `EBookReaderTheme` 将 `LocalAppTheme` 重置为默认 `lumi`，导致阅读器实际走普通灰色胶囊与渐变遮罩；现在完整继承应用主题和玻璃通透度。
+- 液态玻璃主题不再绘制阅读器顶部、底部整片渐变遮罩，胶囊直接采样原始书页；普通主题维持原有阅读辅助渐变。
+- PDF 目录进度由错误的 `currentPage / pageCount` 修正为 `(currentPage + 1) / pageCount`。液态主题下进度改为胶囊底部细轨，避免整块粉色填充遮挡玻璃和文字；普通主题维持原填充样式。
+- 打开目录、笔记、搜索、主题或 PDF 转换面板时，同一事件中触发旧菜单退出与新面板进入；主题面板进入高级设置时也同步退出，避免透明面板叠加显示。
+- 静止态折射参数对齐官方 `LiquidButton` 示例的 12dp/24dp，色散只在按压时开启，避免常态出现过重彩边。
+
+## 阅读器菜单验证
+
+- `compileDebugKotlin`：BUILD SUCCESSFUL。
+- `assembleDebug`：BUILD SUCCESSFUL。
+- 已覆盖安装到 Android API 36 真机；PDF 真机截图确认书页内容进入 Backdrop 采样层，胶囊边缘产生真实位移和折射，整片上下渐变遮罩已移除，目录显示 `3 / 4` 与 `75.00%` 一致。
+- ADB 在该真机上无触摸注入权限；按压形变、面板切换手感和 EPUB/TXT 菜单仍需继续人工操作验证。
