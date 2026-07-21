@@ -6,6 +6,8 @@
     <string name="label_app_theme">主题</string>
     <string name="app_theme_lumi">Lumi 粉</string>
     <string name="app_theme_material3">Material 3</string>
+    <string name="app_theme_liquid_glass">液态玻璃</string>
+    <string name="liquid_glass_transparency">玻璃通透度</string>
     <string name="app_name">LUMI</string>
 
     <!-- 首页 -->
@@ -458,6 +460,16 @@
     <string name="category_mineru">MINERU</string>
     <string name="title_mineru">MinerU 云端解析</string>
     <string name="mineru_powered_by">Powered by MinerU</string>
+    <string name="mineru_manual_title">手动解析（无需 API）</string>
+    <string name="mineru_manual_description">在 MinerU 网站自行上传并解析文件，下载结果 ZIP 或 Markdown 后导入 LumiBooks。</string>
+    <string name="mineru_manual_open_website">前往 MinerU 网页解析</string>
+    <string name="mineru_manual_import_result">导入 MinerU 解析结果</string>
+    <string name="mineru_manual_importing">正在导入解析结果…</string>
+    <string name="mineru_manual_default_title">MinerU 手动解析</string>
+    <string name="mineru_manual_import_success">已导入电子书：%1$s</string>
+    <string name="mineru_manual_import_invalid">无法识别该结果。请选择 MinerU 下载的 ZIP 或 Markdown 文件。</string>
+    <string name="mineru_manual_import_too_large">结果文件过大，无法安全导入。</string>
+    <string name="mineru_manual_import_failed">导入失败，请确认文件完整并重试。</string>
     <string name="mineru_not_configured">未配置</string>
     <string name="mineru_mode_agent_short">轻量解析</string>
     <string name="mineru_mode_precise_short">精准解析</string>
@@ -495,6 +507,14 @@
     <string name="pdf_convert_choose_method_body">本地解析不会上传文件；MinerU 云端解析会将所选 PDF 发送至第三方服务。</string>
     <string name="pdf_convert_local_title">使用本地文字层解析</string>
     <string name="pdf_convert_mineru_title">通过 MinerU 服务解析成电子书</string>
+    <string name="pdf_convert_mineru_manual_title">手动使用 MinerU</string>
+    <string name="pdf_convert_mineru_manual_description">自行在 MinerU 网站解析，再导入 ZIP 或 Markdown 结果；无需 API 或 Token。</string>
+    <string name="pdf_convert_mineru_manual_sheet_title">手动解析</string>
+    <string name="pdf_convert_mineru_manual_sheet_body">先打开 MinerU 网站并自行上传当前 PDF。解析完成后下载 ZIP 或 Markdown，返回这里导入。</string>
+    <string name="pdf_convert_mineru_manual_website_hint">在浏览器中自行上传 PDF 并下载解析结果。</string>
+    <string name="pdf_convert_mineru_manual_import_hint">选择 MinerU 下载的 ZIP 或 Markdown 文件。</string>
+    <string name="pdf_convert_mineru_manual_progress_title">正在导入 MinerU 结果</string>
+    <string name="pdf_convert_mineru_manual_complete_body">已导入 MinerU 结果并生成电子书。你可以留在当前 PDF，或打开生成的电子书检查排版效果。</string>
     <string name="pdf_convert_mineru_not_configured_short">尚未配置，点击前往设置</string>
     <string name="pdf_convert_mineru_mode_description">使用已配置的%1$s；PDF 将上传至第三方服务。</string>
     <string name="pdf_convert_mineru_not_configured_title">尚未配置 MinerU</string>
@@ -513,4 +533,7 @@
     <string name="pdf_convert_error_mineru_upload">MinerU 存储服务拒绝了文件上传，请稍后重试；若持续失败，请改用本地解析。</string>
     <string name="pdf_convert_error_mineru_service">MinerU 服务暂时无法完成解析，请稍后重试或改用本地解析。</string>
     <string name="pdf_convert_error_mineru_result">MinerU 返回的结果不完整或格式异常，无法生成电子书。</string>
+    <string name="pdf_convert_error_mineru_manual_format">无法识别所选结果。请选择 MinerU 下载的 ZIP 或 Markdown 文件。</string>
+    <string name="pdf_convert_error_mineru_manual_too_large">MinerU 结果文件过大，无法安全导入。</string>
+    <string name="pdf_convert_error_mineru_manual_import">导入 MinerU 结果失败，请确认文件完整并重试。</string>
 </resources>

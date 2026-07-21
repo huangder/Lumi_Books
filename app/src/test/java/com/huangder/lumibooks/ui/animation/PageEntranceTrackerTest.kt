@@ -30,11 +30,11 @@ class PageEntranceTrackerTest {
     }
 
     @Test
-    fun defaultCooldownIsOneMinute() {
+    fun defaultCooldownIsTenSeconds() {
         val tracker = PageEntranceTracker()
 
         assertTrue(tracker.shouldPlay("home", nowMillis = 100_000L))
-        assertFalse(tracker.shouldPlay("home", nowMillis = 159_999L))
-        assertTrue(tracker.shouldPlay("home", nowMillis = 160_000L))
+        assertFalse(tracker.shouldPlay("home", nowMillis = 109_999L))
+        assertTrue(tracker.shouldPlay("home", nowMillis = 110_000L))
     }
 }

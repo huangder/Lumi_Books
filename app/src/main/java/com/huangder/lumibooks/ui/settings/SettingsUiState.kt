@@ -52,7 +52,8 @@ data class SettingsUiState(
     val marginVert: Float = 64f,
 
     // 显示与外观
-    val appTheme: String = "lumi",         // "lumi" / "material3"
+    val appTheme: String = "lumi",         // "lumi" / "material3" / "liquid_glass"
+    val liquidGlassTransparency: Float = 0.55f,
     val darkMode: String = "system",       // "system" / "light" / "dark"
     val entranceAnimationsEnabled: Boolean = true,
     val predictiveBackEnabled: Boolean = true,
@@ -63,6 +64,7 @@ data class SettingsUiState(
     val mineruMode: String = "disabled",   // "disabled" / "agent" / "precise"
     val mineruConsentVersion: Int = 0,
     val mineruHasToken: Boolean = false,
+    val mineruManualImporting: Boolean = false,
 
     // 语言
     val appLanguage: String = "system",    // "system" / "zh-CN" / "zh-TW" / "zh-HK" / "zh-MO" / "ko" / "ja" / "en"

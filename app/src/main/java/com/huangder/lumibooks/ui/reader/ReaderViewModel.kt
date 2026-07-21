@@ -26,8 +26,11 @@ import com.huangder.lumibooks.domain.model.defaultReaderCornerContent
 import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.domain.repository.ReadingRepository
 import com.huangder.lumibooks.pdfconversion.PdfConversionManager
+import com.huangder.lumibooks.pdfconversion.PdfConversionContract
 import com.huangder.lumibooks.pdfconversion.PdfConversionEngine
+import com.huangder.lumibooks.mineru.MineruApiException
 import com.huangder.lumibooks.mineru.MineruConfig
+import com.huangder.lumibooks.mineru.MineruManualImportManager
 import com.huangder.lumibooks.mineru.MineruMode
 import com.huangder.lumibooks.mineru.MineruTokenStore
 import com.huangder.lumibooks.pdfconversion.PdfConversionState
@@ -45,6 +48,8 @@ import com.huangder.lumibooks.tts.TtsPlaybackState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -55,6 +60,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import java.io.File
+import java.io.FileNotFoundException
+import java.io.IOException
 import java.util.Locale
 import java.util.UUID
 
@@ -162,6 +169,7 @@ class ReaderViewModel @Inject constructor(
     private val dataStoreManager: DataStoreManager,
     private val ttsController: TtsController,
     private val pdfConversionManager: PdfConversionManager,
+    private val mineruManualImportManager: MineruManualImportManager,
     private val mineruTokenStore: MineruTokenStore
 ) : ViewModel() {
 
@@ -180,6 +188,7 @@ class ReaderViewModel @Inject constructor(
     val pdfConversionState: StateFlow<PdfConversionState> = _pdfConversionState.asStateFlow()
     private val _mineruMode = MutableStateFlow(MineruMode.DISABLED)
     val mineruMode: StateFlow<MineruMode> = _mineruMode.asStateFlow()
+    private var manualImportJob: Job? = null
 
     val ttsPageTurnRequests = ttsController.pageTurnRequests
 
@@ -276,7 +285,54 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun cancelPdfConversion() {
+        if (manualImportJob?.isActive == true) {
+            manualImportJob?.cancel()
+            return
+        }
         pdfConversionManager.cancel(bookId)
+    }
+
+    fun importManualMineruResult(uri: Uri, replaceExisting: Boolean) {
+        if (manualImportJob?.isActive == true) return
+        _pdfConversionState.value = PdfConversionState.Running(
+            currentPage = 0,
+            totalPages = 0,
+            progress = 0,
+            manualImport = true
+        )
+        manualImportJob = viewModelScope.launch {
+            try {
+                val result = mineruManualImportManager.importForPdf(
+                    uri = uri,
+                    sourceBookId = bookId,
+                    replaceExisting = replaceExisting
+                )
+                _pdfConversionState.value = PdfConversionState.Succeeded(
+                    bookId = result.bookId,
+                    textPages = result.chapterCount,
+                    totalPages = result.chapterCount,
+                    manualImport = true
+                )
+            } catch (_: CancellationException) {
+                _pdfConversionState.value = PdfConversionState.Cancelled
+            } catch (error: MineruApiException) {
+                _pdfConversionState.value = PdfConversionState.Failed(
+                    when (error.kind) {
+                        MineruApiException.Kind.FILE_LIMIT -> PdfConversionContract.ERROR_MINERU_MANUAL_TOO_LARGE
+                        MineruApiException.Kind.INVALID_RESULT -> PdfConversionContract.ERROR_MINERU_MANUAL_FORMAT
+                        else -> PdfConversionContract.ERROR_MINERU_MANUAL_IMPORT
+                    }
+                )
+            } catch (_: FileNotFoundException) {
+                _pdfConversionState.value = PdfConversionState.Failed(PdfConversionContract.ERROR_FILE_MISSING)
+            } catch (_: IOException) {
+                _pdfConversionState.value = PdfConversionState.Failed(PdfConversionContract.ERROR_STORAGE)
+            } catch (_: Throwable) {
+                _pdfConversionState.value = PdfConversionState.Failed(PdfConversionContract.ERROR_MINERU_MANUAL_IMPORT)
+            } finally {
+                manualImportJob = null
+            }
+        }
     }
 
     fun consumePdfConversionResult() {

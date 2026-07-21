@@ -31,6 +31,9 @@ object PdfConversionContract {
     const val ERROR_MINERU_UPLOAD = "mineru_upload"
     const val ERROR_MINERU_SERVICE = "mineru_service"
     const val ERROR_MINERU_RESULT = "mineru_result"
+    const val ERROR_MINERU_MANUAL_FORMAT = "mineru_manual_format"
+    const val ERROR_MINERU_MANUAL_TOO_LARGE = "mineru_manual_too_large"
+    const val ERROR_MINERU_MANUAL_IMPORT = "mineru_manual_import"
 
     private const val CONVERTED_ID_SUFFIX = "__pdf_parsed"
     private const val CONVERTED_DIRECTORY = "converted_pdf"
@@ -104,13 +107,15 @@ sealed interface PdfConversionState {
     data class Running(
         val currentPage: Int,
         val totalPages: Int,
-        val progress: Int
+        val progress: Int,
+        val manualImport: Boolean = false
     ) : PdfConversionState
 
     data class Succeeded(
         val bookId: String,
         val textPages: Int,
-        val totalPages: Int
+        val totalPages: Int,
+        val manualImport: Boolean = false
     ) : PdfConversionState
 
     data class Failed(val errorCode: String) : PdfConversionState

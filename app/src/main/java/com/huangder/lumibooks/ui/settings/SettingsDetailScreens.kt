@@ -2,6 +2,14 @@ package com.huangder.lumibooks.ui.settings
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.tween
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -42,6 +50,7 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Landscape
 import androidx.compose.material.icons.outlined.LineWeight
 import androidx.compose.material.icons.outlined.NightsStay
+import androidx.compose.material.icons.outlined.Opacity
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.Speed
@@ -163,7 +172,8 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
     val appThemeOptions = listOf(
         "lumi" to stringResource(R.string.app_theme_lumi),
-        "material3" to stringResource(R.string.app_theme_material3)
+        "material3" to stringResource(R.string.app_theme_material3),
+        "liquid_glass" to stringResource(R.string.app_theme_liquid_glass)
     )
     val darkModeOptions = listOf(
         "system" to stringResource(R.string.dark_mode_system),
@@ -185,6 +195,30 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
             selected = uiState.appTheme,
             onSelect = viewModel::saveAppTheme
         )
+    }
+
+    AnimatedVisibility(
+        visible = uiState.appTheme == "liquid_glass",
+        enter = expandVertically(animationSpec = tween(260)) +
+            slideInVertically(animationSpec = tween(260)) { it / 3 } +
+            fadeIn(animationSpec = tween(180)),
+        exit = shrinkVertically(animationSpec = tween(180)) +
+            slideOutVertically(animationSpec = tween(180)) { it / 4 } +
+            fadeOut(animationSpec = tween(130))
+    ) {
+        Column {
+            Spacer(Modifier.height(12.dp))
+            DetailCard {
+                SettingsSliderItem(
+                    icon = Icons.Outlined.Opacity,
+                    label = stringResource(R.string.liquid_glass_transparency),
+                    value = uiState.liquidGlassTransparency,
+                    range = 0f..1f,
+                    valueText = "${(uiState.liquidGlassTransparency * 100).toInt()}%",
+                    onChange = viewModel::saveLiquidGlassTransparency
+                )
+            }
+        }
     }
 
     Spacer(Modifier.height(12.dp))

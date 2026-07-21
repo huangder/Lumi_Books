@@ -43,6 +43,7 @@ class SettingsActivity : ComponentActivity() {
 
         setContent {
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = "lumi")
+            val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = 0.55f)
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
             val predictiveBackEnabled by dataStoreManager.predictiveBackEnabled.collectAsState(initial = true)
             val isDark = when (darkMode) {
@@ -53,7 +54,9 @@ class SettingsActivity : ComponentActivity() {
 
             EBookReaderTheme(
                 darkTheme = isDark,
-                dynamicColor = appTheme == "material3"
+                dynamicColor = appTheme == "material3",
+                appTheme = appTheme,
+                liquidGlassTransparency = liquidGlassTransparency
             ) {
                 com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
                     predictiveBackEnabled = predictiveBackEnabled,

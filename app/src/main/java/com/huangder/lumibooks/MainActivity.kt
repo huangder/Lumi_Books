@@ -206,6 +206,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = "lumi")
+            val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = 0.55f)
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
             val entranceAnimationsEnabled by dataStoreManager.entranceAnimationsEnabled.collectAsState(initial = true)
             val predictiveBackEnabled by dataStoreManager.predictiveBackEnabled.collectAsState(initial = true)
@@ -251,7 +252,9 @@ class MainActivity : ComponentActivity() {
 
             EBookReaderTheme(
                 darkTheme = isDark,
-                dynamicColor = appTheme == "material3"
+                dynamicColor = appTheme == "material3",
+                appTheme = appTheme,
+                liquidGlassTransparency = liquidGlassTransparency
             ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
