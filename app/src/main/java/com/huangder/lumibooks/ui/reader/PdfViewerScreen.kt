@@ -105,11 +105,14 @@ import androidx.core.content.ContextCompat
 import com.huangder.lumibooks.ui.animation.AppEasing
 import com.huangder.lumibooks.ui.animation.cardPressEffect
 import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
+import com.huangder.lumibooks.ui.components.LiquidGlassSurface
+import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.components.materialBottomSheetMotion
 import com.huangder.lumibooks.ui.components.ReaderSystemBarStyle
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
+import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.R
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
@@ -131,6 +134,8 @@ import kotlinx.coroutines.CancellationException
 import androidx.compose.ui.text.font.FontFamily
 import java.io.File
 import java.io.Closeable
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 
 private class PdfRendererHolder(
     val descriptor: ParcelFileDescriptor,
@@ -190,6 +195,8 @@ fun PdfViewerScreen(
     var pendingManualReplace by remember { mutableStateOf(false) }
     var observedActiveConversion by remember { mutableStateOf(false) }
     var pendingModePage by remember { mutableStateOf<Int?>(null) }
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val pdfGlassBackdrop = rememberLayerBackdrop()
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { }
@@ -361,6 +368,7 @@ fun PdfViewerScreen(
         }
     }
 
+    ProvideLiquidGlassBackdrop(pdfGlassBackdrop.takeIf { isLiquidGlass }) {
     Box(
         Modifier
             .fillMaxSize()
@@ -373,6 +381,10 @@ fun PdfViewerScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .then(
+                    if (isLiquidGlass) Modifier.layerBackdrop(pdfGlassBackdrop)
+                    else Modifier
+                )
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() }
@@ -497,25 +509,27 @@ fun PdfViewerScreen(
             )
         }
 
-        // ── 底部渐变遮罩 ──
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(280.dp)
-                .align(Alignment.BottomCenter)
-                .graphicsLayer { alpha = menuAlpha.value }
-                .background(
-                    Brush.verticalGradient(
-                        colorStops = arrayOf(
-                            0.0f to AppColors.WindowBg.copy(alpha = 0f),
-                            0.2f to AppColors.WindowBg.copy(alpha = 0.4f),
-                            0.5f to AppColors.WindowBg.copy(alpha = 0.8f),
-                            0.8f to AppColors.WindowBg.copy(alpha = 0.95f),
-                            1.0f to AppColors.WindowBg
+        // 普通主题使用阅读辅助渐变；液态玻璃直接采样原始书页。
+        if (!isLiquidGlass) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(280.dp)
+                    .align(Alignment.BottomCenter)
+                    .graphicsLayer { alpha = menuAlpha.value }
+                    .background(
+                        Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0.0f to AppColors.WindowBg.copy(alpha = 0f),
+                                0.2f to AppColors.WindowBg.copy(alpha = 0.4f),
+                                0.5f to AppColors.WindowBg.copy(alpha = 0.8f),
+                                0.8f to AppColors.WindowBg.copy(alpha = 0.95f),
+                                1.0f to AppColors.WindowBg
+                            )
                         )
                     )
-                )
-        )
+            )
+        }
 
         // ── 底部胶囊菜单（同时淡入+上移）──
         Box(
@@ -526,12 +540,13 @@ fun PdfViewerScreen(
             PdfBottomMenu(
                 chapterTitle = book?.title ?: "",
                 chapterProgress = if (pageCount > 0) {
-                    (currentPage.toFloat() / pageCount * 100f).coerceIn(0f, 100f)
+                    ((currentPage + 1).toFloat() / pageCount * 100f).coerceIn(0f, 100f)
                 } else {
                     0f
                 },
                 conversionState = conversionState,
                 onConversionClick = {
+                    showMenu = false
                     if (conversionState is PdfConversionState.Running) {
                         conversionSheet = PdfConversionSheet.Progress
                     } else {
@@ -545,7 +560,10 @@ fun PdfViewerScreen(
                         }
                     }
                 },
-                onCatalogClick = { showPdfToc = true },
+                onCatalogClick = {
+                    showMenu = false
+                    showPdfToc = true
+                },
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
@@ -623,6 +641,7 @@ fun PdfViewerScreen(
             )
         }
     }
+    }
 }
 
 // ── 顶部栏（与 EPUB ReaderTopBar 一致，增加 PDF 专属页码显示）──
@@ -637,19 +656,26 @@ private fun PdfTopBar(
     onPageModeToggle: () -> Unit,
     onBookmarkToggle: () -> Unit = {}
 ) {
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(140.dp)
-            .background(
-                Brush.verticalGradient(
-                    colorStops = arrayOf(
-                        0.0f to AppColors.WindowBg,
-                        0.3f to AppColors.WindowBg,
-                        0.6f to AppColors.WindowBg.copy(alpha = 0.85f),
-                        1.0f to AppColors.WindowBg.copy(alpha = 0f)
+            .then(
+                if (isLiquidGlass) {
+                    Modifier
+                } else {
+                    Modifier.background(
+                        Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0.0f to AppColors.WindowBg,
+                                0.3f to AppColors.WindowBg,
+                                0.6f to AppColors.WindowBg.copy(alpha = 0.85f),
+                                1.0f to AppColors.WindowBg.copy(alpha = 0f)
+                            )
+                        )
                     )
-                )
+                }
             )
     ) {
         Row(
@@ -660,30 +686,30 @@ private fun PdfTopBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             // 左侧：返回按钮 + 页码
-            Box(
+            LiquidGlassSurface(
+                shape = CircleShape,
+                fallbackColor = AppColors.BgGray.copy(alpha = 0.8f),
                 modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(AppColors.BgGray.copy(alpha = 0.8f))
-                    .cardPressEffect()
-                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onBack() },
+                    .size(36.dp),
+                onClick = onBack,
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Default.ArrowBack, stringResource(R.string.pdf_back), tint = AppColors.TextPrimary, modifier = Modifier.size(18.dp))
             }
             Spacer(Modifier.width(10.dp))
             // 页码徽章：半透明黑底 + 圆角矩形
-            Box(
+            LiquidGlassSurface(
+                shape = RoundedCornerShape(16.dp),
+                fallbackColor = Color.Black.copy(alpha = 0.35f),
                 modifier = Modifier
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color.Black.copy(alpha = 0.35f))
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                    .height(28.dp)
             ) {
                 Text(
                     text = "${currentPage + 1} / $pageCount",
                     fontSize = 12.sp,
-                    color = Color.White,
-                    fontWeight = FontWeight.Medium
+                    color = if (isLiquidGlass) AppColors.TextPrimary else Color.White,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(horizontal = 12.dp)
                 )
             }
 
@@ -700,16 +726,12 @@ private fun PdfTopBar(
             )
 
             // 阅读方向按钮：只随菜单出现，位于书签左侧。
-            Box(
+            LiquidGlassSurface(
+                shape = CircleShape,
+                fallbackColor = AppColors.BgGray.copy(alpha = 0.8f),
                 modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(AppColors.BgGray.copy(alpha = 0.8f))
-                    .cardPressEffect()
-                    .clickable(
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() }
-                    ) { onPageModeToggle() },
+                    .size(36.dp),
+                onClick = onPageModeToggle,
                 contentAlignment = Alignment.Center
             ) {
                 val isHorizontal = pageMode == "horizontal"
@@ -725,16 +747,12 @@ private fun PdfTopBar(
             Spacer(Modifier.width(8.dp))
 
             // 右侧：书签按钮（与 EPUB ReaderTopBar 完全一致）
-            Box(
+            LiquidGlassSurface(
+                shape = CircleShape,
+                fallbackColor = AppColors.BgGray.copy(alpha = 0.8f),
                 modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(AppColors.BgGray.copy(alpha = 0.8f))
-                    .cardPressEffect()
-                    .clickable(
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() }
-                    ) { onBookmarkToggle() },
+                    .size(36.dp),
+                onClick = onBookmarkToggle,
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -774,52 +792,54 @@ private fun PdfBottomMenu(
 @Composable
 private fun PdfConversionCapsule(conversionState: PdfConversionState, onClick: () -> Unit) {
     val running = conversionState as? PdfConversionState.Running
-    Row(
+    LiquidGlassSurface(
+        shape = RoundedCornerShape(24.dp),
+        fallbackColor = AppColors.BgGray,
         modifier = Modifier
             .fillMaxWidth()
-            .height(48.dp)
-            .clip(RoundedCornerShape(24.dp))
-            .background(AppColors.BgGray)
-            .clickable(
-                indication = null,
-                interactionSource = remember { MutableInteractionSource() }
-            ) { onClick() }
-            .padding(horizontal = 24.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .height(48.dp),
+        onClick = onClick
     ) {
-        if (running != null) {
-            CircularProgressIndicator(
-                progress = { running.progress / 100f },
-                modifier = Modifier.size(18.dp),
-                color = AppColors.Accent,
-                strokeWidth = 2.dp
-            )
-        } else {
-            Icon(
-                Icons.Default.AutoStories,
-                contentDescription = null,
-                tint = AppColors.TextPrimary,
-                modifier = Modifier.size(18.dp)
-            )
-        }
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = if (running == null) {
-                stringResource(R.string.pdf_convert_action)
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 24.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (running != null) {
+                CircularProgressIndicator(
+                    progress = { running.progress / 100f },
+                    modifier = Modifier.size(18.dp),
+                    color = AppColors.Accent,
+                    strokeWidth = 2.dp
+                )
             } else {
-                stringResource(R.string.pdf_convert_running, running.progress)
-            },
-            fontSize = 14.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = AppColors.TextPrimary
-        )
-        if (running != null && running.totalPages > 0) {
-            Spacer(Modifier.weight(1f))
+                Icon(
+                    Icons.Default.AutoStories,
+                    contentDescription = null,
+                    tint = AppColors.TextPrimary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(Modifier.width(8.dp))
             Text(
-                text = "${running.currentPage} / ${running.totalPages}",
-                fontSize = 12.sp,
-                color = AppColors.TextSecondary
+                text = if (running == null) {
+                    stringResource(R.string.pdf_convert_action)
+                } else {
+                    stringResource(R.string.pdf_convert_running, running.progress)
+                },
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = AppColors.TextPrimary
             )
+            if (running != null && running.totalPages > 0) {
+                Spacer(Modifier.weight(1f))
+                Text(
+                    text = "${running.currentPage} / ${running.totalPages}",
+                    fontSize = 12.sp,
+                    color = AppColors.TextSecondary
+                )
+            }
         }
     }
 }
@@ -1306,49 +1326,81 @@ private fun pdfConversionErrorResource(errorCode: String): Int {
 
 @Composable
 private fun PdfCatalogCapsule(title: String, progress: Float, onClick: () -> Unit) {
-    Box(
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    LiquidGlassSurface(
+        shape = RoundedCornerShape(24.dp),
+        fallbackColor = AppColors.BgGray,
         modifier = Modifier
             .fillMaxWidth()
-            .height(48.dp)
-            .clip(RoundedCornerShape(24.dp))
-            .background(AppColors.BgGray)
-            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() }
+            .height(48.dp),
+        onClick = onClick,
+        contentAlignment = Alignment.TopStart
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxHeight()
-                .fillMaxWidth((progress / 100f).coerceIn(0f, 1f))
-                .clip(RoundedCornerShape(24.dp))
-                .background(AppColors.Accent.copy(alpha = 0.8f))
-        )
+        if (isLiquidGlass) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp, vertical = 5.dp)
+                    .height(3.dp)
+                    .clip(CircleShape)
+                    .background(AppColors.TextPrimary.copy(alpha = 0.10f))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth((progress / 100f).coerceIn(0f, 1f))
+                        .clip(CircleShape)
+                        .background(AppColors.Accent.copy(alpha = 0.82f))
+                )
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth((progress / 100f).coerceIn(0f, 1f))
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(AppColors.Accent.copy(alpha = 0.8f))
+            )
+        }
         Row(
             modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Default.Bookmark, null, tint = if (progress > 5f) Color.White else AppColors.TextPrimary, modifier = Modifier.size(18.dp))
+            val foreground = if (isLiquidGlass || progress <= 5f) AppColors.TextPrimary else Color.White
+            Icon(Icons.Default.Bookmark, null, tint = foreground, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.pdf_toc), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = if (progress > 5f) Color.White else AppColors.TextPrimary)
+            Text(stringResource(R.string.pdf_toc), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = foreground)
             Spacer(Modifier.weight(1f))
-            Text(formatReadingProgressPercent(progress), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (progress > 70f) Color.White.copy(alpha = 0.9f) else AppColors.TextSecondary)
+            Text(
+                formatReadingProgressPercent(progress),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (!isLiquidGlass && progress > 70f) Color.White.copy(alpha = 0.9f)
+                else AppColors.TextSecondary
+            )
         }
     }
 }
 
 @Composable
 private fun PdfActionCapsule(icon: ImageVector, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Row(
+    LiquidGlassSurface(
+        shape = RoundedCornerShape(22.dp),
+        fallbackColor = AppColors.BgGray,
         modifier = modifier
-            .height(44.dp)
-            .clip(RoundedCornerShape(22.dp))
-            .background(AppColors.BgGray)
-            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() }
-            .padding(horizontal = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center
+            .height(44.dp),
+        onClick = onClick
     ) {
-        Icon(icon, null, tint = AppColors.TextPrimary, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(6.dp))
-        Text(label, fontSize = 13.sp, color = AppColors.TextPrimary)
+        Row(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(icon, null, tint = AppColors.TextPrimary, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(label, fontSize = 13.sp, color = AppColors.TextPrimary)
+        }
     }
 }
 

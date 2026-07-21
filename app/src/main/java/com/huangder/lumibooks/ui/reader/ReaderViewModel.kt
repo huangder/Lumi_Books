@@ -1243,6 +1243,12 @@ class ReaderViewModel @Inject constructor(
         )
     }
 
+    fun hideMenu() {
+        if (_uiState.value.isMenuVisible) {
+            _uiState.value = _uiState.value.copy(isMenuVisible = false)
+        }
+    }
+
     // -- 书签和笔记 --
 
     fun addBookmark() {

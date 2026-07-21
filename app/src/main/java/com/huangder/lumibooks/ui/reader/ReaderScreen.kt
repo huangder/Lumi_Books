@@ -132,6 +132,8 @@ import com.huangder.lumibooks.ui.animation.AppEasing
 import com.huangder.lumibooks.ui.animation.cardPressEffect
 import com.huangder.lumibooks.ui.components.ConfigurableBackHandler
 import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
+import com.huangder.lumibooks.ui.components.LiquidGlassSurface
+import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.components.materialBottomSheetMotion
 import com.huangder.lumibooks.ui.components.ReaderSystemBarStyle
 import com.huangder.lumibooks.ui.reader.engine.ReadView
@@ -140,6 +142,7 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
+import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.MainActivity
 import com.huangder.lumibooks.ReaderPageDirection
 import com.huangder.lumibooks.ui.theme.KaiTi
@@ -150,6 +153,8 @@ import com.huangder.lumibooks.tts.TtsPlaybackState
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 
 private data class ReaderLinkLocation(
     val chapterIndex: Int,
@@ -511,14 +516,24 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
 
     // 主题背景色
     val composeBgColor = Color(customBackgroundThemeColorInt)
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val readerGlassBackdrop = rememberLayerBackdrop()
     ReaderSystemBarStyle(
         backgroundColor = composeBgColor,
         useDarkIcons = ColorUtils.calculateLuminance(customBackgroundThemeColorInt) >= 0.42
     )
 
     Box(Modifier.fillMaxSize().background(composeBgColor)) {
-        // ── 新 Canvas 引擎（TXT/EPUB） ──
-        if (uiState.useNewEngine) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(
+                    if (isLiquidGlass) Modifier.layerBackdrop(readerGlassBackdrop)
+                    else Modifier
+                )
+        ) {
+            // ── 新 Canvas 引擎（TXT/EPUB） ──
+            if (uiState.useNewEngine) {
             AndroidView(
                 factory = { ctx ->
                     ReadView(ctx).apply {
@@ -744,11 +759,15 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         }
 
         // ── 旧 WebView 路径（PDF） ──
-        if (!uiState.useNewEngine) {
-            LegacyWebViewContent(uiState, viewModel, composeBgColor)
+            if (!uiState.useNewEngine) {
+                LegacyWebViewContent(uiState, viewModel, composeBgColor)
+            }
         }
 
         // ── 覆盖层 UI（新旧引擎共享） ──
+        ProvideLiquidGlassBackdrop(
+            backdrop = readerGlassBackdrop.takeIf { isLiquidGlass }
+        ) {
         if (!uiState.isLoading) {
             AnimatedVisibility(
                 visible = linkReturnLocation != null && !uiState.isMenuVisible && !isAnySheetOpen,
@@ -841,24 +860,26 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     }
                 }
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(220.dp)
-                        .align(Alignment.BottomCenter)
-                        .graphicsLayer { alpha = menuAlpha.value }
-                        .background(
-                            Brush.verticalGradient(
-                                colorStops = arrayOf(
-                                    0.0f to menuBgColor.copy(alpha = 0f),
-                                    0.2f to menuBgColor.copy(alpha = 0.4f),
-                                    0.5f to menuBgColor.copy(alpha = 0.8f),
-                                    0.8f to menuBgColor.copy(alpha = 0.95f),
-                                    1.0f to menuBgColor
+                if (!isLiquidGlass) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(220.dp)
+                            .align(Alignment.BottomCenter)
+                            .graphicsLayer { alpha = menuAlpha.value }
+                            .background(
+                                Brush.verticalGradient(
+                                    colorStops = arrayOf(
+                                        0.0f to menuBgColor.copy(alpha = 0f),
+                                        0.2f to menuBgColor.copy(alpha = 0.4f),
+                                        0.5f to menuBgColor.copy(alpha = 0.8f),
+                                        0.8f to menuBgColor.copy(alpha = 0.95f),
+                                        1.0f to menuBgColor
+                                    )
                                 )
                             )
-                        )
-                )
+                    )
+                }
 
                 // 胶囊菜单
                 Box(modifier = Modifier
@@ -875,10 +896,22 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         capsuleContentColor = capsuleContentColor,
                         readerContentColor = menuContentColor,
                         catalogProgressColor = catalogProgressColor,
-                        onCatalogClick = { showToc = true },
-                        onBookmarkClick = { showNotesList = true },
-                        onSearchClick = { showSearch = true },
-                        onThemeClick = { showThemeSheet = true },
+                        onCatalogClick = {
+                            viewModel.hideMenu()
+                            showToc = true
+                        },
+                        onBookmarkClick = {
+                            viewModel.hideMenu()
+                            showNotesList = true
+                        },
+                        onSearchClick = {
+                            viewModel.hideMenu()
+                            showSearch = true
+                        },
+                        onThemeClick = {
+                            viewModel.hideMenu()
+                            showThemeSheet = true
+                        },
                         modifier = Modifier.align(Alignment.BottomCenter)
                     )
                 }
@@ -941,7 +974,6 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     viewModel.setChapter(idx)
                     showToc = false
                     requestCloseToc = false
-                    viewModel.toggleMenu()
                 },
                 onDismiss = { showToc = false; requestCloseToc = false }
             )
@@ -969,6 +1001,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 onChineseModeChange = { viewModel.saveChineseMode(it) },
                 onPageTransitionChange = { viewModel.savePageTransition(it) },
                 onOpenAdvanced = {
+                    requestCloseTheme = true
                     showAdvancedSheet = true
                 },
                 onDismiss = { showThemeSheet = false; requestCloseTheme = false }
@@ -1069,6 +1102,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 onDismiss = { showAdvancedSheet = false; requestCloseAdvanced = false }
             )
         }
+    }
     }
 
     // ── 笔记/高亮列表 ──
@@ -1288,8 +1322,8 @@ private fun ReaderPageCornerOverlay(
                     )
             )
         }
+        }
     }
-}
 
 @Composable
 private fun ReaderCornerStatusRow(
@@ -1626,6 +1660,7 @@ private fun ReaderTopBar(
     isBookmarked: Boolean = false,
     onBookmarkToggle: () -> Unit = {}
 ) {
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val controlBackground = if (contentColor == Color.White) {
         Color.Black.copy(alpha = 0.28f)
     } else {
@@ -1636,21 +1671,23 @@ private fun ReaderTopBar(
             .fillMaxWidth()
             .height(140.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colorStops = arrayOf(
-                            0.0f to bgColor,
-                            0.3f to bgColor,
-                            0.6f to bgColor.copy(alpha = 0.85f),
-                            0.85f to bgColor.copy(alpha = 0.3f),
-                            1.0f to bgColor.copy(alpha = 0f)
+        if (!isLiquidGlass) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0.0f to bgColor,
+                                0.3f to bgColor,
+                                0.6f to bgColor.copy(alpha = 0.85f),
+                                0.85f to bgColor.copy(alpha = 0.3f),
+                                1.0f to bgColor.copy(alpha = 0f)
+                            )
                         )
                     )
-                )
-        )
+            )
+        }
         Row(
             modifier = Modifier
                 .fillMaxSize()
@@ -1713,16 +1750,12 @@ private fun ReaderTopBarButton(
     backgroundColor: Color,
     onClick: () -> Unit
 ) {
-    Box(
+    LiquidGlassSurface(
+        shape = CircleShape,
+        fallbackColor = backgroundColor,
         modifier = Modifier
-            .size(36.dp)
-            .clip(CircleShape)
-            .background(backgroundColor)
-            .cardPressEffect()
-            .clickable(
-                indication = null,
-                interactionSource = remember { MutableInteractionSource() }
-            ) { onClick() },
+            .size(36.dp),
+        onClick = onClick,
         contentAlignment = Alignment.Center
     ) {
         Icon(
@@ -1874,24 +1907,57 @@ private fun CatalogCapsule(
     progressColor: Color,
     onClick: () -> Unit
 ) {
-    Box(
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    LiquidGlassSurface(
+        shape = RoundedCornerShape(24.dp),
+        fallbackColor = bgColor,
         modifier = Modifier
             .fillMaxWidth()
-            .height(48.dp)
-            .clip(RoundedCornerShape(24.dp))
-            .background(bgColor)
-            .cardPressEffect()
-            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() }
+            .height(48.dp),
+        onClick = onClick,
+        contentAlignment = Alignment.TopStart
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxHeight()
-                .fillMaxWidth((progress / 100f).coerceIn(0f, 1f))
-                .clip(RoundedCornerShape(24.dp))
-                .background(progressColor)
-        )
-        val leftColor = if (progress > 5f) Color.White else contentColor
-        val rightColor = if (progress > 70f) Color.White.copy(alpha = 0.9f) else contentColor.copy(alpha = 0.5f)
+        if (isLiquidGlass) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp, vertical = 5.dp)
+                    .height(3.dp)
+                    .clip(CircleShape)
+                    .background(contentColor.copy(alpha = 0.10f))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth((progress / 100f).coerceIn(0f, 1f))
+                        .clip(CircleShape)
+                        .background(AppColors.Accent.copy(alpha = 0.82f))
+                )
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth((progress / 100f).coerceIn(0f, 1f))
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(progressColor)
+            )
+        }
+        val leftColor = if (isLiquidGlass) {
+            contentColor
+        } else if (progress > 5f) {
+            Color.White
+        } else {
+            contentColor
+        }
+        val rightColor = if (isLiquidGlass) {
+            contentColor.copy(alpha = 0.62f)
+        } else if (progress > 70f) {
+            Color.White.copy(alpha = 0.9f)
+        } else {
+            contentColor.copy(alpha = 0.5f)
+        }
         Row(
             modifier = Modifier
                 .fillMaxSize()
@@ -1916,20 +1982,24 @@ private fun ActionCapsule(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    Row(
+    LiquidGlassSurface(
+        shape = RoundedCornerShape(22.dp),
+        fallbackColor = bgColor,
         modifier = modifier
-            .height(44.dp)
-            .clip(RoundedCornerShape(22.dp))
-            .background(bgColor)
-            .cardPressEffect()
-            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() }
-            .padding(horizontal = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center
+            .height(44.dp),
+        onClick = onClick
     ) {
-        Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(6.dp))
-        Text(label, fontSize = 13.sp, color = contentColor)
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(label, fontSize = 13.sp, color = contentColor)
+        }
     }
 }
 
