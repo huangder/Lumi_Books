@@ -107,6 +107,9 @@ import com.huangder.lumibooks.ui.animation.cardPressEffect
 import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
+import com.huangder.lumibooks.ui.components.animateBottomSheetIn
+import com.huangder.lumibooks.ui.components.animateBottomSheetOut
+import com.huangder.lumibooks.ui.components.liquidGlassSheetSurface
 import com.huangder.lumibooks.ui.components.materialBottomSheetMotion
 import com.huangder.lumibooks.ui.components.ReaderSystemBarStyle
 import com.huangder.lumibooks.ui.theme.AppColors
@@ -890,14 +893,14 @@ private fun PdfConversionBottomSheet(
 
     LaunchedEffect(Unit) {
         offset.snapTo(1f)
-        offset.animateTo(0f, tween(300, easing = FastOutSlowInEasing))
+        offset.animateBottomSheetIn()
     }
 
     fun closeThen(action: () -> Unit = {}) {
         if (isClosing) return
         isClosing = true
         scope.launch {
-            offset.animateTo(1f, tween(240, easing = FastOutSlowInEasing))
+            offset.animateBottomSheetOut()
             onDismiss()
             action()
         }
@@ -933,10 +936,9 @@ private fun PdfConversionBottomSheet(
                 .fillMaxWidth()
                 .heightIn(max = LocalConfiguration.current.screenHeightDp.dp * 0.85f)
                 .materialBottomSheetMotion(offset.value, predictiveBackProgress)
-                .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .background(
-                    AppColors.CardBg,
-                    RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+                .liquidGlassSheetSurface(
+                    fallbackColor = AppColors.CardBg,
+                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
                 )
                 .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
@@ -1519,13 +1521,13 @@ private fun PdfTocSheet(
     LaunchedEffect(visible) {
         if (visible) {
             sheetOffset.snapTo(1f)
-            sheetOffset.animateTo(0f, tween(300, easing = FastOutSlowInEasing))
+            sheetOffset.animateBottomSheetIn()
         }
     }
 
     LaunchedEffect(isClosing) {
         if (isClosing) {
-            sheetOffset.animateTo(1f, tween(250, easing = FastOutSlowInEasing))
+            sheetOffset.animateBottomSheetOut()
             pendingPage?.let { onPageSelected(it) }
             pendingPage = null
             onDismiss()
@@ -1558,7 +1560,11 @@ private fun PdfTocSheet(
         Box(
             Modifier
                 .fillMaxSize()
-                .background(AppColors.Scrim.copy(alpha = 0.24f))
+                .background(
+                    AppColors.Scrim.copy(
+                        alpha = 0.24f * (1f - sheetOffset.value.coerceIn(0f, 1f))
+                    )
+                )
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                     isClosing = true
                 }
@@ -1571,8 +1577,10 @@ private fun PdfTocSheet(
                 .fillMaxWidth()
                 .fillMaxHeight(0.7f)
                 .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress)
-                .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .background(AppColors.CardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .liquidGlassSheetSurface(
+                    fallbackColor = AppColors.CardBg,
+                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+                )
                 .navigationBarsPadding()
                 .padding(24.dp)
         ) {

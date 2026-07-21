@@ -126,14 +126,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
 import com.huangder.lumibooks.ui.animation.AppEasing
 import com.huangder.lumibooks.ui.animation.cardPressEffect
 import com.huangder.lumibooks.ui.components.ConfigurableBackHandler
 import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
+import com.huangder.lumibooks.ui.components.animateBottomSheetIn
+import com.huangder.lumibooks.ui.components.animateBottomSheetOut
+import com.huangder.lumibooks.ui.components.liquidGlassSheetSurface
 import com.huangder.lumibooks.ui.components.materialBottomSheetMotion
 import com.huangder.lumibooks.ui.components.ReaderSystemBarStyle
 import com.huangder.lumibooks.ui.reader.engine.ReadView
@@ -150,6 +151,7 @@ import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
 import com.huangder.lumibooks.tts.TtsPlaybackState
+import com.kyant.backdrop.Backdrop
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -944,7 +946,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
 
             AnimatedVisibility(
                 visible = uiState.ttsActiveBookId == uiState.book?.id &&
-                    uiState.ttsPlaybackState != TtsPlaybackState.IDLE,
+                    uiState.ttsPlaybackState != TtsPlaybackState.IDLE &&
+                    !isAnySheetOpen,
                 enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
                 exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
                 modifier = Modifier
@@ -1112,6 +1115,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     NotesListSheet(
         visible = showNotesList,
         requestClose = requestCloseNotesList,
+        glassBackdrop = readerGlassBackdrop.takeIf { isLiquidGlass },
         notes = viewModel.notes.collectAsState().value,
         bookmarks = bookmarks,
         onNoteClick = { note ->
@@ -1134,6 +1138,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     SelectionMenuOverlay(
         state = selectionState,
         readerTheme = uiState.readerTheme,
+        glassBackdrop = readerGlassBackdrop.takeIf { isLiquidGlass },
         isDragging = isSelectionDragging,
         reappearKey = menuReappearKey,
         showColorPicker = showHighlightColorPicker,
@@ -1238,6 +1243,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     // 🔥 笔记输入弹窗（自定义菜单触发"笔记"时弹出）
     NoteInputSheet(
         visible = showNoteInput,
+        requestClose = requestCloseNoteInput,
+        glassBackdrop = readerGlassBackdrop.takeIf { isLiquidGlass },
         initialText = noteInputText,
         onTextChange = { noteInputText = it },
         onConfirm = {
@@ -1259,12 +1266,12 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 )
                 pendingSelection = null
             }
-            showNoteInput = false
             noteInputText = ""
             readViewRef.value?.curPageView?.clearSelection()
         },
-        onCancel = {
+        onDismiss = {
             showNoteInput = false
+            requestCloseNoteInput = false
             pendingSelection = null
             editingNote = null
             noteInputText = ""
@@ -2061,7 +2068,7 @@ private fun TocSheet(
     LaunchedEffect(visible) {
         if (visible) {
             sheetOffset.snapTo(1f)
-            sheetOffset.animateTo(0f, tween(300, easing = FastOutSlowInEasing))
+            sheetOffset.animateBottomSheetIn()
         }
     }
 
@@ -2078,7 +2085,7 @@ private fun TocSheet(
 
     LaunchedEffect(isClosing) {
         if (isClosing) {
-            sheetOffset.animateTo(1f, tween(250, easing = FastOutSlowInEasing))
+            sheetOffset.animateBottomSheetOut()
             pendingJumpIndex?.let { onChapterSelected(it) }
             pendingJumpIndex = null
             onDismiss()
@@ -2089,7 +2096,11 @@ private fun TocSheet(
         // 遮罩
         Box(
             Modifier.fillMaxSize()
-                .background(AppColors.Scrim.copy(alpha = 0.20f))
+                .background(
+                    AppColors.Scrim.copy(
+                        alpha = 0.20f * (1f - sheetOffset.value.coerceIn(0f, 1f))
+                    )
+                )
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { isClosing = true }
         )
 
@@ -2099,8 +2110,10 @@ private fun TocSheet(
                 .fillMaxWidth()
                 .fillMaxHeight(0.7f)
                 .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress)
-                .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .background(AppColors.CardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .liquidGlassSheetSurface(
+                    fallbackColor = AppColors.CardBg,
+                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+                )
                 .navigationBarsPadding()
                 .padding(24.dp)
         ) {
@@ -2211,7 +2224,7 @@ private fun SearchSheet(
     LaunchedEffect(visible) {
         if (visible) {
             sheetOffset.snapTo(1f)
-            sheetOffset.animateTo(0f, tween(300, easing = FastOutSlowInEasing))
+            sheetOffset.animateBottomSheetIn()
         }
     }
 
@@ -2227,7 +2240,7 @@ private fun SearchSheet(
 
     LaunchedEffect(isClosing) {
         if (isClosing) {
-            sheetOffset.animateTo(1f, tween(250, easing = FastOutSlowInEasing))
+            sheetOffset.animateBottomSheetOut()
             onDismiss()
         }
     }
@@ -2236,7 +2249,11 @@ private fun SearchSheet(
         // 遮罩
         Box(
             Modifier.fillMaxSize()
-                .background(AppColors.Scrim.copy(alpha = 0.20f))
+                .background(
+                    AppColors.Scrim.copy(
+                        alpha = 0.20f * (1f - sheetOffset.value.coerceIn(0f, 1f))
+                    )
+                )
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { isClosing = true }
         )
 
@@ -2245,8 +2262,10 @@ private fun SearchSheet(
             Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress)
-                .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .background(AppColors.CardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .liquidGlassSheetSurface(
+                    fallbackColor = AppColors.CardBg,
+                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+                )
                 .imePadding()
                 .navigationBarsPadding()
                 .padding(24.dp)
@@ -2431,6 +2450,7 @@ private fun findOverlappingNote(
 private fun SelectionMenuOverlay(
     state: SelectionState?,
     readerTheme: String,
+    glassBackdrop: Backdrop? = null,
     isDragging: Boolean,
     reappearKey: Int,
     showColorPicker: Boolean = false,
@@ -2473,7 +2493,7 @@ private fun SelectionMenuOverlay(
     // ── 宽度动画：操作菜单 360dp ↔ 颜色选择器 460dp ──
     val animMenuWidthDp by animateDpAsState(
         targetValue = if (showColorPicker) 380.dp else 360.dp,
-        animationSpec = tween(200, easing = FastOutSlowInEasing),
+        animationSpec = spring(dampingRatio = 0.76f, stiffness = 380f),
         label = "menuWidth"
     )
 
@@ -2514,33 +2534,33 @@ private fun SelectionMenuOverlay(
         contentAlpha.animateTo(1f, tween(150))
     }
 
-    Popup(
-        alignment = Alignment.TopStart,
-        offset = IntOffset(menuX.toInt(), menuY.toInt()),
-        properties = PopupProperties(
-            focusable = false,
-            dismissOnBackPress = false,
-            dismissOnClickOutside = false
-        )
-    ) {
-        Row(
+    Box(Modifier.fillMaxSize()) {
+        LiquidGlassSurface(
+            shape = RoundedCornerShape(22.dp),
+            fallbackColor = menuBg,
+            backdrop = glassBackdrop,
+            contentScrimColor = menuBg.copy(alpha = 0.18f),
             modifier = Modifier
+                .offset { IntOffset(menuX.toInt(), menuY.toInt()) }
+                .width(animMenuWidthDp)
+                .height(52.dp)
                 .graphicsLayer {
                     scaleX = enterScale.value
                     scaleY = enterScale.value
                     translationY = enterTranslateY.value
                     alpha = enterAlpha.value * contentAlpha.value
                     transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
-                }
-                .clip(RoundedCornerShape(22.dp))
-                .background(menuBg)
-                .padding(
-                    horizontal = if (showColorPicker) 12.dp else 4.dp,
-                    vertical = 12.dp
-                ),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = if (showColorPicker) Arrangement.Center else Arrangement.Start
+                },
+            contentAlignment = Alignment.Center
         ) {
+            Row(
+                modifier = Modifier.padding(
+                    horizontal = if (showColorPicker) 12.dp else 4.dp,
+                    vertical = 8.dp
+                ),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = if (showColorPicker) Arrangement.Center else Arrangement.Start
+            ) {
             if (showColorPicker) {
                 // 颜色选择子菜单：6个色块圆点，手动 Spacer 控制间距
                 highlightColors.forEachIndexed { index, (hex, color) ->
@@ -2624,6 +2644,8 @@ private fun SelectionMenuOverlay(
     }
 }
 
+}
+
 @Composable
 private fun MenuDivider(color: Color) {
     Box(
@@ -2652,32 +2674,46 @@ private fun MenuChip(label: String, textColor: Color, onClick: () -> Unit) {
 @Composable
 private fun NoteInputSheet(
     visible: Boolean,
+    requestClose: Boolean = false,
+    glassBackdrop: Backdrop? = null,
     initialText: String,
     onTextChange: (String) -> Unit,
     onConfirm: () -> Unit,
-    onCancel: () -> Unit
+    onDismiss: () -> Unit
 ) {
     if (!visible) return
 
-    val sheetAlpha = remember { Animatable(0f) }
     val sheetOffset = remember { Animatable(1f) }
-    val predictiveBackProgress = ConfigurableBottomSheetBackHandler(onBack = onCancel)
+    var isClosing by remember { mutableStateOf(false) }
+    val predictiveBackProgress = ConfigurableBottomSheetBackHandler { isClosing = true }
 
     LaunchedEffect(visible) {
         if (visible) {
-            coroutineScope {
-                launch { sheetAlpha.animateTo(1f, tween(250)) }
-                launch { sheetOffset.snapTo(1f); sheetOffset.animateTo(0f, tween(300, easing = AppEasing.Smooth)) }
-            }
+            sheetOffset.snapTo(1f)
+            sheetOffset.animateBottomSheetIn()
+        }
+    }
+
+    LaunchedEffect(requestClose) {
+        if (requestClose && !isClosing) isClosing = true
+    }
+
+    LaunchedEffect(isClosing) {
+        if (isClosing) {
+            sheetOffset.animateBottomSheetOut()
+            onDismiss()
         }
     }
 
     Box(Modifier.fillMaxSize()) {
         Box(
             Modifier.fillMaxSize()
-                .graphicsLayer { alpha = sheetAlpha.value }
-                .background(AppColors.Scrim.copy(alpha = 0.20f))
-                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onCancel() }
+                .background(
+                    AppColors.Scrim.copy(
+                        alpha = 0.20f * (1f - sheetOffset.value.coerceIn(0f, 1f))
+                    )
+                )
+                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { isClosing = true }
         )
 
         Box(
@@ -2686,23 +2722,28 @@ private fun NoteInputSheet(
                 .fillMaxHeight(0.6f)
                 .materialBottomSheetMotion(
                     entryOffset = sheetOffset.value,
-                    predictiveBackProgress = predictiveBackProgress,
-                    alpha = sheetAlpha.value
+                    predictiveBackProgress = predictiveBackProgress
                 )
-                .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .background(AppColors.CardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .liquidGlassSheetSurface(
+                    fallbackColor = AppColors.CardBg,
+                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                    backdrop = glassBackdrop
+                )
                 .padding(bottom = 16.dp)
                 .padding(AppSpace.lg)
         ) {
             Column {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Box(
-                        modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.BgGray).clickable { onCancel() },
+                        modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.BgGray).clickable { isClosing = true },
                         contentAlignment = Alignment.Center
                     ) { Icon(Icons.Default.Close, stringResource(R.string.cancel), tint = AppColors.TextSecondary, modifier = Modifier.size(18.dp)) }
                     Text(stringResource(R.string.reader_notes), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = KaiTi, color = AppColors.TextPrimary, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
                     Box(
-                        modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.Accent.copy(alpha = 0.15f)).clickable { onConfirm() },
+                        modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.Accent.copy(alpha = 0.15f)).clickable {
+                            onConfirm()
+                            isClosing = true
+                        },
                         contentAlignment = Alignment.Center
                     ) { Text("✓", fontSize = 16.sp, color = AppColors.Accent) }
                 }
@@ -2742,6 +2783,7 @@ private val LightCardBg: Color @Composable get() = AppColors.CardBg
 private fun NotesListSheet(
     visible: Boolean,
     requestClose: Boolean = false,
+    glassBackdrop: Backdrop? = null,
     notes: List<com.huangder.lumibooks.domain.model.Note>,
     bookmarks: List<com.huangder.lumibooks.domain.model.Bookmark> = emptyList(),
     onNoteClick: (com.huangder.lumibooks.domain.model.Note) -> Unit,
@@ -2757,7 +2799,7 @@ private fun NotesListSheet(
     LaunchedEffect(visible) {
         if (visible) {
             sheetOffset.snapTo(1f)
-            sheetOffset.animateTo(0f, tween(300, easing = FastOutSlowInEasing))
+            sheetOffset.animateBottomSheetIn()
         }
     }
 
@@ -2774,7 +2816,7 @@ private fun NotesListSheet(
 
     LaunchedEffect(isClosing) {
         if (isClosing) {
-            sheetOffset.animateTo(1f, tween(250, easing = FastOutSlowInEasing))
+            sheetOffset.animateBottomSheetOut()
             pendingJumpNote?.let { onNoteClick(it) }
             pendingJumpNote = null
             onDismiss()
@@ -2792,7 +2834,11 @@ private fun NotesListSheet(
         // 遮罩层：有滑开项时先关闭滑开项，否则关闭整个弹窗
         Box(
             Modifier.fillMaxSize()
-                .background(AppColors.Scrim.copy(alpha = 0.20f))
+                .background(
+                    AppColors.Scrim.copy(
+                        alpha = 0.20f * (1f - sheetOffset.value.coerceIn(0f, 1f))
+                    )
+                )
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                     if (anyItemRevealed) resetRevealedKey = resetRevealedKey + 1 else isClosing = true
                 }
@@ -2804,8 +2850,11 @@ private fun NotesListSheet(
                 .fillMaxWidth()
                 .fillMaxHeight(0.6f)
                 .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress)
-                .background(LightCardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .border(0.5.dp, AppColors.Divider, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .liquidGlassSheetSurface(
+                    fallbackColor = LightCardBg,
+                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                    backdrop = glassBackdrop
+                )
                 .navigationBarsPadding()
                 .padding(24.dp)
         ) {

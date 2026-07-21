@@ -67,8 +67,6 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -99,6 +97,7 @@ import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.FangSong
+import com.huangder.lumibooks.ui.components.LiquidGlassSwitch
 
 // ─── 详情页通用框架 ──────────────────────────────────────────
 
@@ -255,17 +254,9 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
                 color = AppColors.TextPrimary,
                 modifier = Modifier.weight(1f)
             )
-            Switch(
+            LiquidGlassSwitch(
                 checked = uiState.predictiveBackEnabled,
-                onCheckedChange = viewModel::savePredictiveBackEnabled,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = AppColors.OnAccent,
-                    checkedTrackColor = AppColors.Accent,
-                    checkedBorderColor = AppColors.Accent,
-                    uncheckedThumbColor = AppColors.TextSecondary,
-                    uncheckedTrackColor = AppColors.BgGray,
-                    uncheckedBorderColor = AppColors.Divider
-                )
+                onCheckedChange = viewModel::savePredictiveBackEnabled
             )
         }
     }
@@ -300,17 +291,9 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
                 )
             }
             Spacer(Modifier.width(12.dp))
-            Switch(
+            LiquidGlassSwitch(
                 checked = uiState.entranceAnimationsEnabled,
-                onCheckedChange = viewModel::saveEntranceAnimationsEnabled,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = AppColors.OnAccent,
-                    checkedTrackColor = AppColors.Accent,
-                    checkedBorderColor = AppColors.Accent,
-                    uncheckedThumbColor = AppColors.TextSecondary,
-                    uncheckedTrackColor = AppColors.BgGray,
-                    uncheckedBorderColor = AppColors.Divider
-                )
+                onCheckedChange = viewModel::saveEntranceAnimationsEnabled
             )
         }
     }
@@ -338,17 +321,9 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
                 color = AppColors.TextPrimary,
                 modifier = Modifier.weight(1f)
             )
-            Switch(
+            LiquidGlassSwitch(
                 checked = uiState.splashEnabled,
-                onCheckedChange = null,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = Color.White,
-                    checkedTrackColor = AppColors.Accent,
-                    checkedBorderColor = AppColors.Accent,
-                    uncheckedThumbColor = AppColors.TextSecondary,
-                    uncheckedTrackColor = AppColors.BgGray,
-                    uncheckedBorderColor = AppColors.Divider
-                )
+                onCheckedChange = null
             )
         }
     }

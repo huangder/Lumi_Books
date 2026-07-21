@@ -340,10 +340,9 @@ fun FloatingTabBar(
             }
 
             if (isLiquidGlass && liquidGlassBackdrop != null) {
-                Row(
+                Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = contentPadding)
                         .clearAndSetSemantics {}
                         .alpha(0f)
                         .layerBackdrop(tintedTabsBackdrop)
@@ -361,19 +360,25 @@ fun FloatingTabBar(
                             },
                             onDrawSurface = { drawRect(liquidSurfaceColor) }
                         )
-                        .graphicsLayer(colorFilter = ColorFilter.tint(accent)),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
+                        .graphicsLayer(colorFilter = ColorFilter.tint(accent))
                 ) {
-                    tabs.forEachIndexed { index, tab ->
-                        TabItemView(
-                            tab = tab,
-                            isSelected = index == currentIndex,
-                            liquidGlass = true,
-                            interactive = false,
-                            onClick = {},
-                            modifier = Modifier.weight(1f)
-                        )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = contentPadding),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        tabs.forEachIndexed { index, tab ->
+                            TabItemView(
+                                tab = tab,
+                                isSelected = index == currentIndex,
+                                liquidGlass = true,
+                                interactive = false,
+                                onClick = {},
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
                     }
                 }
             }

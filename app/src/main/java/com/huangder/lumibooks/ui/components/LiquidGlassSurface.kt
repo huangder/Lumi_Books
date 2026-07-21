@@ -9,6 +9,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -17,10 +19,12 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
@@ -51,7 +55,9 @@ fun Modifier.liquidGlassBackdrop(
     transparency: Float,
     contentScrimColor: Color = Color.Transparent,
     pressProgress: Float = 0f,
-    scaleOnPress: Boolean = true
+    scaleOnPress: Boolean = true,
+    outlineWidth: Dp = 0.8.dp,
+    highlightAlpha: Float = 0.18f
 ): Modifier {
     val surfaceColor = if (isDark) {
         Color(0xFF101012).copy(alpha = 0.34f - transparency * 0.24f)
@@ -92,7 +98,7 @@ fun Modifier.liquidGlassBackdrop(
             scaleY = scale
         },
         highlight = {
-            Highlight.Default.copy(alpha = 0.18f + pressProgress * 0.46f)
+            Highlight.Default.copy(alpha = highlightAlpha + pressProgress * 0.46f)
         },
         shadow = {
             Shadow(
@@ -121,7 +127,69 @@ fun Modifier.liquidGlassBackdrop(
                 )
             }
         }
-    ).border(0.8.dp, borderBrush, shape)
+    ).border(outlineWidth, borderBrush, shape)
+}
+
+@Composable
+fun Modifier.liquidGlassSheetSurface(
+    fallbackColor: Color,
+    shape: Shape,
+    backdrop: Backdrop? = null
+): Modifier {
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val isDark = LocalIsDarkTheme.current
+    val transparency = LocalLiquidGlassTransparency.current
+    val activeBackdrop = backdrop ?: LocalLiquidGlassBackdrop.current
+
+    return if (isLiquidGlass) {
+        val floatingShape = RoundedCornerShape(28.dp)
+        val sheetTransparency = (transparency - 0.10f).coerceIn(0f, 0.90f)
+        val scrimAlpha = (0.81f - sheetTransparency * 0.25f).coerceIn(0.58f, 0.81f)
+        val floatingSurface = padding(start = 14.dp, end = 14.dp, bottom = 12.dp)
+            .shadow(
+                elevation = 22.dp,
+                shape = floatingShape,
+                clip = false,
+                ambientColor = Color.Black.copy(alpha = if (isDark) 0.28f else 0.18f),
+                spotColor = Color.Black.copy(alpha = if (isDark) 0.40f else 0.30f)
+            )
+
+        if (activeBackdrop != null) {
+            floatingSurface.liquidGlassBackdrop(
+                backdrop = activeBackdrop,
+                shape = floatingShape,
+                isDark = isDark,
+                transparency = sheetTransparency,
+                contentScrimColor = fallbackColor.copy(alpha = scrimAlpha),
+                scaleOnPress = false,
+                outlineWidth = 1.1.dp,
+                highlightAlpha = 0.30f
+            )
+        } else {
+            floatingSurface
+                .clip(floatingShape)
+                .background(fallbackColor)
+                .border(
+                    width = 1.1.dp,
+                    brush = Brush.verticalGradient(
+                        listOf(
+                            Color.White.copy(alpha = if (isDark) 0.34f else 0.88f),
+                            Color.White.copy(alpha = if (isDark) 0.08f else 0.22f)
+                        )
+                    ),
+                    shape = floatingShape
+                )
+        }
+    } else {
+        shadow(
+            elevation = 24.dp,
+            shape = shape,
+            ambientColor = Color.Black.copy(alpha = 0.12f),
+            spotColor = Color.Black.copy(alpha = 0.16f)
+        )
+            .clip(shape)
+            .background(fallbackColor)
+    }
 }
 
 @Composable
