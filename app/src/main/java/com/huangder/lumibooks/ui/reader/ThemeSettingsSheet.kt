@@ -15,6 +15,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -54,6 +55,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Color
@@ -71,12 +73,19 @@ import androidx.core.graphics.ColorUtils
 import com.huangder.lumibooks.ui.theme.FangSong
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.AppColors
+import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
+import com.huangder.lumibooks.ui.theme.LocalLiquidGlassTransparency
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
 import com.huangder.lumibooks.domain.model.ReaderPageCorner
 import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
+import com.huangder.lumibooks.ui.components.LiquidGlassSwitch
+import com.huangder.lumibooks.ui.components.animateBottomSheetIn
+import com.huangder.lumibooks.ui.components.animateBottomSheetOut
+import com.huangder.lumibooks.ui.components.liquidGlassSheetSurface
 import com.huangder.lumibooks.ui.components.materialBottomSheetMotion
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.coroutineScope
@@ -135,7 +144,7 @@ fun ThemeSettingsSheet(
     LaunchedEffect(visible) {
         if (visible) {
             sheetOffset.snapTo(1f)
-            sheetOffset.animateTo(0f, tween(300, easing = FastOutSlowInEasing))
+            sheetOffset.animateBottomSheetIn()
         }
     }
 
@@ -151,7 +160,7 @@ fun ThemeSettingsSheet(
 
     LaunchedEffect(isClosing) {
         if (isClosing) {
-            sheetOffset.animateTo(1f, tween(250, easing = FastOutSlowInEasing))
+            sheetOffset.animateBottomSheetOut()
             onDismiss()
         }
     }
@@ -163,7 +172,11 @@ fun ThemeSettingsSheet(
         // 遮罩
         Box(
             Modifier.fillMaxSize()
-                .background(AppColors.Scrim.copy(alpha = 0.20f))
+                .background(
+                    AppColors.Scrim.copy(
+                        alpha = 0.20f * (1f - sheetOffset.value.coerceIn(0f, 1f))
+                    )
+                )
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { isClosing = true }
         )
 
@@ -172,8 +185,10 @@ fun ThemeSettingsSheet(
             Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress)
-                .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .background(LightCardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .liquidGlassSheetSurface(
+                    fallbackColor = LightCardBg,
+                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+                )
                 .navigationBarsPadding()
                 .padding(start = 24.dp, top = 24.dp, bottom = 24.dp)
                 .verticalScroll(rememberScrollState())
@@ -365,16 +380,9 @@ fun ThemeSettingsSheet(
                     Spacer(Modifier.height(2.dp))
                     Text(stringResource(R.string.optimize_layout_hint), fontSize = 12.sp, color = LightTextSecondary)
                 }
-                androidx.compose.material3.Switch(
+                LiquidGlassSwitch(
                     checked = currentOptimizeLayout,
-                    onCheckedChange = onOptimizeLayoutChange,
-                    colors = androidx.compose.material3.SwitchDefaults.colors(
-                        checkedThumbColor = AppColors.OnAccent,
-                        checkedTrackColor = AppColors.Accent,
-                        uncheckedThumbColor = AppColors.TextSecondary,
-                        uncheckedTrackColor = AppColors.BgGray,
-                        uncheckedBorderColor = AppColors.Divider
-                    )
+                    onCheckedChange = onOptimizeLayoutChange
                 )
             }
 
@@ -853,7 +861,7 @@ fun AdvancedSettingsSheet(
         if (visible) {
             settingsScrollState.scrollTo(0)
             sheetOffset.snapTo(1f)
-            sheetOffset.animateTo(0f, tween(300, easing = FastOutSlowInEasing))
+            sheetOffset.animateBottomSheetIn()
         }
     }
 
@@ -869,7 +877,7 @@ fun AdvancedSettingsSheet(
 
     LaunchedEffect(isClosing) {
         if (isClosing) {
-            sheetOffset.animateTo(1f, tween(250, easing = FastOutSlowInEasing))
+            sheetOffset.animateBottomSheetOut()
             onDismiss()
         }
     }
@@ -894,7 +902,11 @@ fun AdvancedSettingsSheet(
         // 遮罩
         Box(
             Modifier.fillMaxSize()
-                .background(AppColors.Scrim.copy(alpha = 0.20f))
+                .background(
+                    AppColors.Scrim.copy(
+                        alpha = 0.20f * (1f - sheetOffset.value.coerceIn(0f, 1f))
+                    )
+                )
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { isClosing = true }
         )
 
@@ -904,9 +916,10 @@ fun AdvancedSettingsSheet(
                 .fillMaxWidth()
                 .fillMaxHeight(0.90f)
                 .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress)
-                .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .background(LightCardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .liquidGlassSheetSurface(
+                    fallbackColor = LightCardBg,
+                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+                )
                 .navigationBarsPadding()
         ) {
             // 顶部预览区域：背景直接铺到容器顶部，操作按钮悬浮在预览之上。
@@ -999,76 +1012,71 @@ fun AdvancedSettingsSheet(
                     .verticalScroll(settingsScrollState)
                     .padding(start = 24.dp, top = 16.dp, end = 24.dp, bottom = 24.dp)
             ) {
-                TextColorSetting(
-                    currentOverride = currentTextColorOverride,
-                    effectiveTextColor = currentTextColor,
-                    onColorChange = onTextColorChange
-                )
+                AdvancedSettingsGroup {
+                    TextColorSetting(
+                        currentOverride = currentTextColorOverride,
+                        effectiveTextColor = currentTextColor,
+                        onColorChange = onTextColorChange
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+
+                AdvancedSettingsGroup {
+                    SettingSlider(stringResource(R.string.label_line_height), currentLineHeight, 1.0f..2.5f, 0.1f, { String.format("%.1fx", it) }, onLineHeightChange)
+                    Spacer(Modifier.height(12.dp))
+                    SettingSlider(stringResource(R.string.label_letter_spacing), currentLetterSpacing, 0f..10f, 0.5f, { String.format("%.1f sp", it) }, onLetterSpacingChange)
+                    Spacer(Modifier.height(12.dp))
+                    SettingSlider(
+                        stringResource(R.string.label_paragraph_spacing),
+                        currentParagraphSpacing,
+                        0f..30f,
+                        0.5f,
+                        {
+                            if (it % 1f == 0f) "${it.toInt()} dp"
+                            else String.format("%.1f dp", it)
+                        },
+                        onParagraphSpacingChange
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    SettingSlider(stringResource(R.string.label_first_line_indent), currentFirstLineIndent, 0f..4f, 0.5f, { "${it} 字符" }, onFirstLineIndentChange)
+                }
+                Spacer(Modifier.height(12.dp))
+
+                AdvancedSettingsGroup {
+                    SettingSlider(stringResource(R.string.label_margin_top), currentMarginTop, 0f..120f, 2f, { "${it.toInt()} dp" }, onMarginTopChange)
+                    Spacer(Modifier.height(12.dp))
+                    SettingSlider(stringResource(R.string.label_margin_bottom), currentMarginBottom, 0f..120f, 2f, { "${it.toInt()} dp" }, onMarginBottomChange)
+                    Spacer(Modifier.height(12.dp))
+                    SettingSlider(stringResource(R.string.label_margin_left), currentMarginLeft, 0f..80f, 2f, { "${it.toInt()} dp" }, onMarginLeftChange)
+                    Spacer(Modifier.height(12.dp))
+                    SettingSlider(stringResource(R.string.label_margin_right), currentMarginRight, 0f..80f, 2f, { "${it.toInt()} dp" }, onMarginRightChange)
+                }
+                Spacer(Modifier.height(12.dp))
+
+                AdvancedSettingsGroup {
+                    ReaderCornerLayoutSettings(
+                        topLeft = readerTopLeftContent,
+                        topRight = readerTopRightContent,
+                        bottomLeft = readerBottomLeftContent,
+                        bottomRight = readerBottomRightContent,
+                        onContentChange = onReaderCornerContentChange
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    AdvancedToggleRow(
+                        title = stringResource(R.string.volume_key_page_turn),
+                        hint = stringResource(R.string.volume_key_page_turn_hint),
+                        checked = volumeKeyPageTurnEnabled,
+                        onCheckedChange = onVolumeKeyPageTurnEnabledChange
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+
+                AdvancedSettingsGroup {
+                    Text(stringResource(R.string.font_label), fontSize = 14.sp, color = LightTextSecondary)
+                    Spacer(Modifier.height(12.dp))
+                    FontSelector(currentFont = currentFontType, customFontPath = customFontPath, onFontChange = onFontTypeChange, onImportFont = onImportFont)
+                }
                 Spacer(Modifier.height(16.dp))
-
-                // 行距
-                SettingSlider(stringResource(R.string.label_line_height), currentLineHeight, 1.0f..2.5f, 0.1f, { String.format("%.1fx", it) }, onLineHeightChange)
-                Spacer(Modifier.height(12.dp))
-
-                // 字间距
-                SettingSlider(stringResource(R.string.label_letter_spacing), currentLetterSpacing, 0f..10f, 0.5f, { String.format("%.1f sp", it) }, onLetterSpacingChange)
-                Spacer(Modifier.height(12.dp))
-
-                // 上边距
-                SettingSlider(stringResource(R.string.label_margin_top), currentMarginTop, 0f..120f, 2f, { "${it.toInt()} dp" }, onMarginTopChange)
-                Spacer(Modifier.height(12.dp))
-
-                // 下边距
-                SettingSlider(stringResource(R.string.label_margin_bottom), currentMarginBottom, 0f..120f, 2f, { "${it.toInt()} dp" }, onMarginBottomChange)
-                Spacer(Modifier.height(12.dp))
-
-                // 左边距
-                SettingSlider(stringResource(R.string.label_margin_left), currentMarginLeft, 0f..80f, 2f, { "${it.toInt()} dp" }, onMarginLeftChange)
-                Spacer(Modifier.height(12.dp))
-
-                // 右边距
-                SettingSlider(stringResource(R.string.label_margin_right), currentMarginRight, 0f..80f, 2f, { "${it.toInt()} dp" }, onMarginRightChange)
-                Spacer(Modifier.height(12.dp))
-
-                // 段间距
-                SettingSlider(
-                    stringResource(R.string.label_paragraph_spacing),
-                    currentParagraphSpacing,
-                    0f..30f,
-                    0.5f,
-                    {
-                        if (it % 1f == 0f) "${it.toInt()} dp"
-                        else String.format("%.1f dp", it)
-                    },
-                    onParagraphSpacingChange
-                )
-                Spacer(Modifier.height(12.dp))
-
-                // 首行缩进
-                SettingSlider(stringResource(R.string.label_first_line_indent), currentFirstLineIndent, 0f..4f, 0.5f, { "${it} 字符" }, onFirstLineIndentChange)
-                Spacer(Modifier.height(16.dp))
-
-                ReaderCornerLayoutSettings(
-                    topLeft = readerTopLeftContent,
-                    topRight = readerTopRightContent,
-                    bottomLeft = readerBottomLeftContent,
-                    bottomRight = readerBottomRightContent,
-                    onContentChange = onReaderCornerContentChange
-                )
-                Spacer(Modifier.height(16.dp))
-                AdvancedToggleRow(
-                    title = stringResource(R.string.volume_key_page_turn),
-                    hint = stringResource(R.string.volume_key_page_turn_hint),
-                    checked = volumeKeyPageTurnEnabled,
-                    onCheckedChange = onVolumeKeyPageTurnEnabledChange
-                )
-                Spacer(Modifier.height(20.dp))
-
-                // 字体选择
-                Text(stringResource(R.string.font_label), fontSize = 14.sp, color = LightTextSecondary)
-                Spacer(Modifier.height(12.dp))
-                FontSelector(currentFont = currentFontType, customFontPath = customFontPath, onFontChange = onFontTypeChange, onImportFont = onImportFont)
-                Spacer(Modifier.height(24.dp))
 
                 Box(
                     modifier = Modifier
@@ -1096,6 +1104,53 @@ fun AdvancedSettingsSheet(
 }
 
 @Composable
+private fun AdvancedSettingsGroup(
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val isDark = LocalIsDarkTheme.current
+    val transparency = LocalLiquidGlassTransparency.current
+    val shape = RoundedCornerShape(16.dp)
+    val surfaceAlpha = if (isDark) {
+        0.38f - transparency * 0.12f
+    } else {
+        0.54f - transparency * 0.18f
+    }
+    val groupModifier = if (isLiquidGlass) {
+        Modifier
+            .clip(shape)
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        LightCardBg.copy(alpha = (surfaceAlpha + 0.06f).coerceAtMost(0.62f)),
+                        LightCardBg.copy(alpha = surfaceAlpha)
+                    )
+                )
+            )
+            .border(
+                width = 0.7.dp,
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = if (isDark) 0.24f else 0.72f),
+                        Color.White.copy(alpha = if (isDark) 0.08f else 0.20f)
+                    )
+                ),
+                shape = shape
+            )
+            .padding(16.dp)
+    } else {
+        Modifier
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(groupModifier),
+        content = content
+    )
+}
+
+@Composable
 private fun AdvancedToggleRow(
     title: String,
     hint: String,
@@ -1111,16 +1166,9 @@ private fun AdvancedToggleRow(
             Spacer(Modifier.height(2.dp))
             Text(hint, fontSize = 12.sp, color = LightTextSecondary)
         }
-        androidx.compose.material3.Switch(
+        LiquidGlassSwitch(
             checked = checked,
-            onCheckedChange = onCheckedChange,
-            colors = androidx.compose.material3.SwitchDefaults.colors(
-                checkedThumbColor = AppColors.OnAccent,
-                checkedTrackColor = AppColors.Accent,
-                uncheckedThumbColor = AppColors.TextSecondary,
-                uncheckedTrackColor = AppColors.BgGray,
-                uncheckedBorderColor = AppColors.Divider
-            )
+            onCheckedChange = onCheckedChange
         )
     }
 }
