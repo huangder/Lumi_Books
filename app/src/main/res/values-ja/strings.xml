@@ -38,6 +38,8 @@
     <string name="bookmarks">ブックマーク</string>
     <string name="notes">メモ</string>
     <string name="search">検索</string>
+    <string name="library_search_placeholder">ライブラリを検索</string>
+    <string name="library_search_results">検索結果</string>
     <string name="reading_progress">読書進捗</string>
     <string name="font_size">フォントサイズ</string>
     <string name="line_height">行間</string>
@@ -236,6 +238,10 @@
     <string name="tab_bookmarks">ブックマーク</string>
     <string name="no_content">コンテンツがありません</string>
     <string name="no_bookmarks">ブックマークがありません</string>
+    <string name="export_bookmarks">ブックマークを書き出す</string>
+    <string name="export_bookmarks_preparing">準備中…</string>
+    <string name="export_bookmarks_success">書き出し完了</string>
+    <string name="export_bookmarks_failed">書き出しに失敗しました。再試行してください。</string>
     <string name="tap_to_add_bookmark">読書中にブックマークアイコンをタップして追加</string>
     <string name="chapter_number">第%d章</string>
     <string name="page_number">第%d頁</string>

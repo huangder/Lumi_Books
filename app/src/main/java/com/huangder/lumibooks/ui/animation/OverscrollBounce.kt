@@ -58,6 +58,28 @@ fun OverscrollBounce(
     }
 }
 
+/** Horizontal rubber-band overscroll used by compact rows of controls. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun HorizontalOverscrollBounce(
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit
+) {
+    val bounceState = remember { HorizontalBounceState() }
+    val connection = remember(bounceState) {
+        HorizontalBounceNestedScrollConnection(bounceState)
+    }
+
+    CompositionLocalProvider(LocalOverscrollConfiguration provides null) {
+        Box(
+            modifier = modifier
+                .nestedScroll(connection)
+                .graphicsLayer { translationX = bounceState.offset },
+            content = content
+        )
+    }
+}
+
 private class BounceNestedScrollConnection(
     private val state: BounceState
 ) : NestedScrollConnection {
@@ -110,6 +132,76 @@ private class BounceState {
             animationSpec = spring(
                 dampingRatio = 0.65f,
                 stiffness = 400f
+            )
+        ) { value, _ ->
+            offset = value
+        }
+    }
+}
+
+private class HorizontalBounceNestedScrollConnection(
+    private val state: HorizontalBounceState
+) : NestedScrollConnection {
+    override fun onPreScroll(
+        available: Offset,
+        source: NestedScrollSource
+    ): Offset {
+        if (source != NestedScrollSource.UserInput) return Offset.Zero
+        val consumed = state.releaseBy(available.x)
+        return if (consumed == 0f) Offset.Zero else Offset(consumed, 0f)
+    }
+
+    override fun onPostScroll(
+        consumed: Offset,
+        available: Offset,
+        source: NestedScrollSource
+    ): Offset {
+        val dx = available.x
+        if (source == NestedScrollSource.UserInput && abs(dx) > 0.5f) {
+            state.dragBeyondBoundary(dx)
+            return Offset(dx, 0f)
+        }
+        return Offset.Zero
+    }
+
+    override suspend fun onPostFling(
+        consumed: Velocity,
+        available: Velocity
+    ): Velocity {
+        state.animateBack()
+        return super.onPostFling(consumed, available)
+    }
+}
+
+private class HorizontalBounceState {
+    var offset by mutableFloatStateOf(0f)
+        private set
+
+    fun releaseBy(delta: Float): Float {
+        if (offset == 0f || delta == 0f || offset * delta >= 0f) return 0f
+        val consumedMagnitude = minOf(abs(delta), abs(offset))
+        val consumed = if (delta > 0f) consumedMagnitude else -consumedMagnitude
+        offset += consumed
+        if (abs(offset) < 0.5f) offset = 0f
+        return consumed
+    }
+
+    fun dragBeyondBoundary(delta: Float) {
+        val resistance = 0.44f / (1f + abs(offset) / 72f)
+        offset += delta * resistance
+    }
+
+    suspend fun animateBack() {
+        if (abs(offset) <= 0.5f) {
+            offset = 0f
+            return
+        }
+        animate(
+            initialValue = offset,
+            targetValue = 0f,
+            animationSpec = spring(
+                dampingRatio = 0.62f,
+                stiffness = 360f
             )
         ) { value, _ ->
             offset = value

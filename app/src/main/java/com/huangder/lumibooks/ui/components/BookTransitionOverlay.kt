@@ -7,15 +7,16 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsIgnoringVisibility
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -49,6 +50,7 @@ import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.KaiTi
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -60,11 +62,13 @@ import java.io.File
  * - 页面四角大圆角
  * - 加载完成后淡出缩小，遮罩消失
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun BookTransitionOverlay(
     title: String,
     coverPath: String? = null,
     isReady: Boolean,
+    onBackNavigationStarted: () -> Unit,
     onBack: () -> Unit,
     onTransitionComplete: () -> Unit
 ) {
@@ -72,10 +76,14 @@ fun BookTransitionOverlay(
     val sheetAlpha = remember { Animatable(0f) }
     val sheetScale = remember { Animatable(0.9f) }
     val isClosing = remember { mutableStateOf(false) }
+    val backRequested = remember { mutableStateOf(false) }
+    val stableStatusBarPadding = WindowInsets.statusBarsIgnoringVisibility.asPaddingValues()
+    val stableNavigationBarPadding = WindowInsets.navigationBarsIgnoringVisibility.asPaddingValues()
     val requestBack = {
         if (!isClosing.value) {
             isClosing.value = true
-            onBack()
+            backRequested.value = true
+            onBackNavigationStarted()
         }
     }
 
@@ -89,6 +97,17 @@ fun BookTransitionOverlay(
         launch { scrimAlpha.animateTo(1f, tween(300)) }
         launch { sheetAlpha.animateTo(1f, tween(300)) }
         launch { sheetScale.animateTo(1f, tween(400, easing = FastOutSlowInEasing)) }
+    }
+
+    LaunchedEffect(backRequested.value) {
+        if (backRequested.value) {
+            coroutineScope {
+                launch { sheetAlpha.animateTo(0f, tween(240, easing = FastOutSlowInEasing)) }
+                launch { sheetScale.animateTo(0.94f, tween(280, easing = FastOutSlowInEasing)) }
+                launch { scrimAlpha.animateTo(0f, tween(300, easing = FastOutSlowInEasing)) }
+            }
+            onBack()
+        }
     }
 
     // 退场动画
@@ -133,8 +152,6 @@ fun BookTransitionOverlay(
                     .clip(RoundedCornerShape(28.dp))
                     .background(AppColors.CardBg)
             ) {
-                val navBarPadding = WindowInsets.navigationBars.asPaddingValues()
-
                 LiquidGlassIconButton(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = stringResource(R.string.reader_back),
@@ -145,8 +162,10 @@ fun BookTransitionOverlay(
                     normalContainerColor = AppColors.BgGray,
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .statusBarsPadding()
-                        .padding(start = AppSpace.lg, top = AppSpace.sm)
+                        .padding(
+                            start = AppSpace.lg,
+                            top = stableStatusBarPadding.calculateTopPadding() + AppSpace.sm
+                        )
                 )
 
                 Column(
@@ -155,7 +174,7 @@ fun BookTransitionOverlay(
                         .padding(
                             start = AppSpace.xl,
                             end = AppSpace.xl,
-                            bottom = navBarPadding.calculateBottomPadding()
+                            bottom = stableNavigationBarPadding.calculateBottomPadding()
                         ),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center

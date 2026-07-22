@@ -134,6 +134,10 @@ fun BookshelfScreen(
     var showBatchDeleteConfirm by remember { mutableStateOf(false) }
     var deletingBookIds by remember { mutableStateOf(emptySet<String>()) }
     var booksPendingDeletion by remember { mutableStateOf(emptyList<Book>()) }
+    var isSearchActive by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var expandedSearchBookId by remember { mutableStateOf<String?>(null) }
+    var searchLauncherBounds by remember { mutableStateOf(Rect.Zero) }
 
     val filterTabs = buildList {
         add(BookshelfFilterTab(BookshelfFilter.All, stringResource(R.string.filter_all)))
@@ -170,6 +174,7 @@ fun BookshelfScreen(
     LaunchedEffect(uiState.books) {
         val existingIds = uiState.books.mapTo(mutableSetOf()) { it.id }
         selectedBookIds = selectedBookIds.intersect(existingIds)
+        if (expandedSearchBookId !in existingIds) expandedSearchBookId = null
     }
 
     LaunchedEffect(deletingBookIds) {
@@ -180,6 +185,13 @@ fun BookshelfScreen(
             booksPendingDeletion = emptyList()
             selectedBookIds = emptySet()
             isEditing = false
+        }
+    }
+
+    LaunchedEffect(isSearchActive) {
+        if (!isSearchActive) {
+            kotlinx.coroutines.delay(540)
+            if (!isSearchActive) searchQuery = ""
         }
     }
 
@@ -220,6 +232,14 @@ fun BookshelfScreen(
             .groupBy { it.bookId }
             .mapValues { (_, links) -> links.map { it.tagId }.toSet() }
     }
+    val tagNamesByBook = remember(uiState.tags, uiState.bookTagLinks) {
+        val tagNamesById = uiState.tags.associate { it.id to it.name }
+        uiState.bookTagLinks
+            .groupBy { it.bookId }
+            .mapValues { (_, links) ->
+                links.mapNotNull { link -> tagNamesById[link.tagId] }
+            }
+    }
     val filteredBooks = when (val filter = selectedFilter) {
         BookshelfFilter.All -> uiState.books
         BookshelfFilter.Downloaded -> uiState.books // 下载内容
@@ -231,7 +251,12 @@ fun BookshelfScreen(
         }
     }
 
-    val overlayProgress = contextMenuState.scrimAlpha.value
+    val searchBlurProgress by animateFloatAsState(
+        targetValue = if (isSearchActive) 1f else 0f,
+        animationSpec = tween(if (isSearchActive) 210 else 230),
+        label = "bookshelfSearchBlur"
+    )
+    val overlayProgress = maxOf(contextMenuState.scrimAlpha.value, searchBlurProgress)
     SideEffect {
         onOverlayProgressChange(overlayProgress)
     }
@@ -253,8 +278,14 @@ fun BookshelfScreen(
                         overlayProgress > 0.01f && android.os.Build.VERSION.SDK_INT >= 31
                     ) {
                         android.graphics.RenderEffect.createBlurEffect(
-                            20f * overlayProgress,
-                            20f * overlayProgress,
+                            maxOf(
+                                20f * contextMenuState.scrimAlpha.value,
+                                34.dp.toPx() * searchBlurProgress
+                            ),
+                            maxOf(
+                                20f * contextMenuState.scrimAlpha.value,
+                                34.dp.toPx() * searchBlurProgress
+                            ),
                             android.graphics.Shader.TileMode.CLAMP
                         ).asComposeRenderEffect()
                     } else {
@@ -269,7 +300,7 @@ fun BookshelfScreen(
                         columns = GridCells.Fixed(2),
                         contentPadding = PaddingValues(
                             start = AppSpace.lg,
-                            top = 176.dp,
+                            top = 240.dp,
                             end = AppSpace.lg,
                             bottom = 120.dp
                         ),
@@ -297,7 +328,7 @@ fun BookshelfScreen(
                                 )
                             }
                         }
-                        if (!isEditing) {
+                        if (!uiState.isLoading && !isEditing) {
                             item(key = "add_book") {
                                 PageEntranceItem(
                                     play = playEntranceAnimation,
@@ -331,6 +362,15 @@ fun BookshelfScreen(
                             modifier = Modifier.padding(horizontal = AppSpace.lg, vertical = AppSpace.md)
                         )
                     }
+
+                    BookshelfSearchLauncher(
+                        onClick = {
+                            expandedSearchBookId = null
+                            isSearchActive = true
+                        },
+                        onBoundsChanged = { searchLauncherBounds = it },
+                        modifier = Modifier.padding(horizontal = AppSpace.lg)
+                    )
 
                     // ── 筛选标签（可横向滚动） ──
                     PageEntranceItem(
@@ -383,12 +423,14 @@ fun BookshelfScreen(
                             }
                         }
                         // 添加按钮
-                        item(key = "add_book") {
-                            PageEntranceItem(
-                                play = playEntranceAnimation,
-                                index = filteredBooks.size + 2
-                            ) {
-                                AddBookItem(onClick = { launcher.launch("*/*") })
+                        if (!uiState.isLoading) {
+                            item(key = "add_book") {
+                                PageEntranceItem(
+                                    play = playEntranceAnimation,
+                                    index = filteredBooks.size + 2
+                                ) {
+                                    AddBookItem(onClick = { launcher.launch("*/*") })
+                                }
                             }
                         }
                     }
@@ -424,6 +466,13 @@ fun BookshelfScreen(
                         if (!isEditing) selectedBookIds = emptySet()
                     },
                     onDeleteSelected = { showBatchDeleteConfirm = true },
+                    onSearchClick = {
+                        isEditing = false
+                        selectedBookIds = emptySet()
+                        expandedSearchBookId = null
+                        isSearchActive = true
+                    },
+                    onSearchBoundsChanged = { searchLauncherBounds = it },
                     modifier = Modifier
                         .zIndex(2f)
                         .onGloballyPositioned { coordinates ->
@@ -434,8 +483,14 @@ fun BookshelfScreen(
                                 overlayProgress > 0.01f && android.os.Build.VERSION.SDK_INT >= 31
                             ) {
                                 android.graphics.RenderEffect.createBlurEffect(
-                                    20f * overlayProgress,
-                                    20f * overlayProgress,
+                                    maxOf(
+                                        20f * contextMenuState.scrimAlpha.value,
+                                        34.dp.toPx() * searchBlurProgress
+                                    ),
+                                    maxOf(
+                                        20f * contextMenuState.scrimAlpha.value,
+                                        34.dp.toPx() * searchBlurProgress
+                                    ),
                                     android.graphics.Shader.TileMode.CLAMP
                                 ).asComposeRenderEffect()
                             } else {
@@ -444,6 +499,62 @@ fun BookshelfScreen(
                         }
                 )
             }
+        }
+
+        ProvideLiquidGlassBackdrop(bookshelfBackdrop.takeIf { isLiquidGlass }) {
+            BookshelfSearchOverlay(
+                visible = isSearchActive,
+                query = searchQuery,
+                books = uiState.books,
+                tagNamesByBook = tagNamesByBook,
+                expandedBookId = expandedSearchBookId,
+                deletingBookIds = deletingBookIds,
+                onQueryChange = { searchQuery = it },
+                onDismiss = {
+                    isSearchActive = false
+                    expandedSearchBookId = null
+                },
+                onExpandedBookChange = { expandedSearchBookId = it },
+                onBookClick = { book ->
+                    onNavigateToReader(book.id, book.coverPath, book.title)
+                },
+                onEditInfo = { book ->
+                    expandedSearchBookId = null
+                    editingBook = book
+                    showEditDialog = true
+                },
+                onDelete = { book ->
+                    expandedSearchBookId = null
+                    booksPendingDeletion = listOf(book)
+                    deletingBookIds = setOf(book.id)
+                },
+                onFavorite = { book ->
+                    viewModel.updateBook(book.copy(isFavorite = !book.isFavorite))
+                },
+                onCustomCover = { book ->
+                    expandedSearchBookId = null
+                    coverTargetBook = book
+                    coverPickerLauncher.launch("image/*")
+                },
+                onRemoveCustomCover = { book ->
+                    expandedSearchBookId = null
+                    FileUtils.deleteCustomCover(context, book.id)
+                    viewModel.reExtractCover(context, book)
+                },
+                onTags = { book ->
+                    expandedSearchBookId = null
+                    tagTargetBook = book
+                    showTagSheet = true
+                },
+                onBookmarksNotes = { book ->
+                    expandedSearchBookId = null
+                    val intent = android.content.Intent(context, BookNotesActivity::class.java)
+                    intent.putExtra("bookId", book.id)
+                    context.startActivity(intent)
+                },
+                launcherBounds = searchLauncherBounds,
+                modifier = Modifier.zIndex(2.6f)
+            )
         }
 
         BookContextMenuOverlay(
@@ -573,6 +684,8 @@ private fun LiquidBookshelfHeader(
     onFilterSelected: (BookshelfFilter) -> Unit,
     onEditToggle: () -> Unit,
     onDeleteSelected: () -> Unit,
+    onSearchClick: () -> Unit,
+    onSearchBoundsChanged: (Rect) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val menuHost = LocalLiquidGlassMenuHost.current
@@ -707,6 +820,16 @@ private fun LiquidBookshelfHeader(
                 bottom = 10.dp
             )
         )
+
+        BookshelfSearchLauncher(
+            onClick = onSearchClick,
+            onBoundsChanged = onSearchBoundsChanged,
+            modifier = Modifier.padding(
+                start = AppSpace.lg,
+                end = AppSpace.lg,
+                bottom = 14.dp
+            )
+        )
     }
 }
 
@@ -832,13 +955,12 @@ private fun BookGridItem(
                 drawContent()
                 if (selectionAlpha > 0.001f) {
                     val gap = 7.dp.toPx()
-                    val authorHeight = 20.dp.toPx()
                     drawRoundRect(
                         color = selectionColor.copy(alpha = selectionAlpha),
                         topLeft = Offset(-gap, -gap),
                         size = Size(
                             width = size.width + gap * 2f,
-                            height = (size.height - authorHeight + gap * 2f).coerceAtLeast(0f)
+                            height = size.height + gap * 2f
                         ),
                         cornerRadius = CornerRadius(22.dp.toPx()),
                         style = Stroke(width = 2.dp.toPx())

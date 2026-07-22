@@ -370,7 +370,8 @@ fun LiquidGlassAlertDialog(
     dismissButton: (@Composable () -> Unit)? = null,
     title: (@Composable () -> Unit)? = null,
     text: (@Composable () -> Unit)? = null,
-    properties: DialogProperties = DialogProperties()
+    properties: DialogProperties = DialogProperties(),
+    contentScrimColor: Color = AppColors.CardBg.copy(alpha = 0.82f)
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val host = LocalLiquidGlassDialogHost.current
@@ -393,7 +394,7 @@ fun LiquidGlassAlertDialog(
         modifier = modifier,
         shape = RoundedCornerShape(32.dp),
         properties = properties,
-        contentScrimColor = AppColors.CardBg.copy(alpha = 0.82f)
+        contentScrimColor = contentScrimColor
     ) {
         Column(
             modifier = Modifier

@@ -607,6 +607,13 @@ class DataStoreManager @Inject constructor(
         }
     }
 
+    suspend fun enableLiquidGlassTheme(transparency: Float = 0.65f) {
+        context.dataStore.edit { preferences ->
+            preferences[APP_THEME] = "liquid_glass"
+            preferences[LIQUID_GLASS_TRANSPARENCY] = transparency.coerceIn(0f, 1f)
+        }
+    }
+
     suspend fun saveLiquidGlassTransparency(transparency: Float) {
         context.dataStore.edit { preferences ->
             preferences[LIQUID_GLASS_TRANSPARENCY] = transparency.coerceIn(0f, 1f)

@@ -20,7 +20,8 @@ data class BookNotesUiState(
     val book: Book? = null,
     val bookmarks: List<Bookmark> = emptyList(),
     val notes: List<Note> = emptyList(),  // 包含高亮和笔记
-    val isLoading: Boolean = true
+    val isLoading: Boolean = true,
+    val isExporting: Boolean = false
 ) {
     val highlights: List<Note> get() = notes.filter { it.note.isBlank() }
     val noteItems: List<Note> get() = notes.filter { it.note.isNotBlank() }
@@ -30,7 +31,8 @@ data class BookNotesUiState(
 class BookNotesViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val bookRepository: BookRepository,
-    private val readingRepository: ReadingRepository
+    private val readingRepository: ReadingRepository,
+    private val exportBuilder: BookNotesExportBuilder
 ) : ViewModel() {
 
     private val bookId: String = savedStateHandle.get<String>("bookId") ?: ""
@@ -76,6 +78,28 @@ class BookNotesViewModel @Inject constructor(
     fun deleteNote(note: Note) {
         viewModelScope.launch {
             readingRepository.deleteNote(note)
+        }
+    }
+
+    fun prepareExport(onComplete: (Result<BookNotesExportDocument>) -> Unit) {
+        val snapshot = _uiState.value
+        val book = snapshot.book ?: run {
+            onComplete(Result.failure(IllegalStateException("Book is not loaded")))
+            return
+        }
+        if (snapshot.isExporting) return
+
+        _uiState.value = snapshot.copy(isExporting = true)
+        viewModelScope.launch {
+            val result = runCatching {
+                exportBuilder.build(
+                    book = book,
+                    bookmarks = snapshot.bookmarks,
+                    notes = snapshot.notes
+                )
+            }
+            _uiState.value = _uiState.value.copy(isExporting = false)
+            onComplete(result)
         }
     }
 }

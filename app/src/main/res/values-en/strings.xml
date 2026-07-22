@@ -38,6 +38,8 @@
     <string name="bookmarks">Bookmarks</string>
     <string name="notes">Notes</string>
     <string name="search">Search</string>
+    <string name="library_search_placeholder">Search your library</string>
+    <string name="library_search_results">Search results</string>
     <string name="reading_progress">Reading Progress</string>
     <string name="font_size">Font Size</string>
     <string name="line_height">Line Height</string>
@@ -236,6 +238,10 @@
     <string name="tab_bookmarks">Bookmarks</string>
     <string name="no_content">No content</string>
     <string name="no_bookmarks">No bookmarks</string>
+    <string name="export_bookmarks">Export bookmarks</string>
+    <string name="export_bookmarks_preparing">Preparing…</string>
+    <string name="export_bookmarks_success">Export complete</string>
+    <string name="export_bookmarks_failed">Export failed. Try again.</string>
     <string name="tap_to_add_bookmark">Tap the bookmark icon while reading to add</string>
     <string name="chapter_number">Chapter %d</string>
     <string name="page_number">Page %d</string>
@@ -392,6 +398,7 @@
     <string name="welcome_terms_title">Terms of Service</string>
     <string name="welcome_support_title">Enjoying Lumi?</string>
     <string name="welcome_support_message">You can support us in Settings > Support Development. Every donation goes entirely toward Lumi\'s continued development and improvement.</string>
+    <string name="welcome_open_sponsor">Open support page</string>
     <string name="welcome_start_using">Get Started</string>
 
     <!-- PDF Reader -->

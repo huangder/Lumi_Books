@@ -20,12 +20,19 @@ class PageEntranceTracker(
     private val cooldownMillis: Long = PAGE_ENTRANCE_COOLDOWN_MILLIS
 ) {
     private val lastPlayedAt = mutableMapOf<String, Long>()
+    private val evaluatedEntries = mutableSetOf<Pair<String, String>>()
 
     fun shouldPlay(pageKey: String, nowMillis: Long): Boolean {
         val previous = lastPlayedAt[pageKey]
         if (previous != null && nowMillis - previous < cooldownMillis) return false
         lastPlayedAt[pageKey] = nowMillis
         return true
+    }
+
+    /** A restored back-stack entry must not replay while it is being revealed by predictive back. */
+    fun shouldPlay(pageKey: String, entryKey: String, nowMillis: Long): Boolean {
+        if (!evaluatedEntries.add(pageKey to entryKey)) return false
+        return shouldPlay(pageKey, nowMillis)
     }
 }
 

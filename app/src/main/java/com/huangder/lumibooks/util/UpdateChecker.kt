@@ -21,6 +21,8 @@ object UpdateChecker {
     /** GitHub Raw CDN 上的更新配置 URL */
     private const val CONFIG_URL =
         "https://raw.githubusercontent.com/huangder/android_books/main/update_config.json"
+    private const val LATEST_RELEASE_URL =
+        "https://api.github.com/repos/huangder/android_books/releases/latest"
 
     /** 网络请求超时（毫秒） */
     private const val TIMEOUT_MS = 10_000
@@ -48,6 +50,11 @@ object UpdateChecker {
         val isNetworkError: Boolean = false
     )
 
+    private data class GitHubRelease(
+        val version: String,
+        val releaseUrl: String
+    )
+
     // ─── 公开方法 ────────────────────────────────────────────
 
     /**
@@ -56,35 +63,64 @@ object UpdateChecker {
      */
     suspend fun fetchUpdateConfig(): UpdateConfig? {
         return withContext(Dispatchers.IO) {
-            try {
-                val url = URL(CONFIG_URL)
-                val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = TIMEOUT_MS
-                conn.readTimeout = TIMEOUT_MS
-                conn.requestMethod = "GET"
-                conn.setRequestProperty("Accept", "application/json")
-                conn.setRequestProperty("User-Agent", "LumiBooks-Android")
+            val configured = fetchConfiguredUpdate()
+            val latestRelease = fetchLatestRelease()
 
-                val code = conn.responseCode
-                if (code != HttpURLConnection.HTTP_OK) {
-                    Log.w(TAG, "HTTP $code")
-                    return@withContext null
-                }
+            if (configured == null && latestRelease == null) return@withContext null
 
-                val body = conn.inputStream.bufferedReader().use { it.readText() }
-                val json = JSONObject(body)
+            UpdateConfig(
+                latestVersion = latestRelease?.version ?: configured?.latestVersion.orEmpty(),
+                latestVersionCode = configured?.latestVersionCode ?: 0,
+                releaseUrl = latestRelease?.releaseUrl ?: configured?.releaseUrl.orEmpty(),
+                termsVersion = configured?.termsVersion ?: 0,
+                privacyVersion = configured?.privacyVersion ?: 0
+            )
+        }
+    }
 
-                UpdateConfig(
-                    latestVersion = json.optString("latest_version", ""),
-                    latestVersionCode = json.optInt("latest_version_code", 0),
-                    releaseUrl = json.optString("release_url", ""),
-                    termsVersion = json.optInt("terms_version", 0),
-                    privacyVersion = json.optInt("privacy_version", 0)
-                )
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to fetch update config: ${e.message}")
-                null
+    private fun fetchConfiguredUpdate(): UpdateConfig? {
+        return try {
+            val json = JSONObject(openJsonConnection(CONFIG_URL))
+            UpdateConfig(
+                latestVersion = json.optString("latest_version", ""),
+                latestVersionCode = json.optInt("latest_version_code", 0),
+                releaseUrl = json.optString("release_url", ""),
+                termsVersion = json.optInt("terms_version", 0),
+                privacyVersion = json.optInt("privacy_version", 0)
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to fetch update config: ${e.message}")
+            null
+        }
+    }
+
+    private fun fetchLatestRelease(): GitHubRelease? {
+        return try {
+            val json = JSONObject(openJsonConnection(LATEST_RELEASE_URL))
+            val version = json.optString("tag_name", "").trim()
+            val releaseUrl = json.optString("html_url", "").trim()
+            if (version.isBlank() || releaseUrl.isBlank()) null else GitHubRelease(version, releaseUrl)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to fetch latest GitHub release: ${e.message}")
+            null
+        }
+    }
+
+    private fun openJsonConnection(urlString: String): String {
+        val conn = URL(urlString).openConnection() as HttpURLConnection
+        conn.connectTimeout = TIMEOUT_MS
+        conn.readTimeout = TIMEOUT_MS
+        conn.requestMethod = "GET"
+        conn.setRequestProperty("Accept", "application/vnd.github+json")
+        conn.setRequestProperty("User-Agent", "LumiBooks-Android")
+
+        return try {
+            if (conn.responseCode != HttpURLConnection.HTTP_OK) {
+                throw IllegalStateException("HTTP ${conn.responseCode}")
             }
+            conn.inputStream.bufferedReader().use { reader -> reader.readText() }
+        } finally {
+            conn.disconnect()
         }
     }
 

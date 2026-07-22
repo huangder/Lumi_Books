@@ -46,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.huangder.lumibooks.R
@@ -93,7 +94,12 @@ fun BookContextMenuOverlay(
     val coverPositionProgress = state.coverPositionProgress.value
     val menuAlpha = state.menuAlpha.value
     val actionsAlpha = state.actionsAlpha.value
-    Box(modifier = Modifier.fillMaxSize().graphicsLayer { }) { // 空 graphicsLayer 确保与 OverscrollBounce 同一合成管线
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .zIndex(3f)
+            .graphicsLayer { }
+    ) { // 覆盖层需要始终高于书架顶部胶囊。
         // ── 1. 半透明背景 + 点击关闭 ──
         Box(
             modifier = Modifier

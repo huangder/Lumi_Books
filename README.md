@@ -95,7 +95,7 @@
 
 ```
 android_books/
-├── LICENSE                 # MIT 许可证
+├── LICENSE                 # MIT 许可证与第三方组件声明
 ├── README.md               # 项目说明
 ├── CLAUDE.md               # Agent 开发指引
 ├── build.gradle.kts        # 顶层构建配置
@@ -157,7 +157,7 @@ android_books/
 
 ## 许可证
 
-本项目采用 [MIT License](LICENSE) 开源。© 2026 Huangder
+Lumi 原创代码采用 [MIT License](LICENSE) 开源。第三方依赖及改编代码继续遵循各自许可证；其中液态玻璃使用并改编自 Apache 2.0 许可的 [AndroidLiquidGlass / Backdrop](https://github.com/Kyant0/AndroidLiquidGlass)。© 2026 Huangder
 
 ---
 

@@ -37,4 +37,20 @@ class PageEntranceTrackerTest {
         assertFalse(tracker.shouldPlay("home", nowMillis = 109_999L))
         assertTrue(tracker.shouldPlay("home", nowMillis = 110_000L))
     }
+
+    @Test
+    fun restoredBackStackEntryNeverReplaysAfterCooldown() {
+        val tracker = PageEntranceTracker(cooldownMillis = 1_000L)
+
+        assertTrue(tracker.shouldPlay("home", "home-entry", nowMillis = 10_000L))
+        assertFalse(tracker.shouldPlay("home", "home-entry", nowMillis = 20_000L))
+    }
+
+    @Test
+    fun freshBackStackEntryCanPlayAfterCooldown() {
+        val tracker = PageEntranceTracker(cooldownMillis = 1_000L)
+
+        assertTrue(tracker.shouldPlay("home", "home-entry-1", nowMillis = 10_000L))
+        assertTrue(tracker.shouldPlay("home", "home-entry-2", nowMillis = 11_000L))
+    }
 }

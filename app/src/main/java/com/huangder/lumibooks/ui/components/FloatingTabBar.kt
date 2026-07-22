@@ -1,5 +1,14 @@
 package com.huangder.lumibooks.ui.components
 
+/*
+ * Portions of the liquid-glass tab implementation are adapted and modified
+ * from AndroidLiquidGlass' LiquidBottomTabs sample.
+ * Copyright 2025 Kyant. Licensed under Apache-2.0.
+ * Lumi changes include layout, colors, sizing, navigation integration,
+ * click motion, drag settling, backdrop composition, and accessibility.
+ * Source: https://github.com/Kyant0/AndroidLiquidGlass
+ */
+
 import android.graphics.Paint
 import android.graphics.RectF
 import androidx.compose.foundation.background

@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.welcome
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -12,12 +13,15 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.lifecycleScope
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.ui.components.LocalPredictiveBackEnabled
+import com.huangder.lumibooks.ui.settings.SponsorActivity
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.util.LaunchThemeController
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import javax.inject.Inject
@@ -87,13 +91,22 @@ class WelcomeActivity : ComponentActivity() {
                             WelcomeScreen(
                                 isUpdate = installState.isUpdate,
                                 isDark = isDark,
+                                isLiquidGlass = appTheme == "liquid_glass",
                                 onFinished = {
                                     runBlocking {
                                         dataStoreManager.completeWelcomeFlow(installState.installMarker)
                                     }
                                     startMainActivity(splashEnabled)
                                 },
-                                onExit = { finish() }
+                                onExit = { finish() },
+                                onOpenSponsor = {
+                                    startActivity(Intent(this@WelcomeActivity, SponsorActivity::class.java))
+                                },
+                                onEnableLiquidGlass = {
+                                    lifecycleScope.launch {
+                                        dataStoreManager.enableLiquidGlassTheme()
+                                    }
+                                }
                             )
                         }
                     }

@@ -78,6 +78,38 @@ class PdfTextExtractor @javax.inject.Inject constructor() {
         }
     }
 
+    /** Extracts only the requested zero-based pages for bookmark export. */
+    suspend fun extractPages(source: File, pageIndices: Set<Int>): Map<Int, String> {
+        require(source.isFile) { "PDF file not found: ${source.absolutePath}" }
+        if (pageIndices.isEmpty()) return emptyMap()
+
+        val memoryUsage = MemoryUsageSetting.setupMixed(MEMORY_LIMIT_BYTES).apply {
+            tempDir = source.parentFile
+        }
+        return PDDocument.load(source, memoryUsage).use { document ->
+            val stripper = PDFTextStripper().apply {
+                sortByPosition = true
+                lineSeparator = "\n"
+                paragraphStart = "\n"
+                paragraphEnd = "\n"
+                pageStart = ""
+                pageEnd = ""
+            }
+            buildMap {
+                pageIndices.sorted().forEach { pageIndex ->
+                    currentCoroutineContext().ensureActive()
+                    if (pageIndex !in 0 until document.numberOfPages) return@forEach
+                    stripper.startPage = pageIndex + 1
+                    stripper.endPage = pageIndex + 1
+                    put(
+                        pageIndex,
+                        PdfTextReflowFormatter.reflow(stripper.getText(document))
+                    )
+                }
+            }
+        }
+    }
+
     private companion object {
         const val MEMORY_LIMIT_BYTES = 32L * 1024L * 1024L
         const val MIN_MEANINGFUL_CHARACTERS_PER_PAGE = 20
