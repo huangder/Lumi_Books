@@ -17,6 +17,8 @@ import com.huangder.lumibooks.`data`.local.dao.NoteDao
 import com.huangder.lumibooks.`data`.local.dao.NoteDao_Impl
 import com.huangder.lumibooks.`data`.local.dao.ReadingRecordDao
 import com.huangder.lumibooks.`data`.local.dao.ReadingRecordDao_Impl
+import com.huangder.lumibooks.`data`.local.dao.TagDao
+import com.huangder.lumibooks.`data`.local.dao.TagDao_Impl
 import javax.`annotation`.processing.Generated
 import kotlin.Lazy
 import kotlin.String
@@ -51,20 +53,30 @@ public class AppDatabase_Impl : AppDatabase() {
     NoteDao_Impl(this)
   }
 
+  private val _tagDao: Lazy<TagDao> = lazy {
+    TagDao_Impl(this)
+  }
+
   protected override fun createOpenDelegate(): RoomOpenDelegate {
-    val _openDelegate: RoomOpenDelegate = object : RoomOpenDelegate(2, "2aa9c102c4227e13f24eae83d6ca80a3", "b0b87ce09d591bb3e61fd3ad28c098ec") {
+    val _openDelegate: RoomOpenDelegate = object : RoomOpenDelegate(3, "c08633e22ee90c468f4d0ecc0266b780", "7ce435dff332f4b64b07c18b49746036") {
       public override fun createAllTables(connection: SQLiteConnection) {
         connection.execSQL("CREATE TABLE IF NOT EXISTS `books` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `author` TEXT NOT NULL, `filePath` TEXT NOT NULL, `coverPath` TEXT, `format` TEXT NOT NULL, `lastReadTime` INTEGER NOT NULL, `readingProgress` REAL NOT NULL, `createdAt` INTEGER NOT NULL, `isFavorite` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+        connection.execSQL("CREATE TABLE IF NOT EXISTS `tags` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `normalizedName` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+        connection.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_tags_normalizedName` ON `tags` (`normalizedName`)")
+        connection.execSQL("CREATE TABLE IF NOT EXISTS `book_tag_cross_refs` (`bookId` TEXT NOT NULL, `tagId` TEXT NOT NULL, PRIMARY KEY(`bookId`, `tagId`), FOREIGN KEY(`bookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`tagId`) REFERENCES `tags`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )")
+        connection.execSQL("CREATE INDEX IF NOT EXISTS `index_book_tag_cross_refs_tagId` ON `book_tag_cross_refs` (`tagId`)")
         connection.execSQL("CREATE TABLE IF NOT EXISTS `reading_records` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `bookId` TEXT NOT NULL, `date` TEXT NOT NULL, `duration` INTEGER NOT NULL, `startTime` INTEGER NOT NULL, `endTime` INTEGER NOT NULL)")
         connection.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_reading_records_bookId_date` ON `reading_records` (`bookId`, `date`)")
         connection.execSQL("CREATE TABLE IF NOT EXISTS `bookmarks` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `bookId` TEXT NOT NULL, `chapterIndex` INTEGER NOT NULL, `position` REAL NOT NULL, `title` TEXT NOT NULL, `createdAt` INTEGER NOT NULL)")
         connection.execSQL("CREATE TABLE IF NOT EXISTS `notes` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `bookId` TEXT NOT NULL, `chapterIndex` INTEGER NOT NULL, `startPosition` INTEGER NOT NULL, `endPosition` INTEGER NOT NULL, `selectedText` TEXT NOT NULL, `note` TEXT NOT NULL, `color` TEXT NOT NULL, `createdAt` INTEGER NOT NULL)")
         connection.execSQL("CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)")
-        connection.execSQL("INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '2aa9c102c4227e13f24eae83d6ca80a3')")
+        connection.execSQL("INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'c08633e22ee90c468f4d0ecc0266b780')")
       }
 
       public override fun dropAllTables(connection: SQLiteConnection) {
         connection.execSQL("DROP TABLE IF EXISTS `books`")
+        connection.execSQL("DROP TABLE IF EXISTS `tags`")
+        connection.execSQL("DROP TABLE IF EXISTS `book_tag_cross_refs`")
         connection.execSQL("DROP TABLE IF EXISTS `reading_records`")
         connection.execSQL("DROP TABLE IF EXISTS `bookmarks`")
         connection.execSQL("DROP TABLE IF EXISTS `notes`")
@@ -74,6 +86,7 @@ public class AppDatabase_Impl : AppDatabase() {
       }
 
       public override fun onOpen(connection: SQLiteConnection) {
+        connection.execSQL("PRAGMA foreign_keys = ON")
         internalInitInvalidationTracker(connection)
       }
 
@@ -108,6 +121,44 @@ public class AppDatabase_Impl : AppDatabase() {
               |
               | Found:
               |""".trimMargin() + _existingBooks)
+        }
+        val _columnsTags: MutableMap<String, TableInfo.Column> = mutableMapOf()
+        _columnsTags.put("id", TableInfo.Column("id", "TEXT", true, 1, null, TableInfo.CREATED_FROM_ENTITY))
+        _columnsTags.put("name", TableInfo.Column("name", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY))
+        _columnsTags.put("normalizedName", TableInfo.Column("normalizedName", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY))
+        _columnsTags.put("createdAt", TableInfo.Column("createdAt", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY))
+        val _foreignKeysTags: MutableSet<TableInfo.ForeignKey> = mutableSetOf()
+        val _indicesTags: MutableSet<TableInfo.Index> = mutableSetOf()
+        _indicesTags.add(TableInfo.Index("index_tags_normalizedName", true, listOf("normalizedName"), listOf("ASC")))
+        val _infoTags: TableInfo = TableInfo("tags", _columnsTags, _foreignKeysTags, _indicesTags)
+        val _existingTags: TableInfo = read(connection, "tags")
+        if (!_infoTags.equals(_existingTags)) {
+          return RoomOpenDelegate.ValidationResult(false, """
+              |tags(com.huangder.lumibooks.data.local.entity.TagEntity).
+              | Expected:
+              |""".trimMargin() + _infoTags + """
+              |
+              | Found:
+              |""".trimMargin() + _existingTags)
+        }
+        val _columnsBookTagCrossRefs: MutableMap<String, TableInfo.Column> = mutableMapOf()
+        _columnsBookTagCrossRefs.put("bookId", TableInfo.Column("bookId", "TEXT", true, 1, null, TableInfo.CREATED_FROM_ENTITY))
+        _columnsBookTagCrossRefs.put("tagId", TableInfo.Column("tagId", "TEXT", true, 2, null, TableInfo.CREATED_FROM_ENTITY))
+        val _foreignKeysBookTagCrossRefs: MutableSet<TableInfo.ForeignKey> = mutableSetOf()
+        _foreignKeysBookTagCrossRefs.add(TableInfo.ForeignKey("books", "CASCADE", "NO ACTION", listOf("bookId"), listOf("id")))
+        _foreignKeysBookTagCrossRefs.add(TableInfo.ForeignKey("tags", "CASCADE", "NO ACTION", listOf("tagId"), listOf("id")))
+        val _indicesBookTagCrossRefs: MutableSet<TableInfo.Index> = mutableSetOf()
+        _indicesBookTagCrossRefs.add(TableInfo.Index("index_book_tag_cross_refs_tagId", false, listOf("tagId"), listOf("ASC")))
+        val _infoBookTagCrossRefs: TableInfo = TableInfo("book_tag_cross_refs", _columnsBookTagCrossRefs, _foreignKeysBookTagCrossRefs, _indicesBookTagCrossRefs)
+        val _existingBookTagCrossRefs: TableInfo = read(connection, "book_tag_cross_refs")
+        if (!_infoBookTagCrossRefs.equals(_existingBookTagCrossRefs)) {
+          return RoomOpenDelegate.ValidationResult(false, """
+              |book_tag_cross_refs(com.huangder.lumibooks.data.local.entity.BookTagCrossRefEntity).
+              | Expected:
+              |""".trimMargin() + _infoBookTagCrossRefs + """
+              |
+              | Found:
+              |""".trimMargin() + _existingBookTagCrossRefs)
         }
         val _columnsReadingRecords: MutableMap<String, TableInfo.Column> = mutableMapOf()
         _columnsReadingRecords.put("id", TableInfo.Column("id", "INTEGER", true, 1, null, TableInfo.CREATED_FROM_ENTITY))
@@ -182,11 +233,11 @@ public class AppDatabase_Impl : AppDatabase() {
   protected override fun createInvalidationTracker(): InvalidationTracker {
     val _shadowTablesMap: MutableMap<String, String> = mutableMapOf()
     val _viewTables: MutableMap<String, Set<String>> = mutableMapOf()
-    return InvalidationTracker(this, _shadowTablesMap, _viewTables, "books", "reading_records", "bookmarks", "notes")
+    return InvalidationTracker(this, _shadowTablesMap, _viewTables, "books", "tags", "book_tag_cross_refs", "reading_records", "bookmarks", "notes")
   }
 
   public override fun clearAllTables() {
-    super.performClear(false, "books", "reading_records", "bookmarks", "notes")
+    super.performClear(true, "books", "tags", "book_tag_cross_refs", "reading_records", "bookmarks", "notes")
   }
 
   protected override fun getRequiredTypeConverterClasses(): Map<KClass<*>, List<KClass<*>>> {
@@ -195,6 +246,7 @@ public class AppDatabase_Impl : AppDatabase() {
     _typeConvertersMap.put(ReadingRecordDao::class, ReadingRecordDao_Impl.getRequiredConverters())
     _typeConvertersMap.put(BookmarkDao::class, BookmarkDao_Impl.getRequiredConverters())
     _typeConvertersMap.put(NoteDao::class, NoteDao_Impl.getRequiredConverters())
+    _typeConvertersMap.put(TagDao::class, TagDao_Impl.getRequiredConverters())
     return _typeConvertersMap
   }
 
@@ -215,4 +267,6 @@ public class AppDatabase_Impl : AppDatabase() {
   public override fun bookmarkDao(): BookmarkDao = _bookmarkDao.value
 
   public override fun noteDao(): NoteDao = _noteDao.value
+
+  public override fun tagDao(): TagDao = _tagDao.value
 }

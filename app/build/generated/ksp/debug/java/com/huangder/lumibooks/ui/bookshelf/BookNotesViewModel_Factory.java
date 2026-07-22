@@ -33,28 +33,34 @@ public final class BookNotesViewModel_Factory implements Factory<BookNotesViewMo
 
   private final Provider<ReadingRepository> readingRepositoryProvider;
 
+  private final Provider<BookNotesExportBuilder> exportBuilderProvider;
+
   private BookNotesViewModel_Factory(Provider<SavedStateHandle> savedStateHandleProvider,
       Provider<BookRepository> bookRepositoryProvider,
-      Provider<ReadingRepository> readingRepositoryProvider) {
+      Provider<ReadingRepository> readingRepositoryProvider,
+      Provider<BookNotesExportBuilder> exportBuilderProvider) {
     this.savedStateHandleProvider = savedStateHandleProvider;
     this.bookRepositoryProvider = bookRepositoryProvider;
     this.readingRepositoryProvider = readingRepositoryProvider;
+    this.exportBuilderProvider = exportBuilderProvider;
   }
 
   @Override
   public BookNotesViewModel get() {
-    return newInstance(savedStateHandleProvider.get(), bookRepositoryProvider.get(), readingRepositoryProvider.get());
+    return newInstance(savedStateHandleProvider.get(), bookRepositoryProvider.get(), readingRepositoryProvider.get(), exportBuilderProvider.get());
   }
 
   public static BookNotesViewModel_Factory create(
       Provider<SavedStateHandle> savedStateHandleProvider,
       Provider<BookRepository> bookRepositoryProvider,
-      Provider<ReadingRepository> readingRepositoryProvider) {
-    return new BookNotesViewModel_Factory(savedStateHandleProvider, bookRepositoryProvider, readingRepositoryProvider);
+      Provider<ReadingRepository> readingRepositoryProvider,
+      Provider<BookNotesExportBuilder> exportBuilderProvider) {
+    return new BookNotesViewModel_Factory(savedStateHandleProvider, bookRepositoryProvider, readingRepositoryProvider, exportBuilderProvider);
   }
 
   public static BookNotesViewModel newInstance(SavedStateHandle savedStateHandle,
-      BookRepository bookRepository, ReadingRepository readingRepository) {
-    return new BookNotesViewModel(savedStateHandle, bookRepository, readingRepository);
+      BookRepository bookRepository, ReadingRepository readingRepository,
+      BookNotesExportBuilder exportBuilder) {
+    return new BookNotesViewModel(savedStateHandle, bookRepository, readingRepository, exportBuilder);
   }
 }

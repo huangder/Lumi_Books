@@ -17,6 +17,7 @@ import com.huangder.lumibooks.data.local.dao.BookDao;
 import com.huangder.lumibooks.data.local.dao.BookmarkDao;
 import com.huangder.lumibooks.data.local.dao.NoteDao;
 import com.huangder.lumibooks.data.local.dao.ReadingRecordDao;
+import com.huangder.lumibooks.data.local.dao.TagDao;
 import com.huangder.lumibooks.data.local.database.AppDatabase;
 import com.huangder.lumibooks.di.AppModule_ProvideAppDatabaseFactory;
 import com.huangder.lumibooks.di.AppModule_ProvideBookDaoFactory;
@@ -26,11 +27,14 @@ import com.huangder.lumibooks.di.AppModule_ProvideDataStoreManagerFactory;
 import com.huangder.lumibooks.di.AppModule_ProvideNoteDaoFactory;
 import com.huangder.lumibooks.di.AppModule_ProvideReadingRecordDaoFactory;
 import com.huangder.lumibooks.di.AppModule_ProvideReadingRepositoryFactory;
+import com.huangder.lumibooks.di.AppModule_ProvideTagDaoFactory;
+import com.huangder.lumibooks.di.AppModule_ProvideTagRepositoryFactory;
 import com.huangder.lumibooks.di.AppModule_ProvideTtsControllerFactory;
 import com.huangder.lumibooks.di.AppModule_ProvideTtsEngineFactory;
 import com.huangder.lumibooks.di.AppModule_ProvideTtsTextExtractorFactory;
 import com.huangder.lumibooks.domain.repository.BookRepository;
 import com.huangder.lumibooks.domain.repository.ReadingRepository;
+import com.huangder.lumibooks.domain.repository.TagRepository;
 import com.huangder.lumibooks.mineru.MineruApiClient;
 import com.huangder.lumibooks.mineru.MineruEpubBuilder;
 import com.huangder.lumibooks.mineru.MineruManualImportManager;
@@ -49,6 +53,7 @@ import com.huangder.lumibooks.tts.TtsEngine;
 import com.huangder.lumibooks.tts.TtsTextExtractor;
 import com.huangder.lumibooks.ui.bookshelf.BookNotesActivity;
 import com.huangder.lumibooks.ui.bookshelf.BookNotesActivity_MembersInjector;
+import com.huangder.lumibooks.ui.bookshelf.BookNotesExportBuilder;
 import com.huangder.lumibooks.ui.bookshelf.BookNotesViewModel;
 import com.huangder.lumibooks.ui.bookshelf.BookNotesViewModel_HiltModules;
 import com.huangder.lumibooks.ui.bookshelf.BookNotesViewModel_HiltModules_BindsModule_Binds_LazyMapKey;
@@ -583,6 +588,10 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
 
     }
 
+    BookNotesExportBuilder bookNotesExportBuilder() {
+      return new BookNotesExportBuilder(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule), singletonCImpl.provideDataStoreManagerProvider.get(), new PdfTextExtractor());
+    }
+
     Map hiltViewModelMapMapOfClassOfAndProviderOfViewModelBuilder() {
       MapBuilder mapBuilder = MapBuilder.<String, javax.inject.Provider<ViewModel>>newMapBuilder(6);
       mapBuilder.put(BookNotesViewModel_HiltModules_BindsModule_Binds_LazyMapKey.lazyClassKeyName, ((Provider) (bookNotesViewModelProvider)));
@@ -637,10 +646,10 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
       public T get() {
         switch (id) {
           case 0: // com.huangder.lumibooks.ui.bookshelf.BookNotesViewModel
-          return (T) new BookNotesViewModel(viewModelCImpl.savedStateHandle, singletonCImpl.provideBookRepositoryProvider.get(), singletonCImpl.provideReadingRepositoryProvider.get());
+          return (T) new BookNotesViewModel(viewModelCImpl.savedStateHandle, singletonCImpl.provideBookRepositoryProvider.get(), singletonCImpl.provideReadingRepositoryProvider.get(), viewModelCImpl.bookNotesExportBuilder());
 
           case 1: // com.huangder.lumibooks.ui.home.HomeViewModel
-          return (T) new HomeViewModel(singletonCImpl.provideBookRepositoryProvider.get(), singletonCImpl.provideReadingRepositoryProvider.get(), singletonCImpl.provideDataStoreManagerProvider.get(), ApplicationContextModule_ProvideApplicationFactory.provideApplication(singletonCImpl.applicationContextModule));
+          return (T) new HomeViewModel(singletonCImpl.provideBookRepositoryProvider.get(), singletonCImpl.provideTagRepositoryProvider.get(), singletonCImpl.provideReadingRepositoryProvider.get(), singletonCImpl.provideDataStoreManagerProvider.get(), ApplicationContextModule_ProvideApplicationFactory.provideApplication(singletonCImpl.applicationContextModule));
 
           case 2: // com.huangder.lumibooks.ui.reader.ReaderViewModel
           return (T) new ReaderViewModel(viewModelCImpl.savedStateHandle, ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule), singletonCImpl.provideBookRepositoryProvider.get(), singletonCImpl.provideReadingRepositoryProvider.get(), singletonCImpl.provideDataStoreManagerProvider.get(), singletonCImpl.provideTtsControllerProvider.get(), singletonCImpl.pdfConversionManagerProvider.get(), singletonCImpl.mineruManualImportManagerProvider.get(), singletonCImpl.mineruTokenStoreProvider.get());
@@ -771,6 +780,10 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
 
     Provider<ReadingRepository> provideReadingRepositoryProvider;
 
+    Provider<TagDao> provideTagDaoProvider;
+
+    Provider<TagRepository> provideTagRepositoryProvider;
+
     Provider<TtsEngine> provideTtsEngineProvider;
 
     Provider<TtsTextExtractor> provideTtsTextExtractorProvider;
@@ -820,12 +833,14 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
       this.provideBookmarkDaoProvider = DoubleCheck.provider(new SwitchingProvider<BookmarkDao>(singletonCImpl, 11));
       this.provideNoteDaoProvider = DoubleCheck.provider(new SwitchingProvider<NoteDao>(singletonCImpl, 12));
       this.provideReadingRepositoryProvider = DoubleCheck.provider(new SwitchingProvider<ReadingRepository>(singletonCImpl, 9));
-      this.provideTtsEngineProvider = DoubleCheck.provider(new SwitchingProvider<TtsEngine>(singletonCImpl, 14));
-      this.provideTtsTextExtractorProvider = DoubleCheck.provider(new SwitchingProvider<TtsTextExtractor>(singletonCImpl, 15));
-      this.provideTtsControllerProvider = DoubleCheck.provider(new SwitchingProvider<TtsController>(singletonCImpl, 13));
-      this.pdfConversionManagerProvider = DoubleCheck.provider(new SwitchingProvider<PdfConversionManager>(singletonCImpl, 16));
-      this.mineruManualImportManagerProvider = DoubleCheck.provider(new SwitchingProvider<MineruManualImportManager>(singletonCImpl, 17));
-      this.ttsNotificationManagerProvider = DoubleCheck.provider(new SwitchingProvider<TtsNotificationManager>(singletonCImpl, 18));
+      this.provideTagDaoProvider = DoubleCheck.provider(new SwitchingProvider<TagDao>(singletonCImpl, 14));
+      this.provideTagRepositoryProvider = DoubleCheck.provider(new SwitchingProvider<TagRepository>(singletonCImpl, 13));
+      this.provideTtsEngineProvider = DoubleCheck.provider(new SwitchingProvider<TtsEngine>(singletonCImpl, 16));
+      this.provideTtsTextExtractorProvider = DoubleCheck.provider(new SwitchingProvider<TtsTextExtractor>(singletonCImpl, 17));
+      this.provideTtsControllerProvider = DoubleCheck.provider(new SwitchingProvider<TtsController>(singletonCImpl, 15));
+      this.pdfConversionManagerProvider = DoubleCheck.provider(new SwitchingProvider<PdfConversionManager>(singletonCImpl, 18));
+      this.mineruManualImportManagerProvider = DoubleCheck.provider(new SwitchingProvider<MineruManualImportManager>(singletonCImpl, 19));
+      this.ttsNotificationManagerProvider = DoubleCheck.provider(new SwitchingProvider<TtsNotificationManager>(singletonCImpl, 20));
     }
 
     @Override
@@ -918,22 +933,28 @@ public final class DaggerEBookReaderApp_HiltComponents_SingletonC {
           case 12: // com.huangder.lumibooks.data.local.dao.NoteDao
           return (T) AppModule_ProvideNoteDaoFactory.provideNoteDao(singletonCImpl.provideAppDatabaseProvider.get());
 
-          case 13: // com.huangder.lumibooks.tts.TtsController
+          case 13: // com.huangder.lumibooks.domain.repository.TagRepository
+          return (T) AppModule_ProvideTagRepositoryFactory.provideTagRepository(singletonCImpl.provideTagDaoProvider.get());
+
+          case 14: // com.huangder.lumibooks.data.local.dao.TagDao
+          return (T) AppModule_ProvideTagDaoFactory.provideTagDao(singletonCImpl.provideAppDatabaseProvider.get());
+
+          case 15: // com.huangder.lumibooks.tts.TtsController
           return (T) AppModule_ProvideTtsControllerFactory.provideTtsController(singletonCImpl.provideTtsEngineProvider.get(), singletonCImpl.provideTtsTextExtractorProvider.get(), singletonCImpl.provideDataStoreManagerProvider.get());
 
-          case 14: // com.huangder.lumibooks.tts.TtsEngine
+          case 16: // com.huangder.lumibooks.tts.TtsEngine
           return (T) AppModule_ProvideTtsEngineFactory.provideTtsEngine(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
 
-          case 15: // com.huangder.lumibooks.tts.TtsTextExtractor
+          case 17: // com.huangder.lumibooks.tts.TtsTextExtractor
           return (T) AppModule_ProvideTtsTextExtractorFactory.provideTtsTextExtractor();
 
-          case 16: // com.huangder.lumibooks.pdfconversion.PdfConversionManager
+          case 18: // com.huangder.lumibooks.pdfconversion.PdfConversionManager
           return (T) new PdfConversionManager(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule), singletonCImpl.provideBookRepositoryProvider.get());
 
-          case 17: // com.huangder.lumibooks.mineru.MineruManualImportManager
+          case 19: // com.huangder.lumibooks.mineru.MineruManualImportManager
           return (T) new MineruManualImportManager(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule), singletonCImpl.provideBookRepositoryProvider.get(), singletonCImpl.provideAppDatabaseProvider.get(), singletonCImpl.mineruEpubBuilderProvider.get());
 
-          case 18: // com.huangder.lumibooks.service.TtsNotificationManager
+          case 20: // com.huangder.lumibooks.service.TtsNotificationManager
           return (T) new TtsNotificationManager(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
 
           default: throw new AssertionError(id);

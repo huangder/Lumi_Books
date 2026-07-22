@@ -2,6 +2,7 @@
 <resources>
     <string name="add_bookmark">ブックマーク追加</string>
     <string name="add_favorite">お気に入り</string>
+    <string name="add_tag">タグを追加</string>
     <string name="advanced_settings">詳細設定</string>
     <string name="animation_simple">シンプルスライド</string>
     <string name="animation_slide">スライドオーバー</string>
@@ -76,12 +77,20 @@
     <string name="delete_book_confirm">「%s」をライブラリから削除しますか？\nこの操作は取り消せません。</string>
     <string name="delete_book_title">書籍を削除</string>
     <string name="delete_custom_background">カスタム背景を削除</string>
+    <string name="delete_selected_books_confirm">選択した %1$d 冊を削除しますか？この操作は取り消せません。</string>
+    <string name="delete_selected_books_title">選択した書籍を削除</string>
+    <string name="done">完了</string>
     <string name="edit">編集</string>
     <string name="edit_book_info">書籍情報を編集</string>
     <string name="edit_daily_goal">日次目標を変更</string>
     <string name="edit_nickname">ニックネーム変更</string>
     <string name="entrance_animations_description">一部のページに要素アニメーションを追加します。\n性能に影響する場合があります</string>
     <string name="error">エラー</string>
+    <string name="existing_tags">作成済みのタグ</string>
+    <string name="export_bookmarks">ブックマークを書き出す</string>
+    <string name="export_bookmarks_failed">書き出しに失敗しました。再試行してください。</string>
+    <string name="export_bookmarks_preparing">準備中…</string>
+    <string name="export_bookmarks_success">書き出し完了</string>
     <string name="favorite">お気に入り</string>
     <string name="feedback_desc">バグ報告や機能提案をお寄せください</string>
     <string name="feedback_github_issues">GitHub Issues</string>
@@ -90,7 +99,7 @@
     <string name="feedback_thanks">Lumi の開発をサポートしていただきありがとうございます！</string>
     <string name="feedback_title">フィードバック</string>
     <string name="feedback_website">ウェブサイト</string>
-    <string name="filter_all">すべての書籍</string>
+    <string name="filter_all">すべて</string>
     <string name="filter_downloaded">ダウンロード済み</string>
     <string name="filter_favorites">お気に入り</string>
     <string name="filter_pdf">PDF</string>
@@ -149,7 +158,10 @@
     <string name="label_total_size">合計容量</string>
     <string name="later">後で</string>
     <string name="letter_spacing">字間</string>
+    <string name="library_search_placeholder">ライブラリを検索</string>
+    <string name="library_search_results">検索結果</string>
     <string name="line_height">行間</string>
+    <string name="liquid_glass_hdr_highlight">HDR タッチハイライト</string>
     <string name="liquid_glass_transparency">ガラスの透明度</string>
     <string name="loading">読み込み中...</string>
     <string name="loading_dots">読み込み中...</string>
@@ -233,6 +245,7 @@
     <string name="no_highlights">ハイライトがありません</string>
     <string name="no_notes">メモがありません</string>
     <string name="no_reading_records">読書記録がありません</string>
+    <string name="no_tags">タグはまだありません</string>
     <string name="note_input_placeholder">メモを入力...</string>
     <string name="notes">メモ</string>
     <string name="notes_count">メモ（%d）</string>
@@ -330,6 +343,12 @@
     <string name="reader_corner_content_page_number">ページ番号</string>
     <string name="reader_corner_top_left">左上</string>
     <string name="reader_corner_top_right">右上</string>
+    <string name="reader_edge_tap_both_next">次へ / 次へ</string>
+    <string name="reader_edge_tap_both_previous">前へ / 前へ</string>
+    <string name="reader_edge_tap_left_next_right_previous">次へ / 前へ</string>
+    <string name="reader_edge_tap_left_previous_right_next">前へ / 次へ</string>
+    <string name="reader_edge_tap_page_turn">画面両端のタップでページ送り</string>
+    <string name="reader_edge_tap_page_turn_hint">左右の端をタップしたときの動作を選択</string>
     <string name="reader_link_return">前のページに戻る</string>
     <string name="reader_load_failed">書籍を読み込めませんでした</string>
     <string name="reader_notes">メモ</string>
@@ -383,7 +402,7 @@
     <string name="sponsor_dev_title">開発者</string>
     <string name="sponsor_qr_desc">寄付用QRコード</string>
     <string name="sponsor_quote">「気に入ったら、おごってください😊」</string>
-    <string name="sponsor_thanks_title">スペシャルサンクス</string>
+    <string name="sponsor_thanks_title">夢のスポンサー</string>
     <string name="sponsor_title">スポンサー</string>
     <string name="statistics_title">統計</string>
     <string name="stats_title">統計</string>
@@ -405,6 +424,11 @@
     <string name="tab_notes">メモ</string>
     <string name="tab_week">週</string>
     <string name="tab_year">年</string>
+    <string name="tag_name_exists">同じ名前のタグが既にあります</string>
+    <string name="tag_name_hint">新しいタグ名を入力</string>
+    <string name="tag_name_required">タグ名を入力してください</string>
+    <string name="tag_name_too_long">タグ名は %1$d 文字以内です</string>
+    <string name="tag_sheet_title">タグ</string>
     <string name="tap_to_add_bookmark">読書中にブックマークアイコンをタップして追加</string>
     <string name="tap_to_change_nickname">タップしてニックネームを変更</string>
     <string name="terms_of_service">利用規約</string>

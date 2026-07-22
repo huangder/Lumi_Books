@@ -2,6 +2,7 @@
 <resources>
     <string name="add_bookmark">북마크 추가</string>
     <string name="add_favorite">즐겨찾기</string>
+    <string name="add_tag">태그 추가</string>
     <string name="advanced_settings">고급 설정</string>
     <string name="animation_simple">간단한 슬라이드</string>
     <string name="animation_slide">슬라이드 덮기</string>
@@ -76,12 +77,20 @@
     <string name="delete_book_confirm">서재에서 《%s》을(를) 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.</string>
     <string name="delete_book_title">도서 삭제</string>
     <string name="delete_custom_background">사용자 지정 배경 삭제</string>
+    <string name="delete_selected_books_confirm">선택한 도서 %1$d권을 삭제할까요? 이 작업은 되돌릴 수 없습니다.</string>
+    <string name="delete_selected_books_title">선택한 도서 삭제</string>
+    <string name="done">완료</string>
     <string name="edit">편집</string>
     <string name="edit_book_info">도서 정보 수정</string>
     <string name="edit_daily_goal">일일 목표 변경</string>
     <string name="edit_nickname">닉네임 변경</string>
     <string name="entrance_animations_description">일부 페이지에 요소 애니메이션을 추가하며\n성능에 영향을 줄 수 있습니다</string>
     <string name="error">오류</string>
+    <string name="existing_tags">추가된 태그</string>
+    <string name="export_bookmarks">북마크 내보내기</string>
+    <string name="export_bookmarks_failed">내보내기에 실패했습니다. 다시 시도하세요.</string>
+    <string name="export_bookmarks_preparing">준비 중…</string>
+    <string name="export_bookmarks_success">내보내기 완료</string>
     <string name="favorite">즐겨찾기</string>
     <string name="feedback_desc">버그 리포트나 기능 제안을 제출하여 더 나은 앱을 만드는 데 도움을 주세요</string>
     <string name="feedback_github_issues">GitHub Issues</string>
@@ -90,7 +99,7 @@
     <string name="feedback_thanks">Lumi 개발을 지원해 주셔서 감사합니다!</string>
     <string name="feedback_title">문제 신고</string>
     <string name="feedback_website">공식 웹사이트</string>
-    <string name="filter_all">모든 도서</string>
+    <string name="filter_all">전체</string>
     <string name="filter_downloaded">다운로드한 콘텐츠</string>
     <string name="filter_favorites">즐겨찾기</string>
     <string name="filter_pdf">PDF</string>
@@ -149,7 +158,10 @@
     <string name="label_total_size">총 사용 공간</string>
     <string name="later">나중에</string>
     <string name="letter_spacing">자간</string>
+    <string name="library_search_placeholder">내 서재 검색</string>
+    <string name="library_search_results">검색 결과</string>
     <string name="line_height">줄 간격</string>
+    <string name="liquid_glass_hdr_highlight">HDR 터치 하이라이트</string>
     <string name="liquid_glass_transparency">유리 투명도</string>
     <string name="loading">불러오는 중...</string>
     <string name="loading_dots">불러오는 중...</string>
@@ -233,6 +245,7 @@
     <string name="no_highlights">하이라이트 없음</string>
     <string name="no_notes">메모 없음</string>
     <string name="no_reading_records">독서 기록 없음</string>
+    <string name="no_tags">아직 태그가 없습니다</string>
     <string name="note_input_placeholder">메모를 입력하세요...</string>
     <string name="notes">메모</string>
     <string name="notes_count">메모 (%d)</string>
@@ -330,6 +343,12 @@
     <string name="reader_corner_content_page_number">페이지 번호</string>
     <string name="reader_corner_top_left">왼쪽 위</string>
     <string name="reader_corner_top_right">오른쪽 위</string>
+    <string name="reader_edge_tap_both_next">다음 / 다음</string>
+    <string name="reader_edge_tap_both_previous">이전 / 이전</string>
+    <string name="reader_edge_tap_left_next_right_previous">다음 / 이전</string>
+    <string name="reader_edge_tap_left_previous_right_next">이전 / 다음</string>
+    <string name="reader_edge_tap_page_turn">화면 양쪽 탭으로 페이지 넘기기</string>
+    <string name="reader_edge_tap_page_turn_hint">왼쪽과 오른쪽 가장자리를 탭할 때의 동작을 선택하세요</string>
     <string name="reader_link_return">이전 페이지로 돌아가기</string>
     <string name="reader_load_failed">책을 불러오지 못했습니다</string>
     <string name="reader_notes">메모</string>
@@ -383,7 +402,7 @@
     <string name="sponsor_dev_title">개발자</string>
     <string name="sponsor_qr_desc">기부 QR 코드</string>
     <string name="sponsor_quote">"마음에 드셨다면 밥 한 번 사주세요😊"</string>
-    <string name="sponsor_thanks_title">감사 목록 (순서 무관)</string>
+    <string name="sponsor_thanks_title">꿈의 후원자</string>
     <string name="sponsor_title">개발 후원</string>
     <string name="statistics_title">통계</string>
     <string name="stats_title">통계</string>
@@ -405,6 +424,11 @@
     <string name="tab_notes">메모</string>
     <string name="tab_week">주</string>
     <string name="tab_year">년</string>
+    <string name="tag_name_exists">같은 이름의 태그가 이미 있습니다</string>
+    <string name="tag_name_hint">새 태그 이름 입력</string>
+    <string name="tag_name_required">태그 이름을 입력하세요</string>
+    <string name="tag_name_too_long">태그 이름은 최대 %1$d자까지 가능합니다</string>
+    <string name="tag_sheet_title">태그</string>
     <string name="tap_to_add_bookmark">읽기 중 북마크 아이콘을 탭하여 추가하세요</string>
     <string name="tap_to_change_nickname">탭하여 닉네임 변경</string>
     <string name="terms_of_service">이용약관</string>

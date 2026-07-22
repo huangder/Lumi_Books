@@ -2,6 +2,7 @@ package com.huangder.lumibooks.`data`.local.dao
 
 import androidx.room.EntityDeleteOrUpdateAdapter
 import androidx.room.EntityInsertAdapter
+import androidx.room.EntityUpsertAdapter
 import androidx.room.RoomDatabase
 import androidx.room.coroutines.createFlow
 import androidx.room.util.getColumnIndexOrThrow
@@ -29,35 +30,13 @@ public class BookDao_Impl(
 ) : BookDao {
   private val __db: RoomDatabase
 
-  private val __insertAdapterOfBookEntity: EntityInsertAdapter<BookEntity>
-
   private val __deleteAdapterOfBookEntity: EntityDeleteOrUpdateAdapter<BookEntity>
 
   private val __updateAdapterOfBookEntity: EntityDeleteOrUpdateAdapter<BookEntity>
+
+  private val __upsertAdapterOfBookEntity: EntityUpsertAdapter<BookEntity>
   init {
     this.__db = __db
-    this.__insertAdapterOfBookEntity = object : EntityInsertAdapter<BookEntity>() {
-      protected override fun createQuery(): String = "INSERT OR REPLACE INTO `books` (`id`,`title`,`author`,`filePath`,`coverPath`,`format`,`lastReadTime`,`readingProgress`,`createdAt`,`isFavorite`) VALUES (?,?,?,?,?,?,?,?,?,?)"
-
-      protected override fun bind(statement: SQLiteStatement, entity: BookEntity) {
-        statement.bindText(1, entity.id)
-        statement.bindText(2, entity.title)
-        statement.bindText(3, entity.author)
-        statement.bindText(4, entity.filePath)
-        val _tmpCoverPath: String? = entity.coverPath
-        if (_tmpCoverPath == null) {
-          statement.bindNull(5)
-        } else {
-          statement.bindText(5, _tmpCoverPath)
-        }
-        statement.bindText(6, entity.format)
-        statement.bindLong(7, entity.lastReadTime)
-        statement.bindDouble(8, entity.readingProgress.toDouble())
-        statement.bindLong(9, entity.createdAt)
-        val _tmp: Int = if (entity.isFavorite) 1 else 0
-        statement.bindLong(10, _tmp.toLong())
-      }
-    }
     this.__deleteAdapterOfBookEntity = object : EntityDeleteOrUpdateAdapter<BookEntity>() {
       protected override fun createQuery(): String = "DELETE FROM `books` WHERE `id` = ?"
 
@@ -88,10 +67,50 @@ public class BookDao_Impl(
         statement.bindText(11, entity.id)
       }
     }
-  }
+    this.__upsertAdapterOfBookEntity = EntityUpsertAdapter<BookEntity>(object : EntityInsertAdapter<BookEntity>() {
+      protected override fun createQuery(): String = "INSERT INTO `books` (`id`,`title`,`author`,`filePath`,`coverPath`,`format`,`lastReadTime`,`readingProgress`,`createdAt`,`isFavorite`) VALUES (?,?,?,?,?,?,?,?,?,?)"
 
-  public override suspend fun insertBook(book: BookEntity): Unit = performSuspending(__db, false, true) { _connection ->
-    __insertAdapterOfBookEntity.insert(_connection, book)
+      protected override fun bind(statement: SQLiteStatement, entity: BookEntity) {
+        statement.bindText(1, entity.id)
+        statement.bindText(2, entity.title)
+        statement.bindText(3, entity.author)
+        statement.bindText(4, entity.filePath)
+        val _tmpCoverPath: String? = entity.coverPath
+        if (_tmpCoverPath == null) {
+          statement.bindNull(5)
+        } else {
+          statement.bindText(5, _tmpCoverPath)
+        }
+        statement.bindText(6, entity.format)
+        statement.bindLong(7, entity.lastReadTime)
+        statement.bindDouble(8, entity.readingProgress.toDouble())
+        statement.bindLong(9, entity.createdAt)
+        val _tmp: Int = if (entity.isFavorite) 1 else 0
+        statement.bindLong(10, _tmp.toLong())
+      }
+    }, object : EntityDeleteOrUpdateAdapter<BookEntity>() {
+      protected override fun createQuery(): String = "UPDATE `books` SET `id` = ?,`title` = ?,`author` = ?,`filePath` = ?,`coverPath` = ?,`format` = ?,`lastReadTime` = ?,`readingProgress` = ?,`createdAt` = ?,`isFavorite` = ? WHERE `id` = ?"
+
+      protected override fun bind(statement: SQLiteStatement, entity: BookEntity) {
+        statement.bindText(1, entity.id)
+        statement.bindText(2, entity.title)
+        statement.bindText(3, entity.author)
+        statement.bindText(4, entity.filePath)
+        val _tmpCoverPath: String? = entity.coverPath
+        if (_tmpCoverPath == null) {
+          statement.bindNull(5)
+        } else {
+          statement.bindText(5, _tmpCoverPath)
+        }
+        statement.bindText(6, entity.format)
+        statement.bindLong(7, entity.lastReadTime)
+        statement.bindDouble(8, entity.readingProgress.toDouble())
+        statement.bindLong(9, entity.createdAt)
+        val _tmp: Int = if (entity.isFavorite) 1 else 0
+        statement.bindLong(10, _tmp.toLong())
+        statement.bindText(11, entity.id)
+      }
+    })
   }
 
   public override suspend fun deleteBook(book: BookEntity): Unit = performSuspending(__db, false, true) { _connection ->
@@ -100,6 +119,10 @@ public class BookDao_Impl(
 
   public override suspend fun updateBook(book: BookEntity): Unit = performSuspending(__db, false, true) { _connection ->
     __updateAdapterOfBookEntity.handle(_connection, book)
+  }
+
+  public override suspend fun insertBook(book: BookEntity): Unit = performSuspending(__db, false, true) { _connection ->
+    __upsertAdapterOfBookEntity.upsert(_connection, book)
   }
 
   public override fun getAllBooks(): Flow<List<BookEntity>> {

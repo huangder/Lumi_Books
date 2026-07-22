@@ -213,6 +213,7 @@
     <integer name="status_bar_notification_info_maxnum">999</integer>
     <string name="add_bookmark">添加书签</string>
     <string name="add_favorite">收藏</string>
+    <string name="add_tag">添加标签</string>
     <string name="advanced_settings">高级设置</string>
     <string name="androidx_compose_foundation_autofill">Autofill</string>
     <string name="androidx_compose_ui_autofill">Autofill</string>
@@ -305,6 +306,9 @@
     <string name="delete_book_confirm">确定要从书库中删除《%s》吗？\n此操作不可撤销。</string>
     <string name="delete_book_title">删除图书</string>
     <string name="delete_custom_background">删除自定义背景</string>
+    <string name="delete_selected_books_confirm">确定要删除所选的 %1$d 本图书吗？此操作不可撤销。</string>
+    <string name="delete_selected_books_title">删除所选图书</string>
+    <string name="done">完成</string>
     <string name="dropdown_menu">"Dropdown menu"</string>
     <string name="edit">编辑</string>
     <string name="edit_book_info">修改书本信息</string>
@@ -312,6 +316,11 @@
     <string name="edit_nickname">修改昵称</string>
     <string name="entrance_animations_description">为部分页面添加元素\n动效，这可能会影响性能</string>
     <string name="error">错误</string>
+    <string name="existing_tags">已有标签</string>
+    <string name="export_bookmarks">导出书签</string>
+    <string name="export_bookmarks_failed">导出失败，请重试</string>
+    <string name="export_bookmarks_preparing">正在准备…</string>
+    <string name="export_bookmarks_success">导出成功</string>
     <string name="favorite">收藏</string>
     <string name="feedback_desc">欢迎提交 Bug 报告或功能建议，帮助我们做得更好</string>
     <string name="feedback_github_issues">GitHub Issues</string>
@@ -320,7 +329,7 @@
     <string name="feedback_thanks">感谢您支持 Lumi 开发！</string>
     <string name="feedback_title">问题反馈</string>
     <string name="feedback_website">官网</string>
-    <string name="filter_all">全部图书</string>
+    <string name="filter_all">全部</string>
     <string name="filter_downloaded">下载内容</string>
     <string name="filter_favorites">收藏</string>
     <string name="filter_pdf">PDF</string>
@@ -383,7 +392,10 @@
     <string name="label_total_size">总占用空间</string>
     <string name="later">稍后</string>
     <string name="letter_spacing">字间距</string>
+    <string name="library_search_placeholder">搜索你的书库</string>
+    <string name="library_search_results">搜索结果</string>
     <string name="line_height">行距</string>
+    <string name="liquid_glass_hdr_highlight">HDR 按压高光</string>
     <string name="liquid_glass_transparency">玻璃通透度</string>
     <string name="loading">加载中...</string>
     <string name="loading_dots">加载中...</string>
@@ -538,6 +550,7 @@
     <string name="no_highlights">暂无高亮</string>
     <string name="no_notes">暂无笔记</string>
     <string name="no_reading_records">暂无阅读记录</string>
+    <string name="no_tags">还没有创建标签</string>
     <string name="not_selected">Not selected</string>
     <string name="note_input_placeholder">输入笔记...</string>
     <string name="notes">笔记</string>
@@ -639,6 +652,12 @@
     <string name="reader_corner_content_page_number">页码</string>
     <string name="reader_corner_top_left">左上</string>
     <string name="reader_corner_top_right">右上</string>
+    <string name="reader_edge_tap_both_next">左下左下</string>
+    <string name="reader_edge_tap_both_previous">左上左上</string>
+    <string name="reader_edge_tap_left_next_right_previous">左下右上</string>
+    <string name="reader_edge_tap_left_previous_right_next">左上右下</string>
+    <string name="reader_edge_tap_page_turn">点击屏幕两侧翻页</string>
+    <string name="reader_edge_tap_page_turn_hint">设置点击左、右两侧时的翻页方向</string>
     <string name="reader_link_return">返回到刚才页</string>
     <string name="reader_load_failed">书籍加载失败</string>
     <string name="reader_notes">笔记</string>
@@ -694,7 +713,7 @@
     <string name="sponsor_dev_title">开发人员</string>
     <string name="sponsor_qr_desc">捐赠二维码</string>
     <string name="sponsor_quote">"如果觉得不错，请我吃个饭吧😊"</string>
-    <string name="sponsor_thanks_title">感谢列表（排名不分先后）</string>
+    <string name="sponsor_thanks_title">梦想赞助家</string>
     <string name="sponsor_title">赞助开发</string>
     <string name="state_empty">Empty</string>
     <string name="state_off">Off</string>
@@ -722,6 +741,11 @@
     <string name="tab_notes">笔记</string>
     <string name="tab_week">周</string>
     <string name="tab_year">年</string>
+    <string name="tag_name_exists">已存在同名标签</string>
+    <string name="tag_name_hint">输入新标签名称</string>
+    <string name="tag_name_required">请输入标签名称</string>
+    <string name="tag_name_too_long">标签名称最多 %1$d 个字符</string>
+    <string name="tag_sheet_title">标签</string>
     <string name="tap_to_add_bookmark">阅读时点击书签图标添加</string>
     <string name="tap_to_change_nickname">点击修改昵称</string>
     <string name="template_percent"><ns2:g id="percentage">%1$d</ns2:g> percent.</string>
@@ -780,6 +804,7 @@
     <string name="welcome_continue">继续</string>
     <string name="welcome_desc">Lumi 是一款纯粹的本地图书阅读器。我们绝不会在未经许可的情况下收集任何个人信息，且承诺永久不设网络账号服务。所有的阅读数据均储存在您的本地设备中，请务必定期做好数据备份以防丢失。Lumi 坚持最小权限原则，不会向您索取任何无关的敏感权限。点击\"继续\"按钮，即表示您已阅读并同意</string>
     <string name="welcome_exit">退出</string>
+    <string name="welcome_open_sponsor">前往捐赠页</string>
     <string name="welcome_privacy">《隐私政策》</string>
     <string name="welcome_privacy_title">隐私政策</string>
     <string name="welcome_start_using">开始使用</string>
@@ -908,9 +933,9 @@
     <declare-styleable name="DividerAttributes">
         
         <attr format="enum" name="embeddingDividerType">
-            <!-- Fixed divider type. -->
+            
             <enum name="fixed" value="0"/>
-            <!-- Draggable divider type. -->
+            
             <enum name="draggable" value="1"/>
         </attr>
         
@@ -937,23 +962,14 @@
         <attr format="reference" name="fontProviderCerts"/>
         
         <attr name="fontProviderFetchStrategy">
-            <!-- The blocking font fetch works as follows.
-              First, check the local cache, then if the requested font is not cached, request the
-              font from the provider and wait until it is finished.  You can change the length of
-              the timeout by modifying fontProviderFetchTimeout.  If the timeout happens, the
-              default typeface will be used instead. -->
+            
             <enum name="blocking" value="0"/>
-            <!-- The async font fetch works as follows.
-              First, check the local cache, then if the requested font is not cached, trigger a
-              request the font and continue with layout inflation. Once the font fetch succeeds, the
-              target text view will be refreshed with the downloaded font data. The
-              fontProviderFetchTimeout will be ignored if async loading is specified. -->
+            
             <enum name="async" value="1"/>
         </attr>
         
         <attr format="integer" name="fontProviderFetchTimeout">
-            <!-- A special value for the timeout. In this case, the blocking font fetching will not
-              timeout and wait until a reply is received from the font provider. -->
+            
             <enum name="forever" value="-1"/>
         </attr>
         

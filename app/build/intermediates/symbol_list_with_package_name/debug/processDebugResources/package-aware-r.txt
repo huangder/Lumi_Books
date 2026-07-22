@@ -163,6 +163,11 @@ drawable share_poster_bg
 drawable splash_background
 drawable splash_dark
 drawable splash_light
+drawable welcome_bookshelf_preview
+drawable welcome_glass_dialog_preview
+drawable welcome_glass_home_preview
+drawable welcome_glass_reader_preview
+drawable welcome_mineru_preview
 font fandol_fang
 font lxgw_wenkai
 id accessibility_action_clickable_span
@@ -307,6 +312,7 @@ layout notification_template_part_time
 mipmap ic_launcher
 string add_bookmark
 string add_favorite
+string add_tag
 string advanced_settings
 string androidx_compose_foundation_autofill
 string androidx_compose_ui_autofill
@@ -399,6 +405,9 @@ string delete_book
 string delete_book_confirm
 string delete_book_title
 string delete_custom_background
+string delete_selected_books_confirm
+string delete_selected_books_title
+string done
 string dropdown_menu
 string edit
 string edit_book_info
@@ -406,6 +415,11 @@ string edit_daily_goal
 string edit_nickname
 string entrance_animations_description
 string error
+string existing_tags
+string export_bookmarks
+string export_bookmarks_failed
+string export_bookmarks_preparing
+string export_bookmarks_success
 string favorite
 string feedback_desc
 string feedback_github_issues
@@ -477,7 +491,10 @@ string label_text_color
 string label_total_size
 string later
 string letter_spacing
+string library_search_placeholder
+string library_search_results
 string line_height
+string liquid_glass_hdr_highlight
 string liquid_glass_transparency
 string loading
 string loading_dots
@@ -628,6 +645,7 @@ string no_content
 string no_highlights
 string no_notes
 string no_reading_records
+string no_tags
 string not_selected
 string note_input_placeholder
 string notes
@@ -729,6 +747,12 @@ string reader_corner_content_none
 string reader_corner_content_page_number
 string reader_corner_top_left
 string reader_corner_top_right
+string reader_edge_tap_both_next
+string reader_edge_tap_both_previous
+string reader_edge_tap_left_next_right_previous
+string reader_edge_tap_left_previous_right_next
+string reader_edge_tap_page_turn
+string reader_edge_tap_page_turn_hint
 string reader_link_return
 string reader_load_failed
 string reader_notes
@@ -812,6 +836,11 @@ string tab_note
 string tab_notes
 string tab_week
 string tab_year
+string tag_name_exists
+string tag_name_hint
+string tag_name_required
+string tag_name_too_long
+string tag_sheet_title
 string tap_to_add_bookmark
 string tap_to_change_nickname
 string template_percent
@@ -870,6 +899,7 @@ string welcome_and
 string welcome_continue
 string welcome_desc
 string welcome_exit
+string welcome_open_sponsor
 string welcome_privacy
 string welcome_privacy_title
 string welcome_start_using

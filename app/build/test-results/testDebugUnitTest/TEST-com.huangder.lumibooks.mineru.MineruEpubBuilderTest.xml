@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.huangder.lumibooks.mineru.MineruEpubBuilderTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-07-22T13:23:53.394Z" hostname="LAPTOP-L6IPGCHS" time="0.128">
+  <properties/>
+  <testcase name="rejectsPathTraversalInDownloadedZip" classname="com.huangder.lumibooks.mineru.MineruEpubBuilderTest" time="0.062"/>
+  <testcase name="parsesUnknownModeAsDisabled" classname="com.huangder.lumibooks.mineru.MineruEpubBuilderTest" time="0.002"/>
+  <testcase name="buildsEpubWithChaptersAndRelativeImages" classname="com.huangder.lumibooks.mineru.MineruEpubBuilderTest" time="0.064"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
