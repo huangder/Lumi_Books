@@ -313,7 +313,9 @@ private fun Modifier.liquidSwitchGlass(
         shape = { CircleShape },
         effects = {
             vibrancy()
-            blur((1.dp + 3.dp * (1f - transparency)).toPx())
+            if (transparency < 1f) {
+                blur((4.dp * (1f - transparency)).toPx())
+            }
             lens(
                 ((if (isThumb) 9.dp else 6.dp) + 2.dp * pressProgress).toPx(),
                 ((if (isThumb) 16.dp else 10.dp) + 3.dp * pressProgress).toPx(),

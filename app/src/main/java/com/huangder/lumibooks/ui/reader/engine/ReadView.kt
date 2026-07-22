@@ -8,6 +8,8 @@ import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
 import com.huangder.lumibooks.domain.model.Note
+import com.huangder.lumibooks.domain.model.ReaderEdgeTapAction
+import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
 import com.huangder.lumibooks.tts.TtsPageContent
 import com.huangder.lumibooks.tts.TtsPageLocation
 import com.huangder.lumibooks.util.ChineseConverter
@@ -117,6 +119,7 @@ class ReadView(context: Context) : FrameLayout(context) {
     private var currentParagraphSpacingDp: Float = 0f
     private var currentChineseMode: String = "original"
     private var currentPageTransition: String = "slide"
+    private var currentEdgeTapMode: ReaderEdgeTapMode = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT
     private var currentReaderBackgroundColor: Int? = null
     private var currentReaderBackgroundImagePath: String? = null
     private var currentReaderTextColor: Int? = null
@@ -175,14 +178,14 @@ class ReadView(context: Context) : FrameLayout(context) {
         }
 
         animationController.onTapLeft = {
-            turnToPreviousPage()
+            performEdgeTap(currentEdgeTapMode.leftAction)
         }
         animationController.onTapCenter = {
             clearCurrentSelection()
             callbacks?.onMenuToggle()
         }
         animationController.onTapRight = {
-            turnToNextPage()
+            performEdgeTap(currentEdgeTapMode.rightAction)
         }
 
         // 🔥 长按回调保留（边缘长按时触发），执行程序化选词
@@ -627,6 +630,18 @@ class ReadView(context: Context) : FrameLayout(context) {
         nextPageView.translationY = 0f
         nextPageView.alpha = 0f
         invalidate()
+    }
+
+    /** 设置左右边缘短按的翻页方向；滑动手势方向保持不变。 */
+    fun setEdgeTapMode(mode: ReaderEdgeTapMode) {
+        currentEdgeTapMode = mode
+    }
+
+    private fun performEdgeTap(action: ReaderEdgeTapAction) {
+        when (action) {
+            ReaderEdgeTapAction.PREVIOUS_PAGE -> turnToPreviousPage()
+            ReaderEdgeTapAction.NEXT_PAGE -> turnToNextPage()
+        }
     }
 
     /** 获取指定章节的页数（需已布局） */

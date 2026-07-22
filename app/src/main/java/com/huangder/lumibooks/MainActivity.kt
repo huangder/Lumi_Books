@@ -207,6 +207,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = "lumi")
             val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = 0.55f)
+            val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = false)
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
             val entranceAnimationsEnabled by dataStoreManager.entranceAnimationsEnabled.collectAsState(initial = true)
             val predictiveBackEnabled by dataStoreManager.predictiveBackEnabled.collectAsState(initial = true)
@@ -254,7 +255,8 @@ class MainActivity : ComponentActivity() {
                 darkTheme = isDark,
                 dynamicColor = appTheme == "material3",
                 appTheme = appTheme,
-                liquidGlassTransparency = liquidGlassTransparency
+                liquidGlassTransparency = liquidGlassTransparency,
+                liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled
             ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),

@@ -36,6 +36,7 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -83,10 +84,16 @@ import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
+import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
 import com.huangder.lumibooks.domain.model.ReaderPageCorner
 import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
+import com.huangder.lumibooks.ui.components.LiquidGlassButton
+import com.huangder.lumibooks.ui.components.LiquidGlassDialog
+import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
+import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
 import com.huangder.lumibooks.ui.components.LiquidGlassSwitch
+import com.huangder.lumibooks.ui.components.LiquidGlassColumnSheetContainer
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuHost
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuItem
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuSpec
@@ -236,16 +243,15 @@ fun ThemeSettingsSheet(
                 )
                 Spacer(Modifier.weight(1f))
                 // 关闭按钮
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(LightBgGray)
-                        .clickable { isClosing = true },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Outlined.Close, stringResource(R.string.close), tint = LightTextSecondary, modifier = Modifier.size(18.dp))
-                }
+                LiquidGlassIconButton(
+                    imageVector = Icons.Outlined.Close,
+                    contentDescription = stringResource(R.string.close),
+                    onClick = { isClosing = true },
+                    size = 44.dp,
+                    iconSize = 20.dp,
+                    contentColor = AppColors.TextPrimary,
+                    normalContainerColor = LightBgGray
+                )
             }
 
             Spacer(Modifier.height(24.dp))
@@ -699,12 +705,10 @@ private fun CustomBackgroundDialog(
         floatArrayOf(hue, saturation / 100f, lightness / 100f)
     )
 
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            color = AppColors.CardBg
-        ) {
+    LiquidGlassDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp)
+    ) {
             Column(Modifier.padding(20.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -717,9 +721,11 @@ private fun CustomBackgroundDialog(
                             color = AppColors.TextPrimary
                     )
                     Spacer(Modifier.weight(1f))
-                    TextButton(onClick = onDismiss) {
-                        Text(stringResource(R.string.cancel), color = LightTextSecondary)
-                    }
+                    LiquidGlassTextButton(
+                        text = stringResource(R.string.cancel),
+                        onClick = onDismiss,
+                        contentColor = LightTextSecondary
+                    )
                 }
 
                 Box(
@@ -749,33 +755,20 @@ private fun CustomBackgroundDialog(
                 ) { lightness = it }
                 Spacer(Modifier.height(18.dp))
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(44.dp)
-                        .clip(RoundedCornerShape(22.dp))
-                        .background(AccentColor)
-                        .clickable { onAddColor(previewColorInt); onDismiss() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = stringResource(R.string.background_add_color),
-                        color = AppColors.OnAccent,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.background_add_color),
+                    onClick = { onAddColor(previewColorInt); onDismiss() },
+                    modifier = Modifier.fillMaxWidth().height(44.dp),
+                    tintedColor = AccentColor
+                )
                 Spacer(Modifier.height(10.dp))
-                Box(
+                LiquidGlassButton(
+                    onClick = onPickPhoto,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(44.dp)
-                        .clip(RoundedCornerShape(22.dp))
                         .border(1.dp, LightDivider, RoundedCornerShape(22.dp))
-                        .clickable { onPickPhoto() },
-                    contentAlignment = Alignment.Center
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = Icons.Outlined.Image,
                             contentDescription = null,
@@ -788,10 +781,8 @@ private fun CustomBackgroundDialog(
                             color = AppColors.TextPrimary,
                             fontSize = 14.sp
                         )
-                    }
                 }
             }
-        }
     }
 }
 
@@ -925,8 +916,10 @@ fun AdvancedSettingsSheet(
     readerBottomLeftContent: ReaderCornerContent,
     readerBottomRightContent: ReaderCornerContent,
     volumeKeyPageTurnEnabled: Boolean = false,
+    readerEdgeTapMode: ReaderEdgeTapMode = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT,
     onReaderCornerContentChange: (ReaderPageCorner, ReaderCornerContent) -> Unit,
     onVolumeKeyPageTurnEnabledChange: (Boolean) -> Unit = {},
+    onReaderEdgeTapModeChange: (ReaderEdgeTapMode) -> Unit = {},
     onTextColorChange: (Int?) -> Unit,
     onResetSettings: () -> Unit,
     onDismiss: () -> Unit
@@ -990,16 +983,16 @@ fun AdvancedSettingsSheet(
         )
 
         // 底部弹出（90% 屏幕高度）
-        Column(
-            Modifier.align(Alignment.BottomCenter)
+        LiquidGlassColumnSheetContainer(
+            modifier = Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .fillMaxHeight(0.90f)
-                .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress)
-                .liquidGlassSheetSurface(
-                    fallbackColor = LightCardBg,
-                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
-                )
-                .navigationBarsPadding()
+                .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress),
+            contentModifier = Modifier
+                .fillMaxSize()
+                .navigationBarsPadding(),
+            fallbackColor = LightCardBg,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
         ) {
             // 顶部预览区域：背景直接铺到容器顶部，操作按钮悬浮在预览之上。
             Box(
@@ -1055,32 +1048,27 @@ fun AdvancedSettingsSheet(
                         .padding(horizontal = 24.dp, vertical = 20.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(LightBgGray.copy(alpha = 0.92f))
-                            .clickable { isClosing = true },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Outlined.Close,
-                            stringResource(R.string.close),
-                            tint = LightTextSecondary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
+                    LiquidGlassIconButton(
+                        imageVector = Icons.Outlined.Close,
+                        contentDescription = stringResource(R.string.close),
+                        onClick = { isClosing = true },
+                        size = 44.dp,
+                        iconSize = 20.dp,
+                        contentColor = AppColors.TextPrimary,
+                        normalContainerColor = LightBgGray.copy(alpha = 0.92f)
+                    )
                     Spacer(Modifier.weight(1f))
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(AppColors.Accent)
-                            .clickable { isClosing = true },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("✓", fontSize = 16.sp, color = AppColors.OnAccent, fontWeight = FontWeight.Bold)
-                    }
+                    LiquidGlassIconButton(
+                        imageVector = Icons.Outlined.Check,
+                        contentDescription = "确认",
+                        onClick = { isClosing = true },
+                        size = 44.dp,
+                        iconSize = 20.dp,
+                        contentColor = AppColors.OnAccent,
+                        normalContainerColor = AppColors.Accent,
+                        liquidContainerColor = AppColors.Accent,
+                        liquidScrimColor = AppColors.Accent.copy(alpha = 0.72f)
+                    )
                 }
             }
 
@@ -1139,6 +1127,11 @@ fun AdvancedSettingsSheet(
                         bottomLeft = readerBottomLeftContent,
                         bottomRight = readerBottomRightContent,
                         onContentChange = onReaderCornerContentChange
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    ReaderEdgeTapModeSetting(
+                        selected = readerEdgeTapMode,
+                        onSelected = onReaderEdgeTapModeChange
                     )
                     Spacer(Modifier.height(16.dp))
                     AdvancedToggleRow(
@@ -1393,6 +1386,129 @@ private fun ReaderCornerSelectionRow(
 }
 
 @Composable
+private fun ReaderEdgeTapModeSetting(
+    selected: ReaderEdgeTapMode,
+    onSelected: (ReaderEdgeTapMode) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    var menuAnchorBounds by remember { mutableStateOf(Rect.Zero) }
+    val labeledOptions = ReaderEdgeTapMode.entries.map { mode ->
+        mode to readerEdgeTapModeLabel(mode)
+    }
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val liquidMenuHost = LocalLiquidGlassMenuHost.current
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(end = 12.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.reader_edge_tap_page_turn),
+                fontSize = 14.sp,
+                color = AppColors.TextPrimary
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = stringResource(R.string.reader_edge_tap_page_turn_hint),
+                fontSize = 12.sp,
+                color = LightTextSecondary
+            )
+        }
+
+        Box {
+            Box(
+                modifier = Modifier
+                    .width(158.dp)
+                    .height(38.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(LightBgGray)
+                    .onGloballyPositioned { menuAnchorBounds = it.boundsInRoot() }
+                    .clickable {
+                        if (isLiquidGlass && liquidMenuHost != null && menuAnchorBounds != Rect.Zero) {
+                            liquidMenuHost.show(
+                                LiquidGlassMenuSpec(
+                                    anchorBounds = menuAnchorBounds,
+                                    width = 158.dp,
+                                    items = labeledOptions.map { (mode, label) ->
+                                        LiquidGlassMenuItem(
+                                            label = label,
+                                            selected = mode == selected,
+                                            onClick = { onSelected(mode) }
+                                        )
+                                    }
+                                )
+                            )
+                        } else {
+                            expanded = true
+                        }
+                    }
+                    .padding(horizontal = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = readerEdgeTapModeLabel(selected),
+                    fontSize = 12.sp,
+                    color = AppColors.TextPrimary,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(end = 16.dp)
+                )
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = LightTextSecondary,
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .size(16.dp)
+                )
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                shape = RoundedCornerShape(18.dp),
+                containerColor = LightCardBg,
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp
+            ) {
+                labeledOptions.forEach { (mode, label) ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = label,
+                                fontSize = 13.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        },
+                        onClick = {
+                            expanded = false
+                            onSelected(mode)
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun readerEdgeTapModeLabel(mode: ReaderEdgeTapMode): String = stringResource(
+    when (mode) {
+        ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT -> R.string.reader_edge_tap_left_previous_right_next
+        ReaderEdgeTapMode.LEFT_NEXT_RIGHT_PREVIOUS -> R.string.reader_edge_tap_left_next_right_previous
+        ReaderEdgeTapMode.BOTH_PREVIOUS -> R.string.reader_edge_tap_both_previous
+        ReaderEdgeTapMode.BOTH_NEXT -> R.string.reader_edge_tap_both_next
+    }
+)
+
+@Composable
 private fun readerCornerContentLabel(content: ReaderCornerContent): String = stringResource(
     when (content) {
         ReaderCornerContent.NONE -> R.string.reader_corner_content_none
@@ -1544,12 +1660,10 @@ private fun TextColorDialog(
         Color.Black
     }
 
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            color = AppColors.CardBg
-        ) {
+    LiquidGlassDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp)
+    ) {
             Column(Modifier.padding(20.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1562,9 +1676,11 @@ private fun TextColorDialog(
                         color = AppColors.TextPrimary
                     )
                     Spacer(Modifier.weight(1f))
-                    TextButton(onClick = onDismiss) {
-                        Text(stringResource(R.string.cancel), color = LightTextSecondary)
-                    }
+                    LiquidGlassTextButton(
+                        text = stringResource(R.string.cancel),
+                        onClick = onDismiss,
+                        contentColor = LightTextSecondary
+                    )
                 }
                 Box(
                     modifier = Modifier
@@ -1594,24 +1710,13 @@ private fun TextColorDialog(
                     5f..100f
                 ) { lightness = it }
                 Spacer(Modifier.height(18.dp))
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(44.dp)
-                        .clip(RoundedCornerShape(22.dp))
-                        .background(AccentColor)
-                        .clickable { onApply(previewColor) },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = stringResource(R.string.apply_text_color),
-                        color = AppColors.OnAccent,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.apply_text_color),
+                    onClick = { onApply(previewColor) },
+                    modifier = Modifier.fillMaxWidth().height(44.dp),
+                    tintedColor = AccentColor
+                )
             }
-        }
     }
 }
 

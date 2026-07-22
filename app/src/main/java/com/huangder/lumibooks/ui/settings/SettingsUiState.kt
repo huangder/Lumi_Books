@@ -54,6 +54,7 @@ data class SettingsUiState(
     // 显示与外观
     val appTheme: String = "lumi",         // "lumi" / "material3" / "liquid_glass"
     val liquidGlassTransparency: Float = 0.55f,
+    val liquidGlassHdrHighlightEnabled: Boolean = false,
     val darkMode: String = "system",       // "system" / "light" / "dark"
     val entranceAnimationsEnabled: Boolean = true,
     val predictiveBackEnabled: Boolean = true,

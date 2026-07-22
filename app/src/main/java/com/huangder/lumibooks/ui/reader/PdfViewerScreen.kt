@@ -106,10 +106,11 @@ import com.huangder.lumibooks.ui.animation.AppEasing
 import com.huangder.lumibooks.ui.animation.cardPressEffect
 import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
+import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.components.animateBottomSheetIn
 import com.huangder.lumibooks.ui.components.animateBottomSheetOut
-import com.huangder.lumibooks.ui.components.liquidGlassSheetSurface
+import com.huangder.lumibooks.ui.components.LiquidGlassColumnSheetContainer
 import com.huangder.lumibooks.ui.components.materialBottomSheetMotion
 import com.huangder.lumibooks.ui.components.ReaderSystemBarStyle
 import com.huangder.lumibooks.ui.theme.AppColors
@@ -930,19 +931,18 @@ private fun PdfConversionBottomSheet(
                     interactionSource = remember { MutableInteractionSource() }
                 ) { dismissForCurrentState() }
         )
-        Column(
+        LiquidGlassColumnSheetContainer(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .heightIn(max = LocalConfiguration.current.screenHeightDp.dp * 0.85f)
-                .materialBottomSheetMotion(offset.value, predictiveBackProgress)
-                .liquidGlassSheetSurface(
-                    fallbackColor = AppColors.CardBg,
-                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
-                )
+                .materialBottomSheetMotion(offset.value, predictiveBackProgress),
+            contentModifier = Modifier
                 .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 24.dp),
+            fallbackColor = AppColors.CardBg,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Box(
@@ -1571,18 +1571,18 @@ private fun PdfTocSheet(
         )
 
         // Sheet 面板（70% 屏幕高度）
-        Column(
-            Modifier
+        LiquidGlassColumnSheetContainer(
+            modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .fillMaxHeight(0.7f)
-                .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress)
-                .liquidGlassSheetSurface(
-                    fallbackColor = AppColors.CardBg,
-                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
-                )
+                .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress),
+            contentModifier = Modifier
+                .fillMaxSize()
                 .navigationBarsPadding()
-                .padding(24.dp)
+                .padding(24.dp),
+            fallbackColor = AppColors.CardBg,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
         ) {
             // 标题栏
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -1594,23 +1594,15 @@ private fun PdfTocSheet(
                     color = AppColors.TextPrimary
                 )
                 Spacer(Modifier.weight(1f))
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(AppColors.BgGray)
-                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                            isClosing = true
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Default.Close,
-                        stringResource(R.string.pdf_close),
-                        tint = AppColors.TextSecondary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
+                LiquidGlassIconButton(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = stringResource(R.string.pdf_close),
+                    onClick = { isClosing = true },
+                    size = 44.dp,
+                    iconSize = 20.dp,
+                    contentColor = AppColors.TextPrimary,
+                    normalContainerColor = AppColors.BgGray
+                )
             }
 
             Spacer(Modifier.height(16.dp))

@@ -8,6 +8,7 @@
     <string name="app_theme_material3">Material 3</string>
     <string name="app_theme_liquid_glass">液态玻璃</string>
     <string name="liquid_glass_transparency">玻璃通透度</string>
+    <string name="liquid_glass_hdr_highlight">HDR 按压高光</string>
     <string name="app_name">LUMI</string>
 
     <!-- 首页 -->
@@ -162,7 +163,7 @@
     <string name="sponsor_qr_desc">捐赠二维码</string>
     <string name="sponsor_quote">"如果觉得不错，请我吃个饭吧😊"</string>
     <string name="sponsor_code_label">给屿浮 的赞赏码</string>
-    <string name="sponsor_thanks_title">感谢列表（排名不分先后）</string>
+    <string name="sponsor_thanks_title">梦想赞助家</string>
     <string name="sponsor_dev_title">开发人员</string>
 
     <!-- 反馈 -->
@@ -286,6 +287,12 @@
     <string name="show_reader_battery_hint">电量图标和百分比</string>
     <string name="volume_key_page_turn">音量键翻页</string>
     <string name="volume_key_page_turn_hint">音量加键上一页，音量减键下一页</string>
+    <string name="reader_edge_tap_page_turn">点击屏幕两侧翻页</string>
+    <string name="reader_edge_tap_page_turn_hint">设置点击左、右两侧时的翻页方向</string>
+    <string name="reader_edge_tap_left_previous_right_next">左上右下</string>
+    <string name="reader_edge_tap_left_next_right_previous">左下右上</string>
+    <string name="reader_edge_tap_both_previous">左上左上</string>
+    <string name="reader_edge_tap_both_next">左下左下</string>
     <string name="reader_page_layout">阅读页信息</string>
     <string name="reader_page_layout_hint">选择阅读页四个角显示的内容</string>
     <string name="reader_corner_top_left">左上</string>

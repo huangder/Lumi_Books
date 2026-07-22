@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Card
@@ -34,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.huangder.lumibooks.domain.model.Bookmark
 import com.huangder.lumibooks.R
+import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import androidx.compose.ui.res.stringResource
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -55,9 +57,11 @@ fun BookmarkScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.reader_bookmark)) },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back))
-                    }
+                    LiquidGlassIconButton(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.back),
+                        onClick = onNavigateBack
+                    )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface

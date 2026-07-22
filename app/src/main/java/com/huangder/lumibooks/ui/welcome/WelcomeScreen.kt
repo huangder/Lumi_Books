@@ -73,6 +73,7 @@ import com.huangder.lumibooks.ui.animation.AppEasing
 import com.huangder.lumibooks.ui.components.ConfigurableBackHandler
 import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
 import com.huangder.lumibooks.ui.components.materialBottomSheetMotion
+import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.AppColors
 import androidx.compose.ui.res.stringResource
@@ -688,19 +689,15 @@ private fun PolicyBottomSheet(
                 Spacer(modifier = Modifier.weight(1f))
 
                 // 关闭按钮
-                IconButton(
+                LiquidGlassIconButton(
+                    imageVector = Icons.Outlined.Close,
+                    contentDescription = stringResource(R.string.close),
                     onClick = onDismiss,
-                    modifier = Modifier
-                        .size(36.dp)
-                        .background(bgGray, CircleShape)
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Close,
-                        contentDescription = stringResource(R.string.close),
-                        tint = textSecondary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
+                    size = 36.dp,
+                    iconSize = 18.dp,
+                    contentColor = AppColors.TextPrimary,
+                    normalContainerColor = bgGray
+                )
             }
 
             Spacer(modifier = Modifier.height(16.dp))

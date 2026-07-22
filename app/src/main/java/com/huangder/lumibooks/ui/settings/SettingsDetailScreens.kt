@@ -46,6 +46,7 @@ import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.FontDownload
 import androidx.compose.material.icons.outlined.FormatSize
+import androidx.compose.material.icons.outlined.HdrOn
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Landscape
 import androidx.compose.material.icons.outlined.LineWeight
@@ -62,7 +63,6 @@ import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material.icons.outlined.SystemUpdateAlt
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -101,6 +101,11 @@ import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.FangSong
 import com.huangder.lumibooks.ui.components.LiquidGlassSwitch
+import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
+import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
+import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
+import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
+import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuHost
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuItem
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuSpec
@@ -122,10 +127,19 @@ fun DetailPage(title: String, onBack: () -> Unit, content: @Composable () -> Uni
             .background(AppColors.WindowBg),
         backdrop = pageBackdrop.takeIf { isLiquidGlass }
     ) {
-        Column(
+        LiquidGlassDialogHost(
+            modifier = Modifier.fillMaxSize(),
+            backdrop = pageBackdrop.takeIf { isLiquidGlass }
+        ) {
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .then(if (isLiquidGlass) Modifier.layerBackdrop(pageBackdrop) else Modifier)
+        ) {
+        ProvideLiquidGlassBackdrop(null) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
                 .background(AppColors.WindowBg)
                 .statusBarsPadding()
         ) {
@@ -136,9 +150,11 @@ fun DetailPage(title: String, onBack: () -> Unit, content: @Composable () -> Uni
                     .padding(horizontal = AppSpace.sm, vertical = AppSpace.sm),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.back), tint = AppColors.TextPrimary)
-                }
+                LiquidGlassIconButton(
+                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = stringResource(R.string.back),
+                    onClick = onBack
+                )
                 Spacer(Modifier.weight(1f))
                 Text(title, fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = FangSong, color = AppColors.TextPrimary)
                 Spacer(Modifier.weight(1f))
@@ -155,6 +171,9 @@ fun DetailPage(title: String, onBack: () -> Unit, content: @Composable () -> Uni
                 content()
                 Spacer(Modifier.height(120.dp))
             }
+        }
+        }
+        }
         }
     }
 }
@@ -224,16 +243,43 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
         Column {
             Spacer(Modifier.height(12.dp))
             DetailCard {
-                SettingsSliderItem(
-                    icon = Icons.Outlined.Opacity,
-                    label = stringResource(R.string.liquid_glass_transparency),
-                    value = uiState.liquidGlassTransparency,
-                    range = 0f..1f,
-                    valueText = "${(uiState.liquidGlassTransparency * 100).toInt()}%",
-                    step = 0.05f,
-                    onDragChange = viewModel::previewLiquidGlassTransparency,
-                    onChange = viewModel::saveLiquidGlassTransparency
-                )
+                Column(Modifier.padding(vertical = 5.dp)) {
+                    SettingsSliderItem(
+                        icon = Icons.Outlined.Opacity,
+                        label = stringResource(R.string.liquid_glass_transparency),
+                        value = uiState.liquidGlassTransparency,
+                        range = 0f..1f,
+                        valueText = "${(uiState.liquidGlassTransparency * 100).toInt()}%",
+                        step = 0.05f,
+                        onDragChange = viewModel::previewLiquidGlassTransparency,
+                        onChange = viewModel::saveLiquidGlassTransparency
+                    )
+                    SettingsDivider()
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = AppSpace.md, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Outlined.HdrOn,
+                            contentDescription = null,
+                            tint = AppColors.TextSecondary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(Modifier.width(AppSpace.md))
+                        Text(
+                            stringResource(R.string.liquid_glass_hdr_highlight),
+                            fontSize = AppType.Body,
+                            color = AppColors.TextPrimary,
+                            modifier = Modifier.weight(1f)
+                        )
+                        LiquidGlassSwitch(
+                            checked = uiState.liquidGlassHdrHighlightEnabled,
+                            onCheckedChange = viewModel::saveLiquidGlassHdrHighlightEnabled
+                        )
+                    }
+                }
             }
         }
     }
@@ -546,12 +592,23 @@ fun StorageDetail(viewModel: SettingsViewModel) {
     }
 
     if (showClearDialog) {
-        AlertDialog(
+        LiquidGlassAlertDialog(
             onDismissRequest = { showClearDialog = false },
             title = { Text(stringResource(R.string.clear_all_data)) },
             text = { Text(stringResource(R.string.clear_all_confirm)) },
-            confirmButton = { TextButton(onClick = { viewModel.clearAllData(); showClearDialog = false }) { Text(stringResource(R.string.clear), color = Color.Red) } },
-            dismissButton = { TextButton(onClick = { showClearDialog = false }) { Text(stringResource(R.string.cancel)) } }
+            confirmButton = {
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.clear),
+                    onClick = { viewModel.clearAllData(); showClearDialog = false },
+                    tintedColor = Color.Red
+                )
+            },
+            dismissButton = {
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.cancel),
+                    onClick = { showClearDialog = false }
+                )
+            }
         )
     }
 }
@@ -675,40 +732,48 @@ fun AboutDetail(viewModel: SettingsViewModel) {
             append("\n\n请阅读更新内容后选择是否同意。")
         }
 
-        AlertDialog(
+        LiquidGlassAlertDialog(
             onDismissRequest = { /* 不可关闭 */ },
             title = { Text(title, fontSize = AppType.Body, fontWeight = FontWeight.Bold) },
             text = { Text(message, fontSize = AppType.BodySmall) },
             confirmButton = {
-                TextButton(onClick = {
+                LiquidGlassTextButton(
+                    text = "同意并继续",
+                    tintedColor = AppColors.Accent,
+                    onClick = {
                     if (update.hasTermsUpdate) viewModel.acceptTermsUpdate(update.termsVersion)
                     if (update.hasPrivacyUpdate) viewModel.acceptPrivacyUpdate(update.privacyVersion)
-                }) { Text("同意并继续", color = AppColors.Accent) }
+                })
             },
             dismissButton = {
                 // 查看协议
                 if (update.hasTermsUpdate) {
-                    TextButton(onClick = { openDoc("用户协议", "terms.html") }) {
-                        Text("查看用户协议")
-                    }
+                    LiquidGlassTextButton(
+                        text = "查看用户协议",
+                        onClick = { openDoc("用户协议", "terms.html") }
+                    )
                 }
                 if (update.hasPrivacyUpdate) {
-                    TextButton(onClick = { openDoc("隐私政策", "privacy.html") }) {
-                        Text("查看隐私政策")
-                    }
+                    LiquidGlassTextButton(
+                        text = "查看隐私政策",
+                        onClick = { openDoc("隐私政策", "privacy.html") }
+                    )
                 }
                 // 退出按钮
-                TextButton(onClick = {
+                LiquidGlassTextButton(
+                    text = "不同意并退出",
+                    contentColor = AppColors.TextSecondary,
+                    onClick = {
                     // 用户不同意，退出应用
                     (context as? android.app.Activity)?.finishAffinity()
-                }) { Text("不同意并退出", color = AppColors.TextSecondary) }
+                })
             }
         )
     }
 
     // ── App 更新 Dialog ──
     if (update.showAppUpdateDialog) {
-        AlertDialog(
+        LiquidGlassAlertDialog(
             onDismissRequest = { viewModel.dismissAppUpdateDialog() },
             title = { Text("发现新版本", fontSize = AppType.Body, fontWeight = FontWeight.Bold) },
             text = {
@@ -718,17 +783,22 @@ fun AboutDetail(viewModel: SettingsViewModel) {
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
+                LiquidGlassTextButton(
+                    text = "下载",
+                    tintedColor = AppColors.Accent,
+                    onClick = {
                     // 打开 GitHub Releases 页面
                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(update.releaseUrl))
                     context.startActivity(intent)
                     viewModel.dismissAppUpdateDialog()
-                }) { Text("下载", color = AppColors.Accent) }
+                })
             },
             dismissButton = {
-                TextButton(onClick = { viewModel.dismissAppUpdateDialog() }) {
-                    Text("稍后", color = AppColors.TextSecondary)
-                }
+                LiquidGlassTextButton(
+                    text = "稍后",
+                    onClick = { viewModel.dismissAppUpdateDialog() },
+                    contentColor = AppColors.TextSecondary
+                )
             }
         )
     }
@@ -917,12 +987,13 @@ private fun parseChangelog(text: String): List<ChangelogEntry> {
 
 @Composable
 private fun DetailCard(content: @Composable () -> Unit) {
+    val shape = RoundedCornerShape(AppRadius.lg)
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = AppSpace.md)
-            .shadow(8.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
-            .clip(RoundedCornerShape(AppRadius.lg))
+            .shadow(8.dp, shape, ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .clip(shape)
             .background(AppColors.CardBg)
     ) { content() }
 }
@@ -1155,12 +1226,15 @@ fun LanguageDetailScreen(viewModel: SettingsViewModel) {
 
     // ── 重启确认对话框 ──
     if (showRestartDialog) {
-        AlertDialog(
+        LiquidGlassAlertDialog(
             onDismissRequest = { showRestartDialog = false },
             title = { Text(stringResource(R.string.switch_language)) },
             text = { Text(stringResource(R.string.restart_prompt)) },
             confirmButton = {
-                TextButton(onClick = {
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.restart),
+                    tintedColor = AppColors.Accent,
+                    onClick = {
                     viewModel.saveAppLanguage(pendingLanguage)
                     showRestartDialog = false
                     // 重启应用
@@ -1169,10 +1243,13 @@ fun LanguageDetailScreen(viewModel: SettingsViewModel) {
                     }
                     context.startActivity(intent)
                     (context as? android.app.Activity)?.finishAffinity()
-                }) { Text(stringResource(R.string.restart)) }
+                })
             },
             dismissButton = {
-                TextButton(onClick = { showRestartDialog = false }) { Text(stringResource(R.string.later)) }
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.later),
+                    onClick = { showRestartDialog = false }
+                )
             }
         )
     }

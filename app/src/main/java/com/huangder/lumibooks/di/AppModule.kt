@@ -7,11 +7,15 @@ import com.huangder.lumibooks.data.local.dao.BookDao
 import com.huangder.lumibooks.data.local.dao.BookmarkDao
 import com.huangder.lumibooks.data.local.dao.NoteDao
 import com.huangder.lumibooks.data.local.dao.ReadingRecordDao
+import com.huangder.lumibooks.data.local.dao.TagDao
 import com.huangder.lumibooks.data.local.database.AppDatabase
+import com.huangder.lumibooks.data.local.database.DatabaseMigrations
 import com.huangder.lumibooks.data.repository.BookRepositoryImpl
 import com.huangder.lumibooks.data.repository.ReadingRepositoryImpl
+import com.huangder.lumibooks.data.repository.TagRepositoryImpl
 import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.domain.repository.ReadingRepository
+import com.huangder.lumibooks.domain.repository.TagRepository
 import com.huangder.lumibooks.tts.TtsController
 import com.huangder.lumibooks.tts.TtsEngine
 import com.huangder.lumibooks.tts.TtsTextExtractor
@@ -33,7 +37,8 @@ object AppModule {
             context,
             AppDatabase::class.java,
             "ebook_reader_database"
-        ).fallbackToDestructiveMigration()
+        ).addMigrations(DatabaseMigrations.MIGRATION_2_3)
+            .fallbackToDestructiveMigration()
             .build()
     }
 
@@ -63,6 +68,12 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideTagDao(database: AppDatabase): TagDao {
+        return database.tagDao()
+    }
+
+    @Provides
+    @Singleton
     fun provideBookRepository(bookDao: BookDao): BookRepository {
         return BookRepositoryImpl(bookDao)
     }
@@ -75,6 +86,12 @@ object AppModule {
         noteDao: NoteDao
     ): ReadingRepository {
         return ReadingRepositoryImpl(readingRecordDao, bookmarkDao, noteDao)
+    }
+
+    @Provides
+    @Singleton
+    fun provideTagRepository(tagDao: TagDao): TagRepository {
+        return TagRepositoryImpl(tagDao)
     }
 
     @Provides

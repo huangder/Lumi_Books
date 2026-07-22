@@ -36,6 +36,8 @@ class BookNotesActivity : ComponentActivity() {
 
         setContent {
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = "lumi")
+            val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = 0.55f)
+            val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = false)
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
             val predictiveBackEnabled by dataStoreManager.predictiveBackEnabled.collectAsState(initial = true)
             val isDark = when (darkMode) {
@@ -46,16 +48,23 @@ class BookNotesActivity : ComponentActivity() {
 
             EBookReaderTheme(
                 darkTheme = isDark,
-                dynamicColor = appTheme == "material3"
+                dynamicColor = appTheme == "material3",
+                appTheme = appTheme,
+                liquidGlassTransparency = liquidGlassTransparency,
+                liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled
             ) {
                 com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
                     predictiveBackEnabled = predictiveBackEnabled,
                     onBack = { finish() }
                 )
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    BookNotesScreen(
-                        onNavigateBack = { finish() }
-                    )
+                    com.huangder.lumibooks.ui.components.LiquidGlassDialogHost(
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        BookNotesScreen(
+                            onNavigateBack = { finish() }
+                        )
+                    }
                 }
             }
         }

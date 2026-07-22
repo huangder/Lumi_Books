@@ -34,6 +34,7 @@ import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.FangSong
+import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -73,6 +74,12 @@ class WebViewActivity : ComponentActivity() {
                 dataStoreManager.predictiveBackEnabled.first()
             )
         }
+        val liquidGlassTransparency = runBlocking {
+            dataStoreManager.liquidGlassTransparency.first()
+        }
+        val liquidGlassHdrHighlightEnabled = runBlocking {
+            dataStoreManager.liquidGlassHdrHighlightEnabled.first()
+        }
         val isSystemDark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
         val isDark = when (darkMode) {
             "dark" -> true
@@ -83,13 +90,20 @@ class WebViewActivity : ComponentActivity() {
         setContent {
             EBookReaderTheme(
                 darkTheme = isDark,
-                dynamicColor = appTheme == "material3"
+                dynamicColor = appTheme == "material3",
+                appTheme = appTheme,
+                liquidGlassTransparency = liquidGlassTransparency,
+                liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled
             ) {
                 com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
                     predictiveBackEnabled = predictiveBackEnabled,
                     onBack = { finish() }
                 )
-                WebViewPage(title = title, assetFile = file, isDark = isDark, onBack = { finish() })
+                com.huangder.lumibooks.ui.components.LiquidGlassDialogHost(
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    WebViewPage(title = title, assetFile = file, isDark = isDark, onBack = { finish() })
+                }
             }
         }
     }
@@ -112,9 +126,11 @@ private fun WebViewPage(title: String, assetFile: String, isDark: Boolean, onBac
                     .padding(horizontal = AppSpace.sm, vertical = AppSpace.sm),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回", tint = AppColors.TextPrimary)
-                }
+                LiquidGlassIconButton(
+                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = "返回",
+                    onClick = onBack
+                )
                 Spacer(Modifier.weight(1f))
                 Text(title, fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = FangSong, color = AppColors.TextPrimary)
                 Spacer(Modifier.weight(1f))

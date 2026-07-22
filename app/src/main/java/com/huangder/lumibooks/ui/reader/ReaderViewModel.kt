@@ -21,6 +21,7 @@ import com.huangder.lumibooks.domain.model.ReadingRecord
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
+import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
 import com.huangder.lumibooks.domain.model.ReaderPageCorner
 import com.huangder.lumibooks.domain.model.defaultReaderCornerContent
 import com.huangder.lumibooks.domain.repository.BookRepository
@@ -123,6 +124,7 @@ data class ReaderUiState(
     val showReaderPageNumber: Boolean = true,
     val showReaderBattery: Boolean = true,
     val volumeKeyPageTurnEnabled: Boolean = false,
+    val readerEdgeTapMode: ReaderEdgeTapMode = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT,
     val readerTopLeftContent: ReaderCornerContent = defaultReaderCornerContent(ReaderPageCorner.TOP_LEFT),
     val readerTopRightContent: ReaderCornerContent = defaultReaderCornerContent(ReaderPageCorner.TOP_RIGHT),
     val readerBottomLeftContent: ReaderCornerContent = defaultReaderCornerContent(ReaderPageCorner.BOTTOM_LEFT),
@@ -454,6 +456,11 @@ class ReaderViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            dataStoreManager.readerEdgeTapMode.collectLatest { mode ->
+                _uiState.value = _uiState.value.copy(readerEdgeTapMode = mode)
+            }
+        }
+        viewModelScope.launch {
             dataStoreManager.readerCornerContent(ReaderPageCorner.TOP_LEFT).collectLatest { content ->
                 _uiState.value = _uiState.value.copy(readerTopLeftContent = content)
             }
@@ -708,6 +715,11 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch { dataStoreManager.saveVolumeKeyPageTurnEnabled(enabled) }
     }
 
+    fun saveReaderEdgeTapMode(mode: ReaderEdgeTapMode) {
+        _uiState.value = _uiState.value.copy(readerEdgeTapMode = mode)
+        viewModelScope.launch { dataStoreManager.saveReaderEdgeTapMode(mode) }
+    }
+
     fun saveReaderCornerContent(corner: ReaderPageCorner, content: ReaderCornerContent) {
         _uiState.value = _uiState.value.withReaderCornerContent(corner, content)
         viewModelScope.launch { dataStoreManager.saveReaderCornerContent(corner, content) }
@@ -752,6 +764,7 @@ class ReaderViewModel @Inject constructor(
             showReaderPageNumber = true,
             showReaderBattery = true,
             volumeKeyPageTurnEnabled = false,
+            readerEdgeTapMode = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT,
             readerTopLeftContent = defaultReaderCornerContent(ReaderPageCorner.TOP_LEFT),
             readerTopRightContent = defaultReaderCornerContent(ReaderPageCorner.TOP_RIGHT),
             readerBottomLeftContent = defaultReaderCornerContent(ReaderPageCorner.BOTTOM_LEFT),

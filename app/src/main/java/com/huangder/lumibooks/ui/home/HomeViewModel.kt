@@ -8,9 +8,13 @@ import androidx.lifecycle.viewModelScope
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.domain.model.Book
+import com.huangder.lumibooks.domain.model.BookTagLink
 import com.huangder.lumibooks.domain.model.BookFormat
+import com.huangder.lumibooks.domain.model.LibraryTag
+import com.huangder.lumibooks.domain.model.TagNameValidator
 import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.domain.repository.ReadingRepository
+import com.huangder.lumibooks.domain.repository.TagRepository
 import com.huangder.lumibooks.util.FileUtils
 import com.huangder.lumibooks.util.TimeUtils
 import com.huangder.lumibooks.util.parser.BookParserFactory
@@ -43,7 +47,10 @@ data class HomeUiState(
     val sortBy: SortBy = SortBy.LAST_READ,
     val isLoading: Boolean = false,
     val importMessage: String? = null,
+    val tagMessage: String? = null,
     val error: String? = null,
+    val tags: List<LibraryTag> = emptyList(),
+    val bookTagLinks: List<BookTagLink> = emptyList(),
     /** 当前日历周的阅读数据（周日至周六） */
     val weeklyData: List<DailyReading> = emptyList(),
     /** 连胜天数 */
@@ -57,6 +64,7 @@ enum class SortBy {
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val bookRepository: BookRepository,
+    private val tagRepository: TagRepository,
     private val readingRepository: ReadingRepository,
     private val dataStoreManager: DataStoreManager,
     private val application: Application
@@ -78,6 +86,7 @@ class HomeViewModel @Inject constructor(
 
     init {
         loadBooks()
+        loadTags()
         loadTodayReadingTime()
         loadAvatar()
         loadWeeklyData()
@@ -99,6 +108,22 @@ class HomeViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     error = e.message
+                )
+            }
+        }
+    }
+
+    private fun loadTags() {
+        viewModelScope.launch {
+            combine(
+                tagRepository.getAllTags(),
+                tagRepository.getAllBookTagLinks()
+            ) { tags, links ->
+                tags to links
+            }.collectLatest { (tags, links) ->
+                _uiState.value = _uiState.value.copy(
+                    tags = tags,
+                    bookTagLinks = links
                 )
             }
         }
@@ -265,6 +290,63 @@ class HomeViewModel @Inject constructor(
 
     fun clearImportMessage() {
         _uiState.value = _uiState.value.copy(importMessage = null)
+    }
+
+    fun createAndAssignTag(bookId: String, rawName: String) {
+        if (!validateTagName(rawName)) return
+        viewModelScope.launch {
+            runCatching { tagRepository.createAndAssignTag(bookId, rawName) }
+                .onFailure { showTagMessage(it.message ?: application.getString(R.string.error)) }
+        }
+    }
+
+    fun setBookTag(bookId: String, tagId: String, isAssigned: Boolean) {
+        viewModelScope.launch {
+            runCatching {
+                if (isAssigned) {
+                    tagRepository.assignTag(bookId, tagId)
+                } else {
+                    tagRepository.removeTagFromBook(bookId, tagId)
+                }
+            }.onFailure { showTagMessage(it.message ?: application.getString(R.string.error)) }
+        }
+    }
+
+    fun renameTag(tagId: String, rawName: String) {
+        if (!validateTagName(rawName)) return
+        viewModelScope.launch {
+            runCatching { tagRepository.renameTag(tagId, rawName) }
+                .onSuccess { renamed ->
+                    if (!renamed) showTagMessage(application.getString(R.string.tag_name_exists))
+                }
+                .onFailure { showTagMessage(it.message ?: application.getString(R.string.error)) }
+        }
+    }
+
+    fun deleteTag(tagId: String) {
+        viewModelScope.launch {
+            runCatching { tagRepository.deleteTag(tagId) }
+                .onFailure { showTagMessage(it.message ?: application.getString(R.string.error)) }
+        }
+    }
+
+    fun clearTagMessage() {
+        _uiState.value = _uiState.value.copy(tagMessage = null)
+    }
+
+    private fun validateTagName(rawName: String): Boolean {
+        if (TagNameValidator.isValid(rawName)) return true
+        val message = if (TagNameValidator.clean(rawName).isEmpty()) {
+            application.getString(R.string.tag_name_required)
+        } else {
+            application.getString(R.string.tag_name_too_long, TagNameValidator.MAX_LENGTH)
+        }
+        showTagMessage(message)
+        return false
+    }
+
+    private fun showTagMessage(message: String) {
+        _uiState.value = _uiState.value.copy(tagMessage = message)
     }
 
     /**

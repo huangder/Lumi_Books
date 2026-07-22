@@ -17,6 +17,7 @@ val LocalIsDarkTheme = staticCompositionLocalOf { false }
 val LocalUseMaterial3Theme = staticCompositionLocalOf { false }
 val LocalAppTheme = staticCompositionLocalOf { "lumi" }
 val LocalLiquidGlassTransparency = staticCompositionLocalOf { 0.55f }
+val LocalLiquidGlassHdrHighlightEnabled = staticCompositionLocalOf { false }
 
 // ─── 字体 ───
 val FangSong = FontFamily(Font(R.font.fandol_fang, FontWeight.Normal))

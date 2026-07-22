@@ -8,6 +8,7 @@
     <string name="app_theme_material3">Material 3</string>
     <string name="app_theme_liquid_glass">리퀴드 글래스</string>
     <string name="liquid_glass_transparency">유리 투명도</string>
+    <string name="liquid_glass_hdr_highlight">HDR 터치 하이라이트</string>
     <string name="app_name">LUMI</string>
 
     <!-- 홈 -->
@@ -162,7 +163,7 @@
     <string name="sponsor_qr_desc">기부 QR 코드</string>
     <string name="sponsor_quote">"마음에 드셨다면 밥 한 번 사주세요😊"</string>
     <string name="sponsor_code_label">屿浮 님께 보내는 후원 코드</string>
-    <string name="sponsor_thanks_title">감사 목록 (순서 무관)</string>
+    <string name="sponsor_thanks_title">꿈의 후원자</string>
     <string name="sponsor_dev_title">개발자</string>
 
     <!-- 피드백 -->
@@ -216,6 +217,14 @@
     <string name="custom_cover">커스텀 표지</string>
     <string name="remove_custom_cover">커스텀 표지 제거</string>
     <string name="bookmarks_notes">북마크 하이라이트 및 메모</string>
+    <string name="add_tag">태그 추가</string>
+    <string name="tag_sheet_title">태그</string>
+    <string name="tag_name_hint">새 태그 이름 입력</string>
+    <string name="existing_tags">추가된 태그</string>
+    <string name="no_tags">아직 태그가 없습니다</string>
+    <string name="tag_name_required">태그 이름을 입력하세요</string>
+    <string name="tag_name_too_long">태그 이름은 최대 %1$d자까지 가능합니다</string>
+    <string name="tag_name_exists">같은 이름의 태그가 이미 있습니다</string>
 
     <!-- 북마크 메모 -->
     <string name="notes_title">북마크, 하이라이트 및 메모</string>
@@ -286,6 +295,12 @@
     <string name="show_reader_battery_hint">배터리 아이콘과 잔량</string>
     <string name="volume_key_page_turn">음량 키로 페이지 넘기기</string>
     <string name="volume_key_page_turn_hint">음량 높임은 이전 페이지, 낮춤은 다음 페이지</string>
+    <string name="reader_edge_tap_page_turn">화면 양쪽 탭으로 페이지 넘기기</string>
+    <string name="reader_edge_tap_page_turn_hint">왼쪽과 오른쪽 가장자리를 탭할 때의 동작을 선택하세요</string>
+    <string name="reader_edge_tap_left_previous_right_next">이전 / 다음</string>
+    <string name="reader_edge_tap_left_next_right_previous">다음 / 이전</string>
+    <string name="reader_edge_tap_both_previous">이전 / 이전</string>
+    <string name="reader_edge_tap_both_next">다음 / 다음</string>
     <string name="reader_page_layout">읽기 페이지 정보</string>
     <string name="reader_page_layout_hint">네 모서리에 표시할 내용을 선택하세요</string>
     <string name="reader_corner_top_left">왼쪽 위</string>

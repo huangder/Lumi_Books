@@ -25,6 +25,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Label
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -66,6 +67,7 @@ sealed class ContextMenuAction {
     data object CustomCover : ContextMenuAction()
     data object RemoveCustomCover : ContextMenuAction()
     data object BookmarksNotes : ContextMenuAction()
+    data object Tags : ContextMenuAction()
     data object EditInfo : ContextMenuAction()
 }
 
@@ -80,6 +82,7 @@ fun BookContextMenuOverlay(
     onCustomCover: (Book) -> Unit = {},
     onRemoveCustomCover: (Book) -> Unit = {},
     onBookmarksNotes: (Book) -> Unit = {},
+    onTags: (Book) -> Unit = {},
     onEditInfo: (Book) -> Unit = {}
 ) {
     if (state.phase == ContextMenuPhase.Idle) return
@@ -117,14 +120,20 @@ fun BookContextMenuOverlay(
                 actionsAlpha = actionsAlpha,
                 coverBounds = coverBounds,
                 onAction = { action ->
-                    state.dismiss()
                     when (action) {
-                        is ContextMenuAction.Delete -> onDelete(book)
-                        is ContextMenuAction.Favorite -> onFavorite(book)
-                        is ContextMenuAction.CustomCover -> onCustomCover(book)
-                        is ContextMenuAction.RemoveCustomCover -> onRemoveCustomCover(book)
-                        is ContextMenuAction.BookmarksNotes -> onBookmarksNotes(book)
-                        is ContextMenuAction.EditInfo -> onEditInfo(book)
+                        is ContextMenuAction.Tags -> onTags(book)
+                        else -> {
+                            state.dismiss()
+                            when (action) {
+                                is ContextMenuAction.Delete -> onDelete(book)
+                                is ContextMenuAction.Favorite -> onFavorite(book)
+                                is ContextMenuAction.CustomCover -> onCustomCover(book)
+                                is ContextMenuAction.RemoveCustomCover -> onRemoveCustomCover(book)
+                                is ContextMenuAction.BookmarksNotes -> onBookmarksNotes(book)
+                                is ContextMenuAction.EditInfo -> onEditInfo(book)
+                                is ContextMenuAction.Tags -> Unit
+                            }
+                        }
                     }
                 },
                 onEditInfo = {
@@ -250,7 +259,7 @@ private fun ContextMenuLayout(
 
     // 菜单面板顶部与封面顶部对齐；如果面板超出屏幕底部，则改为底部对齐
     // 液态主题需要为悬浮 Tag 栏、间距和系统导航区预留完整安全区。
-    val estimatedMenuHeight = 400.dp
+    val estimatedMenuHeight = 450.dp
     val bottomMargin = if (isLiquidGlass) 148.dp else 48.dp
     val maxPanelY = (screenHeightDp - estimatedMenuHeight - bottomMargin).coerceAtLeast(0.dp)
     val panelY = if (coverTopDp + estimatedMenuHeight > screenHeightDp - bottomMargin) {
@@ -407,6 +416,7 @@ private fun MenuActionsPanel(
             if (hasCustomCover) {
                 add(MenuItem(stringResource(R.string.remove_custom_cover), Icons.Outlined.Restore, ContextMenuAction.RemoveCustomCover))
             }
+            add(MenuItem(stringResource(R.string.add_tag), Icons.Outlined.Label, ContextMenuAction.Tags))
             add(MenuItem(stringResource(R.string.bookmarks_notes), Icons.Outlined.Bookmark, ContextMenuAction.BookmarksNotes))
         }
 

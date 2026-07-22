@@ -68,6 +68,8 @@ import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.FangSong
+import com.huangder.lumibooks.ui.components.LiquidGlassDialog
+import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -120,9 +122,11 @@ fun SettingsScreen(
                     .padding(horizontal = AppSpace.sm, vertical = AppSpace.sm),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onNavigateBack) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.back), tint = AppColors.TextPrimary)
-                }
+                LiquidGlassIconButton(
+                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = stringResource(R.string.back),
+                    onClick = onNavigateBack
+                )
                 Spacer(Modifier.weight(1f))
                 Text(stringResource(R.string.settings_title), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = FangSong, color = AppColors.TextPrimary)
                 Spacer(Modifier.weight(1f))
@@ -223,33 +227,13 @@ fun SettingsScreen(
 
     // ── 昵称编辑对话框（卡片风格） ──
     if (showNicknameDialog) {
-        androidx.compose.material3.BasicAlertDialog(
+        LiquidGlassDialog(
             onDismissRequest = { showNicknameDialog = false },
+            modifier = Modifier.imePadding(),
+            backgroundScrimColor = Color.Black.copy(alpha = 0.20f),
             properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .imePadding()
-                    .background(Color.Black.copy(alpha = 0.4f))
-                    .clickable(
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() },
-                        onClick = { showNicknameDialog = false }
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(AppSpace.lg)
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() },
-                            onClick = {}
-                        )
-                ) {
-                    com.huangder.lumibooks.ui.components.EditInputDialog(
+            com.huangder.lumibooks.ui.components.EditInputDialog(
                         title = stringResource(R.string.edit_nickname),
                         fields = listOf(
                             Triple(stringResource(R.string.nickname_label), "", uiState.nickname)
@@ -260,8 +244,6 @@ fun SettingsScreen(
                             showNicknameDialog = false
                         }
                     )
-                }
-            }
         }
     }
 }

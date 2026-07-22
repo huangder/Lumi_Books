@@ -16,6 +16,11 @@ import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import androidx.compose.foundation.layout.Box
 
 /**
  * 设置页 — 独立 Activity
@@ -40,11 +45,22 @@ class SettingsActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         systemDarkMode = resources.configuration.isNightModeEnabled()
+        val (initialAppTheme, initialTransparency, initialDarkMode) = runBlocking {
+            Triple(
+                dataStoreManager.appTheme.first(),
+                dataStoreManager.liquidGlassTransparency.first(),
+                dataStoreManager.darkMode.first()
+            )
+        }
+        val initialHdrHighlightEnabled = runBlocking {
+            dataStoreManager.liquidGlassHdrHighlightEnabled.first()
+        }
 
         setContent {
-            val appTheme by dataStoreManager.appTheme.collectAsState(initial = "lumi")
-            val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = 0.55f)
-            val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
+            val appTheme by dataStoreManager.appTheme.collectAsState(initial = initialAppTheme)
+            val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = initialTransparency)
+            val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = initialHdrHighlightEnabled)
+            val darkMode by dataStoreManager.darkMode.collectAsState(initial = initialDarkMode)
             val predictiveBackEnabled by dataStoreManager.predictiveBackEnabled.collectAsState(initial = true)
             val isDark = when (darkMode) {
                 "dark" -> true
@@ -56,16 +72,37 @@ class SettingsActivity : ComponentActivity() {
                 darkTheme = isDark,
                 dynamicColor = appTheme == "material3",
                 appTheme = appTheme,
-                liquidGlassTransparency = liquidGlassTransparency
+                liquidGlassTransparency = liquidGlassTransparency,
+                liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled
             ) {
+                val settingsBackdrop = rememberLayerBackdrop()
                 com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
                     predictiveBackEnabled = predictiveBackEnabled,
                     onBack = { finish() }
                 )
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    SettingsScreen(
-                        onNavigateBack = { finish() }
-                    )
+                    com.huangder.lumibooks.ui.components.LiquidGlassDialogHost(
+                        modifier = Modifier.fillMaxSize(),
+                        backdrop = settingsBackdrop.takeIf { appTheme == "liquid_glass" }
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .then(
+                                    if (appTheme == "liquid_glass") {
+                                        Modifier.layerBackdrop(settingsBackdrop)
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                        ) {
+                            com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop(null) {
+                                SettingsScreen(
+                                    onNavigateBack = { finish() }
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

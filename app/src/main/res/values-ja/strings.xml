@@ -8,6 +8,7 @@
     <string name="app_theme_material3">Material 3</string>
     <string name="app_theme_liquid_glass">リキッドガラス</string>
     <string name="liquid_glass_transparency">ガラスの透明度</string>
+    <string name="liquid_glass_hdr_highlight">HDR タッチハイライト</string>
     <string name="app_name">LUMI</string>
 
     <!-- ホーム -->
@@ -162,7 +163,7 @@
     <string name="sponsor_qr_desc">寄付用QRコード</string>
     <string name="sponsor_quote">「気に入ったら、おごってください😊」</string>
     <string name="sponsor_code_label">Yufu の赞赏码</string>
-    <string name="sponsor_thanks_title">スペシャルサンクス</string>
+    <string name="sponsor_thanks_title">夢のスポンサー</string>
     <string name="sponsor_dev_title">開発者</string>
 
     <!-- フィードバック -->
@@ -216,6 +217,14 @@
     <string name="custom_cover">カスタム表紙</string>
     <string name="remove_custom_cover">カスタム表紙を削除</string>
     <string name="bookmarks_notes">ブックマーク・ハイライト・メモ</string>
+    <string name="add_tag">タグを追加</string>
+    <string name="tag_sheet_title">タグ</string>
+    <string name="tag_name_hint">新しいタグ名を入力</string>
+    <string name="existing_tags">作成済みのタグ</string>
+    <string name="no_tags">タグはまだありません</string>
+    <string name="tag_name_required">タグ名を入力してください</string>
+    <string name="tag_name_too_long">タグ名は %1$d 文字以内です</string>
+    <string name="tag_name_exists">同じ名前のタグが既にあります</string>
 
     <!-- ブックマークノート -->
     <string name="notes_title">ブックマーク・ハイライト・メモ</string>
@@ -286,6 +295,12 @@
     <string name="show_reader_battery_hint">バッテリーアイコンと残量</string>
     <string name="volume_key_page_turn">音量キーでページ送り</string>
     <string name="volume_key_page_turn_hint">音量を上げるキーで前へ、下げるキーで次へ</string>
+    <string name="reader_edge_tap_page_turn">画面両端のタップでページ送り</string>
+    <string name="reader_edge_tap_page_turn_hint">左右の端をタップしたときの動作を選択</string>
+    <string name="reader_edge_tap_left_previous_right_next">前へ / 次へ</string>
+    <string name="reader_edge_tap_left_next_right_previous">次へ / 前へ</string>
+    <string name="reader_edge_tap_both_previous">前へ / 前へ</string>
+    <string name="reader_edge_tap_both_next">次へ / 次へ</string>
     <string name="reader_page_layout">読書ページ情報</string>
     <string name="reader_page_layout_hint">四隅に表示する内容を選択</string>
     <string name="reader_corner_top_left">左上</string>

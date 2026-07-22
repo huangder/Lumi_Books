@@ -19,6 +19,8 @@ import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 
 /**
  * 设置二级页面 — 统一 Activity
@@ -46,12 +48,26 @@ class DetailActivity : ComponentActivity() {
         systemDarkMode = resources.configuration.isNightModeEnabled()
 
         val category = intent.getStringExtra("category") ?: "about"
+        val (initialAppTheme, initialTransparency, initialDarkMode) = runBlocking {
+            Triple(
+                dataStoreManager.appTheme.first(),
+                dataStoreManager.liquidGlassTransparency.first(),
+                dataStoreManager.darkMode.first()
+            )
+        }
+        val initialHdrHighlightEnabled = runBlocking {
+            dataStoreManager.liquidGlassHdrHighlightEnabled.first()
+        }
 
         setContent {
             val viewModel: SettingsViewModel = hiltViewModel()
             val uiState by viewModel.uiState.collectAsState()
             val predictiveBackEnabled by dataStoreManager.predictiveBackEnabled.collectAsState(initial = true)
-            val isDark = when (uiState.darkMode) {
+            val appTheme by dataStoreManager.appTheme.collectAsState(initial = initialAppTheme)
+            val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = initialTransparency)
+            val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = initialHdrHighlightEnabled)
+            val darkMode by dataStoreManager.darkMode.collectAsState(initial = initialDarkMode)
+            val isDark = when (darkMode) {
                 "dark" -> true
                 "light" -> false
                 else -> systemDarkMode
@@ -59,9 +75,10 @@ class DetailActivity : ComponentActivity() {
 
             EBookReaderTheme(
                 darkTheme = isDark,
-                dynamicColor = uiState.appTheme == "material3",
-                appTheme = uiState.appTheme,
-                liquidGlassTransparency = uiState.liquidGlassTransparency
+                dynamicColor = appTheme == "material3",
+                appTheme = appTheme,
+                liquidGlassTransparency = liquidGlassTransparency,
+                liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled
             ) {
                 com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
                     predictiveBackEnabled = predictiveBackEnabled,

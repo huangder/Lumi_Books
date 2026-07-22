@@ -52,6 +52,7 @@ import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.FangSong
+import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -72,6 +73,8 @@ class FeedbackActivity : ComponentActivity() {
 
         setContent {
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = "lumi")
+            val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = 0.55f)
+            val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = false)
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
             val predictiveBackEnabled by dataStoreManager.predictiveBackEnabled.collectAsState(initial = true)
             val isDark = when (darkMode) {
@@ -82,13 +85,20 @@ class FeedbackActivity : ComponentActivity() {
 
             EBookReaderTheme(
                 darkTheme = isDark,
-                dynamicColor = appTheme == "material3"
+                dynamicColor = appTheme == "material3",
+                appTheme = appTheme,
+                liquidGlassTransparency = liquidGlassTransparency,
+                liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled
             ) {
                 com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
                     predictiveBackEnabled = predictiveBackEnabled,
                     onBack = { finish() }
                 )
-                FeedbackPage(onBack = { finish() })
+                com.huangder.lumibooks.ui.components.LiquidGlassDialogHost(
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    FeedbackPage(onBack = { finish() })
+                }
             }
         }
     }
@@ -116,9 +126,11 @@ private fun FeedbackPage(onBack: () -> Unit) {
                     .padding(horizontal = AppSpace.sm, vertical = AppSpace.sm),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.back), tint = AppColors.TextPrimary)
-                }
+                LiquidGlassIconButton(
+                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = stringResource(R.string.back),
+                    onClick = onBack
+                )
                 Spacer(Modifier.weight(1f))
                 Text(stringResource(R.string.feedback_title), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = FangSong, color = AppColors.TextPrimary)
                 Spacer(Modifier.weight(1f))

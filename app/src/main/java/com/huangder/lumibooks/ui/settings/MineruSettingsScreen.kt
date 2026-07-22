@@ -77,6 +77,10 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
+import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.components.LiquidGlassDialog
+import com.huangder.lumibooks.ui.components.LiquidGlassButton
+import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
 
 @Composable
 fun MineruSettingsDetail(viewModel: SettingsViewModel) {
@@ -442,14 +446,14 @@ private fun MineruExternalLink(
 
 @Composable
 private fun MineruPrimaryButton(label: String, enabled: Boolean = true, onClick: () -> Unit) {
-    Box(
+    LiquidGlassButton(
+        onClick = onClick,
+        enabled = enabled,
+        tintedColor = AppColors.Accent,
+        shape = RoundedCornerShape(25.dp),
         modifier = Modifier
             .fillMaxWidth()
             .height(50.dp)
-            .clip(RoundedCornerShape(AppRadius.md))
-            .background(if (enabled) AppColors.Accent else AppColors.BgGray)
-            .clickable(enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center
     ) {
         Text(
             label,
@@ -468,22 +472,21 @@ private fun MineruSecondaryButton(
     enabled: Boolean = true,
     onClick: () -> Unit
 ) {
-    Row(
+    val color = when {
+        !enabled -> AppColors.TextSecondary
+        destructive -> MaterialTheme.colorScheme.error
+        else -> AppColors.TextPrimary
+    }
+    LiquidGlassButton(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(AppRadius.md),
+        contentColor = color,
         modifier = Modifier
             .fillMaxWidth()
             .height(48.dp)
-            .clip(RoundedCornerShape(AppRadius.md))
-            .background(if (enabled) AppColors.CardBg else AppColors.BgGray)
             .border(1.dp, AppColors.Divider, RoundedCornerShape(AppRadius.md))
-            .clickable(enabled = enabled, onClick = onClick),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
     ) {
-        val color = when {
-            !enabled -> AppColors.TextSecondary
-            destructive -> MaterialTheme.colorScheme.error
-            else -> AppColors.TextPrimary
-        }
         Icon(icon, null, tint = color, modifier = Modifier.size(18.dp))
         Spacer(Modifier.size(AppSpace.sm))
         Text(label, fontSize = AppType.BodySmall, color = color, fontWeight = FontWeight.SemiBold)
@@ -493,7 +496,7 @@ private fun MineruSecondaryButton(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MineruConsentSheet(onDismiss: () -> Unit, onAccept: () -> Unit) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     var remainingSeconds by remember { mutableIntStateOf(CONSENT_COUNTDOWN_SECONDS) }
     var confirmed by rememberSaveable { mutableStateOf(false) }
 
@@ -504,21 +507,7 @@ private fun MineruConsentSheet(onDismiss: () -> Unit, onAccept: () -> Unit) {
         }
     }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = AppColors.CardBg,
-        contentColor = AppColors.TextPrimary,
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-        dragHandle = {
-            Box(
-                Modifier
-                    .padding(top = 12.dp)
-                    .size(width = 36.dp, height = 4.dp)
-                    .background(AppColors.TextSecondary.copy(alpha = 0.25f), RoundedCornerShape(2.dp))
-            )
-        }
-    ) {
+    val sheetContent: @Composable () -> Unit = {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -597,9 +586,44 @@ private fun MineruConsentSheet(onDismiss: () -> Unit, onAccept: () -> Unit) {
                 enabled = remainingSeconds == 0 && confirmed,
                 onClick = onAccept
             )
-            TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                Text(stringResource(R.string.cancel), color = AppColors.TextSecondary)
+            LiquidGlassTextButton(
+                text = stringResource(R.string.cancel),
+                onClick = onDismiss,
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+                contentColor = AppColors.TextSecondary
+            )
+        }
+    }
+
+    if (isLiquidGlass) {
+        LiquidGlassDialog(
+            onDismissRequest = onDismiss,
+            alignment = Alignment.BottomCenter,
+            shape = RoundedCornerShape(28.dp),
+            contentScrimColor = AppColors.CardBg.copy(alpha = 0.82f),
+            backgroundScrimColor = Color.Black.copy(alpha = 0.12f)
+        ) {
+            sheetContent()
+        }
+    } else {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = onDismiss,
+            sheetState = sheetState,
+            containerColor = AppColors.CardBg,
+            contentColor = AppColors.TextPrimary,
+            scrimColor = Color.Black.copy(alpha = 0.12f),
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            dragHandle = {
+                Box(
+                    Modifier
+                        .padding(top = 12.dp)
+                        .size(width = 36.dp, height = 4.dp)
+                        .background(AppColors.TextSecondary.copy(alpha = 0.25f), RoundedCornerShape(2.dp))
+                )
             }
+        ) {
+            sheetContent()
         }
     }
 }

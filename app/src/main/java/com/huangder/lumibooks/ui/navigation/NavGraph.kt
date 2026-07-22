@@ -41,6 +41,7 @@ import com.huangder.lumibooks.ui.bookshelf.BookshelfScreen
 import com.huangder.lumibooks.ui.components.BookTransitionOverlay
 import com.huangder.lumibooks.ui.components.FloatingTabBar
 import com.huangder.lumibooks.ui.components.LiquidGlassImportButton
+import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
 import com.huangder.lumibooks.ui.components.ImmersiveMode
 import com.huangder.lumibooks.ui.components.ConfigurableNavigationBack
 import com.huangder.lumibooks.ui.components.LocalPredictiveBackEnabled
@@ -60,6 +61,7 @@ import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassTransparency
+import com.huangder.lumibooks.ui.theme.LocalLiquidGlassHdrHighlightEnabled
 import com.huangder.lumibooks.ui.theme.LocalUseMaterial3Theme
 import com.huangder.lumibooks.ui.theme.LocalReaderColors
 import com.huangder.lumibooks.ui.theme.ReaderColors
@@ -88,6 +90,7 @@ private fun ReaderRouter(
     val isAppDarkTheme = LocalIsDarkTheme.current
     val appTheme = LocalAppTheme.current
     val liquidGlassTransparency = LocalLiquidGlassTransparency.current
+    val liquidGlassHdrHighlightEnabled = LocalLiquidGlassHdrHighlightEnabled.current
     val useMaterial3Theme = LocalUseMaterial3Theme.current
 
     // 正文颜色由阅读主题控制，弹层和应用级控件继承全局主题。
@@ -95,7 +98,8 @@ private fun ReaderRouter(
         darkTheme = isAppDarkTheme,
         dynamicColor = useMaterial3Theme,
         appTheme = appTheme,
-        liquidGlassTransparency = liquidGlassTransparency
+        liquidGlassTransparency = liquidGlassTransparency,
+        liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled
     ) {
         CompositionLocalProvider(LocalReaderColors provides ReaderColors.Light) {
             if (isPdf) {
@@ -219,8 +223,16 @@ fun MainNavGraph(
     CompositionLocalProvider(LocalPredictiveBackEnabled provides predictiveBackEnabled) {
     LiquidGlassMenuHost(
         modifier = Modifier.fillMaxSize(),
-        backdrop = liquidGlassBackdrop.takeIf { isLiquidGlass }
+        backdrop = liquidGlassBackdrop.takeIf {
+            isLiquidGlass && currentRoute != Screen.Reader.route
+        }
     ) {
+        LiquidGlassDialogHost(
+            modifier = Modifier.fillMaxSize(),
+            backdrop = liquidGlassBackdrop.takeIf {
+                isLiquidGlass && currentRoute != Screen.Reader.route
+            }
+        ) {
         ConfigurableNavigationBack(
             predictiveBackEnabled = predictiveBackEnabled,
             bridgeEnabled = currentRoute != null && currentRoute != Screen.Home.route
@@ -232,7 +244,7 @@ fun MainNavGraph(
                 modifier = Modifier
                     .fillMaxSize()
                     .then(
-                        if (isLiquidGlass) {
+                        if (isLiquidGlass && currentRoute != Screen.Reader.route) {
                             Modifier.layerBackdrop(liquidGlassBackdrop)
                         } else {
                             Modifier.haze(hazeState)
@@ -427,6 +439,7 @@ fun MainNavGraph(
                     showTransition = false
                 }
             )
+        }
         }
     }
     }
