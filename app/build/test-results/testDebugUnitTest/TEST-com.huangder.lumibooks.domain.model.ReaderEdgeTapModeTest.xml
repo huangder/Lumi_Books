@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.huangder.lumibooks.domain.model.ReaderEdgeTapModeTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-07-22T13:23:53.373Z" hostname="LAPTOP-L6IPGCHS" time="0.006">
-  <properties/>
-  <testcase name="each mode maps both screen edges to the expected action" classname="com.huangder.lumibooks.domain.model.ReaderEdgeTapModeTest" time="0.004"/>
-  <testcase name="stored keys restore modes and invalid values use the current default" classname="com.huangder.lumibooks.domain.model.ReaderEdgeTapModeTest" time="0.001"/>
-  <system-out><![CDATA[]]></system-out>
-  <system-err><![CDATA[]]></system-err>
-</testsuite>

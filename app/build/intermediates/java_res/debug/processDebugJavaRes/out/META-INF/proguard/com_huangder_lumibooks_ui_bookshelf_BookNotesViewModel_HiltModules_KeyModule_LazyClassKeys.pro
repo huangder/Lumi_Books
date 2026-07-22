@@ -1,1 +1,0 @@
--keep,allowobfuscation,allowshrinking class com.huangder.lumibooks.ui.bookshelf.BookNotesViewModel

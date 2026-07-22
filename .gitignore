@@ -8,11 +8,12 @@
 /.idea/navEditor.xml
 /.idea/assetWizardSettings.xml
 .DS_Store
-/build
+# Gradle and Android build outputs
+**/build/
+/app/release/
 /captures
 .externalNativeBuild
 .cxx
 local.properties
 devlog/
 devdocs/
-
