@@ -131,7 +131,8 @@ private fun SponsorPage(onBack: () -> Unit) {
                 LiquidGlassIconButton(
                     imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
                     contentDescription = stringResource(R.string.back),
-                    onClick = onBack
+                    onClick = onBack,
+                    settingsBackButton = true
                 )
                 Spacer(Modifier.weight(1f))
                 Text(stringResource(R.string.sponsor_title), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = FangSong, color = AppColors.TextPrimary)

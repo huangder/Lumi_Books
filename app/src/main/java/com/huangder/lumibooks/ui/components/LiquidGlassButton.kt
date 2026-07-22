@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.lerp
@@ -31,6 +32,7 @@ fun LiquidGlassButton(
     enabled: Boolean = true,
     shape: Shape = RoundedCornerShape(50),
     tintedColor: Color? = null,
+    prominentShadow: Boolean = false,
     contentColor: Color = if (tintedColor != null) AppColors.OnAccent else AppColors.TextPrimary,
     content: @Composable RowScope.() -> Unit
 ) {
@@ -61,6 +63,29 @@ fun LiquidGlassButton(
             color.copy(alpha = 0.72f)
         }
     } ?: AppColors.CardBg.copy(alpha = 0.24f)
+    val diffuseShadow = if (tintedColor == null) {
+        Modifier.shadow(
+            elevation = if (prominentShadow) 20.dp else 16.dp,
+            shape = shape,
+            clip = false,
+            ambientColor = Color.Black.copy(
+                alpha = if (isDark) {
+                    if (prominentShadow) 0.24f else 0.18f
+                } else {
+                    if (prominentShadow) 0.15f else 0.10f
+                }
+            ),
+            spotColor = Color.Black.copy(
+                alpha = if (isDark) {
+                    if (prominentShadow) 0.21f else 0.16f
+                } else {
+                    if (prominentShadow) 0.12f else 0.08f
+                }
+            )
+        )
+    } else {
+        Modifier
+    }
     LiquidGlassSurface(
         shape = shape,
         fallbackColor = tintedColor ?: AppColors.CardBg,
@@ -68,6 +93,7 @@ fun LiquidGlassButton(
         enabled = enabled,
         onClick = onClick,
         effectPadding = 2.dp,
+        decorationModifier = diffuseShadow,
         modifier = modifier
             .heightIn(min = 44.dp)
             .widthIn(min = 72.dp)
@@ -91,6 +117,7 @@ fun LiquidGlassTextButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     tintedColor: Color? = null,
+    prominentShadow: Boolean = false,
     contentColor: Color = if (tintedColor != null) AppColors.OnAccent else AppColors.TextPrimary
 ) {
     LiquidGlassButton(
@@ -98,6 +125,7 @@ fun LiquidGlassTextButton(
         modifier = modifier,
         enabled = enabled,
         tintedColor = tintedColor,
+        prominentShadow = prominentShadow,
         contentColor = contentColor
     ) {
         Text(

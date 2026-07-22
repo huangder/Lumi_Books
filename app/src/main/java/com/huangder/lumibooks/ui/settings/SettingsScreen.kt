@@ -125,7 +125,8 @@ fun SettingsScreen(
                 LiquidGlassIconButton(
                     imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
                     contentDescription = stringResource(R.string.back),
-                    onClick = onNavigateBack
+                    onClick = onNavigateBack,
+                    settingsBackButton = true
                 )
                 Spacer(Modifier.weight(1f))
                 Text(stringResource(R.string.settings_title), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = FangSong, color = AppColors.TextPrimary)

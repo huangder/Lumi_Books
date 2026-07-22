@@ -1016,7 +1016,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 onChineseModeChange = { viewModel.saveChineseMode(it) },
                 onPageTransitionChange = { viewModel.savePageTransition(it) },
                 onOpenAdvanced = {
-                    requestCloseTheme = true
+                    if (isLiquidGlass) requestCloseTheme = true
                     showAdvancedSheet = true
                 },
                 onDismiss = { showThemeSheet = false; requestCloseTheme = false }

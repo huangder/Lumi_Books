@@ -10,6 +10,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 
 /**
  * 阅读页沉浸模式（隐藏状态栏 + 导航栏）
@@ -18,6 +19,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 @Composable
 fun ImmersiveMode() {
     val view = LocalView.current
+    val isDarkTheme = LocalIsDarkTheme.current
     if (view.isInEditMode) return
 
     DisposableEffect(Unit) {
@@ -31,8 +33,30 @@ fun ImmersiveMode() {
 
         onDispose {
             // 恢复系统栏
+            window.statusBarColor = Color.Transparent.toArgb()
+            window.navigationBarColor = Color.Transparent.toArgb()
+            controller.isAppearanceLightStatusBars = !isDarkTheme
+            controller.isAppearanceLightNavigationBars = !isDarkTheme
             controller.show(WindowInsetsCompat.Type.systemBars())
             controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
+        }
+    }
+}
+
+/** Restores edge-to-edge system bars after leaving the reader route. */
+@Composable
+fun MainSystemBarStyle() {
+    val view = LocalView.current
+    val isDarkTheme = LocalIsDarkTheme.current
+    if (view.isInEditMode) return
+
+    SideEffect {
+        val window = (view.context as? Activity)?.window ?: return@SideEffect
+        window.statusBarColor = Color.Transparent.toArgb()
+        window.navigationBarColor = Color.Transparent.toArgb()
+        WindowCompat.getInsetsController(window, view).apply {
+            isAppearanceLightStatusBars = !isDarkTheme
+            isAppearanceLightNavigationBars = !isDarkTheme
         }
     }
 }

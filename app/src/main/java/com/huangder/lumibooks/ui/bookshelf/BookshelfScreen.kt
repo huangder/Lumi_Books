@@ -5,8 +5,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -39,13 +41,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.outlined.GridView
-import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -57,8 +64,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -66,8 +73,10 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -82,6 +91,13 @@ import com.huangder.lumibooks.ui.animation.OverscrollBounce
 import com.huangder.lumibooks.ui.animation.PageEntranceItem
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
+import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
+import com.huangder.lumibooks.ui.components.LiquidGlassButton
+import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
+import com.huangder.lumibooks.ui.components.LiquidGlassMenuItem
+import com.huangder.lumibooks.ui.components.LiquidGlassMenuSpec
+import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
+import com.huangder.lumibooks.ui.components.LocalLiquidGlassMenuHost
 import com.huangder.lumibooks.ui.home.HomeViewModel
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
@@ -92,7 +108,6 @@ import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.util.FileUtils
 import androidx.compose.ui.res.stringResource
-import java.io.File
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 
@@ -110,12 +125,21 @@ fun BookshelfScreen(
     val haptic = LocalHapticFeedback.current
     val contextMenuState = rememberBookContextMenuState()
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val density = LocalDensity.current
     val bookshelfBackdrop = rememberLayerBackdrop()
+    val bookshelfTopBlurBackdrop = rememberLayerBackdrop()
+    var bookshelfHeaderHeightPx by remember { mutableStateOf(0) }
+    var isEditing by remember { mutableStateOf(false) }
+    var selectedBookIds by remember { mutableStateOf(emptySet<String>()) }
+    var showBatchDeleteConfirm by remember { mutableStateOf(false) }
+    var deletingBookIds by remember { mutableStateOf(emptySet<String>()) }
+    var booksPendingDeletion by remember { mutableStateOf(emptyList<Book>()) }
 
     val filterTabs = buildList {
         add(BookshelfFilterTab(BookshelfFilter.All, stringResource(R.string.filter_all)))
         add(BookshelfFilterTab(BookshelfFilter.Downloaded, stringResource(R.string.filter_downloaded)))
         add(BookshelfFilterTab(BookshelfFilter.Pdf, stringResource(R.string.format_pdf)))
+        add(BookshelfFilterTab(BookshelfFilter.Txt, stringResource(R.string.format_txt)))
         add(BookshelfFilterTab(BookshelfFilter.Favorites, stringResource(R.string.filter_favorites)))
         uiState.tags.forEach { tag ->
             add(BookshelfFilterTab(BookshelfFilter.Tag(tag.id), tag.name))
@@ -143,6 +167,22 @@ fun BookshelfScreen(
         }
     }
 
+    LaunchedEffect(uiState.books) {
+        val existingIds = uiState.books.mapTo(mutableSetOf()) { it.id }
+        selectedBookIds = selectedBookIds.intersect(existingIds)
+    }
+
+    LaunchedEffect(deletingBookIds) {
+        if (deletingBookIds.isNotEmpty()) {
+            kotlinx.coroutines.delay(350)
+            viewModel.deleteBooks(booksPendingDeletion)
+            deletingBookIds = emptySet()
+            booksPendingDeletion = emptyList()
+            selectedBookIds = emptySet()
+            isEditing = false
+        }
+    }
+
     // 通知 NavGraph 隐藏/显示底部 TabBar
     // 编辑书本信息对话框状态
     var showEditDialog by remember { mutableStateOf(false) }
@@ -152,7 +192,6 @@ fun BookshelfScreen(
     var coverTargetBook by remember { mutableStateOf<Book?>(null) }
 
     // 删除动画：记录正在删除的书本 ID
-    var deletingBookId by remember { mutableStateOf<String?>(null) }
     var tagTargetBook by remember { mutableStateOf<Book?>(null) }
     var showTagSheet by remember { mutableStateOf(false) }
 
@@ -185,6 +224,7 @@ fun BookshelfScreen(
         BookshelfFilter.All -> uiState.books
         BookshelfFilter.Downloaded -> uiState.books // 下载内容
         BookshelfFilter.Pdf -> uiState.books.filter { it.format == BookFormat.PDF }
+        BookshelfFilter.Txt -> uiState.books.filter { it.format == BookFormat.TXT }
         BookshelfFilter.Favorites -> uiState.books.filter { it.isFavorite }
         is BookshelfFilter.Tag -> uiState.books.filter { book ->
             filter.tagId in tagIdsByBook[book.id].orEmpty()
@@ -223,6 +263,53 @@ fun BookshelfScreen(
                 }
                 .background(AppColors.WindowBg)
         ) {
+            if (isLiquidGlass) {
+                OverscrollBounce(modifier = Modifier.fillMaxSize()) {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(2),
+                        contentPadding = PaddingValues(
+                            start = AppSpace.lg,
+                            top = 176.dp,
+                            end = AppSpace.lg,
+                            bottom = 120.dp
+                        ),
+                        horizontalArrangement = Arrangement.spacedBy(AppSpace.lg),
+                        verticalArrangement = Arrangement.spacedBy(AppSpace.lg),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        itemsIndexed(filteredBooks, key = { _, book -> book.id }) { index, book ->
+                            PageEntranceItem(play = playEntranceAnimation, index = index + 2) {
+                                AnimatedBookGridItem(
+                                    book = book,
+                                    isDeleting = book.id in deletingBookIds,
+                                    isEditing = isEditing,
+                                    isSelected = book.id in selectedBookIds,
+                                    contextMenuState = contextMenuState,
+                                    onHaptic = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
+                                    onSelectionToggle = {
+                                        selectedBookIds = if (book.id in selectedBookIds) {
+                                            selectedBookIds - book.id
+                                        } else {
+                                            selectedBookIds + book.id
+                                        }
+                                    },
+                                    onClick = { onNavigateToReader(book.id, book.coverPath, book.title) }
+                                )
+                            }
+                        }
+                        if (!isEditing) {
+                            item(key = "add_book") {
+                                PageEntranceItem(
+                                    play = playEntranceAnimation,
+                                    index = filteredBooks.size + 2
+                                ) {
+                                    AddBookItem(onClick = { launcher.launch("*/*") })
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
             OverscrollBounce(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
                 Column(
                     modifier = Modifier
@@ -285,13 +372,12 @@ fun BookshelfScreen(
                             PageEntranceItem(play = playEntranceAnimation, index = index + 2) {
                                 AnimatedBookGridItem(
                                     book = book,
-                                    isDeleting = deletingBookId == book.id,
-                                    onDeleteFinished = {
-                                        viewModel.deleteBook(book)
-                                        deletingBookId = null
-                                    },
+                                    isDeleting = book.id in deletingBookIds,
+                                    isEditing = false,
+                                    isSelected = false,
                                     contextMenuState = contextMenuState,
                                     onHaptic = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
+                                    onSelectionToggle = {},
                                     onClick = { onNavigateToReader(book.id, book.coverPath, book.title) }
                                 )
                             }
@@ -311,9 +397,61 @@ fun BookshelfScreen(
         } // 内容层 Box 结束（renderEffect 模糊作用于此）
 
         // ── 长按上下文菜单覆盖层（在内容层之外，不被模糊） ──
+        }
+
+        if (isLiquidGlass) {
+            val blurHeight = if (bookshelfHeaderHeightPx > 0) {
+                with(density) { bookshelfHeaderHeightPx.toDp() } - 10.dp
+            } else {
+                154.dp
+            }
+            StatusGradientOverlay(
+                backdrop = bookshelfBackdrop,
+                exportedBackdrop = bookshelfTopBlurBackdrop,
+                height = blurHeight,
+                blurRadius = 38.dp,
+                solidFraction = 0.68f
+            )
+            ProvideLiquidGlassBackdrop(bookshelfTopBlurBackdrop) {
+                LiquidBookshelfHeader(
+                    filterTabs = filterTabs,
+                    selectedFilter = selectedFilter,
+                    isEditing = isEditing,
+                    selectedCount = selectedBookIds.size,
+                    onFilterSelected = { selectedFilter = it },
+                    onEditToggle = {
+                        isEditing = !isEditing
+                        if (!isEditing) selectedBookIds = emptySet()
+                    },
+                    onDeleteSelected = { showBatchDeleteConfirm = true },
+                    modifier = Modifier
+                        .zIndex(2f)
+                        .onGloballyPositioned { coordinates ->
+                            bookshelfHeaderHeightPx = coordinates.size.height
+                        }
+                        .graphicsLayer {
+                            renderEffect = if (
+                                overlayProgress > 0.01f && android.os.Build.VERSION.SDK_INT >= 31
+                            ) {
+                                android.graphics.RenderEffect.createBlurEffect(
+                                    20f * overlayProgress,
+                                    20f * overlayProgress,
+                                    android.graphics.Shader.TileMode.CLAMP
+                                ).asComposeRenderEffect()
+                            } else {
+                                null
+                            }
+                        }
+                )
+            }
+        }
+
         BookContextMenuOverlay(
             state = contextMenuState,
-            onDelete = { book -> deletingBookId = book.id },
+            onDelete = { book ->
+                booksPendingDeletion = listOf(book)
+                deletingBookIds = setOf(book.id)
+            },
             onFavorite = { book -> viewModel.updateBook(book.copy(isFavorite = !book.isFavorite)) },
             onCustomCover = { book ->
                 coverTargetBook = book
@@ -383,7 +521,192 @@ fun BookshelfScreen(
             )
         }
 
+        if (showBatchDeleteConfirm) {
+            LiquidGlassAlertDialog(
+                onDismissRequest = { showBatchDeleteConfirm = false },
+                title = {
+                    Text(
+                        text = stringResource(R.string.delete_selected_books_title),
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                text = {
+                    Text(
+                        text = stringResource(
+                            R.string.delete_selected_books_confirm,
+                            selectedBookIds.size
+                        )
+                    )
+                },
+                confirmButton = {
+                    LiquidGlassTextButton(
+                        text = stringResource(R.string.delete),
+                        tintedColor = Color(0xFFD92D3A),
+                        onClick = {
+                            val selectedBooks = uiState.books.filter { it.id in selectedBookIds }
+                            showBatchDeleteConfirm = false
+                            booksPendingDeletion = selectedBooks
+                            deletingBookIds = selectedBooks.mapTo(mutableSetOf()) { it.id }
+                        }
+                    )
+                },
+                dismissButton = {
+                    LiquidGlassTextButton(
+                        text = stringResource(R.string.cancel),
+                        onClick = { showBatchDeleteConfirm = false },
+                        contentColor = AppColors.TextSecondary
+                    )
+                }
+            )
+        }
+
     }
+    }
+}
+
+@Composable
+private fun LiquidBookshelfHeader(
+    filterTabs: List<BookshelfFilterTab>,
+    selectedFilter: BookshelfFilter,
+    isEditing: Boolean,
+    selectedCount: Int,
+    onFilterSelected: (BookshelfFilter) -> Unit,
+    onEditToggle: () -> Unit,
+    onDeleteSelected: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val menuHost = LocalLiquidGlassMenuHost.current
+    var filterAnchorBounds by remember { mutableStateOf(Rect.Zero) }
+    var filterExpanded by remember { mutableStateOf(false) }
+    val arrowRotation by animateFloatAsState(
+        targetValue = if (filterExpanded) 180f else 0f,
+        animationSpec = spring(dampingRatio = 0.78f, stiffness = 420f),
+        label = "bookshelfFilterArrow"
+    )
+    val selectedLabel = filterTabs.firstOrNull { it.filter == selectedFilter }?.label
+        ?: stringResource(R.string.filter_all)
+
+    DisposableEffect(menuHost) {
+        onDispose {
+            if (filterExpanded) menuHost?.dismiss()
+        }
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(top = 12.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = AppSpace.lg),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            LiquidGlassButton(
+                onClick = onEditToggle,
+                prominentShadow = true,
+                modifier = Modifier
+                    .width(88.dp)
+                    .height(46.dp)
+            ) {
+                Text(
+                    text = stringResource(if (isEditing) R.string.done else R.string.edit),
+                    color = AppColors.TextPrimary,
+                    fontSize = AppType.BodySmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            AnimatedVisibility(
+                visible = selectedCount > 0,
+                enter = fadeIn(tween(120)) + scaleIn(
+                    initialScale = 0.78f,
+                    animationSpec = spring(dampingRatio = 0.68f, stiffness = 360f)
+                ),
+                exit = fadeOut(tween(110)) + scaleOut(targetScale = 0.82f)
+            ) {
+                Row {
+                    Spacer(Modifier.width(10.dp))
+                    LiquidGlassIconButton(
+                        imageVector = Icons.Outlined.Delete,
+                        contentDescription = stringResource(R.string.delete),
+                        onClick = onDeleteSelected,
+                        size = 46.dp,
+                        iconSize = 21.dp,
+                        contentColor = Color.White,
+                        liquidContainerColor = Color(0xFFD92D3A),
+                        liquidScrimColor = Color(0xB8D92D3A)
+                    )
+                }
+            }
+
+            Spacer(Modifier.weight(1f))
+
+            LiquidGlassButton(
+                onClick = {
+                    if (filterExpanded) {
+                        menuHost?.dismiss()
+                    } else if (menuHost != null && filterAnchorBounds != Rect.Zero) {
+                        filterExpanded = true
+                        menuHost.show(
+                            LiquidGlassMenuSpec(
+                                anchorBounds = filterAnchorBounds,
+                                width = 176.dp,
+                                maxVisibleItems = 8,
+                                onDismiss = { filterExpanded = false },
+                                items = filterTabs.map { tab ->
+                                    LiquidGlassMenuItem(
+                                        label = tab.label,
+                                        selected = tab.filter == selectedFilter,
+                                        onClick = { onFilterSelected(tab.filter) }
+                                    )
+                                }
+                            )
+                        )
+                    }
+                },
+                prominentShadow = true,
+                modifier = Modifier
+                    .width(136.dp)
+                    .height(46.dp)
+                    .onGloballyPositioned { filterAnchorBounds = it.boundsInRoot() }
+            ) {
+                Text(
+                    text = selectedLabel,
+                    color = AppColors.TextPrimary,
+                    fontSize = AppType.BodySmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                Spacer(Modifier.width(4.dp))
+                Icon(
+                    imageVector = Icons.Outlined.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = AppColors.TextPrimary,
+                    modifier = Modifier
+                        .size(19.dp)
+                        .graphicsLayer { rotationZ = arrowRotation }
+                )
+            }
+        }
+
+        Text(
+            text = stringResource(R.string.bookshelf_title),
+            fontSize = AppType.Display,
+            fontWeight = FontWeight.Bold,
+            fontFamily = KaiTi,
+            letterSpacing = (-0.02).sp,
+            color = AppColors.TextPrimary,
+            modifier = Modifier.padding(
+                start = AppSpace.lg,
+                top = 14.dp,
+                bottom = 10.dp
+            )
+        )
     }
 }
 
@@ -391,6 +714,7 @@ private sealed interface BookshelfFilter {
     data object All : BookshelfFilter
     data object Downloaded : BookshelfFilter
     data object Pdf : BookshelfFilter
+    data object Txt : BookshelfFilter
     data object Favorites : BookshelfFilter
     data class Tag(val tagId: String) : BookshelfFilter
 }
@@ -406,14 +730,24 @@ private data class BookshelfFilterTab(
 private fun AnimatedBookGridItem(
     book: Book,
     isDeleting: Boolean,
-    onDeleteFinished: () -> Unit,
+    isEditing: Boolean,
+    isSelected: Boolean,
     contextMenuState: BookContextMenuState,
     onHaptic: () -> Unit,
+    onSelectionToggle: () -> Unit,
     onClick: () -> Unit
 ) {
     val scale by animateFloatAsState(
-        targetValue = if (isDeleting) 0.8f else 1f,
-        animationSpec = tween(300, easing = AppEasing.Accelerate),
+        targetValue = when {
+            isDeleting -> 0.8f
+            isEditing -> 0.955f
+            else -> 1f
+        },
+        animationSpec = if (isDeleting) {
+            tween(300, easing = AppEasing.Accelerate)
+        } else {
+            spring(dampingRatio = 0.78f, stiffness = 360f)
+        },
         label = "deleteScale"
     )
     val alphaAnim by animateFloatAsState(
@@ -423,13 +757,6 @@ private fun AnimatedBookGridItem(
     )
 
     // 等动画完成后执行实际删除（delay 期间动画持续播放）
-    LaunchedEffect(isDeleting) {
-        if (isDeleting) {
-            kotlinx.coroutines.delay(350)
-            onDeleteFinished()
-        }
-    }
-
     // 在组合期间读取值 → graphicsLayer 拿到最新值
     Box(
         modifier = Modifier
@@ -441,8 +768,11 @@ private fun AnimatedBookGridItem(
     ) {
         BookGridItem(
             book = book,
+            isEditing = isEditing,
+            isSelected = isSelected,
             contextMenuState = contextMenuState,
             onHaptic = onHaptic,
+            onSelectionToggle = onSelectionToggle,
             onClick = onClick
         )
     }
@@ -454,8 +784,11 @@ private fun AnimatedBookGridItem(
 @Composable
 private fun BookGridItem(
     book: Book,
+    isEditing: Boolean,
+    isSelected: Boolean,
     contextMenuState: BookContextMenuState,
     onHaptic: () -> Unit,
+    onSelectionToggle: () -> Unit,
     onClick: () -> Unit
 ) {
     val coverCorner = if (LocalAppTheme.current == "liquid_glass") 16.dp else AppRadius.sm
@@ -484,23 +817,48 @@ private fun BookGridItem(
         }
     }
     // 按下时缩小到 0.95，否则用 contextMenuState 的 pressScale
-    val coverScale = if (isPressed) 0.95f else pressScaleValue
+    val coverScale = if (isPressed && !isEditing) 0.95f else pressScaleValue
+    val selectionAlpha by animateFloatAsState(
+        targetValue = if (isEditing && isSelected) 1f else 0f,
+        animationSpec = tween(160),
+        label = "bookSelectionOutline"
+    )
+    val selectionColor = AppColors.Accent
 
     Column(
         modifier = Modifier
             .graphicsLayer { alpha = overlayAlpha }
+            .drawWithContent {
+                drawContent()
+                if (selectionAlpha > 0.001f) {
+                    val gap = 7.dp.toPx()
+                    val authorHeight = 20.dp.toPx()
+                    drawRoundRect(
+                        color = selectionColor.copy(alpha = selectionAlpha),
+                        topLeft = Offset(-gap, -gap),
+                        size = Size(
+                            width = size.width + gap * 2f,
+                            height = (size.height - authorHeight + gap * 2f).coerceAtLeast(0f)
+                        ),
+                        cornerRadius = CornerRadius(22.dp.toPx()),
+                        style = Stroke(width = 2.dp.toPx())
+                    )
+                }
+            }
             .combinedClickable(
                 indication = null,
                 interactionSource = interactionSource,
-                onClick = onClick,
-                onLongClick = {
-                    onHaptic()
-                    contextMenuState.onLongPressConfirmed(
-                        book = book,
-                        bounds = coverCoordinates[0]?.boundsInRoot()
-                            ?: androidx.compose.ui.geometry.Rect.Zero,
-                        onHaptic = onHaptic
-                    )
+                onClick = if (isEditing) onSelectionToggle else onClick,
+                onLongClick = if (isEditing) null else {
+                    {
+                        onHaptic()
+                        contextMenuState.onLongPressConfirmed(
+                            book = book,
+                            bounds = coverCoordinates[0]?.boundsInRoot()
+                                ?: androidx.compose.ui.geometry.Rect.Zero,
+                            onHaptic = onHaptic
+                        )
+                    }
                 }
             )
     ) {

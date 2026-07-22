@@ -50,6 +50,7 @@
     <string name="save">저장</string>
     <string name="delete">삭제</string>
     <string name="edit">편집</string>
+    <string name="done">완료</string>
     <string name="settings">설정</string>
     <string name="loading">불러오는 중...</string>
     <string name="error">오류</string>
@@ -187,6 +188,8 @@
     <string name="add_favorite">즐겨찾기</string>
     <string name="delete_book">삭제</string>
     <string name="delete_book_title">도서 삭제</string>
+    <string name="delete_selected_books_title">선택한 도서 삭제</string>
+    <string name="delete_selected_books_confirm">선택한 도서 %1$d권을 삭제할까요? 이 작업은 되돌릴 수 없습니다.</string>
     <string name="delete_book_confirm">서재에서 《%s》을(를) 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.</string>
     <string name="goal_label">(목표 %d분)</string>
     <string name="continue_reading">계속 읽기</string>
@@ -204,7 +207,7 @@
 
     <!-- 서재 -->
     <string name="bookshelf_title">서재</string>
-    <string name="filter_all">모든 도서</string>
+    <string name="filter_all">전체</string>
     <string name="filter_downloaded">다운로드한 콘텐츠</string>
     <string name="filter_pdf">PDF</string>
     <string name="filter_favorites">즐겨찾기</string>

@@ -698,6 +698,8 @@ private fun CustomBackgroundDialog(
     onPickPhoto: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val dialogTransparency = (LocalLiquidGlassTransparency.current - 0.10f)
+        .coerceIn(0f, 0.90f)
     var hue by remember { mutableFloatStateOf(35f) }
     var saturation by remember { mutableFloatStateOf(12f) }
     var lightness by remember { mutableFloatStateOf(96f) }
@@ -707,9 +709,10 @@ private fun CustomBackgroundDialog(
 
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(24.dp)
+        shape = RoundedCornerShape(24.dp),
+        transparencyOverride = dialogTransparency
     ) {
-            Column(Modifier.padding(20.dp)) {
+            Column(Modifier.padding(horizontal = 28.dp, vertical = 20.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
@@ -1645,6 +1648,8 @@ private fun TextColorDialog(
     onApply: (Int) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val dialogTransparency = (LocalLiquidGlassTransparency.current - 0.10f)
+        .coerceIn(0f, 0.90f)
     val initialHsv = remember(initialColor) {
         FloatArray(3).also { android.graphics.Color.colorToHSV(initialColor, it) }
     }
@@ -1662,9 +1667,10 @@ private fun TextColorDialog(
 
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(24.dp)
+        shape = RoundedCornerShape(24.dp),
+        transparencyOverride = dialogTransparency
     ) {
-            Column(Modifier.padding(20.dp)) {
+            Column(Modifier.padding(horizontal = 28.dp, vertical = 20.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
