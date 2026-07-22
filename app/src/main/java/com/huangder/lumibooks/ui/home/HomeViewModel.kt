@@ -368,17 +368,32 @@ class HomeViewModel @Inject constructor(
     fun deleteBook(book: Book) {
         viewModelScope.launch {
             try {
-                val isConvertedPdfBook = PdfConversionContract.isConvertedBook(application, book)
-                bookRepository.deleteBook(book)
-                if (isConvertedPdfBook) {
-                    runCatching { readingRepository.deleteAllBookmarksByBookId(book.id) }
-                    runCatching { readingRepository.deleteAllNotesByBookId(book.id) }
-                    withContext(Dispatchers.IO) {
-                        FileUtils.deleteFile(java.io.File(book.filePath))
-                    }
-                }
+                deleteBookAndManagedData(book)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = e.message)
+            }
+        }
+    }
+
+    fun deleteBooks(books: List<Book>) {
+        if (books.isEmpty()) return
+        viewModelScope.launch {
+            try {
+                books.forEach { deleteBookAndManagedData(it) }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = e.message)
+            }
+        }
+    }
+
+    private suspend fun deleteBookAndManagedData(book: Book) {
+        val isConvertedPdfBook = PdfConversionContract.isConvertedBook(application, book)
+        bookRepository.deleteBook(book)
+        if (isConvertedPdfBook) {
+            runCatching { readingRepository.deleteAllBookmarksByBookId(book.id) }
+            runCatching { readingRepository.deleteAllNotesByBookId(book.id) }
+            withContext(Dispatchers.IO) {
+                FileUtils.deleteFile(java.io.File(book.filePath))
             }
         }
     }

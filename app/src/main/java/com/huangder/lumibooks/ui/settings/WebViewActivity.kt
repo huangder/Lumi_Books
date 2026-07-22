@@ -129,7 +129,8 @@ private fun WebViewPage(title: String, assetFile: String, isDark: Boolean, onBac
                 LiquidGlassIconButton(
                     imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
                     contentDescription = "返回",
-                    onClick = onBack
+                    onClick = onBack,
+                    settingsBackButton = true
                 )
                 Spacer(Modifier.weight(1f))
                 Text(title, fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = FangSong, color = AppColors.TextPrimary)

@@ -43,6 +43,7 @@ import com.huangder.lumibooks.ui.components.FloatingTabBar
 import com.huangder.lumibooks.ui.components.LiquidGlassImportButton
 import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
 import com.huangder.lumibooks.ui.components.ImmersiveMode
+import com.huangder.lumibooks.ui.components.MainSystemBarStyle
 import com.huangder.lumibooks.ui.components.ConfigurableNavigationBack
 import com.huangder.lumibooks.ui.components.LocalPredictiveBackEnabled
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuHost
@@ -189,6 +190,8 @@ fun MainNavGraph(
     if (currentRoute == Screen.Reader.route) {
         // Keep one owner while switching between PDF and parsed TXT reader entries.
         ImmersiveMode()
+    } else {
+        MainSystemBarStyle()
     }
     LaunchedEffect(currentRoute, showTransition) {
         selectedTab = when (currentRoute) {

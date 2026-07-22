@@ -19,11 +19,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -62,7 +65,9 @@ data class LiquidGlassMenuSpec(
     val anchorBounds: Rect,
     val width: Dp,
     val items: List<LiquidGlassMenuItem>,
-    val alignEnd: Boolean = true
+    val alignEnd: Boolean = true,
+    val maxVisibleItems: Int = 8,
+    val onDismiss: () -> Unit = {}
 )
 
 @Stable
@@ -71,10 +76,12 @@ class LiquidGlassMenuHostState {
         private set
 
     fun show(spec: LiquidGlassMenuSpec) {
+        if (activeMenu !== spec) activeMenu?.onDismiss?.invoke()
         activeMenu = spec
     }
 
     fun dismiss() {
+        activeMenu?.onDismiss?.invoke()
         activeMenu = null
     }
 }
@@ -133,7 +140,10 @@ fun LiquidGlassMenuHost(
                     val horizontalMarginPx = with(density) { 8.dp.toPx() }
                     val verticalGapPx = with(density) { 6.dp.toPx() }
                     val menuWidthPx = with(density) { menu.width.toPx() }
-                    val menuHeightPx = with(density) { (menu.items.size * 44).dp.toPx() + 16.dp.toPx() }
+                    val visibleItemCount = menu.items.size.coerceAtMost(menu.maxVisibleItems)
+                    val menuHeightPx = with(density) {
+                        (visibleItemCount * 44).dp.toPx() + 16.dp.toPx()
+                    }
                     val hostWidthPx = with(density) { maxWidth.toPx() }
                     val hostHeightPx = with(density) { maxHeight.toPx() }
                     val preferredX = if (menu.alignEnd) {
@@ -196,7 +206,12 @@ private fun AnchoredLiquidGlassMenu(
         modifier = Modifier.fillMaxWidth(),
         contentAlignment = Alignment.TopStart
     ) {
-        Column(Modifier.padding(8.dp)) {
+        Column(
+            Modifier
+                .padding(8.dp)
+                .heightIn(max = (spec.maxVisibleItems * 44).dp)
+                .verticalScroll(rememberScrollState())
+        ) {
             spec.items.forEach { item ->
                 val itemColor = if (item.destructive || item.selected) {
                     AppColors.Accent

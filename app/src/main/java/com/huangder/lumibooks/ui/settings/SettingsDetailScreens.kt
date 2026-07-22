@@ -153,7 +153,8 @@ fun DetailPage(title: String, onBack: () -> Unit, content: @Composable () -> Uni
                 LiquidGlassIconButton(
                     imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
                     contentDescription = stringResource(R.string.back),
-                    onClick = onBack
+                    onClick = onBack,
+                    settingsBackButton = true
                 )
                 Spacer(Modifier.weight(1f))
                 Text(title, fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = FangSong, color = AppColors.TextPrimary)

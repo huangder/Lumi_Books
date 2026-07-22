@@ -80,7 +80,6 @@ import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.components.LiquidGlassDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassButton
-import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
 
 @Composable
 fun MineruSettingsDetail(viewModel: SettingsViewModel) {
@@ -445,7 +444,12 @@ private fun MineruExternalLink(
 }
 
 @Composable
-private fun MineruPrimaryButton(label: String, enabled: Boolean = true, onClick: () -> Unit) {
+private fun MineruPrimaryButton(
+    label: String,
+    enabled: Boolean = true,
+    forceWhiteContent: Boolean = false,
+    onClick: () -> Unit
+) {
     LiquidGlassButton(
         onClick = onClick,
         enabled = enabled,
@@ -459,7 +463,7 @@ private fun MineruPrimaryButton(label: String, enabled: Boolean = true, onClick:
             label,
             fontSize = AppType.BodySmall,
             fontWeight = FontWeight.SemiBold,
-            color = if (enabled) Color.White else AppColors.TextSecondary
+            color = if (forceWhiteContent || enabled) Color.White else AppColors.TextSecondary
         )
     }
 }
@@ -584,14 +588,25 @@ private fun MineruConsentSheet(onDismiss: () -> Unit, onAccept: () -> Unit) {
                     stringResource(R.string.mineru_consent_accept)
                 },
                 enabled = remainingSeconds == 0 && confirmed,
+                forceWhiteContent = true,
                 onClick = onAccept
             )
-            LiquidGlassTextButton(
-                text = stringResource(R.string.cancel),
+            Spacer(Modifier.height(10.dp))
+            LiquidGlassButton(
                 onClick = onDismiss,
-                modifier = Modifier.align(Alignment.CenterHorizontally),
-                contentColor = AppColors.TextSecondary
-            )
+                shape = RoundedCornerShape(25.dp),
+                tintedColor = if (isLiquidGlass) null else AppColors.BgGray,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.cancel),
+                    fontSize = AppType.BodySmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = AppColors.TextPrimary
+                )
+            }
         }
     }
 

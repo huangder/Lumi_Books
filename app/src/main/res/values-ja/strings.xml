@@ -50,6 +50,7 @@
     <string name="save">保存</string>
     <string name="delete">削除</string>
     <string name="edit">編集</string>
+    <string name="done">完了</string>
     <string name="settings">設定</string>
     <string name="loading">読み込み中...</string>
     <string name="error">エラー</string>
@@ -187,6 +188,8 @@
     <string name="add_favorite">お気に入り</string>
     <string name="delete_book">削除</string>
     <string name="delete_book_title">書籍を削除</string>
+    <string name="delete_selected_books_title">選択した書籍を削除</string>
+    <string name="delete_selected_books_confirm">選択した %1$d 冊を削除しますか？この操作は取り消せません。</string>
     <string name="delete_book_confirm">「%s」をライブラリから削除しますか？\nこの操作は取り消せません。</string>
     <string name="goal_label">（目標 %d分）</string>
     <string name="continue_reading">続きを読む</string>
@@ -204,7 +207,7 @@
 
     <!-- 本棚 -->
     <string name="bookshelf_title">ライブラリ</string>
-    <string name="filter_all">すべての書籍</string>
+    <string name="filter_all">すべて</string>
     <string name="filter_downloaded">ダウンロード済み</string>
     <string name="filter_pdf">PDF</string>
     <string name="filter_favorites">お気に入り</string>

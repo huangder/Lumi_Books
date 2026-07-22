@@ -14,15 +14,15 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -78,6 +78,8 @@ import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.ui.animation.OverscrollBounce
 import com.huangder.lumibooks.ui.animation.cardPressEffect
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuItem
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuSpec
 import com.huangder.lumibooks.ui.components.LocalLiquidGlassMenuHost
@@ -107,6 +109,11 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val topBlurBackdrop = rememberLayerBackdrop()
+    val statusBarTopPadding = WindowInsets.statusBars
+        .asPaddingValues()
+        .calculateTopPadding()
     val context = LocalContext.current
     var localShowGoalSheet by remember { mutableStateOf(false) }
     val showGoalSheet = if (renderReadingGoalSheet) localShowGoalSheet else showReadingGoalSheet
@@ -135,11 +142,13 @@ fun HomeScreen(
         OverscrollBounce(
             modifier = Modifier
                 .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.statusBarsIgnoringVisibility)
+                .then(
+                    if (isLiquidGlass) Modifier.layerBackdrop(topBlurBackdrop) else Modifier
+                )
         ) {
             LazyColumn(modifier = Modifier.fillMaxSize()) {
                 item(key = "header") {
-                    Spacer(Modifier.height(AppSpace.md)) // 和状态栏/遮罩拉开距离
+                    Spacer(Modifier.height(statusBarTopPadding + AppSpace.md))
                     PageEntranceItem(play = playEntranceAnimation, index = 0) {
                         HomeHeader(
                             avatarUri = uiState.avatarUri,
@@ -232,7 +241,7 @@ fun HomeScreen(
             }
         } // OverscrollBounce 结束
 
-        StatusGradientOverlay()
+        StatusGradientOverlay(backdrop = topBlurBackdrop.takeIf { isLiquidGlass })
 
         if (renderReadingGoalSheet) {
             ReadingGoalSheet(

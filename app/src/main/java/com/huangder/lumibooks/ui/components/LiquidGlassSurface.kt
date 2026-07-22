@@ -6,11 +6,13 @@ import android.graphics.Paint as AndroidPaint
 import android.graphics.RadialGradient as AndroidRadialGradient
 import android.graphics.Shader as AndroidShader
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateValueAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.VectorConverter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -27,7 +29,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -74,6 +75,7 @@ import com.kyant.backdrop.shadow.InnerShadow
 import com.kyant.backdrop.shadow.Shadow
 import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.sqrt
 
 val LocalLiquidGlassBackdrop = staticCompositionLocalOf<Backdrop?> { null }
 
@@ -186,11 +188,7 @@ fun Modifier.liquidGlassSheetSurface(
 
     return if (isLiquidGlass) {
         val floatingShape = RoundedCornerShape(28.dp)
-        val sheetTransparency = if (transparency >= 1f) {
-            1f
-        } else {
-            (transparency - 0.10f).coerceIn(0f, 0.90f)
-        }
+        val sheetTransparency = (transparency - 0.10f).coerceIn(0f, 0.90f)
         val scrimAlpha = (0.81f - sheetTransparency * 0.25f).coerceIn(0.58f, 0.81f)
         val floatingSurface = padding(start = 14.dp, end = 14.dp, bottom = 12.dp)
             .shadow(
@@ -318,23 +316,25 @@ fun LiquidGlassSurface(
     modifier: Modifier = Modifier,
     backdrop: Backdrop? = null,
     contentScrimColor: Color = Color.Transparent,
+    transparencyOverride: Float? = null,
     enabled: Boolean = true,
     onClick: (() -> Unit)? = null,
     interactive: Boolean = onClick != null,
     effectPadding: Dp = 0.dp,
+    decorationModifier: Modifier = Modifier,
     contentAlignment: Alignment = Alignment.Center,
     content: @Composable BoxScope.() -> Unit
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val isDark = LocalIsDarkTheme.current
-    val transparency = LocalLiquidGlassTransparency.current
+    val transparency = (transparencyOverride ?: LocalLiquidGlassTransparency.current)
+        .coerceIn(0f, 1f)
     val hdrHighlightEnabled = LocalLiquidGlassHdrHighlightEnabled.current
     val activeBackdrop = backdrop ?: LocalLiquidGlassBackdrop.current
     val density = LocalDensity.current
     val latestOnClick by rememberUpdatedState(onClick)
     var gestureActive by remember { mutableStateOf(false) }
-    var edgeDragTargetX by remember { mutableFloatStateOf(0f) }
-    var edgeDragTargetY by remember { mutableFloatStateOf(0f) }
+    var edgeDragTarget by remember { mutableStateOf(Offset.Zero) }
     var highlightCenter by remember { mutableStateOf(Offset.Zero) }
     var highlightSequence by remember { mutableIntStateOf(0) }
     val highlightSpread = remember { Animatable(0f) }
@@ -349,15 +349,11 @@ fun LiquidGlassSurface(
         animationSpec = tween(if (gestureActive) 90 else 220),
         label = "liquidGlassTouchHighlightAlpha"
     )
-    val edgeDragX by animateFloatAsState(
-        targetValue = edgeDragTargetX,
+    val edgeDrag by animateValueAsState(
+        targetValue = edgeDragTarget,
+        typeConverter = Offset.VectorConverter,
         animationSpec = if (gestureActive) snap() else spring(dampingRatio = 0.70f, stiffness = 360f),
-        label = "liquidGlassEdgeDragX"
-    )
-    val edgeDragY by animateFloatAsState(
-        targetValue = edgeDragTargetY,
-        animationSpec = if (gestureActive) snap() else spring(dampingRatio = 0.70f, stiffness = 360f),
-        label = "liquidGlassEdgeDragY"
+        label = "liquidGlassEdgeDrag"
     )
 
     LaunchedEffect(highlightSequence) {
@@ -415,10 +411,16 @@ fun LiquidGlassSurface(
                                 .coerceIn(-1f, 1f)
                             val normalizedY = ((change.position.y - height / 2f) / (height / 2f))
                                 .coerceIn(-1f, 1f)
-                            val edgeProximity = max(abs(normalizedX), abs(normalizedY))
-                            val edgeFactor = ((edgeProximity - 0.52f) / 0.48f).coerceIn(0f, 1f)
-                            edgeDragTargetX = (totalDrag.x / width).coerceIn(-0.32f, 0.32f) * edgeFactor
-                            edgeDragTargetY = (totalDrag.y / height).coerceIn(-0.32f, 0.32f) * edgeFactor
+                            val radialProximity = sqrt(
+                                normalizedX * normalizedX + normalizedY * normalizedY
+                            ).coerceIn(0f, 1f)
+                            val edgeProgress = ((radialProximity - 0.48f) / 0.52f)
+                                .coerceIn(0f, 1f)
+                            val edgeStrength = edgeProgress * edgeProgress * (3f - 2f * edgeProgress)
+                            edgeDragTarget = Offset(
+                                x = (totalDrag.x / width).coerceIn(-0.32f, 0.32f),
+                                y = (totalDrag.y / height).coerceIn(-0.32f, 0.32f)
+                            ) * edgeStrength
 
                             if (change.changedToUpIgnoreConsumed()) {
                                 released = true
@@ -428,8 +430,7 @@ fun LiquidGlassSurface(
                         }
                     } finally {
                         gestureActive = false
-                        edgeDragTargetX = 0f
-                        edgeDragTargetY = 0f
+                        edgeDragTarget = Offset.Zero
                     }
 
                     if (released && !dragged) latestOnClick?.invoke()
@@ -478,28 +479,24 @@ fun LiquidGlassSurface(
 
     val baseScale = 1f + 0.045f * pressProgress
     val densityScale = density.density
-    val horizontalStretch = abs(edgeDragX) * 0.18f
-    val verticalStretch = abs(edgeDragY) * 0.18f
-    val transformOriginX = when {
-        edgeDragX > 0.01f -> 0f
-        edgeDragX < -0.01f -> 1f
-        else -> 0.5f
-    }
-    val transformOriginY = when {
-        edgeDragY > 0.01f -> 0f
-        edgeDragY < -0.01f -> 1f
-        else -> 0.5f
-    }
+    val dragMagnitude = edgeDrag.getDistance()
+    val dragDirection = if (dragMagnitude > 0.0001f) edgeDrag / dragMagnitude else Offset.Zero
+    val originStrength = (dragMagnitude / 0.12f).coerceIn(0f, 1f)
+    val horizontalStretch = abs(edgeDrag.x) * 0.18f
+    val verticalStretch = abs(edgeDrag.y) * 0.18f
+    val transformOriginX = (0.5f - dragDirection.x * 0.5f * originStrength).coerceIn(0f, 1f)
+    val transformOriginY = (0.5f - dragDirection.y * 0.5f * originStrength).coerceIn(0f, 1f)
 
     Box(
         modifier = modifier
             .graphicsLayer {
                 scaleX = baseScale + horizontalStretch
                 scaleY = baseScale + verticalStretch
-                translationX = edgeDragX * 5f * densityScale
-                translationY = edgeDragY * 5f * densityScale
+                translationX = edgeDrag.x * 5f * densityScale
+                translationY = edgeDrag.y * 5f * densityScale
                 transformOrigin = TransformOrigin(transformOriginX, transformOriginY)
             }
+            .then(decorationModifier)
             .clip(shape)
             .then(semanticsModifier)
             .then(interactionModifier),

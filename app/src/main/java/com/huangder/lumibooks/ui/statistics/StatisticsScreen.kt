@@ -6,6 +6,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,7 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
@@ -50,6 +52,9 @@ import com.huangder.lumibooks.ui.animation.OverscrollBounce
 import com.huangder.lumibooks.ui.animation.cardPressEffect
 import androidx.compose.ui.res.stringResource
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
+import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.huangder.lumibooks.ui.animation.PageEntranceItem
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
@@ -65,12 +70,23 @@ fun StatisticsScreen(
     viewModel: StatisticsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val topBlurBackdrop = rememberLayerBackdrop()
+    val statusBarTopPadding = WindowInsets.statusBars
+        .asPaddingValues()
+        .calculateTopPadding()
 
     Box(modifier = Modifier.fillMaxSize().background(AppColors.WindowBg)) {
-        OverscrollBounce(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+        OverscrollBounce(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(
+                    if (isLiquidGlass) Modifier.layerBackdrop(topBlurBackdrop) else Modifier
+                )
+        ) {
             LazyColumn(modifier = Modifier.fillMaxSize()) {
                 item(key = "header") {
-                    Spacer(Modifier.height(AppSpace.md))
+                    Spacer(Modifier.height(statusBarTopPadding + AppSpace.md))
                     PageEntranceItem(play = playEntranceAnimation, index = 0) {
                         Text(
                             text = stringResource(R.string.stats_title),
@@ -151,7 +167,7 @@ fun StatisticsScreen(
             }
         } // OverscrollBounce 结束
 
-        StatusGradientOverlay()
+        StatusGradientOverlay(backdrop = topBlurBackdrop.takeIf { isLiquidGlass })
     }
 }
 

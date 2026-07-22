@@ -61,12 +61,14 @@ import kotlinx.coroutines.launch
 internal data class LiquidGlassDialogSpec(
     val id: Any,
     val onDismissRequest: () -> Unit,
+    val backdrop: Backdrop?,
     val shape: Shape,
     val modifier: Modifier,
     val alignment: Alignment,
     val contentScrimColor: Color,
     val backgroundScrimColor: Color,
     val backgroundBlurRadius: androidx.compose.ui.unit.Dp,
+    val transparencyOverride: Float?,
     val content: @Composable BoxScope.() -> Unit
 )
 
@@ -270,8 +272,9 @@ fun LiquidGlassDialogHost(
                                     LiquidGlassSurface(
                                         shape = targetSpec.shape,
                                         fallbackColor = AppColors.CardBg,
-                                        backdrop = activeBackdrop,
+                                        backdrop = targetSpec.backdrop ?: activeBackdrop,
                                         contentScrimColor = targetSpec.contentScrimColor,
+                                        transparencyOverride = targetSpec.transparencyOverride,
                                         interactive = true,
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -303,35 +306,42 @@ fun LiquidGlassDialog(
     contentScrimColor: Color = AppColors.CardBg.copy(alpha = 0.78f),
     backgroundScrimColor: Color = Color.Black.copy(alpha = 0.20f),
     backgroundBlurRadius: androidx.compose.ui.unit.Dp = 0.dp,
+    transparencyOverride: Float? = null,
     properties: DialogProperties = DialogProperties(),
     content: @Composable BoxScope.() -> Unit
 ) {
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val host = LocalLiquidGlassDialogHost.current
+    val sourceBackdrop = LocalLiquidGlassBackdrop.current
     val id = remember { Any() }
     val latestDismiss by rememberUpdatedState(onDismissRequest)
     val latestContent by rememberUpdatedState(content)
 
-    if (host != null) {
+    if (host != null && isLiquidGlass) {
         DisposableEffect(
             host,
             id,
+            sourceBackdrop,
             shape,
             modifier,
             alignment,
             contentScrimColor,
             backgroundScrimColor,
-            backgroundBlurRadius
+            backgroundBlurRadius,
+            transparencyOverride
         ) {
             host.show(
                 LiquidGlassDialogSpec(
                     id = id,
                     onDismissRequest = { latestDismiss() },
+                    backdrop = sourceBackdrop,
                     shape = shape,
                     modifier = modifier,
                     alignment = alignment,
                     contentScrimColor = contentScrimColor,
                     backgroundScrimColor = backgroundScrimColor,
                     backgroundBlurRadius = backgroundBlurRadius,
+                    transparencyOverride = transparencyOverride,
                     content = { latestContent() }
                 )
             )
@@ -365,7 +375,7 @@ fun LiquidGlassAlertDialog(
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val host = LocalLiquidGlassDialogHost.current
 
-    if (!isLiquidGlass && host == null) {
+    if (!isLiquidGlass) {
         AlertDialog(
             onDismissRequest = onDismissRequest,
             confirmButton = confirmButton,

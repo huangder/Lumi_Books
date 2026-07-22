@@ -50,6 +50,7 @@
     <string name="save">儲存</string>
     <string name="delete">刪除</string>
     <string name="edit">編輯</string>
+    <string name="done">完成</string>
     <string name="settings">設定</string>
     <string name="loading">載入中...</string>
     <string name="error">錯誤</string>
@@ -187,6 +188,8 @@
     <string name="add_favorite">收藏</string>
     <string name="delete_book">刪除</string>
     <string name="delete_book_title">刪除圖書</string>
+    <string name="delete_selected_books_title">刪除所選圖書</string>
+    <string name="delete_selected_books_confirm">確定要刪除所選的 %1$d 本圖書嗎？此操作無法復原。</string>
     <string name="delete_book_confirm">確定要從書庫中刪除《%s》嗎？\n此操作無法復原。</string>
     <string name="goal_label">（目標 %d 分鐘）</string>
     <string name="continue_reading">繼續閱讀</string>
@@ -204,7 +207,7 @@
 
     <!-- 書架 -->
     <string name="bookshelf_title">書庫</string>
-    <string name="filter_all">全部圖書</string>
+    <string name="filter_all">全部</string>
     <string name="filter_downloaded">下載內容</string>
     <string name="filter_pdf">PDF</string>
     <string name="filter_favorites">收藏</string>
