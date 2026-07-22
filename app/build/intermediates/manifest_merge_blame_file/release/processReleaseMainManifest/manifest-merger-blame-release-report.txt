@@ -1,0 +1,597 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.huangder.lumibooks"
+4    android:versionCode="5"
+5    android:versionName="1.1.00" >
+6
+7    <uses-sdk
+8        android:minSdkVersion="26"
+9        android:targetSdkVersion="35" />
+10
+11    <!-- 存储权限 -->
+12    <uses-permission
+12-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:6:5-7:38
+13        android:name="android.permission.READ_EXTERNAL_STORAGE"
+13-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:6:22-77
+14        android:maxSdkVersion="32" />
+14-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:7:9-35
+15    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+15-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:8:5-76
+15-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:8:22-73
+16
+17    <!-- 网络权限（仅用于检查更新） -->
+18    <uses-permission android:name="android.permission.INTERNET" />
+18-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:11:5-67
+18-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:11:22-64
+19    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+19-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:12:5-79
+19-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:12:22-76
+20
+21    <!-- 语音听书后台播放 -->
+22    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+22-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:15:5-77
+22-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:15:22-74
+23    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+23-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:16:5-92
+23-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:16:22-89
+24    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+24-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:17:5-87
+24-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:17:22-84
+25    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+25-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:18:5-77
+25-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:18:22-74
+26
+27    <!-- Android 11+ 允许 TextToSpeech 发现并绑定系统语音引擎。 -->
+28    <queries>
+28-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:21:5-25:15
+29        <intent>
+29-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:22:9-24:18
+30            <action android:name="android.intent.action.TTS_SERVICE" />
+30-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:23:13-72
+30-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:23:21-69
+31        </intent>
+32    </queries>
+33
+34    <uses-permission android:name="android.permission.WAKE_LOCK" />
+34-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:23:5-68
+34-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:23:22-65
+35    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+35-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:25:5-81
+35-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:25:22-78
+36
+37    <permission
+37-->[androidx.core:core:1.16.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\96f03b73bb49c19366228db7919fd350\transformed\core-1.16.0\AndroidManifest.xml:22:5-24:47
+38        android:name="com.huangder.lumibooks.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+38-->[androidx.core:core:1.16.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\96f03b73bb49c19366228db7919fd350\transformed\core-1.16.0\AndroidManifest.xml:23:9-81
+39        android:protectionLevel="signature" />
+39-->[androidx.core:core:1.16.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\96f03b73bb49c19366228db7919fd350\transformed\core-1.16.0\AndroidManifest.xml:24:9-44
+40
+41    <uses-permission android:name="com.huangder.lumibooks.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+41-->[androidx.core:core:1.16.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\96f03b73bb49c19366228db7919fd350\transformed\core-1.16.0\AndroidManifest.xml:26:5-97
+41-->[androidx.core:core:1.16.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\96f03b73bb49c19366228db7919fd350\transformed\core-1.16.0\AndroidManifest.xml:26:22-94
+42
+43    <application
+43-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:27:5-175:19
+44        android:name="com.huangder.lumibooks.EBookReaderApp"
+44-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:28:9-39
+45        android:allowBackup="true"
+45-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:29:9-35
+46        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
+46-->[androidx.core:core:1.16.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\96f03b73bb49c19366228db7919fd350\transformed\core-1.16.0\AndroidManifest.xml:28:18-86
+47        android:dataExtractionRules="@xml/data_extraction_rules"
+47-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:31:9-65
+48        android:enableOnBackInvokedCallback="true"
+48-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:32:9-51
+49        android:extractNativeLibs="false"
+50        android:fullBackupContent="@xml/backup_rules"
+50-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:30:9-54
+51        android:icon="@mipmap/ic_launcher"
+51-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:33:9-43
+52        android:label="@string/app_name"
+52-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:34:9-41
+53        android:supportsRtl="true"
+53-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:35:9-35
+54        android:theme="@style/Theme.EBookReader" >
+54-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:36:9-49
+55        <activity
+55-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:39:9-44:58
+56            android:name="com.huangder.lumibooks.ui.welcome.WelcomeActivity"
+56-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:40:13-55
+57            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+57-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:42:13-225
+58            android:exported="false"
+58-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:41:13-37
+59            android:theme="@style/Theme.EBookReader.NoPreview"
+59-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:43:13-63
+60            android:windowSoftInputMode="adjustResize" />
+60-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:44:13-55
+61        <activity
+61-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:46:9-57:20
+62            android:name="com.huangder.lumibooks.ui.splash.SplashLauncherActivity"
+62-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:47:13-61
+63            android:enabled="true"
+63-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:48:13-35
+64            android:exported="true"
+64-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:49:13-36
+65            android:icon="@mipmap/ic_launcher"
+65-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:50:13-47
+66            android:label="@string/app_name"
+66-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:51:13-45
+67            android:theme="@style/Theme.EBookReader.Launch" >
+67-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:52:13-60
+68            <intent-filter>
+68-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:53:13-56:29
+69                <action android:name="android.intent.action.MAIN" />
+69-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:54:17-69
+69-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:54:25-66
+70
+71                <category android:name="android.intent.category.LAUNCHER" />
+71-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:55:17-77
+71-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:55:27-74
+72            </intent-filter>
+73        </activity>
+74        <activity
+74-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:59:9-70:20
+75            android:name="com.huangder.lumibooks.ui.splash.DirectLauncherActivity"
+75-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:60:13-61
+76            android:enabled="false"
+76-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:61:13-36
+77            android:exported="true"
+77-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:62:13-36
+78            android:icon="@mipmap/ic_launcher"
+78-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:63:13-47
+79            android:label="@string/app_name"
+79-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:64:13-45
+80            android:theme="@style/Theme.EBookReader" >
+80-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:65:13-53
+81            <intent-filter>
+81-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:53:13-56:29
+82                <action android:name="android.intent.action.MAIN" />
+82-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:54:17-69
+82-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:54:25-66
+83
+84                <category android:name="android.intent.category.LAUNCHER" />
+84-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:55:17-77
+84-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:55:27-74
+85            </intent-filter>
+86        </activity>
+87        <activity
+87-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:72:9-106:20
+88            android:name="com.huangder.lumibooks.MainActivity"
+88-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:73:13-41
+89            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+89-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:76:13-225
+90            android:exported="true"
+90-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:74:13-36
+91            android:launchMode="singleTask"
+91-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:75:13-44
+92            android:theme="@style/Theme.EBookReader.NoPreview"
+92-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:77:13-63
+93            android:windowSoftInputMode="adjustResize" >
+93-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:78:13-55
+94
+95            <!-- PDF 文件关联：从文件管理器"打开方式"导入 -->
+96            <intent-filter>
+96-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:81:13-87:29
+97                <action android:name="android.intent.action.VIEW" />
+97-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:82:17-69
+97-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:82:25-66
+98
+99                <category android:name="android.intent.category.DEFAULT" />
+99-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:83:17-76
+99-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:83:27-73
+100
+101                <data android:scheme="content" />
+101-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:84:17-50
+101-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:84:23-47
+102                <data android:scheme="file" />
+102-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:84:17-50
+102-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:84:23-47
+103                <data android:mimeType="application/pdf" />
+103-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:84:17-50
+103-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:86:23-57
+104            </intent-filter>
+105
+106            <!-- EPUB 文件关联 -->
+107            <intent-filter>
+107-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:90:13-96:29
+108                <action android:name="android.intent.action.VIEW" />
+108-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:82:17-69
+108-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:82:25-66
+109
+110                <category android:name="android.intent.category.DEFAULT" />
+110-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:83:17-76
+110-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:83:27-73
+111
+112                <data android:scheme="content" />
+112-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:84:17-50
+112-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:84:23-47
+113                <data android:scheme="file" />
+113-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:84:17-50
+113-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:84:23-47
+114                <data android:mimeType="application/epub+zip" />
+114-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:84:17-50
+114-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:86:23-57
+115            </intent-filter>
+116
+117            <!-- TXT 文件关联 -->
+118            <intent-filter>
+118-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:99:13-105:29
+119                <action android:name="android.intent.action.VIEW" />
+119-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:82:17-69
+119-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:82:25-66
+120
+121                <category android:name="android.intent.category.DEFAULT" />
+121-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:83:17-76
+121-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:83:27-73
+122
+123                <data android:scheme="content" />
+123-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:84:17-50
+123-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:84:23-47
+124                <data android:scheme="file" />
+124-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:84:17-50
+124-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:84:23-47
+125                <data android:mimeType="text/plain" />
+125-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:84:17-50
+125-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:86:23-57
+126            </intent-filter>
+127        </activity>
+128        <activity
+128-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:108:9-112:58
+129            android:name="com.huangder.lumibooks.ui.settings.SettingsActivity"
+129-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:109:13-57
+130            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+130-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:110:13-225
+131            android:theme="@style/Theme.EBookReader"
+131-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:111:13-53
+132            android:windowSoftInputMode="adjustResize" />
+132-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:112:13-55
+133        <activity
+133-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:114:9-118:58
+134            android:name="com.huangder.lumibooks.ui.settings.DetailActivity"
+134-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:115:13-55
+135            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+135-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:116:13-225
+136            android:theme="@style/Theme.EBookReader"
+136-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:117:13-53
+137            android:windowSoftInputMode="adjustResize" />
+137-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:118:13-55
+138        <activity
+138-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:120:9-124:58
+139            android:name="com.huangder.lumibooks.ui.settings.WebViewActivity"
+139-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:121:13-56
+140            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+140-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:122:13-225
+141            android:theme="@style/Theme.EBookReader"
+141-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:123:13-53
+142            android:windowSoftInputMode="adjustResize" />
+142-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:124:13-55
+143        <activity
+143-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:126:9-130:58
+144            android:name="com.huangder.lumibooks.ui.settings.SponsorActivity"
+144-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:127:13-56
+145            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+145-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:128:13-225
+146            android:theme="@style/Theme.EBookReader"
+146-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:129:13-53
+147            android:windowSoftInputMode="adjustResize" />
+147-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:130:13-55
+148        <activity
+148-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:132:9-136:58
+149            android:name="com.huangder.lumibooks.ui.settings.FeedbackActivity"
+149-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:133:13-57
+150            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+150-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:134:13-225
+151            android:theme="@style/Theme.EBookReader"
+151-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:135:13-53
+152            android:windowSoftInputMode="adjustResize" />
+152-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:136:13-55
+153        <activity
+153-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:138:9-142:58
+154            android:name="com.huangder.lumibooks.ui.bookshelf.BookNotesActivity"
+154-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:139:13-59
+155            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+155-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:140:13-225
+156            android:theme="@style/Theme.EBookReader"
+156-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:141:13-53
+157            android:windowSoftInputMode="adjustResize" />
+157-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:142:13-55
+158
+159        <service
+159-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:144:9-147:61
+160            android:name="com.huangder.lumibooks.service.TtsForegroundService"
+160-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:145:13-57
+161            android:exported="false"
+161-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:146:13-37
+162            android:foregroundServiceType="mediaPlayback" />
+162-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:147:13-58
+163        <service
+163-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:149:9-152:34
+164            android:name="androidx.work.impl.foreground.SystemForegroundService"
+164-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:150:13-81
+165            android:directBootAware="false"
+165-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:55:13-44
+166            android:enabled="@bool/enable_system_foreground_service_default"
+166-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:56:13-77
+167            android:exported="false"
+167-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:57:13-37
+168            android:foregroundServiceType="dataSync" />
+168-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:151:13-53
+169
+170        <provider
+171            android:name="androidx.startup.InitializationProvider"
+171-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:155:13-67
+172            android:authorities="com.huangder.lumibooks.androidx-startup"
+172-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:156:13-68
+173            android:exported="false" >
+173-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:157:13-37
+174            <meta-data
+174-->[androidx.emoji2:emoji2:1.4.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\7b6c7bc2c8fd488e2cf02d557565a2c7\transformed\emoji2-1.4.0\AndroidManifest.xml:29:13-31:52
+175                android:name="androidx.emoji2.text.EmojiCompatInitializer"
+175-->[androidx.emoji2:emoji2:1.4.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\7b6c7bc2c8fd488e2cf02d557565a2c7\transformed\emoji2-1.4.0\AndroidManifest.xml:30:17-75
+176                android:value="androidx.startup" />
+176-->[androidx.emoji2:emoji2:1.4.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\7b6c7bc2c8fd488e2cf02d557565a2c7\transformed\emoji2-1.4.0\AndroidManifest.xml:31:17-49
+177            <meta-data
+177-->[androidx.lifecycle:lifecycle-process:2.9.4] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\72ee47a317d7b547ad9322a2ae3a7bbf\transformed\lifecycle-process-2.9.4\AndroidManifest.xml:29:13-31:52
+178                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
+178-->[androidx.lifecycle:lifecycle-process:2.9.4] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\72ee47a317d7b547ad9322a2ae3a7bbf\transformed\lifecycle-process-2.9.4\AndroidManifest.xml:30:17-78
+179                android:value="androidx.startup" />
+179-->[androidx.lifecycle:lifecycle-process:2.9.4] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\72ee47a317d7b547ad9322a2ae3a7bbf\transformed\lifecycle-process-2.9.4\AndroidManifest.xml:31:17-49
+180            <meta-data
+180-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\d1312a62cf315b51f2679a38a147cdd3\transformed\profileinstaller-1.4.0\AndroidManifest.xml:29:13-31:52
+181                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
+181-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\d1312a62cf315b51f2679a38a147cdd3\transformed\profileinstaller-1.4.0\AndroidManifest.xml:30:17-85
+182                android:value="androidx.startup" />
+182-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\d1312a62cf315b51f2679a38a147cdd3\transformed\profileinstaller-1.4.0\AndroidManifest.xml:31:17-49
+183        </provider>
+184
+185        <!-- 文件提供者 -->
+186        <provider
+187            android:name="androidx.core.content.FileProvider"
+187-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:167:13-62
+188            android:authorities="com.huangder.lumibooks.fileprovider"
+188-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:168:13-64
+189            android:exported="false"
+189-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:169:13-37
+190            android:grantUriPermissions="true" >
+190-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:170:13-47
+191            <meta-data
+191-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:171:13-173:54
+192                android:name="android.support.FILE_PROVIDER_PATHS"
+192-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:172:17-67
+193                android:resource="@xml/file_paths" />
+193-->D:\vibe_coding\android_books\app\src\main\AndroidManifest.xml:173:17-51
+194        </provider>
+195
+196        <service
+196-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:39:9-45:35
+197            android:name="androidx.work.impl.background.systemalarm.SystemAlarmService"
+197-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:40:13-88
+198            android:directBootAware="false"
+198-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:41:13-44
+199            android:enabled="@bool/enable_system_alarm_service_default"
+199-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:42:13-72
+200            android:exported="false" />
+200-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:43:13-37
+201        <service
+201-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:46:9-52:35
+202            android:name="androidx.work.impl.background.systemjob.SystemJobService"
+202-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:47:13-84
+203            android:directBootAware="false"
+203-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:48:13-44
+204            android:enabled="@bool/enable_system_job_service_default"
+204-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:49:13-70
+205            android:exported="true"
+205-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:50:13-36
+206            android:permission="android.permission.BIND_JOB_SERVICE" />
+206-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:51:13-69
+207
+208        <receiver
+208-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:61:9-66:35
+209            android:name="androidx.work.impl.utils.ForceStopRunnable$BroadcastReceiver"
+209-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:62:13-88
+210            android:directBootAware="false"
+210-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:63:13-44
+211            android:enabled="true"
+211-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:64:13-35
+212            android:exported="false" />
+212-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:65:13-37
+213        <receiver
+213-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:67:9-77:20
+214            android:name="androidx.work.impl.background.systemalarm.ConstraintProxy$BatteryChargingProxy"
+214-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:68:13-106
+215            android:directBootAware="false"
+215-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:69:13-44
+216            android:enabled="false"
+216-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:70:13-36
+217            android:exported="false" >
+217-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:71:13-37
+218            <intent-filter>
+218-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:73:13-76:29
+219                <action android:name="android.intent.action.ACTION_POWER_CONNECTED" />
+219-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:74:17-87
+219-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:74:25-84
+220                <action android:name="android.intent.action.ACTION_POWER_DISCONNECTED" />
+220-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:75:17-90
+220-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:75:25-87
+221            </intent-filter>
+222        </receiver>
+223        <receiver
+223-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:78:9-88:20
+224            android:name="androidx.work.impl.background.systemalarm.ConstraintProxy$BatteryNotLowProxy"
+224-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:79:13-104
+225            android:directBootAware="false"
+225-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:80:13-44
+226            android:enabled="false"
+226-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:81:13-36
+227            android:exported="false" >
+227-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:82:13-37
+228            <intent-filter>
+228-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:84:13-87:29
+229                <action android:name="android.intent.action.BATTERY_OKAY" />
+229-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:85:17-77
+229-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:85:25-74
+230                <action android:name="android.intent.action.BATTERY_LOW" />
+230-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:86:17-76
+230-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:86:25-73
+231            </intent-filter>
+232        </receiver>
+233        <receiver
+233-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:89:9-99:20
+234            android:name="androidx.work.impl.background.systemalarm.ConstraintProxy$StorageNotLowProxy"
+234-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:90:13-104
+235            android:directBootAware="false"
+235-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:91:13-44
+236            android:enabled="false"
+236-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:92:13-36
+237            android:exported="false" >
+237-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:93:13-37
+238            <intent-filter>
+238-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:95:13-98:29
+239                <action android:name="android.intent.action.DEVICE_STORAGE_LOW" />
+239-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:96:17-83
+239-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:96:25-80
+240                <action android:name="android.intent.action.DEVICE_STORAGE_OK" />
+240-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:97:17-82
+240-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:97:25-79
+241            </intent-filter>
+242        </receiver>
+243        <receiver
+243-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:100:9-109:20
+244            android:name="androidx.work.impl.background.systemalarm.ConstraintProxy$NetworkStateProxy"
+244-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:101:13-103
+245            android:directBootAware="false"
+245-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:102:13-44
+246            android:enabled="false"
+246-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:103:13-36
+247            android:exported="false" >
+247-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:104:13-37
+248            <intent-filter>
+248-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:106:13-108:29
+249                <action android:name="android.net.conn.CONNECTIVITY_CHANGE" />
+249-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:107:17-79
+249-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:107:25-76
+250            </intent-filter>
+251        </receiver>
+252        <receiver
+252-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:110:9-121:20
+253            android:name="androidx.work.impl.background.systemalarm.RescheduleReceiver"
+253-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:111:13-88
+254            android:directBootAware="false"
+254-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:112:13-44
+255            android:enabled="false"
+255-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:113:13-36
+256            android:exported="false" >
+256-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:114:13-37
+257            <intent-filter>
+257-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:116:13-120:29
+258                <action android:name="android.intent.action.BOOT_COMPLETED" />
+258-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:117:17-79
+258-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:117:25-76
+259                <action android:name="android.intent.action.TIME_SET" />
+259-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:118:17-73
+259-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:118:25-70
+260                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+260-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:119:17-81
+260-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:119:25-78
+261            </intent-filter>
+262        </receiver>
+263        <receiver
+263-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:122:9-131:20
+264            android:name="androidx.work.impl.background.systemalarm.ConstraintProxyUpdateReceiver"
+264-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:123:13-99
+265            android:directBootAware="false"
+265-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:124:13-44
+266            android:enabled="@bool/enable_system_alarm_service_default"
+266-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:125:13-72
+267            android:exported="false" >
+267-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:126:13-37
+268            <intent-filter>
+268-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:128:13-130:29
+269                <action android:name="androidx.work.impl.background.systemalarm.UpdateProxies" />
+269-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:129:17-98
+269-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:129:25-95
+270            </intent-filter>
+271        </receiver>
+272        <receiver
+272-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:132:9-142:20
+273            android:name="androidx.work.impl.diagnostics.DiagnosticsReceiver"
+273-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:133:13-78
+274            android:directBootAware="false"
+274-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:134:13-44
+275            android:enabled="true"
+275-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:135:13-35
+276            android:exported="true"
+276-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:136:13-36
+277            android:permission="android.permission.DUMP" >
+277-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:137:13-57
+278            <intent-filter>
+278-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:139:13-141:29
+279                <action android:name="androidx.work.diagnostics.REQUEST_DIAGNOSTICS" />
+279-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:140:17-88
+279-->[androidx.work:work-runtime:2.10.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\97168bf376aa9e30f22dc3da2591d154\transformed\work-runtime-2.10.0\AndroidManifest.xml:140:25-85
+280            </intent-filter>
+281        </receiver>
+282
+283        <uses-library
+283-->[androidx.window:window:1.5.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\2aa55efcae6940126b6355de6a76d8ba\transformed\window-1.5.0\AndroidManifest.xml:23:9-25:40
+284            android:name="androidx.window.extensions"
+284-->[androidx.window:window:1.5.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\2aa55efcae6940126b6355de6a76d8ba\transformed\window-1.5.0\AndroidManifest.xml:24:13-54
+285            android:required="false" />
+285-->[androidx.window:window:1.5.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\2aa55efcae6940126b6355de6a76d8ba\transformed\window-1.5.0\AndroidManifest.xml:25:13-37
+286        <uses-library
+286-->[androidx.window:window:1.5.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\2aa55efcae6940126b6355de6a76d8ba\transformed\window-1.5.0\AndroidManifest.xml:26:9-28:40
+287            android:name="androidx.window.sidecar"
+287-->[androidx.window:window:1.5.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\2aa55efcae6940126b6355de6a76d8ba\transformed\window-1.5.0\AndroidManifest.xml:27:13-51
+288            android:required="false" />
+288-->[androidx.window:window:1.5.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\2aa55efcae6940126b6355de6a76d8ba\transformed\window-1.5.0\AndroidManifest.xml:28:13-37
+289
+290        <service
+290-->[androidx.room:room-runtime-android:2.8.4] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\6eb6bbcb23eac0d063894e98043e5b19\transformed\room-runtime\AndroidManifest.xml:24:9-28:63
+291            android:name="androidx.room.MultiInstanceInvalidationService"
+291-->[androidx.room:room-runtime-android:2.8.4] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\6eb6bbcb23eac0d063894e98043e5b19\transformed\room-runtime\AndroidManifest.xml:25:13-74
+292            android:directBootAware="true"
+292-->[androidx.room:room-runtime-android:2.8.4] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\6eb6bbcb23eac0d063894e98043e5b19\transformed\room-runtime\AndroidManifest.xml:26:13-43
+293            android:exported="false" />
+293-->[androidx.room:room-runtime-android:2.8.4] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\6eb6bbcb23eac0d063894e98043e5b19\transformed\room-runtime\AndroidManifest.xml:27:13-37
+294
+295        <receiver
+295-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\d1312a62cf315b51f2679a38a147cdd3\transformed\profileinstaller-1.4.0\AndroidManifest.xml:34:9-52:20
+296            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+296-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\d1312a62cf315b51f2679a38a147cdd3\transformed\profileinstaller-1.4.0\AndroidManifest.xml:35:13-76
+297            android:directBootAware="false"
+297-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\d1312a62cf315b51f2679a38a147cdd3\transformed\profileinstaller-1.4.0\AndroidManifest.xml:36:13-44
+298            android:enabled="true"
+298-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\d1312a62cf315b51f2679a38a147cdd3\transformed\profileinstaller-1.4.0\AndroidManifest.xml:37:13-35
+299            android:exported="true"
+299-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\d1312a62cf315b51f2679a38a147cdd3\transformed\profileinstaller-1.4.0\AndroidManifest.xml:38:13-36
+300            android:permission="android.permission.DUMP" >
+300-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\d1312a62cf315b51f2679a38a147cdd3\transformed\profileinstaller-1.4.0\AndroidManifest.xml:39:13-57
+301            <intent-filter>
+301-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\d1312a62cf315b51f2679a38a147cdd3\transformed\profileinstaller-1.4.0\AndroidManifest.xml:40:13-42:29
+302                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
+302-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\d1312a62cf315b51f2679a38a147cdd3\transformed\profileinstaller-1.4.0\AndroidManifest.xml:41:17-91
+302-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\d1312a62cf315b51f2679a38a147cdd3\transformed\profileinstaller-1.4.0\AndroidManifest.xml:41:25-88
+303            </intent-filter>
+304            <intent-filter>
+304-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\d1312a62cf315b51f2679a38a147cdd3\transformed\profileinstaller-1.4.0\AndroidManifest.xml:43:13-45:29
+305                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
+305-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\d1312a62cf315b51f2679a38a147cdd3\transformed\profileinstaller-1.4.0\AndroidManifest.xml:44:17-85
+305-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\d1312a62cf315b51f2679a38a147cdd3\transformed\profileinstaller-1.4.0\AndroidManifest.xml:44:25-82
+306            </intent-filter>
+307            <intent-filter>
+307-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\d1312a62cf315b51f2679a38a147cdd3\transformed\profileinstaller-1.4.0\AndroidManifest.xml:46:13-48:29
+308                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
+308-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\d1312a62cf315b51f2679a38a147cdd3\transformed\profileinstaller-1.4.0\AndroidManifest.xml:47:17-88
+308-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\d1312a62cf315b51f2679a38a147cdd3\transformed\profileinstaller-1.4.0\AndroidManifest.xml:47:25-85
+309            </intent-filter>
+310            <intent-filter>
+310-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\d1312a62cf315b51f2679a38a147cdd3\transformed\profileinstaller-1.4.0\AndroidManifest.xml:49:13-51:29
+311                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
+311-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\d1312a62cf315b51f2679a38a147cdd3\transformed\profileinstaller-1.4.0\AndroidManifest.xml:50:17-95
+311-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\Huangder\.gradle\caches\8.14.3\transforms\d1312a62cf315b51f2679a38a147cdd3\transformed\profileinstaller-1.4.0\AndroidManifest.xml:50:25-92
+312            </intent-filter>
+313        </receiver>
+314    </application>
+315
+316</manifest>
