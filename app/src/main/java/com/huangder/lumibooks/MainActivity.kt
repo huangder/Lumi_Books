@@ -18,11 +18,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
@@ -31,7 +28,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
@@ -43,12 +39,16 @@ import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.ui.navigation.MainNavGraph
 import com.huangder.lumibooks.ui.splash.SplashScreen
-import com.huangder.lumibooks.ui.theme.AppColors
+import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
+import com.huangder.lumibooks.ui.components.PolicyUpdateDialog
+import com.huangder.lumibooks.ui.settings.WebViewActivity
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.util.FileUtils
 import com.huangder.lumibooks.util.LaunchThemeController
 import com.huangder.lumibooks.util.UpdateChecker
 import com.huangder.lumibooks.util.parser.BookParserFactory
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
@@ -116,7 +116,7 @@ class MainActivity : ComponentActivity() {
     }
 
     /** 待处理的条款/政策更新（非 null 时弹窗） */
-    private var pendingPolicyUpdate: PendingPolicyUpdate? = null
+    private var pendingPolicyUpdate by mutableStateOf<PendingPolicyUpdate?>(null)
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -216,6 +216,8 @@ class MainActivity : ComponentActivity() {
                 "light" -> false
                 else -> systemDarkMode
             }
+            val isLiquidGlass = appTheme == "liquid_glass"
+            val mainBackdrop = rememberLayerBackdrop()
 
             // 条款/政策更新弹窗状态
             var policyDialog by remember { mutableStateOf<PendingPolicyUpdate?>(null) }
@@ -262,11 +264,18 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
+                    LiquidGlassDialogHost(
+                        modifier = Modifier.fillMaxSize(),
+                        backdrop = mainBackdrop.takeIf { isLiquidGlass }
+                    ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         val navController = rememberNavController()
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
+                                .then(
+                                    if (isLiquidGlass) Modifier.layerBackdrop(mainBackdrop) else Modifier
+                                )
                                 .graphicsLayer {
                                     alpha = mainContentAlpha
                                     scaleX = mainContentScale
@@ -284,38 +293,26 @@ class MainActivity : ComponentActivity() {
                         }
 
                     // ── 条款/政策更新弹窗 ──
-                        policyDialog?.let { update ->
-                        val title = when {
-                            update.hasTermsUpdate && update.hasPrivacyUpdate -> "用户协议与隐私政策已更新"
-                            update.hasTermsUpdate -> "用户协议已更新"
-                            else -> "隐私政策已更新"
-                        }
-                        val message = buildString {
-                            append("感谢您使用 Lumi！我们更新了法律条款，请阅读后选择是否同意。")
-                            if (update.hasTermsUpdate) append("\n\n• 用户协议已更新（版本 ${update.termsVersion}）")
-                            if (update.hasPrivacyUpdate) append("\n\n• 隐私政策已更新（版本 ${update.privacyVersion}）")
-                        }
-
-                        AlertDialog(
-                            onDismissRequest = { /* 不可关闭 */ },
-                            title = { Text(title, fontSize = 16.sp, fontWeight = FontWeight.Bold) },
-                            text = { Text(message, fontSize = 14.sp) },
-                            confirmButton = {
-                                TextButton(onClick = {
-                                    lifecycleScope.launch {
-                                        if (update.hasTermsUpdate)
-                                            dataStoreManager.saveAcceptedTermsVersion(update.termsVersion)
-                                        if (update.hasPrivacyUpdate)
-                                            dataStoreManager.saveAcceptedPrivacyVersion(update.privacyVersion)
+                    policyDialog?.let { update ->
+                        PolicyUpdateDialog(
+                            hasTermsUpdate = update.hasTermsUpdate,
+                            termsVersion = update.termsVersion,
+                            hasPrivacyUpdate = update.hasPrivacyUpdate,
+                            privacyVersion = update.privacyVersion,
+                            onAccept = {
+                                lifecycleScope.launch {
+                                    if (update.hasTermsUpdate) {
+                                        dataStoreManager.saveAcceptedTermsVersion(update.termsVersion)
                                     }
-                                    policyDialog = null
-                                }) { Text("同意并继续", color = AppColors.Accent) }
+                                    if (update.hasPrivacyUpdate) {
+                                        dataStoreManager.saveAcceptedPrivacyVersion(update.privacyVersion)
+                                    }
+                                }
+                                policyDialog = null
                             },
-                            dismissButton = {
-                                TextButton(onClick = {
-                                    finishAffinity()
-                                }) { Text("不同意并退出", color = Color.Gray) }
-                            }
+                            onDecline = { finishAffinity() },
+                            onViewTerms = { openUpdateDocument("用户协议", "terms.html") },
+                            onViewPrivacy = { openUpdateDocument("隐私政策", "privacy.html") }
                         )
                         }
 
@@ -327,6 +324,7 @@ class MainActivity : ComponentActivity() {
                             SplashScreen(isDark = isDark)
                         }
                     }
+                    }
                 }
             }
         }
@@ -334,6 +332,14 @@ class MainActivity : ComponentActivity() {
 
     private fun Configuration.isNightModeEnabled(): Boolean {
         return (uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+    }
+
+    private fun openUpdateDocument(title: String, assetFile: String) {
+        startActivity(
+            Intent(this, WebViewActivity::class.java)
+                .putExtra("title", title)
+                .putExtra("file", assetFile)
+        )
     }
 
     /**

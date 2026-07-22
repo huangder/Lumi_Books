@@ -38,6 +38,8 @@
     <string name="bookmarks">書籤</string>
     <string name="notes">筆記</string>
     <string name="search">搜尋</string>
+    <string name="library_search_placeholder">搜尋你的書庫</string>
+    <string name="library_search_results">搜尋結果</string>
     <string name="reading_progress">閱讀進度</string>
     <string name="font_size">字型大小</string>
     <string name="line_height">行距</string>
@@ -236,6 +238,10 @@
     <string name="tab_bookmarks">書籤</string>
     <string name="no_content">暫無內容</string>
     <string name="no_bookmarks">暫無書籤</string>
+    <string name="export_bookmarks">匯出書籤</string>
+    <string name="export_bookmarks_preparing">正在準備…</string>
+    <string name="export_bookmarks_success">匯出成功</string>
+    <string name="export_bookmarks_failed">匯出失敗，請重試</string>
     <string name="tap_to_add_bookmark">閱讀時點選書籤圖示新增</string>
     <string name="chapter_number">第 %d 章</string>
     <string name="page_number">第 %d 頁</string>

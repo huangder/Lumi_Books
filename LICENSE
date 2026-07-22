@@ -19,3 +19,25 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+Third-Party Components
+----------------------
+
+The MIT License above applies to Lumi's original source code. Third-party
+components and portions derived from third-party projects remain subject to
+their respective licenses.
+
+Lumi uses Backdrop and adapts interaction code from AndroidLiquidGlass:
+
+    Project: AndroidLiquidGlass / Backdrop
+    Source: https://github.com/Kyant0/AndroidLiquidGlass
+    Maven: io.github.kyant0:backdrop:1.0.6
+    Copyright: Copyright 2025 Kyant
+    License: Apache License 2.0
+
+The complete Apache License 2.0 text distributed with Lumi is available at:
+
+    app/src/main/assets/licenses/android-liquid-glass-apache-2.0.txt
+
+Files adapted from AndroidLiquidGlass carry their own source notices. Those
+files have been modified for integration with Lumi.

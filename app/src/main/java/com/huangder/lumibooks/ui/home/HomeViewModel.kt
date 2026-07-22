@@ -45,7 +45,7 @@ data class HomeUiState(
     val searchQuery: String = "",
     val isSearchActive: Boolean = false,
     val sortBy: SortBy = SortBy.LAST_READ,
-    val isLoading: Boolean = false,
+    val isLoading: Boolean = true,
     val importMessage: String? = null,
     val tagMessage: String? = null,
     val error: String? = null,

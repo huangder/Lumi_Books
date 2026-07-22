@@ -105,6 +105,8 @@ import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
+import com.huangder.lumibooks.ui.components.AppUpdateDialog
+import com.huangder.lumibooks.ui.components.PolicyUpdateDialog
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuHost
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuItem
@@ -719,96 +721,41 @@ fun AboutDetail(viewModel: SettingsViewModel) {
 
     // ── 条款/政策更新 Dialog ──
     if (update.showPolicyUpdateDialog) {
-        val needsTerms = update.hasTermsUpdate
-        val needsPrivacy = update.hasPrivacyUpdate
-        val title = when {
-            needsTerms && needsPrivacy -> "用户协议与隐私政策已更新"
-            needsTerms -> "用户协议已更新"
-            else -> "隐私政策已更新"
-        }
-        val message = buildString {
-            append("感谢您使用 Lumi！我们在持续改进产品的同时，也可能会不断完善法律条款。")
-            if (needsTerms) append("\n\n• 用户协议已更新（版本 ${update.termsVersion}）")
-            if (needsPrivacy) append("\n\n• 隐私政策已更新（版本 ${update.privacyVersion}）")
-            append("\n\n请阅读更新内容后选择是否同意。")
-        }
-
-        LiquidGlassAlertDialog(
-            onDismissRequest = { /* 不可关闭 */ },
-            title = { Text(title, fontSize = AppType.Body, fontWeight = FontWeight.Bold) },
-            text = { Text(message, fontSize = AppType.BodySmall) },
-            confirmButton = {
-                LiquidGlassTextButton(
-                    text = "同意并继续",
-                    tintedColor = AppColors.Accent,
-                    onClick = {
-                    if (update.hasTermsUpdate) viewModel.acceptTermsUpdate(update.termsVersion)
-                    if (update.hasPrivacyUpdate) viewModel.acceptPrivacyUpdate(update.privacyVersion)
-                })
+        PolicyUpdateDialog(
+            hasTermsUpdate = update.hasTermsUpdate,
+            termsVersion = update.termsVersion,
+            hasPrivacyUpdate = update.hasPrivacyUpdate,
+            privacyVersion = update.privacyVersion,
+            onAccept = {
+                if (update.hasTermsUpdate) viewModel.acceptTermsUpdate(update.termsVersion)
+                if (update.hasPrivacyUpdate) viewModel.acceptPrivacyUpdate(update.privacyVersion)
             },
-            dismissButton = {
-                // 查看协议
-                if (update.hasTermsUpdate) {
-                    LiquidGlassTextButton(
-                        text = "查看用户协议",
-                        onClick = { openDoc("用户协议", "terms.html") }
-                    )
-                }
-                if (update.hasPrivacyUpdate) {
-                    LiquidGlassTextButton(
-                        text = "查看隐私政策",
-                        onClick = { openDoc("隐私政策", "privacy.html") }
-                    )
-                }
-                // 退出按钮
-                LiquidGlassTextButton(
-                    text = "不同意并退出",
-                    contentColor = AppColors.TextSecondary,
-                    onClick = {
-                    // 用户不同意，退出应用
-                    (context as? android.app.Activity)?.finishAffinity()
-                })
-            }
+            onDecline = {
+                (context as? android.app.Activity)?.finishAffinity()
+            },
+            onViewTerms = { openDoc("用户协议", "terms.html") },
+            onViewPrivacy = { openDoc("隐私政策", "privacy.html") }
         )
     }
 
     // ── App 更新 Dialog ──
     if (update.showAppUpdateDialog) {
-        LiquidGlassAlertDialog(
-            onDismissRequest = { viewModel.dismissAppUpdateDialog() },
-            title = { Text("发现新版本", fontSize = AppType.Body, fontWeight = FontWeight.Bold) },
-            text = {
-                Text(
-                    "新版本 ${update.appVersion} 已发布，是否前往下载？",
-                    fontSize = AppType.BodySmall
-                )
+        AppUpdateDialog(
+            appVersion = update.appVersion,
+            onDownload = {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(update.releaseUrl))
+                context.startActivity(intent)
+                viewModel.dismissAppUpdateDialog()
             },
-            confirmButton = {
-                LiquidGlassTextButton(
-                    text = "下载",
-                    tintedColor = AppColors.Accent,
-                    onClick = {
-                    // 打开 GitHub Releases 页面
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(update.releaseUrl))
-                    context.startActivity(intent)
-                    viewModel.dismissAppUpdateDialog()
-                })
-            },
-            dismissButton = {
-                LiquidGlassTextButton(
-                    text = "稍后",
-                    onClick = { viewModel.dismissAppUpdateDialog() },
-                    contentColor = AppColors.TextSecondary
-                )
-            }
+            onLater = { viewModel.dismissAppUpdateDialog() }
         )
     }
 
     val currentVersion = remember(context) {
         try {
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.06"
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.1.00"
         } catch (_: Exception) {
-            "1.0.06"
+            "1.1.00"
         }
     }
 

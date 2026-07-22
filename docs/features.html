@@ -455,6 +455,12 @@
         .stagger-18 { transition-delay: 1.02s; }
         .stagger-19 { transition-delay: 1.08s; }
         .stagger-20 { transition-delay: 1.14s; }
+        .stagger-21 { transition-delay: 1.20s; }
+        .stagger-22 { transition-delay: 1.26s; }
+        .stagger-23 { transition-delay: 1.32s; }
+        .stagger-24 { transition-delay: 1.38s; }
+        .stagger-25 { transition-delay: 1.44s; }
+        .stagger-26 { transition-delay: 1.50s; }
 
         /* ========== Responsive: Tablet ========== */
         @media (max-width: 1127px) {
@@ -549,9 +555,20 @@
     <div class="container">
         <div class="section-title animate-on-scroll">
             <h2>核心功能</h2>
-            <p>二十大功能模块，覆盖阅读场景的方方面面</p>
+            <p>二十六大功能模块，覆盖阅读场景的方方面面</p>
         </div>
         <div class="features-grid">
+
+            <!-- 液态玻璃主题 — 全宽独占首行 -->
+            <div class="feature-card animate-on-scroll stagger-1" style="grid-column: 1 / -1; background: linear-gradient(135deg, rgba(255,255,255,0.8), rgba(240,248,255,0.7)); border: 1.5px solid rgba(255,56,92,0.15);">
+                <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+                    <div class="feature-icon" style="font-size:36px;width:64px;height:64px;margin-bottom:0;">🫧</div>
+                    <div style="flex:1;min-width:200px;">
+                        <h3 style="font-size:20px;">液态玻璃主题</h3>
+                        <p style="font-size:15px;">全应用统一毛玻璃质感。菜单、弹窗、底部栏、上下文操作面板等所有浮层采用 backdrop-filter 模糊效果，配合细腻过渡动效与弥散光影，打造通透、灵动、富有层次感的视觉体验。</p>
+                    </div>
+                </div>
+            </div>
 
             <!-- 1. 多格式支持 -->
             <div class="feature-card animate-on-scroll stagger-1">
@@ -667,7 +684,7 @@
 
             <!-- 17. Material 3 -->
             <div class="feature-card animate-on-scroll stagger-17">
-                <div class="feature-icon">💎</div>
+                <div class="feature-icon">🎯</div>
                 <h3>Material 3 适配</h3>
                 <p>全面适配 Material Design 3 设计语言，动态配色与全新组件样式，视觉焕然一新。</p>
             </div>
@@ -691,6 +708,48 @@
                 <div class="feature-icon">📖</div>
                 <h3>PDF 解析为电子书</h3>
                 <p>将 PDF 文档智能解析为可重排的电子书格式，享受与 EPUB 一致的流畅阅读体验。</p>
+            </div>
+
+            <!-- 21. 翻页方向 -->
+            <div class="feature-card animate-on-scroll stagger-21">
+                <div class="feature-icon">↔️</div>
+                <h3>翻页方向自定义</h3>
+                <p>自由设定点击屏幕左/右侧的翻页方向，适配左右手操作习惯。</p>
+            </div>
+
+            <!-- 22. 滚动翻页 -->
+            <div class="feature-card animate-on-scroll stagger-22">
+                <div class="feature-icon">📜</div>
+                <h3>上下滚动翻页</h3>
+                <p>新增上下滚动阅读模式，支持平滑滚动翻页，满足多样化阅读习惯。</p>
+            </div>
+
+            <!-- 23. 书签导出 -->
+            <div class="feature-card animate-on-scroll stagger-23">
+                <div class="feature-icon">📤</div>
+                <h3>书签导出</h3>
+                <p>一键导出全部书签，支持文本格式保存，方便迁移与整理。</p>
+            </div>
+
+            <!-- 24. 书籍标签 -->
+            <div class="feature-card animate-on-scroll stagger-24">
+                <div class="feature-icon">🏷️</div>
+                <h3>书籍标签</h3>
+                <p>为书籍添加自定义标签，快速分类筛选，书架管理更高效。</p>
+            </div>
+
+            <!-- 25. 书籍搜索 -->
+            <div class="feature-card animate-on-scroll stagger-25">
+                <div class="feature-icon">🔎</div>
+                <h3>书籍搜索</h3>
+                <p>在书架中按书名或作者快速搜索，多书场景下瞬间定位。</p>
+            </div>
+
+            <!-- 26. 搜索高亮闪烁 -->
+            <div class="feature-card animate-on-scroll stagger-26">
+                <div class="feature-icon">✨</div>
+                <h3>搜索高亮闪烁</h3>
+                <p>全文搜索定位后高亮闪烁提示，一眼锁定目标文字位置。</p>
             </div>
 
         </div>

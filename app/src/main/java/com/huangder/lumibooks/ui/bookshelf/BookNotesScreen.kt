@@ -1,9 +1,13 @@
 package com.huangder.lumibooks.ui.bookshelf
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -26,14 +31,19 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,6 +51,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -56,6 +67,16 @@ import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
+import com.huangder.lumibooks.ui.components.LiquidGlassSurface
+import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
+import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -66,7 +87,38 @@ fun BookNotesScreen(
     viewModel: BookNotesViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val glassBackdrop = rememberLayerBackdrop()
     var selectedTab by remember { mutableIntStateOf(0) }
+    var pendingExportText by remember { mutableStateOf<String?>(null) }
+
+    val createDocumentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri ->
+        val exportText = pendingExportText
+        pendingExportText = null
+        if (uri != null && exportText != null) {
+            scope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val output = context.contentResolver.openOutputStream(uri)
+                            ?: throw IOException("Unable to open export destination")
+                        output.bufferedWriter(Charsets.UTF_8).use { writer ->
+                            writer.write(exportText)
+                        }
+                    }
+                }
+                Toast.makeText(
+                    context,
+                    if (result.isSuccess) R.string.export_bookmarks_success
+                    else R.string.export_bookmarks_failed,
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
 
     val tabs = listOf(
         stringResource(R.string.tab_highlights),
@@ -74,63 +126,105 @@ fun BookNotesScreen(
         stringResource(R.string.tab_bookmarks)
     )
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(AppColors.WindowBg)
-            .statusBarsPadding()
     ) {
-        // ── 顶栏：返回 + 标题 ──
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = AppSpace.lg, vertical = AppSpace.sm)
+                .fillMaxSize()
+                .statusBarsPadding()
+                .then(
+                    if (isLiquidGlass) Modifier.layerBackdrop(glassBackdrop) else Modifier
+                )
+                .background(AppColors.WindowBg)
         ) {
-            LiquidGlassIconButton(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = stringResource(R.string.back),
-                onClick = onNavigateBack,
-                size = 36.dp,
-                iconSize = 18.dp,
-                contentColor = AppColors.TextPrimary,
-                normalContainerColor = AppColors.BgGray
+            // ── 顶栏：返回 + 标题 ──
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = if (isLiquidGlass) AppSpace.sm else AppSpace.lg,
+                        vertical = AppSpace.sm
+                    )
+            ) {
+                LiquidGlassIconButton(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.back),
+                    onClick = onNavigateBack,
+                    size = if (isLiquidGlass) 48.dp else 36.dp,
+                    iconSize = if (isLiquidGlass) 20.dp else 18.dp,
+                    contentColor = AppColors.TextPrimary,
+                    normalContainerColor = AppColors.BgGray,
+                    settingsBackButton = true
+                )
+                Spacer(Modifier.width(AppSpace.md))
+                Text(
+                    text = stringResource(R.string.notes_title),
+                    fontSize = AppType.Section,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = KaiTi,
+                    color = AppColors.TextPrimary
+                )
+            }
+
+            Spacer(Modifier.height(AppSpace.md))
+
+            // ── 分段选择器 Tab ──
+            SegmentedTabBar(
+                selectedTab = selectedTab,
+                tabs = tabs,
+                onTabSelected = { selectedTab = it },
+                modifier = Modifier.padding(horizontal = AppSpace.lg)
             )
-            Spacer(Modifier.width(AppSpace.md))
-            Text(
-                text = stringResource(R.string.notes_title),
-                fontSize = AppType.Section,
-                fontWeight = FontWeight.Bold,
-                fontFamily = KaiTi,
-                color = AppColors.TextPrimary
-            )
+
+            Spacer(Modifier.height(AppSpace.md))
+
+            // ── 内容列表 ──
+            when (selectedTab) {
+                0 -> NoteList(
+                    notes = uiState.highlights,
+                    onDelete = { viewModel.deleteNote(it) }
+                )
+                1 -> NoteList(
+                    notes = uiState.noteItems,
+                    onDelete = { viewModel.deleteNote(it) }
+                )
+                2 -> BookmarkList(
+                    bookmarks = uiState.bookmarks,
+                    onDelete = { viewModel.deleteBookmark(it) }
+                )
+            }
         }
 
-        Spacer(Modifier.height(AppSpace.md))
-
-        // ── 分段选择器 Tab ──
-        SegmentedTabBar(
-            selectedTab = selectedTab,
-            tabs = tabs,
-            onTabSelected = { selectedTab = it },
-            modifier = Modifier.padding(horizontal = AppSpace.lg)
-        )
-
-        Spacer(Modifier.height(AppSpace.md))
-
-        // ── 内容列表 ──
-        when (selectedTab) {
-            0 -> NoteList(
-                notes = uiState.highlights,
-                onDelete = { viewModel.deleteNote(it) }
-            )
-            1 -> NoteList(
-                notes = uiState.noteItems,
-                onDelete = { viewModel.deleteNote(it) }
-            )
-            2 -> BookmarkList(
-                bookmarks = uiState.bookmarks,
-                onDelete = { viewModel.deleteBookmark(it) }
+        ProvideLiquidGlassBackdrop(
+            backdrop = glassBackdrop.takeIf { isLiquidGlass }
+        ) {
+            ExportBookmarksButton(
+                isLiquidGlass = isLiquidGlass,
+                isExporting = uiState.isExporting,
+                enabled = uiState.book != null &&
+                    (uiState.bookmarks.isNotEmpty() || uiState.notes.isNotEmpty()),
+                onClick = {
+                    viewModel.prepareExport { result ->
+                        result.onSuccess { document ->
+                            pendingExportText = document.text
+                            createDocumentLauncher.launch(document.fileName)
+                        }.onFailure {
+                            Toast.makeText(
+                                context,
+                                R.string.export_bookmarks_failed,
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
+                    .padding(end = AppSpace.lg, bottom = AppSpace.lg)
             )
         }
     }
@@ -145,6 +239,7 @@ private fun SegmentedTabBar(
     onTabSelected: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isDark = LocalIsDarkTheme.current
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -170,18 +265,23 @@ private fun SegmentedTabBar(
                 }
                 .clip(RoundedCornerShape(18.dp))
                 .shadow(2.dp, RoundedCornerShape(18.dp))
-                .background(Color.White)
+                .background(if (isDark) AppColors.CardBg else Color.White)
         )
 
         // Tab 文字
         Row(modifier = Modifier.fillMaxSize()) {
             tabs.forEachIndexed { index, label ->
                 val isSelected = index == selectedTab
+                val interactionSource = remember { MutableInteractionSource() }
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxSize()
-                        .clickable { onTabSelected(index) },
+                        .clickable(
+                            indication = null,
+                            interactionSource = interactionSource,
+                            onClick = { onTabSelected(index) }
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -217,7 +317,12 @@ private fun NoteList(
     } else {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = AppSpace.lg, vertical = AppSpace.sm),
+            contentPadding = PaddingValues(
+                start = AppSpace.lg,
+                top = AppSpace.sm,
+                end = AppSpace.lg,
+                bottom = 96.dp
+            ),
             verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
         ) {
             items(notes) { note ->
@@ -249,7 +354,12 @@ private fun BookmarkList(
     } else {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = AppSpace.lg, vertical = AppSpace.sm),
+            contentPadding = PaddingValues(
+                start = AppSpace.lg,
+                top = AppSpace.sm,
+                end = AppSpace.lg,
+                bottom = 96.dp
+            ),
             verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
         ) {
             items(bookmarks) { bookmark ->
@@ -391,6 +501,79 @@ private fun BookmarkItem(
 }
 
 // ─── 工具函数 ────────────────────────────────────────────────────
+
+@Composable
+private fun ExportBookmarksButton(
+    isLiquidGlass: Boolean,
+    isExporting: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val buttonEnabled = enabled && !isExporting
+    val shape = CircleShape
+    val content: @Composable () -> Unit = {
+        if (isExporting) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(22.dp),
+                color = Color.White,
+                strokeWidth = 2.4.dp
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Outlined.Download,
+                contentDescription = stringResource(R.string.export_bookmarks),
+                tint = Color.White,
+                modifier = Modifier.size(27.dp)
+            )
+        }
+    }
+
+    if (isLiquidGlass) {
+        LiquidGlassSurface(
+            shape = shape,
+            fallbackColor = Color.Black,
+            contentScrimColor = Color.Black.copy(alpha = 0.85f),
+            enabled = buttonEnabled,
+            onClick = onClick,
+            effectPadding = 2.dp,
+            decorationModifier = Modifier.shadow(
+                elevation = 18.dp,
+                shape = shape,
+                clip = false,
+                ambientColor = Color.Black.copy(alpha = 0.22f),
+                spotColor = Color.Black.copy(alpha = 0.30f)
+            ),
+            modifier = modifier
+                .size(60.dp)
+        ) {
+            content()
+        }
+    } else {
+        IconButton(
+            onClick = onClick,
+            enabled = buttonEnabled,
+            modifier = modifier
+                .size(58.dp)
+                .shadow(
+                    elevation = 8.dp,
+                    shape = shape,
+                    clip = false,
+                    ambientColor = Color.Black.copy(alpha = 0.14f),
+                    spotColor = Color.Black.copy(alpha = 0.18f)
+                )
+                .clip(shape),
+            colors = IconButtonDefaults.iconButtonColors(
+                containerColor = Color.Black,
+                contentColor = Color.White,
+                disabledContainerColor = Color.Black.copy(alpha = 0.38f),
+                disabledContentColor = Color.White.copy(alpha = 0.62f)
+            )
+        ) {
+            content()
+        }
+    }
+}
 
 private fun parseColor(hex: String): Color {
     return try {

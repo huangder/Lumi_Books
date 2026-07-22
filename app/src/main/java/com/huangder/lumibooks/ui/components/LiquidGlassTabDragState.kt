@@ -27,8 +27,10 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 /**
- * Interaction model adapted from AndroidLiquidGlass' LiquidBottomTabs sample.
- * The upstream sample is licensed under Apache-2.0.
+ * Adapted and modified by Lumi contributors from AndroidLiquidGlass' LiquidBottomTabs sample.
+ * Copyright 2025 Kyant. Licensed under Apache-2.0.
+ * Changes include Lumi-specific sizing, settling behavior, gesture integration, and state exposure.
+ * Source: https://github.com/Kyant0/AndroidLiquidGlass
  */
 internal class LiquidGlassTabDragState(
     private val animationScope: CoroutineScope,

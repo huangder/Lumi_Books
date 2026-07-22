@@ -38,6 +38,8 @@
     <string name="bookmarks">북마크</string>
     <string name="notes">메모</string>
     <string name="search">검색</string>
+    <string name="library_search_placeholder">내 서재 검색</string>
+    <string name="library_search_results">검색 결과</string>
     <string name="reading_progress">읽기 진행률</string>
     <string name="font_size">글꼴 크기</string>
     <string name="line_height">줄 간격</string>
@@ -236,6 +238,10 @@
     <string name="tab_bookmarks">북마크</string>
     <string name="no_content">내용 없음</string>
     <string name="no_bookmarks">북마크 없음</string>
+    <string name="export_bookmarks">북마크 내보내기</string>
+    <string name="export_bookmarks_preparing">준비 중…</string>
+    <string name="export_bookmarks_success">내보내기 완료</string>
+    <string name="export_bookmarks_failed">내보내기에 실패했습니다. 다시 시도하세요.</string>
     <string name="tap_to_add_bookmark">읽기 중 북마크 아이콘을 탭하여 추가하세요</string>
     <string name="chapter_number">제 %d장</string>
     <string name="page_number">페이지 %d</string>

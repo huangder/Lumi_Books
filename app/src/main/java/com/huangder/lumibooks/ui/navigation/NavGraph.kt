@@ -5,9 +5,12 @@ import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideInVertically
@@ -121,13 +124,17 @@ private fun ReaderRouter(
 @Composable
 private fun rememberPageEntrancePlayback(
     pageKey: String,
-    entryKey: Any,
+    entryKey: String,
     enabled: Boolean,
     tracker: PageEntranceTracker
 ): Boolean {
     var play by remember(entryKey, enabled) {
         mutableStateOf(
-            enabled && tracker.shouldPlay(pageKey, SystemClock.elapsedRealtime())
+            enabled && tracker.shouldPlay(
+                pageKey = pageKey,
+                entryKey = entryKey,
+                nowMillis = SystemClock.elapsedRealtime()
+            )
         )
     }
     LaunchedEffect(play) {
@@ -154,6 +161,9 @@ fun MainNavGraph(
     var readerReady by remember { mutableStateOf(false) }
     var pendingBookId by remember { mutableStateOf<String?>(null) }
     var tabBarVisible by remember { mutableStateOf(true) }
+    var useMainReturnTabBarTransition by remember { mutableStateOf(false) }
+    var synchronizeNextMainReturn by remember { mutableStateOf(false) }
+    var previousRoute by remember { mutableStateOf<String?>(null) }
     var bookshelfOverlayProgress by remember { mutableFloatStateOf(0f) }
     var homeGoalSheetVisible by remember { mutableStateOf(false) }
     val entranceTracker = remember { PageEntranceTracker() }
@@ -193,7 +203,11 @@ fun MainNavGraph(
     } else {
         MainSystemBarStyle()
     }
-    LaunchedEffect(currentRoute, showTransition) {
+    LaunchedEffect(currentRoute, showTransition, synchronizeNextMainReturn) {
+        val returningFromReader = previousRoute == Screen.Reader.route &&
+            currentRoute != null &&
+            currentRoute != Screen.Reader.route &&
+            !showTransition
         selectedTab = when (currentRoute) {
             Screen.Home.route -> 0
             Screen.Bookshelf.route -> 1
@@ -206,12 +220,22 @@ fun MainNavGraph(
         if (currentRoute != Screen.Bookshelf.route) {
             bookshelfOverlayProgress = 0f
         }
-        if (currentRoute == Screen.Reader.route || showTransition) {
+        if (
+            currentRoute == Screen.Reader.route ||
+            (showTransition && !synchronizeNextMainReturn)
+        ) {
             tabBarVisible = false
+            useMainReturnTabBarTransition = false
+        } else if (returningFromReader || synchronizeNextMainReturn) {
+            useMainReturnTabBarTransition = true
+            tabBarVisible = true
+            if (!showTransition) synchronizeNextMainReturn = false
         } else {
             delay(800)
+            useMainReturnTabBarTransition = false
             tabBarVisible = true
         }
+        previousRoute = currentRoute
     }
 
     // 延迟导航：过渡动画入场完成后才跳转阅读页
@@ -254,10 +278,22 @@ fun MainNavGraph(
                         }
                     )
             ) {
-            composable(Screen.Home.route) { backStackEntry ->
+            composable(
+                route = Screen.Home.route,
+                popEnterTransition = {
+                    if (initialState.destination.route == Screen.Reader.route) {
+                        fadeIn(tween(300, easing = FastOutSlowInEasing)) + scaleIn(
+                            initialScale = 0.985f,
+                            animationSpec = tween(320, easing = FastOutSlowInEasing)
+                        )
+                    } else {
+                        null
+                    }
+                }
+            ) { backStackEntry ->
                 val playEntranceAnimation = rememberPageEntrancePlayback(
                     pageKey = Screen.Home.route,
-                    entryKey = backStackEntry,
+                    entryKey = backStackEntry.id,
                     enabled = entranceAnimationsEnabled,
                     tracker = entranceTracker
                 )
@@ -296,10 +332,22 @@ fun MainNavGraph(
                 )
             }
 
-            composable(Screen.Bookshelf.route) { backStackEntry ->
+            composable(
+                route = Screen.Bookshelf.route,
+                popEnterTransition = {
+                    if (initialState.destination.route == Screen.Reader.route) {
+                        fadeIn(tween(300, easing = FastOutSlowInEasing)) + scaleIn(
+                            initialScale = 0.985f,
+                            animationSpec = tween(320, easing = FastOutSlowInEasing)
+                        )
+                    } else {
+                        null
+                    }
+                }
+            ) { backStackEntry ->
                 val playEntranceAnimation = rememberPageEntrancePlayback(
                     pageKey = Screen.Bookshelf.route,
-                    entryKey = backStackEntry,
+                    entryKey = backStackEntry.id,
                     enabled = entranceAnimationsEnabled,
                     tracker = entranceTracker
                 )
@@ -318,10 +366,22 @@ fun MainNavGraph(
                 )
             }
 
-            composable(Screen.Statistics.route) { backStackEntry ->
+            composable(
+                route = Screen.Statistics.route,
+                popEnterTransition = {
+                    if (initialState.destination.route == Screen.Reader.route) {
+                        fadeIn(tween(300, easing = FastOutSlowInEasing)) + scaleIn(
+                            initialScale = 0.985f,
+                            animationSpec = tween(320, easing = FastOutSlowInEasing)
+                        )
+                    } else {
+                        null
+                    }
+                }
+            ) { backStackEntry ->
                 val playEntranceAnimation = rememberPageEntrancePlayback(
                     pageKey = Screen.Statistics.route,
-                    entryKey = backStackEntry,
+                    entryKey = backStackEntry.id,
                     enabled = entranceAnimationsEnabled,
                     tracker = entranceTracker
                 )
@@ -332,7 +392,17 @@ fun MainNavGraph(
 
             composable(
                 route = Screen.Reader.route,
-                arguments = listOf(navArgument("bookId") { type = NavType.StringType })
+                arguments = listOf(navArgument("bookId") { type = NavType.StringType }),
+                popExitTransition = {
+                    if (targetState.destination.route != Screen.Reader.route) {
+                        fadeOut(tween(240, easing = FastOutSlowInEasing)) + scaleOut(
+                            targetScale = 0.985f,
+                            animationSpec = tween(280, easing = FastOutSlowInEasing)
+                        )
+                    } else {
+                        null
+                    }
+                }
             ) { backStackEntry ->
                 val bookId = backStackEntry.arguments?.getString("bookId") ?: return@composable
                 ReaderRouter(
@@ -373,7 +443,11 @@ fun MainNavGraph(
         ) {
         AnimatedVisibility(
             visible = tabBarVisible,
-            enter = fadeIn(animationSpec = tween(400)),
+            enter = if (useMainReturnTabBarTransition) {
+                fadeIn(animationSpec = tween(300, easing = FastOutSlowInEasing))
+            } else {
+                fadeIn(animationSpec = tween(400))
+            },
             exit = fadeOut(animationSpec = tween(300)),
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
@@ -430,14 +504,15 @@ fun MainNavGraph(
                 title = transitionTitle,
                 coverPath = transitionCover,
                 isReady = readerReady,
-                onBack = {
+                onBackNavigationStarted = {
                     pendingBookId = null
                     readerReady = false
-                    showTransition = false
+                    synchronizeNextMainReturn = true
                     if (navController.currentDestination?.route == Screen.Reader.route) {
                         navController.popBackStack()
                     }
                 },
+                onBack = { showTransition = false },
                 onTransitionComplete = {
                     showTransition = false
                 }

@@ -1,8 +1,7 @@
 package com.huangder.lumibooks.ui.home
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -15,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -30,8 +30,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -44,7 +42,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
@@ -55,16 +52,24 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
-import com.huangder.lumibooks.ui.components.materialBottomSheetMotion
+import com.huangder.lumibooks.ui.components.LiquidGlassButton
+import com.huangder.lumibooks.ui.components.LiquidGlassColumnSheetContainer
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
+import com.huangder.lumibooks.ui.components.LiquidGlassSurface
+import com.huangder.lumibooks.ui.components.animateBottomSheetIn
+import com.huangder.lumibooks.ui.components.animateBottomSheetOut
+import com.huangder.lumibooks.ui.components.materialBottomSheetMotion
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.KaiTi
+import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import java.util.Calendar
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
 @Composable
@@ -79,106 +84,105 @@ fun ReadingGoalSheet(
     onSaveGoal: (Int) -> Unit
 ) {
     val isDark = LocalIsDarkTheme.current
-    val textSecondary = AppColors.TextSecondary
-    val bgGray = AppColors.BgGray
-    val cardBg = AppColors.CardBg
-    val containerOffsetY = remember { Animatable(1f) }
-    val coroutineScope = rememberCoroutineScope()
-    val sheetScrollState = rememberScrollState()
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val summaryOffsetY = remember { Animatable(1f) }
+    val pickerOffsetY = remember { Animatable(1f) }
+    val scope = rememberCoroutineScope()
+    val summaryScrollState = rememberScrollState()
+    val pickerScrollState = rememberScrollState()
     val maxSheetHeight = (LocalConfiguration.current.screenHeightDp * 0.84f).dp
     var showGoalPicker by remember { mutableStateOf(false) }
 
     LaunchedEffect(visible) {
         if (visible) {
             showGoalPicker = false
-            containerOffsetY.animateTo(0f, tween(300, easing = FastOutSlowInEasing))
+            pickerOffsetY.snapTo(1f)
+            summaryOffsetY.snapTo(1f)
+            summaryOffsetY.animateBottomSheetIn()
         } else {
-            containerOffsetY.animateTo(1f, tween(250, easing = FastOutSlowInEasing))
+            coroutineScope {
+                launch { summaryOffsetY.animateBottomSheetOut() }
+                launch { pickerOffsetY.animateBottomSheetOut() }
+            }
+            showGoalPicker = false
         }
     }
 
-    val predictiveBackProgress = ConfigurableBottomSheetBackHandler(
-        enabled = visible || containerOffsetY.value < 1f
-    ) { onDismiss() }
+    fun openGoalPicker() {
+        if (showGoalPicker) return
+        showGoalPicker = true
+        scope.launch {
+            pickerScrollState.scrollTo(0)
+            pickerOffsetY.snapTo(1f)
+            if (isLiquidGlass) {
+                coroutineScope {
+                    launch { summaryOffsetY.animateBottomSheetOut() }
+                    launch { pickerOffsetY.animateBottomSheetIn() }
+                }
+            } else {
+                pickerOffsetY.animateBottomSheetIn()
+            }
+        }
+    }
 
-    if (!visible && containerOffsetY.value >= 1f) return
+    fun closeGoalPicker(minutesToSave: Int? = null) {
+        if (!showGoalPicker) return
+        scope.launch {
+            minutesToSave?.let(onSaveGoal)
+            summaryScrollState.scrollTo(0)
+            if (isLiquidGlass) {
+                summaryOffsetY.snapTo(1f)
+                coroutineScope {
+                    launch { pickerOffsetY.animateBottomSheetOut() }
+                    launch { summaryOffsetY.animateBottomSheetIn() }
+                }
+            } else {
+                pickerOffsetY.animateBottomSheetOut()
+            }
+            showGoalPicker = false
+        }
+    }
+
+    fun closeTopContainer() {
+        if (showGoalPicker) closeGoalPicker() else onDismiss()
+    }
+
+    val predictiveBackProgress = ConfigurableBottomSheetBackHandler(
+        enabled = visible || summaryOffsetY.value < 1f || pickerOffsetY.value < 1f
+    ) { closeTopContainer() }
+
+    if (!visible && summaryOffsetY.value >= 1f && pickerOffsetY.value >= 1f) return
 
     val totalMinutes = (todayReadingTime / 1000 / 60).toInt()
     val hasGoal = dailyGoal > 0
     val goalMs = if (hasGoal) dailyGoal * 60 * 1000L else 0L
     val progress = if (hasGoal) (todayReadingTime.toFloat() / goalMs).coerceIn(0f, 1f) else 0f
     val remaining = if (hasGoal) ((goalMs - todayReadingTime) / 1000 / 60).coerceAtLeast(0).toInt() else 0
-
-    fun showContainerContent(goalPicker: Boolean) {
-        if (showGoalPicker == goalPicker) return
-        coroutineScope.launch {
-            containerOffsetY.animateTo(1f, tween(180, easing = FastOutSlowInEasing))
-            showGoalPicker = goalPicker
-            sheetScrollState.scrollTo(0)
-            containerOffsetY.snapTo(1f)
-            containerOffsetY.animateTo(0f, tween(300, easing = FastOutSlowInEasing))
-        }
-    }
-
-    fun saveGoalAndReturn(minutes: Int) {
-        coroutineScope.launch {
-            containerOffsetY.animateTo(1f, tween(180, easing = FastOutSlowInEasing))
-            onSaveGoal(minutes)
-            showGoalPicker = false
-            sheetScrollState.scrollTo(0)
-            containerOffsetY.snapTo(1f)
-            containerOffsetY.animateTo(0f, tween(300, easing = FastOutSlowInEasing))
-        }
-    }
+    val scrimProgress = (
+        2f - summaryOffsetY.value.coerceIn(0f, 1f) - pickerOffsetY.value.coerceIn(0f, 1f)
+    ).coerceIn(0f, 1f)
 
     Box(modifier = Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
-                    Color.Black.copy(alpha = if (isDark) 0.4f else 0.1f)
+                    Color.Black.copy(alpha = (if (isDark) 0.28f else 0.18f) * scrimProgress)
                 )
-                .pointerInput(Unit) { detectTapGestures { onDismiss() } }
+                .pointerInput(showGoalPicker, visible) {
+                    detectTapGestures { closeTopContainer() }
+                }
         )
 
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.BottomCenter)
-                .heightIn(max = maxSheetHeight)
-                .materialBottomSheetMotion(containerOffsetY.value, predictiveBackProgress)
-                .shadow(24.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .background(cardBg, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .imePadding()
-                .navigationBarsPadding()
-                .verticalScroll(sheetScrollState)
-                .padding(24.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+        if (!isLiquidGlass || !showGoalPicker || summaryOffsetY.value < 1f) {
+            ReadingGoalContainer(
+                entryOffset = summaryOffsetY.value,
+                predictiveBackProgress = if (showGoalPicker) 0f else predictiveBackProgress,
+                maxSheetHeight = maxSheetHeight,
+                scrollState = summaryScrollState,
+                onClose = onDismiss,
+                modifier = Modifier.align(Alignment.BottomCenter)
             ) {
-                Spacer(modifier = Modifier.weight(1f))
-                LiquidGlassIconButton(
-                    imageVector = Icons.Outlined.Close,
-                    contentDescription = stringResource(R.string.close),
-                    onClick = onDismiss,
-                    size = 44.dp,
-                    iconSize = 20.dp,
-                    contentColor = AppColors.TextPrimary,
-                    normalContainerColor = bgGray
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            if (showGoalPicker) {
-                GoalPicker(
-                    currentMinutes = dailyGoal,
-                    onConfirm = { minutes -> saveGoalAndReturn(minutes) },
-                    onCancel = { showContainerContent(false) }
-                )
-            } else {
                 TodayReadingContent(
                     totalMinutes = totalMinutes,
                     dailyGoal = dailyGoal,
@@ -187,10 +191,79 @@ fun ReadingGoalSheet(
                     currentBook = currentBook,
                     weeklyData = weeklyData,
                     streakDays = streakDays,
-                    onChangeGoal = { showContainerContent(true) }
+                    onChangeGoal = ::openGoalPicker
                 )
             }
         }
+
+        if (showGoalPicker || pickerOffsetY.value < 1f) {
+            ReadingGoalContainer(
+                entryOffset = pickerOffsetY.value,
+                predictiveBackProgress = if (showGoalPicker) predictiveBackProgress else 0f,
+                maxSheetHeight = maxSheetHeight,
+                scrollState = pickerScrollState,
+                onClose = { closeGoalPicker() },
+                modifier = Modifier.align(Alignment.BottomCenter)
+            ) {
+                GoalPicker(
+                    currentMinutes = dailyGoal,
+                    onConfirm = { minutes -> closeGoalPicker(minutes) },
+                    onCancel = { closeGoalPicker() }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReadingGoalContainer(
+    entryOffset: Float,
+    predictiveBackProgress: Float,
+    maxSheetHeight: Dp,
+    scrollState: ScrollState,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    LiquidGlassColumnSheetContainer(
+        fallbackColor = AppColors.CardBg,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(max = maxSheetHeight)
+            .materialBottomSheetMotion(entryOffset, predictiveBackProgress),
+        contentModifier = Modifier
+            .then(
+                if (isLiquidGlass) {
+                    Modifier.padding(start = 14.dp, end = 14.dp, bottom = 12.dp)
+                } else {
+                    Modifier
+                }
+            )
+            .imePadding()
+            .navigationBarsPadding()
+            .verticalScroll(scrollState)
+            .padding(24.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Spacer(modifier = Modifier.weight(1f))
+            LiquidGlassIconButton(
+                imageVector = Icons.Outlined.Close,
+                contentDescription = stringResource(R.string.close),
+                onClick = onClose,
+                size = 44.dp,
+                iconSize = 20.dp,
+                contentColor = AppColors.TextPrimary,
+                normalContainerColor = AppColors.BgGray
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+        content()
     }
 }
 
@@ -205,6 +278,7 @@ private fun TodayReadingContent(
     streakDays: Int,
     onChangeGoal: () -> Unit
 ) {
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val textPrimary = AppColors.TextPrimary
     val textSecondary = AppColors.TextSecondary
     val bgGray = AppColors.BgGray
@@ -336,14 +410,14 @@ private fun TodayReadingContent(
 
     Spacer(modifier = Modifier.height(16.dp))
 
-    Box(
+    LiquidGlassButton(
+        onClick = onChangeGoal,
         modifier = Modifier
             .fillMaxWidth()
-            .height(48.dp)
-            .clip(RoundedCornerShape(28.dp))
-            .background(bgGray)
-            .clickable(onClick = onChangeGoal),
-        contentAlignment = Alignment.Center
+            .height(48.dp),
+        shape = RoundedCornerShape(28.dp),
+        tintedColor = bgGray.takeUnless { isLiquidGlass },
+        contentColor = textPrimary
     ) {
         Text(
             text = stringResource(R.string.edit_daily_goal),
@@ -413,7 +487,6 @@ private fun GoalPicker(
     val textPrimary = AppColors.TextPrimary
     val textSecondary = AppColors.TextSecondary
     val bgGray = AppColors.BgGray
-    val dividerColor = AppColors.Divider
     var customMode by remember { mutableStateOf(false) }
     var customMinutesText by remember(currentMinutes) {
         mutableStateOf(if (currentMinutes > 0) currentMinutes.toString() else "")
@@ -440,88 +513,14 @@ private fun GoalPicker(
     Spacer(modifier = Modifier.height(12.dp))
 
     if (customMode) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(18.dp))
-                .background(bgGray)
-                .border(1.dp, dividerColor, RoundedCornerShape(18.dp))
-                .padding(horizontal = 16.dp, vertical = 14.dp)
-        ) {
-            Text(
-                text = "自定义目标",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = textPrimary
-            )
-            Spacer(modifier = Modifier.height(10.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                BasicTextField(
-                    value = customMinutesText,
-                    onValueChange = { raw ->
-                        customMinutesText = raw.filter { it.isDigit() }.take(4)
-                    },
-                    singleLine = true,
-                    textStyle = TextStyle(
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = textPrimary
-                    ),
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Number,
-                        imeAction = ImeAction.Done
-                    ),
-                    keyboardActions = KeyboardActions(
-                        onDone = { if (isCustomValid) onConfirm(customMinutes!!) }
-                    ),
-                    modifier = Modifier.weight(1f),
-                    decorationBox = { innerTextField ->
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(44.dp),
-                            contentAlignment = Alignment.CenterStart
-                        ) {
-                            if (customMinutesText.isBlank()) {
-                                Text("输入分钟数", fontSize = 16.sp, color = textSecondary)
-                            }
-                            innerTextField()
-                        }
-                    }
-                )
-                Text(
-                    text = stringResource(R.string.minutes_label),
-                    fontSize = 14.sp,
-                    color = textSecondary
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                Box(
-                    modifier = Modifier
-                        .height(36.dp)
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(if (isCustomValid) AppColors.Accent else textSecondary.copy(alpha = 0.22f))
-                        .clickable(enabled = isCustomValid) { onConfirm(customMinutes!!) }
-                        .padding(horizontal = 14.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = stringResource(R.string.confirm),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (isCustomValid) AppColors.OnAccent else textSecondary
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = "请输入 1-1439 分钟",
-                fontSize = 12.sp,
-                color = if (customMinutesText.isBlank() || isCustomValid) textSecondary else AppColors.Accent
-            )
-        }
+        CustomGoalInputPanel(
+            value = customMinutesText,
+            onValueChange = { raw ->
+                customMinutesText = raw.filter { it.isDigit() }.take(4)
+            },
+            isValid = isCustomValid,
+            onConfirm = { customMinutes?.let(onConfirm) }
+        )
     } else {
         GoalOptionButton(
             title = "自定义目标",
@@ -536,16 +535,129 @@ private fun GoalPicker(
 
     Spacer(modifier = Modifier.height(24.dp))
 
-    Box(
+    LiquidGlassButton(
+        onClick = onCancel,
         modifier = Modifier
             .fillMaxWidth()
-            .height(48.dp)
-            .clip(RoundedCornerShape(28.dp))
-            .background(bgGray)
-            .clickable(onClick = onCancel),
-        contentAlignment = Alignment.Center
+            .height(48.dp),
+        shape = RoundedCornerShape(28.dp),
+        tintedColor = bgGray.takeUnless { LocalAppTheme.current == "liquid_glass" },
+        contentColor = textSecondary
     ) {
         Text(stringResource(R.string.cancel), fontSize = 16.sp, color = textSecondary)
+    }
+}
+
+@Composable
+private fun CustomGoalInputPanel(
+    value: String,
+    onValueChange: (String) -> Unit,
+    isValid: Boolean,
+    onConfirm: () -> Unit
+) {
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val textPrimary = AppColors.TextPrimary
+    val textSecondary = AppColors.TextSecondary
+    val bgGray = AppColors.BgGray
+    val shape = RoundedCornerShape(18.dp)
+    val panelContent: @Composable ColumnScope.() -> Unit = {
+        Text(
+            text = "自定义目标",
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = textPrimary
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                singleLine = true,
+                textStyle = TextStyle(
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = textPrimary
+                ),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Number,
+                    imeAction = ImeAction.Done
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = { if (isValid) onConfirm() }
+                ),
+                modifier = Modifier.weight(1f),
+                decorationBox = { innerTextField ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        if (value.isBlank()) {
+                            Text("输入分钟数", fontSize = 16.sp, color = textSecondary)
+                        }
+                        innerTextField()
+                    }
+                }
+            )
+            Text(
+                text = stringResource(R.string.minutes_label),
+                fontSize = 14.sp,
+                color = textSecondary
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            LiquidGlassButton(
+                onClick = onConfirm,
+                enabled = isValid,
+                modifier = Modifier.height(36.dp),
+                shape = RoundedCornerShape(18.dp),
+                tintedColor = if (isValid) AppColors.Accent else bgGray,
+                contentColor = if (isValid) AppColors.OnAccent else textSecondary
+            ) {
+                Text(
+                    text = stringResource(R.string.confirm),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (isValid) AppColors.OnAccent else textSecondary
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = "请输入 1-1439 分钟",
+            fontSize = 12.sp,
+            color = if (value.isBlank() || isValid) textSecondary else AppColors.Accent
+        )
+    }
+
+    if (isLiquidGlass) {
+        LiquidGlassSurface(
+            shape = shape,
+            fallbackColor = bgGray,
+            contentScrimColor = bgGray.copy(alpha = 0.34f),
+            modifier = Modifier.fillMaxWidth(),
+            contentAlignment = Alignment.TopStart
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                content = panelContent
+            )
+        }
+    } else {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(bgGray)
+                .border(1.dp, AppColors.Divider, shape)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            content = panelContent
+        )
     }
 }
 
@@ -555,31 +667,51 @@ private fun GoalOptionButton(
     subtitle: String,
     onClick: () -> Unit
 ) {
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val textPrimary = AppColors.TextPrimary
     val textSecondary = AppColors.TextSecondary
     val bgGray = AppColors.BgGray
     val dividerColor = AppColors.Divider
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(bgGray)
-            .border(1.dp, dividerColor, RoundedCornerShape(18.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 14.dp)
-    ) {
-        Text(
-            text = title,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = textPrimary
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = subtitle,
-            fontSize = 12.sp,
-            color = textSecondary
-        )
+    val shape = RoundedCornerShape(18.dp)
+    val content: @Composable () -> Unit = {
+        Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
+            Text(
+                text = title,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = textPrimary
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = subtitle,
+                fontSize = 12.sp,
+                color = textSecondary
+            )
+        }
+    }
+
+    if (isLiquidGlass) {
+        LiquidGlassSurface(
+            shape = shape,
+            fallbackColor = bgGray,
+            contentScrimColor = bgGray.copy(alpha = 0.34f),
+            onClick = onClick,
+            modifier = Modifier.fillMaxWidth(),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            content()
+        }
+    } else {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(bgGray)
+                .border(1.dp, dividerColor, shape)
+                .clickable(onClick = onClick)
+        ) {
+            content()
+        }
     }
 }
