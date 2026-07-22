@@ -11,6 +11,7 @@
 # Gradle and Android build outputs
 **/build/
 /app/release/
+/app/build/
 /captures
 .externalNativeBuild
 .cxx
