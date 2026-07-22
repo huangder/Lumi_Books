@@ -1,6 +1,8 @@
 package com.huangder.lumibooks.ui.reader.engine
 
 import android.content.Context
+import android.animation.ValueAnimator
+import androidx.core.animation.doOnEnd
 import android.text.Selection
 import android.text.Spannable
 import android.util.Log
@@ -64,6 +66,7 @@ class ReadView(context: Context) : FrameLayout(context) {
 
     companion object {
         private const val TAG = "ReadView"
+        private const val JUMP_SETTLE_DELAY_MS = 120L
     }
 
     // ── 子组件 ──
@@ -83,6 +86,11 @@ class ReadView(context: Context) : FrameLayout(context) {
     private var contentProvider: (suspend (Int) -> CharSequence?)? = null
 
     private var savedNotes: List<Note> = emptyList()
+    private data class SearchHighlight(val chapterIndex: Int, val start: Int, val end: Int)
+    private var searchHighlight: SearchHighlight? = null
+    private var searchHighlightAnimator: ValueAnimator? = null
+    private var pendingJumpChapter: Int? = null
+    private var isJumpSettling = false
 
     /** 设置已保存的笔记/高亮并刷新当前页。 */
     fun setSavedNotes(notes: List<Note>) {
@@ -157,7 +165,7 @@ class ReadView(context: Context) : FrameLayout(context) {
         animationController = SlidePageAnim(this)
 
         animationController.onCanFlip = { dir ->
-            when (dir) {
+            if (isJumpSettling) false else when (dir) {
                 PageAnimationController.Direction.NEXT -> slotManager.getNextSlot().isLoaded
                 PageAnimationController.Direction.PREV -> {
                     // 全书第一页时禁止往前翻
@@ -210,6 +218,15 @@ class ReadView(context: Context) : FrameLayout(context) {
         // 翻页后刷新高亮
         slotManager.onPageChangedCallback = { globalPage, chapterIdx, pageInChapter, chapterTotal ->
             callbacks?.onPageChanged(globalPage, chapterIdx, pageInChapter, chapterTotal)
+            startSearchHighlightAnimationIfReady(chapterIdx)
+            if (isJumpSettling && pendingJumpChapter == chapterIdx && chapterTotal > 0) {
+                postDelayed({
+                    if (pendingJumpChapter == chapterIdx) {
+                        pendingJumpChapter = null
+                        isJumpSettling = false
+                    }
+                }, JUMP_SETTLE_DELAY_MS)
+            }
             configureCurrentPageView()
             invalidate()
         }
@@ -219,7 +236,7 @@ class ReadView(context: Context) : FrameLayout(context) {
 
     /** 构建某章的高亮列表（savedNotes → Triple(start, end, color)） */
     private fun buildHighlights(chapterIndex: Int): List<Triple<Int, Int, Int>> {
-        return savedNotes
+        val savedHighlights = savedNotes
             .filter { it.chapterIndex == chapterIndex }
             .map { note ->
                 val color = try {
@@ -229,6 +246,10 @@ class ReadView(context: Context) : FrameLayout(context) {
                 }
                 Triple(note.startPosition, note.endPosition, color)
             }
+        val transientHighlight = searchHighlight
+            ?.takeIf { it.chapterIndex == chapterIndex }
+            ?.let { Triple(it.start, it.end, 0x00FFE082) }
+        return if (transientHighlight != null) savedHighlights + transientHighlight else savedHighlights
     }
 
     /** 配置所有 PageContentView 的 TextView 样式（防止翻页错版） */
@@ -376,7 +397,13 @@ class ReadView(context: Context) : FrameLayout(context) {
                 paragraphSpacingChanged || sizeChanged
 
         // 🔥 无变化时提前返回，避免菜单切换等 recomposition 触发不必要的重配置
-        if (isConfigured && !needsRelayout) return
+        if (isConfigured && !needsRelayout) {
+            val currentSlot = slotManager.getCurSlot()
+            if (currentSlot.chapterIndex != startChapter || currentSlot.pageIndex != startPage) {
+                jumpToChapter(startChapter, startPage)
+            }
+            return
+        }
 
         currentFontSizePx = fontSizePx
         currentTheme = theme
@@ -484,6 +511,7 @@ class ReadView(context: Context) : FrameLayout(context) {
 
     /** 跳转到指定章节指定页 */
     fun jumpToChapter(chapterIndex: Int, pageInChapter: Int = 0) {
+        beginJumpSettling(chapterIndex)
         animationController.abortAnim()
         layoutEngine.invalidateChapter(chapterIndex)
         slotManager.jumpTo(chapterIndex, pageInChapter)
@@ -491,6 +519,7 @@ class ReadView(context: Context) : FrameLayout(context) {
 
     /** 跳转到章节内包含指定字符偏移的页面。 */
     fun jumpToCharacter(chapterIndex: Int, characterOffset: Int) {
+        beginJumpSettling(chapterIndex)
         animationController.abortAnim()
         val targetOffset = characterOffset.coerceAtLeast(0)
         val cachedLayout = layoutEngine.getChapterLayout(chapterIndex)
@@ -505,6 +534,32 @@ class ReadView(context: Context) : FrameLayout(context) {
             layoutEngine.invalidateChapter(chapterIndex)
             slotManager.jumpTo(chapterIndex, 0)
         }
+    }
+
+    /** Opens the exact page containing a search match and flashes only that match twice. */
+    fun jumpToSearchResult(chapterIndex: Int, startOffset: Int, matchLength: Int) {
+        searchHighlightAnimator?.cancel()
+        searchHighlight = SearchHighlight(
+            chapterIndex = chapterIndex,
+            start = startOffset.coerceAtLeast(0),
+            end = (startOffset + matchLength).coerceAtLeast(startOffset + 1)
+        )
+        jumpToCharacter(chapterIndex, startOffset)
+    }
+
+    /** Returns the first visible character of the current page for a layout-independent bookmark. */
+    fun getCurrentPageStartCharacterOffset(): Int? {
+        val current = slotManager.getCurSlot()
+        return current.contentView.chapterStartOffset.takeIf { current.isLoaded && it >= 0 }
+    }
+
+    fun getCurrentPageBookmarkTitle(): String? {
+        return curPageView.textView.text
+            ?.toString()
+            ?.lineSequence()
+            ?.firstOrNull { it.isNotBlank() }
+            ?.trim()
+            ?.take(80)
     }
 
     /** 当前真实槽位位置，供书内链接保存返回点。 */
@@ -650,7 +705,7 @@ class ReadView(context: Context) : FrameLayout(context) {
     }
 
     fun turnToPreviousPage(): Boolean {
-        if (animationController.isRunning) return false
+        if (isJumpSettling || animationController.isRunning) return false
         val current = slotManager.getCurSlot()
         val isBookFirstPage = current.chapterIndex == 0 && current.pageIndex == 0
         if (isBookFirstPage || !slotManager.getPrevSlot().isLoaded) return false
@@ -660,7 +715,7 @@ class ReadView(context: Context) : FrameLayout(context) {
     }
 
     fun turnToNextPage(): Boolean {
-        if (animationController.isRunning || !slotManager.getNextSlot().isLoaded) return false
+        if (isJumpSettling || animationController.isRunning || !slotManager.getNextSlot().isLoaded) return false
         clearCurrentSelection()
         startTapAnimation(PageAnimationController.Direction.NEXT)
         return true
@@ -842,12 +897,39 @@ class ReadView(context: Context) : FrameLayout(context) {
     // ── 内部方法 ──
 
     private fun startTapAnimation(dir: PageAnimationController.Direction) {
-        if (animationController.isRunning) return
+        if (isJumpSettling || animationController.isRunning) return
         when (val ctrl = animationController) {
             is SlidePageAnim -> ctrl.startFromTap(dir)
             is ScrollPageAnim -> ctrl.startFromTap(dir)
             is FadePageAnim -> ctrl.startFromTap(dir)
             is CurlPageAnim -> ctrl.startFromTap(dir)
+        }
+    }
+
+    private fun beginJumpSettling(chapterIndex: Int) {
+        pendingJumpChapter = chapterIndex
+        isJumpSettling = true
+    }
+
+    private fun startSearchHighlightAnimationIfReady(chapterIndex: Int) {
+        val highlight = searchHighlight ?: return
+        if (highlight.chapterIndex != chapterIndex || searchHighlightAnimator?.isRunning == true) return
+
+        searchHighlightAnimator = ValueAnimator.ofInt(0, 180, 0, 180, 0).apply {
+            duration = 2_000L
+            addUpdateListener { animator ->
+                val alpha = animator.animatedValue as Int
+                listOf(prevPageView, curPageView, nextPageView).forEach {
+                    it.setSearchHighlightAlpha(alpha)
+                }
+            }
+            doOnEnd {
+                if (!it.isRunning) {
+                    searchHighlight = null
+                    slotManager.refreshCurrentHighlights()
+                }
+            }
+            start()
         }
     }
 
@@ -930,9 +1012,18 @@ class ReadView(context: Context) : FrameLayout(context) {
         if (selStart < 0 || selEnd <= selStart) return null
 
         val text = spannable.toString().substring(selStart, selEnd)
-        val curSlot = slotManager.getCurSlot()
-        val chapterIdx = curSlot.chapterIndex
+        val slot = slotManager.getSlotForView(pageView) ?: return null
+        val chapterIdx = slot.chapterIndex
         val chapterStartOffset = pageView.chapterStartOffset
+
+        Log.e(
+            "ReaderSelectionDebug",
+            "getSelectionInfo view=${System.identityHashCode(pageView)} " +
+                "slotChapter=${slot.chapterIndex} slotPage=${slot.pageIndex} " +
+                "chapterStart=$chapterStartOffset local=[$selStart,$selEnd) " +
+                "absolute=[${chapterStartOffset + selStart},${chapterStartOffset + selEnd}) " +
+                "text=${text.take(80)}"
+        )
 
         val startLine = layout.getLineForOffset(selStart)
         val endLine = layout.getLineForOffset(selEnd.coerceAtMost(spannable.length - 1))
@@ -971,7 +1062,7 @@ class ReadView(context: Context) : FrameLayout(context) {
                     val end = android.text.Selection.getSelectionEnd(s)
                     if (start >= 0 && end > start) {
                         android.os.Handler(android.os.Looper.getMainLooper()).post {
-                            callbacks?.onSelectionStarted()
+                            callbacks?.onSelectionStarted(pageView)
                         }
                     }
                 }

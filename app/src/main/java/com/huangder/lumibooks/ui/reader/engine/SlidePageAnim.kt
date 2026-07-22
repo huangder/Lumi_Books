@@ -85,7 +85,9 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
         when {
             direction == Direction.NEXT -> drawShadow(canvas, ox + vw, vw, vh)
             direction == Direction.PREV -> drawShadow(canvas, ox, vw, vh)
-            else -> if (shadowFadeAlpha > 0f) drawFadeOutShadow(canvas, vw, vh)
+            // The transient edge shadow is only valid while a page is moving. Rendering the
+            // generic post-animation fade here always places it on the left and flashes on PREV.
+            else -> Unit
         }
     }
 

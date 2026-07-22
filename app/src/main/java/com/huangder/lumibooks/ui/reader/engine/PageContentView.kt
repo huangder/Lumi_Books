@@ -23,6 +23,9 @@ internal fun pageStartsMidParagraph(text: CharSequence, start: Int): Boolean {
     return start > 0 && start <= text.length && text[start - 1] != '\n'
 }
 
+/** A non-persistent highlight whose opacity is animated after navigating to a search result. */
+internal class ReaderSearchHighlightSpan(var alpha: Int)
+
 /**
  * 单页内容 View，替代 PageSurfaceView（Bitmap 容器）。
  *
@@ -38,6 +41,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
 
     companion object {
         private const val TAG = "PageContentView"
+        private const val SEARCH_HIGHLIGHT_RGB = 0x00FFE082
     }
 
     private val backgroundImageView = ImageView(context).apply {
@@ -51,8 +55,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
      * 隐藏文字的 TextView：计算 layout + 处理文字选择。
      *
      * 文字颜色设为透明 → 不绘制文字（由 JustifiedTextView 负责渲染）。
-     * 但保留选区高亮（BackgroundColorSpan）和选择手柄的绘制。
-     * 这样选词时可以看到高亮背景 + 手柄，文字由 JustifiedTextView 叠加绘制。
+     * 原生选区和手柄仍由此 View 处理；持久化高亮由 JustifiedTextView 在实际字符位置绘制。
      */
     val textView: TextView = TextView(context).apply {
         setTextIsSelectable(true)
@@ -256,11 +259,19 @@ class PageContentView(context: Context) : FrameLayout(context) {
             val localStart = (hStart - actualStart).coerceIn(0, spannable.length)
             val localEnd = (hEnd - actualStart).coerceIn(0, spannable.length)
             if (localStart < localEnd) {
-                spannable.setSpan(
-                    BackgroundColorSpan(hColor),
-                    localStart, localEnd,
-                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
+                if ((hColor and 0x00FFFFFF) == SEARCH_HIGHLIGHT_RGB) {
+                    spannable.setSpan(
+                        ReaderSearchHighlightSpan(hColor ushr 24),
+                        localStart, localEnd,
+                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
+                } else {
+                    spannable.setSpan(
+                        BackgroundColorSpan(hColor),
+                        localStart, localEnd,
+                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
+                }
             }
         }
 
@@ -306,6 +317,9 @@ class PageContentView(context: Context) : FrameLayout(context) {
         for (span in textViewCopy.getSpans(0, textViewCopy.length, android.text.style.ForegroundColorSpan::class.java)) {
             textViewCopy.removeSpan(span)
         }
+        for (span in textViewCopy.getSpans(0, textViewCopy.length, BackgroundColorSpan::class.java)) {
+            textViewCopy.removeSpan(span)
+        }
 
         // 设置文本到两个 View
         textView.text = textViewCopy
@@ -317,6 +331,13 @@ class PageContentView(context: Context) : FrameLayout(context) {
         // 必须从 textView.text 取实际存储的 Spannable，否则 SpanWatcher 注册在死对象上
         val actualSpannable = textView.text as? Spannable ?: spannable
         onTextSet?.invoke(actualSpannable)
+    }
+
+    fun setSearchHighlightAlpha(alpha: Int) {
+        originalSpannable
+            ?.getSpans(0, originalSpannable?.length ?: 0, ReaderSearchHighlightSpan::class.java)
+            ?.forEach { it.alpha = alpha.coerceIn(0, 255) }
+        justifiedView.invalidate()
     }
 
     /**
@@ -503,8 +524,10 @@ class PageContentView(context: Context) : FrameLayout(context) {
     fun syncText(
         textViewText: CharSequence?,
         justifiedText: Spannable? = null,
-        justifyLastLine: Boolean = false
+        justifyLastLine: Boolean = false,
+        chapterStartOffset: Int = 0
     ) {
+        this.chapterStartOffset = chapterStartOffset
         this.justifyLastLine = justifyLastLine
         justifiedView.justifyLastLine = justifyLastLine
         // 🔥 先设置 justifiedView（只 invalidate，不触发父布局），再设置 textView（可能触发父布局）
@@ -516,5 +539,8 @@ class PageContentView(context: Context) : FrameLayout(context) {
         if (justifiedText != null) {
             this.originalSpannable = justifiedText
         }
+        // Slot rotation replaces TextView's internal Editable. Re-register the selection
+        // watcher on that new instance or selections stop producing menus after a page turn.
+        (textView.text as? Spannable)?.let { onTextSet?.invoke(it) }
     }
 }

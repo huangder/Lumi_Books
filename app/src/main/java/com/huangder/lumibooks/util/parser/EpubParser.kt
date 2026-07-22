@@ -61,7 +61,7 @@ class EpubParser(private val context: Context? = null) : BookParser {
         // 读取OPF文件
         val opfEntry = zipFile.getEntry(opfPath)
         val opfContent = zipFile.getInputStream(opfEntry).bufferedReader().readText()
-        basePath = opfPath.substringBeforeLast("/")
+        basePath = opfPath.substringBeforeLast("/", missingDelimiterValue = "")
 
         // 解析标题和作者
         bookTitle = extractMetadata(opfContent, "dc:title") ?: file.nameWithoutExtension
@@ -250,7 +250,7 @@ class EpubParser(private val context: Context? = null) : BookParser {
         val navMapContent = navMapRegex.find(ncxContent)?.groupValues?.get(1) ?: return emptyList()
 
         val result = mutableListOf<TocEntry>()
-        parseNavPointsDepth(navMapContent, 1, result)
+        parseNavPointsDepth(navMapContent, 1, result, ncxPath)
 
         // 用 NCX 标题更新 chapters 列表（NCX 更准确）
         for (tocEntry in result) {
@@ -271,7 +271,12 @@ class EpubParser(private val context: Context? = null) : BookParser {
      * 使用深度计数法解析 navPoint，正确处理嵌套。
      * 正则 .*? 非贪婪匹配会跳过嵌套子项，因此改用逐字符扫描。
      */
-    private fun parseNavPointsDepth(xml: String, level: Int, result: MutableList<TocEntry>) {
+    private fun parseNavPointsDepth(
+        xml: String,
+        level: Int,
+        result: MutableList<TocEntry>,
+        tocPath: String
+    ) {
         // 查找每个 <navPoint 开始标签，然后用深度计数找到对应的 </navPoint>
         val openTag = "<navPoint"
         val closeTag = "</navPoint>"
@@ -305,7 +310,7 @@ class EpubParser(private val context: Context? = null) : BookParser {
                         // 找到匹配的关闭标签
                         val navPointContent = xml.substring(tagEnd + 1, nextClose)
 
-                        processNavPoint(navPointContent, level, result)
+                        processNavPoint(navPointContent, level, result, tocPath)
 
                         searchFrom = nextClose + closeTag.length
                         break
@@ -321,7 +326,12 @@ class EpubParser(private val context: Context? = null) : BookParser {
     /**
      * 处理单个 navPoint：提取标题、src，判断是否有子项
      */
-    private fun processNavPoint(content: String, level: Int, result: MutableList<TocEntry>) {
+    private fun processNavPoint(
+        content: String,
+        level: Int,
+        result: MutableList<TocEntry>,
+        tocPath: String
+    ) {
         // 提取标题
         val textRegex = """<text[^>]*>([^<]+)</text>""".toRegex()
         val title = textRegex.find(content)?.groupValues?.get(1)?.trim() ?: return
@@ -331,7 +341,9 @@ class EpubParser(private val context: Context? = null) : BookParser {
         val src = srcRegex.find(content)?.groupValues?.get(1) ?: return
 
         val hrefWithoutFragment = src.substringBefore("#")
-        val spineIndex = mapHrefToSpineIndex(hrefWithoutFragment)
+        val anchor = src.substringAfter("#", "").takeIf { it.isNotEmpty() }
+            ?.let(::decodeUrlComponent)
+        val spineIndex = mapHrefToSpineIndex(hrefWithoutFragment, tocPath)
 
         // 检查是否有子 navPoint
         val hasChildren = content.contains("<navPoint")
@@ -342,7 +354,14 @@ class EpubParser(private val context: Context? = null) : BookParser {
                 result.add(TocEntry(title = title, level = level, chapterIndex = -1, isGroup = true))
             } else {
                 // 实际章节
-                result.add(TocEntry(title = title, level = level, chapterIndex = spineIndex))
+                result.add(
+                    TocEntry(
+                        title = title,
+                        level = level,
+                        chapterIndex = spineIndex,
+                        anchor = anchor
+                    )
+                )
             }
         } else if (hasChildren && level == 1) {
             result.add(TocEntry(title = title, level = level, chapterIndex = -1, isGroup = true))
@@ -350,38 +369,49 @@ class EpubParser(private val context: Context? = null) : BookParser {
 
         // 递归处理子 navPoint
         if (hasChildren) {
-            parseNavPointsDepth(content, level + 1, result)
+            parseNavPointsDepth(content, level + 1, result, tocPath)
         }
     }
 
     /**
      * 将 href 映射到 spine 索引
      */
-    private fun mapHrefToSpineIndex(href: String): Int {
-        // 精确匹配
-        for ((index, spineHref) in spineHrefs.withIndex()) {
-            if (spineHref == href) return index
-            // 去掉 basePath 前缀后匹配
-            val relative = if (basePath.isNotEmpty() && spineHref.startsWith("$basePath/")) {
-                spineHref.removePrefix("$basePath/")
+    private fun mapHrefToSpineIndex(href: String, tocPath: String? = null): Int {
+        val decodedHref = decodeUrlComponent(href).replace('\\', '/')
+        val normalizedHref = normalizePath(decodedHref).trimStart('/')
+        val candidatePaths = linkedSetOf(normalizedHref)
+
+        // NCX/nav 内的 href 相对其自身文件，而非 OPF。卷目录常有同名章节文件，
+        // 只有先解析为 EPUB 内完整路径，才能避免错误命中另一卷的同名文件。
+        if (tocPath != null) {
+            val tocDirectory = normalizePath(tocPath).substringBeforeLast('/', "")
+            val resolvedPath = if (decodedHref.startsWith('/')) {
+                normalizedHref
             } else {
-                spineHref
+                normalizePath(
+                    if (tocDirectory.isEmpty()) decodedHref else "$tocDirectory/$decodedHref"
+                ).trimStart('/')
             }
-            if (relative == href) return index
-            // 反向：href 可能包含子路径
-            if (href.endsWith(relative) || relative.endsWith(href)) return index
+            candidatePaths.add(resolvedPath)
+        } else if (basePath.isNotEmpty()) {
+            candidatePaths.add(normalizePath("$basePath/$decodedHref").trimStart('/'))
         }
 
-        // 文件名匹配（最后手段）
-        val hrefFileName = href.substringAfterLast("/")
-        if (hrefFileName.isNotEmpty()) {
-            for ((index, spineHref) in spineHrefs.withIndex()) {
-                val spineFileName = spineHref.substringAfterLast("/")
-                if (spineFileName == hrefFileName) return index
+        for (candidatePath in candidatePaths) {
+            val chapterIndex = chapterPaths.indexOfFirst { chapterPath ->
+                normalizePath(decodeUrlComponent(chapterPath).replace('\\', '/'))
+                    .trimStart('/') == candidatePath
             }
+            if (chapterIndex >= 0) return chapterIndex
         }
 
-        return -1
+        // 对缺少目录层级的非标准 EPUB 保留文件名兜底，但仅在文件名唯一时使用，
+        // 绝不把“第二卷/chapter.xhtml”猜成“第一卷/chapter.xhtml”。
+        val hrefFileName = normalizedHref.substringAfterLast('/')
+        val matches = spineHrefs.indices.filter { index ->
+            decodeUrlComponent(spineHrefs[index]).substringAfterLast('/') == hrefFileName
+        }
+        return matches.singleOrNull() ?: -1
     }
 
     /**
@@ -412,14 +442,19 @@ class EpubParser(private val context: Context? = null) : BookParser {
         val navContent = navRegex.find(navHtml)?.groupValues?.get(1) ?: return emptyList()
 
         val result = mutableListOf<TocEntry>()
-        parseNavOl(navContent, 1, result)
+        parseNavOl(navContent, 1, result, navPath)
         return result
     }
 
     /**
      * 递归解析 nav 中的 <ol><li> 结构
      */
-    private fun parseNavOl(html: String, level: Int, result: MutableList<TocEntry>) {
+    private fun parseNavOl(
+        html: String,
+        level: Int,
+        result: MutableList<TocEntry>,
+        tocPath: String
+    ) {
         // 使用深度计数法解析 <li>，正确处理嵌套
         val openTag = "<li"
         val closeTag = "</li>"
@@ -449,7 +484,7 @@ class EpubParser(private val context: Context? = null) : BookParser {
                     depth--
                     if (depth == 0) {
                         val liContent = html.substring(tagEnd + 1, nextClose)
-                        processNavLi(liContent, level, result)
+                        processNavLi(liContent, level, result, tocPath)
                         searchFrom = nextClose + closeTag.length
                         found = true
                         break
@@ -463,20 +498,35 @@ class EpubParser(private val context: Context? = null) : BookParser {
     }
 
     /** 处理单个 <li>：提取 <a> 标题和 href，递归处理子 <ol> */
-    private fun processNavLi(content: String, level: Int, result: MutableList<TocEntry>) {
+    private fun processNavLi(
+        content: String,
+        level: Int,
+        result: MutableList<TocEntry>,
+        tocPath: String
+    ) {
         val aRegex = """<a[^>]*href="([^"]+)"[^>]*>([^<]+)</a>""".toRegex(RegexOption.IGNORE_CASE)
         val aMatch = aRegex.find(content) ?: return
 
-        val href = aMatch.groupValues[1].substringBefore("#")
+        val rawHref = aMatch.groupValues[1]
+        val href = rawHref.substringBefore("#")
+        val anchor = rawHref.substringAfter("#", "").takeIf { it.isNotEmpty() }
+            ?.let(::decodeUrlComponent)
         val title = aMatch.groupValues[2].trim()
-        val spineIndex = mapHrefToSpineIndex(href)
+        val spineIndex = mapHrefToSpineIndex(href, tocPath)
         val hasChildren = content.contains("<ol")
 
         if (spineIndex >= 0) {
             if (hasChildren && level == 1) {
                 result.add(TocEntry(title = title, level = level, chapterIndex = -1, isGroup = true))
             } else {
-                result.add(TocEntry(title = title, level = level, chapterIndex = spineIndex))
+                result.add(
+                    TocEntry(
+                        title = title,
+                        level = level,
+                        chapterIndex = spineIndex,
+                        anchor = anchor
+                    )
+                )
             }
         } else if (hasChildren && level == 1) {
             result.add(TocEntry(title = title, level = level, chapterIndex = -1, isGroup = true))
@@ -484,7 +534,7 @@ class EpubParser(private val context: Context? = null) : BookParser {
 
         // 递归处理子 <ol> 中的 <li>
         if (hasChildren) {
-            parseNavOl(content, level + 1, result)
+            parseNavOl(content, level + 1, result, tocPath)
         }
     }
 
@@ -1306,7 +1356,7 @@ class EpubParser(private val context: Context? = null) : BookParser {
 
             val opfEntry = zipFile.getEntry(opfPath) ?: return null
             val opfContent = zipFile.getInputStream(opfEntry).bufferedReader().readText()
-            basePath = opfPath.substringBeforeLast("/")
+            basePath = opfPath.substringBeforeLast("/", missingDelimiterValue = "")
 
             return extractCover(zipFile, opfContent)
         } catch (e: Exception) {

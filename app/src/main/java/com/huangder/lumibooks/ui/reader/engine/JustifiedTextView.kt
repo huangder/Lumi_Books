@@ -13,6 +13,7 @@ import android.text.Spanned
 import android.text.StaticLayout
 import android.text.TextPaint
 import android.text.style.AbsoluteSizeSpan
+import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.RelativeSizeSpan
 import android.text.style.StyleSpan
@@ -49,6 +50,18 @@ internal fun shouldJustifyReaderLine(
 
 internal fun readerExplicitLetterSpacing(letterSpacingEm: Float, textSizePx: Float): Float =
     letterSpacingEm * textSizePx
+
+internal fun readerHighlightCharacterEnd(
+    x: Float,
+    characterWidth: Float,
+    hasFollowingCharacter: Boolean,
+    letterSpacingPx: Float,
+    justificationSpacingPx: Float
+): Float = x + characterWidth + if (hasFollowingCharacter) {
+    letterSpacingPx + justificationSpacingPx
+} else {
+    0f
+}
 
 /**
  * 中文两端对齐 TextView。
@@ -187,8 +200,6 @@ class JustifiedTextView @JvmOverloads constructor(
             val lineTop = sl.getLineTop(i).toFloat()
             val baseline = sl.getLineBaseline(i).toFloat()
 
-            // 高亮背景由底层的 TextView 绘制（文字颜色透明但 BackgroundColorSpan 仍可见）
-
             // 计算 LeadingMarginSpan 缩进
             var indentPx = 0f
             run {
@@ -283,16 +294,31 @@ class JustifiedTextView @JvmOverloads constructor(
                 applySpanStyles(s, idx, textPaint)
 
                 val charStr = textStr[idx].toString()
-                canvas.drawText(charStr, x, baseline, textPaint)
-
                 val charWidth = textPaint.measureText(charStr)
                 val hasFollowingCharacter = visibleCharacterIndex < effectiveCharCount - 1
-                x += charWidth
-                if (hasFollowingCharacter) {
-                    // 单字符 drawText 不会绘制 TextPaint.letterSpacing，必须显式补回。
-                    x += readerExplicitLetterSpacing(textPaint.letterSpacing, textPaint.textSize)
-                    x += extraPerChar
+                val characterEnd = readerHighlightCharacterEnd(
+                    x = x,
+                    characterWidth = charWidth,
+                    hasFollowingCharacter = hasFollowingCharacter,
+                    letterSpacingPx = readerExplicitLetterSpacing(textPaint.letterSpacing, textPaint.textSize),
+                    justificationSpacingPx = extraPerChar
+                )
+                val backgroundColor = s.getSpans(idx, idx + 1, ReaderSearchHighlightSpan::class.java)
+                    .lastOrNull()
+                    ?.let { span -> (span.alpha shl 24) or 0x00FFE082 }
+                    ?: s.getSpans(idx, idx + 1, BackgroundColorSpan::class.java)
+                        .lastOrNull()
+                        ?.backgroundColor
+                if (backgroundColor != null && backgroundColor ushr 24 != 0) {
+                    val textColor = textPaint.color
+                    textPaint.color = backgroundColor
+                    canvas.drawRect(x, lineTop, characterEnd, sl.getLineBottom(i).toFloat(), textPaint)
+                    textPaint.color = textColor
                 }
+
+                canvas.drawText(charStr, x, baseline, textPaint)
+
+                x = characterEnd
                 visibleCharacterIndex++
 
                 resetPaintStyle()

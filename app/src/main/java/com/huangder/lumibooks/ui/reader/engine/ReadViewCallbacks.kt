@@ -44,5 +44,5 @@ interface ReadViewCallbacks {
     ) {}
 
     /** 文字选区建立时回调（SpanWatcher 检测到有效选区） */
-    fun onSelectionStarted() {}
+    fun onSelectionStarted(sourceView: PageContentView? = null) {}
 }

@@ -361,7 +361,8 @@ class PageSlotManager(
         toSlot.contentView.syncText(
             textViewText = fromSlot.contentView.textView.text,
             justifiedText = fromSlot.contentView.getJustifiedText(),
-            justifyLastLine = fromSlot.contentView.shouldJustifyLastLine()
+            justifyLastLine = fromSlot.contentView.shouldJustifyLastLine(),
+            chapterStartOffset = fromSlot.contentView.chapterStartOffset
         )
         // 🔥 诊断：syncText 只 invalidate 了子 View（textView/justifiedView），
         // 但父容器 PageContentView 的硬件 Display List 可能未失效。
@@ -406,6 +407,7 @@ class PageSlotManager(
     fun getCurSlot(): SlotState = slots[SLOT_CUR]
     fun getPrevSlot(): SlotState = slots[SLOT_PREV]
     fun getNextSlot(): SlotState = slots[SLOT_NEXT]
+    fun getSlotForView(view: PageContentView): SlotState? = slots.firstOrNull { it.contentView === view }
 
     fun destroy() {
         for (i in 0..2) recycleSlot(i)
