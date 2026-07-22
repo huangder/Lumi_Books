@@ -18,6 +18,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
@@ -26,8 +27,11 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -60,6 +64,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Menu
@@ -131,10 +136,12 @@ import com.huangder.lumibooks.ui.animation.cardPressEffect
 import com.huangder.lumibooks.ui.components.ConfigurableBackHandler
 import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
+import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.components.animateBottomSheetIn
 import com.huangder.lumibooks.ui.components.animateBottomSheetOut
-import com.huangder.lumibooks.ui.components.liquidGlassSheetSurface
+import com.huangder.lumibooks.ui.components.LiquidGlassColumnSheetContainer
+import com.huangder.lumibooks.ui.components.LiquidGlassSheetContainer
 import com.huangder.lumibooks.ui.components.materialBottomSheetMotion
 import com.huangder.lumibooks.ui.components.ReaderSystemBarStyle
 import com.huangder.lumibooks.ui.reader.engine.ReadView
@@ -751,6 +758,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     readView.setChineseMode(uiState.chineseMode)
                     // 翻页效果
                     readView.setPageTransition(uiState.pageTransition)
+                    // 左右边缘点击翻页方向（不影响滑动手势）
+                    readView.setEdgeTapMode(uiState.readerEdgeTapMode)
                 },
                 modifier = Modifier.fillMaxSize()
             )
@@ -1101,8 +1110,10 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 readerBottomLeftContent = uiState.readerBottomLeftContent,
                 readerBottomRightContent = uiState.readerBottomRightContent,
                 volumeKeyPageTurnEnabled = uiState.volumeKeyPageTurnEnabled,
+                readerEdgeTapMode = uiState.readerEdgeTapMode,
                 onReaderCornerContentChange = viewModel::saveReaderCornerContent,
                 onVolumeKeyPageTurnEnabledChange = { viewModel.saveVolumeKeyPageTurnEnabled(it) },
+                onReaderEdgeTapModeChange = viewModel::saveReaderEdgeTapMode,
                 onTextColorChange = { viewModel.saveReaderTextColor(it) },
                 onResetSettings = { viewModel.resetAdvancedReaderSettings() },
                 onDismiss = { showAdvancedSheet = false; requestCloseAdvanced = false }
@@ -2105,17 +2116,17 @@ private fun TocSheet(
         )
 
         // 底部弹出（70% 屏幕高度）
-        Column(
-            Modifier.align(Alignment.BottomCenter)
+        LiquidGlassColumnSheetContainer(
+            modifier = Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .fillMaxHeight(0.7f)
-                .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress)
-                .liquidGlassSheetSurface(
-                    fallbackColor = AppColors.CardBg,
-                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
-                )
+                .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress),
+            contentModifier = Modifier
+                .fillMaxSize()
                 .navigationBarsPadding()
-                .padding(24.dp)
+                .padding(24.dp),
+            fallbackColor = AppColors.CardBg,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
         ) {
             // 标题栏
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -2128,16 +2139,15 @@ private fun TocSheet(
                 )
                 Spacer(Modifier.weight(1f))
                 // 关闭按钮
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(LightBgGray)
-                        .clickable { isClosing = true },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.Close, stringResource(R.string.reader_close), tint = LightTextSecondary, modifier = Modifier.size(18.dp))
-                }
+                LiquidGlassIconButton(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = stringResource(R.string.reader_close),
+                    onClick = { isClosing = true },
+                    size = 44.dp,
+                    iconSize = 20.dp,
+                    contentColor = AppColors.TextPrimary,
+                    normalContainerColor = LightBgGray
+                )
             }
 
             Spacer(Modifier.height(16.dp))
@@ -2258,17 +2268,16 @@ private fun SearchSheet(
         )
 
         // 底部弹出容器（自适应高度）
-        Box(
-            Modifier.align(Alignment.BottomCenter)
+        LiquidGlassSheetContainer(
+            modifier = Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress)
-                .liquidGlassSheetSurface(
-                    fallbackColor = AppColors.CardBg,
-                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
-                )
+                .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress),
+            contentModifier = Modifier
                 .imePadding()
                 .navigationBarsPadding()
-                .padding(24.dp)
+                .padding(24.dp),
+            fallbackColor = AppColors.CardBg,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
         ) {
             Column {
                 // 标题栏
@@ -2282,16 +2291,15 @@ private fun SearchSheet(
                     )
                     Spacer(Modifier.weight(1f))
                     // 关闭按钮
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(LightBgGray)
-                            .clickable { isClosing = true },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Default.Close, stringResource(R.string.reader_close), tint = LightTextSecondary, modifier = Modifier.size(18.dp))
-                    }
+                    LiquidGlassIconButton(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = stringResource(R.string.reader_close),
+                        onClick = { isClosing = true },
+                        size = 44.dp,
+                        iconSize = 20.dp,
+                        contentColor = AppColors.TextPrimary,
+                        normalContainerColor = LightBgGray
+                    )
                 }
 
                 Spacer(Modifier.height(16.dp))
@@ -2490,9 +2498,21 @@ private fun SelectionMenuOverlay(
     }
     val dividerColor = menuText.copy(alpha = 0.15f)
 
-    // ── 宽度动画：操作菜单 360dp ↔ 颜色选择器 460dp ──
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val actionMenuWidth = if (isLiquidGlass) {
+        when {
+            state.hasHighlight && !state.hasNote -> 352.dp
+            state.hasNote -> 360.dp
+            else -> 280.dp
+        }
+    } else {
+        360.dp
+    }
+    val colorPickerWidth = if (isLiquidGlass) 260.dp else 380.dp
+
+    // 液态主题按实际内容收紧，其他主题保留原尺寸。
     val animMenuWidthDp by animateDpAsState(
-        targetValue = if (showColorPicker) 380.dp else 360.dp,
+        targetValue = if (showColorPicker) colorPickerWidth else actionMenuWidth,
         animationSpec = spring(dampingRatio = 0.76f, stiffness = 380f),
         label = "menuWidth"
     )
@@ -2526,20 +2546,22 @@ private fun SelectionMenuOverlay(
         launch { enterTranslateY.animateTo(0f, tween(220, easing = FastOutSlowInEasing)) }
     }
 
-    // ── 内容切换交叉淡出淡入 ──
-    val contentAlpha = remember { Animatable(1f) }
-    LaunchedEffect(showColorPicker) {
-        // 淡出 → 切换 → 淡入
-        contentAlpha.animateTo(0f, tween(100))
-        contentAlpha.animateTo(1f, tween(150))
-    }
-
     Box(Modifier.fillMaxSize()) {
-        LiquidGlassSurface(
-            shape = RoundedCornerShape(22.dp),
-            fallbackColor = menuBg,
-            backdrop = glassBackdrop,
-            contentScrimColor = menuBg.copy(alpha = 0.18f),
+        AnimatedContent(
+            targetState = showColorPicker,
+            transitionSpec = {
+                (fadeIn(tween(durationMillis = 170, delayMillis = 20)) +
+                    scaleIn(
+                        initialScale = 0.92f,
+                        animationSpec = spring(dampingRatio = 0.72f, stiffness = 430f)
+                    )).togetherWith(
+                    fadeOut(tween(durationMillis = 140)) +
+                        scaleOut(
+                            targetScale = 0.92f,
+                            animationSpec = tween(durationMillis = 160, easing = FastOutSlowInEasing)
+                        )
+                )
+            },
             modifier = Modifier
                 .offset { IntOffset(menuX.toInt(), menuY.toInt()) }
                 .width(animMenuWidthDp)
@@ -2548,20 +2570,29 @@ private fun SelectionMenuOverlay(
                     scaleX = enterScale.value
                     scaleY = enterScale.value
                     translationY = enterTranslateY.value
-                    alpha = enterAlpha.value * contentAlpha.value
+                    alpha = enterAlpha.value
                     transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
                 },
-            contentAlignment = Alignment.Center
-        ) {
-            Row(
-                modifier = Modifier.padding(
-                    horizontal = if (showColorPicker) 12.dp else 4.dp,
-                    vertical = 8.dp
-                ),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = if (showColorPicker) Arrangement.Center else Arrangement.Start
+            contentAlignment = Alignment.Center,
+            label = "selectionMenuMode"
+        ) { colorPickerVisible ->
+            LiquidGlassSurface(
+                shape = RoundedCornerShape(22.dp),
+                fallbackColor = menuBg,
+                backdrop = glassBackdrop,
+                contentScrimColor = menuBg.copy(alpha = 0.18f),
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
             ) {
-            if (showColorPicker) {
+                Row(
+                    modifier = Modifier.padding(
+                        horizontal = if (colorPickerVisible) 12.dp else 4.dp,
+                        vertical = 8.dp
+                    ),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = if (colorPickerVisible) Arrangement.Center else Arrangement.Start
+                ) {
+            if (colorPickerVisible) {
                 // 颜色选择子菜单：6个色块圆点，手动 Spacer 控制间距
                 highlightColors.forEachIndexed { index, (hex, color) ->
                     if (index > 0) Spacer(Modifier.width(14.dp))
@@ -2646,6 +2677,8 @@ private fun SelectionMenuOverlay(
 
 }
 
+}
+
 @Composable
 private fun MenuDivider(color: Color) {
     Box(
@@ -2658,6 +2691,7 @@ private fun MenuDivider(color: Color) {
 
 @Composable
 private fun MenuChip(label: String, textColor: Color, onClick: () -> Unit) {
+    val horizontalPadding = if (LocalAppTheme.current == "liquid_glass") 10.dp else 16.dp
     Text(
         text = label,
         fontSize = 13.sp,
@@ -2665,7 +2699,7 @@ private fun MenuChip(label: String, textColor: Color, onClick: () -> Unit) {
         modifier = Modifier
             .clip(RoundedCornerShape(16.dp))
             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() }
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .padding(horizontal = horizontalPadding, vertical = 8.dp)
     )
 }
 
@@ -2716,36 +2750,47 @@ private fun NoteInputSheet(
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { isClosing = true }
         )
 
-        Box(
-            Modifier.align(Alignment.BottomCenter)
+        LiquidGlassSheetContainer(
+            modifier = Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .fillMaxHeight(0.6f)
                 .materialBottomSheetMotion(
                     entryOffset = sheetOffset.value,
                     predictiveBackProgress = predictiveBackProgress
-                )
-                .liquidGlassSheetSurface(
-                    fallbackColor = AppColors.CardBg,
-                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                    backdrop = glassBackdrop
-                )
+                ),
+            contentModifier = Modifier
                 .padding(bottom = 16.dp)
-                .padding(AppSpace.lg)
+                .padding(AppSpace.lg),
+            fallbackColor = AppColors.CardBg,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            backdrop = glassBackdrop
         ) {
-            Column {
+            Column(Modifier.padding(top = 2.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.BgGray).clickable { isClosing = true },
-                        contentAlignment = Alignment.Center
-                    ) { Icon(Icons.Default.Close, stringResource(R.string.cancel), tint = AppColors.TextSecondary, modifier = Modifier.size(18.dp)) }
+                    LiquidGlassIconButton(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = stringResource(R.string.cancel),
+                        onClick = { isClosing = true },
+                        size = 44.dp,
+                        iconSize = 20.dp,
+                        contentColor = AppColors.TextPrimary,
+                        normalContainerColor = AppColors.BgGray
+                    )
                     Text(stringResource(R.string.reader_notes), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = KaiTi, color = AppColors.TextPrimary, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
-                    Box(
-                        modifier = Modifier.size(36.dp).clip(CircleShape).background(AppColors.Accent.copy(alpha = 0.15f)).clickable {
+                    LiquidGlassIconButton(
+                        imageVector = Icons.Outlined.Check,
+                        contentDescription = "确认",
+                        onClick = {
                             onConfirm()
                             isClosing = true
                         },
-                        contentAlignment = Alignment.Center
-                    ) { Text("✓", fontSize = 16.sp, color = AppColors.Accent) }
+                        size = 44.dp,
+                        iconSize = 20.dp,
+                        contentColor = AppColors.OnAccent,
+                        normalContainerColor = AppColors.Accent.copy(alpha = 0.15f),
+                        liquidContainerColor = AppColors.Accent,
+                        liquidScrimColor = AppColors.Accent.copy(alpha = 0.72f)
+                    )
                 }
 
                 Spacer(Modifier.height(AppSpace.md))
@@ -2845,18 +2890,18 @@ private fun NotesListSheet(
         )
 
         // 容器层（60% 屏幕高度）
-        Column(
-            Modifier.align(Alignment.BottomCenter)
+        LiquidGlassColumnSheetContainer(
+            modifier = Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .fillMaxHeight(0.6f)
-                .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress)
-                .liquidGlassSheetSurface(
-                    fallbackColor = LightCardBg,
-                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                    backdrop = glassBackdrop
-                )
+                .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress),
+            contentModifier = Modifier
+                .fillMaxSize()
                 .navigationBarsPadding()
-                .padding(24.dp)
+                .padding(24.dp),
+            fallbackColor = LightCardBg,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            backdrop = glassBackdrop
         ) {
             // 标题栏
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -2869,16 +2914,15 @@ private fun NotesListSheet(
                 )
                 Spacer(Modifier.weight(1f))
                 // 关闭按钮
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(LightBgGray)
-                        .clickable { isClosing = true },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.Close, stringResource(R.string.reader_close), tint = LightTextSecondary, modifier = Modifier.size(18.dp))
-                }
+                LiquidGlassIconButton(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = stringResource(R.string.reader_close),
+                    onClick = { isClosing = true },
+                    size = 44.dp,
+                    iconSize = 20.dp,
+                    contentColor = AppColors.TextPrimary,
+                    normalContainerColor = LightBgGray
+                )
             }
 
             Spacer(Modifier.height(16.dp))

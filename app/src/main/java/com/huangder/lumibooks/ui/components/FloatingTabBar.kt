@@ -185,7 +185,7 @@ fun FloatingTabBar(
                 )
             )
             blurRadius = if (isLiquidGlass) {
-                4.dp + 6.dp * (1f - transparency)
+                10.dp * (1f - transparency)
             } else {
                 36.dp
             }
@@ -210,7 +210,9 @@ fun FloatingTabBar(
             shape = { glassShape },
             effects = {
                 vibrancy()
-                blur((2.dp + 4.dp * (1f - transparency)).toPx())
+                if (transparency < 1f) {
+                    blur((6.dp * (1f - transparency)).toPx())
+                }
                 lens(16.dp.toPx(), 28.dp.toPx())
             },
             highlight = {
@@ -352,7 +354,9 @@ fun FloatingTabBar(
                             effects = {
                                 val progress = dragState.pressProgress
                                 vibrancy()
-                                blur(8.dp.toPx())
+                                if (transparency < 1f) {
+                                    blur((8.dp * (1f - transparency)).toPx())
+                                }
                                 lens(
                                     24.dp.toPx() * progress,
                                     24.dp.toPx() * progress

@@ -102,7 +102,7 @@ object UpdateChecker {
         acceptedPrivacy: Int
     ): CheckResult {
         val hasAppUpdate = config.latestVersion.isNotEmpty() &&
-                config.latestVersion != currentVersion
+                isRemoteVersionNewer(config.latestVersion, currentVersion)
 
         val hasTermsUpdate = config.termsVersion > acceptedTerms
         val hasPrivacyUpdate = config.privacyVersion > acceptedPrivacy
@@ -117,4 +117,29 @@ object UpdateChecker {
             privacyVersion = config.privacyVersion
         )
     }
+
+    /**
+     * Compare dotted numeric version names instead of checking whether their text differs.
+     * A server configuration can temporarily lag behind a locally installed build, which
+     * must never be reported as an available update.
+     */
+    private fun isRemoteVersionNewer(remoteVersion: String, currentVersion: String): Boolean {
+        val remoteParts = parseVersionParts(remoteVersion)
+        val currentParts = parseVersionParts(currentVersion)
+        val partCount = maxOf(remoteParts.size, currentParts.size)
+
+        for (index in 0 until partCount) {
+            val remotePart = remoteParts.getOrElse(index) { 0 }
+            val currentPart = currentParts.getOrElse(index) { 0 }
+            if (remotePart != currentPart) return remotePart > currentPart
+        }
+        return false
+    }
+
+    private fun parseVersionParts(version: String): List<Int> =
+        version.trim()
+            .removePrefix("v")
+            .removePrefix("V")
+            .split('.')
+            .map { it.toIntOrNull() ?: 0 }
 }

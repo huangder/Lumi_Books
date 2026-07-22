@@ -36,6 +36,7 @@ import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
+import com.huangder.lumibooks.ui.theme.LocalAppTheme
 
 /**
  * 贝塞尔 G2 连续曲线圆角——曲率在连接处平滑过渡，比普通圆角更圆润有机
@@ -87,6 +88,7 @@ fun EditInputDialog(
     onBack: () -> Unit,
     onConfirm: (List<String>) -> Unit
 ) {
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     // 每个字段的编辑状态
     val values = fields.mapIndexed { index, (_, _, initial) ->
         remember { mutableStateOf(initial) }
@@ -101,7 +103,7 @@ fun EditInputDialog(
         modifier = Modifier
             .fillMaxWidth()
             .clip(g2Shape)
-            .background(AppColors.CardBg)
+            .background(if (isLiquidGlass) androidx.compose.ui.graphics.Color.Transparent else AppColors.CardBg)
             .padding(horizontal = AppSpace.lg, vertical = 22.dp)
     ) {
         // ── 顶栏：返回 ← | 标题 | 确认 ✓ ──
@@ -109,19 +111,13 @@ fun EditInputDialog(
             modifier = Modifier.fillMaxWidth()
         ) {
             // 返回箭头（左）
-            Icon(
-                Icons.AutoMirrored.Outlined.ArrowBack,
+            LiquidGlassIconButton(
+                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
                 contentDescription = "返回",
-                tint = AppColors.TextPrimary,
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .clip(RoundedCornerShape(AppRadius.full))
-                    .clickable(
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() },
-                        onClick = onBack
-                    )
-                    .padding(8.dp)
+                onClick = onBack,
+                modifier = Modifier.align(Alignment.CenterStart),
+                size = 40.dp,
+                iconSize = 22.dp
             )
 
             // 标题（中）
@@ -135,25 +131,16 @@ fun EditInputDialog(
             )
 
             // 确认按钮（右）—— 黑色圆形 + 白色对勾
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .clip(RoundedCornerShape(AppRadius.full))
-                    .background(AppColors.TextPrimary)
-                    .clickable(
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() },
-                        onClick = { onConfirm(values.map { it.value }) }
-                    )
-                    .padding(8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Outlined.Check,
-                    contentDescription = "确认",
-                    tint = AppColors.CardBg
-                )
-            }
+            LiquidGlassIconButton(
+                imageVector = Icons.Outlined.Check,
+                contentDescription = "确认",
+                onClick = { onConfirm(values.map { it.value }) },
+                modifier = Modifier.align(Alignment.CenterEnd),
+                size = 40.dp,
+                iconSize = 22.dp,
+                contentColor = if (isLiquidGlass) AppColors.TextPrimary else AppColors.CardBg,
+                normalContainerColor = AppColors.TextPrimary
+            )
         }
 
         Spacer(Modifier.height(18.dp))

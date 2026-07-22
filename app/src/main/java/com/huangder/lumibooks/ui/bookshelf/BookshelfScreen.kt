@@ -105,24 +105,41 @@ fun BookshelfScreen(
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    var selectedFilter by remember { mutableStateOf(0) }
+    var selectedFilter by remember { mutableStateOf<BookshelfFilter>(BookshelfFilter.All) }
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val contextMenuState = rememberBookContextMenuState()
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val bookshelfBackdrop = rememberLayerBackdrop()
 
-    val filterTabs = listOf(
-        stringResource(R.string.filter_all),
-        stringResource(R.string.filter_downloaded),
-        stringResource(R.string.format_pdf),
-        stringResource(R.string.filter_favorites)
-    )
+    val filterTabs = buildList {
+        add(BookshelfFilterTab(BookshelfFilter.All, stringResource(R.string.filter_all)))
+        add(BookshelfFilterTab(BookshelfFilter.Downloaded, stringResource(R.string.filter_downloaded)))
+        add(BookshelfFilterTab(BookshelfFilter.Pdf, stringResource(R.string.format_pdf)))
+        add(BookshelfFilterTab(BookshelfFilter.Favorites, stringResource(R.string.filter_favorites)))
+        uiState.tags.forEach { tag ->
+            add(BookshelfFilterTab(BookshelfFilter.Tag(tag.id), tag.name))
+        }
+    }
 
     LaunchedEffect(uiState.importMessage) {
         uiState.importMessage?.let {
             android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show()
             viewModel.clearImportMessage()
+        }
+    }
+
+    LaunchedEffect(uiState.tagMessage) {
+        uiState.tagMessage?.let {
+            android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show()
+            viewModel.clearTagMessage()
+        }
+    }
+
+    LaunchedEffect(uiState.tags) {
+        val activeTagFilter = selectedFilter as? BookshelfFilter.Tag
+        if (activeTagFilter != null && uiState.tags.none { it.id == activeTagFilter.tagId }) {
+            selectedFilter = BookshelfFilter.All
         }
     }
 
@@ -136,6 +153,8 @@ fun BookshelfScreen(
 
     // 删除动画：记录正在删除的书本 ID
     var deletingBookId by remember { mutableStateOf<String?>(null) }
+    var tagTargetBook by remember { mutableStateOf<Book?>(null) }
+    var showTagSheet by remember { mutableStateOf(false) }
 
     // 图片选择器（自定义封面）
     val coverPickerLauncher = rememberLauncherForActivityResult(
@@ -157,11 +176,19 @@ fun BookshelfScreen(
         uri?.let { viewModel.importBook(context, it) }
     }
 
-    val filteredBooks = when (selectedFilter) {
-        1 -> uiState.books // 下载内容
-        2 -> uiState.books.filter { it.format == BookFormat.PDF }
-        3 -> uiState.books.filter { it.isFavorite }
-        else -> uiState.books
+    val tagIdsByBook = remember(uiState.bookTagLinks) {
+        uiState.bookTagLinks
+            .groupBy { it.bookId }
+            .mapValues { (_, links) -> links.map { it.tagId }.toSet() }
+    }
+    val filteredBooks = when (val filter = selectedFilter) {
+        BookshelfFilter.All -> uiState.books
+        BookshelfFilter.Downloaded -> uiState.books // 下载内容
+        BookshelfFilter.Pdf -> uiState.books.filter { it.format == BookFormat.PDF }
+        BookshelfFilter.Favorites -> uiState.books.filter { it.isFavorite }
+        is BookshelfFilter.Tag -> uiState.books.filter { book ->
+            filter.tagId in tagIdsByBook[book.id].orEmpty()
+        }
     }
 
     val overlayProgress = contextMenuState.scrimAlpha.value
@@ -231,14 +258,14 @@ fun BookshelfScreen(
                                 .padding(horizontal = AppSpace.lg, vertical = AppSpace.sm),
                             horizontalArrangement = Arrangement.spacedBy(AppSpace.lg)
                         ) {
-                            filterTabs.forEachIndexed { index, label ->
-                                val isSelected = index == selectedFilter
+                            filterTabs.forEach { tab ->
+                                val isSelected = tab.filter == selectedFilter
                                 Text(
-                                    text = label,
+                                    text = tab.label,
                                     fontSize = AppType.Body,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                     color = if (isSelected) AppColors.TextPrimary else AppColors.TextSecondary,
-                                    modifier = Modifier.clickable { selectedFilter = index }
+                                    modifier = Modifier.clickable { selectedFilter = tab.filter }
                                 )
                             }
                         }
@@ -301,6 +328,10 @@ fun BookshelfScreen(
                 intent.putExtra("bookId", book.id)
                 context.startActivity(intent)
             },
+            onTags = { book ->
+                tagTargetBook = book
+                showTagSheet = true
+            },
             onEditInfo = { book ->
                 editingBook = book
                 showEditDialog = true
@@ -309,33 +340,14 @@ fun BookshelfScreen(
 
         // ── 编辑书本信息对话框（卡片风格） ──
         if (showEditDialog && editingBook != null) {
-            androidx.compose.material3.BasicAlertDialog(
+            com.huangder.lumibooks.ui.components.LiquidGlassDialog(
                 onDismissRequest = { showEditDialog = false },
+                modifier = Modifier.imePadding(),
+                backgroundScrimColor = Color.Transparent,
+                backgroundBlurRadius = 18.dp,
                 properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .imePadding()
-                        .background(Color.Black.copy(alpha = 0.4f))
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() },
-                            onClick = { showEditDialog = false }
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(AppSpace.lg)
-                            .clickable(
-                                indication = null,
-                                interactionSource = remember { MutableInteractionSource() },
-                                onClick = {} // 拦截点击，防止穿透关闭
-                            )
-                    ) {
-                        com.huangder.lumibooks.ui.components.EditInputDialog(
+                com.huangder.lumibooks.ui.components.EditInputDialog(
                             title = stringResource(R.string.edit_book_info),
                             fields = listOf(
                                 Triple(stringResource(R.string.book_title_label), "显示原始书名", editingBook!!.title),
@@ -347,14 +359,46 @@ fun BookshelfScreen(
                                 showEditDialog = false
                             }
                         )
-                    }
-                }
             }
+        }
+
+        if (showTagSheet && tagTargetBook != null) {
+            val targetBook = tagTargetBook!!
+            BookTagBottomSheet(
+                tags = uiState.tags,
+                selectedTagIds = tagIdsByBook[targetBook.id].orEmpty(),
+                onDismiss = {
+                    showTagSheet = false
+                    tagTargetBook = null
+                },
+                onTagCheckedChange = { tag, isChecked ->
+                    viewModel.setBookTag(targetBook.id, tag.id, isChecked)
+                },
+                onCreateTag = { name ->
+                    viewModel.createAndAssignTag(targetBook.id, name)
+                },
+                onDeleteTag = { tag ->
+                    viewModel.deleteTag(tag.id)
+                }
+            )
         }
 
     }
     }
 }
+
+private sealed interface BookshelfFilter {
+    data object All : BookshelfFilter
+    data object Downloaded : BookshelfFilter
+    data object Pdf : BookshelfFilter
+    data object Favorites : BookshelfFilter
+    data class Tag(val tagId: String) : BookshelfFilter
+}
+
+private data class BookshelfFilterTab(
+    val filter: BookshelfFilter,
+    val label: String
+)
 
 // ─── 带删除动画的书籍网格项 ──────────────────────────────────────
 

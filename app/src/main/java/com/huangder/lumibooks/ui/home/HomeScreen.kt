@@ -35,7 +35,8 @@ import androidx.compose.material.icons.outlined.Book
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.MoreVert
-import androidx.compose.material3.AlertDialog
+import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
+import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -504,22 +505,25 @@ private fun ContinueReadingCard(book: Book, onClick: () -> Unit, onToggleFavorit
 
     // 删除确认弹窗
     if (showDeleteConfirm) {
-        AlertDialog(
+        LiquidGlassAlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
             title = { Text(stringResource(R.string.delete_book_title), fontWeight = FontWeight.Bold) },
             text = { Text(stringResource(R.string.delete_book_confirm, book.title)) },
             confirmButton = {
-                TextButton(onClick = {
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.delete_book),
+                    tintedColor = AppColors.Accent,
+                    onClick = {
                     showDeleteConfirm = false
                     onDelete()
-                }) {
-                    Text(stringResource(R.string.delete_book), color = AppColors.Accent)
-                }
+                })
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text(stringResource(R.string.cancel), color = AppColors.TextSecondary)
-                }
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.cancel),
+                    onClick = { showDeleteConfirm = false },
+                    contentColor = AppColors.TextSecondary
+                )
             }
         )
     }

@@ -8,6 +8,7 @@
     <string name="app_theme_material3">Material 3</string>
     <string name="app_theme_liquid_glass">液態玻璃</string>
     <string name="liquid_glass_transparency">玻璃通透度</string>
+    <string name="liquid_glass_hdr_highlight">HDR 按壓高光</string>
     <string name="app_name">LUMI</string>
 
     <!-- 首頁 -->
@@ -162,7 +163,7 @@
     <string name="sponsor_qr_desc">捐贈 QR Code</string>
     <string name="sponsor_quote">"如果覺得不錯，請我吃個飯吧😊"</string>
     <string name="sponsor_code_label">給嶼浮 的讚賞碼</string>
-    <string name="sponsor_thanks_title">感謝列表（排名不分先後）</string>
+    <string name="sponsor_thanks_title">夢想贊助家</string>
     <string name="sponsor_dev_title">開發人員</string>
 
     <!-- 回饋 -->
@@ -216,6 +217,14 @@
     <string name="custom_cover">自訂封面</string>
     <string name="remove_custom_cover">移除自訂封面</string>
     <string name="bookmarks_notes">書籤高亮與筆記</string>
+    <string name="add_tag">新增標籤</string>
+    <string name="tag_sheet_title">標籤</string>
+    <string name="tag_name_hint">輸入新標籤名稱</string>
+    <string name="existing_tags">已有標籤</string>
+    <string name="no_tags">尚未建立標籤</string>
+    <string name="tag_name_required">請輸入標籤名稱</string>
+    <string name="tag_name_too_long">標籤名稱最多 %1$d 個字元</string>
+    <string name="tag_name_exists">已有同名標籤</string>
 
     <!-- 書籤筆記 -->
     <string name="notes_title">書籤、高亮與筆記</string>
@@ -286,6 +295,12 @@
     <string name="show_reader_battery_hint">電量圖示與百分比</string>
     <string name="volume_key_page_turn">音量鍵翻頁</string>
     <string name="volume_key_page_turn_hint">音量增加鍵上一頁，音量減少鍵下一頁</string>
+    <string name="reader_edge_tap_page_turn">點擊螢幕兩側翻頁</string>
+    <string name="reader_edge_tap_page_turn_hint">設定點擊左、右兩側時的翻頁方向</string>
+    <string name="reader_edge_tap_left_previous_right_next">左上右下</string>
+    <string name="reader_edge_tap_left_next_right_previous">左下右上</string>
+    <string name="reader_edge_tap_both_previous">左上左上</string>
+    <string name="reader_edge_tap_both_next">左下左下</string>
     <string name="reader_page_layout">閱讀頁資訊</string>
     <string name="reader_page_layout_hint">選擇閱讀頁四個角顯示的內容</string>
     <string name="reader_corner_top_left">左上</string>

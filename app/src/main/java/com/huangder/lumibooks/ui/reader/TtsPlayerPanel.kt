@@ -51,8 +51,12 @@ import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.tts.TtsPlaybackState
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
+import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
+import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import java.util.Locale
 
 @Composable
@@ -73,6 +77,7 @@ fun TtsPlayerPanel(
     val capsuleShape = RoundedCornerShape(28.dp)
     val rateMenuShape = RoundedCornerShape(16.dp)
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val panelBackdrop = rememberLayerBackdrop()
     val panelHeight by animateDpAsState(
         targetValue = if (showRateMenu) 328.dp else 56.dp,
         animationSpec = spring(dampingRatio = 0.82f, stiffness = 360f),
@@ -156,10 +161,7 @@ fun TtsPlayerPanel(
             }
         }
 
-        LiquidGlassSurface(
-            shape = capsuleShape,
-            fallbackColor = readerBackgroundColor,
-            contentScrimColor = readerBackgroundColor.copy(alpha = 0.85f),
+        Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
@@ -177,6 +179,17 @@ fun TtsPlayerPanel(
                     }
                 )
         ) {
+            LiquidGlassSurface(
+                shape = capsuleShape,
+                fallbackColor = readerBackgroundColor,
+                contentScrimColor = readerBackgroundColor.copy(alpha = 0.85f),
+                modifier = Modifier
+                    .matchParentSize()
+                    .then(
+                        if (isLiquidGlass) Modifier.layerBackdrop(panelBackdrop) else Modifier
+                    )
+            ) { }
+            ProvideLiquidGlassBackdrop(panelBackdrop.takeIf { isLiquidGlass }) {
             Row(
                 modifier = Modifier
                     .fillMaxSize()
@@ -241,13 +254,16 @@ fun TtsPlayerPanel(
                     }
                 }
 
-                IconButton(onClick = onStop, modifier = Modifier.size(40.dp)) {
-                    Icon(
-                        Icons.Default.Close,
-                        contentDescription = stringResource(R.string.tts_stop),
-                        tint = readerContentColor
-                    )
-                }
+                LiquidGlassIconButton(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = stringResource(R.string.tts_stop),
+                    onClick = onStop,
+                    modifier = Modifier.size(44.dp),
+                    size = 44.dp,
+                    iconSize = 20.dp,
+                    contentColor = readerContentColor
+                )
+            }
             }
         }
     }

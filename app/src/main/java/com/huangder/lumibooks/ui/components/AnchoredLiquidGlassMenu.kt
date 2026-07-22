@@ -160,15 +160,15 @@ fun LiquidGlassMenuHost(
                                 IntOffset(menuX.roundToInt(), menuY.roundToInt())
                             }
                             .width(menu.width),
-                        enter = fadeIn(tween(150)) + scaleIn(
-                            initialScale = 0.84f,
+                        enter = fadeIn(tween(90)) + scaleIn(
+                            initialScale = 0.88f,
                             transformOrigin = TransformOrigin(1f, 0f),
-                            animationSpec = spring(dampingRatio = 0.70f, stiffness = 145f)
+                            animationSpec = spring(dampingRatio = 0.74f, stiffness = 310f)
                         ),
-                        exit = fadeOut(tween(130)) + scaleOut(
-                            targetScale = 0.88f,
+                        exit = fadeOut(tween(100)) + scaleOut(
+                            targetScale = 0.92f,
                             transformOrigin = TransformOrigin(1f, 0f),
-                            animationSpec = tween(160)
+                            animationSpec = tween(120)
                         )
                     ) {
                         AnchoredLiquidGlassMenu(menu, hostState, backdrop)

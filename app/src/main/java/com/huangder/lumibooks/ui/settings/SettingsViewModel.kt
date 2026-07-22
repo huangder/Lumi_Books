@@ -110,6 +110,11 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            dataStoreManager.liquidGlassHdrHighlightEnabled.collectLatest { enabled ->
+                _uiState.value = _uiState.value.copy(liquidGlassHdrHighlightEnabled = enabled)
+            }
+        }
+        viewModelScope.launch {
             dataStoreManager.darkMode.collectLatest { mode ->
                 _uiState.value = _uiState.value.copy(darkMode = mode)
             }
@@ -257,6 +262,13 @@ class SettingsViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(
             liquidGlassTransparency = transparency.coerceIn(0f, 1f)
         )
+    }
+
+    fun saveLiquidGlassHdrHighlightEnabled(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(liquidGlassHdrHighlightEnabled = enabled)
+        viewModelScope.launch {
+            dataStoreManager.saveLiquidGlassHdrHighlightEnabled(enabled)
+        }
     }
 
     fun saveDarkMode(mode: String) {

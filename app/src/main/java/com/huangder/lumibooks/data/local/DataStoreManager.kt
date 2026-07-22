@@ -1,6 +1,8 @@
 package com.huangder.lumibooks.data.local
 
 import android.content.Context
+import android.hardware.display.DisplayManager
+import android.view.Display
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
@@ -13,6 +15,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPresetCodec
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
+import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
 import com.huangder.lumibooks.domain.model.ReaderPageCorner
 import com.huangder.lumibooks.domain.model.defaultReaderCornerContent
 import com.huangder.lumibooks.util.LaunchThemeController
@@ -28,6 +31,12 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "se
 class DataStoreManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
+    private val deviceSupportsHdr: Boolean by lazy {
+        context.getSystemService(DisplayManager::class.java)
+            ?.getDisplay(Display.DEFAULT_DISPLAY)
+            ?.isHdr == true
+    }
+
     companion object {
         // 阅读设置
         private val FONT_SIZE = floatPreferencesKey("font_size")
@@ -54,6 +63,7 @@ class DataStoreManager @Inject constructor(
         private val SHOW_READER_PAGE_NUMBER = booleanPreferencesKey("show_reader_page_number")
         private val SHOW_READER_BATTERY = booleanPreferencesKey("show_reader_battery")
         private val VOLUME_KEY_PAGE_TURN = booleanPreferencesKey("volume_key_page_turn")
+        private val READER_EDGE_TAP_MODE = stringPreferencesKey("reader_edge_tap_mode")
         private val READER_TOP_LEFT_CONTENT = stringPreferencesKey("reader_top_left_content")
         private val READER_TOP_RIGHT_CONTENT = stringPreferencesKey("reader_top_right_content")
         private val READER_BOTTOM_LEFT_CONTENT = stringPreferencesKey("reader_bottom_left_content")
@@ -67,6 +77,7 @@ class DataStoreManager @Inject constructor(
         // 应用设置
         private val APP_THEME = stringPreferencesKey("app_theme")
         private val LIQUID_GLASS_TRANSPARENCY = floatPreferencesKey("liquid_glass_transparency")
+        private val LIQUID_GLASS_HDR_HIGHLIGHT_ENABLED = booleanPreferencesKey("liquid_glass_hdr_highlight_enabled")
         private val DARK_MODE = stringPreferencesKey("dark_mode")
         private val ENTRANCE_ANIMATIONS_ENABLED = booleanPreferencesKey("entrance_animations_enabled")
         private val PREDICTIVE_BACK_ENABLED = booleanPreferencesKey("predictive_back_enabled")
@@ -186,6 +197,10 @@ class DataStoreManager @Inject constructor(
         preferences[VOLUME_KEY_PAGE_TURN] ?: false
     }
 
+    val readerEdgeTapMode: Flow<ReaderEdgeTapMode> = context.dataStore.data.map { preferences ->
+        ReaderEdgeTapMode.fromKey(preferences[READER_EDGE_TAP_MODE])
+    }
+
     fun readerCornerContent(corner: ReaderPageCorner): Flow<ReaderCornerContent> =
         context.dataStore.data.map { preferences ->
             val stored = preferences[readerCornerKey(corner)]
@@ -213,6 +228,10 @@ class DataStoreManager @Inject constructor(
 
     val liquidGlassTransparency: Flow<Float> = context.dataStore.data.map { preferences ->
         preferences[LIQUID_GLASS_TRANSPARENCY] ?: 0.55f
+    }
+
+    val liquidGlassHdrHighlightEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[LIQUID_GLASS_HDR_HIGHLIGHT_ENABLED] ?: deviceSupportsHdr
     }
 
     val darkMode: Flow<String> = context.dataStore.data.map { preferences ->
@@ -410,6 +429,12 @@ class DataStoreManager @Inject constructor(
         }
     }
 
+    suspend fun saveReaderEdgeTapMode(mode: ReaderEdgeTapMode) {
+        context.dataStore.edit { preferences ->
+            preferences[READER_EDGE_TAP_MODE] = mode.key
+        }
+    }
+
     suspend fun saveReaderCornerContent(
         corner: ReaderPageCorner,
         content: ReaderCornerContent
@@ -459,6 +484,7 @@ class DataStoreManager @Inject constructor(
             preferences[SHOW_READER_PAGE_NUMBER] = true
             preferences[SHOW_READER_BATTERY] = true
             preferences[VOLUME_KEY_PAGE_TURN] = false
+            preferences[READER_EDGE_TAP_MODE] = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT.key
             ReaderPageCorner.entries.forEach { corner ->
                 preferences[readerCornerKey(corner)] = defaultReaderCornerContent(corner).key
             }
@@ -584,6 +610,12 @@ class DataStoreManager @Inject constructor(
     suspend fun saveLiquidGlassTransparency(transparency: Float) {
         context.dataStore.edit { preferences ->
             preferences[LIQUID_GLASS_TRANSPARENCY] = transparency.coerceIn(0f, 1f)
+        }
+    }
+
+    suspend fun saveLiquidGlassHdrHighlightEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[LIQUID_GLASS_HDR_HIGHLIGHT_ENABLED] = enabled
         }
     }
 

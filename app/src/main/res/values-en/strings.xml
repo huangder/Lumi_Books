@@ -8,6 +8,7 @@
     <string name="app_theme_material3">Material 3</string>
     <string name="app_theme_liquid_glass">Liquid Glass</string>
     <string name="liquid_glass_transparency">Glass clarity</string>
+    <string name="liquid_glass_hdr_highlight">HDR touch highlight</string>
     <string name="app_name">LUMI</string>
 
     <!-- Home -->
@@ -162,7 +163,7 @@
     <string name="sponsor_qr_desc">Donation QR Code</string>
     <string name="sponsor_quote">"If you like it, buy me a meal😊"</string>
     <string name="sponsor_code_label">Donation code for Yufu</string>
-    <string name="sponsor_thanks_title">Special Thanks (in no particular order)</string>
+    <string name="sponsor_thanks_title">Dream Sponsors</string>
     <string name="sponsor_dev_title">Developers</string>
 
     <!-- Feedback -->
@@ -216,6 +217,14 @@
     <string name="custom_cover">Custom Cover</string>
     <string name="remove_custom_cover">Remove Custom Cover</string>
     <string name="bookmarks_notes">Bookmarks, Highlights &amp; Notes</string>
+    <string name="add_tag">Add tag</string>
+    <string name="tag_sheet_title">Tags</string>
+    <string name="tag_name_hint">Enter a new tag</string>
+    <string name="existing_tags">Existing tags</string>
+    <string name="no_tags">No tags yet</string>
+    <string name="tag_name_required">Enter a tag name</string>
+    <string name="tag_name_too_long">Tag names can have at most %1$d characters</string>
+    <string name="tag_name_exists">A tag with this name already exists</string>
 
     <!-- Bookmarks & Notes -->
     <string name="notes_title">Bookmarks, Highlights &amp; Notes</string>
@@ -298,6 +307,12 @@
     <string name="show_reader_battery_hint">Battery icon and percentage</string>
     <string name="volume_key_page_turn">Turn pages with volume keys</string>
     <string name="volume_key_page_turn_hint">Volume up for previous, volume down for next</string>
+    <string name="reader_edge_tap_page_turn">Turn pages by tapping the edges</string>
+    <string name="reader_edge_tap_page_turn_hint">Choose what left and right edge taps do</string>
+    <string name="reader_edge_tap_left_previous_right_next">Previous / Next</string>
+    <string name="reader_edge_tap_left_next_right_previous">Next / Previous</string>
+    <string name="reader_edge_tap_both_previous">Previous / Previous</string>
+    <string name="reader_edge_tap_both_next">Next / Next</string>
     <string name="reader_page_layout">Reader page information</string>
     <string name="reader_page_layout_hint">Choose what appears in each corner</string>
     <string name="reader_corner_top_left">Top left</string>

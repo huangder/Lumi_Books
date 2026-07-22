@@ -135,24 +135,19 @@ fun BookTransitionOverlay(
             ) {
                 val navBarPadding = WindowInsets.navigationBars.asPaddingValues()
 
-                IconButton(
+                LiquidGlassIconButton(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.reader_back),
                     onClick = requestBack,
                     enabled = !isClosing.value,
+                    size = 44.dp,
+                    iconSize = 22.dp,
+                    normalContainerColor = AppColors.BgGray,
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .statusBarsPadding()
                         .padding(start = AppSpace.lg, top = AppSpace.sm)
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(AppColors.BgGray)
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = stringResource(R.string.reader_back),
-                        tint = AppColors.TextPrimary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
+                )
 
                 Column(
                     modifier = Modifier

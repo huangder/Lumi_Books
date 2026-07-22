@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.ui.theme
 
 import android.app.Activity
+import android.content.pm.ActivityInfo
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
@@ -75,6 +76,7 @@ fun EBookReaderTheme(
     dynamicColor: Boolean = false,
     appTheme: String = "lumi",
     liquidGlassTransparency: Float = 0.55f,
+    liquidGlassHdrHighlightEnabled: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
@@ -87,6 +89,8 @@ fun EBookReaderTheme(
     }
 
     val view = LocalView.current
+    val hdrHighlightRequested = appTheme == "liquid_glass" && liquidGlassHdrHighlightEnabled
+    val hdrHighlightActive = hdrHighlightRequested && view.display?.isHdr == true
     if (!view.isInEditMode) {
         SideEffect {
             val activity = view.context as? Activity ?: return@SideEffect
@@ -96,6 +100,14 @@ fun EBookReaderTheme(
             window.navigationBarColor = Color.Transparent.toArgb()
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
             WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !darkTheme
+            window.colorMode = if (hdrHighlightRequested) {
+                ActivityInfo.COLOR_MODE_HDR
+            } else {
+                ActivityInfo.COLOR_MODE_DEFAULT
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+                window.desiredHdrHeadroom = if (hdrHighlightRequested) 1.35f else 0f
+            }
         }
     }
 
@@ -103,7 +115,8 @@ fun EBookReaderTheme(
         LocalIsDarkTheme provides darkTheme,
         LocalUseMaterial3Theme provides dynamicColor,
         LocalAppTheme provides appTheme,
-        LocalLiquidGlassTransparency provides liquidGlassTransparency.coerceIn(0f, 1f)
+        LocalLiquidGlassTransparency provides liquidGlassTransparency.coerceIn(0f, 1f),
+        LocalLiquidGlassHdrHighlightEnabled provides hdrHighlightActive
     ) {
         MaterialTheme(
             colorScheme = colorScheme,

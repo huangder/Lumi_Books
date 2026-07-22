@@ -55,6 +55,7 @@ import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
+import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -86,21 +87,15 @@ fun BookNotesScreen(
                 .fillMaxWidth()
                 .padding(horizontal = AppSpace.lg, vertical = AppSpace.sm)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(AppColors.BgGray)
-                    .clickable(onClick = onNavigateBack),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.back),
-                    tint = AppColors.TextSecondary,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
+            LiquidGlassIconButton(
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = stringResource(R.string.back),
+                onClick = onNavigateBack,
+                size = 36.dp,
+                iconSize = 18.dp,
+                contentColor = AppColors.TextPrimary,
+                normalContainerColor = AppColors.BgGray
+            )
             Spacer(Modifier.width(AppSpace.md))
             Text(
                 text = stringResource(R.string.notes_title),
