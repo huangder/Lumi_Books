@@ -20,7 +20,9 @@ data class TocEntry(
     val title: String,
     val level: Int = 1,
     val chapterIndex: Int = -1,
-    val isGroup: Boolean = false
+    val isGroup: Boolean = false,
+    /** Optional in-document anchor from an EPUB NCX/nav href. */
+    val anchor: String? = null
 )
 
 data class BookContent(

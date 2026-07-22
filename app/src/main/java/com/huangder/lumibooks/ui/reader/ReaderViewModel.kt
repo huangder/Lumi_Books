@@ -59,12 +59,15 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.util.Locale
 import java.util.UUID
+import com.huangder.lumibooks.domain.model.bookmarkPositionForCharacterOffset
 
 internal fun shouldStyleTxtChapterTitle(firstLine: String, chapterTitle: String): Boolean {
     val normalizedFirstLine = firstLine.trim()
@@ -175,6 +178,10 @@ class ReaderViewModel @Inject constructor(
     private val mineruTokenStore: MineruTokenStore
 ) : ViewModel() {
 
+    private companion object {
+        const val CONTINUOUS_PROGRESS_SCALE = 10_000
+    }
+
     private val bookId: String = savedStateHandle.get<String>("bookId") ?: ""
 
     private val _uiState = MutableStateFlow(ReaderUiState())
@@ -191,6 +198,9 @@ class ReaderViewModel @Inject constructor(
     private val _mineruMode = MutableStateFlow(MineruMode.DISABLED)
     val mineruMode: StateFlow<MineruMode> = _mineruMode.asStateFlow()
     private var manualImportJob: Job? = null
+    private var continuousProgressJob: Job? = null
+    private val progressWriteMutex = Mutex()
+    private var progressWriteVersion = 0L
 
     val ttsPageTurnRequests = ttsController.pageTurnRequests
 
@@ -205,6 +215,7 @@ class ReaderViewModel @Inject constructor(
             pausedTime = System.currentTimeMillis()
             isPaused = true
             // 保存当前会话，防止进程被杀丢失数据
+            saveProgress()
             saveReadingSession()
             android.util.Log.e("READING", "App backgrounded, session saved")
         }
@@ -792,6 +803,8 @@ class ReaderViewModel @Inject constructor(
 
     /** 用户离开阅读页时调用（DisposableEffect.onDispose） */
     fun saveAndPause() {
+        continuousProgressJob?.cancel()
+        saveProgress()
         saveReadingSession()
     }
 
@@ -828,6 +841,11 @@ class ReaderViewModel @Inject constructor(
                     val progressFraction = book.readingProgress * chapterCount
                     val startChapter = progressFraction.toInt().coerceIn(0, chapterCount - 1)
                     val pageFraction = (progressFraction - startChapter).coerceIn(0f, 1f)
+                    android.util.Log.e(
+                        "ContinuousProgressDebug",
+                        "load stored=${book.readingProgress} chapters=$chapterCount " +
+                            "targetChapter=$startChapter fraction=$pageFraction"
+                    )
 
                     val isPdf = book.format.name == "PDF"
                     _uiState.value = _uiState.value.copy(
@@ -962,7 +980,32 @@ class ReaderViewModel @Inject constructor(
             totalPages = totalPages,
             pageReady = true
         )
-        saveProgress()
+    }
+
+    /** Saves chapter-local scroll progress for continuous-scroll mode. */
+    fun onContinuousScrollPosition(chapterIndex: Int, chapterFraction: Float) {
+        val progressScale = CONTINUOUS_PROGRESS_SCALE
+        _uiState.value = _uiState.value.copy(
+            currentChapterIndex = chapterIndex,
+            currentPageIndex = (chapterFraction.coerceIn(0f, 0.9999f) * progressScale).toInt(),
+            totalPages = progressScale,
+            pageReady = true,
+            isLoading = false
+        )
+        continuousProgressJob?.cancel()
+        val progressState = _uiState.value
+        val writeVersion = ++progressWriteVersion
+        android.util.Log.e(
+            "ContinuousProgressDebug",
+            "position chapter=$chapterIndex fraction=$chapterFraction pageIndex=${progressState.currentPageIndex} " +
+                "version=$writeVersion"
+        )
+        continuousProgressJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(350L)
+            progressWriteMutex.withLock {
+                if (writeVersion == progressWriteVersion) saveProgressFor(progressState)
+            }
+        }
     }
 
     /**
@@ -1236,6 +1279,18 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
+    /** Resolves a TOC anchor inside its target chapter before the reader performs the jump. */
+    suspend fun resolveTocTarget(
+        chapterIndex: Int,
+        anchor: String?
+    ): BookLinkTarget? {
+        if (chapterIndex !in 0 until _uiState.value.chapterCount) return null
+        if (anchor.isNullOrBlank()) return BookLinkTarget(chapterIndex)
+        return withContext(Dispatchers.IO) {
+            parser?.resolveLink(chapterIndex, "#$anchor")
+        } ?: BookLinkTarget(chapterIndex)
+    }
+
     /**
      * 预渲染命中时调用：仅更新章节索引和进度，不更新 chapterHtml（避免触发 loadDataWithBaseURL 破坏 DOM swap）
      */
@@ -1264,14 +1319,16 @@ class ReaderViewModel @Inject constructor(
 
     // -- 书签和笔记 --
 
-    fun addBookmark() {
+    fun addBookmark(characterOffset: Int? = null, title: String? = null) {
         val state = _uiState.value
         val book = state.book ?: return
         val bookmark = Bookmark(
             bookId = book.id,
             chapterIndex = state.currentChapterIndex,
-            position = state.currentPageIndex.toFloat(),
-            title = "第${state.currentChapterIndex + 1}章 第${state.currentPageIndex + 1}页",
+            position = characterOffset?.let(::bookmarkPositionForCharacterOffset)
+                ?: state.currentPageIndex.toFloat(),
+            title = title?.takeIf { it.isNotBlank() }
+                ?: "第${state.currentChapterIndex + 1}章 第${state.currentPageIndex + 1}页",
             createdAt = System.currentTimeMillis()
         )
         viewModelScope.launch { readingRepository.insertBookmark(bookmark) }
@@ -1315,7 +1372,16 @@ class ReaderViewModel @Inject constructor(
             color = color,
             createdAt = System.currentTimeMillis()
         )
-        viewModelScope.launch { readingRepository.insertNote(note) }
+        // Render immediately instead of waiting for Room's Flow to emit the inserted record.
+        // The database observer replaces this temporary id=0 record with the persisted one.
+        _notes.value = _notes.value + note
+        viewModelScope.launch {
+            try {
+                readingRepository.insertNote(note)
+            } catch (_: Exception) {
+                _notes.value = _notes.value.filterNot { it === note }
+            }
+        }
     }
 
     fun updateNote(note: Note) {
@@ -1344,6 +1410,15 @@ class ReaderViewModel @Inject constructor(
 
     private fun saveProgress() {
         val state = _uiState.value
+        val writeVersion = ++progressWriteVersion
+        viewModelScope.launch {
+            progressWriteMutex.withLock {
+                if (writeVersion == progressWriteVersion) saveProgressFor(state)
+            }
+        }
+    }
+
+    private suspend fun saveProgressFor(state: ReaderUiState) {
         val book = state.book ?: return
         if (state.chapterCount == 0) return
 
@@ -1352,11 +1427,14 @@ class ReaderViewModel @Inject constructor(
             state.currentPageIndex.toFloat() / state.totalPages
         } else 0f
         val progress = ((state.currentChapterIndex + pageProgress) / state.chapterCount).coerceIn(0f, 1f)
+        android.util.Log.e(
+            "ContinuousProgressDebug",
+            "persist chapter=${state.currentChapterIndex} page=${state.currentPageIndex}/${state.totalPages} " +
+                "global=$progress"
+        )
 
-        viewModelScope.launch {
-            bookRepository.updateReadingProgress(book.id, progress)
-            bookRepository.updateLastReadTime(book.id, System.currentTimeMillis())
-        }
+        bookRepository.updateReadingProgress(book.id, progress)
+        bookRepository.updateLastReadTime(book.id, System.currentTimeMillis())
     }
 
     fun clearError() {
@@ -1380,15 +1458,15 @@ class ReaderViewModel @Inject constructor(
     fun searchAllChapters(query: String, maxChapters: Int = 200): List<SearchResult> {
         if (query.isEmpty()) return emptyList()
 
-        val p = parser ?: return emptyList()
+        if (parser == null) return emptyList()
         val totalChapters = _uiState.value.chapterCount.coerceAtMost(maxChapters)
         val titles = _uiState.value.chapterTitles
         val results = mutableListOf<SearchResult>()
 
         for (chIdx in 0 until totalChapters) {
-            val text = try {
-                p.getChapterContent(chIdx).toString()
-            } catch (_: Exception) { continue }
+            // Search the exact CharSequence the reader lays out. Searching parser output directly
+            // makes offsets drift when the reader adds a title break or paragraph formatting.
+            val text = getChapterText(chIdx)?.toString() ?: continue
 
             var searchStart = 0
             while (true) {

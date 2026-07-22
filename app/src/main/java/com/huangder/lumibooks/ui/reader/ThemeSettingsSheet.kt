@@ -187,6 +187,7 @@ fun ThemeSettingsSheet(
     val brightnessPercent = if (currentBrightness < 0f) 80f else currentBrightness * 100f
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val isDark = LocalIsDarkTheme.current
+    val sheetScrimAlpha = if (isLiquidGlass) 0.20f else 0.08f
     val sheetContentBackdrop = rememberLayerBackdrop()
 
     Box(Modifier.fillMaxSize()) {
@@ -195,7 +196,7 @@ fun ThemeSettingsSheet(
             Modifier.fillMaxSize()
                 .background(
                     AppColors.Scrim.copy(
-                        alpha = 0.20f * (1f - sheetOffset.value.coerceIn(0f, 1f))
+                        alpha = sheetScrimAlpha * (1f - sheetOffset.value.coerceIn(0f, 1f))
                     )
                 )
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { isClosing = true }
@@ -205,6 +206,7 @@ fun ThemeSettingsSheet(
         Box(
             Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
+                .fillMaxHeight(if (isLiquidGlass) 0.54f else 0.5f)
                 .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress)
         ) {
             Box(
@@ -224,6 +226,7 @@ fun ThemeSettingsSheet(
             Column(
                 Modifier
                     .fillMaxWidth()
+                    .fillMaxHeight()
                     .padding(start = 14.dp, end = 14.dp, bottom = 12.dp)
                     .navigationBarsPadding()
                     .padding(top = 24.dp, bottom = 24.dp)
@@ -360,8 +363,6 @@ fun ThemeSettingsSheet(
                 }
             }
 
-            Spacer(Modifier.height(16.dp))
-
             // 阅读背景区域
             Text(
                 stringResource(R.string.reading_background),
@@ -447,6 +448,13 @@ fun ThemeSettingsSheet(
                     modifier = Modifier.weight(1f)
                 )
             }
+            Spacer(Modifier.height(12.dp))
+            ModeButton(
+                label = stringResource(R.string.transition_scroll),
+                isSelected = currentPageTransition == "continuous",
+                onClick = { onPageTransitionChange("continuous") },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)
+            )
 
             Spacer(Modifier.height(16.dp))
 

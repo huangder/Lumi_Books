@@ -76,6 +76,32 @@ class JustifiedTextViewTest {
     }
 
     @Test
+    fun extendsHighlightToTheActualJustifiedCharacterPosition() {
+        assertEquals(
+            145f,
+            readerHighlightCharacterEnd(
+                x = 100f,
+                characterWidth = 20f,
+                hasFollowingCharacter = true,
+                letterSpacingPx = 5f,
+                justificationSpacingPx = 20f
+            ),
+            0.001f
+        )
+        assertEquals(
+            120f,
+            readerHighlightCharacterEnd(
+                x = 100f,
+                characterWidth = 20f,
+                hasFollowingCharacter = false,
+                letterSpacingPx = 5f,
+                justificationSpacingPx = 20f
+            ),
+            0.001f
+        )
+    }
+
+    @Test
     fun splitsFullPageLineRemainderBetweenTopAndBottom() {
         assertEquals(
             5f,
