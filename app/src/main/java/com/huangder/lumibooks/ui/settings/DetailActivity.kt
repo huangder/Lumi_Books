@@ -1,7 +1,8 @@
 package com.huangder.lumibooks.ui.settings
 
-import android.os.Bundle
+import android.content.Intent
 import android.content.res.Configuration
+import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -98,6 +99,17 @@ class DetailActivity : ComponentActivity() {
                             ThirdPartyServicesDetail(viewModel)
                         }
                         "mineru" -> DetailPage(stringResource(R.string.title_mineru), onBack) { MineruSettingsDetail(viewModel) }
+                        "external_tts" -> DetailPage(stringResource(R.string.title_external_tts), onBack) {
+                            ExternalTtsSettingsDetail(viewModel) {
+                                startActivity(
+                                    Intent(this@DetailActivity, DetailActivity::class.java)
+                                        .putExtra("category", "external_tts_config")
+                                )
+                            }
+                        }
+                        "external_tts_config" -> DetailPage(stringResource(R.string.title_external_tts_configuration), onBack) {
+                            ExternalTtsConfigurationDetail(viewModel, onSaved = onBack)
+                        }
                         "changelog" -> DetailPage(stringResource(R.string.title_changelog), onBack) { ChangelogDetail() }
                         else -> DetailPage(stringResource(R.string.title_about), onBack) { AboutDetail(viewModel) }
                     }

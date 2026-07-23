@@ -19,6 +19,10 @@ import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
 import com.huangder.lumibooks.domain.model.ReaderPageCorner
 import com.huangder.lumibooks.domain.model.defaultReaderCornerContent
 import com.huangder.lumibooks.util.LaunchThemeController
+import com.huangder.lumibooks.tts.ExternalTtsProtocol
+import com.huangder.lumibooks.tts.ExternalTtsResumePosition
+import com.huangder.lumibooks.tts.ExternalTtsSettings
+import com.huangder.lumibooks.tts.ExternalTtsConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -91,6 +95,17 @@ class DataStoreManager @Inject constructor(
         private val MINERU_CONSENT_VERSION = intPreferencesKey("mineru_consent_version")
         private val MINERU_CONSENT_ACCEPTED_AT = longPreferencesKey("mineru_consent_accepted_at")
 
+        // 外部 TTS 听书设置
+        private val EXTERNAL_TTS_ENABLED = booleanPreferencesKey("external_tts_enabled")
+        private val EXTERNAL_TTS_PROTOCOL = stringPreferencesKey("external_tts_protocol")
+        private val EXTERNAL_TTS_BASE_URL = stringPreferencesKey("external_tts_base_url")
+        private val EXTERNAL_TTS_MODEL = stringPreferencesKey("external_tts_model")
+        private val EXTERNAL_TTS_VOICE = stringPreferencesKey("external_tts_voice")
+        private val EXTERNAL_TTS_STYLE = stringPreferencesKey("external_tts_style")
+        private val EXTERNAL_TTS_ALLOW_HTTP = booleanPreferencesKey("external_tts_allow_http")
+        private val EXTERNAL_TTS_CONSENT_VERSION = intPreferencesKey("external_tts_consent_version")
+        private val EXTERNAL_TTS_CONSENT_ACCEPTED_AT = longPreferencesKey("external_tts_consent_accepted_at")
+        private val EXTERNAL_TTS_CACHE_LIMIT_MB = intPreferencesKey("external_tts_cache_limit_mb")
         // 应用语言
         private val APP_LANGUAGE = stringPreferencesKey("app_language")
 
@@ -273,6 +288,35 @@ class DataStoreManager @Inject constructor(
     val mineruConsentAcceptedAt: Flow<Long> = context.dataStore.data.map { preferences ->
         preferences[MINERU_CONSENT_ACCEPTED_AT] ?: 0L
     }
+
+    // 外部 TTS 听书设置
+    val externalTtsSettings: Flow<ExternalTtsSettings> = context.dataStore.data.map { preferences ->
+        ExternalTtsSettings(
+            enabled = preferences[EXTERNAL_TTS_ENABLED] ?: false,
+            protocol = ExternalTtsProtocol.fromKey(preferences[EXTERNAL_TTS_PROTOCOL]),
+            baseUrl = preferences[EXTERNAL_TTS_BASE_URL] ?: "",
+            model = preferences[EXTERNAL_TTS_MODEL] ?: "",
+            voice = preferences[EXTERNAL_TTS_VOICE] ?: "",
+            styleInstructions = preferences[EXTERNAL_TTS_STYLE] ?: "",
+            allowHttp = preferences[EXTERNAL_TTS_ALLOW_HTTP] ?: false,
+            consentVersion = preferences[EXTERNAL_TTS_CONSENT_VERSION] ?: 0,
+            consentAcceptedAt = preferences[EXTERNAL_TTS_CONSENT_ACCEPTED_AT] ?: 0L
+        )
+    }
+
+    val externalTtsCacheLimitMb: Flow<Int> = context.dataStore.data.map { preferences ->
+        (preferences[EXTERNAL_TTS_CACHE_LIMIT_MB] ?: ExternalTtsConfig.DEFAULT_AUDIO_CACHE_LIMIT_MB)
+            .coerceIn(
+                ExternalTtsConfig.MIN_AUDIO_CACHE_LIMIT_MB,
+                ExternalTtsConfig.MAX_AUDIO_CACHE_LIMIT_MB
+            )
+    }
+
+    fun externalTtsResumePosition(bookId: String): Flow<ExternalTtsResumePosition?> =
+        context.dataStore.data.map { preferences ->
+            val raw = preferences[externalTtsResumeKey(bookId)] ?: return@map null
+            parseResumePosition(raw, bookId)
+        }
 
     // 应用语言
     val appLanguage: Flow<String> = context.dataStore.data.map { preferences ->
@@ -692,6 +736,81 @@ class DataStoreManager @Inject constructor(
             preferences[MINERU_CONSENT_VERSION] = 0
             preferences[MINERU_CONSENT_ACCEPTED_AT] = 0L
         }
+    }
+
+    // 外部 TTS
+    suspend fun saveExternalTtsSettings(settings: ExternalTtsSettings) {
+        val normalized = settings.normalized()
+        context.dataStore.edit { preferences ->
+            preferences[EXTERNAL_TTS_ENABLED] = normalized.enabled
+            preferences[EXTERNAL_TTS_PROTOCOL] = normalized.protocol.key
+            preferences[EXTERNAL_TTS_BASE_URL] = normalized.baseUrl
+            preferences[EXTERNAL_TTS_MODEL] = normalized.model
+            preferences[EXTERNAL_TTS_VOICE] = normalized.voice
+            preferences[EXTERNAL_TTS_STYLE] = normalized.styleInstructions
+            preferences[EXTERNAL_TTS_ALLOW_HTTP] = normalized.allowHttp
+            preferences[EXTERNAL_TTS_CONSENT_VERSION] = normalized.consentVersion
+            preferences[EXTERNAL_TTS_CONSENT_ACCEPTED_AT] = normalized.consentAcceptedAt
+        }
+    }
+
+    suspend fun disableExternalTts() {
+        context.dataStore.edit { preferences ->
+            preferences[EXTERNAL_TTS_ENABLED] = false
+        }
+    }
+
+    suspend fun saveExternalTtsCacheLimitMb(limitMb: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[EXTERNAL_TTS_CACHE_LIMIT_MB] = limitMb.coerceIn(
+                ExternalTtsConfig.MIN_AUDIO_CACHE_LIMIT_MB,
+                ExternalTtsConfig.MAX_AUDIO_CACHE_LIMIT_MB
+            )
+        }
+    }
+
+    suspend fun saveExternalTtsResumePosition(position: ExternalTtsResumePosition) {
+        val key = externalTtsResumeKey(position.bookId)
+        val encoded = buildString {
+            append("ch=${position.chapterIndex}|pg=${position.pageIndex}|off=${position.characterOffset}")
+            position.pageFingerprint?.let { append("|page=$it") }
+            position.cacheKey?.let { append("|cache=$it|frame=${position.pcmFrameOffset.coerceAtLeast(0L)}") }
+        }
+        context.dataStore.edit { preferences ->
+            preferences[key] = encoded
+        }
+    }
+
+    suspend fun clearExternalTtsResumePosition(bookId: String) {
+        val key = externalTtsResumeKey(bookId)
+        context.dataStore.edit { preferences ->
+            preferences.remove(key)
+        }
+    }
+
+    private fun externalTtsResumeKey(bookId: String) =
+        stringPreferencesKey("external_tts_resume_$bookId")
+
+    private fun parseResumePosition(raw: String, bookId: String): ExternalTtsResumePosition? {
+        return try {
+            val parts = raw.split("|").associate { part ->
+                val (key, value) = part.split("=", limit = 2)
+                key to value
+            }
+            val pageFingerprint = parts["page"]?.takeIf { it.matches(Regex("[0-9a-f]{64}")) }
+            val cacheKey = parts["cache"]?.takeIf { it.matches(Regex("[0-9a-f]{64}")) }
+            if (parts.containsKey("page") && pageFingerprint == null) return null
+            if (parts.containsKey("cache") && cacheKey == null) return null
+            ExternalTtsResumePosition(
+                bookId = bookId,
+                chapterIndex = parts["ch"]?.toIntOrNull() ?: return null,
+                pageIndex = parts["pg"]?.toIntOrNull() ?: return null,
+                characterOffset = parts["off"]?.toIntOrNull() ?: return null,
+                pageFingerprint = pageFingerprint,
+                cacheKey = cacheKey,
+                pcmFrameOffset = parts["frame"]?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+            )
+        } catch (_: Exception) { null }
     }
 
     suspend fun saveAppLanguage(language: String) {

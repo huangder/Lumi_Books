@@ -152,6 +152,7 @@ fun MainNavGraph(
     entranceAnimationsEnabled: Boolean = true,
     predictiveBackEnabled: Boolean = true,
     requestedOpenBookId: String? = null,
+    onBeforeOpenDifferentBook: () -> Unit = {},
     onOpenBookRequestConsumed: () -> Unit = {}
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -188,6 +189,7 @@ fun MainNavGraph(
             ?.arguments
             ?.getString("bookId")
         if (currentReaderBookId != requestedId) {
+            onBeforeOpenDifferentBook()
             navController.navigate(Screen.Reader.createRoute(requestedId))
         }
         onOpenBookRequestConsumed()
@@ -413,6 +415,7 @@ fun MainNavGraph(
                     },
                     onLoadingComplete = { readerReady = true },
                     onOpenBook = { targetBookId ->
+                        onBeforeOpenDifferentBook()
                         navController.navigate(Screen.Reader.createRoute(targetBookId))
                     }
                 )

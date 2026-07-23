@@ -31,6 +31,7 @@ import com.huangder.lumibooks.pdfconversion.PdfConversionContract
 import com.huangder.lumibooks.pdfconversion.PdfConversionEngine
 import com.huangder.lumibooks.mineru.MineruApiException
 import com.huangder.lumibooks.mineru.MineruConfig
+import com.huangder.lumibooks.pdfconversion.PdfTextExtractor
 import com.huangder.lumibooks.mineru.MineruManualImportManager
 import com.huangder.lumibooks.mineru.MineruMode
 import com.huangder.lumibooks.mineru.MineruTokenStore
@@ -46,6 +47,8 @@ import com.huangder.lumibooks.service.TtsForegroundService
 import com.huangder.lumibooks.tts.TtsController
 import com.huangder.lumibooks.tts.TtsPageContent
 import com.huangder.lumibooks.tts.TtsPlaybackState
+import com.huangder.lumibooks.tts.TtsPageLocation
+import com.huangder.lumibooks.tts.ExternalTtsException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -174,6 +177,7 @@ class ReaderViewModel @Inject constructor(
     private val dataStoreManager: DataStoreManager,
     private val ttsController: TtsController,
     private val pdfConversionManager: PdfConversionManager,
+    private val pdfTextExtractor: PdfTextExtractor,
     private val mineruManualImportManager: MineruManualImportManager,
     private val mineruTokenStore: MineruTokenStore
 ) : ViewModel() {
@@ -254,10 +258,8 @@ class ReaderViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            ttsController.errors.collectLatest {
-                _uiState.value = _uiState.value.copy(
-                    ttsErrorMessage = context.getString(R.string.tts_playback_error)
-                )
+            ttsController.errors.collectLatest { error ->
+                _uiState.value = _uiState.value.copy(ttsErrorMessage = ttsErrorMessage(error))
             }
         }
         viewModelScope.launch {
@@ -1080,24 +1082,92 @@ class ReaderViewModel @Inject constructor(
         val state = _uiState.value
         val book = state.book ?: return
         if (!state.useNewEngine || state.isLoading) return
+        startTtsSession(book.id, book.title, pageProvider, state.currentChapterIndex, state.currentPageIndex)
+    }
 
+    fun startPdfTts(filePath: String, currentPage: Int, pageCount: Int) {
+        val book = _uiState.value.book ?: return
+        if (filePath.isBlank() || pageCount <= 0) return
+        startTtsSession(
+            book.id,
+            book.title,
+            provider = { pdfPageIndex, _ ->
+                pdfTtsPageContent(filePath, pdfPageIndex, pageCount)
+            },
+            startChapter = currentPage.coerceIn(0, pageCount - 1),
+            startPage = 0
+        )
+    }
+
+    private fun startTtsSession(
+        bookId: String,
+        bookTitle: String,
+        provider: suspend (chapterIndex: Int, pageIndex: Int) -> TtsPageContent?,
+        startChapter: Int,
+        startPage: Int
+    ) {
         ContextCompat.startForegroundService(
             context,
-            TtsForegroundService.startIntent(context, book.title)
+            TtsForegroundService.startIntent(context, bookTitle)
         )
         viewModelScope.launch {
-            val result = ttsController.start(
-                bookId = book.id,
-                provider = pageProvider,
-                startChapter = state.currentChapterIndex,
-                startPage = state.currentPageIndex
-            )
+            val result = ttsController.start(bookId, provider, startChapter, startPage)
             if (result.isFailure) {
                 _uiState.value = _uiState.value.copy(
-                    ttsErrorMessage = context.getString(R.string.tts_unavailable)
+                    ttsErrorMessage = ttsErrorMessage(result.exceptionOrNull())
                 )
+                context.stopService(android.content.Intent(context, TtsForegroundService::class.java))
             }
         }
+    }
+
+    private suspend fun pdfTtsPageContent(
+        filePath: String,
+        pdfPageIndex: Int,
+        pageCount: Int
+    ): TtsPageContent? = withContext(Dispatchers.IO) {
+        if (pdfPageIndex !in 0 until pageCount) return@withContext null
+        val text = try {
+            pdfTextExtractor.extractPages(File(filePath), setOf(pdfPageIndex))[pdfPageIndex]
+        } catch (error: Exception) {
+            throw IllegalStateException("Unable to extract PDF text", error)
+        }?.takeIf { it.isNotBlank() }
+            ?: throw IllegalStateException("No readable text found in this PDF page")
+        TtsPageContent(
+            location = TtsPageLocation(pdfPageIndex, 0),
+            text = text,
+            previous = (pdfPageIndex - 1).takeIf { it >= 0 }?.let { TtsPageLocation(it, 0) },
+            next = (pdfPageIndex + 1).takeIf { it < pageCount }?.let { TtsPageLocation(it, 0) },
+            startCharacterOffset = 0
+        )
+    }
+
+    fun onPdfTtsPageVisible(bookId: String, pdfPageIndex: Int) {
+        ttsController.onPageVisible(bookId, pdfPageIndex, 0)
+    }
+
+    private fun ttsErrorMessage(error: Throwable?): String = when {
+        error?.message == "No readable text found in this PDF page" ->
+            context.getString(R.string.pdf_convert_error_no_text)
+        error?.message == "Unable to extract PDF text" ->
+            context.getString(R.string.pdf_convert_error_storage)
+        error === ExternalTtsException.MissingApiKey ->
+            context.getString(R.string.external_tts_error_missing_key)
+        error === ExternalTtsException.InsecureEndpoint ->
+            context.getString(R.string.external_tts_error_insecure_endpoint)
+        error === ExternalTtsException.Unauthorized ->
+            context.getString(R.string.external_tts_error_unauthorized)
+        error === ExternalTtsException.RateLimited ->
+            context.getString(R.string.external_tts_error_rate_limited)
+        error === ExternalTtsException.InvalidAudio ->
+            context.getString(R.string.external_tts_error_invalid_audio)
+        error is ExternalTtsException.Network ->
+            context.getString(R.string.external_tts_error_network)
+        error is ExternalTtsException.Service ->
+            context.getString(R.string.external_tts_error_service)
+        error is ExternalTtsException.InvalidConfiguration ->
+            context.getString(R.string.external_tts_error_configuration)
+        else -> context.getString(R.string.tts_playback_error)
     }
 
     fun stopTts() {

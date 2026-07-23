@@ -51,6 +51,7 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Landscape
 import androidx.compose.material.icons.outlined.LineWeight
 import androidx.compose.material.icons.outlined.NightsStay
+import androidx.compose.material.icons.outlined.VolumeUp
 import androidx.compose.material.icons.outlined.Opacity
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.PhoneAndroid
@@ -99,6 +100,7 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
+import com.huangder.lumibooks.tts.ExternalTtsConfig
 import com.huangder.lumibooks.ui.theme.FangSong
 import com.huangder.lumibooks.ui.components.LiquidGlassSwitch
 import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
@@ -441,13 +443,15 @@ fun StorageDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
     val info = uiState.storageInfo
     var showClearDialog by remember { mutableStateOf(false) }
+    var showClearExternalTtsCacheDialog by remember { mutableStateOf(false) }
+    val externalTtsCacheColor = AppColors.Accent
 
     Column {
         // ── 总览卡片 ──
         DetailCard {
             Column(Modifier.fillMaxWidth().padding(AppSpace.md)) {
                 // 标题行
-                val totalBytes = info.appSizeBytes + info.cacheSizeBytes + info.booksSizeBytes + info.coversSizeBytes
+                val totalBytes = info.appSizeBytes + info.cacheSizeBytes + info.externalTtsCacheSizeBytes + info.booksSizeBytes + info.coversSizeBytes
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.Speed, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
                     Spacer(Modifier.width(AppSpace.sm))
@@ -462,6 +466,7 @@ fun StorageDetail(viewModel: SettingsViewModel) {
                     val segments = listOf(
                         info.appSizeBytes to SegmentColors[0],
                         info.cacheSizeBytes to SegmentColors[1],
+                        info.externalTtsCacheSizeBytes to externalTtsCacheColor,
                         info.booksSizeBytes to SegmentColors[2],
                         info.coversSizeBytes to SegmentColors[3]
                     ).filter { it.first > 0 }
@@ -489,6 +494,7 @@ fun StorageDetail(viewModel: SettingsViewModel) {
                     val categories = listOf(
                         stringResource(R.string.storage_app) to (info.appSizeBytes to SegmentColors[0]),
                         stringResource(R.string.storage_cache) to (info.cacheSizeBytes to SegmentColors[1]),
+                        stringResource(R.string.external_tts_audio_cache) to (info.externalTtsCacheSizeBytes to externalTtsCacheColor),
                         stringResource(R.string.storage_books) to (info.booksSizeBytes to SegmentColors[2]),
                         stringResource(R.string.storage_covers) to (info.coversSizeBytes to SegmentColors[3])
                     )
@@ -585,13 +591,86 @@ fun StorageDetail(viewModel: SettingsViewModel) {
             }
         }
 
-        // ── 操作卡片 ──
+        // ── 外部 TTS 音频缓存 ──
         Spacer(Modifier.height(AppSpace.md))
+        DetailCard {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(AppSpace.md),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Outlined.VolumeUp, null, tint = externalTtsCacheColor, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(AppSpace.md))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        stringResource(R.string.external_tts_audio_cache),
+                        fontSize = AppType.Body,
+                        color = AppColors.TextPrimary
+                    )
+                    Text(
+                        stringResource(
+                            R.string.external_tts_cache_usage,
+                            viewModel.formatFileSize(info.externalTtsCacheSizeBytes)
+                        ),
+                        fontSize = AppType.BodySmall,
+                        color = AppColors.TextSecondary
+                    )
+                }
+            }
+            SettingsDivider()
+            SettingsSliderItem(
+                icon = Icons.Outlined.Timer,
+                label = stringResource(R.string.external_tts_cache_limit),
+                value = info.externalTtsCacheLimitMb.toFloat(),
+                range = ExternalTtsConfig.MIN_AUDIO_CACHE_LIMIT_MB.toFloat()..ExternalTtsConfig.MAX_AUDIO_CACHE_LIMIT_MB.toFloat(),
+                valueText = stringResource(R.string.external_tts_cache_limit_value, info.externalTtsCacheLimitMb),
+                step = 32f,
+                onChange = { viewModel.saveExternalTtsCacheLimitMb(it.toInt()) }
+            )
+            Text(
+                stringResource(R.string.external_tts_cache_limit_desc),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = AppSpace.md, vertical = AppSpace.sm),
+                fontSize = AppType.BodySmall,
+                color = AppColors.TextSecondary
+            )
+            SettingsDivider()
+            ActionRow(
+                Icons.Outlined.DeleteSweep,
+                stringResource(R.string.clear_external_tts_cache),
+                Color.Red
+            ) {
+                showClearExternalTtsCacheDialog = true
+            }
+        }
+
         DetailCard {
             ActionRow(Icons.Outlined.DeleteSweep, stringResource(R.string.clear_cache)) { viewModel.clearCache() }
             SettingsDivider()
             ActionRow(Icons.Outlined.DeleteForever, stringResource(R.string.clear_all_data), Color.Red) { showClearDialog = true }
         }
+    }
+
+    if (showClearExternalTtsCacheDialog) {
+        LiquidGlassAlertDialog(
+            onDismissRequest = { showClearExternalTtsCacheDialog = false },
+            title = { Text(stringResource(R.string.clear_external_tts_cache)) },
+            text = { Text(stringResource(R.string.clear_external_tts_cache_confirm)) },
+            confirmButton = {
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.clear),
+                    onClick = {
+                        viewModel.clearExternalTtsAudioCache()
+                        showClearExternalTtsCacheDialog = false
+                    },
+                    tintedColor = Color.Red
+                )
+            },
+            dismissButton = {
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.cancel),
+                    onClick = { showClearExternalTtsCacheDialog = false }
+                )
+            }
+        )
     }
 
     if (showClearDialog) {

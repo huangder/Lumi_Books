@@ -636,7 +636,8 @@ class ReadView(context: Context) : FrameLayout(context) {
             location = TtsPageLocation(chapterIndex, pageIndex),
             text = pageText,
             previous = previous,
-            next = next
+            next = next,
+            startCharacterOffset = startOffset
         )
     }
 

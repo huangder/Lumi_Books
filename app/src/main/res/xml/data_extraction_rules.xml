@@ -2,8 +2,10 @@
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="mineru_secure.xml" />
+        <exclude domain="sharedpref" path="external_tts_secure.xml" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="mineru_secure.xml" />
+        <exclude domain="sharedpref" path="external_tts_secure.xml" />
     </device-transfer>
 </data-extraction-rules>
