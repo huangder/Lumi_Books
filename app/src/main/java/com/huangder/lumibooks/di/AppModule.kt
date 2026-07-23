@@ -18,6 +18,7 @@ import com.huangder.lumibooks.domain.repository.ReadingRepository
 import com.huangder.lumibooks.domain.repository.TagRepository
 import com.huangder.lumibooks.tts.TtsController
 import com.huangder.lumibooks.tts.TtsEngine
+import com.huangder.lumibooks.tts.ExternalTtsEngine
 import com.huangder.lumibooks.tts.TtsTextExtractor
 import dagger.Module
 import dagger.Provides
@@ -115,10 +116,11 @@ object AppModule {
     @Provides
     @Singleton
     fun provideTtsController(
-        ttsEngine: TtsEngine,
+        systemTtsEngine: TtsEngine,
+        externalTtsEngine: ExternalTtsEngine,
         textExtractor: TtsTextExtractor,
         dataStoreManager: DataStoreManager
     ): TtsController {
-        return TtsController(ttsEngine, textExtractor, dataStoreManager)
+        return TtsController(systemTtsEngine, externalTtsEngine, textExtractor, dataStoreManager)
     }
 }

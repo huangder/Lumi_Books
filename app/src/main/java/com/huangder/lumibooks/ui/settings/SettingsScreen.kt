@@ -265,6 +265,17 @@ fun ThirdPartyServicesDetail(viewModel: SettingsViewModel) {
     ) {
         context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "mineru"))
     }
+        Spacer(Modifier.height(AppSpace.sm))
+        CategoryItem(
+            icon = Icons.Outlined.Cloud,
+            label = stringResource(R.string.category_external_tts),
+            supportingText = when {
+                uiState.externalTtsSettings.enabled -> stringResource(R.string.external_tts_enabled_status)
+                else -> stringResource(R.string.external_tts_not_configured)
+            }
+        ) {
+            context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "external_tts"))
+        }
 }
 
 // ─── 分类条目 ──────────────────────────────────────────────────

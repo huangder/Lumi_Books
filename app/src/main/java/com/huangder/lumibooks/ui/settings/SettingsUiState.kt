@@ -14,6 +14,8 @@ data class StorageInfo(
     val cacheSizeBytes: Long = 0,
     val booksSizeBytes: Long = 0,
     val coversSizeBytes: Long = 0,
+    val externalTtsCacheSizeBytes: Long = 0,
+    val externalTtsCacheLimitMb: Int = com.huangder.lumibooks.tts.ExternalTtsConfig.DEFAULT_AUDIO_CACHE_LIMIT_MB,
     val bookDetails: List<BookSizeItem> = emptyList()
 )
 
@@ -65,6 +67,11 @@ data class SettingsUiState(
     val mineruMode: String = "disabled",   // "disabled" / "agent" / "precise"
     val mineruConsentVersion: Int = 0,
     val mineruHasToken: Boolean = false,
+
+    // 外部 TTS 听书
+    val externalTtsSettings: com.huangder.lumibooks.tts.ExternalTtsSettings = com.huangder.lumibooks.tts.ExternalTtsSettings(),
+    val externalTtsHasToken: Boolean = false,
+    val externalTtsSettingsLoaded: Boolean = false,
     val mineruManualImporting: Boolean = false,
 
     // 语言

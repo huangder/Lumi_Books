@@ -392,9 +392,12 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         }
     }
 
-    LaunchedEffect(bookId) {
+    LaunchedEffect(bookId, uiState.ttsActiveBookId, uiState.ttsPlaybackState) {
         viewModel.ttsPageTurnRequests.collect { request ->
-            if (request.bookId != bookId) return@collect
+            if (request.bookId != bookId ||
+                uiState.ttsActiveBookId != bookId ||
+                uiState.ttsPlaybackState == TtsPlaybackState.IDLE
+            ) return@collect
             var readView = readViewRef.value
             repeat(60) {
                 if (readView != null) return@repeat
@@ -557,7 +560,11 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
 
     // 处理返回键：触发退出动画，而不是直接关闭
     val isAnySheetOpen = showNotesList || showNoteInput || showToc || showThemeSheet || showAdvancedSheet || showSearch
-    BackHandler(enabled = !isAnySheetOpen) { onNavigateBack() }
+    val exitReader: () -> Unit = {
+        viewModel.stopTts()
+        onNavigateBack()
+    }
+    BackHandler(enabled = !isAnySheetOpen) { exitReader() }
     val shouldHandleVolumePageTurn = uiState.volumeKeyPageTurnEnabled &&
         !uiState.isMenuVisible &&
         !isAnySheetOpen &&
@@ -686,7 +693,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     color = AppColors.TextSecondary
                 )
                 Spacer(Modifier.height(16.dp))
-                TextButton(onClick = onNavigateBack) {
+                TextButton(onClick = exitReader) {
                     Text(stringResource(R.string.back), color = AppColors.Accent)
                 }
             }
@@ -1080,7 +1087,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 }
                 ReaderTopBar(
                     title = bookTitle,
-                    onBack = onNavigateBack,
+                    onBack = exitReader,
                     bgColor = menuBgColor,
                     contentColor = menuContentColor,
                     glassContentScrimColor = readerGlassContentScrim,

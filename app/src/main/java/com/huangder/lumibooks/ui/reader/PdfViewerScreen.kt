@@ -6,6 +6,8 @@ import android.graphics.pdf.PdfRenderer
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.content.pm.PackageManager
+import androidx.activity.compose.BackHandler
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -61,6 +63,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -102,6 +105,7 @@ import androidx.compose.material.icons.outlined.FileOpen
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.core.content.ContextCompat
+import com.huangder.lumibooks.tts.TtsPlaybackState
 import com.huangder.lumibooks.ui.animation.AppEasing
 import com.huangder.lumibooks.ui.animation.cardPressEffect
 import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
@@ -195,11 +199,26 @@ fun PdfViewerScreen(
     var showMenu by remember { mutableStateOf(false) }
     var showPdfToc by remember { mutableStateOf(false) }
     var conversionSheet by remember { mutableStateOf<PdfConversionSheet?>(null) }
+    val exitReader: () -> Unit = {
+        viewModel.stopTts()
+        onNavigateBack()
+    }
+    val openBookFromReader: (String) -> Unit = { targetBookId ->
+        viewModel.stopTts()
+        onOpenBook(targetBookId)
+    }
+    val isAnySheetOpen = showPdfToc || conversionSheet != null
+    BackHandler(enabled = !isAnySheetOpen) { exitReader() }
     var pendingReplaceAfterMineruSettings by remember { mutableStateOf(false) }
     var pendingManualReplace by remember { mutableStateOf(false) }
     var observedActiveConversion by remember { mutableStateOf(false) }
     var pendingModePage by remember { mutableStateOf<Int?>(null) }
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    LaunchedEffect(uiState.ttsErrorMessage) {
+        val message = uiState.ttsErrorMessage ?: return@LaunchedEffect
+        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+        viewModel.clearTtsError()
+    }
     val pdfGlassContentScrim = AppColors.WindowBg.copy(alpha = 0.18f)
     val pdfGlassBackdrop = rememberLayerBackdrop()
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -219,6 +238,9 @@ fun PdfViewerScreen(
             viewModel.importManualMineruResult(uri, pendingManualReplace)
         }
     }
+    val ttsNotificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
 
     fun startConversion(
         replaceExisting: Boolean,
@@ -293,9 +315,39 @@ fun PdfViewerScreen(
         }
         pendingModePage = null
     }
+    LaunchedEffect(
+        bookId,
+        pageCount,
+        isHorizontal,
+        uiState.ttsActiveBookId,
+        uiState.ttsPlaybackState
+    ) {
+        viewModel.ttsPageTurnRequests.collect { request ->
+            if (request.bookId != bookId ||
+                uiState.ttsActiveBookId != bookId ||
+                uiState.ttsPlaybackState == TtsPlaybackState.IDLE ||
+                request.location.pageIndex != 0
+            ) return@collect
+            val targetPage = request.location.chapterIndex
+            if (targetPage !in 0 until pageCount) return@collect
+            if (isHorizontal) {
+                pagerState.animateScrollToPage(targetPage)
+            } else {
+                listState.animateScrollToItem(targetPage)
+            }
+        }
+    }
 
     // 当前页是否已收藏（PDF 每页 = 一个 chapterIndex）
     val isCurrentPageBookmarked = bookmarks.any { it.chapterIndex == currentPage }
+
+    LaunchedEffect(currentPage, uiState.ttsActiveBookId, uiState.ttsPlaybackState) {
+        if (uiState.ttsActiveBookId == bookId &&
+            uiState.ttsPlaybackState != TtsPlaybackState.IDLE
+        ) {
+            viewModel.onPdfTtsPageVisible(bookId, currentPage)
+        }
+    }
 
     // 进度保存（节流：每翻 3 页才保存一次）
     var lastSavedPage by remember { mutableStateOf(-1) }
@@ -496,13 +548,30 @@ fun PdfViewerScreen(
                 isBookmarked = isCurrentPageBookmarked,
                 pageMode = uiState.pdfPageMode,
                 glassContentScrimColor = pdfGlassContentScrim,
-                onBack = onNavigateBack,
+                isTtsActive = uiState.ttsActiveBookId == bookId &&
+                    uiState.ttsPlaybackState != TtsPlaybackState.IDLE,
+                onBack = exitReader,
                 onPageModeToggle = {
                     pendingModePage = currentPage
                     scale = 1f
                     offsetX = 0f
                     offsetY = 0f
                     viewModel.togglePdfPageMode()
+                },
+                onTtsToggle = {
+                    if (uiState.ttsActiveBookId == bookId &&
+                        uiState.ttsPlaybackState != TtsPlaybackState.IDLE
+                    ) {
+                        viewModel.toggleTtsPlayPause()
+                    } else {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+                            PackageManager.PERMISSION_GRANTED
+                        ) {
+                            ttsNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                        viewModel.startPdfTts(filePath, currentPage, pageCount)
+                    }
                 },
                 onBookmarkToggle = {
                     if (isCurrentPageBookmarked) {
@@ -574,6 +643,26 @@ fun PdfViewerScreen(
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
+        AnimatedVisibility(
+            visible = uiState.ttsActiveBookId == bookId &&
+                uiState.ttsPlaybackState != TtsPlaybackState.IDLE &&
+                !showPdfToc && conversionSheet == null,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            TtsPlayerPanel(
+                playbackState = uiState.ttsPlaybackState,
+                speechRate = uiState.ttsSpeechRate,
+                onPlayPause = viewModel::toggleTtsPlayPause,
+                onStop = viewModel::stopTts,
+                onSkipForward = viewModel::ttsSkipForward,
+                onSkipBackward = viewModel::ttsSkipBackward,
+                onRateChange = viewModel::setTtsSpeechRate,
+                readerBackgroundColor = AppColors.WindowBg,
+                readerContentColor = AppColors.TextPrimary
+            )
+        }
 
         // ── PDF 目录缩略图 Sheet ──
         PdfTocSheet(
@@ -638,17 +727,17 @@ fun PdfViewerScreen(
                         )
                     )
                 },
-                onOpenExisting = onOpenBook,
+                onOpenExisting = openBookFromReader,
                 onCancelConversion = viewModel::cancelPdfConversion,
                 onStayPdf = viewModel::consumePdfConversionResult,
                 onOpenConverted = { convertedBookId ->
                     viewModel.consumePdfConversionResult()
-                    onOpenBook(convertedBookId)
+                    openBookFromReader(convertedBookId)
                 }
             )
         }
     }
-    }
+}
 }
 
 // ── 顶部栏（与 EPUB ReaderTopBar 一致，增加 PDF 专属页码显示）──
@@ -660,8 +749,10 @@ private fun PdfTopBar(
     isBookmarked: Boolean = false,
     pageMode: String,
     glassContentScrimColor: Color,
+    isTtsActive: Boolean,
     onBack: () -> Unit,
     onPageModeToggle: () -> Unit,
+    onTtsToggle: () -> Unit,
     onBookmarkToggle: () -> Unit = {}
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
@@ -753,6 +844,22 @@ private fun PdfTopBar(
                     ),
                     tint = AppColors.TextPrimary,
                     modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            LiquidGlassSurface(
+                shape = CircleShape,
+                fallbackColor = AppColors.BgGray.copy(alpha = 0.8f),
+                contentScrimColor = glassContentScrimColor,
+                modifier = Modifier.size(48.dp),
+                onClick = onTtsToggle,
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.Headphones,
+                    contentDescription = stringResource(R.string.tts_listen),
+                    tint = if (isTtsActive) AppColors.Accent else AppColors.TextPrimary,
+                    modifier = Modifier.size(20.dp)
                 )
             }
             Spacer(Modifier.width(8.dp))

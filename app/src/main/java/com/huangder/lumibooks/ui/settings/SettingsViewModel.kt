@@ -18,6 +18,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -37,6 +38,14 @@ import com.huangder.lumibooks.mineru.MineruConfig
 import com.huangder.lumibooks.mineru.MineruApiException
 import com.huangder.lumibooks.mineru.MineruManualImportManager
 import com.huangder.lumibooks.mineru.MineruMode
+import com.huangder.lumibooks.tts.ExternalTtsConfig
+import com.huangder.lumibooks.tts.ExternalTtsAudioCache
+import com.huangder.lumibooks.tts.ExternalTtsEndpointValidator
+import com.huangder.lumibooks.tts.ExternalTtsException
+import com.huangder.lumibooks.tts.ExternalTtsProtocol
+import com.huangder.lumibooks.tts.ExternalTtsSettings
+import com.huangder.lumibooks.tts.ExternalTtsEngine
+import com.huangder.lumibooks.tts.ExternalTtsTokenStore
 import com.huangder.lumibooks.mineru.MineruTokenStore
 
 @HiltViewModel
@@ -44,7 +53,10 @@ class SettingsViewModel @Inject constructor(
     private val dataStoreManager: DataStoreManager,
     private val bookRepository: BookRepository,
     private val mineruTokenStore: MineruTokenStore,
+    private val externalTtsTokenStore: ExternalTtsTokenStore,
+    private val externalTtsEngine: ExternalTtsEngine,
     private val mineruManualImportManager: MineruManualImportManager,
+    private val externalTtsAudioCache: ExternalTtsAudioCache,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -52,6 +64,8 @@ class SettingsViewModel @Inject constructor(
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
     private var predictiveBackVisualOverride: Boolean? = null
     private var predictiveBackTransitionJob: Job? = null
+    private var externalTtsCacheLimitJob: Job? = null
+
 
     init {
         collectAllPreferences()
@@ -176,6 +190,24 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.appLanguage.collectLatest { language ->
                 _uiState.value = _uiState.value.copy(appLanguage = language)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.externalTtsSettings.collectLatest { settings ->
+                _uiState.value = _uiState.value.copy(
+                    externalTtsSettings = settings,
+                    externalTtsHasToken = externalTtsTokenStore.hasToken(),
+                    externalTtsSettingsLoaded = true
+                )
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.externalTtsCacheLimitMb.collectLatest { limitMb ->
+                _uiState.update { state ->
+                    state.copy(
+                        storageInfo = state.storageInfo.copy(externalTtsCacheLimitMb = limitMb)
+                    )
+                }
             }
         }
     }
@@ -314,6 +346,7 @@ class SettingsViewModel @Inject constructor(
     private companion object {
         const val PREDICTIVE_BACK_SWITCH_ANIMATION_MILLIS = 250L
         const val PREDICTIVE_BACK_DISABLE_SETTLE_MILLIS = 34L
+        const val BYTES_PER_MEBIBYTE = 1_048_576L
     }
 
     fun saveSplashEnabled(enabled: Boolean) {
@@ -385,6 +418,101 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    // ─── 外部 TTS 听书 ───
+
+    fun updateExternalTtsDraft(settings: ExternalTtsSettings) {
+        _uiState.value = _uiState.value.copy(externalTtsSettings = settings)
+    }
+
+    fun enableExternalTts(
+        settings: ExternalTtsSettings,
+        token: String?,
+        onSaved: () -> Unit = {}
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val normalizedToken = token?.trim().orEmpty()
+            if (normalizedToken.isEmpty() && !externalTtsTokenStore.hasToken()) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, R.string.external_tts_key_required, Toast.LENGTH_SHORT).show()
+                }
+                return@launch
+            }
+            if (!settings.hasRequiredFields) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, R.string.external_tts_required_fields, Toast.LENGTH_SHORT).show()
+                }
+                return@launch
+            }
+            val urlResult = ExternalTtsEndpointValidator.validate(settings.baseUrl, settings.allowHttp)
+            if (urlResult.isFailure) {
+                val msg = when (val error = urlResult.exceptionOrNull()) {
+                    is ExternalTtsException.InsecureEndpoint -> context.getString(R.string.external_tts_insecure_endpoint)
+                    is ExternalTtsException.InvalidConfiguration -> error.message ?: context.getString(R.string.external_tts_invalid_url)
+                    else -> context.getString(R.string.external_tts_invalid_url)
+                }
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                }
+                return@launch
+            }
+            if (normalizedToken.isNotEmpty()) {
+                externalTtsTokenStore.save(normalizedToken)
+            }
+            val finalSettings = settings.normalized().copy(
+                enabled = true,
+                consentVersion = ExternalTtsConfig.CONSENT_VERSION,
+                consentAcceptedAt = System.currentTimeMillis()
+            )
+            dataStoreManager.saveExternalTtsSettings(finalSettings)
+            withContext(Dispatchers.Main) {
+                _uiState.value = _uiState.value.copy(
+                    externalTtsSettings = finalSettings,
+                    externalTtsHasToken = externalTtsTokenStore.hasToken()
+                )
+                onSaved()
+            }
+        }
+    }
+
+    fun disableExternalTts(clearKey: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (clearKey) externalTtsTokenStore.clear()
+            dataStoreManager.disableExternalTts()
+            _uiState.value = _uiState.value.copy(
+                externalTtsSettings = _uiState.value.externalTtsSettings.copy(enabled = false),
+                externalTtsHasToken = externalTtsTokenStore.hasToken()
+            )
+        }
+    }
+
+    fun clearExternalTtsToken() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val wasEnabled = _uiState.value.externalTtsSettings.enabled
+            externalTtsTokenStore.clear()
+            if (wasEnabled) {
+                dataStoreManager.disableExternalTts()
+            }
+            _uiState.value = _uiState.value.copy(
+                externalTtsSettings = _uiState.value.externalTtsSettings.copy(enabled = false),
+                externalTtsHasToken = false
+            )
+        }
+    }
+
+    fun testExternalTtsConnection() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = externalTtsEngine.testConnection()
+            val message = if (result.isSuccess) {
+                R.string.external_tts_test_success
+            } else {
+                R.string.external_tts_test_failed
+            }
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     fun importManualMineruResult(uri: Uri) {
         if (_uiState.value.mineruManualImporting) return
         _uiState.value = _uiState.value.copy(mineruManualImporting = true)
@@ -445,17 +573,43 @@ class SettingsViewModel @Inject constructor(
     fun clearCache() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                context.cacheDir.deleteRecursively()
+                context.cacheDir.listFiles()?.forEach { entry ->
+                    if (entry.name != ExternalTtsAudioCache.DIRECTORY_NAME) {
+                        entry.deleteRecursively()
+                    }
+                }
                 // 清除图片缓存目录
-                File(context.cacheDir, "image_cache").deleteRecursively()
-                // 清除 Coil 图片缓存
                 try { Coil.imageLoader(context).diskCache?.clear() } catch (_: Exception) { }
                 try { Coil.imageLoader(context).memoryCache?.clear() } catch (_: Exception) { }
-                calculateStorageBreakdown()
+                refreshStorageBreakdown()
                 withContext(Dispatchers.Main) {
                     Toast.makeText(context, "缓存已清除", Toast.LENGTH_SHORT).show()
                 }
             } catch (_: Exception) { }
+        }
+    }
+    fun saveExternalTtsCacheLimitMb(limitMb: Int) {
+        val boundedLimitMb = limitMb.coerceIn(
+            ExternalTtsConfig.MIN_AUDIO_CACHE_LIMIT_MB,
+            ExternalTtsConfig.MAX_AUDIO_CACHE_LIMIT_MB
+        )
+        _uiState.update { state ->
+            state.copy(
+                storageInfo = state.storageInfo.copy(externalTtsCacheLimitMb = boundedLimitMb)
+            )
+        }
+        externalTtsCacheLimitJob?.cancel()
+        externalTtsCacheLimitJob = viewModelScope.launch(Dispatchers.IO) {
+            dataStoreManager.saveExternalTtsCacheLimitMb(boundedLimitMb)
+            externalTtsAudioCache.trimToLimit(boundedLimitMb.toLong() * BYTES_PER_MEBIBYTE)
+            refreshStorageBreakdown()
+        }
+    }
+
+    fun clearExternalTtsAudioCache() {
+        viewModelScope.launch(Dispatchers.IO) {
+            externalTtsAudioCache.clear()
+            refreshStorageBreakdown()
         }
     }
 
@@ -482,10 +636,11 @@ class SettingsViewModel @Inject constructor(
                     avatarBackup.deleteRecursively()
                 }
 
-                // 重置 DataStore
+                // 重置加密凭据与 DataStore；先清凭据，确保设置流回填正确状态。
+                externalTtsTokenStore.clear()
                 dataStoreManager.clearAll()
 
-                calculateStorageBreakdown()
+                refreshStorageBreakdown()
                 withContext(Dispatchers.Main) {
                     Toast.makeText(context, "所有数据已清除", Toast.LENGTH_SHORT).show()
                 }
@@ -493,32 +648,42 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    /** 计算存储空间分解：应用本体 + 缓存 + 电子书 + 封面 + 逐本书明细 */
+    /** 计算存储空间分解：应用本体 + 缓存 + 外部 TTS 音频缓存 + 电子书 + 封面 + 逐本书明细 */
     private fun calculateStorageBreakdown() {
         viewModelScope.launch(Dispatchers.IO) {
-            // APK 本体大小
-            val appSize = try {
-                val appInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-                File(appInfo.applicationInfo?.sourceDir ?: "").length()
-            } catch (_: Exception) { 0L }
+            refreshStorageBreakdown()
+        }
+    }
 
-            val cacheSize = getDirSize(context.cacheDir)
-            val filesSize = getDirSize(context.filesDir)
-            val booksDirSize = getDirSize(FileUtils.getBooksDirectory(context))
-            val coversDirSize = getDirSize(FileUtils.getCoversDirectory(context))
+    private suspend fun refreshStorageBreakdown() {
+        // APK 本体大小
+        val appSize = try {
+            val appInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+            File(appInfo.applicationInfo?.sourceDir ?: "").length()
+        } catch (_: Exception) { 0L }
 
-            // 逐本书文件大小（按大小降序）
-            val bookDetails = bookRepository.getAllBooks().first().map { book ->
-                val fileSize = File(book.filePath).let { if (it.exists()) it.length() else 0L }
-                BookSizeItem(book.id, book.title, book.format.name, fileSize)
-            }.sortedByDescending { it.sizeBytes }
+        val cacheSize = getDirSize(context.cacheDir)
+        val filesSize = getDirSize(context.filesDir)
+        val externalTtsCacheSize = externalTtsAudioCache.sizeBytes()
+        val genericCacheSize = (cacheSize + filesSize - externalTtsCacheSize).coerceAtLeast(0L)
+        val booksDirSize = getDirSize(FileUtils.getBooksDirectory(context))
+        val coversDirSize = getDirSize(FileUtils.getCoversDirectory(context))
 
-            _uiState.value = _uiState.value.copy(
+        // 逐本书文件大小（按大小降序）
+        val bookDetails = bookRepository.getAllBooks().first().map { book ->
+            val fileSize = File(book.filePath).let { if (it.exists()) it.length() else 0L }
+            BookSizeItem(book.id, book.title, book.format.name, fileSize)
+        }.sortedByDescending { it.sizeBytes }
+
+        _uiState.update { state ->
+            state.copy(
                 storageInfo = StorageInfo(
                     appSizeBytes = appSize,
-                    cacheSizeBytes = cacheSize + filesSize,
+                    cacheSizeBytes = genericCacheSize,
                     booksSizeBytes = booksDirSize,
                     coversSizeBytes = coversDirSize,
+                    externalTtsCacheSizeBytes = externalTtsCacheSize,
+                    externalTtsCacheLimitMb = state.storageInfo.externalTtsCacheLimitMb,
                     bookDetails = bookDetails
                 )
             )

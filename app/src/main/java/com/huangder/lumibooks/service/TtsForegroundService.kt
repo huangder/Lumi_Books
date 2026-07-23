@@ -41,6 +41,7 @@ class TtsForegroundService : Service() {
     private lateinit var mediaSession: MediaSession
     private var bookTitle = ""
     private var foregroundStarted = false
+    private var awaitingSessionStart = false
 
     override fun onCreate() {
         super.onCreate()
@@ -65,10 +66,13 @@ class TtsForegroundService : Service() {
                     updateMediaSessionState(state)
                     if (!foregroundStarted) return@collect
                     if (state == TtsPlaybackState.IDLE) {
-                        stopForeground(STOP_FOREGROUND_REMOVE)
-                        foregroundStarted = false
-                        stopSelf()
+                        if (!awaitingSessionStart) {
+                            stopForeground(STOP_FOREGROUND_REMOVE)
+                            foregroundStarted = false
+                            stopSelf()
+                        }
                     } else {
+                        awaitingSessionStart = false
                         val notification = notificationManager.buildNotification(
                             bookTitle = bookTitle,
                             chapterIndex = page?.location?.chapterIndex ?: 0,
@@ -100,6 +104,7 @@ class TtsForegroundService : Service() {
             }
             ACTION_START, null -> {
                 bookTitle = intent?.getStringExtra(EXTRA_BOOK_TITLE).orEmpty()
+                awaitingSessionStart = true
                 val state = ttsController.playbackState.value
                 val notification = notificationManager.buildNotification(
                     bookTitle = bookTitle,
@@ -109,11 +114,6 @@ class TtsForegroundService : Service() {
                 )
                 startForeground(TtsNotificationManager.NOTIFICATION_ID, notification)
                 foregroundStarted = true
-                if (state == TtsPlaybackState.IDLE) {
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                    foregroundStarted = false
-                    stopSelf()
-                }
             }
         }
         return START_NOT_STICKY

@@ -38,6 +38,7 @@ import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.ui.navigation.MainNavGraph
+import com.huangder.lumibooks.tts.TtsController
 import com.huangder.lumibooks.ui.splash.SplashScreen
 import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
 import com.huangder.lumibooks.ui.components.PolicyUpdateDialog
@@ -89,6 +90,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var bookRepository: BookRepository
+
+    @Inject
+    lateinit var ttsController: TtsController
 
     /**
      * 当 ReaderScreen 处于前台时置为 true，
@@ -288,6 +292,7 @@ class MainActivity : ComponentActivity() {
                                 entranceAnimationsEnabled = entranceAnimationsEnabled && !showSplash,
                                 predictiveBackEnabled = predictiveBackEnabled,
                                 requestedOpenBookId = requestedOpenBookId,
+                                onBeforeOpenDifferentBook = ttsController::stop,
                                 onOpenBookRequestConsumed = { requestedOpenBookId = null }
                             )
                         }

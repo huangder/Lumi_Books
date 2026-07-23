@@ -26,7 +26,8 @@ enum class TtsEngineStatus {
 
 class TtsEngine(
     @ApplicationContext context: Context
-) {
+) : TtsPlaybackEngine {
+    override val isExternal: Boolean = false
     companion object {
         private const val TAG = "TtsEngine"
     }
@@ -40,6 +41,8 @@ class TtsEngine(
 
     private val _engineStatus = MutableStateFlow(TtsEngineStatus.UNINITIALIZED)
     val engineStatus: StateFlow<TtsEngineStatus> = _engineStatus.asStateFlow()
+
+    override suspend fun initialize(): Result<Unit> = initialize(Locale.getDefault())
 
     suspend fun initialize(locale: Locale = Locale.getDefault()): Result<Unit> = initializeMutex.withLock {
         if (_engineStatus.value == TtsEngineStatus.READY && engine != null) {
@@ -95,7 +98,7 @@ class TtsEngine(
         }
     }
 
-    suspend fun speak(text: String, utteranceId: String): Result<Unit> = withContext(Dispatchers.Main.immediate) {
+    override suspend fun speak(text: String, utteranceId: String): Result<Unit> = withContext(Dispatchers.Main.immediate) {
         val activeEngine = engine
             ?: return@withContext Result.failure(IllegalStateException("TTS engine is not ready"))
         val result = activeEngine.speak(text, TextToSpeech.QUEUE_FLUSH, Bundle(), utteranceId)
@@ -106,26 +109,56 @@ class TtsEngine(
         }
     }
 
-    suspend fun stop() = withContext(Dispatchers.Main.immediate) {
-        engine?.stop()
+    override suspend fun pause() {
+        stop()
     }
 
-    suspend fun setSpeechRate(rate: Float) = withContext(Dispatchers.Main.immediate) {
+    override suspend fun resume(): Boolean = false
+
+    override suspend fun stop() = withContext(Dispatchers.Main.immediate) {
+        engine?.stop()
+        Unit
+    }
+
+    override suspend fun setSpeechRate(rate: Float) = withContext(Dispatchers.Main.immediate) {
         pendingSpeechRate = rate.coerceIn(0.5f, 2f)
         engine?.setSpeechRate(pendingSpeechRate)
+        Unit
     }
 
-    suspend fun setPitch(pitch: Float) = withContext(Dispatchers.Main.immediate) {
+    override suspend fun setPitch(pitch: Float) = withContext(Dispatchers.Main.immediate) {
         pendingPitch = pitch.coerceIn(0.5f, 2f)
         engine?.setPitch(pendingPitch)
+        Unit
     }
 
-    fun setOnUtteranceListener(listener: UtteranceProgressListener) {
-        utteranceListener = listener
-        engine?.setOnUtteranceProgressListener(listener)
+    override fun setListener(listener: TtsPlaybackListener) {
+        utteranceListener = object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?) {
+                utteranceId?.let(listener::onStart)
+            }
+
+            override fun onDone(utteranceId: String?) {
+                utteranceId?.let(listener::onDone)
+            }
+
+            @Deprecated("Deprecated by Android")
+            override fun onError(utteranceId: String?) {
+                utteranceId?.let { listener.onError(it, IllegalStateException("System TTS playback failed")) }
+            }
+
+            override fun onError(utteranceId: String?, errorCode: Int) {
+                utteranceId?.let {
+                    listener.onError(it, IllegalStateException("System TTS playback failed: $errorCode"))
+                }
+            }
+        }
+        utteranceListener?.let { progressListener ->
+            engine?.setOnUtteranceProgressListener(progressListener)
+        }
     }
 
-    fun shutdown() {
+    override fun shutdown() {
         engine?.shutdown()
         engine = null
         _engineStatus.value = TtsEngineStatus.UNINITIALIZED
