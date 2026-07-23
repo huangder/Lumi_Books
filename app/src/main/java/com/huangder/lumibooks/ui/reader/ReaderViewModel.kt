@@ -694,7 +694,30 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun savePageTransition(mode: String) {
-        _uiState.value = _uiState.value.copy(pageTransition = mode)
+        val state = _uiState.value
+        val crossesContinuousBoundary =
+            (state.pageTransition == "continuous") != (mode == "continuous")
+        val chapterFraction = if (state.totalPages > 0) {
+            state.currentPageIndex.toFloat().div(state.totalPages).coerceIn(0f, 0.9999f)
+        } else {
+            0f
+        }
+        _uiState.value = if (crossesContinuousBoundary) {
+            android.util.Log.e(
+                "ContinuousProgressDebug",
+                "modeSwitch from=${state.pageTransition} to=$mode chapter=${state.currentChapterIndex} " +
+                    "position=${state.currentPageIndex}/${state.totalPages} fraction=$chapterFraction"
+            )
+            state.copy(
+                pageTransition = mode,
+                currentPageIndex = 0,
+                totalPages = 0,
+                pendingPageFraction = chapterFraction,
+                pageReady = false
+            )
+        } else {
+            state.copy(pageTransition = mode)
+        }
         viewModelScope.launch {
             dataStoreManager.savePageTransition(mode)
         }

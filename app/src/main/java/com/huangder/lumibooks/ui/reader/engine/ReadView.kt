@@ -1015,6 +1015,9 @@ class ReadView(context: Context) : FrameLayout(context) {
         val slot = slotManager.getSlotForView(pageView) ?: return null
         val chapterIdx = slot.chapterIndex
         val chapterStartOffset = pageView.chapterStartOffset
+        val hiddenStartLine = layout.getLineForOffset(selStart)
+        val hiddenStartLineOffset = layout.getLineStart(hiddenStartLine)
+        val visualStartLineInfo = pageView.getVisualLineInfo(selStart)
 
         Log.e(
             "ReaderSelectionDebug",
@@ -1022,6 +1025,8 @@ class ReadView(context: Context) : FrameLayout(context) {
                 "slotChapter=${slot.chapterIndex} slotPage=${slot.pageIndex} " +
                 "chapterStart=$chapterStartOffset local=[$selStart,$selEnd) " +
                 "absolute=[${chapterStartOffset + selStart},${chapterStartOffset + selEnd}) " +
+                "hiddenLine=$hiddenStartLine@$hiddenStartLineOffset " +
+                "visualLine=${visualStartLineInfo?.first}@${visualStartLineInfo?.second} " +
                 "text=${text.take(80)}"
         )
 

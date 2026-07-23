@@ -7,6 +7,8 @@ import android.text.Selection
 import android.text.Spannable
 import android.text.SpannableStringBuilder
 import android.text.style.BackgroundColorSpan
+import android.text.style.CharacterStyle
+import android.text.style.UpdateAppearance
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
@@ -24,7 +26,20 @@ internal fun pageStartsMidParagraph(text: CharSequence, start: Int): Boolean {
 }
 
 /** A non-persistent highlight whose opacity is animated after navigating to a search result. */
-internal class ReaderSearchHighlightSpan(var alpha: Int)
+internal class ReaderSearchHighlightSpan(var alpha: Int) : CharacterStyle(), UpdateAppearance {
+    override fun updateDrawState(textPaint: android.text.TextPaint) {
+        textPaint.bgColor = (alpha.coerceIn(0, 255) shl 24) or 0x00FFE082
+    }
+}
+
+private class PagedSelectableTextView(context: Context) : TextView(context) {
+    override fun scrollTo(x: Int, y: Int) {
+        // A page is a fixed viewport. Overflow belongs to the next page, never to inner scrolling.
+        super.scrollTo(x, 0)
+    }
+
+    override fun canScrollVertically(direction: Int): Boolean = false
+}
 
 /**
  * 单页内容 View，替代 PageSurfaceView（Bitmap 容器）。
@@ -51,18 +66,19 @@ class PageContentView(context: Context) : FrameLayout(context) {
         visibility = View.GONE
     }
 
-    /**
-     * 隐藏文字的 TextView：计算 layout + 处理文字选择。
-     *
-     * 文字颜色设为透明 → 不绘制文字（由 JustifiedTextView 负责渲染）。
-     * 原生选区和手柄仍由此 View 处理；持久化高亮由 JustifiedTextView 在实际字符位置绘制。
-     */
-    val textView: TextView = TextView(context).apply {
+    /** The single visible text, image, highlight, and native-selection renderer. */
+    val textView: TextView = PagedSelectableTextView(context).apply {
         setTextIsSelectable(true)
         gravity = Gravity.TOP
         includeFontPadding = false
-        // 文字颜色透明：不绘制文字本身，但选区高亮（BackgroundColorSpan）仍然可见
-        setTextColor(android.graphics.Color.TRANSPARENT)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            // PageLayoutEngine's StaticLayout does not expand lines for fallback-font metrics.
+            // Keep the visible page on the same line-height model so its last line fits.
+            setFallbackLineSpacing(false)
+        }
+        breakStrategy = android.text.Layout.BREAK_STRATEGY_HIGH_QUALITY
+        hyphenationFrequency = android.text.Layout.HYPHENATION_FREQUENCY_NONE
+        setTextColor(0xFF333333.toInt())
         setTextSize(TypedValue.COMPLEX_UNIT_PX, 56f)
     }
 
@@ -70,6 +86,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
     private val justifiedView = JustifiedTextView(context).apply {
         setDefaultTextColor(0xFF333333.toInt())
         setTextSize(56f)
+        visibility = View.INVISIBLE
     }
 
     init {
@@ -112,11 +129,14 @@ class PageContentView(context: Context) : FrameLayout(context) {
      * 否则自定义菜单也会被压制。
      */
     fun suppressSystemToolbar() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            textView.setTextClassifier(android.view.textclassifier.TextClassifier.NO_OP)
+        }
         textView.customSelectionActionModeCallback = object : android.view.ActionMode.Callback {
             override fun onCreateActionMode(mode: android.view.ActionMode?, menu: android.view.Menu?): Boolean {
                 menu?.clear()
                 mode?.hide(Long.MAX_VALUE)
-                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                textView.post {
                     menu?.clear()
                     mode?.hide(Long.MAX_VALUE)
                 }
@@ -125,7 +145,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
             override fun onPrepareActionMode(mode: android.view.ActionMode?, menu: android.view.Menu?): Boolean {
                 menu?.clear()
                 mode?.hide(Long.MAX_VALUE)
-                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                textView.post {
                     menu?.clear()
                     mode?.hide(Long.MAX_VALUE)
                 }
@@ -291,38 +311,9 @@ class PageContentView(context: Context) : FrameLayout(context) {
             Log.w(TAG, "setPageContent: $orphanFFFC U+FFFC without ImageSpan — images failed to load at page offset")
         }
 
-        // 🔥 创建 textView 副本：
-        // - ImageSpan → 替换为透明占位（保持相同 bounds，确保行高一致，无需 requestLayout）
-        // - ForegroundColorSpan → 移除（防止 textView 也绘制彩色文字导致重影）
-        val textViewCopy = SpannableStringBuilder(spannable)
-        for (span in textViewCopy.getSpans(0, textViewCopy.length, android.text.style.ImageSpan::class.java)) {
-            val start = textViewCopy.getSpanStart(span)
-            val end = textViewCopy.getSpanEnd(span)
-            val flags = textViewCopy.getSpanFlags(span)
-            val drawable = span.drawable
-            if (drawable != null) {
-                val bounds = drawable.copyBounds()
-                // 🔥 使用 1x1 透明 BitmapDrawable（有 intrinsic size），而非 ColorDrawable（无 intrinsic size）
-                // ColorDrawable.getIntrinsicHeight() 返回 -1，可能导致测量路径出错
-                val bitmap = android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.ARGB_8888)
-                bitmap.eraseColor(android.graphics.Color.TRANSPARENT)
-                val transparent = android.graphics.drawable.BitmapDrawable(resources, bitmap)
-                transparent.bounds = bounds
-                textViewCopy.removeSpan(span)
-                textViewCopy.setSpan(android.text.style.ImageSpan(transparent), start, end, flags)
-            } else {
-                textViewCopy.removeSpan(span)
-            }
-        }
-        for (span in textViewCopy.getSpans(0, textViewCopy.length, android.text.style.ForegroundColorSpan::class.java)) {
-            textViewCopy.removeSpan(span)
-        }
-        for (span in textViewCopy.getSpans(0, textViewCopy.length, BackgroundColorSpan::class.java)) {
-            textViewCopy.removeSpan(span)
-        }
-
-        // 设置文本到两个 View
-        textView.text = textViewCopy
+        // One layout now owns visible glyphs, images, highlights, and selection geometry.
+        textView.text = spannable
+        textView.scrollTo(0, 0)
         justifiedView.text = spannable
         // 保存原始 spannable（含真实 BitmapDrawable ImageSpan），供 moveSlot/syncText 使用
         this.originalSpannable = spannable
@@ -331,12 +322,26 @@ class PageContentView(context: Context) : FrameLayout(context) {
         // 必须从 textView.text 取实际存储的 Spannable，否则 SpanWatcher 注册在死对象上
         val actualSpannable = textView.text as? Spannable ?: spannable
         onTextSet?.invoke(actualSpannable)
+        textView.post {
+            val contentHeight = textView.layout?.height ?: 0
+            val viewportHeight = (textView.height - textView.paddingTop - textView.paddingBottom)
+                .coerceAtLeast(0)
+            Log.e(
+                "ReaderPaginationDebug",
+                "pageStart=$chapterStartOffset textLength=${textView.text.length} " +
+                    "lineCount=${textView.layout?.lineCount ?: 0} " +
+                    "contentHeight=$contentHeight viewportHeight=$viewportHeight " +
+                    "overflow=${(contentHeight - viewportHeight).coerceAtLeast(0)}"
+            )
+            textView.scrollTo(0, 0)
+        }
     }
 
     fun setSearchHighlightAlpha(alpha: Int) {
         originalSpannable
             ?.getSpans(0, originalSpannable?.length ?: 0, ReaderSearchHighlightSpan::class.java)
             ?.forEach { it.alpha = alpha.coerceIn(0, 255) }
+        textView.invalidate()
         justifiedView.invalidate()
     }
 
@@ -360,10 +365,9 @@ class PageContentView(context: Context) : FrameLayout(context) {
     ) {
         val spacingRatio = if (fontSizePx > 0) letterSpacingPx / fontSizePx else 0f
 
-        // 配置隐藏的 TextView（layout 计算 + 选择）
-        // 文字颜色保持透明，不绘制文字（由 JustifiedTextView 负责渲染）
+        // Native TextView is the visible renderer as well as the selection owner.
         textView.setTextSize(TypedValue.COMPLEX_UNIT_PX, fontSizePx)
-        textView.setTextColor(android.graphics.Color.TRANSPARENT)
+        textView.setTextColor(textColor)
         textView.typeface = typeface
         textView.setLineSpacing(lineSpacingExtraPx, lineHeightMult)
         textView.letterSpacing = spacingRatio
@@ -414,6 +418,8 @@ class PageContentView(context: Context) : FrameLayout(context) {
 
     /** 获取当前 TextView 的 Spannable（用于读取选区等） */
     fun getTextSpannable(): Spannable? = textView.text as? Spannable
+
+    fun getVisualLineInfo(offset: Int): Pair<Int, Int>? = justifiedView.getLineInfoForOffset(offset)
 
     /** 返回指定页面坐标处的 EPUB 链接；未命中链接时返回 null。 */
     fun getLinkAt(x: Float, y: Float): String? = justifiedView.getLinkAtPosition(x, y)
@@ -535,6 +541,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
         justifiedView.text = justifiedText
             ?: (textViewText as? Spannable ?: textViewText?.let { SpannableStringBuilder(it) })
         textView.text = textViewText
+        textView.scrollTo(0, 0)
         // 如果传入了 justifiedText，同步更新 originalSpannable
         if (justifiedText != null) {
             this.originalSpannable = justifiedText
