@@ -155,6 +155,16 @@ android_books/
 
 ---
 
+## Star History
+
+<p align="center">
+  <a href="https://star-history.com/#huangder/Lumi_Books&Date">
+    <img src="https://api.star-history.com/svg?repos=huangder/Lumi_Books&type=Date" alt="Star History Chart" width="600">
+  </a>
+</p>
+
+---
+
 ## 许可证
 
 Lumi 原创代码采用 [MIT License](LICENSE) 开源。第三方依赖及改编代码继续遵循各自许可证；其中液态玻璃使用并改编自 Apache 2.0 许可的 [AndroidLiquidGlass / Backdrop](https://github.com/Kyant0/AndroidLiquidGlass)。© 2026 Huangder
