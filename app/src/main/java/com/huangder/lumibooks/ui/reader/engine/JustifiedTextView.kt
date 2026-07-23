@@ -475,6 +475,15 @@ class JustifiedTextView @JvmOverloads constructor(
         return sl.getOffsetForHorizontal(line, tx).coerceIn(0, (spannable?.length ?: 1) - 1)
     }
 
+    fun getLineInfoForOffset(offset: Int): Pair<Int, Int>? {
+        val sl = layout ?: return null
+        val textLength = spannable?.length ?: return null
+        if (textLength <= 0) return null
+        val safeOffset = offset.coerceIn(0, textLength - 1)
+        val line = sl.getLineForOffset(safeOffset)
+        return line to sl.getLineStart(line)
+    }
+
     /**
      * 获取字符的视觉边界（用于选区高亮）
      */

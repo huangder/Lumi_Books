@@ -11,10 +11,10 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.text.Selection
-import android.text.Spanned
 import android.text.SpanWatcher
 import android.text.Spannable
-import android.text.style.ImageSpan
+import android.text.SpannableStringBuilder
+import android.text.style.BackgroundColorSpan
 import android.webkit.WebView
 import android.widget.ImageView
 import android.widget.TextView
@@ -139,10 +139,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.core.graphics.ColorUtils
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.semantics.contentDescription
@@ -194,6 +190,141 @@ private data class ContinuousSearchHighlight(
     val end: Int
 )
 
+private data class ContinuousTextSelection(
+    val start: Int,
+    val end: Int,
+    val selectedText: String,
+    val startX: Float,
+    val endX: Float,
+    val topY: Float,
+    val bottomY: Float
+)
+
+private class ContinuousSelectionController {
+    var activeView: ContinuousSelectableTextView? = null
+
+    fun clear() {
+        activeView?.clearReaderSelection()
+        activeView = null
+    }
+}
+
+private class ContinuousSelectableTextView(context: Context) : TextView(context) {
+    var onReaderTap: (() -> Unit)? = null
+    var onSelectionChanging: (() -> Unit)? = null
+    var onReaderSelection: ((ContinuousTextSelection) -> Unit)? = null
+
+    private var sourceText: CharSequence? = null
+    private var replacingText = false
+    private val selectionDispatch = Runnable { dispatchReaderSelection() }
+
+    init {
+        includeFontPadding = false
+        gravity = android.view.Gravity.TOP
+        setTextIsSelectable(true)
+        highlightColor = 0x40007AFF
+        setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            setTextClassifier(android.view.textclassifier.TextClassifier.NO_OP)
+        }
+        setOnClickListener {
+            val spannable = text as? Spannable
+            val start = spannable?.let(Selection::getSelectionStart) ?: -1
+            val end = spannable?.let(Selection::getSelectionEnd) ?: -1
+            if (start < 0 || end <= start) onReaderTap?.invoke()
+        }
+        customSelectionActionModeCallback = hiddenSelectionToolbarCallback()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            customInsertionActionModeCallback = hiddenSelectionToolbarCallback()
+        }
+    }
+
+    fun setReaderText(value: CharSequence) {
+        if (sourceText === value) return
+        sourceText = value
+        replacingText = true
+        setText(value, TextView.BufferType.SPANNABLE)
+        replacingText = false
+    }
+
+    fun clearReaderSelection() {
+        removeCallbacks(selectionDispatch)
+        (text as? Spannable)?.let(Selection::removeSelection)
+        clearFocus()
+    }
+
+    override fun onSelectionChanged(selStart: Int, selEnd: Int) {
+        super.onSelectionChanged(selStart, selEnd)
+        if (replacingText || selStart < 0 || selEnd <= selStart) return
+        removeCallbacks(selectionDispatch)
+        onSelectionChanging?.invoke()
+        postDelayed(selectionDispatch, 240L)
+    }
+
+    private fun dispatchReaderSelection() {
+        val spannable = text as? Spannable ?: return
+        val rawStart = Selection.getSelectionStart(spannable)
+        val rawEnd = Selection.getSelectionEnd(spannable)
+        val start = minOf(rawStart, rawEnd)
+        val end = maxOf(rawStart, rawEnd)
+        if (start < 0 || end <= start || end > spannable.length) return
+        val textLayout = layout ?: return
+        val endOffset = (end - 1).coerceAtLeast(start)
+        val startLine = textLayout.getLineForOffset(start)
+        val endLine = textLayout.getLineForOffset(endOffset)
+        val location = IntArray(2)
+        getLocationOnScreen(location)
+        val originX = location[0] + totalPaddingLeft
+        val originY = location[1] + totalPaddingTop
+        onReaderSelection?.invoke(
+            ContinuousTextSelection(
+                start = start,
+                end = end,
+                selectedText = spannable.subSequence(start, end).toString(),
+                startX = originX + textLayout.getPrimaryHorizontal(start),
+                endX = originX + textLayout.getPrimaryHorizontal(end),
+                topY = (originY + textLayout.getLineTop(startLine)).toFloat(),
+                bottomY = (originY + textLayout.getLineBottom(endLine)).toFloat()
+            )
+        )
+    }
+
+    private fun hiddenSelectionToolbarCallback() = object : android.view.ActionMode.Callback {
+        override fun onCreateActionMode(
+            mode: android.view.ActionMode?,
+            menu: android.view.Menu?
+        ): Boolean {
+            menu?.clear()
+            mode?.hide(Long.MAX_VALUE)
+            post {
+                menu?.clear()
+                mode?.hide(Long.MAX_VALUE)
+            }
+            return true
+        }
+
+        override fun onPrepareActionMode(
+            mode: android.view.ActionMode?,
+            menu: android.view.Menu?
+        ): Boolean {
+            menu?.clear()
+            mode?.hide(Long.MAX_VALUE)
+            post {
+                menu?.clear()
+                mode?.hide(Long.MAX_VALUE)
+            }
+            return true
+        }
+
+        override fun onActionItemClicked(
+            mode: android.view.ActionMode?,
+            item: android.view.MenuItem?
+        ): Boolean = false
+
+        override fun onDestroyActionMode(mode: android.view.ActionMode?) = Unit
+    }
+}
+
 @OptIn(kotlinx.coroutines.FlowPreview::class)
 @Composable
 fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> Unit = {}, onLoadingComplete: () -> Unit = {}, viewModel: ReaderViewModel = hiltViewModel()) {
@@ -218,7 +349,12 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     // ReadView 引用
     val readViewRef = remember { mutableStateOf<ReadView?>(null) }
     val continuousScrollRequests = remember { MutableSharedFlow<Int>(extraBufferCapacity = 1) }
+    val continuousSelectionController = remember { ContinuousSelectionController() }
     val isContinuousScrollMode = uiState.useNewEngine && uiState.pageTransition == "continuous"
+    val clearActiveTextSelection = {
+        if (isContinuousScrollMode) continuousSelectionController.clear()
+        else readViewRef.value?.curPageView?.clearSelection()
+    }
     val jumpToContinuousChapter: (Int) -> Unit = { chapterIndex ->
         val target = chapterIndex.coerceIn(0, (uiState.chapterCount - 1).coerceAtLeast(0))
         viewModel.setChapter(target)
@@ -574,9 +710,6 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             else -> android.graphics.Typeface.DEFAULT
         }
     } ?: android.graphics.Typeface.DEFAULT
-    val continuousFontFamily = remember(continuousTypeface) {
-        FontFamily(continuousTypeface)
-    }
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val readerGlassContentScrim = menuBgColor.copy(alpha = 0.18f)
     val readerGlassBackdrop = rememberLayerBackdrop()
@@ -602,7 +735,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     initialChapterFraction = uiState.pendingPageFraction,
                     fontSize = uiState.fontSize,
                     lineHeight = uiState.lineHeight,
-                    fontFamily = continuousFontFamily,
+                    letterSpacingDp = uiState.letterSpacing,
                     typeface = continuousTypeface,
                     textColor = readerTextColorInt,
                     backgroundColor = readerBackgroundColorInt,
@@ -615,31 +748,45 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     scrollRequests = continuousScrollRequests,
                     onSearchHighlightFinished = { continuousSearchHighlight = null },
                     onMenuToggle = viewModel::toggleMenu,
-                    onSelection = { chapterIndex, start, end, selectedText, touch ->
-                        val overlapping = findOverlappingNote(notes, chapterIndex, start, end)
+                    selectionController = continuousSelectionController,
+                    onSelectionChanging = {
+                        selectionState = null
+                        isSelectionDragging = true
+                    },
+                    onSelection = { chapterIndex, selection ->
+                        val overlapping = findOverlappingNote(
+                            notes,
+                            chapterIndex,
+                            selection.start,
+                            selection.end
+                        )
                         android.util.Log.e(
                             "ReaderSelectionDebug",
-                            "continuous chapter=$chapterIndex selection=[$start,$end) " +
+                            "continuous chapter=$chapterIndex selection=" +
+                                "[${selection.start},${selection.end}) " +
                                 "existingId=${overlapping?.id} existingRange=" +
                                 "[${overlapping?.startPosition},${overlapping?.endPosition}) " +
-                                "selected=${selectedText.take(80)} existing=${overlapping?.selectedText?.take(80)}"
+                                "selected=${selection.selectedText.take(80)} " +
+                                "existing=${overlapping?.selectedText?.take(80)}"
                         )
                         selectionState = SelectionState(
                             chapterIndex = chapterIndex,
                             pageInChapter = 0,
-                            charStart = start,
-                            charEnd = end,
-                            selectedText = selectedText,
-                            touchX = touch.x,
-                            touchY = touch.y,
+                            charStart = selection.start,
+                            charEnd = selection.end,
+                            selectedText = selection.selectedText,
+                            touchX = selection.startX,
+                            touchY = selection.topY,
                             hasHighlight = overlapping != null,
                             hasNote = overlapping?.note?.isNotEmpty() == true,
                             existingNote = overlapping,
-                            selTopY = touch.y,
-                            selBottomY = touch.y,
-                            selStartX = touch.x,
-                            selEndX = touch.x
+                            selTopY = selection.topY,
+                            selBottomY = selection.bottomY,
+                            selStartX = selection.startX,
+                            selEndX = selection.endX
                         )
+                        isSelectionDragging = false
+                        menuReappearKey++
                     },
                     onChapterVisible = viewModel::onContinuousScrollPosition,
                     onRestoreComplete = viewModel::clearPendingPageFraction
@@ -1319,7 +1466,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         onDismiss = {
             selectionState = null
             showHighlightColorPicker = false
-            readViewRef.value?.curPageView?.clearSelection()
+            clearActiveTextSelection()
         },
         onColorPicked = { hexColor ->
             val fresh = readViewRef.value?.getSelectionInfo()
@@ -1346,7 +1493,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             }
             selectionState = null
             showHighlightColorPicker = false
-            readViewRef.value?.curPageView?.clearSelection()
+            clearActiveTextSelection()
         },
         onHighlight = {
             // 切换到颜色选择子菜单
@@ -1397,14 +1544,14 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             clipboard.setPrimaryClip(android.content.ClipData.newPlainText("selected", text))
             selectionState = null
             showHighlightColorPicker = false
-            readViewRef.value?.curPageView?.clearSelection()
+            clearActiveTextSelection()
         },
         onRemoveHighlight = {
             // 移除高亮 = 删除该 Note（高亮和笔记共用同一条记录）
             selectionState?.existingNote?.let { viewModel.deleteNote(it) }
             selectionState = null
             showHighlightColorPicker = false
-            readViewRef.value?.curPageView?.clearSelection()
+            clearActiveTextSelection()
         },
         onViewNote = {
             // 🔥 查看/修改笔记：打开 NoteInputSheet 预填原笔记文字
@@ -1416,7 +1563,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             }
             selectionState = null
             showHighlightColorPicker = false
-            readViewRef.value?.curPageView?.clearSelection()
+            clearActiveTextSelection()
         },
         onChangeHighlightColor = { hexColor ->
             // 修改已有高亮的颜色
@@ -1425,13 +1572,13 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 viewModel.updateNote(existing.copy(color = hexColor))
             }
             selectionState = null
-            readViewRef.value?.curPageView?.clearSelection()
+            clearActiveTextSelection()
         },
         onDeleteHighlight = {
             // 删除高亮
             selectionState?.existingNote?.let { viewModel.deleteNote(it) }
             selectionState = null
-            readViewRef.value?.curPageView?.clearSelection()
+            clearActiveTextSelection()
         }
     )
 
@@ -1462,7 +1609,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 pendingSelection = null
             }
             noteInputText = ""
-            readViewRef.value?.curPageView?.clearSelection()
+            clearActiveTextSelection()
         },
         onDismiss = {
             showNoteInput = false
@@ -2234,7 +2381,7 @@ private fun ContinuousScrollReader(
     initialChapterFraction: Float,
     fontSize: Float,
     lineHeight: Float,
-    fontFamily: FontFamily?,
+    letterSpacingDp: Float,
     typeface: android.graphics.Typeface,
     textColor: Int,
     backgroundColor: Int,
@@ -2247,7 +2394,9 @@ private fun ContinuousScrollReader(
     scrollRequests: MutableSharedFlow<Int>,
     onSearchHighlightFinished: () -> Unit,
     onMenuToggle: () -> Unit,
-    onSelection: (chapterIndex: Int, start: Int, end: Int, selectedText: String, touch: Offset) -> Unit,
+    selectionController: ContinuousSelectionController,
+    onSelectionChanging: () -> Unit,
+    onSelection: (chapterIndex: Int, selection: ContinuousTextSelection) -> Unit,
     onChapterVisible: (chapterIndex: Int, chapterFraction: Float) -> Unit,
     onRestoreComplete: () -> Unit
 ) {
@@ -2408,115 +2557,87 @@ private fun ContinuousScrollReader(
             DisposableEffect(chapterIndex) {
                 onDispose { loadedChapters.remove(chapterIndex) }
             }
-            val annotatedText = remember(chapterText, notes, searchHighlight, searchHighlightAlpha.value) {
-                continuousAnnotatedText(
+            val selectableText = remember(chapterText, notes, searchHighlight, searchHighlightAlpha.value) {
+                continuousSpannableText(
                     text = chapterText,
                     notes = notes.filter { it.chapterIndex == chapterIndex },
                     searchHighlight = searchHighlight?.takeIf { it.chapterIndex == chapterIndex },
                     searchHighlightAlpha = searchHighlightAlpha.value
                 )
             }
-            val imageChapter = chapterText as? Spanned
-            if (imageChapter?.getSpans(0, imageChapter.length, ImageSpan::class.java)?.isNotEmpty() == true) {
-                AndroidView(
-                    factory = { context -> TextView(context).apply { includeFontPadding = false } },
-                    update = { textView ->
-                        textView.text = imageChapter
-                        textView.setTextColor(textColor)
-                        textView.textSize = fontSize
-                        textView.setLineSpacing(0f, lineHeight)
-                        textView.typeface = typeface
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            } else {
-                ContinuousChapterText(
-                    text = annotatedText,
-                    textColor = textColor,
-                    fontSize = fontSize,
-                    lineHeight = lineHeight,
-                    fontFamily = fontFamily,
-                    onTap = onMenuToggle,
-                    onSelection = { start, end, selected, touch ->
-                        onSelection(chapterIndex, start, end, selected, touch)
+            AndroidView(
+                factory = { context ->
+                    ContinuousSelectableTextView(context).apply {
+                        breakStrategy = android.text.Layout.BREAK_STRATEGY_HIGH_QUALITY
+                        hyphenationFrequency = android.text.Layout.HYPHENATION_FREQUENCY_NONE
                     }
-                )
-            }
+                },
+                update = { textView ->
+                    textView.onReaderTap = onMenuToggle
+                    textView.onSelectionChanging = onSelectionChanging
+                    textView.onReaderSelection = { selection ->
+                        selectionController.activeView = textView
+                        onSelection(chapterIndex, selection)
+                    }
+                    textView.setTextColor(textColor)
+                    textView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, fontSize)
+                    textView.setLineSpacing(0f, lineHeight)
+                    textView.typeface = typeface
+                    val fontSizePx = android.util.TypedValue.applyDimension(
+                        android.util.TypedValue.COMPLEX_UNIT_SP,
+                        fontSize,
+                        textView.resources.displayMetrics
+                    )
+                    textView.letterSpacing = if (fontSizePx > 0f) {
+                        (letterSpacingDp * textView.resources.displayMetrics.density / fontSizePx)
+                            .coerceIn(-0.5f, 0.5f)
+                    } else {
+                        0f
+                    }
+                    textView.setReaderText(selectableText)
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
     }
 }
 
-@Composable
-private fun ContinuousChapterText(
-    text: AnnotatedString,
-    textColor: Int,
-    fontSize: Float,
-    lineHeight: Float,
-    fontFamily: FontFamily?,
-    onTap: () -> Unit,
-    onSelection: (start: Int, end: Int, selectedText: String, touch: Offset) -> Unit
-) {
-    var layoutResult by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
-    Text(
-        text = text,
-        color = Color(textColor),
-        fontSize = fontSize.sp,
-        lineHeight = (fontSize * lineHeight).sp,
-        fontFamily = fontFamily,
-        onTextLayout = { layoutResult = it },
-        modifier = Modifier
-            .fillMaxWidth()
-            .pointerInput(text) {
-                detectTapGestures(
-                    onTap = { onTap() },
-                    onLongPress = { touch ->
-                        val layout = layoutResult ?: return@detectTapGestures
-                        val offset = layout.getOffsetForPosition(touch).coerceIn(0, text.length)
-                        val (start, end) = continuousSelectionRange(text.text, offset)
-                        if (start < end) onSelection(start, end, text.text.substring(start, end), touch)
-                    }
-                )
-            }
-    )
-}
-
-private fun continuousSelectionRange(text: String, offset: Int): Pair<Int, Int> {
-    if (text.isEmpty()) return 0 to 0
-    val safeOffset = offset.coerceIn(0, text.length - 1)
-    val sentenceBreaks = charArrayOf('。', '！', '？', '\n')
-    var start = safeOffset
-    while (start > 0 && text[start - 1] !in sentenceBreaks) start--
-    var end = safeOffset
-    while (end < text.length && text[end] !in sentenceBreaks) end++
-    if (end < text.length) end++
-    return start to end
-}
-
-private fun continuousAnnotatedText(
+private fun continuousSpannableText(
     text: CharSequence?,
     notes: List<com.huangder.lumibooks.domain.model.Note>,
     searchHighlight: ContinuousSearchHighlight?,
     searchHighlightAlpha: Float
-): AnnotatedString = buildAnnotatedString {
-    val content = text?.toString().orEmpty()
-    append(content)
+): SpannableStringBuilder {
+    val content = SpannableStringBuilder(text ?: "")
     notes.forEach { note ->
         val start = note.startPosition.coerceIn(0, content.length)
         val end = note.endPosition.coerceIn(0, content.length)
-        if (start < end) addStyle(SpanStyle(background = parseNoteColor(note.color)), start, end)
+        if (start < end) {
+            val color = runCatching { android.graphics.Color.parseColor(note.color) }
+                .getOrDefault(0x40FFEB3B)
+            content.setSpan(
+                BackgroundColorSpan(color),
+                start,
+                end,
+                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+        }
     }
     searchHighlight?.let { highlight ->
         val start = highlight.start.coerceIn(0, content.length)
         val end = highlight.end.coerceIn(0, content.length)
         if (start < end) {
-            addStyle(
-                SpanStyle(background = Color(0xFFFFE082).copy(alpha = searchHighlightAlpha * 0.7f)),
+            val alpha = (searchHighlightAlpha * 0.7f * 255f).toInt().coerceIn(0, 255)
+            content.setSpan(
+                BackgroundColorSpan((alpha shl 24) or 0x00FFE082),
                 start,
-                end
+                end,
+                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
             )
         }
     }
+    return content
 }
 
 @Composable
