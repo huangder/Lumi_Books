@@ -230,6 +230,11 @@ private fun SponsorPage(onBack: () -> Unit) {
                     context.startActivity(
                         Intent(Intent.ACTION_VIEW, Uri.parse("https://xhslink.com/m/5AbhNhfh7hE"))
                     )
+                },
+                onCorundumLingClick = {
+                    context.startActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Corundum-Ling"))
+                    )
                 }
             )
 
@@ -239,7 +244,10 @@ private fun SponsorPage(onBack: () -> Unit) {
 }
 
 @Composable
-private fun DeveloperSection(onHuangderClick: () -> Unit) {
+private fun DeveloperSection(
+    onHuangderClick: () -> Unit,
+    onCorundumLingClick: () -> Unit
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -253,7 +261,7 @@ private fun DeveloperSection(onHuangderClick: () -> Unit) {
         )
         DeveloperCard(name = "huangder", onClick = onHuangderClick)
         Spacer(Modifier.height(AppSpace.sm))
-        DeveloperCard(name = "Corundum-Ling")
+        DeveloperCard(name = "Corundum-Ling", onClick = onCorundumLingClick)
     }
 }
 
