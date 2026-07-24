@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" href="icon.png">
+    <title>Lumi — 技术架构</title>
+    <style>
+        /* ═══════════════════════════════════════════════════════
+           Airbnb Design System Tokens
+           ═══════════════════════════════════════════════════════ */
+        :root {
+            --primary: #ff385c;
+            --primary-active: #e00b41;
+            --primary-disabled: #ffd1da;
+            --canvas: #ffffff;
+            --surface-soft: #f7f7f7;
+            --surface-strong: #f2f2f2;
+            --ink: #222222;
+            --body: #3f3f3f;
+            --muted: #6a6a6a;
+            --muted-soft: #929292;
+            --on-primary: #ffffff;
+            --on-dark: #ffffff;
+            --hairline: #dddddd;
+            --hairline-soft: #ebebeb;
+            --border-strong: #c1c1c1;
+            --error-text: #c13515;
+            --scrim: #000000;
+            --space-xxs: 2px;
+            --space-xs: 4px;
+            --space-sm: 8px;
+            --space-md: 12px;
+            --space-base: 16px;
+            --space-lg: 24px;
+            --space-xl: 32px;
+            --space-xxl: 48px;
+            --space-section: 64px;
+            --radius-none: 0px;
+            --radius-xs: 4px;
+            --radius-sm: 8px;
+            --radius-md: 14px;
+            --radius-lg: 20px;
+            --radius-xl: 32px;
+            --radius-full: 9999px;
+            --shadow-card: rgba(0,0,0,0.02) 0 0 0 1px,
+                          rgba(0,0,0,0.04) 0 2px 6px,
+                          rgba(0,0,0,0.10) 0 4px 8px;
+            --max-width: 1280px;
+            --nav-height: 80px;
+        }
+
+        html { scroll-behavior: smooth; }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        /* ═══════════════════════════════════════════════════════
+           Fonts — Product Sans (Western) + MiSans (CJK/Numbers)
+           ═══════════════════════════════════════════════════════ */
+        @font-face {
+            font-family: 'Product Sans';
+            src: url('fonts/ProductSans-Regular.ttf') format('truetype');
+            font-weight: 400;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'Product Sans';
+            src: url('fonts/ProductSans-Medium.ttf') format('truetype');
+            font-weight: 500;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'Product Sans';
+            src: url('fonts/ProductSans-Bold.ttf') format('truetype');
+            font-weight: 700;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'MiSans';
+            src: url('fonts/MiSans-Regular.ttf') format('truetype');
+            font-weight: 400;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'MiSans';
+            src: url('fonts/MiSans-Medium.ttf') format('truetype');
+            font-weight: 500;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'MiSans';
+            src: url('fonts/MiSans-Semibold.ttf') format('truetype');
+            font-weight: 600;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'MiSans';
+            src: url('fonts/MiSans-Bold.ttf') format('truetype');
+            font-weight: 700;
+            font-style: normal;
+            font-display: swap;
+        }
+
+        /* ═══════════════════════════════════════════════════════
+           Background & Base
+           ═══════════════════════════════════════════════════════ */
+        body {
+            font-family: 'Product Sans', 'MiSans', -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+            background: linear-gradient(135deg, #faf5ff 0%, #f0f9ff 30%, #fff7ed 60%, #f0fdf4 100%);
+            color: var(--body);
+            line-height: 1.65;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ═══════════════════════════════════════════════════════
+           Top Navigation — Glassmorphism
+           ═══════════════════════════════════════════════════════ */
+        .top-nav {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: rgba(255,255,255,0.72);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            height: 80px;
+            border-bottom: 1px solid rgba(255,255,255,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 var(--space-xxl);
+            transition: border-color 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
+        }
+        .top-nav.scrolled {
+            border-bottom-color: var(--hairline);
+            box-shadow: 0 1px 0 rgba(0,0,0,0.04);
+            background: rgba(255,255,255,0.88);
+        }
+        .nav-logo {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            text-decoration: none;
+            color: var(--primary);
+        }
+        .nav-logo img {
+            width: 34px;
+            height: 34px;
+            border-radius: var(--radius-sm);
+            transition: transform 0.3s ease;
+        }
+        .nav-logo:hover img {
+            transform: scale(1.08);
+        }
+        .nav-logo span {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--ink);
+        }
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: var(--space-xl);
+            list-style: none;
+        }
+        .nav-links a {
+            text-decoration: none;
+            color: var(--muted);
+            font-size: 16px;
+            font-weight: 600;
+            line-height: 1.25;
+            transition: color 0.15s;
+        }
+        .nav-links a:hover {
+            color: var(--ink);
+        }
+        .nav-links a.active {
+            color: var(--ink);
+            border-bottom: 2px solid var(--ink);
+            padding-bottom: 2px;
+        }
+        .nav-cta {
+            display: flex;
+            align-items: center;
+            gap: var(--space-base);
+        }
+        .btn-nav-download {
+            background: var(--primary);
+            color: var(--on-primary);
+            text-decoration: none;
+            padding: 10px 20px;
+            border-radius: var(--radius-full);
+            font-size: 14px;
+            font-weight: 500;
+            line-height: 1.29;
+            transition: background 0.2s ease, transform 0.2s ease;
+        }
+        .btn-nav-download:hover {
+            background: var(--primary-active);
+            transform: scale(1.04);
+        }
+        .btn-nav-sponsor {
+            background: transparent; color: var(--ink);
+            text-decoration: none; padding: 9px 19px;
+            border-radius: 9999px; font-size: 14px; font-weight: 500;
+            border: 1.5px solid var(--hairline);
+            transition: border-color 0.2s, color 0.2s, background 0.2s;
+        }
+        .btn-nav-sponsor:hover {
+            border-color: var(--ink);
+            background: rgba(0,0,0,0.03);
+        }
+
+        /* Mobile "…" more menu button */
+        .nav-more-btn {
+            display: none; background: none; border: none;
+            font-size: 22px; cursor: pointer; color: var(--muted);
+            padding: 6px 10px; border-radius: var(--radius-sm);
+            line-height: 1; letter-spacing: 1px;
+            transition: color 0.15s, background 0.15s;
+        }
+        .nav-more-btn:hover { color: var(--ink); background: rgba(0,0,0,0.04); }
+        .nav-more-dropdown {
+            display: none; position: absolute;
+            top: calc(var(--nav-height) - 4px); right: var(--space-base);
+            background: rgba(255,255,255,0.96);
+            backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--hairline); border-radius: var(--radius-md);
+            box-shadow: 0 4px 24px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06);
+            min-width: 148px; padding: var(--space-sm) 0;
+            z-index: 200; flex-direction: column;
+        }
+        .nav-more-dropdown.open { display: flex; }
+        .nav-more-dropdown a {
+            padding: 11px 20px; text-decoration: none; color: var(--ink);
+            font-size: 15px; font-weight: 500; transition: background 0.12s;
+            white-space: nowrap;
+        }
+        .nav-more-dropdown a:hover { background: rgba(0,0,0,0.04); color: var(--primary); }
+
+        /* ═══════════════════════════════════════════════════════
+           Glass Card Utility
+           ═══════════════════════════════════════════════════════ */
+        .glass {
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            background: rgba(255,255,255,0.6);
+            border: 1px solid rgba(255,255,255,0.8);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-card);
+        }
+
+        /* ═══════════════════════════════════════════════════════
+           Section Layout
+           ═══════════════════════════════════════════════════════ */
+        .section {
+            max-width: 1120px;
+            margin: 0 auto;
+            padding: clamp(32px, 6vw, 72px) clamp(16px, 4vw, 48px);
+        }
+        .section-header {
+            margin-bottom: clamp(24px, 4vw, 48px);
+        }
+        .section-label {
+            display: inline-block;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--primary);
+            margin-bottom: 8px;
+        }
+        .section-title {
+            font-size: clamp(1.75rem, 4vw, 2.75rem);
+            font-weight: 800;
+            color: var(--ink);
+            letter-spacing: -0.03em;
+            line-height: 1.2;
+        }
+        .section-title-sm {
+            font-size: clamp(1.25rem, 2.5vw, 1.75rem);
+            font-weight: 800;
+            color: var(--ink);
+            letter-spacing: -0.02em;
+            line-height: 1.3;
+        }
+
+        /* ═══════════════════════════════════════════════════════
+           Tech Specs Grid (4-column amenity-row style)
+           ═══════════════════════════════════════════════════════ */
+        .tech-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            border-top: 1px solid var(--hairline);
+            border-left: 1px solid var(--hairline);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            background: rgba(255,255,255,0.5);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+        .tech-cell {
+            padding: clamp(16px, 2.5vw, 28px);
+            border-right: 1px solid var(--hairline);
+            border-bottom: 1px solid var(--hairline);
+            transition: background 0.25s;
+        }
+        .tech-cell:hover {
+            background: rgba(255,255,255,0.45);
+        }
+        .tech-cell .cell-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-bottom: 6px;
+        }
+        .tech-cell .cell-value {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--ink);
+        }
+
+        /* ═══════════════════════════════════════════════════════
+           Feature Card (for Rendering / Parser / TextSelection)
+           ═══════════════════════════════════════════════════════ */
+        .feature-card {
+            padding: clamp(24px, 4vw, 48px);
+        }
+        .feature-card .card-icon-row {
+            display: flex;
+            align-items: center;
+            gap: var(--space-md);
+            margin-bottom: clamp(16px, 3vw, 32px);
+        }
+        .feature-card .card-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: var(--radius-sm);
+            background: linear-gradient(135deg, var(--primary), #ff6b81);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            color: #fff;
+            flex-shrink: 0;
+        }
+        .feature-card .card-title {
+            font-size: clamp(1.25rem, 2.5vw, 1.75rem);
+            font-weight: 800;
+            color: var(--ink);
+            letter-spacing: -0.02em;
+        }
+        .feature-card .card-title-sm {
+            font-size: clamp(1rem, 2vw, 1.25rem);
+            font-weight: 700;
+            color: var(--ink);
+            letter-spacing: -0.01em;
+        }
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: clamp(12px, 2vw, 20px);
+        }
+        .detail-item {
+            padding: clamp(12px, 2vw, 20px);
+            background: rgba(255,255,255,0.45);
+            border-radius: var(--radius-sm);
+            border: 1px solid rgba(255,255,255,0.6);
+            transition: background 0.2s ease, transform 0.2s ease;
+        }
+        .detail-item:hover {
+            background: rgba(255,255,255,0.7);
+            transform: translateY(-2px);
+        }
+        .detail-item dt {
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: var(--primary);
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        .detail-item dd {
+            font-size: 0.9rem;
+            color: var(--body);
+            font-weight: 500;
+            line-height: 1.5;
+        }
+
+        /* ═══════════════════════════════════════════════════════
+           Parser 3-column detail row (legacy wide format)
+           ═══════════════════════════════════════════════════════ */
+        .detail-row-wide {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: clamp(12px, 2vw, 20px);
+        }
+
+        /* ═══════════════════════════════════════════════════════
+           Privacy Band
+           ═══════════════════════════════════════════════════════ */
+        .privacy-band {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: clamp(12px, 2vw, 20px);
+            margin-bottom: clamp(24px, 4vw, 48px);
+        }
+        .privacy-item {
+            text-align: center;
+            padding: clamp(20px, 3vw, 36px) clamp(12px, 2vw, 20px);
+        }
+        .privacy-icon {
+            width: 48px;
+            height: 48px;
+            margin: 0 auto 12px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), #ff6b81);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            color: #fff;
+        }
+        .privacy-item h4 {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--ink);
+            margin-bottom: 4px;
+        }
+        .privacy-item p {
+            font-size: 0.8rem;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+
+        /* ═══════════════════════════════════════════════════════
+           Privacy Hero Band
+           ═══════════════════════════════════════════════════════ */
+        .privacy-hero {
+            text-align: center;
+            padding: clamp(40px, 6vw, 72px) clamp(24px, 4vw, 48px);
+            background: linear-gradient(135deg, rgba(255,56,92,0.06), rgba(255,56,92,0.02));
+            border: 1px solid rgba(255,56,92,0.12);
+        }
+        .privacy-hero .hero-label {
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: var(--primary);
+            margin-bottom: 12px;
+        }
+        .privacy-hero .hero-text {
+            font-size: clamp(1.5rem, 4vw, 2.5rem);
+            font-weight: 900;
+            color: var(--ink);
+            letter-spacing: -0.02em;
+            line-height: 1.3;
+        }
+
+        /* ═══════════════════════════════════════════════════════
+           Footer — Glassmorphism
+           ═══════════════════════════════════════════════════════ */
+        footer {
+            margin-top: clamp(32px, 6vw, 72px);
+        }
+        .footer-light {
+            padding: var(--space-xxl) var(--space-xxl);
+            max-width: var(--max-width);
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: var(--space-lg);
+            border-top: 1px solid rgba(255,255,255,0.5);
+            background: rgba(255,255,255,0.3);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border-radius: var(--radius-md) var(--radius-md) 0 0;
+        }
+        .footer-col h4 {
+            font-size: 16px;
+            font-weight: 500;
+            line-height: 1.25;
+            color: var(--ink);
+            margin-bottom: var(--space-md);
+        }
+        .footer-col ul {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-sm);
+        }
+        .footer-col a {
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 400;
+            line-height: 1.43;
+            color: var(--ink);
+            transition: color 0.15s;
+        }
+        .footer-col a:hover {
+            color: var(--muted);
+        }
+        .legal-band {
+            padding: var(--space-lg) var(--space-xxl);
+            max-width: var(--max-width);
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+            font-weight: 400;
+            line-height: 1.23;
+            color: var(--muted);
+            border-top: 1px solid rgba(255,255,255,0.3);
+        }
+        .legal-band a {
+            color: var(--muted);
+            text-decoration: none;
+            margin-left: var(--space-lg);
+        }
+        .legal-band a:hover {
+            text-decoration: underline;
+        }
+
+        /* ═══════════════════════════════════════════════════════
+           Scroll Reveal Animations
+           ═══════════════════════════════════════════════════════ */
+        .reveal {
+            opacity: 0;
+            transform: translateY(28px);
+            transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+                        transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        .reveal.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .reveal-delay-1 { transition-delay: 0.05s; }
+        .reveal-delay-2 { transition-delay: 0.12s; }
+        .reveal-delay-3 { transition-delay: 0.19s; }
+        .reveal-delay-4 { transition-delay: 0.26s; }
+
+        /* ═══════════════════════════════════════════════════════
+           Responsive
+           ═══════════════════════════════════════════════════════ */
+        @media (max-width: 1127px) {
+            .tech-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .privacy-band {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .detail-grid {
+                grid-template-columns: 1fr;
+            }
+            .detail-row-wide {
+                grid-template-columns: 1fr;
+            }
+            .footer-light {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 743px) {
+            .top-nav {
+                padding: 0 var(--space-base);
+                height: 56px;
+                gap: var(--space-sm);
+            }
+            .nav-links { display: none; }
+            .nav-more-btn { display: block; }
+            .nav-logo span { display: none; }
+            .btn-nav-download { padding: 8px 14px; font-size: 13px; }
+            .btn-nav-sponsor { padding: 7px 14px; font-size: 13px; }
+            .tech-grid {
+                grid-template-columns: 1fr;
+            }
+            .privacy-band {
+                grid-template-columns: 1fr;
+            }
+            .detail-grid {
+                grid-template-columns: 1fr;
+            }
+            .detail-row-wide {
+                grid-template-columns: 1fr;
+            }
+            .section {
+                padding: var(--space-xl) var(--space-base);
+            }
+            .footer-light {
+                grid-template-columns: 1fr;
+                padding: var(--space-xl) var(--space-base);
+            }
+            .legal-band {
+                flex-direction: column;
+                gap: var(--space-sm);
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════
+     Top Navigation — Glassmorphism
+     ═══════════════════════════════════════════════════════════ -->
+<nav class="top-nav">
+    <a href="index.html" class="nav-logo">
+        <img src="icon.png" alt="Lumi">
+        <span>Lumi</span>
+    </a>
+    <ul class="nav-links">
+        <li><a href="features.html">功能</a></li>
+        <li><a href="privacy-section.html">隐私</a></li>
+        <li><a href="tech.html" class="active">技术</a></li>
+        <li><a href="sponsor.html">赞助</a></li>
+        <li><a href="feedback.html">反馈</a></li>
+    </ul>
+    <div class="nav-cta">
+        <a href="sponsor.html" class="btn-nav-sponsor">赞助</a>
+        <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-nav-download">获取 Lumi</a>
+    </div>
+    <button class="nav-more-btn" aria-label="更多导航" onclick="event.stopPropagation();this.nextElementSibling.classList.toggle('open')">…</button>
+    <div class="nav-more-dropdown">
+        <a href="features.html">功能</a>
+        <a href="privacy-section.html">隐私</a>
+        <a href="tech.html">技术</a>
+        <a href="sponsor.html">赞助</a>
+        <a href="feedback.html">反馈</a>
+    </div>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════════════
+     Section 1: 技术规格 (Tech Specs Grid)
+     ═══════════════════════════════════════════════════════════ -->
+<section class="section">
+    <div class="section-header reveal">
+        <div class="section-label">TECH SPECS</div>
+        <h1 class="section-title">技术规格</h1>
+    </div>
+
+    <div class="tech-grid reveal">
+        <div class="tech-cell">
+            <div class="cell-label">开发语言</div>
+            <div class="cell-value">Kotlin 2.0.21</div>
+        </div>
+        <div class="tech-cell">
+            <div class="cell-label">UI 框架</div>
+            <div class="cell-value">Jetpack Compose BOM 2024.12.01</div>
+        </div>
+        <div class="tech-cell">
+            <div class="cell-label">架构模式</div>
+            <div class="cell-value">MVVM + Repository</div>
+        </div>
+        <div class="tech-cell">
+            <div class="cell-label">依赖注入</div>
+            <div class="cell-value">Hilt 2.52</div>
+        </div>
+        <div class="tech-cell">
+            <div class="cell-label">数据库</div>
+            <div class="cell-value">Room 2.6.1</div>
+        </div>
+        <div class="tech-cell">
+            <div class="cell-label">偏好存储</div>
+            <div class="cell-value">DataStore 1.1.1</div>
+        </div>
+        <div class="tech-cell">
+            <div class="cell-label">最低版本</div>
+            <div class="cell-value">Android 8.0 (API 26)</div>
+        </div>
+        <div class="tech-cell">
+            <div class="cell-label">目标版本</div>
+            <div class="cell-value">Android 15 (API 35)</div>
+        </div>
+        <div class="tech-cell">
+            <div class="cell-label">构建工具</div>
+            <div class="cell-value">AGP 8.7.3</div>
+        </div>
+        <div class="tech-cell">
+            <div class="cell-label">导航</div>
+            <div class="cell-value">Navigation Compose 2.8.5</div>
+        </div>
+        <div class="tech-cell">
+            <div class="cell-label">图片加载</div>
+            <div class="cell-value">Coil 2.7.0</div>
+        </div>
+        <div class="tech-cell">
+            <div class="cell-label">协程</div>
+            <div class="cell-value">Kotlin Coroutines 1.9.0</div>
+        </div>
+    </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     Section 2: Canvas 渲染引擎
+     ═══════════════════════════════════════════════════════════ -->
+<section class="section">
+    <div class="section-header reveal">
+        <div class="section-label">RENDERING ENGINE</div>
+        <h2 class="section-title">Canvas 渲染引擎</h2>
+    </div>
+
+    <div class="glass feature-card reveal">
+        <div class="card-icon-row">
+            <div class="card-icon">🎨</div>
+            <h3 class="card-title">Canvas 渲染管线</h3>
+        </div>
+        <div class="detail-grid">
+            <div class="detail-item">
+                <dt>渲染方式</dt>
+                <dd>StaticLayout 直接绘制到 Bitmap，替代 WebView / TextView 方案，像素级精确控制</dd>
+            </div>
+            <div class="detail-item">
+                <dt>翻页架构</dt>
+                <dd>3 槽位 PageSurfaceView 轮换复用 + SlidePageAnim 视差动画引擎</dd>
+            </div>
+            <div class="detail-item">
+                <dt>分页计算</dt>
+                <dd>StaticLayout + breakStrategy 精确对齐，共享 TextPaint 实例保证一致性</dd>
+            </div>
+            <div class="detail-item">
+                <dt>动画效果</dt>
+                <dd>双层视差翻页：覆盖层 100% + 主体层 25%，Cubic Bezier 缓动曲线</dd>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     Section 3: 电子书解析引擎
+     ═══════════════════════════════════════════════════════════ -->
+<section class="section">
+    <div class="section-header reveal">
+        <div class="section-label">PARSER ENGINE</div>
+        <h2 class="section-title">电子书解析引擎</h2>
+    </div>
+
+    <div class="glass feature-card reveal">
+        <div class="card-icon-row">
+            <div class="card-icon">📖</div>
+            <h3 class="card-title">三格式解析器</h3>
+        </div>
+        <div class="detail-row-wide">
+            <div class="detail-item">
+                <dt>EPUB</dt>
+                <dd>自实现 ZIP + XML 解析，图片 Base64 内嵌 HTML，无需第三方 EPUB 库</dd>
+            </div>
+            <div class="detail-item">
+                <dt>PDF</dt>
+                <dd>Android PdfRenderer 按需渲染，LRU 3 页缓存，JPEG 压缩降低内存占用</dd>
+            </div>
+            <div class="detail-item">
+                <dt>TXT</dt>
+                <dd>智能分章检测 + HTML 布局包装，自动识别章节标题模式</dd>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     Section 4: 文字选择与标注系统
+     ═══════════════════════════════════════════════════════════ -->
+<section class="section">
+    <div class="section-header reveal">
+        <div class="section-label">TEXT SELECTION</div>
+        <h2 class="section-title">文字选择与标注系统</h2>
+    </div>
+
+    <div class="glass feature-card reveal">
+        <div class="card-icon-row">
+            <div class="card-icon">✏️</div>
+            <h3 class="card-title">精准选择与分层渲染</h3>
+        </div>
+        <div class="detail-grid">
+            <div class="detail-item">
+                <dt>选择方式</dt>
+                <dd>Android 原生 setTextIsSelectable + SpanWatcher 实时检测选择范围变化</dd>
+            </div>
+            <div class="detail-item">
+                <dt>菜单系统</dt>
+                <dd>自定义 Compose 覆盖层弹出菜单，支持 6 色高亮标记、笔记、搜索、复制</dd>
+            </div>
+            <div class="detail-item">
+                <dt>兼容性</dt>
+                <dd>适配 MIUI / MagicOS 等厂商 ActionMode 拦截行为，保证菜单正常弹出</dd>
+            </div>
+            <div class="detail-item">
+                <dt>性能优化</dt>
+                <dd>分层渲染架构：文本层 + 标注层分离，拖动选择时仅重绘标注层，避免全文重排</dd>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     Section 5: 隐私设计
+     ═══════════════════════════════════════════════════════════ -->
+<section class="section">
+    <div class="section-header reveal">
+        <div class="section-label">PRIVACY</div>
+        <h2 class="section-title">隐私设计</h2>
+    </div>
+
+    <div class="privacy-band">
+        <div class="glass privacy-item reveal">
+            <div class="privacy-icon">🚫</div>
+            <h4>无网络权限</h4>
+            <p>AndroidManifest 不声明任何网络权限，应用层无法联网</p>
+        </div>
+        <div class="glass privacy-item reveal reveal-delay-1">
+            <div class="privacy-icon">🛡</div>
+            <h4>无第三方 SDK</h4>
+            <p>零统计、零广告、零推送</p>
+        </div>
+        <div class="glass privacy-item reveal reveal-delay-2">
+            <div class="privacy-icon">📦</div>
+            <h4>沙盒存储</h4>
+            <p>所有数据存储在应用私有目录，其他应用无法访问</p>
+        </div>
+        <div class="glass privacy-item reveal reveal-delay-3">
+            <div class="privacy-icon">🗑</div>
+            <h4>一键清除</h4>
+            <p>设置页提供一键清除全部数据，卸载即彻底销毁</p>
+        </div>
+    </div>
+
+    <div class="glass privacy-hero reveal reveal-delay-4">
+        <div class="hero-label">PRIVACY GUARANTEE</div>
+        <div class="hero-text">100% 本地 · 零网络 · 零追踪</div>
+    </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     Footer
+     ═══════════════════════════════════════════════════════════ -->
+<footer>
+    <div class="footer-light">
+        <div class="footer-col">
+            <h4>Lumi</h4>
+            <ul>
+                <li><a href="features.html">功能介绍</a></li>
+                <li><a href="tech.html">技术架构</a></li>
+                <li><a href="changelog.html">更新日志</a></li>
+            </ul>
+        </div>
+        <div class="footer-col">
+            <h4>法律</h4>
+            <ul>
+                <li><a href="privacy.html">隐私政策</a></li>
+                <li><a href="terms.html">用户协议</a></li>
+            </ul>
+        </div>
+        <div class="footer-col">
+            <h4>联系方式</h4>
+            <ul>
+                <li><a href="https://github.com/huangder/Lumi_Books">GitHub</a></li>
+                <li><a href="mailto:huangder0104@126.com">邮件联系</a></li>
+            </ul>
+        </div>
+    </div>
+    <div class="legal-band">
+        <span>&copy; 2026 Huangder</span>
+        <span>
+            <a href="privacy.html">隐私</a>
+            <a href="terms.html">条款</a>
+        </span>
+    </div>
+</footer>
+
+<!-- ═══════════════════════════════════════════════════════════
+     JavaScript — scroll reveal & nav state
+     ═══════════════════════════════════════════════════════════ -->
+<script>
+(function() {
+    'use strict';
+
+    /* ── Intersection Observer: scroll-triggered reveal ── */
+    var els = document.querySelectorAll('.reveal');
+    if ('IntersectionObserver' in window) {
+        var observer = new IntersectionObserver(function(entries) {
+            entries.forEach(function(entry) {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, { threshold: 0.12, rootMargin: '0px 0px -30px 0px' });
+        els.forEach(function(el) { observer.observe(el); });
+    } else {
+        els.forEach(function(el) { el.classList.add('visible'); });
+    }
+
+    /* ── Smooth anchor scrolling ── */
+    document.querySelectorAll('a[href^="#"]').forEach(function(a) {
+        a.addEventListener('click', function(e) {
+            var t = document.querySelector(a.getAttribute('href'));
+            if (t) { e.preventDefault(); t.scrollIntoView({ behavior: 'smooth' }); }
+        });
+    });
+
+    /* ── Nav scroll state ── */
+    var nav = document.querySelector('.top-nav');
+    function updateNav() {
+        var y = window.scrollY || window.pageYOffset;
+        if (y > 10) {
+            nav.classList.add('scrolled');
+        } else {
+            nav.classList.remove('scrolled');
+        }
+    }
+    window.addEventListener('scroll', function() {
+        requestAnimationFrame(updateNav);
+    }, { passive: true });
+    updateNav();
+
+    /* Mobile more dropdown: close on outside click */
+    document.addEventListener('click', function(e) {
+        var dd = document.querySelector('.nav-more-dropdown');
+        var btn = document.querySelector('.nav-more-btn');
+        if (dd && dd.classList.contains('open') && !dd.contains(e.target) && e.target !== btn) {
+            dd.classList.remove('open');
+        }
+    });
+
+})();
+</script>
+
+</body>
+</html>

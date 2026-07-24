@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" type="image/png" href="icon.png">
+<title>赞助支持 — Lumi</title>
+<style>
+/* ── Airbnb Design Tokens ─────────────────────────────── */
+:root{
+  --primary:#ff385c; --primary-active:#e00b41;
+  --ink:#222222; --body:#3f3f3f; --muted:#6a6a6a; --muted-soft:#929292;
+  --hairline:#dddddd; --hairline-soft:#ebebeb;
+  --surface-soft:#f7f7f7; --surface-strong:#f2f2f2;
+  --radius-sm:8px; --radius-md:14px; --radius-lg:20px; --radius-xl:32px; --radius-full:9999px;
+  --shadow-card:rgba(0,0,0,0.02) 0 0 0 1px,rgba(0,0,0,0.04) 0 2px 6px,rgba(0,0,0,0.10) 0 4px 8px;
+  --max-width:1280px; --nav-height:80px;
+}
+
+/* ── Fonts ── */
+@font-face{font-family:'Product Sans';src:url('fonts/ProductSans-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Product Sans';src:url('fonts/ProductSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap}
+@font-face{font-family:'Product Sans';src:url('fonts/ProductSans-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap}
+@font-face{font-family:'MiSans';src:url('fonts/MiSans-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'MiSans';src:url('fonts/MiSans-Medium.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap}
+@font-face{font-family:'MiSans';src:url('fonts/MiSans-Semibold.ttf') format('truetype');font-weight:600;font-style:normal;font-display:swap}
+@font-face{font-family:'MiSans';src:url('fonts/MiSans-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap}
+
+/* ── Reset & Base ─────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{
+  font-family:'Product Sans','MiSans',-apple-system,system-ui,Roboto,'Helvetica Neue',sans-serif;
+  color:var(--body); line-height:1.65;
+  background:linear-gradient(135deg,#faf5ff 0%,#f0f9ff 30%,#fff7ed 60%,#f0fdf4 100%);
+  min-height:100vh; overflow-x:hidden; -webkit-font-smoothing:antialiased;
+}
+
+/* ── Top Nav ──────────────────────────────────────────── */
+.top-nav{
+  position:sticky;top:0;z-index:100;
+  background:rgba(255,255,255,0.72); backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  height:80px; border-bottom:1px solid rgba(255,255,255,0.5);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 clamp(16px,4vw,48px);
+  transition:border-color .3s,box-shadow .3s,background .3s;
+}
+.top-nav.scrolled{border-bottom-color:var(--hairline);box-shadow:0 1px 0 rgba(0,0,0,.04);background:rgba(255,255,255,.88)}
+.nav-logo{display:flex;align-items:center;gap:8px;text-decoration:none;color:var(--primary)}
+.nav-logo img{width:34px;height:34px;border-radius:8px;transition:transform .3s}
+.nav-logo:hover img{transform:scale(1.08)}
+.nav-logo span{font-size:22px;font-weight:700;color:var(--ink)}
+.nav-links{display:flex;gap:32px;list-style:none}
+.nav-links a{text-decoration:none;font-size:16px;font-weight:600;color:var(--muted);transition:color .15s}
+.nav-links a:hover{color:var(--ink)}
+.nav-links a.active{color:var(--ink);border-bottom:2px solid var(--ink);padding-bottom:2px}
+.nav-cta{display:flex;align-items:center;gap:12px}
+.btn-nav-download{background:var(--primary);color:#fff;text-decoration:none;padding:10px 20px;border-radius:9999px;font-size:14px;font-weight:500;transition:background .2s,transform .2s}
+.btn-nav-download:hover{background:var(--primary-active);transform:scale(1.04)}
+.btn-nav-sponsor{background:transparent;color:var(--ink);text-decoration:none;padding:9px 19px;border-radius:9999px;font-size:14px;font-weight:500;border:1.5px solid var(--hairline);transition:border-color .2s,color .2s,background .2s}
+.btn-nav-sponsor:hover{border-color:var(--ink);background:rgba(0,0,0,0.03)}
+
+/* Mobile "…" more menu */
+.nav-more-btn{display:none;background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);padding:6px 10px;border-radius:8px;line-height:1;letter-spacing:1px;transition:color 0.15s,background 0.15s}
+.nav-more-btn:hover{color:var(--ink);background:rgba(0,0,0,0.04)}
+.nav-more-dropdown{display:none;position:absolute;top:calc(var(--nav-height) - 4px);right:16px;background:rgba(255,255,255,0.96);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--hairline);border-radius:14px;box-shadow:0 4px 24px rgba(0,0,0,0.10),0 1px 4px rgba(0,0,0,0.06);min-width:148px;padding:8px 0;z-index:200;flex-direction:column}
+.nav-more-dropdown.open{display:flex}
+.nav-more-dropdown a{padding:11px 20px;text-decoration:none;color:var(--ink);font-size:15px;font-weight:500;transition:background 0.12s;white-space:nowrap}
+.nav-more-dropdown a:hover{background:rgba(0,0,0,0.04);color:var(--primary)}
+
+/* ── Glass Card ────────────────────────────────────────── */
+.glass{
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  background:rgba(255,255,255,0.6); border:1px solid rgba(255,255,255,0.8);
+  border-radius:var(--radius-md); box-shadow:var(--shadow-card);
+}
+
+/* ── Section ───────────────────────────────────────────── */
+.section{max-width:800px;margin:0 auto;padding:clamp(32px,6vw,72px) clamp(16px,4vw,48px)}
+
+/* ── Hero ──────────────────────────────────────────────── */
+.hero{text-align:center;padding:clamp(48px,8vw,80px) clamp(16px,4vw,48px) clamp(24px,4vw,48px)}
+.hero .hero-icon{font-size:56px;margin-bottom:20px;display:block}
+.hero h1{font-size:clamp(28px,5vw,40px);font-weight:800;color:var(--ink);letter-spacing:-0.02em;line-height:1.2;margin-bottom:12px}
+.hero p{font-size:17px;color:var(--muted);max-width:480px;margin:0 auto;line-height:1.7}
+.hero .hero-accent{color:var(--primary)}
+
+/* ── QR Code Card ──────────────────────────────────────── */
+.qr-card{
+  text-align:center; padding:clamp(32px,5vw,56px) clamp(24px,4vw,48px);
+}
+.qr-card .qr-label{
+  font-size:12px;font-weight:700;letter-spacing:0.12em;
+  text-transform:uppercase;color:var(--primary);margin-bottom:8px;
+}
+.qr-card h2{font-size:22px;font-weight:600;color:var(--ink);margin-bottom:8px}
+.qr-card .qr-sub{font-size:15px;color:var(--muted);margin-bottom:32px;line-height:1.6}
+.qr-card img{
+  width:240px;height:240px;border-radius:var(--radius-md);
+  box-shadow:0 2px 20px rgba(0,0,0,0.08);
+  transition:transform 0.3s ease;
+}
+.qr-card img:hover{transform:scale(1.03)}
+.qr-card .qr-hint{font-size:13px;color:var(--muted-soft);margin-top:16px}
+
+/* ── Thanks Grid ───────────────────────────────────────── */
+.thanks-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:24px}
+.thanks-item{
+  text-align:center;padding:clamp(20px,3vw,36px) clamp(12px,2vw,20px);
+  transition:transform 0.25s ease,box-shadow 0.25s ease;
+}
+.thanks-item:hover{transform:translateY(-4px);box-shadow:rgba(0,0,0,0.04) 0 4px 12px,rgba(0,0,0,0.12) 0 8px 20px}
+.thanks-item .role-icon{font-size:32px;margin-bottom:12px;display:block}
+.thanks-item .role-label{font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--primary);margin-bottom:4px}
+.thanks-item .role-name{font-size:18px;font-weight:700;color:var(--ink);font-family:'MiSans','Product Sans',sans-serif}
+
+/* ── Message ───────────────────────────────────────────── */
+.message-card{padding:clamp(24px,4vw,40px);text-align:center;margin-top:24px}
+.message-card p{font-size:16px;color:var(--body);line-height:1.8;max-width:560px;margin:0 auto}
+.message-card .heart{color:var(--primary)}
+
+/* ── Footer ────────────────────────────────────────────── */
+.footer-light{padding:clamp(32px,4vw,48px) clamp(16px,4vw,48px);max-width:var(--max-width);margin:0 auto;display:grid;grid-template-columns:repeat(3,1fr);gap:24px;border-top:1px solid rgba(255,255,255,0.5);background:rgba(255,255,255,0.3);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:var(--radius-md) var(--radius-md) 0 0}
+.footer-col h4{font-size:16px;font-weight:500;color:var(--ink);margin-bottom:12px}
+.footer-col ul{list-style:none;display:flex;flex-direction:column;gap:8px}
+.footer-col a{text-decoration:none;font-size:14px;color:var(--ink);transition:color 0.15s}
+.footer-col a:hover{color:var(--muted)}
+.legal-band{padding:clamp(12px,2vw,24px) clamp(16px,4vw,48px);max-width:var(--max-width);margin:0 auto;display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--muted);border-top:1px solid rgba(255,255,255,0.3)}
+.legal-band a{color:var(--muted);text-decoration:none;margin-left:24px}
+.legal-band a:hover{text-decoration:underline}
+
+/* ── Animations ────────────────────────────────────────── */
+@keyframes fadeInUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+.reveal{opacity:0;transform:translateY(28px);transition:opacity .7s cubic-bezier(.22,1,.36,1),transform .7s cubic-bezier(.22,1,.36,1)}
+.reveal.visible{opacity:1;transform:translateY(0)}
+.stagger-1{transition-delay:0.05s}.stagger-2{transition-delay:0.12s}.stagger-3{transition-delay:0.19s}
+
+/* ── Responsive ────────────────────────────────────────── */
+@media(max-width:743px){
+  .thanks-grid{grid-template-columns:1fr;max-width:280px;margin:24px auto 0}
+  .top-nav{height:56px;padding:0 16px}
+  .nav-links{display:none}.nav-more-btn{display:block}
+  .nav-logo span{display:none}
+  .btn-nav-download,.btn-nav-sponsor{padding:8px 14px;font-size:13px}
+  .footer-light{grid-template-columns:1fr}.legal-band{flex-direction:column;gap:8px;text-align:center}
+  .qr-card img{width:200px;height:200px}
+}
+</style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="index.html" class="nav-logo">
+    <img src="icon.png" alt="Lumi"><span>Lumi</span>
+  </a>
+  <ul class="nav-links">
+    <li><a href="features.html">功能</a></li>
+    <li><a href="privacy-section.html">隐私</a></li>
+    <li><a href="tech.html">技术</a></li>
+    <li><a href="sponsor.html" class="active">赞助</a></li>
+    <li><a href="feedback.html">反馈</a></li>
+  </ul>
+  <div class="nav-cta">
+    <a href="sponsor.html" class="btn-nav-sponsor">赞助</a>
+    <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-nav-download">获取 Lumi</a>
+  </div>
+  <button class="nav-more-btn" aria-label="更多导航" onclick="event.stopPropagation();this.nextElementSibling.classList.toggle('open')">…</button>
+  <div class="nav-more-dropdown">
+    <a href="features.html">功能</a>
+    <a href="privacy-section.html">隐私</a>
+    <a href="tech.html">技术</a>
+    <a href="sponsor.html">赞助</a>
+    <a href="feedback.html">反馈</a>
+  </div>
+</nav>
+
+<!-- ═══ Hero ═══ -->
+<header class="hero">
+  <span class="hero-icon reveal">💝</span>
+  <h1 class="reveal stagger-1">支持<span class="hero-accent"> Lumi</span></h1>
+  <p class="reveal stagger-2">
+    Lumi 是一款完全免费、开源、无广告的本地阅读器。<br>
+    如果你喜欢它，欢迎请开发者喝杯咖啡 ☕
+  </p>
+</header>
+
+<!-- ═══ QR Code ═══ -->
+<section class="section">
+  <div class="glass qr-card reveal stagger-1">
+    <div class="qr-label">赞赏码</div>
+    <h2>微信扫一扫</h2>
+    <p class="qr-sub">每一份支持都是 Lumi 持续更新的动力</p>
+    <img src="mm_reward_qrcode_1781853294120.png" alt="微信赞赏码" loading="lazy">
+    <p class="qr-hint">打开微信 · 扫一扫 · 赞赏</p>
+  </div>
+
+  <!-- ═══ Thanks ═══ -->
+  <div class="thanks-grid">
+    <div class="glass thanks-item reveal stagger-2">
+      <span class="role-icon">💛</span>
+      <div class="role-label">赞助开发</div>
+      <div class="role-name">雋乂、匿名</div>
+    </div>
+    <div class="glass thanks-item reveal stagger-3">
+      <span class="role-icon">🔧</span>
+      <div class="role-label">技术支持</div>
+      <div class="role-name">Corundum-Ling</div>
+    </div>
+    <div class="glass thanks-item reveal">
+      <span class="role-icon">🛠️</span>
+      <div class="role-label">开发人员</div>
+      <div class="role-name">huangder</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ Message ═══ -->
+<section class="section" style="padding-top:0">
+  <div class="glass message-card reveal">
+    <p>
+      感谢每一位支持 Lumi 的朋友 <span class="heart">♥</span><br>
+      你们的鼓励让这个小而美的阅读器得以不断成长。<br>
+      Lumi 会一直保持<strong>免费、开源、无广告</strong>的初心。
+    </p>
+  </div>
+</section>
+
+<!-- ═══ Footer ═══ -->
+<footer>
+  <div class="footer-light">
+    <div class="footer-col"><h4>Lumi</h4><ul><li><a href="features.html">功能介绍</a></li><li><a href="tech.html">技术架构</a></li><li><a href="sponsor.html">赞助支持</a></li></ul></div>
+    <div class="footer-col"><h4>法律</h4><ul><li><a href="privacy.html">隐私政策</a></li><li><a href="terms.html">用户协议</a></li></ul></div>
+    <div class="footer-col"><h4>联系方式</h4><ul><li><a href="https://github.com/huangder/Lumi_Books">GitHub</a></li><li><a href="mailto:huangder0104@126.com">邮件联系</a></li></ul></div>
+  </div>
+  <div class="legal-band"><span>&copy; 2026 Huangder</span><span><a href="privacy.html">隐私</a><a href="terms.html">条款</a><a href="sponsor.html">赞助</a></span></div>
+</footer>
+
+<script>
+(function(){
+  var els=document.querySelectorAll('.reveal');
+  if(!('IntersectionObserver' in window)){els.forEach(function(el){el.classList.add('visible')});return}
+  var io=new IntersectionObserver(function(entries){entries.forEach(function(e){if(e.isIntersecting){e.target.classList.add('visible');io.unobserve(e.target)}})},{threshold:0.12});
+  els.forEach(function(el){io.observe(el)});
+  var nav=document.querySelector('.top-nav');
+  window.addEventListener('scroll',function(){requestAnimationFrame(function(){if(window.scrollY>10)nav.classList.add('scrolled');else nav.classList.remove('scrolled')})},{passive:true});
+  document.addEventListener('click',function(e){var dd=document.querySelector('.nav-more-dropdown');var btn=document.querySelector('.nav-more-btn');if(dd&&dd.classList.contains('open')&&!dd.contains(e.target)&&e.target!==btn)dd.classList.remove('open')});
+})();
+</script>
+</body>
+</html>

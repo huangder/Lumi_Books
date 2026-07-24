@@ -1,0 +1,1093 @@
+package com.huangder.lumibooks.ui.reader.engine
+
+import android.content.Context
+import android.animation.ValueAnimator
+import androidx.core.animation.doOnEnd
+import android.text.Selection
+import android.text.Spannable
+import android.util.Log
+import android.view.MotionEvent
+import android.view.View
+import android.widget.FrameLayout
+import com.huangder.lumibooks.domain.model.Note
+import com.huangder.lumibooks.domain.model.ReaderEdgeTapAction
+import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
+import com.huangder.lumibooks.tts.TtsPageContent
+import com.huangder.lumibooks.tts.TtsPageLocation
+import com.huangder.lumibooks.util.ChineseConverter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlin.math.abs
+
+internal fun calculateReaderVerticalBalanceOffset(
+    availableHeightPx: Float,
+    lineHeightPx: Float,
+    maxShiftPx: Float
+): Float {
+    if (availableHeightPx <= 0f || lineHeightPx <= 0f || maxShiftPx <= 0f) return 0f
+    val completeLines = (availableHeightPx / lineHeightPx).toInt()
+    if (completeLines <= 0) return 0f
+    val remainder = availableHeightPx - completeLines * lineHeightPx
+    return (remainder / 2f).coerceIn(0f, maxShiftPx)
+}
+
+/**
+ * 核心阅读视图。
+ *
+ * FrameLayout 包含 3 个 [PageContentView] 槽位，使用 [PageAnimationController]
+ * 管理翻页动画。文字选择由系统 TextView 原生处理。
+ */
+/**
+ * 选区信息快照，供 Compose 层自定义菜单使用。
+ *
+ * @param selectedText        选中的文本
+ * @param chapterIndex        所在章节索引
+ * @param chapterStartOffset  本页在章节中的字符起始偏移（用于计算章节级坐标）
+ * @param pageStart           页面内选区起始字符偏移
+ * @param pageEnd             页面内选区结束字符偏移
+ * @param selTopY             选区顶边屏幕 Y 坐标（px）
+ * @param selBottomY          选区底边屏幕 Y 坐标（px）
+ * @param selStartX           选区起点屏幕 X 坐标（px）
+ * @param selEndX             选区终点屏幕 X 坐标（px）
+ */
+data class SelectionInfo(
+    val selectedText: String,
+    val chapterIndex: Int,
+    val chapterStartOffset: Int,
+    val pageStart: Int,
+    val pageEnd: Int,
+    val selTopY: Float,
+    val selBottomY: Float,
+    val selStartX: Float,
+    val selEndX: Float
+)
+
+class ReadView(context: Context) : FrameLayout(context) {
+
+    companion object {
+        private const val TAG = "ReadView"
+        private const val JUMP_SETTLE_DELAY_MS = 120L
+    }
+
+    // ── 子组件 ──
+    val layoutEngine = PageLayoutEngine()
+    lateinit var slotManager: PageSlotManager
+        private set
+    lateinit var animationController: PageAnimationController
+        private set
+
+    // ── 3 个页槽 ──
+    val prevPageView = PageContentView(context)
+    val curPageView = PageContentView(context)
+    val nextPageView = PageContentView(context)
+
+    // ── 外部回调 ──
+    private var callbacks: ReadViewCallbacks? = null
+    private var contentProvider: (suspend (Int) -> CharSequence?)? = null
+
+    private var savedNotes: List<Note> = emptyList()
+    private data class SearchHighlight(val chapterIndex: Int, val start: Int, val end: Int)
+    private var searchHighlight: SearchHighlight? = null
+    private var searchHighlightAnimator: ValueAnimator? = null
+    private var pendingJumpChapter: Int? = null
+    private var isJumpSettling = false
+
+    /** 设置已保存的笔记/高亮并刷新当前页。 */
+    fun setSavedNotes(notes: List<Note>) {
+        // 🔥 引用相同或内容相同则跳过，防止 Compose recomposition 触发无意义的页面刷新
+        if (notes === savedNotes) return
+        if (notes == savedNotes) return
+        savedNotes = notes
+        slotManager.refreshCurrentHighlights()
+    }
+
+    // ── 触摸分类追踪（ReadView 层统一拦截） ──
+    private var rvTouchStartX = 0f
+    private var rvTouchStartY = 0f
+    private var rvTouchDownTime = 0L
+    private var rvHasMoved = false
+    private var rvIsEdgeTouch = false
+    private var rvIsHandlingPageGesture = false
+
+    // ── 配置状态 ──
+    private var isConfigured = false
+    private var currentFontSizePx: Float = 56f
+    private var currentTheme: String = "day"
+    private var currentChapterCount: Int = 0
+    private var currentLineHeightMult: Float = 1.5f
+    private var currentLetterSpacingDp: Float = 0f
+    private var currentFontType: String = "system"
+    private var currentCustomFontPath: String? = null
+    private var currentMarginLeftDp: Float = 38f
+    private var currentMarginRightDp: Float = 38f
+    private var currentMarginTopDp: Float = 64f
+    private var currentMarginBottomDp: Float = 64f
+    private var currentTopOverlayInsetDp: Float = 0f
+    private var currentBottomOverlayInsetDp: Float = 0f
+    private var currentParagraphSpacingDp: Float = 0f
+    private var currentChineseMode: String = "original"
+    private var currentPageTransition: String = "slide"
+    private var currentEdgeTapMode: ReaderEdgeTapMode = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT
+    private var currentReaderBackgroundColor: Int? = null
+    private var currentReaderBackgroundImagePath: String? = null
+    private var currentReaderTextColor: Int? = null
+    private var pendingStartChapter: Int = 0
+    private var pendingStartPage: Int = 0
+    private var configuredWidth: Int = 0
+    private var configuredHeight: Int = 0
+
+    /** 当前阅读背景色（供 CurlPageAnim 背面绘制使用）。 */
+    var bgColor: Int = 0xFFFBFBFC.toInt()
+        private set
+
+    init {
+        isClickable = true
+        isFocusable = true
+        // 🔥 禁用裁剪：翻页动画需要子 View 在屏幕外绘制（左右滑动时上/下一页在屏幕外）
+        clipChildren = false
+        clipToPadding = false
+
+        // 添加三个 PageContentView 到布局（分页模式）
+        addView(prevPageView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        addView(curPageView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        addView(nextPageView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+
+        // 初始化管理器
+        slotManager = PageSlotManager(layoutEngine, prevPageView, curPageView, nextPageView)
+        slotManager.contentProvider = { chapterIndex ->
+            contentProvider?.invoke(chapterIndex)
+        }
+        slotManager.highlightProvider = { chapterIndex ->
+            buildHighlights(chapterIndex)
+        }
+
+        // 初始化动画控制器
+        animationController = SlidePageAnim(this)
+
+        animationController.onCanFlip = { dir ->
+            if (isJumpSettling) false else when (dir) {
+                PageAnimationController.Direction.NEXT -> slotManager.getNextSlot().isLoaded
+                PageAnimationController.Direction.PREV -> {
+                    // 全书第一页时禁止往前翻
+                    val cur = slotManager.getCurSlot()
+                    val isBookFirstPage = cur.chapterIndex == 0 && cur.pageIndex == 0
+                    !isBookFirstPage && slotManager.getPrevSlot().isLoaded
+                }
+                else -> false
+            }
+        }
+
+        animationController.onAnimationComplete = {
+            when (animationController.currentDirection) {
+                PageAnimationController.Direction.NEXT -> slotManager.shiftForward()
+                PageAnimationController.Direction.PREV -> slotManager.shiftBackward()
+                else -> {}
+            }
+        }
+
+        animationController.onTapLeft = {
+            performEdgeTap(currentEdgeTapMode.leftAction)
+        }
+        animationController.onTapCenter = {
+            clearCurrentSelection()
+            callbacks?.onMenuToggle()
+        }
+        animationController.onTapRight = {
+            performEdgeTap(currentEdgeTapMode.rightAction)
+        }
+
+        // 🔥 长按回调保留（边缘长按时触发），执行程序化选词
+        animationController.onLongPress = { x, y ->
+            Log.d(TAG, "onLongPress triggered at x=$x y=$y")
+            val result = curPageView.selectWordAt(x, y)
+            if (result != null) {
+                val (pageStart, pageEnd, text) = result
+                Log.d(TAG, "selected text=\"$text\" pageOffsets=($pageStart, $pageEnd)")
+            } else {
+                Log.w(TAG, "selectWordAt returned null at x=$x y=$y")
+            }
+        }
+
+        // 🔥 为三个页面槽位设置选区检测 + 压制系统浮动工具栏
+        // SpanWatcher 在每次文本设置后注册（因为 setPageContent 创建新 Spannable）
+        for (pageView in listOf(prevPageView, curPageView, nextPageView)) {
+            setupSelectionWatcher(pageView)
+            pageView.suppressSystemToolbar()
+        }
+
+        // 翻页后刷新高亮
+        slotManager.onPageChangedCallback = { globalPage, chapterIdx, pageInChapter, chapterTotal ->
+            callbacks?.onPageChanged(globalPage, chapterIdx, pageInChapter, chapterTotal)
+            startSearchHighlightAnimationIfReady(chapterIdx)
+            if (isJumpSettling && pendingJumpChapter == chapterIdx && chapterTotal > 0) {
+                postDelayed({
+                    if (pendingJumpChapter == chapterIdx) {
+                        pendingJumpChapter = null
+                        isJumpSettling = false
+                    }
+                }, JUMP_SETTLE_DELAY_MS)
+            }
+            configureCurrentPageView()
+            invalidate()
+        }
+
+        setWillNotDraw(false)
+    }
+
+    /** 构建某章的高亮列表（savedNotes → Triple(start, end, color)） */
+    private fun buildHighlights(chapterIndex: Int): List<Triple<Int, Int, Int>> {
+        val savedHighlights = savedNotes
+            .filter { it.chapterIndex == chapterIndex }
+            .map { note ->
+                val color = try {
+                    android.graphics.Color.parseColor(note.color)
+                } catch (_: IllegalArgumentException) {
+                    0x40FFEB3B.toInt()
+                }
+                Triple(note.startPosition, note.endPosition, color)
+            }
+        val transientHighlight = searchHighlight
+            ?.takeIf { it.chapterIndex == chapterIndex }
+            ?.let { Triple(it.start, it.end, 0x00FFE082) }
+        return if (transientHighlight != null) savedHighlights + transientHighlight else savedHighlights
+    }
+
+    /** 配置所有 PageContentView 的 TextView 样式（防止翻页错版） */
+    private fun configureCurrentPageView() {
+        val (themeBgColor, themeTextColor, accentColor) = getThemeColors(currentTheme)
+        val bgColor = currentReaderBackgroundColor ?: themeBgColor
+        val textColor = currentReaderTextColor ?: themeTextColor
+        val density = resources.displayMetrics.density
+        val marginLeft = currentMarginLeftDp * density
+        val marginRight = currentMarginRightDp * density
+        val baseMarginTop = (currentMarginTopDp + currentTopOverlayInsetDp) * density
+        val baseMarginBottom = (currentMarginBottomDp + currentBottomOverlayInsetDp) * density
+        val lineSpacingExtra = 2.5f * density
+
+        // 选择高亮色jian
+        // = accent + 25% alpha
+        val highlightColor = (accentColor and 0x00FFFFFF) or 0x40000000.toInt()
+
+        val customTypeface = when (currentFontType) {
+            "serif" -> android.graphics.Typeface.SERIF
+            "fangsong" -> try { androidx.core.content.res.ResourcesCompat.getFont(context, com.huangder.lumibooks.R.font.fandol_fang) }
+                catch (_: Exception) { null } ?: android.graphics.Typeface.DEFAULT
+            "kaiti" -> try { androidx.core.content.res.ResourcesCompat.getFont(context, com.huangder.lumibooks.R.font.lxgw_wenkai) }
+                catch (_: Exception) { null } ?: android.graphics.Typeface.DEFAULT
+            "custom" -> {
+                val path = currentCustomFontPath
+                if (path != null) try { android.graphics.Typeface.createFromFile(java.io.File(path)) }
+                    catch (_: Exception) { android.graphics.Typeface.DEFAULT }
+                else android.graphics.Typeface.DEFAULT
+            }
+            else -> android.graphics.Typeface.DEFAULT
+        }
+        val (marginTop, marginBottom) = balancedVerticalMargins(
+            baseMarginTop = baseMarginTop,
+            baseMarginBottom = baseMarginBottom,
+            fontSizePx = currentFontSizePx,
+            lineHeightMultiplier = currentLineHeightMult,
+            lineSpacingExtraPx = lineSpacingExtra,
+            typeface = customTypeface
+        )
+
+        // 三个槽位都配置，确保翻页时样式一致
+        for (view in listOf(prevPageView, curPageView, nextPageView)) {
+            view.configure(
+                fontSizePx = currentFontSizePx,
+                textColor = textColor,
+                lineHeightMult = currentLineHeightMult,
+                lineSpacingExtraPx = lineSpacingExtra,
+                letterSpacingPx = currentLetterSpacingDp * density,
+                typeface = customTypeface,
+                marginLeftPx = marginLeft,
+                marginTopPx = marginTop,
+                marginRightPx = marginRight,
+                marginBottomPx = marginBottom,
+                highlightColor = highlightColor,
+                accentColor = accentColor
+            )
+            view.setReaderBackground(bgColor, currentReaderBackgroundImagePath)
+        }
+        setBackgroundColor(bgColor)
+        this.bgColor = bgColor
+    }
+
+    fun setReaderBackground(backgroundColor: Int, textColor: Int, imagePath: String?) {
+        if (currentReaderBackgroundColor == backgroundColor &&
+            currentReaderTextColor == textColor &&
+            currentReaderBackgroundImagePath == imagePath
+        ) return
+
+        animationController.abortAnim()
+        currentReaderBackgroundColor = backgroundColor
+        currentReaderTextColor = textColor
+        currentReaderBackgroundImagePath = imagePath
+        configureCurrentPageView()
+        invalidate()
+    }
+
+    // ── 配置 ──
+
+    fun setCallbacks(cbs: ReadViewCallbacks) {
+        callbacks = cbs
+    }
+
+    fun setContentProvider(provider: suspend (Int) -> CharSequence?) {
+        contentProvider = provider
+        slotManager.contentProvider = provider
+    }
+
+    fun configure(
+        fontSizePx: Float,
+        theme: String,
+        chapterCount: Int,
+        startChapter: Int,
+        startPage: Int,
+        lineHeightMult: Float = 1.5f,
+        letterSpacingDp: Float = 0f,
+        fontType: String = "system",
+        customFontPath: String? = null,
+        marginLeftDp: Float = 38f,
+        marginRightDp: Float = 38f,
+        marginTopDp: Float = 64f,
+        marginBottomDp: Float = 64f,
+        topOverlayInsetDp: Float = 0f,
+        bottomOverlayInsetDp: Float = 0f,
+        paragraphSpacingDp: Float = 2f,
+        width: Int = this.width,
+        height: Int = this.height
+    ) {
+        if (width <= 0 || height <= 0 || chapterCount <= 0) {
+            pendingStartChapter = startChapter
+            pendingStartPage = startPage
+            currentFontSizePx = fontSizePx
+            currentTheme = theme
+            currentChapterCount = chapterCount
+            currentLineHeightMult = lineHeightMult
+            currentLetterSpacingDp = letterSpacingDp
+            currentFontType = fontType
+            currentCustomFontPath = customFontPath
+            currentMarginLeftDp = marginLeftDp
+            currentMarginRightDp = marginRightDp
+            currentMarginTopDp = marginTopDp
+            currentMarginBottomDp = marginBottomDp
+            currentTopOverlayInsetDp = topOverlayInsetDp
+            currentBottomOverlayInsetDp = bottomOverlayInsetDp
+            currentParagraphSpacingDp = paragraphSpacingDp
+            return
+        }
+
+        val themeChanged = currentTheme != theme
+        val chapterCountChanged = currentChapterCount != chapterCount
+        val fontSizeChanged = Math.abs(currentFontSizePx - fontSizePx) > 0.5f
+        val lineHeightChanged = Math.abs(currentLineHeightMult - lineHeightMult) > 0.01f
+        val letterSpacingChanged = Math.abs(currentLetterSpacingDp - letterSpacingDp) > 0.05f
+        val fontTypeChanged = currentFontType != fontType
+        val marginChanged = Math.abs(currentMarginLeftDp - marginLeftDp) > 0.5f ||
+            Math.abs(currentMarginRightDp - marginRightDp) > 0.5f ||
+            Math.abs(currentMarginTopDp - marginTopDp) > 0.5f ||
+            Math.abs(currentMarginBottomDp - marginBottomDp) > 0.5f
+        val overlayInsetChanged = Math.abs(currentTopOverlayInsetDp - topOverlayInsetDp) > 0.5f ||
+            Math.abs(currentBottomOverlayInsetDp - bottomOverlayInsetDp) > 0.5f
+        val paragraphSpacingChanged = Math.abs(currentParagraphSpacingDp - paragraphSpacingDp) > 0.01f
+        val sizeChanged = !isConfigured || configuredWidth != width || configuredHeight != height
+        val needsRelayout = themeChanged || chapterCountChanged || fontSizeChanged || lineHeightChanged ||
+                letterSpacingChanged || fontTypeChanged || marginChanged || overlayInsetChanged ||
+                paragraphSpacingChanged || sizeChanged
+
+        // 🔥 无变化时提前返回，避免菜单切换等 recomposition 触发不必要的重配置
+        if (isConfigured && !needsRelayout) {
+            val currentSlot = slotManager.getCurSlot()
+            if (currentSlot.chapterIndex != startChapter || currentSlot.pageIndex != startPage) {
+                jumpToChapter(startChapter, startPage)
+            }
+            return
+        }
+
+        currentFontSizePx = fontSizePx
+        currentTheme = theme
+        currentChapterCount = chapterCount
+        currentLineHeightMult = lineHeightMult
+        currentLetterSpacingDp = letterSpacingDp
+        currentFontType = fontType
+        currentCustomFontPath = customFontPath
+        currentMarginLeftDp = marginLeftDp
+        currentMarginRightDp = marginRightDp
+        currentMarginTopDp = marginTopDp
+        currentMarginBottomDp = marginBottomDp
+        currentTopOverlayInsetDp = topOverlayInsetDp
+        currentBottomOverlayInsetDp = bottomOverlayInsetDp
+        currentParagraphSpacingDp = paragraphSpacingDp
+        configuredWidth = width
+        configuredHeight = height
+
+        val (_, textColor, _) = getThemeColors(theme)
+        val density = resources.displayMetrics.density
+        val marginLeft = marginLeftDp * density
+        val marginRight = marginRightDp * density
+        val baseMarginTop = (marginTopDp + topOverlayInsetDp) * density
+        val baseMarginBottom = (marginBottomDp + bottomOverlayInsetDp) * density
+        val lineSpacing = 2.5f * density
+        val lsPx = letterSpacingDp * density
+
+        val customTypeface = when (fontType) {
+            "serif" -> android.graphics.Typeface.SERIF
+            "fangsong" -> try { androidx.core.content.res.ResourcesCompat.getFont(context, com.huangder.lumibooks.R.font.fandol_fang) }
+                catch (_: Exception) { null }
+            "kaiti" -> try { androidx.core.content.res.ResourcesCompat.getFont(context, com.huangder.lumibooks.R.font.lxgw_wenkai) }
+                catch (_: Exception) { null }
+            "custom" -> {
+                val path = customFontPath
+                if (path != null) try { android.graphics.Typeface.createFromFile(java.io.File(path)) }
+                    catch (_: Exception) { null }
+                else null
+            }
+            else -> null
+        }
+        val (marginTop, marginBottom) = balancedVerticalMargins(
+            baseMarginTop = baseMarginTop,
+            baseMarginBottom = baseMarginBottom,
+            fontSizePx = fontSizePx,
+            lineHeightMultiplier = lineHeightMult,
+            lineSpacingExtraPx = lineSpacing,
+            typeface = customTypeface ?: android.graphics.Typeface.DEFAULT
+        )
+
+        layoutEngine.configure(
+            width = width,
+            height = height,
+            fontSizePx = fontSizePx,
+            lineSpacingPx = lineSpacing,
+            lineSpacingMult = lineHeightMult,
+            letterSpacingPx = lsPx,
+            fontType = fontType,
+            customTypeface = customTypeface,
+            marginLeftPx = marginLeft,
+            marginRightPx = marginRight,
+            marginTopPx = marginTop,
+            marginBottomPx = marginBottom,
+            textColor = textColor,
+            chapterCount = chapterCount
+        )
+
+        configureCurrentPageView()
+
+        // 🔥 共用 TextPaint：让 PageLayoutEngine 的 StaticLayout 使用与 TextView 完全相同的 Paint
+        // 对象，消除两个引擎的字体度量（font metrics）差异。这是根除分页不一致的关键。
+        layoutEngine.sharedTextPaint = curPageView.textView.paint
+
+        if (needsRelayout) {
+            // 字号变化前捕获当前内容位置，以便重新分页后修正页码
+            if (fontSizeChanged) {
+                val curSlot = slotManager.getCurSlot()
+                if (curSlot.isLoaded) {
+                    slotManager.pendingStartCharOffset = curSlot.contentView.chapterStartOffset
+                }
+            }
+            layoutEngine.invalidateAll()
+        }
+
+        if (!isConfigured || needsRelayout) {
+            slotManager.setChapterCount(chapterCount)
+            slotManager.initialize(startChapter, startPage)
+            isConfigured = true
+        }
+    }
+
+    /**
+     * 强制重新分页并刷新当前页。
+     * 用于段间距/首行缩进等文本内容变化后，
+     * 需要在 configure() 之外单独触发的场景。
+     */
+    fun forceRelayout() {
+        if (!isConfigured) return
+        layoutEngine.invalidateAll()
+        val curSlot = slotManager.getCurSlot()
+        if (curSlot.chapterIndex >= 0) {
+            slotManager.loadSlot(PageSlotManager.SLOT_CUR, curSlot.chapterIndex, curSlot.pageIndex)
+        }
+    }
+
+    /** 跳转到指定章节指定页 */
+    fun jumpToChapter(chapterIndex: Int, pageInChapter: Int = 0) {
+        beginJumpSettling(chapterIndex)
+        animationController.abortAnim()
+        layoutEngine.invalidateChapter(chapterIndex)
+        slotManager.jumpTo(chapterIndex, pageInChapter)
+    }
+
+    /** 跳转到章节内包含指定字符偏移的页面。 */
+    fun jumpToCharacter(chapterIndex: Int, characterOffset: Int) {
+        beginJumpSettling(chapterIndex)
+        animationController.abortAnim()
+        val targetOffset = characterOffset.coerceAtLeast(0)
+        val cachedLayout = layoutEngine.getChapterLayout(chapterIndex)
+        val cachedPage = cachedLayout?.pages?.indexOfFirst { page ->
+            targetOffset >= page.startCharOffset && targetOffset < page.endCharOffset
+        } ?: -1
+
+        if (cachedPage >= 0) {
+            slotManager.jumpTo(chapterIndex, cachedPage)
+        } else {
+            slotManager.pendingStartCharOffset = targetOffset
+            layoutEngine.invalidateChapter(chapterIndex)
+            slotManager.jumpTo(chapterIndex, 0)
+        }
+    }
+
+    /** Opens the exact page containing a search match and flashes only that match twice. */
+    fun jumpToSearchResult(chapterIndex: Int, startOffset: Int, matchLength: Int) {
+        searchHighlightAnimator?.cancel()
+        searchHighlight = SearchHighlight(
+            chapterIndex = chapterIndex,
+            start = startOffset.coerceAtLeast(0),
+            end = (startOffset + matchLength).coerceAtLeast(startOffset + 1)
+        )
+        jumpToCharacter(chapterIndex, startOffset)
+    }
+
+    /** Returns the first visible character of the current page for a layout-independent bookmark. */
+    fun getCurrentPageStartCharacterOffset(): Int? {
+        val current = slotManager.getCurSlot()
+        return current.contentView.chapterStartOffset.takeIf { current.isLoaded && it >= 0 }
+    }
+
+    fun getCurrentPageBookmarkTitle(): String? {
+        return curPageView.textView.text
+            ?.toString()
+            ?.lineSequence()
+            ?.firstOrNull { it.isNotBlank() }
+            ?.trim()
+            ?.take(80)
+    }
+
+    /** 当前真实槽位位置，供书内链接保存返回点。 */
+    fun getCurrentLocation(): Pair<Int, Int>? {
+        val current = slotManager.getCurSlot()
+        if (current.chapterIndex < 0 || current.pageIndex < 0) return null
+        return current.chapterIndex to current.pageIndex
+    }
+
+    /** 查询下一页位置，不执行翻页。 */
+    fun getNextPageLocation(): Pair<Int, Int> {
+        val current = slotManager.getCurSlot()
+        if (!current.isLoaded) return -1 to -1
+        val layout = layoutEngine.getChapterLayout(current.chapterIndex) ?: return -1 to -1
+        return when {
+            current.pageIndex + 1 < layout.totalPages -> current.chapterIndex to current.pageIndex + 1
+            current.chapterIndex + 1 < currentChapterCount -> current.chapterIndex + 1 to 0
+            else -> -1 to -1
+        }
+    }
+
+    /** 查询上一页位置，不执行翻页。 */
+    fun getPrevPageLocation(): Pair<Int, Int> {
+        val current = slotManager.getCurSlot()
+        if (!current.isLoaded) return -1 to -1
+        if (current.pageIndex > 0) return current.chapterIndex to current.pageIndex - 1
+        if (current.chapterIndex <= 0) return -1 to -1
+        val previousLayout = layoutEngine.getChapterLayout(current.chapterIndex - 1) ?: return -1 to -1
+        return current.chapterIndex - 1 to previousLayout.totalPages - 1
+    }
+
+    /**
+     * 返回指定页的纯文本与相邻位置。TTS 后台播放时也可通过该方法继续按当前排版分页。
+     */
+    suspend fun getTtsPageContent(chapterIndex: Int, pageIndex: Int): TtsPageContent? {
+        if (chapterIndex !in 0 until currentChapterCount || pageIndex < 0) return null
+        val provider = contentProvider ?: return null
+        val fullText = withContext(Dispatchers.IO) { provider(chapterIndex) }
+            ?.takeUnless { it.isEmpty() }
+            ?: return null
+        val chapterLayout = layoutEngine.layout(chapterIndex, fullText)
+        val pageLayout = chapterLayout.pages.getOrNull(pageIndex) ?: return null
+
+        var startOffset = pageLayout.startCharOffset
+        while (startOffset < pageLayout.endCharOffset && fullText[startOffset] == '\n') {
+            startOffset++
+        }
+        val rawPageText = if (startOffset < pageLayout.endCharOffset) {
+            fullText.subSequence(startOffset, pageLayout.endCharOffset).toString()
+        } else {
+            ""
+        }
+        val pageText = ChineseConverter.convert(rawPageText, currentChineseMode)
+
+        val previous = when {
+            pageIndex > 0 -> TtsPageLocation(chapterIndex, pageIndex - 1)
+            chapterIndex <= 0 -> null
+            else -> {
+                val previousText = withContext(Dispatchers.IO) { provider(chapterIndex - 1) }
+                val previousLayout = previousText
+                    ?.takeUnless { it.isEmpty() }
+                    ?.let { layoutEngine.layout(chapterIndex - 1, it) }
+                previousLayout?.takeIf { it.totalPages > 0 }?.let {
+                    TtsPageLocation(chapterIndex - 1, it.totalPages - 1)
+                }
+            }
+        }
+        val next = when {
+            pageIndex + 1 < chapterLayout.totalPages -> TtsPageLocation(chapterIndex, pageIndex + 1)
+            chapterIndex + 1 < currentChapterCount -> TtsPageLocation(chapterIndex + 1, 0)
+            else -> null
+        }
+        return TtsPageContent(
+            location = TtsPageLocation(chapterIndex, pageIndex),
+            text = pageText,
+            previous = previous,
+            next = next,
+            startCharacterOffset = startOffset
+        )
+    }
+
+    /** 设置简繁转换模式，刷新当前页 */
+    fun setChineseMode(mode: String) {
+        if (currentChineseMode == mode) return
+        currentChineseMode = mode
+        prevPageView.chineseMode = mode
+        curPageView.chineseMode = mode
+        nextPageView.chineseMode = mode
+        slotManager.refreshCurrentPage()
+    }
+
+    /** 设置翻页动画类型 */
+    fun setPageTransition(mode: String) {
+        if (currentPageTransition == mode) return
+        currentPageTransition = mode
+
+        val oldController = animationController
+        oldController.abortAnim()
+        (oldController as? CurlPageAnim)?.destroy()
+
+        val newController = when (mode) {
+            "fade" -> FadePageAnim(this)
+            "scroll" -> ScrollPageAnim(this)
+            "curl" -> CurlPageAnim(this)
+            else -> SlidePageAnim(this)
+        }
+        // 重新绑定回调
+        newController.onCanFlip = animationController.onCanFlip
+        newController.onAnimationComplete = animationController.onAnimationComplete
+        newController.onTapLeft = animationController.onTapLeft
+        newController.onTapCenter = animationController.onTapCenter
+        newController.onTapRight = animationController.onTapRight
+        newController.onLongPress = animationController.onLongPress
+
+        animationController = newController
+        // 重置页面位置状态（防止切换时残留偏移）
+        prevPageView.translationX = -width.toFloat()
+        prevPageView.translationY = 0f
+        prevPageView.alpha = 0f
+        curPageView.translationX = 0f
+        curPageView.translationY = 0f
+        curPageView.alpha = 1f
+        nextPageView.translationX = width.toFloat()
+        nextPageView.translationY = 0f
+        nextPageView.alpha = 0f
+        invalidate()
+    }
+
+    /** 设置左右边缘短按的翻页方向；滑动手势方向保持不变。 */
+    fun setEdgeTapMode(mode: ReaderEdgeTapMode) {
+        currentEdgeTapMode = mode
+    }
+
+    private fun performEdgeTap(action: ReaderEdgeTapAction) {
+        when (action) {
+            ReaderEdgeTapAction.PREVIOUS_PAGE -> turnToPreviousPage()
+            ReaderEdgeTapAction.NEXT_PAGE -> turnToNextPage()
+        }
+    }
+
+    /** 获取指定章节的页数（需已布局） */
+    fun getChapterPageCount(chapterIndex: Int): Int {
+        return layoutEngine.getChapterPageCount(chapterIndex)
+    }
+
+    fun turnToPreviousPage(): Boolean {
+        if (isJumpSettling || animationController.isRunning) return false
+        val current = slotManager.getCurSlot()
+        val isBookFirstPage = current.chapterIndex == 0 && current.pageIndex == 0
+        if (isBookFirstPage || !slotManager.getPrevSlot().isLoaded) return false
+        clearCurrentSelection()
+        startTapAnimation(PageAnimationController.Direction.PREV)
+        return true
+    }
+
+    fun turnToNextPage(): Boolean {
+        if (isJumpSettling || animationController.isRunning || !slotManager.getNextSlot().isLoaded) return false
+        clearCurrentSelection()
+        startTapAnimation(PageAnimationController.Direction.NEXT)
+        return true
+    }
+
+    // ── 触摸 ──
+
+    /**
+     * 🔥 统一触摸分类器（在所有子 View 之前执行）。
+     *
+     * 解决 setTextIsSelectable(true) 导致的触摸事件分发问题：
+     * - TextView 消费触摸 → ReadView.onTouchEvent 不触发 → 菜单/翻页失效
+     * - PageContentView 拦截后事件丢失 → PageAnimationController late-init 死代码
+     *
+     * 分类逻辑：
+     * - 全区域 DOWN → 不拦截，穿透给 TextView（支持任意位置长按选词）
+     * - 水平 MOVE（500ms内）→ 拦截，PageAnimationController late-init 处理翻页
+     * - 边缘短 UP → 触发 animationController.onTapLeft/Right（点击翻页）
+     * - 中间短 UP → 触发 callbacks.onMenuToggle（菜单切换）
+     * - 长按（>500ms 或无明显移动）→ 不拦截，TextView 原生触发选词
+     */
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                rvTouchStartX = ev.x
+                rvTouchStartY = ev.y
+                rvTouchDownTime = System.currentTimeMillis()
+                rvHasMoved = false
+                rvIsHandlingPageGesture = false
+                val w = width.toFloat()
+                rvIsEdgeTouch = w > 0 && (ev.x / w < 0.3f || ev.x / w > 0.7f)
+                return super.dispatchTouchEvent(ev)
+            }
+
+            MotionEvent.ACTION_MOVE -> {
+                if (rvIsHandlingPageGesture) {
+                    animationController.onTouchEvent(ev)
+                    return true
+                }
+
+                val dx = abs(ev.x - rvTouchStartX)
+                val dy = abs(ev.y - rvTouchStartY)
+                val dt = System.currentTimeMillis() - rvTouchDownTime
+
+                if (dx > 24f || dy > 24f) rvHasMoved = true
+
+                // 仅在 500ms 窗口内拦截水平滑动（超过 500ms 视为选择扩展，不拦截）
+                // dx > dy * 0.3f：允许更自然的斜向拖拽（拇指弧线有垂直分量）
+                if (dt < 500L && dx > 16f && dx > dy * 0.3f) {
+                    Log.d(TAG, "Handle page swipe at dx=$dx dy=$dy dt=$dt")
+                    rvIsHandlingPageGesture = true
+                    clearCurrentSelection()
+
+                    // 先取消子 TextView 的原生触摸序列，再把完整序列交给动画控制器。
+                    val cancelEvent = MotionEvent.obtain(ev)
+                    cancelEvent.action = MotionEvent.ACTION_CANCEL
+                    super.dispatchTouchEvent(cancelEvent)
+                    cancelEvent.recycle()
+
+                    val downEvent = MotionEvent.obtain(
+                        ev.downTime,
+                        ev.eventTime,
+                        MotionEvent.ACTION_DOWN,
+                        rvTouchStartX,
+                        rvTouchStartY,
+                        ev.metaState
+                    )
+                    animationController.onTouchEvent(downEvent)
+                    downEvent.recycle()
+                    animationController.onTouchEvent(ev)
+                    return true
+                }
+            }
+
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (rvIsHandlingPageGesture) {
+                    rvIsHandlingPageGesture = false
+                    animationController.onTouchEvent(ev)
+                    return true
+                }
+            }
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
+    override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_UP -> {
+                if (!rvHasMoved && System.currentTimeMillis() - rvTouchDownTime < 300L) {
+                    val link = curPageView.getLinkAt(
+                        rvTouchStartX - curPageView.left,
+                        rvTouchStartY - curPageView.top
+                    )
+                    if (link != null) {
+                        Log.d(TAG, "EPUB link tap: $link")
+                        clearCurrentSelection()
+                        callbacks?.onLinkClick(link)
+                    } else if (rvIsEdgeTouch) {
+                        // 边缘短按 → 点击翻页（复用 animationController 回调）
+                        Log.d(TAG, "Edge tap at x=${ev.x} → page turn")
+                        if (rvTouchStartX / width < 0.3f) {
+                            animationController.onTapLeft?.invoke()
+                        } else {
+                            animationController.onTapRight?.invoke()
+                        }
+                    } else {
+                        // 中间短按 → 菜单切换
+                        Log.d(TAG, "Center tap detected → toggle menu")
+                        clearCurrentSelection()
+                        callbacks?.onMenuToggle()
+                    }
+                }
+            }
+        }
+        return false
+    }
+
+    /**
+     * 🔥 忽略触摸开始 500ms 内的 disallow 请求。
+     *
+     * setTextIsSelectable(true) 的 TextView 可能在触摸后很快通过 Editor
+     * 调用 requestDisallowInterceptTouchEvent(true)，阻止父 View 拦截滑动。
+     * 我们在 500ms 窗口内忽略此请求，确保滑动翻页正常；
+     * 500ms 后（长按已触发），允许 disallow 以支持选择拖拽。
+     */
+    override fun requestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {
+        if (disallowIntercept) {
+            val dt = System.currentTimeMillis() - rvTouchDownTime
+            if (dt < 500L) {
+                // 忽略早期的 disallow 请求（插入点光标控制器可能触发）
+                return
+            }
+        }
+        super.requestDisallowInterceptTouchEvent(disallowIntercept)
+    }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        return animationController.onTouchEvent(event)
+    }
+
+    override fun computeScroll() {
+        if (animationController.computeScroll()) {
+            postInvalidateOnAnimation()
+        }
+    }
+
+    // ── 绘制 ──
+
+    override fun dispatchDraw(canvas: android.graphics.Canvas) {
+        if (animationController.drawsDirectlyOnCanvas &&
+            (animationController.isRunning || animationController.isDragging)) {
+            // 仿真翻页活动期完全由稳定快照绘制，避免实时子 View 从裁剪路径中漏出。
+            animationController.onDraw(canvas)
+        } else {
+            // 先设置子 View 的 translationX/Y（翻页动画位置）
+            animationController.onDraw(canvas)
+            // 绘制子 View（PageContentView 包含的 TextView）
+            super.dispatchDraw(canvas)
+            // 再绘制阴影叠加层（在子 View 之上）
+            when (val ctrl = animationController) {
+                is SlidePageAnim -> ctrl.drawOverlay(canvas)
+                is ScrollPageAnim -> ctrl.drawOverlay(canvas)
+                is FadePageAnim -> ctrl.drawOverlay(canvas)
+                is CurlPageAnim -> ctrl.drawOverlay(canvas)
+            }
+        }
+    }
+
+    // ── 生命周期 ──
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        animationController.abortAnim()
+        (animationController as? CurlPageAnim)?.destroy()
+        slotManager.destroy()
+        layoutEngine.invalidateAll()
+    }
+
+    // ── 内部方法 ──
+
+    private fun startTapAnimation(dir: PageAnimationController.Direction) {
+        if (isJumpSettling || animationController.isRunning) return
+        when (val ctrl = animationController) {
+            is SlidePageAnim -> ctrl.startFromTap(dir)
+            is ScrollPageAnim -> ctrl.startFromTap(dir)
+            is FadePageAnim -> ctrl.startFromTap(dir)
+            is CurlPageAnim -> ctrl.startFromTap(dir)
+        }
+    }
+
+    private fun beginJumpSettling(chapterIndex: Int) {
+        pendingJumpChapter = chapterIndex
+        isJumpSettling = true
+    }
+
+    private fun startSearchHighlightAnimationIfReady(chapterIndex: Int) {
+        val highlight = searchHighlight ?: return
+        if (highlight.chapterIndex != chapterIndex || searchHighlightAnimator?.isRunning == true) return
+
+        searchHighlightAnimator = ValueAnimator.ofInt(0, 180, 0, 180, 0).apply {
+            duration = 2_000L
+            addUpdateListener { animator ->
+                val alpha = animator.animatedValue as Int
+                listOf(prevPageView, curPageView, nextPageView).forEach {
+                    it.setSearchHighlightAlpha(alpha)
+                }
+            }
+            doOnEnd {
+                if (!it.isRunning) {
+                    searchHighlight = null
+                    slotManager.refreshCurrentHighlights()
+                }
+            }
+            start()
+        }
+    }
+
+    private fun balancedVerticalMargins(
+        baseMarginTop: Float,
+        baseMarginBottom: Float,
+        fontSizePx: Float,
+        lineHeightMultiplier: Float,
+        lineSpacingExtraPx: Float,
+        typeface: android.graphics.Typeface
+    ): Pair<Float, Float> {
+        val fontSpacing = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).run {
+            textSize = fontSizePx
+            this.typeface = typeface
+            fontSpacing
+        }
+        val estimatedLineHeight = fontSpacing * lineHeightMultiplier + lineSpacingExtraPx
+        val availableHeight = height - baseMarginTop - baseMarginBottom
+        val shift = calculateReaderVerticalBalanceOffset(
+            availableHeightPx = availableHeight,
+            lineHeightPx = estimatedLineHeight,
+            maxShiftPx = baseMarginBottom
+        )
+        return (baseMarginTop + shift) to (baseMarginBottom - shift)
+    }
+
+    /** @return Triple(backgroundColor, textColor, accentColor) */
+    private fun getThemeColors(theme: String): Triple<Int, Int, Int> {
+        return when (theme) {
+            "night" -> Triple(0xFF1a1a1a.toInt(), 0xFFCCCCCC.toInt(), 0xFF4A90D9.toInt())
+            "sepia" -> Triple(0xFFf5e6d3.toInt(), 0xFF4a3728.toInt(), 0xFFC77826.toInt())
+            "green" -> Triple(0xFFe8f5e9.toInt(), 0xFF2e7d32.toInt(), 0xFF2E7D32.toInt())
+            else   -> Triple(0xFFFBFBFC.toInt(), 0xFF333333.toInt(), 0xFF007AFF.toInt())
+        }
+    }
+
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        super.onLayout(changed, left, top, right, bottom)
+        val layoutWidth = right - left
+        val layoutHeight = bottom - top
+        if (changed && currentChapterCount > 0 &&
+            (!isConfigured || configuredWidth != layoutWidth || configuredHeight != layoutHeight)
+        ) {
+            configure(
+                fontSizePx = currentFontSizePx,
+                theme = currentTheme,
+                chapterCount = currentChapterCount,
+                startChapter = pendingStartChapter,
+                startPage = pendingStartPage,
+                lineHeightMult = currentLineHeightMult,
+                letterSpacingDp = currentLetterSpacingDp,
+                fontType = currentFontType,
+                customFontPath = currentCustomFontPath,
+                marginLeftDp = currentMarginLeftDp,
+                marginRightDp = currentMarginRightDp,
+                marginTopDp = currentMarginTopDp,
+                marginBottomDp = currentMarginBottomDp,
+                topOverlayInsetDp = currentTopOverlayInsetDp,
+                bottomOverlayInsetDp = currentBottomOverlayInsetDp,
+                paragraphSpacingDp = currentParagraphSpacingDp,
+                width = layoutWidth,
+                height = layoutHeight
+            )
+        }
+    }
+
+    // ── 选区工具方法 ──
+
+    /**
+     * 获取当前页选区的完整信息（供 Compose 层自定义菜单使用）。
+     * @return null 表示当前无选区
+     */
+    fun getSelectionInfo(sourceView: PageContentView? = null): SelectionInfo? {
+        val pageView = sourceView ?: curPageView
+        val tv = pageView.textView
+        val layout = tv.layout ?: return null
+        val spannable = tv.text as? android.text.Spannable ?: return null
+        val selStart = android.text.Selection.getSelectionStart(spannable)
+        val selEnd = android.text.Selection.getSelectionEnd(spannable)
+        if (selStart < 0 || selEnd <= selStart) return null
+
+        val text = spannable.toString().substring(selStart, selEnd)
+        val slot = slotManager.getSlotForView(pageView) ?: return null
+        val chapterIdx = slot.chapterIndex
+        val chapterStartOffset = pageView.chapterStartOffset
+        val hiddenStartLine = layout.getLineForOffset(selStart)
+        val hiddenStartLineOffset = layout.getLineStart(hiddenStartLine)
+        val visualStartLineInfo = pageView.getVisualLineInfo(selStart)
+
+        Log.e(
+            "ReaderSelectionDebug",
+            "getSelectionInfo view=${System.identityHashCode(pageView)} " +
+                "slotChapter=${slot.chapterIndex} slotPage=${slot.pageIndex} " +
+                "chapterStart=$chapterStartOffset local=[$selStart,$selEnd) " +
+                "absolute=[${chapterStartOffset + selStart},${chapterStartOffset + selEnd}) " +
+                "hiddenLine=$hiddenStartLine@$hiddenStartLineOffset " +
+                "visualLine=${visualStartLineInfo?.first}@${visualStartLineInfo?.second} " +
+                "text=${text.take(80)}"
+        )
+
+        val startLine = layout.getLineForOffset(selStart)
+        val endLine = layout.getLineForOffset(selEnd.coerceAtMost(spannable.length - 1))
+        val topY = (tv.top + tv.paddingTop + layout.getLineTop(startLine)).toFloat()
+        val bottomY = (tv.top + tv.paddingTop + layout.getLineBottom(endLine)).toFloat()
+        val startX = tv.left + tv.paddingLeft + layout.getPrimaryHorizontal(selStart)
+        val endX = tv.left + tv.paddingLeft + layout.getPrimaryHorizontal(selEnd)
+
+        return SelectionInfo(
+            selectedText = text,
+            chapterIndex = chapterIdx,
+            chapterStartOffset = chapterStartOffset,
+            pageStart = selStart,
+            pageEnd = selEnd,
+            selTopY = topY,
+            selBottomY = bottomY,
+            selStartX = startX,
+            selEndX = endX
+        )
+    }
+
+    /** 清除当前页的选区 */
+    private fun clearCurrentSelection() {
+        curPageView.clearSelection()
+    }
+
+    /**
+     * 在每次文本设置后注册 SpanWatcher，检测选区变化。
+     * 因为 setPageContent 创建新的 SpannableStringBuilder，旧 watcher 会丢失。
+     */
+    private fun setupSelectionWatcher(pageView: PageContentView) {
+        pageView.onTextSet = { sp ->
+            sp.setSpan(object : android.text.SpanWatcher {
+                private fun checkSelection(s: android.text.Spannable) {
+                    val start = android.text.Selection.getSelectionStart(s)
+                    val end = android.text.Selection.getSelectionEnd(s)
+                    if (start >= 0 && end > start) {
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            callbacks?.onSelectionStarted(pageView)
+                        }
+                    }
+                }
+                override fun onSpanChanged(s: android.text.Spannable, what: Any, ostart: Int, oend: Int, nstart: Int, nend: Int) {
+                    if (what === android.text.Selection.SELECTION_START || what === android.text.Selection.SELECTION_END) {
+                        checkSelection(s)
+                    }
+                }
+                override fun onSpanAdded(s: android.text.Spannable, what: Any, start: Int, end: Int) {
+                    if (what === android.text.Selection.SELECTION_START || what === android.text.Selection.SELECTION_END) {
+                        checkSelection(s)
+                    }
+                }
+                override fun onSpanRemoved(s: android.text.Spannable, what: Any, start: Int, end: Int) {}
+            }, 0, sp.length, android.text.Spannable.SPAN_INCLUSIVE_INCLUSIVE)
+        }
+    }
+
+}
+
+/** 简单的四元组（避免依赖 kotlin Pair 的三元组包装） */
+data class Quadruple<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)

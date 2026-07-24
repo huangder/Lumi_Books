@@ -1,0 +1,907 @@
+package com.huangder.lumibooks.ui.settings
+
+import android.content.Context
+import android.widget.Toast
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import coil.Coil
+import com.huangder.lumibooks.R
+import com.huangder.lumibooks.data.local.DataStoreManager
+import com.huangder.lumibooks.domain.repository.BookRepository
+import com.huangder.lumibooks.util.FileUtils
+import com.huangder.lumibooks.util.UpdateChecker
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import android.net.Uri
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
+import javax.inject.Inject
+import com.huangder.lumibooks.mineru.MineruConfig
+import com.huangder.lumibooks.mineru.MineruApiException
+import com.huangder.lumibooks.mineru.MineruManualImportManager
+import com.huangder.lumibooks.mineru.MineruMode
+import com.huangder.lumibooks.tts.ExternalTtsConfig
+import com.huangder.lumibooks.tts.ExternalTtsAudioCache
+import com.huangder.lumibooks.tts.ExternalTtsEndpointValidator
+import com.huangder.lumibooks.tts.ExternalTtsException
+import com.huangder.lumibooks.tts.ExternalTtsProtocol
+import com.huangder.lumibooks.tts.ExternalTtsSettings
+import com.huangder.lumibooks.tts.ExternalTtsEngine
+import com.huangder.lumibooks.tts.ExternalTtsTokenStore
+import com.huangder.lumibooks.mineru.MineruTokenStore
+
+@HiltViewModel
+class SettingsViewModel @Inject constructor(
+    private val dataStoreManager: DataStoreManager,
+    private val bookRepository: BookRepository,
+    private val mineruTokenStore: MineruTokenStore,
+    private val externalTtsTokenStore: ExternalTtsTokenStore,
+    private val externalTtsEngine: ExternalTtsEngine,
+    private val mineruManualImportManager: MineruManualImportManager,
+    private val externalTtsAudioCache: ExternalTtsAudioCache,
+    @ApplicationContext private val context: Context
+) : ViewModel() {
+
+    private val _uiState = MutableStateFlow(SettingsUiState())
+    val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
+    private var predictiveBackVisualOverride: Boolean? = null
+    private var predictiveBackTransitionJob: Job? = null
+    private var externalTtsCacheLimitJob: Job? = null
+
+
+    init {
+        collectAllPreferences()
+        calculateStorageBreakdown()
+    }
+
+    private fun collectAllPreferences() {
+        viewModelScope.launch {
+            dataStoreManager.avatarUri.collectLatest { uri ->
+                _uiState.value = _uiState.value.copy(avatarUri = uri)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.nickname.collectLatest { name ->
+                _uiState.value = _uiState.value.copy(nickname = name)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.fontSize.collectLatest { value ->
+                _uiState.value = _uiState.value.copy(fontSize = value)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.lineHeight.collectLatest { value ->
+                _uiState.value = _uiState.value.copy(lineHeight = value)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.letterSpacing.collectLatest { value ->
+                _uiState.value = _uiState.value.copy(letterSpacing = value)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.fontType.collectLatest { value ->
+                _uiState.value = _uiState.value.copy(fontType = value)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.marginHoriz.collectLatest { value ->
+                _uiState.value = _uiState.value.copy(marginHoriz = value)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.marginVert.collectLatest { value ->
+                _uiState.value = _uiState.value.copy(marginVert = value)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.appTheme.collectLatest { theme ->
+                _uiState.value = _uiState.value.copy(appTheme = theme)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.liquidGlassTransparency.collectLatest { transparency ->
+                _uiState.value = _uiState.value.copy(liquidGlassTransparency = transparency)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.liquidGlassHdrHighlightEnabled.collectLatest { enabled ->
+                _uiState.value = _uiState.value.copy(liquidGlassHdrHighlightEnabled = enabled)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.darkMode.collectLatest { mode ->
+                _uiState.value = _uiState.value.copy(darkMode = mode)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.entranceAnimationsEnabled.collectLatest { enabled ->
+                _uiState.value = _uiState.value.copy(entranceAnimationsEnabled = enabled)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.predictiveBackEnabled.collectLatest { enabled ->
+                _uiState.value = _uiState.value.copy(
+                    predictiveBackEnabled = predictiveBackVisualOverride ?: enabled
+                )
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.splashEnabled.collectLatest { enabled ->
+                _uiState.value = _uiState.value.copy(splashEnabled = enabled)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.mineruMode.collectLatest { mode ->
+                _uiState.value = _uiState.value.copy(
+                    mineruMode = MineruMode.fromKey(mode).key,
+                    mineruHasToken = mineruTokenStore.hasToken()
+                )
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.mineruConsentVersion.collectLatest { version ->
+                _uiState.value = _uiState.value.copy(mineruConsentVersion = version)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.readerTheme.collectLatest { theme ->
+                _uiState.value = _uiState.value.copy(readerTheme = theme)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.dailyGoal.collectLatest { goal ->
+                _uiState.value = _uiState.value.copy(dailyGoal = goal)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.acceptedTermsVersion.collectLatest { version ->
+                _uiState.value = _uiState.value.copy(
+                    updateCheck = _uiState.value.updateCheck.copy(acceptedTermsVersion = version)
+                )
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.acceptedPrivacyVersion.collectLatest { version ->
+                _uiState.value = _uiState.value.copy(
+                    updateCheck = _uiState.value.updateCheck.copy(acceptedPrivacyVersion = version)
+                )
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.appLanguage.collectLatest { language ->
+                _uiState.value = _uiState.value.copy(appLanguage = language)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.externalTtsSettings.collectLatest { settings ->
+                _uiState.value = _uiState.value.copy(
+                    externalTtsSettings = settings,
+                    externalTtsHasToken = externalTtsTokenStore.hasToken(),
+                    externalTtsSettingsLoaded = true
+                )
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.externalTtsCacheLimitMb.collectLatest { limitMb ->
+                _uiState.update { state ->
+                    state.copy(
+                        storageInfo = state.storageInfo.copy(externalTtsCacheLimitMb = limitMb)
+                    )
+                }
+            }
+        }
+    }
+
+    // ─── 个人信息 ───
+
+    fun saveAvatar(avatarPath: String) {
+        viewModelScope.launch {
+            dataStoreManager.saveAvatarUri(avatarPath)
+            _uiState.value = _uiState.value.copy(avatarUri = avatarPath)
+        }
+    }
+
+    fun saveNickname(name: String) {
+        viewModelScope.launch {
+            dataStoreManager.saveNickname(name)
+            _uiState.value = _uiState.value.copy(nickname = name)
+        }
+    }
+
+    // ─── 阅读设置 ───
+
+    fun saveFontSize(value: Float) {
+        viewModelScope.launch {
+            dataStoreManager.saveFontSize(value)
+            _uiState.value = _uiState.value.copy(fontSize = value)
+        }
+    }
+
+    fun saveLineHeight(value: Float) {
+        viewModelScope.launch {
+            dataStoreManager.saveLineHeight(value)
+            _uiState.value = _uiState.value.copy(lineHeight = value)
+        }
+    }
+
+    fun saveLetterSpacing(value: Float) {
+        viewModelScope.launch {
+            dataStoreManager.saveLetterSpacing(value)
+            _uiState.value = _uiState.value.copy(letterSpacing = value)
+        }
+    }
+
+    fun saveFontType(value: String) {
+        viewModelScope.launch {
+            dataStoreManager.saveFontType(value)
+            _uiState.value = _uiState.value.copy(fontType = value)
+        }
+    }
+
+    fun saveMarginHoriz(value: Float) {
+        viewModelScope.launch {
+            dataStoreManager.saveMarginHoriz(value)
+            _uiState.value = _uiState.value.copy(marginHoriz = value)
+        }
+    }
+
+    fun saveMarginVert(value: Float) {
+        viewModelScope.launch {
+            dataStoreManager.saveMarginVert(value)
+            _uiState.value = _uiState.value.copy(marginVert = value)
+        }
+    }
+
+    // ─── 显示与外观 ───
+
+    fun saveAppTheme(theme: String) {
+        if (_uiState.value.appTheme == theme) return
+        _uiState.value = _uiState.value.copy(appTheme = theme)
+        viewModelScope.launch {
+            dataStoreManager.saveAppTheme(theme)
+        }
+    }
+
+    fun saveLiquidGlassTransparency(transparency: Float) {
+        val clamped = transparency.coerceIn(0f, 1f)
+        _uiState.value = _uiState.value.copy(liquidGlassTransparency = clamped)
+        viewModelScope.launch {
+            dataStoreManager.saveLiquidGlassTransparency(clamped)
+        }
+    }
+
+    fun previewLiquidGlassTransparency(transparency: Float) {
+        _uiState.value = _uiState.value.copy(
+            liquidGlassTransparency = transparency.coerceIn(0f, 1f)
+        )
+    }
+
+    fun saveLiquidGlassHdrHighlightEnabled(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(liquidGlassHdrHighlightEnabled = enabled)
+        viewModelScope.launch {
+            dataStoreManager.saveLiquidGlassHdrHighlightEnabled(enabled)
+        }
+    }
+
+    fun saveDarkMode(mode: String) {
+        if (_uiState.value.darkMode == mode) return
+        _uiState.value = _uiState.value.copy(darkMode = mode)
+        viewModelScope.launch {
+            dataStoreManager.saveDarkMode(mode)
+        }
+    }
+
+    fun saveEntranceAnimationsEnabled(enabled: Boolean) {
+        if (_uiState.value.entranceAnimationsEnabled == enabled) return
+        _uiState.value = _uiState.value.copy(entranceAnimationsEnabled = enabled)
+        viewModelScope.launch {
+            dataStoreManager.saveEntranceAnimationsEnabled(enabled)
+        }
+    }
+
+    fun savePredictiveBackEnabled(enabled: Boolean) {
+        if (_uiState.value.predictiveBackEnabled == enabled) return
+        predictiveBackTransitionJob?.cancel()
+        predictiveBackTransitionJob = viewModelScope.launch {
+            if (enabled) {
+                // Let the thumb finish moving before predictive callbacks recompose the screen.
+                predictiveBackVisualOverride = true
+                _uiState.value = _uiState.value.copy(predictiveBackEnabled = true)
+                delay(PREDICTIVE_BACK_SWITCH_ANIMATION_MILLIS)
+                dataStoreManager.savePredictiveBackEnabled(true)
+                predictiveBackVisualOverride = null
+            } else {
+                // Remove predictive callbacks first, then animate the visual switch one frame later.
+                predictiveBackVisualOverride = true
+                dataStoreManager.savePredictiveBackEnabled(false)
+                delay(PREDICTIVE_BACK_DISABLE_SETTLE_MILLIS)
+                predictiveBackVisualOverride = false
+                _uiState.value = _uiState.value.copy(predictiveBackEnabled = false)
+                delay(PREDICTIVE_BACK_SWITCH_ANIMATION_MILLIS)
+                predictiveBackVisualOverride = null
+            }
+        }
+    }
+
+    private companion object {
+        const val PREDICTIVE_BACK_SWITCH_ANIMATION_MILLIS = 250L
+        const val PREDICTIVE_BACK_DISABLE_SETTLE_MILLIS = 34L
+        const val BYTES_PER_MEBIBYTE = 1_048_576L
+    }
+
+    fun saveSplashEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            dataStoreManager.saveSplashEnabled(enabled)
+            _uiState.value = _uiState.value.copy(splashEnabled = enabled)
+            Toast.makeText(context, R.string.splash_setting_next_launch, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun enableMineru(mode: MineruMode, token: String? = null, acceptConsent: Boolean = false) {
+        require(mode != MineruMode.DISABLED)
+        viewModelScope.launch(Dispatchers.IO) {
+            if (mode == MineruMode.PRECISE) {
+                val normalizedToken = token?.trim().orEmpty()
+                if (normalizedToken.isNotEmpty()) {
+                    mineruTokenStore.save(normalizedToken)
+                }
+                if (!mineruTokenStore.hasToken()) return@launch
+            }
+            if (acceptConsent) {
+                dataStoreManager.acceptMineruConsent(MineruConfig.CONSENT_VERSION)
+            }
+            dataStoreManager.saveMineruMode(mode.key)
+            _uiState.value = _uiState.value.copy(
+                mineruMode = mode.key,
+                mineruConsentVersion = if (acceptConsent) {
+                    MineruConfig.CONSENT_VERSION
+                } else {
+                    _uiState.value.mineruConsentVersion
+                },
+                mineruHasToken = mineruTokenStore.hasToken()
+            )
+        }
+    }
+
+    fun disableMineru(clearToken: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (clearToken) mineruTokenStore.clear()
+            dataStoreManager.disableMineru()
+            _uiState.value = _uiState.value.copy(
+                mineruMode = MineruMode.DISABLED.key,
+                mineruConsentVersion = 0,
+                mineruHasToken = mineruTokenStore.hasToken()
+            )
+        }
+    }
+
+    fun clearMineruToken() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val wasPrecise = _uiState.value.mineruMode == MineruMode.PRECISE.key
+            mineruTokenStore.clear()
+            if (wasPrecise) {
+                dataStoreManager.disableMineru()
+            }
+            _uiState.value = _uiState.value.copy(
+                mineruMode = if (wasPrecise) {
+                    MineruMode.DISABLED.key
+                } else {
+                    _uiState.value.mineruMode
+                },
+                mineruConsentVersion = if (wasPrecise) {
+                    0
+                } else {
+                    _uiState.value.mineruConsentVersion
+                },
+                mineruHasToken = false
+            )
+        }
+    }
+
+    // ─── 外部 TTS 听书 ───
+
+    fun updateExternalTtsDraft(settings: ExternalTtsSettings) {
+        _uiState.value = _uiState.value.copy(externalTtsSettings = settings)
+    }
+
+    fun enableExternalTts(
+        settings: ExternalTtsSettings,
+        token: String?,
+        onSaved: () -> Unit = {}
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val normalizedToken = token?.trim().orEmpty()
+            if (normalizedToken.isEmpty() && !externalTtsTokenStore.hasToken()) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, R.string.external_tts_key_required, Toast.LENGTH_SHORT).show()
+                }
+                return@launch
+            }
+            if (!settings.hasRequiredFields) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, R.string.external_tts_required_fields, Toast.LENGTH_SHORT).show()
+                }
+                return@launch
+            }
+            val urlResult = ExternalTtsEndpointValidator.validate(settings.baseUrl, settings.allowHttp)
+            if (urlResult.isFailure) {
+                val msg = when (val error = urlResult.exceptionOrNull()) {
+                    is ExternalTtsException.InsecureEndpoint -> context.getString(R.string.external_tts_insecure_endpoint)
+                    is ExternalTtsException.InvalidConfiguration -> error.message ?: context.getString(R.string.external_tts_invalid_url)
+                    else -> context.getString(R.string.external_tts_invalid_url)
+                }
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                }
+                return@launch
+            }
+            if (normalizedToken.isNotEmpty()) {
+                externalTtsTokenStore.save(normalizedToken)
+            }
+            val finalSettings = settings.normalized().copy(
+                enabled = true,
+                consentVersion = ExternalTtsConfig.CONSENT_VERSION,
+                consentAcceptedAt = System.currentTimeMillis()
+            )
+            dataStoreManager.saveExternalTtsSettings(finalSettings)
+            withContext(Dispatchers.Main) {
+                _uiState.value = _uiState.value.copy(
+                    externalTtsSettings = finalSettings,
+                    externalTtsHasToken = externalTtsTokenStore.hasToken()
+                )
+                onSaved()
+            }
+        }
+    }
+
+    fun disableExternalTts(clearKey: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (clearKey) externalTtsTokenStore.clear()
+            dataStoreManager.disableExternalTts()
+            _uiState.value = _uiState.value.copy(
+                externalTtsSettings = _uiState.value.externalTtsSettings.copy(enabled = false),
+                externalTtsHasToken = externalTtsTokenStore.hasToken()
+            )
+        }
+    }
+
+    fun clearExternalTtsToken() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val wasEnabled = _uiState.value.externalTtsSettings.enabled
+            externalTtsTokenStore.clear()
+            if (wasEnabled) {
+                dataStoreManager.disableExternalTts()
+            }
+            _uiState.value = _uiState.value.copy(
+                externalTtsSettings = _uiState.value.externalTtsSettings.copy(enabled = false),
+                externalTtsHasToken = false
+            )
+        }
+    }
+
+    fun testExternalTtsConnection() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = externalTtsEngine.testConnection()
+            val message = if (result.isSuccess) {
+                R.string.external_tts_test_success
+            } else {
+                R.string.external_tts_test_failed
+            }
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    fun importManualMineruResult(uri: Uri) {
+        if (_uiState.value.mineruManualImporting) return
+        _uiState.value = _uiState.value.copy(mineruManualImporting = true)
+        viewModelScope.launch {
+            try {
+                val result = mineruManualImportManager.importStandalone(
+                    uri = uri,
+                    fallbackTitle = context.getString(R.string.mineru_manual_default_title),
+                    author = context.getString(R.string.book_author_unknown)
+                )
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.mineru_manual_import_success, result.title),
+                    Toast.LENGTH_LONG
+                ).show()
+            } catch (error: MineruApiException) {
+                val message = when (error.kind) {
+                    MineruApiException.Kind.FILE_LIMIT -> R.string.mineru_manual_import_too_large
+                    else -> R.string.mineru_manual_import_invalid
+                }
+                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            } catch (_: Throwable) {
+                Toast.makeText(context, R.string.mineru_manual_import_failed, Toast.LENGTH_LONG).show()
+            } finally {
+                _uiState.value = _uiState.value.copy(mineruManualImporting = false)
+            }
+        }
+    }
+
+    fun saveReaderTheme(theme: String) {
+        viewModelScope.launch {
+            dataStoreManager.saveReaderTheme(theme)
+            _uiState.value = _uiState.value.copy(readerTheme = theme)
+        }
+    }
+
+    // ─── 语言 ───
+
+    fun saveAppLanguage(language: String) {
+        viewModelScope.launch {
+            dataStoreManager.saveAppLanguage(language)
+            _uiState.value = _uiState.value.copy(appLanguage = language)
+        }
+    }
+
+    // ─── 阅读目标 ───
+
+    fun saveDailyGoal(minutes: Int) {
+        viewModelScope.launch {
+            dataStoreManager.saveDailyGoal(minutes)
+            _uiState.value = _uiState.value.copy(dailyGoal = minutes)
+        }
+    }
+
+    // ─── 存储管理 ───
+
+    @OptIn(coil.annotation.ExperimentalCoilApi::class)
+    fun clearCache() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                context.cacheDir.listFiles()?.forEach { entry ->
+                    if (entry.name != ExternalTtsAudioCache.DIRECTORY_NAME) {
+                        entry.deleteRecursively()
+                    }
+                }
+                // 清除图片缓存目录
+                try { Coil.imageLoader(context).diskCache?.clear() } catch (_: Exception) { }
+                try { Coil.imageLoader(context).memoryCache?.clear() } catch (_: Exception) { }
+                refreshStorageBreakdown()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "缓存已清除", Toast.LENGTH_SHORT).show()
+                }
+            } catch (_: Exception) { }
+        }
+    }
+    fun saveExternalTtsCacheLimitMb(limitMb: Int) {
+        val boundedLimitMb = limitMb.coerceIn(
+            ExternalTtsConfig.MIN_AUDIO_CACHE_LIMIT_MB,
+            ExternalTtsConfig.MAX_AUDIO_CACHE_LIMIT_MB
+        )
+        _uiState.update { state ->
+            state.copy(
+                storageInfo = state.storageInfo.copy(externalTtsCacheLimitMb = boundedLimitMb)
+            )
+        }
+        externalTtsCacheLimitJob?.cancel()
+        externalTtsCacheLimitJob = viewModelScope.launch(Dispatchers.IO) {
+            dataStoreManager.saveExternalTtsCacheLimitMb(boundedLimitMb)
+            externalTtsAudioCache.trimToLimit(boundedLimitMb.toLong() * BYTES_PER_MEBIBYTE)
+            refreshStorageBreakdown()
+        }
+    }
+
+    fun clearExternalTtsAudioCache() {
+        viewModelScope.launch(Dispatchers.IO) {
+            externalTtsAudioCache.clear()
+            refreshStorageBreakdown()
+        }
+    }
+
+    fun clearAllData() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // 清除缓存
+                context.cacheDir.deleteRecursively()
+                // 清除内部存储（保留头像）
+                val avatarDir = File(context.filesDir, "avatars")
+                val avatarBackup = if (avatarDir.exists()) {
+                    val backup = File(context.cacheDir, "avatar_backup")
+                    avatarDir.copyRecursively(backup, overwrite = true)
+                    backup
+                } else null
+
+                context.filesDir.listFiles()?.forEach { file ->
+                    if (file.name != "avatars") file.deleteRecursively()
+                }
+
+                // 恢复头像
+                if (avatarBackup != null && avatarBackup.exists()) {
+                    avatarBackup.copyRecursively(avatarDir, overwrite = true)
+                    avatarBackup.deleteRecursively()
+                }
+
+                // 重置加密凭据与 DataStore；先清凭据，确保设置流回填正确状态。
+                externalTtsTokenStore.clear()
+                dataStoreManager.clearAll()
+
+                refreshStorageBreakdown()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "所有数据已清除", Toast.LENGTH_SHORT).show()
+                }
+            } catch (_: Exception) { }
+        }
+    }
+
+    /** 计算存储空间分解：应用本体 + 缓存 + 外部 TTS 音频缓存 + 电子书 + 封面 + 逐本书明细 */
+    private fun calculateStorageBreakdown() {
+        viewModelScope.launch(Dispatchers.IO) {
+            refreshStorageBreakdown()
+        }
+    }
+
+    private suspend fun refreshStorageBreakdown() {
+        // APK 本体大小
+        val appSize = try {
+            val appInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+            File(appInfo.applicationInfo?.sourceDir ?: "").length()
+        } catch (_: Exception) { 0L }
+
+        val cacheSize = getDirSize(context.cacheDir)
+        val filesSize = getDirSize(context.filesDir)
+        val externalTtsCacheSize = externalTtsAudioCache.sizeBytes()
+        val genericCacheSize = (cacheSize + filesSize - externalTtsCacheSize).coerceAtLeast(0L)
+        val booksDirSize = getDirSize(FileUtils.getBooksDirectory(context))
+        val coversDirSize = getDirSize(FileUtils.getCoversDirectory(context))
+
+        // 逐本书文件大小（按大小降序）
+        val bookDetails = bookRepository.getAllBooks().first().map { book ->
+            val fileSize = File(book.filePath).let { if (it.exists()) it.length() else 0L }
+            BookSizeItem(book.id, book.title, book.format.name, fileSize)
+        }.sortedByDescending { it.sizeBytes }
+
+        _uiState.update { state ->
+            state.copy(
+                storageInfo = StorageInfo(
+                    appSizeBytes = appSize,
+                    cacheSizeBytes = genericCacheSize,
+                    booksSizeBytes = booksDirSize,
+                    coversSizeBytes = coversDirSize,
+                    externalTtsCacheSizeBytes = externalTtsCacheSize,
+                    externalTtsCacheLimitMb = state.storageInfo.externalTtsCacheLimitMb,
+                    bookDetails = bookDetails
+                )
+            )
+        }
+    }
+
+    private fun getDirSize(dir: File): Long {
+        if (!dir.exists()) return 0
+        return dir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+    }
+
+    fun formatFileSize(bytes: Long): String {
+        return when {
+            bytes < 1024 -> "$bytes B"
+            bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+            else -> String.format("%.1f MB", bytes / (1024.0 * 1024.0))
+        }
+    }
+
+    // ─── 备份 ───
+
+    /**
+     * 将数据库 + DataStore + 头像打包为 ZIP，写入 [outputUri]。
+     * 返回生成文件大小的可读字符串，失败抛异常。
+     */
+    suspend fun backup(outputUri: Uri): String {
+        _uiState.value = _uiState.value.copy(isProcessing = true, backupStatus = "正在备份...")
+        try {
+            val bytes = context.contentResolver.openOutputStream(outputUri)?.use { out ->
+                ZipOutputStream(out).use { zip ->
+                    // 1. Room 数据库（主库 + WAL + SHM）
+                    val dbDir = context.getDatabasePath("ebook_reader_database").parentFile
+                    dbDir?.listFiles()?.forEach { f ->
+                        if (f.name.startsWith("ebook_reader_database")) {
+                            addFileToZip(zip, "database/${f.name}", f)
+                        }
+                    }
+
+                    // 2. DataStore preferences
+                    val dsFile = File(context.filesDir.parentFile, "datastore/settings.preferences")
+                    if (dsFile.exists()) addFileToZip(zip, "datastore/settings.preferences", dsFile)
+
+                    // 3. 头像
+                    val avatar = File(context.filesDir, "avatars/avatar.jpg")
+                    if (avatar.exists()) addFileToZip(zip, "avatars/avatar.jpg", avatar)
+
+                    // 4. 书籍文件目录（与 FileUtils.getBooksDirectory 路径一致）
+                    val booksDir = File(context.getExternalFilesDir(null), "books")
+                    if (booksDir.exists()) {
+                        booksDir.walkTopDown().filter { it.isFile }.forEach { f ->
+                            val rel = f.relativeTo(booksDir).path.replace("\\", "/")
+                            addFileToZip(zip, "books/$rel", f)
+                        }
+                    }
+                }
+                // 计算大小：重新读取有点浪费，用 cacheDir 里的临时副本
+                0L // placeholder
+            }
+
+            // 获取文件大小
+            val size = context.contentResolver.openInputStream(outputUri)?.use { it.available().toLong() } ?: 0L
+            val sizeStr = formatFileSize(size)
+
+            _uiState.value = _uiState.value.copy(isProcessing = false, backupStatus = "备份完成 ($sizeStr)")
+            return sizeStr
+        } catch (e: Exception) {
+            _uiState.value = _uiState.value.copy(isProcessing = false, backupStatus = "备份失败: ${e.message}")
+            throw e
+        }
+    }
+
+    /**
+     * 从 [inputUri] 读取 ZIP 并恢复数据库、DataStore、头像。
+     * 恢复后需要重启 App 才能生效。
+     */
+    suspend fun restore(inputUri: Uri) {
+        _uiState.value = _uiState.value.copy(isProcessing = true, backupStatus = "正在恢复...")
+        try {
+            context.contentResolver.openInputStream(inputUri)?.use { inp ->
+                ZipInputStream(inp).use { zip ->
+                    var entry: ZipEntry? = zip.nextEntry
+                    while (entry != null) {
+                        val name = entry.name
+                        when {
+                            name.startsWith("database/") -> {
+                                val dbName = name.removePrefix("database/")
+                                val target = context.getDatabasePath(dbName)
+                                target.parentFile?.mkdirs()
+                                FileOutputStream(target).use { zip.copyTo(it) }
+                            }
+                            name == "datastore/settings.preferences" -> {
+                                val target = File(context.filesDir.parentFile, "datastore/settings.preferences")
+                                target.parentFile?.mkdirs()
+                                FileOutputStream(target).use { zip.copyTo(it) }
+                            }
+                            name.startsWith("avatars/") -> {
+                                val target = File(context.filesDir, name)
+                                target.parentFile?.mkdirs()
+                                FileOutputStream(target).use { zip.copyTo(it) }
+                            }
+                            name.startsWith("books/") -> {
+                                val target = File(context.getExternalFilesDir(null), name)
+                                target.parentFile?.mkdirs()
+                                FileOutputStream(target).use { zip.copyTo(it) }
+                            }
+                        }
+                        entry = zip.nextEntry
+                    }
+                }
+            }
+            _uiState.value = _uiState.value.copy(isProcessing = false, backupStatus = "恢复成功，请重启应用")
+        } catch (e: Exception) {
+            _uiState.value = _uiState.value.copy(isProcessing = false, backupStatus = "恢复失败: ${e.message}")
+            throw e
+        }
+    }
+
+    fun clearBackupStatus() {
+        _uiState.value = _uiState.value.copy(backupStatus = "")
+    }
+
+    // ─── 检查更新 ──────────────────────────────────────────
+
+    /**
+     * 执行完整的更新检查（App版本 + 用户协议 + 隐私政策）。
+     * @param isAutoCheck true = 启动时自动检查（静默模式），false = 手动触发
+     */
+    fun checkUpdate(isAutoCheck: Boolean = false) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(
+                updateCheck = _uiState.value.updateCheck.copy(isChecking = true, isNetworkError = false)
+            )
+
+            val config = UpdateChecker.fetchUpdateConfig()
+            if (config == null) {
+                _uiState.value = _uiState.value.copy(
+                    updateCheck = _uiState.value.updateCheck.copy(
+                        isChecking = false,
+                        isNetworkError = true
+                    )
+                )
+                if (!isAutoCheck) {
+                    Toast.makeText(context, "网络连接失败，请稍后重试", Toast.LENGTH_SHORT).show()
+                }
+                return@launch
+            }
+
+            val currentVersion = try {
+                context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0"
+            } catch (_: Exception) { "1.0" }
+
+            val state = _uiState.value.updateCheck
+            val result = UpdateChecker.evaluate(
+                config = config,
+                currentVersion = currentVersion,
+                acceptedTerms = state.acceptedTermsVersion,
+                acceptedPrivacy = state.acceptedPrivacyVersion
+            )
+
+            // 决定弹出哪个 Dialog（条款/政策优先于App更新）
+            val hasPolicyUpdate = result.hasTermsUpdate || result.hasPrivacyUpdate
+            val showAppDialog = result.hasAppUpdate && !hasPolicyUpdate
+
+            _uiState.value = _uiState.value.copy(
+                updateCheck = state.copy(
+                    hasAppUpdate = result.hasAppUpdate,
+                    appVersion = result.appVersion,
+                    releaseUrl = result.releaseUrl,
+                    hasTermsUpdate = result.hasTermsUpdate,
+                    termsVersion = result.termsVersion,
+                    hasPrivacyUpdate = result.hasPrivacyUpdate,
+                    privacyVersion = result.privacyVersion,
+                    isChecking = false,
+                    // 自动检查时静默弹窗，手动检查时弹窗
+                    showPolicyUpdateDialog = hasPolicyUpdate,
+                    showAppUpdateDialog = showAppDialog && !isAutoCheck
+                )
+            )
+
+            if (!isAutoCheck && !result.hasAppUpdate && !hasPolicyUpdate) {
+                Toast.makeText(context, R.string.update_already_latest, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    /** 用户同意更新后的条款 */
+    fun acceptTermsUpdate(version: Int) {
+        viewModelScope.launch {
+            dataStoreManager.saveAcceptedTermsVersion(version)
+            dismissPolicyUpdateDialog()
+        }
+    }
+
+    /** 用户同意更新后的隐私政策 */
+    fun acceptPrivacyUpdate(version: Int) {
+        viewModelScope.launch {
+            dataStoreManager.saveAcceptedPrivacyVersion(version)
+            dismissPolicyUpdateDialog()
+        }
+    }
+
+    /** 关闭条款/政策更新 Dialog */
+    fun dismissPolicyUpdateDialog() {
+        _uiState.value = _uiState.value.copy(
+            updateCheck = _uiState.value.updateCheck.copy(showPolicyUpdateDialog = false)
+        )
+    }
+
+    /** 关闭 App 更新 Dialog */
+    fun dismissAppUpdateDialog() {
+        _uiState.value = _uiState.value.copy(
+            updateCheck = _uiState.value.updateCheck.copy(showAppUpdateDialog = false)
+        )
+    }
+
+    private fun addFileToZip(zip: ZipOutputStream, entryName: String, file: File) {
+        zip.putNextEntry(ZipEntry(entryName))
+        FileInputStream(file).use { it.copyTo(zip) }
+        zip.closeEntry()
+    }
+}

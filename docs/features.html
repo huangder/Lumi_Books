@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" href="icon.png">
+    <title>功能特性 - Lumi 阅读器</title>
+    <style>
+        /* ========== Airbnb Design System Tokens ========== */
+        :root {
+            --primary: #ff385c;
+            --primary-active: #e00b41;
+            --ink: #222222;
+            --body: #3f3f3f;
+            --muted: #6a6a6a;
+            --muted-soft: #929292;
+            --hairline: #dddddd;
+            --hairline-soft: #ebebeb;
+            --on-primary: #ffffff;
+            --on-dark: #ffffff;
+            --radius-sm: 8px;
+            --radius-md: 14px;
+            --radius-lg: 20px;
+            --radius-full: 9999px;
+            --shadow-card: rgba(0,0,0,0.02) 0 0 0 1px, rgba(0,0,0,0.04) 0 2px 6px, rgba(0,0,0,0.10) 0 4px 8px;
+            --shadow-hover: rgba(0,0,0,0.04) 0 0 0 1px, rgba(0,0,0,0.08) 0 4px 12px, rgba(0,0,0,0.16) 0 8px 20px;
+            --max-width: 1280px;
+            --space-base: 16px;
+            --space-lg: 24px;
+            --space-xl: 32px;
+            --space-xxl: 48px;
+            --nav-height: 80px;
+            --section-pad: 64px;
+        }
+
+        /* ========== Reset & Base ========== */
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        html { scroll-behavior: smooth; }
+
+        /* ========== Fonts: Product Sans (Western) + MiSans (CJK/Numbers) ========== */
+        @font-face { font-family: 'Product Sans'; src: url('fonts/ProductSans-Regular.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: swap; }
+        @font-face { font-family: 'Product Sans'; src: url('fonts/ProductSans-Medium.ttf') format('truetype'); font-weight: 500; font-style: normal; font-display: swap; }
+        @font-face { font-family: 'Product Sans'; src: url('fonts/ProductSans-Bold.ttf') format('truetype'); font-weight: 700; font-style: normal; font-display: swap; }
+        @font-face { font-family: 'MiSans'; src: url('fonts/MiSans-Regular.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: swap; }
+        @font-face { font-family: 'MiSans'; src: url('fonts/MiSans-Medium.ttf') format('truetype'); font-weight: 500; font-style: normal; font-display: swap; }
+        @font-face { font-family: 'MiSans'; src: url('fonts/MiSans-Semibold.ttf') format('truetype'); font-weight: 600; font-style: normal; font-display: swap; }
+        @font-face { font-family: 'MiSans'; src: url('fonts/MiSans-Bold.ttf') format('truetype'); font-weight: 700; font-style: normal; font-display: swap; }
+
+        body {
+            font-family: 'Product Sans', 'MiSans', -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+            color: var(--body);
+            line-height: 1.6;
+            background: linear-gradient(135deg, #faf5ff 0%, #f0f9ff 30%, #fff7ed 60%, #f0fdf4 100%);
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        a { color: var(--primary); text-decoration: none; transition: opacity 0.2s; }
+        a:hover { opacity: 0.8; }
+
+        /* ========== Glassmorphism Sticky Nav ========== */
+        .top-nav {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: rgba(255,255,255,0.72);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            height: 80px;
+            border-bottom: 1px solid rgba(255,255,255,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 var(--space-xxl);
+            transition: border-color 0.3s, box-shadow 0.3s, background 0.3s;
+        }
+        .top-nav.scrolled {
+            border-bottom-color: var(--hairline);
+            box-shadow: 0 1px 0 rgba(0,0,0,0.04);
+            background: rgba(255,255,255,0.88);
+        }
+        .nav-logo {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+            color: var(--primary);
+        }
+        .nav-logo img {
+            width: 34px;
+            height: 34px;
+            border-radius: 8px;
+            transition: transform 0.3s;
+        }
+        .nav-logo:hover img { transform: scale(1.08); }
+        .nav-logo span {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--ink);
+        }
+        .nav-links {
+            display: flex;
+            gap: 32px;
+            list-style: none;
+        }
+        .nav-links a {
+            text-decoration: none;
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--muted);
+            transition: color 0.15s;
+        }
+        .nav-links a:hover { color: var(--ink); }
+        .nav-links a.active {
+            color: var(--ink);
+            border-bottom: 2px solid var(--ink);
+            padding-bottom: 2px;
+        }
+        .nav-cta {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .btn-nav-download {
+            background: var(--primary);
+            color: #fff;
+            text-decoration: none;
+            padding: 10px 20px;
+            border-radius: 9999px;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background 0.2s, transform 0.2s;
+        }
+        .btn-nav-download:hover {
+            background: var(--primary-active);
+            transform: scale(1.04);
+            opacity: 1;
+        }
+        .btn-nav-sponsor {
+            background: transparent; color: var(--ink);
+            text-decoration: none; padding: 9px 19px;
+            border-radius: 9999px; font-size: 14px; font-weight: 500;
+            border: 1.5px solid var(--hairline);
+            transition: border-color 0.2s, color 0.2s, background 0.2s;
+        }
+        .btn-nav-sponsor:hover {
+            border-color: var(--ink);
+            background: rgba(0,0,0,0.03);
+        }
+
+        /* Mobile "…" more menu button */
+        .nav-more-btn {
+            display: none; background: none; border: none;
+            font-size: 22px; cursor: pointer; color: var(--muted);
+            padding: 6px 10px; border-radius: var(--radius-sm);
+            line-height: 1; letter-spacing: 1px;
+            transition: color 0.15s, background 0.15s;
+        }
+        .nav-more-btn:hover { color: var(--ink); background: rgba(0,0,0,0.04); }
+        .nav-more-dropdown {
+            display: none; position: absolute;
+            top: calc(var(--nav-height) - 4px); right: var(--space-base);
+            background: rgba(255,255,255,0.96);
+            backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--hairline); border-radius: var(--radius-md);
+            box-shadow: 0 4px 24px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06);
+            min-width: 148px; padding: var(--space-sm) 0;
+            z-index: 200; flex-direction: column;
+        }
+        .nav-more-dropdown.open { display: flex; }
+        .nav-more-dropdown a {
+            padding: 11px 20px; text-decoration: none; color: var(--ink);
+            font-size: 15px; font-weight: 500; transition: background 0.12s;
+            white-space: nowrap;
+        }
+        .nav-more-dropdown a:hover { background: rgba(0,0,0,0.04); color: var(--primary); }
+
+        /* ========== Layout ========== */
+        .container {
+            max-width: var(--max-width);
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        section { padding: var(--section-pad) 0; }
+
+        /* ========== Section Hero ========== */
+        .section-hero {
+            text-align: center;
+            padding-top: 80px;
+            padding-bottom: 48px;
+        }
+        .section-hero h1 {
+            font-size: 48px;
+            font-weight: 800;
+            color: var(--ink);
+            line-height: 1.2;
+            margin-bottom: 16px;
+            letter-spacing: -0.02em;
+        }
+        .section-hero p {
+            font-size: 18px;
+            color: var(--muted);
+            max-width: 560px;
+            margin: 0 auto;
+            line-height: 1.7;
+        }
+        .hero-accent { color: var(--primary); }
+
+        /* ========== Section Titles ========== */
+        .section-title {
+            text-align: center;
+            margin-bottom: 48px;
+        }
+        .section-title h2 {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--ink);
+            margin-bottom: 12px;
+        }
+        .section-title p {
+            font-size: 16px;
+            color: var(--muted);
+            max-width: 480px;
+            margin: 0 auto;
+        }
+
+        /* ========== Feature Cards Grid ========== */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+        }
+
+        .feature-card {
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            background: rgba(255, 255, 255, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            border-radius: var(--radius-md);
+            padding: 28px 24px;
+            box-shadow: var(--shadow-card);
+            transition: transform 0.25s ease, box-shadow 0.25s ease;
+        }
+        .feature-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-hover);
+        }
+
+        .feature-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            margin-bottom: 16px;
+        }
+        .feature-icon.format    { background: rgba(255, 56, 92, 0.1); }
+        .feature-icon.canvas    { background: rgba(108, 99, 255, 0.1); }
+        .feature-icon.select    { background: rgba(233, 30, 99, 0.1); }
+        .feature-icon.flip      { background: rgba(63, 81, 181, 0.1); }
+        .feature-icon.theme     { background: rgba(255, 152, 0, 0.1); }
+        .feature-icon.typeset   { background: rgba(0, 150, 136, 0.1); }
+        .feature-icon.note      { background: rgba(33, 150, 243, 0.1); }
+        .feature-icon.bookmark  { background: rgba(156, 39, 176, 0.1); }
+        .feature-icon.search    { background: rgba(76, 175, 80, 0.1); }
+        .feature-icon.stats     { background: rgba(255, 87, 34, 0.1); }
+        .feature-icon.backup    { background: rgba(0, 188, 212, 0.1); }
+        .feature-icon.font      { background: rgba(121, 85, 72, 0.1); }
+
+        .feature-card h3 {
+            font-size: 17px;
+            font-weight: 600;
+            color: var(--ink);
+            margin-bottom: 8px;
+        }
+        .feature-card p {
+            font-size: 14px;
+            color: var(--muted);
+            line-height: 1.6;
+        }
+
+        /* ========== Screenshot Strip ========== */
+        .screenshot-strip {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-top: 48px;
+        }
+        .screenshot-strip img {
+            width: 100%;
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-card);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .screenshot-strip img:hover {
+            transform: scale(1.04);
+            box-shadow: var(--shadow-hover);
+        }
+
+        /* ========== Showcase Cards ========== */
+        .showcase-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+        }
+        .showcase-card {
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            background: rgba(255, 255, 255, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            border-radius: var(--radius-lg);
+            padding: 36px 28px;
+            box-shadow: var(--shadow-card);
+            text-align: center;
+            transition: transform 0.25s ease, box-shadow 0.25s ease;
+        }
+        .showcase-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-hover);
+        }
+        .showcase-emoji {
+            font-size: 48px;
+            margin-bottom: 20px;
+            display: block;
+        }
+        .showcase-card h3 {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--ink);
+            margin-bottom: 12px;
+        }
+        .showcase-card p {
+            font-size: 15px;
+            color: var(--muted);
+            line-height: 1.7;
+        }
+
+        /* ========== CTA ========== */
+        .cta-section { text-align: center; }
+        .cta-section h2 {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--ink);
+            margin-bottom: 16px;
+        }
+        .cta-section p {
+            font-size: 16px;
+            color: var(--muted);
+            margin-bottom: 32px;
+        }
+        .btn-primary {
+            display: inline-block;
+            padding: 14px 36px;
+            background: var(--primary);
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: var(--radius-full);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            box-shadow: rgba(255, 56, 92, 0.2) 0 4px 12px;
+        }
+        .btn-primary:hover {
+            transform: scale(1.03);
+            box-shadow: rgba(255, 56, 92, 0.3) 0 6px 20px;
+            opacity: 1;
+            color: white;
+        }
+
+        /* ========== Footer ========== */
+        footer {
+            background: rgba(255,255,255,0.3);
+            border-top: 1px solid rgba(255,255,255,0.5);
+        }
+        .footer-light {
+            padding: var(--space-xxl) var(--space-xxl);
+            max-width: var(--max-width);
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: var(--space-lg);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+        .footer-col h4 {
+            font-size: 16px;
+            font-weight: 500;
+            color: var(--ink);
+            margin-bottom: var(--space-base);
+        }
+        .footer-col ul {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .footer-col a {
+            text-decoration: none;
+            font-size: 14px;
+            color: var(--ink);
+            transition: color 0.15s;
+        }
+        .footer-col a:hover { color: var(--muted); opacity: 1; }
+
+        .legal-band {
+            padding: var(--space-lg) var(--space-xxl);
+            max-width: var(--max-width);
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+            color: var(--muted);
+            border-top: 1px solid rgba(255,255,255,0.3);
+        }
+        .legal-band a {
+            color: var(--muted);
+            text-decoration: none;
+            margin-left: var(--space-lg);
+        }
+        .legal-band a:hover { text-decoration: underline; opacity: 1; }
+
+        /* ========== Scroll Animations ========== */
+        .animate-on-scroll {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: opacity 0.6s cubic-bezier(0.22, 0.61, 0.36, 1),
+                        transform 0.6s cubic-bezier(0.22, 0.61, 0.36, 1);
+        }
+        .animate-on-scroll.animated {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .stagger-1  { transition-delay: 0.00s; }
+        .stagger-2  { transition-delay: 0.06s; }
+        .stagger-3  { transition-delay: 0.12s; }
+        .stagger-4  { transition-delay: 0.18s; }
+        .stagger-5  { transition-delay: 0.24s; }
+        .stagger-6  { transition-delay: 0.30s; }
+        .stagger-7  { transition-delay: 0.36s; }
+        .stagger-8  { transition-delay: 0.42s; }
+        .stagger-9  { transition-delay: 0.48s; }
+        .stagger-10 { transition-delay: 0.54s; }
+        .stagger-11 { transition-delay: 0.60s; }
+        .stagger-12 { transition-delay: 0.66s; }
+        .stagger-13 { transition-delay: 0.72s; }
+        .stagger-14 { transition-delay: 0.78s; }
+        .stagger-15 { transition-delay: 0.84s; }
+        .stagger-16 { transition-delay: 0.90s; }
+        .stagger-17 { transition-delay: 0.96s; }
+        .stagger-18 { transition-delay: 1.02s; }
+        .stagger-19 { transition-delay: 1.08s; }
+        .stagger-20 { transition-delay: 1.14s; }
+        .stagger-21 { transition-delay: 1.20s; }
+        .stagger-22 { transition-delay: 1.26s; }
+        .stagger-23 { transition-delay: 1.32s; }
+        .stagger-24 { transition-delay: 1.38s; }
+        .stagger-25 { transition-delay: 1.44s; }
+        .stagger-26 { transition-delay: 1.50s; }
+
+        /* ========== Responsive: Tablet ========== */
+        @media (max-width: 1127px) {
+            .features-grid { grid-template-columns: repeat(2, 1fr); }
+            .section-hero h1 { font-size: 40px; }
+            .section-title h2 { font-size: 28px; }
+            .screenshot-strip { grid-template-columns: repeat(2, 1fr); }
+            .showcase-grid { grid-template-columns: repeat(2, 1fr); }
+            .showcase-grid .showcase-card:last-child {
+                grid-column: 1 / -1;
+                max-width: 480px;
+                margin: 0 auto;
+            }
+        }
+
+        /* ========== Responsive: Mobile ========== */
+        @media (max-width: 743px) {
+            :root { --section-pad: 48px; }
+            .top-nav {
+                padding: 0 var(--space-base);
+                height: 56px;
+                gap: var(--space-sm);
+            }
+            .nav-links { display: none; }
+            .nav-more-btn { display: block; }
+            .nav-logo span { display: none; }
+            .btn-nav-download { padding: 8px 14px; font-size: 13px; }
+            .btn-nav-sponsor { padding: 7px 14px; font-size: 13px; }
+            .features-grid { grid-template-columns: 1fr; }
+            .section-hero h1 { font-size: 32px; }
+            .section-hero p { font-size: 16px; }
+            .section-title h2 { font-size: 24px; }
+            .screenshot-strip {
+                grid-template-columns: 1fr;
+                max-width: 320px;
+                margin-left: auto;
+                margin-right: auto;
+            }
+            .showcase-grid { grid-template-columns: 1fr; }
+            .showcase-grid .showcase-card:last-child { max-width: none; }
+            .footer-light {
+                grid-template-columns: 1fr;
+                padding: var(--space-xl) var(--space-base);
+            }
+            .legal-band {
+                flex-direction: column;
+                gap: 8px;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ========== Top Navigation ========== -->
+<nav class="top-nav">
+    <a href="index.html" class="nav-logo">
+        <img src="icon.png" alt="Lumi">
+        <span>Lumi</span>
+    </a>
+    <ul class="nav-links">
+        <li><a href="features.html" class="active">功能</a></li>
+        <li><a href="privacy-section.html">隐私</a></li>
+        <li><a href="tech.html">技术</a></li>
+        <li><a href="sponsor.html">赞助</a></li>
+        <li><a href="feedback.html">反馈</a></li>
+    </ul>
+    <div class="nav-cta">
+        <a href="sponsor.html" class="btn-nav-sponsor">赞助</a>
+        <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-nav-download">获取 Lumi</a>
+    </div>
+    <button class="nav-more-btn" aria-label="更多导航" onclick="event.stopPropagation();this.nextElementSibling.classList.toggle('open')">…</button>
+    <div class="nav-more-dropdown">
+        <a href="features.html">功能</a>
+        <a href="privacy-section.html">隐私</a>
+        <a href="tech.html">技术</a>
+        <a href="sponsor.html">赞助</a>
+        <a href="feedback.html">反馈</a>
+    </div>
+</nav>
+
+<!-- ========== Section Hero ========== -->
+<section class="section-hero">
+    <div class="container">
+        <h1 class="animate-on-scroll">为阅读而生的<span class="hero-accent">每一个细节</span></h1>
+        <p class="animate-on-scroll">Lumi 阅读器精心打磨每一个功能，从格式解析到翻页手势，从主题排版到阅读统计，让沉浸式阅读触手可及。</p>
+    </div>
+</section>
+
+<!-- ========== Core Features Grid ========== -->
+<section>
+    <div class="container">
+        <div class="section-title animate-on-scroll">
+            <h2>核心功能</h2>
+            <p>二十六大功能模块，覆盖阅读场景的方方面面</p>
+        </div>
+        <div class="features-grid">
+
+            <!-- 液态玻璃主题 — 全宽独占首行 -->
+            <div class="feature-card animate-on-scroll stagger-1" style="grid-column: 1 / -1; background: linear-gradient(135deg, rgba(255,255,255,0.8), rgba(240,248,255,0.7)); border: 1.5px solid rgba(255,56,92,0.15);">
+                <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+                    <div class="feature-icon" style="font-size:36px;width:64px;height:64px;margin-bottom:0;">🫧</div>
+                    <div style="flex:1;min-width:200px;">
+                        <h3 style="font-size:20px;">液态玻璃主题</h3>
+                        <p style="font-size:15px;">全应用统一毛玻璃质感。菜单、弹窗、底部栏、上下文操作面板等所有浮层采用 backdrop-filter 模糊效果，配合细腻过渡动效与弥散光影，打造通透、灵动、富有层次感的视觉体验。</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 1. 多格式支持 -->
+            <div class="feature-card animate-on-scroll stagger-1">
+                <div class="feature-icon format">📚</div>
+                <h3>多格式支持</h3>
+                <p>原生解析 EPUB、PDF、TXT 三种主流电子书格式，自研解析引擎，无需依赖第三方阅读组件。</p>
+            </div>
+
+            <!-- 2. Canvas 渲染引擎 -->
+            <div class="feature-card animate-on-scroll stagger-2">
+                <div class="feature-icon canvas">🎯</div>
+                <h3>Canvas 渲染引擎</h3>
+                <p>自研 StaticLayout 排版引擎，将文字渲染到 Canvas 上，翻页流畅无白屏，告别 WebView 性能瓶颈。</p>
+            </div>
+
+            <!-- 3. 文字选择与高亮 -->
+            <div class="feature-card animate-on-scroll stagger-3">
+                <div class="feature-icon select">🖍️</div>
+                <h3>文字选择与高亮</h3>
+                <p>原生文字选择手柄 + 自定义操作菜单，支持 6 种标注颜色，选中即高亮，精准流畅。</p>
+            </div>
+
+            <!-- 4. 视差翻页 -->
+            <div class="feature-card animate-on-scroll stagger-4">
+                <div class="feature-icon flip">✨</div>
+                <h3>视差翻页</h3>
+                <p>仿 Apple Books 视差翻页动效，支持手势拖拽与点击翻页，松手自动判断方向，流畅丝滑。</p>
+            </div>
+
+            <!-- 5. 四套阅读主题 -->
+            <div class="feature-card animate-on-scroll stagger-5">
+                <div class="feature-icon theme">🎨</div>
+                <h3>四套阅读主题</h3>
+                <p>纯白、暖光、浅灰、暗夜四套精心调校的阅读配色，一键切换，适配不同光线环境和个人偏好。</p>
+            </div>
+
+            <!-- 6. 精细排版 -->
+            <div class="feature-card animate-on-scroll stagger-6">
+                <div class="feature-icon typeset">📐</div>
+                <h3>精细排版</h3>
+                <p>字号、行距、段间距、页边距独立调节，每项参数实时预览，呈现最舒适的排版效果。</p>
+            </div>
+
+            <!-- 7. 笔记与高亮 -->
+            <div class="feature-card animate-on-scroll stagger-7">
+                <div class="feature-icon note">📝</div>
+                <h3>笔记与高亮</h3>
+                <p>选中文字即可添加高亮或撰写笔记，自定义菜单快捷操作，支持导出与集中管理。</p>
+            </div>
+
+            <!-- 8. 书签与目录 -->
+            <div class="feature-card animate-on-scroll stagger-8">
+                <div class="feature-icon bookmark">🔖</div>
+                <h3>书签与目录</h3>
+                <p>一键添加书签，自动解析章节目录结构，快速跳转到任意章节，阅读进度自动保存。</p>
+            </div>
+
+            <!-- 9. 全文搜索 -->
+            <div class="feature-card animate-on-scroll stagger-9">
+                <div class="feature-icon search">🔍</div>
+                <h3>全文搜索</h3>
+                <p>快速搜索书中任意关键词，精确定位到包含目标文字的页面位置，支持结果高亮。</p>
+            </div>
+
+            <!-- 10. 阅读统计 -->
+            <div class="feature-card animate-on-scroll stagger-10">
+                <div class="feature-icon stats">📊</div>
+                <h3>阅读统计</h3>
+                <p>热力图展示阅读频率，连续阅读天数和连胜记录，周/月/年多维度统计，可视化你的阅读成就。</p>
+            </div>
+
+            <!-- 11. 数据备份恢复 -->
+            <div class="feature-card animate-on-scroll stagger-11">
+                <div class="feature-icon backup">💾</div>
+                <h3>数据备份恢复</h3>
+                <p>一键导出书籍、笔记、书签、阅读进度为 ZIP 压缩包，换机迁移或数据恢复轻松完成。</p>
+            </div>
+
+            <!-- 12. 自定义字体 -->
+            <div class="feature-card animate-on-scroll stagger-12">
+                <div class="feature-icon font">🔤</div>
+                <h3>自定义字体</h3>
+                <p>内置霞鹜文楷、仿宋、楷体等多款中文字体，支持从设备导入 TTF/OTF 字体文件。</p>
+            </div>
+
+            <!-- 13. 翻页动画 -->
+            <div class="feature-card animate-on-scroll stagger-13">
+                <div class="feature-icon">📄</div>
+                <h3>翻页动画</h3>
+                <p>淡入渐变 / 模拟翻页两种动画模式，自由切换，配合手势拖拽丝滑跟手。</p>
+            </div>
+
+            <!-- 14. 自定义配色 -->
+            <div class="feature-card animate-on-scroll stagger-14">
+                <div class="feature-icon">🎨</div>
+                <h3>文字与背景自定义</h3>
+                <p>自由设定文字颜色和阅读背景色，打造专属于你的阅读配色方案。</p>
+            </div>
+
+            <!-- 15. 段落排版 -->
+            <div class="feature-card animate-on-scroll stagger-15">
+                <div class="feature-icon">📐</div>
+                <h3>段落间距与缩进</h3>
+                <p>独立调节段落间距和首行缩进，排版细节尽在掌控。</p>
+            </div>
+
+            <!-- 16. 多语言 -->
+            <div class="feature-card animate-on-scroll stagger-16">
+                <div class="feature-icon">🌐</div>
+                <h3>多语言支持</h3>
+                <p>支持多语言界面切换，非中文用户也能轻松使用 Lumi。</p>
+            </div>
+
+            <!-- 17. Material 3 -->
+            <div class="feature-card animate-on-scroll stagger-17">
+                <div class="feature-icon">🎯</div>
+                <h3>Material 3 适配</h3>
+                <p>全面适配 Material Design 3 设计语言，动态配色与全新组件样式，视觉焕然一新。</p>
+            </div>
+
+            <!-- 18. 预见式返回 -->
+            <div class="feature-card animate-on-scroll stagger-18">
+                <div class="feature-icon">↩️</div>
+                <h3>预见式返回</h3>
+                <p>支持 Android 预见式返回手势，返回时可预览目标页面，交互更直观流畅。</p>
+            </div>
+
+            <!-- 19. 界面动效 -->
+            <div class="feature-card animate-on-scroll stagger-19">
+                <div class="feature-icon">💫</div>
+                <h3>界面元素动效</h3>
+                <p>为导航栏、卡片、按钮等界面元素添加细腻过渡动效，操作反馈更生动。</p>
+            </div>
+
+            <!-- 20. PDF 电子书 -->
+            <div class="feature-card animate-on-scroll stagger-20">
+                <div class="feature-icon">📖</div>
+                <h3>PDF 解析为电子书</h3>
+                <p>将 PDF 文档智能解析为可重排的电子书格式，享受与 EPUB 一致的流畅阅读体验。</p>
+            </div>
+
+            <!-- 21. 翻页方向 -->
+            <div class="feature-card animate-on-scroll stagger-21">
+                <div class="feature-icon">↔️</div>
+                <h3>翻页方向自定义</h3>
+                <p>自由设定点击屏幕左/右侧的翻页方向，适配左右手操作习惯。</p>
+            </div>
+
+            <!-- 22. 滚动翻页 -->
+            <div class="feature-card animate-on-scroll stagger-22">
+                <div class="feature-icon">📜</div>
+                <h3>上下滚动翻页</h3>
+                <p>新增上下滚动阅读模式，支持平滑滚动翻页，满足多样化阅读习惯。</p>
+            </div>
+
+            <!-- 23. 书签导出 -->
+            <div class="feature-card animate-on-scroll stagger-23">
+                <div class="feature-icon">📤</div>
+                <h3>书签导出</h3>
+                <p>一键导出全部书签，支持文本格式保存，方便迁移与整理。</p>
+            </div>
+
+            <!-- 24. 书籍标签 -->
+            <div class="feature-card animate-on-scroll stagger-24">
+                <div class="feature-icon">🏷️</div>
+                <h3>书籍标签</h3>
+                <p>为书籍添加自定义标签，快速分类筛选，书架管理更高效。</p>
+            </div>
+
+            <!-- 25. 书籍搜索 -->
+            <div class="feature-card animate-on-scroll stagger-25">
+                <div class="feature-icon">🔎</div>
+                <h3>书籍搜索</h3>
+                <p>在书架中按书名或作者快速搜索，多书场景下瞬间定位。</p>
+            </div>
+
+            <!-- 26. 搜索高亮闪烁 -->
+            <div class="feature-card animate-on-scroll stagger-26">
+                <div class="feature-icon">✨</div>
+                <h3>搜索高亮闪烁</h3>
+                <p>全文搜索定位后高亮闪烁提示，一眼锁定目标文字位置。</p>
+            </div>
+
+        </div>
+
+        <!-- ========== Screenshot Strip ========== -->
+        <div class="screenshot-strip">
+            <img src="reader.png" alt="Lumi 阅读界面" class="animate-on-scroll stagger-1" loading="lazy">
+            <img src="bookshelf.png" alt="Lumi 书架" class="animate-on-scroll stagger-2" loading="lazy">
+            <img src="heatmap.png" alt="Lumi 阅读统计热力图" class="animate-on-scroll stagger-3" loading="lazy">
+            <img src="settings.png" alt="Lumi 设置页面" class="animate-on-scroll stagger-4" loading="lazy">
+        </div>
+    </div>
+</section>
+
+<!-- ========== 体验亮点 ========== -->
+<section>
+    <div class="container">
+        <div class="section-title animate-on-scroll">
+            <h2>体验亮点</h2>
+            <p>那些让阅读变得更美好的小细节</p>
+        </div>
+        <div class="showcase-grid">
+
+            <div class="showcase-card animate-on-scroll stagger-1">
+                <span class="showcase-emoji">👆</span>
+                <h3>智能手势系统 + 自定义选择菜单</h3>
+                <p>左侧 30% 点击上一页，右侧 30% 点击下一页，中间 40% 唤出菜单。拖拽滑动翻页，松手自动判断方向。长按文字弹出自定义操作菜单，标注、笔记、复制一气呵成。</p>
+            </div>
+
+            <div class="showcase-card animate-on-scroll stagger-2">
+                <span class="showcase-emoji">📋</span>
+                <h3>书架上下文菜单</h3>
+                <p>书架中长按任意书籍弹出毛玻璃上下文菜单，支持重命名、查看详情、分享、删除等操作，交互流畅自然，信息一目了然。</p>
+            </div>
+
+            <div class="showcase-card animate-on-scroll stagger-3">
+                <span class="showcase-emoji">🎨</span>
+                <h3>四套阅读主题</h3>
+                <p>纯白清爽、暖光护眼、浅灰雅致、暗夜深沉，四套精心调校的配色方案，一键切换，每一帧都赏心悦目，让长时间阅读不再疲劳。</p>
+            </div>
+
+        </div>
+    </div>
+</section>
+
+<!-- ========== CTA ========== -->
+<section class="cta-section">
+    <div class="container">
+        <h2 class="animate-on-scroll">准备好开始阅读了吗？</h2>
+        <p class="animate-on-scroll">下载 Lumi 阅读器，开启你的沉浸式阅读之旅。</p>
+        <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-primary animate-on-scroll">获取 Lumi</a>
+    </div>
+</section>
+
+<!-- ========== Footer ========== -->
+<footer>
+    <div class="footer-light">
+        <div class="footer-col">
+            <h4>Lumi</h4>
+            <ul>
+                <li><a href="features.html">功能介绍</a></li>
+                <li><a href="tech.html">技术架构</a></li>
+                <li><a href="changelog.html">更新日志</a></li>
+            </ul>
+        </div>
+        <div class="footer-col">
+            <h4>法律</h4>
+            <ul>
+                <li><a href="privacy.html">隐私政策</a></li>
+                <li><a href="terms.html">用户协议</a></li>
+            </ul>
+        </div>
+        <div class="footer-col">
+            <h4>联系方式</h4>
+            <ul>
+                <li><a href="https://github.com/huangder/Lumi_Books">GitHub</a></li>
+                <li><a href="mailto:huangder0104@126.com">邮件联系</a></li>
+            </ul>
+        </div>
+    </div>
+    <div class="legal-band">
+        <span>&copy; 2026 Huangder</span>
+        <span>
+            <a href="privacy.html">隐私</a>
+            <a href="terms.html">条款</a>
+        </span>
+    </div>
+</footer>
+
+<!-- ========== JavaScript ========== -->
+<script>
+(function() {
+    'use strict';
+
+    /* IntersectionObserver for scroll-triggered animations */
+    var observer = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('animated');
+                observer.unobserve(entry.target);
+            }
+        });
+    }, { threshold: 0.12, rootMargin: '0px 0px -30px 0px' });
+
+    document.querySelectorAll('.animate-on-scroll').forEach(function(el) {
+        observer.observe(el);
+    });
+
+    /* Nav scroll state */
+    var nav = document.querySelector('.top-nav');
+    function updateNav() {
+        if ((window.scrollY || window.pageYOffset) > 10) {
+            nav.classList.add('scrolled');
+        } else {
+            nav.classList.remove('scrolled');
+        }
+    }
+    window.addEventListener('scroll', function() {
+        requestAnimationFrame(updateNav);
+    }, { passive: true });
+    updateNav();
+
+    /* Mobile more dropdown: close on outside click */
+    document.addEventListener('click', function(e) {
+        var dd = document.querySelector('.nav-more-dropdown');
+        var btn = document.querySelector('.nav-more-btn');
+        if (dd && dd.classList.contains('open') && !dd.contains(e.target) && e.target !== btn) {
+            dd.classList.remove('open');
+        }
+    });
+
+    /* Smooth anchor scrolling */
+    document.querySelectorAll('a[href^="#"]').forEach(function(anchor) {
+        anchor.addEventListener('click', function(e) {
+            e.preventDefault();
+            var target = document.querySelector(this.getAttribute('href'));
+            if (target) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        });
+    });
+
+})();
+</script>
+
+</body>
+</html>

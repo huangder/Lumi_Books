@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" href="icon.png">
+    <title>隐私保护 — Lumi</title>
+    <style>
+        :root {
+            --primary: #ff385c;
+            --primary-active: #e00b41;
+            --canvas: #ffffff;
+            --surface-soft: #f7f7f7;
+            --surface-strong: #f2f2f2;
+            --ink: #222222;
+            --body: #3f3f3f;
+            --muted: #6a6a6a;
+            --muted-soft: #929292;
+            --on-primary: #ffffff;
+            --hairline: #dddddd;
+            --hairline-soft: #ebebeb;
+            --space-xxs: 2px; --space-xs: 4px; --space-sm: 8px; --space-md: 12px;
+            --space-base: 16px; --space-lg: 24px; --space-xl: 32px;
+            --space-xxl: 48px; --space-section: 64px;
+            --radius-none: 0px; --radius-xs: 4px; --radius-sm: 8px;
+            --radius-md: 14px; --radius-lg: 20px; --radius-xl: 32px; --radius-full: 9999px;
+            --shadow-card: rgba(0,0,0,0.02) 0 0 0 1px, rgba(0,0,0,0.04) 0 2px 6px, rgba(0,0,0,0.10) 0 4px 8px;
+            --max-width: 1280px; --nav-height: 80px;
+        }
+        html { scroll-behavior: smooth; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        @font-face { font-family: 'Product Sans'; src: url('fonts/ProductSans-Regular.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: swap; }
+        @font-face { font-family: 'Product Sans'; src: url('fonts/ProductSans-Medium.ttf') format('truetype'); font-weight: 500; font-style: normal; font-display: swap; }
+        @font-face { font-family: 'Product Sans'; src: url('fonts/ProductSans-Bold.ttf') format('truetype'); font-weight: 700; font-style: normal; font-display: swap; }
+        @font-face { font-family: 'MiSans'; src: url('fonts/MiSans-Regular.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: swap; }
+        @font-face { font-family: 'MiSans'; src: url('fonts/MiSans-Medium.ttf') format('truetype'); font-weight: 500; font-style: normal; font-display: swap; }
+        @font-face { font-family: 'MiSans'; src: url('fonts/MiSans-Semibold.ttf') format('truetype'); font-weight: 600; font-style: normal; font-display: swap; }
+        @font-face { font-family: 'MiSans'; src: url('fonts/MiSans-Bold.ttf') format('truetype'); font-weight: 700; font-style: normal; font-display: swap; }
+        body {
+            font-family: 'Product Sans', 'MiSans', -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+            background: linear-gradient(135deg, #faf5ff 0%, #f0f9ff 30%, #fff7ed 60%, #f0fdf4 100%);
+            color: var(--ink); line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Animations */
+        @keyframes fadeInUp { from { opacity:0; transform:translateY(24px); } to { opacity:1; transform:translateY(0); } }
+        .animate-on-scroll { opacity:0; transform:translateY(24px); transition: opacity 0.6s cubic-bezier(0.22,0.61,0.36,1), transform 0.6s cubic-bezier(0.22,0.61,0.36,1); }
+        .animate-on-scroll.animated { opacity:1; transform:translateY(0); }
+        .animate-on-scroll.fade-in-only { transform:none; transition: opacity 0.5s ease; }
+        .stagger-1 { transition-delay: 0.05s; } .stagger-2 { transition-delay: 0.10s; }
+        .stagger-3 { transition-delay: 0.15s; } .stagger-4 { transition-delay: 0.20s; }
+
+        /* Nav */
+        .top-nav {
+            position:sticky; top:0; z-index:100;
+            background:rgba(255,255,255,0.72); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+            height:var(--nav-height); border-bottom:1px solid rgba(255,255,255,0.5);
+            display:flex; align-items:center; justify-content:space-between;
+            padding:0 var(--space-xxl);
+            transition: border-color 0.3s, box-shadow 0.3s, background 0.3s;
+        }
+        .top-nav.scrolled { border-bottom-color:var(--hairline); box-shadow:0 1px 0 rgba(0,0,0,0.04); background:rgba(255,255,255,0.88); }
+        .nav-logo { display:flex; align-items:center; gap:var(--space-sm); text-decoration:none; color:var(--primary); }
+        .nav-logo img { width:34px; height:34px; border-radius:var(--radius-sm); transition: transform 0.3s; }
+        .nav-logo:hover img { transform:scale(1.08); }
+        .nav-logo span { font-size:22px; font-weight:700; color:var(--ink); }
+        .nav-links { display:flex; align-items:center; gap:var(--space-xl); list-style:none; }
+        .nav-links a { text-decoration:none; color:var(--muted); font-size:16px; font-weight:600; transition:color 0.15s; }
+        .nav-links a:hover { color:var(--ink); }
+        .nav-cta { display:flex; align-items:center; gap:var(--space-base); }
+        .btn-nav-download { background:var(--primary); color:#fff; text-decoration:none; padding:10px 20px; border-radius:9999px; font-size:14px; font-weight:500; transition:background 0.2s, transform 0.2s; }
+        .btn-nav-download:hover { background:var(--primary-active); transform:scale(1.04); }
+        .btn-nav-sponsor { background:transparent; color:var(--ink); text-decoration:none; padding:9px 19px; border-radius:9999px; font-size:14px; font-weight:500; border:1.5px solid var(--hairline); transition:border-color 0.2s,color 0.2s,background 0.2s; }
+        .btn-nav-sponsor:hover { border-color:var(--ink); background:rgba(0,0,0,0.03); }
+
+        /* Mobile "…" more menu */
+        .nav-more-btn{display:none;background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);padding:6px 10px;border-radius:8px;line-height:1;letter-spacing:1px;transition:color 0.15s,background 0.15s}
+        .nav-more-btn:hover{color:var(--ink);background:rgba(0,0,0,0.04)}
+        .nav-more-dropdown{display:none;position:absolute;top:calc(var(--nav-height) - 4px);right:var(--space-base);background:rgba(255,255,255,0.96);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--hairline);border-radius:14px;box-shadow:0 4px 24px rgba(0,0,0,0.10),0 1px 4px rgba(0,0,0,0.06);min-width:148px;padding:8px 0;z-index:200;flex-direction:column}
+        .nav-more-dropdown.open{display:flex}
+        .nav-more-dropdown a{padding:11px 20px;text-decoration:none;color:var(--ink);font-size:15px;font-weight:500;transition:background 0.12s;white-space:nowrap}
+        .nav-more-dropdown a:hover{background:rgba(0,0,0,0.04);color:var(--primary)}
+
+        /* Section */
+        .section { padding:var(--space-section) var(--space-xxl); max-width:var(--max-width); margin:0 auto; }
+        .section-header { margin-bottom:var(--space-xl); text-align:center; }
+        .section-header .label { font-size:12px; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; color:var(--muted); margin-bottom:var(--space-xs); }
+        .section-header h2 { font-size:22px; font-weight:500; line-height:1.18; letter-spacing:-0.44px; color:var(--ink); margin-bottom:var(--space-sm); }
+        .section-header p { font-size:16px; font-weight:400; line-height:1.5; color:var(--body); max-width:560px; margin:0 auto; }
+
+        /* Privacy hero — glassmorphism */
+        .privacy-hero {
+            background:rgba(255,255,255,0.55); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+            border:1px solid rgba(255,255,255,0.7); border-radius:var(--radius-md);
+            padding:var(--space-xxl) var(--space-xl); text-align:center; margin-bottom:var(--space-xl);
+        }
+        .privacy-hero .shield { font-size:40px; margin-bottom:var(--space-md); }
+        .privacy-hero h3 { font-size:22px; font-weight:500; line-height:1.18; color:var(--ink); margin-bottom:var(--space-sm); }
+        .privacy-hero p { font-size:16px; font-weight:400; line-height:1.5; color:var(--body); max-width:560px; margin:0 auto; }
+
+        /* Privacy band */
+        .privacy-band { display:grid; grid-template-columns:repeat(4,1fr); gap:var(--space-base); }
+        .privacy-item { display:flex; flex-direction:column; gap:var(--space-sm); padding:var(--space-lg) 0; }
+        .privacy-item .pi-icon { width:44px; height:44px; border-radius:var(--radius-full); background:rgba(255,255,255,0.7); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; font-size:22px; margin-bottom:var(--space-xs); }
+        .privacy-item h3 { font-size:16px; font-weight:600; line-height:1.25; color:var(--ink); }
+        .privacy-item p { font-size:14px; font-weight:400; line-height:1.43; color:var(--muted); }
+
+        /* Detail card — glassmorphism */
+        .detail-card {
+            background:rgba(255,255,255,0.55); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+            border:1px solid rgba(255,255,255,0.7); border-radius:var(--radius-md);
+            padding:var(--space-xl); margin-top:var(--space-xl);
+        }
+        .detail-card h3 { font-size:16px; font-weight:600; line-height:1.25; color:var(--ink); margin-bottom:var(--space-sm); }
+        .detail-card p { font-size:14px; font-weight:400; line-height:1.43; color:var(--muted); margin-bottom:var(--space-md); }
+        .detail-card ul { list-style:none; padding:0; margin-bottom:var(--space-base); }
+        .detail-card ul li { padding:var(--space-xs) 0; font-size:14px; color:var(--body); }
+        .detail-card ul li::before { content:"·  "; color:var(--primary); font-weight:bold; }
+        .cross { color:#c13515; margin-right:6px; }
+
+        /* CTA link */
+        .cta-link {
+            display:inline-flex; align-items:center; gap:var(--space-sm);
+            background:var(--primary); color:var(--on-primary); text-decoration:none;
+            padding:14px 24px; height:48px; border-radius:var(--radius-sm);
+            font-size:16px; font-weight:500; line-height:1.25;
+            transition: background 0.2s, transform 0.2s;
+        }
+        .cta-link:hover { background:var(--primary-active); transform:scale(1.03); }
+
+        /* Footer */
+        .footer-light {
+            padding:var(--space-xxl); max-width:var(--max-width); margin:0 auto;
+            display:grid; grid-template-columns:repeat(3,1fr); gap:var(--space-lg);
+            border-top:1px solid rgba(255,255,255,0.5);
+            background:rgba(255,255,255,0.3); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+            border-radius:var(--radius-md) var(--radius-md) 0 0;
+        }
+        .footer-col h4 { font-size:16px; font-weight:500; color:var(--ink); margin-bottom:var(--space-md); }
+        .footer-col ul { list-style:none; display:flex; flex-direction:column; gap:var(--space-sm); }
+        .footer-col a { text-decoration:none; font-size:14px; color:var(--ink); transition:color 0.15s; }
+        .footer-col a:hover { color:var(--muted); }
+        .text-muted { color:var(--muted); }
+        .legal-band { padding:var(--space-lg) var(--space-xxl); max-width:var(--max-width); margin:0 auto; display:flex; justify-content:space-between; align-items:center; font-size:13px; color:var(--muted); border-top:1px solid rgba(255,255,255,0.3); }
+        .legal-band a { color:var(--muted); text-decoration:none; margin-left:var(--space-lg); }
+        .legal-band a:hover { text-decoration:underline; }
+
+        /* Responsive */
+        @media (max-width:1127px) { .privacy-band { grid-template-columns:repeat(2,1fr); } .footer-light { grid-template-columns:repeat(2,1fr); } }
+        @media (max-width:743px) { .top-nav { padding:0 var(--space-base); height:64px; } .nav-links { display:none; } .nav-more-btn{display:block} .section { padding:var(--space-xxl) var(--space-base); } .privacy-band { grid-template-columns:1fr; } .footer-light { grid-template-columns:1fr; padding:var(--space-xl) var(--space-base); } .legal-band { flex-direction:column; gap:var(--space-sm); text-align:center; } }
+    </style>
+</head>
+<body>
+
+<nav class="top-nav">
+    <a href="index.html" class="nav-logo">
+        <img src="icon.png" alt="Lumi">
+        <span>Lumi</span>
+    </a>
+    <ul class="nav-links">
+        <li><a href="features.html">功能</a></li>
+        <li><a href="privacy-section.html" style="color:var(--ink);border-bottom:2px solid var(--ink);padding-bottom:2px;">隐私</a></li>
+        <li><a href="tech.html">技术</a></li>
+        <li><a href="sponsor.html">赞助</a></li>
+        <li><a href="feedback.html">反馈</a></li>
+    </ul>
+    <div class="nav-cta">
+        <a href="sponsor.html" class="btn-nav-sponsor">赞助</a>
+        <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-nav-download">获取 Lumi</a>
+    </div>
+    <button class="nav-more-btn" aria-label="更多导航" onclick="event.stopPropagation();this.nextElementSibling.classList.toggle('open')">…</button>
+    <div class="nav-more-dropdown">
+        <a href="features.html">功能</a>
+        <a href="privacy-section.html">隐私</a>
+        <a href="tech.html">技术</a>
+        <a href="sponsor.html">赞助</a>
+        <a href="feedback.html">反馈</a>
+    </div>
+</nav>
+
+<section class="section">
+    <div class="section-header animate-on-scroll">
+        <div class="label">隐私保护</div>
+        <h2>本地优先，云端由你决定</h2>
+        <p>阅读数据留在设备；只有主动启用 MinerU 并确认后，所选 PDF 才会上传。代码完全透明可审查。</p>
+    </div>
+
+    <div class="privacy-hero animate-on-scroll fade-in-only stagger-1">
+        <div class="shield">🛡️</div>
+        <h3>本地优先 · 主动授权 · 零追踪</h3>
+        <p>
+            Lumi 不使用任何第三方分析或广告 SDK。你的书架、阅读进度、笔记和书签存储在设备本地沙盒中。
+            可选的 MinerU 云端解析默认关闭，首次启用时会明确说明文件上传风险并征得同意。
+        </p>
+    </div>
+
+    <div class="privacy-band">
+        <div class="privacy-item animate-on-scroll stagger-1">
+            <div class="pi-icon">🚫</div>
+            <h3>联网由你触发</h3>
+            <p>除检查更新外，只有主动选择 MinerU 云端解析时才会上传所选 PDF。</p>
+        </div>
+        <div class="privacy-item animate-on-scroll stagger-2">
+            <div class="pi-icon">📵</div>
+            <h3>无追踪 SDK</h3>
+            <p>无 Firebase、无分析、无广告；MinerU 是可选且独立的第三方云解析服务。</p>
+        </div>
+        <div class="privacy-item animate-on-scroll stagger-3">
+            <div class="pi-icon">🗄️</div>
+            <h3>沙盒存储</h3>
+            <p>所有数据存储在应用私有沙盒中，系统级隔离保护。</p>
+        </div>
+        <div class="privacy-item animate-on-scroll stagger-4">
+            <div class="pi-icon">🧹</div>
+            <h3>一键清除</h3>
+            <p>应用内随时清除数据。卸载自动删除全部数据，源文件不受影响。</p>
+        </div>
+    </div>
+
+    <div class="detail-card animate-on-scroll">
+        <h3>权限说明</h3>
+        <p>本应用仅申请以下 Android 系统权限，每项权限均有明确的用途：</p>
+        <ul>
+            <li>READ_EXTERNAL_STORAGE（Android 12 及以下）— 读取设备上的电子书文件</li>
+            <li>READ_MEDIA_IMAGES（Android 13 及以上）— 读取电子书中的封面图片</li>
+        </ul>
+        <p><strong>不申请的权限：</strong></p>
+        <ul>
+            <li><span class="cross">✕</span> 网络访问权限（INTERNET）</li>
+            <li><span class="cross">✕</span> 位置信息权限</li>
+            <li><span class="cross">✕</span> 相机/麦克风权限</li>
+            <li><span class="cross">✕</span> 通讯录权限</li>
+            <li><span class="cross">✕</span> 任何其他敏感权限</li>
+        </ul>
+    </div>
+
+    <div class="detail-card animate-on-scroll" style="margin-top: var(--space-base);">
+        <h3>开源透明</h3>
+        <p>作为开源项目，Lumi 的完整源代码公开可审查。您可以随时查阅代码，验证以上隐私承诺的真实性。我们相信，代码透明是最好的隐私保障。</p>
+        <p>所有数据处理逻辑均可在源代码中查阅——从 Room 数据库的 Entity 定义到 DataStore 的偏好存储，没有任何隐藏的数据传输或收集行为。</p>
+    </div>
+
+    <div style="text-align:center; margin-top: var(--space-xl);" class="animate-on-scroll">
+        <a href="privacy.html" class="cta-link">查看完整隐私政策 →</a>
+    </div>
+</section>
+
+<footer>
+    <div class="footer-light">
+        <div class="footer-col">
+            <h4>Lumi</h4>
+            <ul>
+                <li><a href="features.html">功能介绍</a></li>
+                <li><a href="tech.html">技术架构</a></li>
+                <li><a href="changelog.html">更新日志</a></li>
+            </ul>
+        </div>
+        <div class="footer-col">
+            <h4>法律</h4>
+            <ul>
+                <li><a href="privacy.html">隐私政策</a></li>
+                <li><a href="terms.html">用户协议</a></li>
+            </ul>
+        </div>
+        <div class="footer-col">
+            <h4>联系方式</h4>
+            <ul>
+                <li><a href="https://github.com/huangder/Lumi_Books">GitHub</a></li>
+                <li><a href="mailto:huangder0104@126.com">邮件联系</a></li>
+            </ul>
+        </div>
+    </div>
+    <div class="legal-band">
+        <span>© 2026 Huangder</span>
+        <span>
+            <a href="privacy.html">隐私</a>
+            <a href="terms.html">条款</a>
+        </span>
+    </div>
+</footer>
+
+<script>
+(function() {
+    'use strict';
+    var observer = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+            if (entry.isIntersecting) { entry.target.classList.add('animated'); observer.unobserve(entry.target); }
+        });
+    }, { threshold: 0.15, rootMargin: '0px 0px -30px 0px' });
+    document.querySelectorAll('.animate-on-scroll').forEach(function(el) { observer.observe(el); });
+
+    var nav = document.querySelector('.top-nav');
+    window.addEventListener('scroll', function() {
+        requestAnimationFrame(function() {
+            if (window.scrollY > 10) { nav.classList.add('scrolled'); }
+            else { nav.classList.remove('scrolled'); }
+        });
+    }, { passive: true });
+
+    /* Mobile more dropdown: close on outside click */
+    document.addEventListener('click', function(e) {
+        var dd = document.querySelector('.nav-more-dropdown');
+        var btn = document.querySelector('.nav-more-btn');
+        if (dd && dd.classList.contains('open') && !dd.contains(e.target) && e.target !== btn) {
+            dd.classList.remove('open');
+        }
+    });
+
+})();
+</script>
+
+</body>
+</html>

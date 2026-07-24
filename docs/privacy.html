@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" href="icon.png">
+    <title>隐私政策 — Lumi</title>
+    <style>
+        :root {
+            --primary: #ff385c;
+            --canvas: #ffffff;
+            --surface-soft: #f7f7f7;
+            --ink: #222222;
+            --body: #3f3f3f;
+            --muted: #6a6a6a;
+            --muted-soft: #929292;
+            --hairline: #dddddd;
+            --hairline-soft: #ebebeb;
+            --space-xs: 4px;
+            --space-sm: 8px;
+            --space-md: 12px;
+            --space-base: 16px;
+            --space-lg: 24px;
+            --space-xl: 32px;
+            --space-xxl: 48px;
+            --space-section: 64px;
+            --max-width: 780px;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        @font-face { font-family: 'Product Sans'; src: url('fonts/ProductSans-Regular.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: swap; }
+        @font-face { font-family: 'Product Sans'; src: url('fonts/ProductSans-Medium.ttf') format('truetype'); font-weight: 500; font-style: normal; font-display: swap; }
+        @font-face { font-family: 'Product Sans'; src: url('fonts/ProductSans-Bold.ttf') format('truetype'); font-weight: 700; font-style: normal; font-display: swap; }
+        @font-face { font-family: 'MiSans'; src: url('fonts/MiSans-Regular.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: swap; }
+        @font-face { font-family: 'MiSans'; src: url('fonts/MiSans-Medium.ttf') format('truetype'); font-weight: 500; font-style: normal; font-display: swap; }
+        @font-face { font-family: 'MiSans'; src: url('fonts/MiSans-Semibold.ttf') format('truetype'); font-weight: 600; font-style: normal; font-display: swap; }
+        @font-face { font-family: 'MiSans'; src: url('fonts/MiSans-Bold.ttf') format('truetype'); font-weight: 700; font-style: normal; font-display: swap; }
+        body {
+            font-family: 'Product Sans', 'MiSans', -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+            background: linear-gradient(135deg, #faf5ff 0%, #f0f9ff 30%, #fff7ed 60%, #f0fdf4 100%);
+            color: var(--ink);
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+        }
+        body { background: linear-gradient(135deg, #faf5ff 0%, #f0f9ff 30%, #fff7ed 60%, #f0fdf4 100%); }
+        .top-nav {
+            border-bottom: 1px solid rgba(255,255,255,0.5);
+            padding: 0 var(--space-xxl);
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(255,255,255,0.72);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .nav-logo {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            text-decoration: none;
+            color: var(--ink);
+        }
+        .nav-logo img { width: 34px; height: 34px; border-radius: 8px; }
+        .nav-logo span { font-size: 22px; font-weight: 700; }
+        .nav-links { display: flex; gap: 32px; list-style: none; }
+        .nav-links a { text-decoration: none; font-size: 16px; font-weight: 600; color: var(--muted); transition: color 0.15s; }
+        .nav-links a:hover { color: var(--ink); }
+        .nav-back {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            text-decoration: none;
+            color: var(--muted);
+            font-size: 14px;
+            font-weight: 500;
+            transition: color 0.15s;
+            padding: 6px 10px;
+            border-radius: var(--radius-sm);
+        }
+        .nav-back:hover { color: var(--ink); background: rgba(0,0,0,0.04); }
+        .nav-spacer { flex: 1; }
+
+        .nav-cta { display: flex; align-items: center; gap: var(--space-base); }
+        .btn-nav-download {
+            background: var(--primary); color: var(--on-primary);
+            text-decoration: none; padding: 10px 20px;
+            border-radius: var(--radius-full); font-size: 14px; font-weight: 500;
+            transition: background 0.2s, transform 0.2s;
+        }
+        .btn-nav-download:hover { background: var(--primary-active); transform: scale(1.04); }
+        .btn-nav-sponsor {
+            background: transparent; color: var(--ink);
+            text-decoration: none; padding: 9px 19px;
+            border-radius: var(--radius-full); font-size: 14px; font-weight: 500;
+            border: 1.5px solid var(--hairline);
+            transition: border-color 0.2s, color 0.2s, background 0.2s;
+        }
+        .btn-nav-sponsor:hover { border-color: var(--ink); background: rgba(0,0,0,0.03); }
+
+        .container {
+            max-width: var(--max-width);
+            margin: 0 auto;
+            padding: var(--space-section) var(--space-xxl);
+            background: rgba(255,255,255,0.55);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.7);
+            border-radius: var(--radius-md, 14px);
+            margin-top: var(--space-xl, 32px);
+            margin-bottom: var(--space-xl, 32px);
+        }
+        h1 {
+            font-size: 28px;
+            font-weight: 700;
+            line-height: 1.43;
+            margin-bottom: var(--space-xs);
+        }
+        .meta {
+            font-size: 14px;
+            color: var(--muted);
+            margin-bottom: var(--space-xxl);
+        }
+        h2 {
+            font-size: 20px;
+            font-weight: 600;
+            line-height: 1.20;
+            letter-spacing: -0.18px;
+            margin: var(--space-xxl) 0 var(--space-md);
+            padding-top: var(--space-lg);
+            border-top: 1px solid var(--hairline-soft);
+        }
+        h2:first-of-type { border-top: none; padding-top: 0; }
+        h3 {
+            font-size: 16px;
+            font-weight: 600;
+            line-height: 1.25;
+            margin: var(--space-lg) 0 var(--space-sm);
+            color: var(--ink);
+        }
+        p {
+            font-size: 16px;
+            font-weight: 400;
+            line-height: 1.5;
+            color: var(--body);
+            margin-bottom: var(--space-md);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: var(--space-base) 0 var(--space-lg);
+            font-size: 14px;
+        }
+        th, td {
+            text-align: left;
+            padding: var(--space-md) var(--space-base);
+            border-bottom: 1px solid var(--hairline);
+        }
+        th {
+            font-weight: 600;
+            color: var(--ink);
+            background: var(--surface-soft);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        td { color: var(--body); }
+        ul {
+            list-style: none;
+            padding: 0;
+            margin-bottom: var(--space-base);
+        }
+        ul li {
+            padding: var(--space-xs) 0;
+            font-size: 15px;
+            color: var(--body);
+        }
+        ul li::before { content: "·  "; color: var(--primary); font-weight: bold; }
+        .cross { color: #c13515; margin-right: 6px; }
+        a { color: var(--ink); text-decoration: underline; }
+
+        .footer-light {
+            padding: var(--space-xl) var(--space-xxl);
+            max-width: var(--max-width);
+            margin: 0 auto;
+            border-top: 1px solid var(--hairline);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+            color: var(--muted);
+        }
+        .footer-light a {
+            color: var(--muted);
+            text-decoration: none;
+            margin-left: var(--space-lg);
+        }
+        .footer-light a:hover { text-decoration: underline; }
+
+        @media (max-width: 743px) {
+            .top-bar { padding: 0 var(--space-base); height: 64px; }
+            .container { padding: var(--space-xl) var(--space-base); }
+            h1 { font-size: 24px; }
+            .footer-light { flex-direction: column; gap: var(--space-sm); }
+        }
+    </style>
+</head>
+<body>
+
+<nav class="top-nav">
+    <a href="javascript:history.back()" class="nav-back" title="返回">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        <span>返回</span>
+    </a>
+    <div class="nav-spacer"></div>
+    <div class="nav-cta">
+        <a href="sponsor.html" class="btn-nav-sponsor">赞助</a>
+        <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-nav-download">获取 Lumi</a>
+    </div>
+</nav>
+
+<div class="container">
+    <h1>隐私政策</h1>
+    <p class="meta">生效日期：2026年6月29日 · 最近更新：2026年7月22日</p>
+
+    <h2>一、引言</h2>
+    <p>Lumi（以下简称"本应用"）是一款本地电子书阅读器。我们深知隐私对您的重要性，本隐私政策旨在向您说明我们如何处理您的个人信息。</p>
+    <p><strong>核心原则：本应用坚持本地优先。只有在您主动启用并选择 MinerU 云端解析时，您选定的 PDF 才会上传至第三方服务；本应用不会在后台自动上传文件。</strong></p>
+    <p><strong>开源透明：本应用为开源项目，完整源代码公开可审查。</strong>您可以随时查阅源代码，验证本隐私政策所述内容的真实性。我们相信，代码透明是最好的隐私保障。</p>
+
+    <h2>二、权限说明</h2>
+    <p>本应用仅申请以下 Android 系统权限，且每项权限均有明确的用途说明：</p>
+    <table>
+        <tr><th>权限</th><th>用途</th><th>是否必要</th></tr>
+        <tr><td>READ_EXTERNAL_STORAGE（Android 12 及以下）</td><td>读取您设备上的电子书文件（EPUB、TXT、PDF）</td><td>是</td></tr>
+        <tr><td>READ_MEDIA_IMAGES（Android 13 及以上）</td><td>读取电子书中的封面图片资源</td><td>是</td></tr>
+        <tr><td>INTERNET</td><td>检查应用更新及条款/政策变更；在用户主动选择时连接 MinerU 云端解析</td><td>否（可选功能）</td></tr>
+    </table>
+    <p><strong>本应用不申请以下权限：</strong></p>
+    <ul>
+        <li><span class="cross">✕</span> 位置信息权限</li>
+        <li><span class="cross">✕</span> 相机/麦克风权限</li>
+        <li style="list-style:none;margin-top:4px;font-size:14px;color:var(--muted)">💡 TTS 语音朗读使用 Android 系统文字转语音引擎，文本内容在设备本地处理，不采集、不录制、不上传任何音频数据。</li>
+        <li><span class="cross">✕</span> 通讯录权限</li>
+        <li><span class="cross">✕</span> 电话状态权限</li>
+        <li><span class="cross">✕</span> 写入外部存储权限</li>
+        <li><span class="cross">✕</span> 任何其他敏感权限</li>
+    </ul>
+
+    <h2>三、数据处理说明</h2>
+
+    <h3>3.1 本应用处理的数据</h3>
+    <p>以下应用设置和阅读数据存储在您的本地设备上；主动使用 MinerU 时的文件传输另见 3.2：</p>
+    <table>
+        <tr><th>数据类型</th><th>说明</th><th>存储方式</th></tr>
+        <tr><td>电子书文件</td><td>您主动选择打开的 EPUB、TXT、PDF 文件</td><td>本地文件</td></tr>
+        <tr><td>阅读进度</td><td>当前阅读章节和页码位置</td><td>Room/SQLite</td></tr>
+        <tr><td>书签记录</td><td>您手动添加的书签</td><td>Room/SQLite</td></tr>
+        <tr><td>阅读时长</td><td>每次阅读的开始时间、结束时间、持续时长</td><td>Room/SQLite</td></tr>
+        <tr><td>阅读偏好</td><td>字号、主题、行距等显示设置</td><td>DataStore</td></tr>
+        <tr><td>MinerU 设置</td><td>解析模式、同意版本和时间；个人 Token 使用 Android Keystore 加密</td><td>本地 DataStore/加密存储</td></tr>
+        <tr><td>TTS 朗读文本</td><td>传递给系统 TTS 引擎的电子书文本（仅内存中处理，不持久化存储）</td><td>本地内存（不存储）</td></tr>
+        <tr><td>最近阅读</td><td>最近打开的书籍列表及时间</td><td>Room/SQLite</td></tr>
+    </table>
+
+    <h3>3.2 网络使用说明</h3>
+    <ul>
+        <li>仅在以下场景发起网络请求：
+            <ul>
+                <li>启动时或手动触发"检查更新"——请求 GitHub Raw 上的 <code>update_config.json</code></li>
+                <li>打开 GitHub Releases 页面下载新版本（需用户手动点击）</li>
+                <li>用户主动选择 MinerU 云端解析——向 MinerU API 申请上传地址，将所选 PDF 上传至其 OSS 存储，轮询解析进度并从 CDN 下载结果</li>
+            </ul>
+        </li>
+        <li>更新检查请求不携带个人信息、设备标识或使用数据</li>
+        <li>MinerU 请求会向第三方传输所选 PDF、随机化文件名、网络 IP、解析参数和任务标识；精准解析还会传输用户个人 Token</li>
+        <li>本应用不使用分析、广告或用户追踪 SDK，也不会将 Token 或 PDF 发送给 LumiBooks 开发者</li>
+    </ul>
+
+    <h3>3.3 本应用不处理的数据</h3>
+    <ul>
+        <li>不收集您的个人身份信息（姓名、邮箱、电话等）</li>
+        <li>不收集您的设备标识信息（IMEI、Android ID、MAC 地址等）</li>
+        <li>不收集或接收您的阅读内容；启用 MinerU 时，文件由设备直接发送给 MinerU</li>
+        <li>不使用任何分析或追踪工具（如 Google Analytics、Firebase 等）</li>
+        <li>不使用任何广告 SDK</li>
+        <li>除您明确发起的 MinerU 解析外，不进行文件上传或云同步</li>
+    </ul>
+
+    <h2>四、数据存储与安全</h2>
+
+    <h3>4.1 存储方式</h3>
+    <p>本地阅读数据存储在应用的私有沙盒目录中，遵循 Android 系统的应用隔离机制。MinerU Token 使用 Android Keystore 加密并排除系统备份。</p>
+
+    <h3>4.2 数据安全</h3>
+    <ul>
+        <li>应用仅在检查更新及您主动选择 MinerU 云端解析时联网</li>
+        <li>数据存储在 Android 应用沙盒中，受系统级隔离保护</li>
+        <li>本应用不收集任何可识别您身份的信息</li>
+    </ul>
+
+    <h3>4.3 数据保留</h3>
+    <ul>
+        <li>您可以随时在应用内清除阅读历史、书签等数据</li>
+        <li>卸载应用将自动删除所有应用数据</li>
+        <li>电子书源文件由您自行管理，本应用不会修改或删除您的原始文件</li>
+    </ul>
+
+    <h2>五、第三方服务</h2>
+    <p>本应用不集成分析、广告、推送、云同步或崩溃报告服务。您可以主动启用由上海人工智能创新中心运营的 OpenDataLab/MinerU 云端解析服务。MinerU 与 LumiBooks 独立运营，使用该服务受其<a href="https://webpub.shlab.tech/dps/opendatalab-web/odl_v5.1690/service.html">服务协议</a>和<a href="https://webpub.shlab.tech/dps/opendatalab-web/odl_v5.1690/privacy.html">个人信息保护政策</a>约束。</p>
+    <p>如不希望文件离开设备，请保持 MinerU 关闭并使用本地解析。您可随时停用 MinerU、清除个人 Token，并联系其运营方行使平台数据权利。</p>
+    <p>除此之外，本应用：</p>
+    <ul>
+        <li>无第三方分析服务</li>
+        <li>无第三方广告服务</li>
+        <li>无第三方推送服务</li>
+        <li>无云同步服务</li>
+        <li>无崩溃报告服务</li>
+    </ul>
+
+    <h2>六、儿童隐私</h2>
+    <p>本应用不针对 13 岁以下儿童，不会故意收集儿童的个人信息。如果您是儿童的监护人，发现儿童可能向本应用提供了个人信息，请联系我们，我们将及时删除相关信息。</p>
+
+    <h2>七、隐私政策的变更</h2>
+    <p>如果我们决定更新本隐私政策，我们将在本页面发布更新后的版本，并更新"最近更新"日期。建议您定期查看本隐私政策以了解最新信息。重大变更将以应用内通知的方式告知您。</p>
+
+    <h2>八、联系我们</h2>
+    <p>如果您对本隐私政策有任何疑问、意见或建议，请通过以下方式联系我们：</p>
+    <ul>
+        <li>应用内反馈：通过应用设置页面提交反馈</li>
+        <li>电子邮件：<a href="mailto:huangder0104@126.com">huangder0104@126.com</a></li>
+        <li>开源社区：在代码仓库提交 Issue 反馈问题或建议</li>
+    </ul>
+    <p><strong>隐私验证：</strong>作为开源项目，我们鼓励您通过审查源代码来验证本隐私政策的真实性。所有数据处理逻辑均可在代码中查阅。</p>
+
+    <h2>九、适用范围</h2>
+    <p>本隐私政策仅适用于 Lumi 应用（com.huangder.lumibooks）在 Android 平台上的功能。不适用于通过其他方式获取您信息的第三方服务。</p>
+
+    <p style="font-size:13px; color:var(--muted-soft); margin-top: var(--space-xxl);">本隐私政策最后更新于 2026年7月19日。</p>
+</div>
+
+<div class="footer-light">
+    <span>© 2026 Huangder</span>
+    <span>
+        <a href="index.html">首页</a>
+        <a href="terms.html">用户协议</a>
+    </span>
+</div>
+
+</body>
+</html>
