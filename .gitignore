@@ -1,14 +1,18 @@
+# IDE / Editor
+.idea/
+.vscode/
 *.iml
-.gradle
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
+
+# Kotlin
+.kotlin/
+
+# AI Agent
+.claude/
+AGENTS.md
+CLAUDE.md
+
 # Gradle and Android build outputs
+.gradle/
 **/build/
 /app/release/
 /app/build/
@@ -16,5 +20,21 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Design assets
+pagedesign/
+icon/
+font/
+
+# Dev logs
 devlog/
 devdocs/
+
+# Window dumps
+window*.xml
+lumi-window.xml
+
+# Misc
+.DS_Store
+update_config.json
+test1.jpg
