@@ -126,10 +126,13 @@ class FadePageAnim(readView: ReadView) : PageAnimationController(readView) {
                     }
 
                     if (direction != Direction.NONE) {
-                        // 渐变模式：不检查 onCanFlip，直接翻页
-                        // （渐变效果下，即使目标页未加载也能平滑过渡）
-                        isFlipAnim = true
-                        startAnim(fromDrag = false)
+                        // 检查目标槽位是否已加载，防止章节末页跳过边界
+                        if (onCanFlip?.invoke(direction) == true) {
+                            isFlipAnim = true
+                            startAnim(fromDrag = false)
+                        } else {
+                            direction = Direction.NONE
+                        }
                     }
                 }
                 return true
