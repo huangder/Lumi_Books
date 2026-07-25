@@ -126,6 +126,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
@@ -2086,26 +2087,28 @@ private fun ReaderTopBar(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.weight(1f)
             )
-            // 右侧按钮竖向排列，容器高度与单个按钮一致防止撑高 Row
-            Box(
+            // 右侧按钮竖向排列，layout 上报单按钮高度防止撑高 Row
+            Column(
                 modifier = Modifier
                     .width(36.dp)
-                    .height(36.dp),
-                contentAlignment = Alignment.TopCenter
+                    .layout { measurable, constraints ->
+                        val placeable = measurable.measure(constraints)
+                        layout(placeable.width, 36.dp.roundToPx()) {
+                            placeable.place(0, 0)
+                        }
+                    },
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.Top)
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.Top)
-                ) {
-                    ReaderTopBarButton(
-                        icon = Icons.Default.Headphones,
-                        contentDescription = stringResource(R.string.tts_listen),
-                        tint = if (isTtsActive) AppColors.Accent else contentColor,
-                        backgroundColor = controlBackground,
-                        contentScrimColor = glassContentScrimColor,
-                        onClick = onTtsClick
-                    )
-                    ReaderTopBarButton(
+                ReaderTopBarButton(
+                    icon = Icons.Default.Headphones,
+                    contentDescription = stringResource(R.string.tts_listen),
+                    tint = if (isTtsActive) AppColors.Accent else contentColor,
+                    backgroundColor = controlBackground,
+                    contentScrimColor = glassContentScrimColor,
+                    onClick = onTtsClick
+                )
+                ReaderTopBarButton(
                         icon = if (isBookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder,
                         contentDescription = stringResource(R.string.reader_bookmark),
                         tint = if (isBookmarked) AppColors.Accent else contentColor,
@@ -2113,7 +2116,6 @@ private fun ReaderTopBar(
                         contentScrimColor = glassContentScrimColor,
                         onClick = onBookmarkToggle
                     )
-                }
             }
         }
     }
