@@ -15,6 +15,8 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -643,13 +645,22 @@ fun PdfViewerScreen(
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
+        val ttsBottomPadding by animateDpAsState(
+            targetValue = if (showMenu) 160.dp else 44.dp,
+            animationSpec = spring(dampingRatio = 0.82f, stiffness = 360f),
+            label = "ttsBottomPadding"
+        )
         AnimatedVisibility(
             visible = uiState.ttsActiveBookId == bookId &&
                 uiState.ttsPlaybackState != TtsPlaybackState.IDLE &&
                 !showPdfToc && conversionSheet == null,
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
             exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-            modifier = Modifier.align(Alignment.BottomCenter)
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = ttsBottomPadding)
         ) {
             TtsPlayerPanel(
                 playbackState = uiState.ttsPlaybackState,
@@ -851,7 +862,7 @@ private fun PdfTopBar(
                 shape = CircleShape,
                 fallbackColor = AppColors.BgGray.copy(alpha = 0.8f),
                 contentScrimColor = glassContentScrimColor,
-                modifier = Modifier.size(48.dp),
+                modifier = Modifier.size(36.dp),
                 onClick = onTtsToggle,
                 contentAlignment = Alignment.Center
             ) {
@@ -859,7 +870,7 @@ private fun PdfTopBar(
                     Icons.Default.Headphones,
                     contentDescription = stringResource(R.string.tts_listen),
                     tint = if (isTtsActive) AppColors.Accent else AppColors.TextPrimary,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
             Spacer(Modifier.width(8.dp))

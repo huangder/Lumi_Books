@@ -1233,6 +1233,11 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 }
             }
 
+            val ttsBottomPadding by animateDpAsState(
+                targetValue = if (uiState.isMenuVisible) 204.dp else 44.dp,
+                animationSpec = spring(dampingRatio = 0.82f, stiffness = 360f),
+                label = "ttsBottomPadding"
+            )
             AnimatedVisibility(
                 visible = uiState.ttsActiveBookId == uiState.book?.id &&
                     uiState.ttsPlaybackState != TtsPlaybackState.IDLE &&
@@ -1243,7 +1248,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
                     .padding(horizontal = 24.dp)
-                    .padding(bottom = if (uiState.isMenuVisible) 204.dp else 44.dp)
+                    .padding(bottom = ttsBottomPadding)
             ) {
                 TtsPlayerPanel(
                     playbackState = uiState.ttsPlaybackState,
