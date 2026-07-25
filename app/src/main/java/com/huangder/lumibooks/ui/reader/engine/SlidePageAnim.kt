@@ -83,27 +83,36 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
         val ox = touchX - startX
 
         when {
-            direction == Direction.NEXT -> drawShadow(canvas, ox + vw, vw, vh)
-            direction == Direction.PREV -> drawShadow(canvas, ox, vw, vh)
-            // The transient edge shadow is only valid while a page is moving. Rendering the
-            // generic post-animation fade here always places it on the left and flashes on PREV.
-            else -> Unit
+            direction == Direction.NEXT -> {
+                // 阴影随翻页进度渐隐：翻完时刚好消失，消除闪烁
+                val progress = (-ox / vw).coerceIn(0f, 1f)
+                drawShadow(canvas, ox + vw, vw, vh, shadowAlpha = 1f - progress)
+            }
+            direction == Direction.PREV -> {
+                // 阴影随拖动进度渐显：不会突然出现
+                val progress = (ox / vw).coerceIn(0f, 1f)
+                drawShadow(canvas, ox, vw, vh, shadowAlpha = progress)
+            }
+            else -> {
+                // 翻页完成后阴影已随进度自然消失，无需额外渐隐
+            }
         }
     }
 
-    /** 翻页时的阴影 */
-    private fun drawShadow(canvas: Canvas, edgeX: Float, vw: Float, vh: Float) {
+    /** 翻页时的阴影。shadowAlpha: 0f=不可见, 1f=满强度 */
+    private fun drawShadow(canvas: Canvas, edgeX: Float, vw: Float, vh: Float, shadowAlpha: Float = 1f) {
         val shStart = edgeX.coerceIn(0f, vw)
         val shEnd = (edgeX + shadowWidth).coerceAtMost(vw)
         if (shEnd <= shStart + 2f) return
 
         canvas.save()
         canvas.clipRect(shStart, 0f, shEnd, vh)
+        val a = shadowAlpha.coerceIn(0f, 1f)
         val colors = intArrayOf(
-            0x26000000.toInt(),
-            0x18000000.toInt(),
-            0x08000000.toInt(),
-            0x02000000.toInt(),
+            ((0x26 * a).toInt() shl 24),
+            ((0x18 * a).toInt() shl 24),
+            ((0x08 * a).toInt() shl 24),
+            ((0x02 * a).toInt() shl 24),
             0x00000000
         )
         val stops = floatArrayOf(0.0f, 0.2f, 0.5f, 0.75f, 1.0f)
