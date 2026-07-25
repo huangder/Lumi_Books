@@ -138,7 +138,8 @@ data class ReaderUiState(
     val ttsPlaybackState: TtsPlaybackState = TtsPlaybackState.IDLE,
     val ttsSpeechRate: Float = 1f,
     val ttsActiveBookId: String? = null,
-    val ttsErrorMessage: String? = null
+    val ttsErrorMessage: String? = null,
+    val sleepTimerRemainingMs: Long? = null
 )
 
 internal fun ReaderUiState.withReaderCornerContent(
@@ -260,6 +261,11 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch {
             ttsController.errors.collectLatest { error ->
                 _uiState.value = _uiState.value.copy(ttsErrorMessage = ttsErrorMessage(error))
+            }
+        }
+        viewModelScope.launch {
+            ttsController.sleepTimerRemainingMs.collectLatest { remaining ->
+                _uiState.value = _uiState.value.copy(sleepTimerRemainingMs = remaining)
             }
         }
         viewModelScope.launch {
@@ -1197,6 +1203,10 @@ class ReaderViewModel @Inject constructor(
     fun clearTtsError() {
         _uiState.value = _uiState.value.copy(ttsErrorMessage = null)
     }
+
+    fun setSleepTimer(minutes: Int) = ttsController.setSleepTimer(minutes)
+
+    fun cancelSleepTimer() = ttsController.cancelSleepTimer()
 
     /** WebView 分页完成后调用 */
     fun onPaginationDone() {

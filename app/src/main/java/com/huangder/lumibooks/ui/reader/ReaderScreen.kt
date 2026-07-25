@@ -1253,11 +1253,14 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 TtsPlayerPanel(
                     playbackState = uiState.ttsPlaybackState,
                     speechRate = uiState.ttsSpeechRate,
+                    sleepTimerRemainingMs = uiState.sleepTimerRemainingMs,
                     onPlayPause = viewModel::toggleTtsPlayPause,
                     onStop = viewModel::stopTts,
                     onSkipForward = viewModel::ttsSkipForward,
                     onSkipBackward = viewModel::ttsSkipBackward,
                     onRateChange = viewModel::setTtsSpeechRate,
+                    onSetSleepTimer = viewModel::setSleepTimer,
+                    onCancelSleepTimer = viewModel::cancelSleepTimer,
                     readerBackgroundColor = composeBgColor,
                     readerContentColor = Color(readerTextColorInt)
                 )

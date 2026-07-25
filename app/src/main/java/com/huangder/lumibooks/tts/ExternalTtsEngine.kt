@@ -1,4 +1,4 @@
-package com.huangder.lumibooks.tts
+﻿package com.huangder.lumibooks.tts
 
 import android.content.Context
 import android.os.Handler
@@ -6,6 +6,7 @@ import android.os.HandlerThread
 import com.huangder.lumibooks.data.local.DataStoreManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -25,10 +26,15 @@ import javax.inject.Singleton
 /**
  * Streams externally synthesized 24 kHz mono PCM16LE through [ExternalTtsAudioPlayer].
  * Complete utterances are retained in a bounded application-private cache for exact resume.
+ *
+ * Audio infrastructure (HandlerThread, ExternalTtsAudioPlayer, CoroutineScope) is created
+ * lazily on first actual use rather than at construction time. This prevents the presence
+ * of a HandlerThread and AudioManager-bound player from interfering with system TextToSpeech
+ * on devices with aggressive audio policy (e.g. MIUI).
  */
 @Singleton
 class ExternalTtsEngine @Inject constructor(
-    @ApplicationContext context: Context,
+    @ApplicationContext private val context: Context,
     private val dataStoreManager: DataStoreManager,
     private val tokenStore: ExternalTtsTokenStore,
     private val audioCache: ExternalTtsAudioCache
@@ -36,11 +42,31 @@ class ExternalTtsEngine @Inject constructor(
     override val isExternal = true
 
     private val httpClient = ExternalTtsHttpClient(tokenStore)
-    private val audioThread = HandlerThread("LumiExternalTtsAudio").apply { start() }
-    private val audioHandler = Handler(audioThread.looper)
-    private val engineDispatcher = audioHandler.asCoroutineDispatcher("ExternalTtsEngine")
-    private val audioPlayer = ExternalTtsAudioPlayer(context, audioHandler)
-    private val scope = CoroutineScope(SupervisorJob() + engineDispatcher)
+
+    @Volatile
+    private var audioInit = false
+
+    private lateinit var audioThread: HandlerThread
+    private lateinit var audioHandler: Handler
+    private lateinit var engineDispatcher: CoroutineDispatcher
+    private lateinit var audioPlayer: ExternalTtsAudioPlayer
+    private lateinit var scope: CoroutineScope
+
+    private val initLock = Any()
+
+    private fun ensureAudioInitialized() {
+        if (audioInit) return
+        synchronized(initLock) {
+            if (audioInit) return
+            audioThread = HandlerThread("LumiExternalTtsAudio").apply { start() }
+            audioHandler = Handler(audioThread.looper)
+            engineDispatcher = audioHandler.asCoroutineDispatcher("ExternalTtsEngine")
+            audioPlayer = ExternalTtsAudioPlayer(context, audioHandler)
+            scope = CoroutineScope(SupervisorJob() + engineDispatcher)
+            audioInit = true
+        }
+    }
+
     private val prefetchLock = Any()
 
     @Volatile
@@ -98,85 +124,96 @@ class ExternalTtsEngine @Inject constructor(
         utteranceId: String,
         cacheKey: String?,
         startFrame: Long
-    ): Result<Unit> = withContext(engineDispatcher) {
-        try {
-            cancelCurrentSession()
-            val sessionId = ++currentSessionId
-            val settings = effectiveSettings()
-            val resolvedCacheKey = audioCache.createKey(settings, text)
-            val cachedFrames = audioCache.frameCount(resolvedCacheKey)
-            val resumeFrame = if (cacheKey == resolvedCacheKey && cachedFrames > 0L) {
-                startFrame.coerceIn(0L, cachedFrames - 1L)
-            } else {
-                0L
-            }
-
-            audioPlayer.setOnFocusLost {
-                reportActiveProgressAsync()
-                scope.launch { listener?.onPlaybackInterrupted() }
-            }
-            activeUtteranceId = utteranceId
-            activeCacheKey = resolvedCacheKey
-            lastReportedFrame = -1L
-            pauseRequested = false
-
-            sessionJob = scope.launch {
-                playSession(
-                    sessionId = sessionId,
-                    text = text,
-                    utteranceId = utteranceId,
-                    settings = settings,
-                    cacheKey = resolvedCacheKey,
-                    startFrame = resumeFrame,
-                    useCachedAudio = cachedFrames > 0L
-                )
-            }
-            progressJob = scope.launch {
-                while (isActive && currentSessionId == sessionId) {
-                    delay(PROGRESS_INTERVAL_MS)
-                    reportActiveProgress(sessionId)
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        ensureAudioInitialized()
+        withContext(engineDispatcher) {
+            try {
+                cancelCurrentSession()
+                val sessionId = ++currentSessionId
+                val settings = effectiveSettings()
+                val resolvedCacheKey = audioCache.createKey(settings, text)
+                val cachedFrames = audioCache.frameCount(resolvedCacheKey)
+                val resumeFrame = if (cacheKey == resolvedCacheKey && cachedFrames > 0L) {
+                    startFrame.coerceIn(0L, cachedFrames - 1L)
+                } else {
+                    0L
                 }
+
+                audioPlayer.setOnFocusLost {
+                    reportActiveProgressAsync()
+                    scope.launch { listener?.onPlaybackInterrupted() }
+                }
+                activeUtteranceId = utteranceId
+                activeCacheKey = resolvedCacheKey
+                lastReportedFrame = -1L
+                pauseRequested = false
+
+                sessionJob = scope.launch {
+                    playSession(
+                        sessionId = sessionId,
+                        text = text,
+                        utteranceId = utteranceId,
+                        settings = settings,
+                        cacheKey = resolvedCacheKey,
+                        startFrame = resumeFrame,
+                        useCachedAudio = cachedFrames > 0L
+                    )
+                }
+                progressJob = scope.launch {
+                    while (isActive && currentSessionId == sessionId) {
+                        delay(PROGRESS_INTERVAL_MS)
+                        reportActiveProgress(sessionId)
+                    }
+                }
+                Result.success(Unit)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                Result.failure(error)
             }
-            Result.success(Unit)
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: Throwable) {
-            Result.failure(error)
         }
     }
 
-    override suspend fun cacheKey(text: String): String? = withContext(engineDispatcher) {
+    override suspend fun cacheKey(text: String): String? = withContext(Dispatchers.IO) {
         if (text.isBlank()) return@withContext null
-        audioCache.createKey(effectiveSettings(), text)
+        ensureAudioInitialized()
+        withContext(engineDispatcher) {
+            audioCache.createKey(effectiveSettings(), text)
+        }
     }
 
-    override fun currentPcmFrameOffset(): Long = audioPlayer.renderedFrameOffset()
+    override fun currentPcmFrameOffset(): Long {
+        if (!audioInit) return 0L
+        return audioPlayer.renderedFrameOffset()
+    }
 
-    override suspend fun prefetch(text: String) = withContext(engineDispatcher) {
-        if (text.isBlank()) return@withContext
-        val settings = effectiveSettings()
-        val key = audioCache.createKey(settings, text)
-        if (audioCache.contains(key)) return@withContext
-        synchronized(prefetchLock) {
-            if (prefetchedKey == key && prefetchJob?.isActive == true) return@synchronized
-            prefetchJob?.cancel()
-            prefetchedKey = key
-            prefetchJob = scope.launch {
-                try {
-                    audioCache.store(
-                        key = key,
-                        source = httpClient.synthesizeAsPcm(settings, text),
-                        maxBytes = cacheLimitBytes()
-                    )
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (_: Throwable) {
-                    // Prefetch is best effort; foreground synthesis will surface real failures.
-                } finally {
-                    synchronized(prefetchLock) {
-                        if (prefetchedKey == key) {
-                            prefetchedKey = null
-                            prefetchJob = null
+    override suspend fun prefetch(text: String) {
+        if (text.isBlank()) return
+        ensureAudioInitialized()
+        withContext(engineDispatcher) {
+            val settings = effectiveSettings()
+            val key = audioCache.createKey(settings, text)
+            if (audioCache.contains(key)) return@withContext
+            synchronized(prefetchLock) {
+                if (prefetchedKey == key && prefetchJob?.isActive == true) return@synchronized
+                prefetchJob?.cancel()
+                prefetchedKey = key
+                prefetchJob = scope.launch {
+                    try {
+                        audioCache.store(
+                            key = key,
+                            source = httpClient.synthesizeAsPcm(settings, text),
+                            maxBytes = cacheLimitBytes()
+                        )
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (_: Throwable) {
+                    } finally {
+                        synchronized(prefetchLock) {
+                            if (prefetchedKey == key) {
+                                prefetchedKey = null
+                                prefetchJob = null
+                            }
                         }
                     }
                 }
@@ -184,29 +221,41 @@ class ExternalTtsEngine @Inject constructor(
         }
     }
 
-    override suspend fun pause() = withContext(engineDispatcher) {
-        pauseRequested = true
-        audioPlayer.pause()
-        reportActiveProgress()
+    override suspend fun pause() {
+        if (!audioInit) return
+        withContext(engineDispatcher) {
+            pauseRequested = true
+            audioPlayer.pause()
+            reportActiveProgress()
+        }
     }
 
-    override suspend fun resume(): Boolean = withContext(engineDispatcher) {
-        if (sessionJob?.isActive != true) return@withContext false
-        pauseRequested = false
-        audioPlayer.resume()
+    override suspend fun resume(): Boolean {
+        if (!audioInit) return false
+        return withContext(engineDispatcher) {
+            if (sessionJob?.isActive != true) return@withContext false
+            pauseRequested = false
+            audioPlayer.resume()
+        }
     }
 
-    override suspend fun stop() = withContext(engineDispatcher) {
-        reportActiveProgress()
-        cancelCurrentSession()
-        clearPrefetch()
+    override suspend fun stop() {
+        if (!audioInit) return
+        withContext(engineDispatcher) {
+            reportActiveProgress()
+            cancelCurrentSession()
+            clearPrefetch()
+        }
     }
 
-    override suspend fun setSpeechRate(rate: Float) = withContext(engineDispatcher) {
-        audioPlayer.setPlaybackRate(rate)
+    override suspend fun setSpeechRate(rate: Float) {
+        ensureAudioInitialized()
+        withContext(engineDispatcher) {
+            audioPlayer.setPlaybackRate(rate)
+        }
     }
 
-    override suspend fun setPitch(pitch: Float) = withContext(engineDispatcher) {
+    override suspend fun setPitch(pitch: Float) {
         utterancePitch = pitch.coerceIn(0.5f, 2f)
     }
 
@@ -215,6 +264,7 @@ class ExternalTtsEngine @Inject constructor(
     }
 
     override fun shutdown() {
+        if (!audioInit) return
         val finalProgress = kotlinx.coroutines.runBlocking {
             withContext(engineDispatcher) {
                 val snapshot = activeProgressSnapshot()

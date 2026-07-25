@@ -59,27 +59,50 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import java.util.Locale
 
+private enum class TtsCenterTab { SPEED, TIMER }
+
 @Composable
 fun TtsPlayerPanel(
     playbackState: TtsPlaybackState,
     speechRate: Float,
+    sleepTimerRemainingMs: Long?,
     onPlayPause: () -> Unit,
     onStop: () -> Unit,
     onSkipForward: () -> Unit,
     onSkipBackward: () -> Unit,
     onRateChange: (Float) -> Unit,
+    onSetSleepTimer: (Int) -> Unit,
+    onCancelSleepTimer: () -> Unit,
     readerBackgroundColor: Color,
     readerContentColor: Color,
     modifier: Modifier = Modifier
 ) {
     val rateOptions = remember { listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f) }
+    val timerOptionsMinutes = remember { listOf(10, 20, 30, 40, 50, 60, 90, 120, 150, 180) }
+    val timerOptionLabels = remember {
+        timerOptionsMinutes.map { min ->
+            when {
+                min < 60 -> "${min}分钟"
+                min % 60 == 0 -> "${min / 60}小时"
+                else -> "${min / 60}.5小时"
+            }
+        }
+    }
+    val timerActive = sleepTimerRemainingMs != null
+    var activeTab by remember { mutableStateOf(TtsCenterTab.SPEED) }
     var showRateMenu by remember { mutableStateOf(false) }
+    var showTimerMenu by remember { mutableStateOf(false) }
+    fun hideMenus() {
+        showRateMenu = false
+        showTimerMenu = false
+    }
+
     val capsuleShape = RoundedCornerShape(28.dp)
     val rateMenuShape = RoundedCornerShape(16.dp)
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val panelBackdrop = rememberLayerBackdrop()
     val panelHeight by animateDpAsState(
-        targetValue = if (showRateMenu) 328.dp else 56.dp,
+        targetValue = if (showRateMenu || showTimerMenu) 328.dp else 56.dp,
         animationSpec = spring(dampingRatio = 0.82f, stiffness = 360f),
         label = "ttsRateMenuHeight"
     )
@@ -161,6 +184,104 @@ fun TtsPlayerPanel(
             }
         }
 
+        AnimatedVisibility(
+            visible = showTimerMenu,
+            enter = fadeIn(spring(dampingRatio = 0.80f, stiffness = 420f)) +
+                slideInVertically(
+                    animationSpec = spring(dampingRatio = 0.72f, stiffness = 360f),
+                    initialOffsetY = { it / 5 }
+                ) +
+                scaleIn(
+                    animationSpec = spring(dampingRatio = 0.68f, stiffness = 340f),
+                    initialScale = 0.78f,
+                    transformOrigin = TransformOrigin(0.5f, 1f)
+                ),
+            exit = fadeOut(spring(dampingRatio = 0.88f, stiffness = 520f)) +
+                slideOutVertically(
+                    animationSpec = spring(dampingRatio = 0.84f, stiffness = 440f),
+                    targetOffsetY = { it / 6 }
+                ) +
+                scaleOut(
+                    animationSpec = spring(dampingRatio = 0.82f, stiffness = 420f),
+                    targetScale = 0.84f,
+                    transformOrigin = TransformOrigin(0.5f, 1f)
+                ),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 64.dp)
+        ) {
+            LiquidGlassSurface(
+                shape = rateMenuShape,
+                fallbackColor = readerBackgroundColor,
+                contentScrimColor = readerBackgroundColor.copy(alpha = 0.18f),
+                modifier = Modifier.width(120.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(vertical = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    timerOptionsMinutes.forEachIndexed { index, minutes ->
+                        val label = timerOptionLabels[index]
+                        val offset = if (timerActive) ((sleepTimerRemainingMs!! + 59_999) / 60_000).toInt() else -1
+                        val selected = timerActive && minutes == offset
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(42.dp)
+                                .padding(horizontal = 6.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .then(
+                                    if (selected) {
+                                        Modifier.background(AppColors.Accent.copy(alpha = 0.14f))
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                                .clickable(
+                                    indication = null,
+                                    interactionSource = remember { MutableInteractionSource() }
+                                ) {
+                                    hideMenus()
+                                    onSetSleepTimer(minutes)
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                color = if (selected) AppColors.Accent else readerContentColor,
+                                fontSize = 13.sp,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
+                            )
+                        }
+                    }
+                    if (timerActive) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(42.dp)
+                                .padding(horizontal = 6.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable(
+                                    indication = null,
+                                    interactionSource = remember { MutableInteractionSource() }
+                                ) {
+                                    hideMenus()
+                                    onCancelSleepTimer()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "取消定时",
+                                color = Color(0xFFE53935),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -235,21 +356,52 @@ fun TtsPlayerPanel(
                 }
 
                 Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable(
-                                indication = null,
-                                interactionSource = remember { MutableInteractionSource() }
-                            ) { showRateMenu = !showRateMenu }
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                        contentAlignment = Alignment.Center
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(20.dp)
                     ) {
                         Text(
                             text = formatSpeechRate(speechRate),
                             color = readerContentColor,
                             fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable(
+                                    indication = null,
+                                    interactionSource = remember { MutableInteractionSource() }
+                                ) {
+                                    if (showRateMenu) {
+                                        hideMenus()
+                                    } else {
+                                        activeTab = TtsCenterTab.SPEED
+                                        showRateMenu = true
+                                        showTimerMenu = false
+                                    }
+                                }
+                                .padding(horizontal = 8.dp, vertical = 6.dp)
+                        )
+
+                        Text(
+                            text = if (timerActive) formatSleepTimer(sleepTimerRemainingMs!!) else "定时",
+                            color = readerContentColor,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable(
+                                    indication = null,
+                                    interactionSource = remember { MutableInteractionSource() }
+                                ) {
+                                    if (showTimerMenu) {
+                                        hideMenus()
+                                    } else {
+                                        activeTab = TtsCenterTab.TIMER
+                                        showTimerMenu = true
+                                        showRateMenu = false
+                                    }
+                                }
+                                .padding(horizontal = 8.dp, vertical = 6.dp)
                         )
                     }
                 }
@@ -274,4 +426,11 @@ private fun formatSpeechRate(rate: Float): String {
         .trimEnd('0')
         .trimEnd('.')
     return "${formatted}x"
+}
+
+private fun formatSleepTimer(remainingMs: Long): String {
+    val totalSeconds = (remainingMs / 1000L).coerceAtLeast(1)
+    val minutes = (totalSeconds / 60).toInt()
+    val seconds = (totalSeconds % 60).toInt()
+    return "%02d:%02d".format(minutes, seconds)
 }

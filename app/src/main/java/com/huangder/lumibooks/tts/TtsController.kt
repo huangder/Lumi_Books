@@ -1,10 +1,12 @@
-package com.huangder.lumibooks.tts
+﻿package com.huangder.lumibooks.tts
 
 import com.huangder.lumibooks.data.local.DataStoreManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -61,6 +63,11 @@ class TtsController(
     private var pendingResume: ExternalTtsResumePosition? = null
     private var crossPageMerge: CrossPageMergeState? = null
     private var activeSegment: TtsTextSegment? = null
+
+    // Sleep timer
+    private val _sleepTimerRemainingMs = MutableStateFlow<Long?>(null)
+    val sleepTimerRemainingMs: StateFlow<Long?> = _sleepTimerRemainingMs.asStateFlow()
+    private var sleepTimerJob: Job? = null
 
     private data class CrossPageMergeState(
         val landingLocation: TtsPageLocation,
@@ -543,9 +550,40 @@ class TtsController(
         )
     }
 
+        fun setSleepTimer(minutes: Int) {
+        scope.launch {
+            val targetMs = minutes * 60_000L
+            _sleepTimerRemainingMs.value = targetMs
+            sleepTimerJob?.cancel()
+            sleepTimerJob = scope.launch {
+                val startTime = System.currentTimeMillis()
+                while (true) {
+                    delay(1000)
+                    val currentRemaining = _sleepTimerRemainingMs.value ?: break
+                    if (currentRemaining <= 0) break
+                    val elapsed = System.currentTimeMillis() - startTime
+                    val remaining = (targetMs - elapsed).coerceAtLeast(0)
+                    _sleepTimerRemainingMs.value = remaining
+                    if (remaining <= 0) {
+                        cancelSleepTimer()
+                        stop()
+                        break
+                    }
+                }
+            }
+        }
+    }
+
+    fun cancelSleepTimer() {
+        sleepTimerJob?.cancel()
+        sleepTimerJob = null
+        _sleepTimerRemainingMs.value = null
+    }
+
     private suspend fun stopInternal(clearExternalResume: Boolean = false) {
         val activeBookId = _activeBookId.value
         persistCurrentExternalProgress()
+        cancelSleepTimer()
         sessionGeneration++
         clearPageTurnReplay()
         pageLoadToken++
@@ -567,8 +605,12 @@ class TtsController(
     }
 
     fun shutdown() {
+        cancelSleepTimer()
         scope.cancel()
         systemTtsEngine.shutdown()
         externalTtsEngine.shutdown()
     }
 }
+
+
+
