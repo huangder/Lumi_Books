@@ -2086,28 +2086,34 @@ private fun ReaderTopBar(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.weight(1f)
             )
-            Row(
+            // 右侧按钮竖向排列，容器高度与单个按钮一致防止撑高 Row
+            Box(
                 modifier = Modifier
-                    .width(82.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
-                verticalAlignment = Alignment.CenterVertically
+                    .width(36.dp)
+                    .height(36.dp),
+                contentAlignment = Alignment.TopCenter
             ) {
-                ReaderTopBarButton(
-                    icon = Icons.Default.Headphones,
-                    contentDescription = stringResource(R.string.tts_listen),
-                    tint = if (isTtsActive) AppColors.Accent else contentColor,
-                    backgroundColor = controlBackground,
-                    contentScrimColor = glassContentScrimColor,
-                    onClick = onTtsClick
-                )
-                ReaderTopBarButton(
-                    icon = if (isBookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder,
-                    contentDescription = stringResource(R.string.reader_bookmark),
-                    tint = if (isBookmarked) AppColors.Accent else contentColor,
-                    backgroundColor = controlBackground,
-                    contentScrimColor = glassContentScrimColor,
-                    onClick = onBookmarkToggle
-                )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.Top)
+                ) {
+                    ReaderTopBarButton(
+                        icon = Icons.Default.Headphones,
+                        contentDescription = stringResource(R.string.tts_listen),
+                        tint = if (isTtsActive) AppColors.Accent else contentColor,
+                        backgroundColor = controlBackground,
+                        contentScrimColor = glassContentScrimColor,
+                        onClick = onTtsClick
+                    )
+                    ReaderTopBarButton(
+                        icon = if (isBookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder,
+                        contentDescription = stringResource(R.string.reader_bookmark),
+                        tint = if (isBookmarked) AppColors.Accent else contentColor,
+                        backgroundColor = controlBackground,
+                        contentScrimColor = glassContentScrimColor,
+                        onClick = onBookmarkToggle
+                    )
+                }
             }
         }
     }

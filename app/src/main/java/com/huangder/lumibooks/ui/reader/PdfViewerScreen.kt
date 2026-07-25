@@ -840,61 +840,68 @@ private fun PdfTopBar(
                     .padding(horizontal = 8.dp)
             )
 
-            // 阅读方向按钮：只随菜单出现，位于书签左侧。
-            LiquidGlassSurface(
-                shape = CircleShape,
-                fallbackColor = AppColors.BgGray.copy(alpha = 0.8f),
-                contentScrimColor = glassContentScrimColor,
+            // 右侧按钮：竖向排列，容器高度固定防止撑高 Row
+            Box(
                 modifier = Modifier
                     .size(36.dp),
-                onClick = onPageModeToggle,
-                contentAlignment = Alignment.Center
+                contentAlignment = Alignment.TopCenter
             ) {
-                val isHorizontal = pageMode == "horizontal"
-                Icon(
-                    if (isHorizontal) Icons.Default.ViewCarousel else Icons.Default.ViewAgenda,
-                    contentDescription = stringResource(
-                        if (isHorizontal) R.string.pdf_switch_to_vertical else R.string.pdf_switch_to_horizontal
-                    ),
-                    tint = AppColors.TextPrimary,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-            Spacer(Modifier.width(8.dp))
-            LiquidGlassSurface(
-                shape = CircleShape,
-                fallbackColor = AppColors.BgGray.copy(alpha = 0.8f),
-                contentScrimColor = glassContentScrimColor,
-                modifier = Modifier.size(36.dp),
-                onClick = onTtsToggle,
-                contentAlignment = Alignment.Center
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.Top),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Icon(
-                    Icons.Default.Headphones,
-                    contentDescription = stringResource(R.string.tts_listen),
-                    tint = if (isTtsActive) AppColors.Accent else AppColors.TextPrimary,
-                    modifier = Modifier.size(18.dp)
-                )
+                LiquidGlassSurface(
+                    shape = CircleShape,
+                    fallbackColor = AppColors.BgGray.copy(alpha = 0.8f),
+                    contentScrimColor = glassContentScrimColor,
+                    modifier = Modifier
+                        .size(36.dp),
+                    onClick = onPageModeToggle,
+                    contentAlignment = Alignment.Center
+                ) {
+                    val isHorizontal = pageMode == "horizontal"
+                    Icon(
+                        if (isHorizontal) Icons.Default.ViewCarousel else Icons.Default.ViewAgenda,
+                        contentDescription = stringResource(
+                            if (isHorizontal) R.string.pdf_switch_to_vertical else R.string.pdf_switch_to_horizontal
+                        ),
+                        tint = AppColors.TextPrimary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                LiquidGlassSurface(
+                    shape = CircleShape,
+                    fallbackColor = AppColors.BgGray.copy(alpha = 0.8f),
+                    contentScrimColor = glassContentScrimColor,
+                    modifier = Modifier.size(36.dp),
+                    onClick = onTtsToggle,
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Headphones,
+                        contentDescription = stringResource(R.string.tts_listen),
+                        tint = if (isTtsActive) AppColors.Accent else AppColors.TextPrimary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                LiquidGlassSurface(
+                    shape = CircleShape,
+                    fallbackColor = AppColors.BgGray.copy(alpha = 0.8f),
+                    contentScrimColor = glassContentScrimColor,
+                    modifier = Modifier
+                        .size(36.dp),
+                    onClick = onBookmarkToggle,
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        if (isBookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder,
+                        contentDescription = stringResource(R.string.pdf_bookmark),
+                        tint = if (isBookmarked) AppColors.Accent else AppColors.TextPrimary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
-            Spacer(Modifier.width(8.dp))
-
-            // 右侧：书签按钮（与 EPUB ReaderTopBar 完全一致）
-            LiquidGlassSurface(
-                shape = CircleShape,
-                fallbackColor = AppColors.BgGray.copy(alpha = 0.8f),
-                contentScrimColor = glassContentScrimColor,
-                modifier = Modifier
-                    .size(36.dp),
-                onClick = onBookmarkToggle,
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    if (isBookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder,
-                    contentDescription = stringResource(R.string.pdf_bookmark),
-                    tint = if (isBookmarked) AppColors.Accent else AppColors.TextPrimary,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
+            }  // Box
         }
     }
 }
