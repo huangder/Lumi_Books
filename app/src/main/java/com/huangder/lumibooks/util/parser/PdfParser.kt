@@ -104,6 +104,46 @@ class PdfParser(private val context: Context) : BookParser {
 
     override fun getChapterCount(): Int = pageCount
 
+    /**
+     * 轻量级封面提取：渲染第 0 页为 400px 宽缩略图，保存到 filesDir/covers/。
+     * 与 parse() 互相独立，不影响当前渲染器状态。
+     */
+    override fun extractCoverPath(filePath: String): String? {
+        val file = File(filePath)
+        if (!file.exists()) return null
+        var fd: android.os.ParcelFileDescriptor? = null
+        var renderer: PdfRenderer? = null
+        return try {
+            fd = android.os.ParcelFileDescriptor.open(file, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
+            renderer = PdfRenderer(fd)
+            if (renderer.pageCount == 0) return null
+
+            val page = renderer.openPage(0)
+            // 缩略图宽度固定 400px，高度等比缩放
+            val thumbW = 400
+            val thumbH = (page.height.toFloat() / page.width.toFloat() * thumbW).toInt().coerceAtLeast(1)
+            val bitmap = Bitmap.createBitmap(thumbW, thumbH, Bitmap.Config.ARGB_8888)
+            bitmap.eraseColor(android.graphics.Color.WHITE)
+            page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+            page.close()
+
+            val coversDir = File(context.filesDir, "covers")
+            coversDir.mkdirs()
+            val coverFile = File(coversDir, "${file.name.hashCode()}.jpg")
+            coverFile.outputStream().use { out ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
+            }
+            bitmap.recycle()
+            coverFile.absolutePath
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        } finally {
+            runCatching { renderer?.close() }
+            runCatching { fd?.close() }
+        }
+    }
+
     fun close() {
         htmlCache.clear()
         runCatching { pdfRenderer?.close() }
