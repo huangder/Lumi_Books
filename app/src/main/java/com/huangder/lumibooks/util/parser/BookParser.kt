@@ -65,6 +65,8 @@ interface BookParser {
     var firstLineIndentChars: Float
     /** 阅读区域内容宽度（像素），用于图片缩放。0 = 未设置，回退到 DisplayMetrics */
     var contentWidth: Int
+    /** 是否加载 EPUB 自带 CSS 样式（EPUB 格式有效，其他格式忽略） */
+    var useEpubCss: Boolean
 
     /**
      * 轻量级封面提取：只提取封面图片路径，不解析章节内容。

@@ -116,6 +116,8 @@ data class ReaderUiState(
     val useNewEngine: Boolean = true,
     /** 是否使用优化排版（per-book） */
     val optimizeLayout: Boolean = true,
+    /** 是否加载 EPUB 自带 CSS 样式（per-book） */
+    val useEpubCss: Boolean = false,
     /** 简繁转换模式："original" | "simplified" | "traditional" */
     val chineseMode: String = "original",
     /** 翻页效果："slide" | "scroll" | "fade" */
@@ -683,11 +685,29 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun saveOptimizeLayout(enabled: Boolean) {
-        _uiState.value = _uiState.value.copy(optimizeLayout = enabled)
+        // 开启"优化排版"时，自动关闭"使用书籍CSS"
+        val newUseEpubCss = if (enabled) false else _uiState.value.useEpubCss
+        _uiState.value = _uiState.value.copy(optimizeLayout = enabled, useEpubCss = newUseEpubCss)
+        parser?.useEpubCss = newUseEpubCss
         viewModelScope.launch {
             dataStoreManager.saveOptimizeLayout(bookId, enabled)
+            if (enabled) dataStoreManager.saveUseEpubCss(bookId, false)
             parser?.clearHtmlCache()
             preloadCache.clear()  // 清空 ViewModel 预加载缓存
+            loadChapterContent()
+        }
+    }
+
+    fun saveUseEpubCss(enabled: Boolean) {
+        // 开启"使用书籍CSS"时，自动关闭"优化排版"
+        val newOptimize = if (enabled) false else _uiState.value.optimizeLayout
+        _uiState.value = _uiState.value.copy(useEpubCss = enabled, optimizeLayout = newOptimize)
+        parser?.useEpubCss = enabled
+        viewModelScope.launch {
+            dataStoreManager.saveUseEpubCss(bookId, enabled)
+            if (enabled) dataStoreManager.saveOptimizeLayout(bookId, false)
+            parser?.clearHtmlCache()
+            preloadCache.clear()
             loadChapterContent()
         }
     }
@@ -849,6 +869,7 @@ class ReaderViewModel @Inject constructor(
 
                     // 读取设置
                     val optimize = dataStoreManager.optimizeLayout(bookId).first()
+                    val useEpubCss = dataStoreManager.useEpubCss(bookId).first()
                     val chineseMode = dataStoreManager.chineseMode().first()
                     val pageTransition = dataStoreManager.pageTransition().first()
                     val paragraphSpacing = dataStoreManager.paragraphSpacing().first()
@@ -858,6 +879,7 @@ class ReaderViewModel @Inject constructor(
                     // 应用段间距和首行缩进到 parser
                     parser!!.paragraphSpacingDp = paragraphSpacing
                     parser!!.firstLineIndentChars = firstLineIndent
+                    parser!!.useEpubCss = useEpubCss
 
                     val content = withContext(Dispatchers.IO) {
                         parser!!.parse(book.filePath)
@@ -888,6 +910,7 @@ class ReaderViewModel @Inject constructor(
                         pendingPageFraction = pageFraction,
                         useNewEngine = !isPdf,  // TXT/EPUB 用新 Canvas 引擎，PDF 保留 WebView
                         optimizeLayout = optimize,
+                        useEpubCss = useEpubCss,
                         chineseMode = chineseMode,
                         pageTransition = pageTransition,
                         paragraphSpacing = paragraphSpacing,

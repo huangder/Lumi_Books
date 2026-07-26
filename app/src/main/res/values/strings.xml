@@ -382,6 +382,8 @@
     <string name="delete_custom_background">删除自定义背景</string>
     <string name="optimize_layout">优化书籍排版</string>
     <string name="optimize_layout_hint">仅本书生效</string>
+    <string name="use_epub_css">使用书籍 CSS 样式</string>
+    <string name="use_epub_css_hint">加载书籍自带的排版样式，装帧精良的书效果更好</string>
     <string name="advanced_settings">高级设置</string>
     <string name="label_text_color">文字颜色</string>
     <string name="text_color_auto">自动</string>

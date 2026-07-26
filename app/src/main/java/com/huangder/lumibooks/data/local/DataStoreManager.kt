@@ -599,6 +599,17 @@ class DataStoreManager @Inject constructor(
         }
     }
 
+    /** 是否加载 EPUB 自带 CSS 样式（per-book，默认 false） */
+    fun useEpubCss(bookId: String): Flow<Boolean> {
+        val key = booleanPreferencesKey("use_epub_css_$bookId")
+        return context.dataStore.data.map { it[key] ?: false }
+    }
+
+    suspend fun saveUseEpubCss(bookId: String, enabled: Boolean) {
+        val key = booleanPreferencesKey("use_epub_css_$bookId")
+        context.dataStore.edit { it[key] = enabled }
+    }
+
     /** 简繁转换模式："original" | "simplified" | "traditional" */
     fun chineseMode(): Flow<String> {
         val key = stringPreferencesKey("chinese_mode")

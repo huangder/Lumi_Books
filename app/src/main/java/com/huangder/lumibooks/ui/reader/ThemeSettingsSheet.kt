@@ -140,6 +140,7 @@ fun ThemeSettingsSheet(
     customBackgrounds: List<ReaderBackgroundPreset> = emptyList(),
     currentBrightness: Float = -1f,
     currentOptimizeLayout: Boolean = true,
+    currentUseEpubCss: Boolean = false,
     currentChineseMode: String = "original",
     currentPageTransition: String = "slide",
     onFontSizeChange: (Float) -> Unit,
@@ -150,6 +151,7 @@ fun ThemeSettingsSheet(
     onDeleteBackground: (String) -> Unit = {},
     onBrightnessChange: (Float) -> Unit = {},
     onOptimizeLayoutChange: (Boolean) -> Unit = {},
+    onUseEpubCssChange: (Boolean) -> Unit = {},
     onChineseModeChange: (String) -> Unit = {},
     onPageTransitionChange: (String) -> Unit = {},
     onOpenAdvanced: () -> Unit,
@@ -472,6 +474,24 @@ fun ThemeSettingsSheet(
                 LiquidGlassSwitch(
                     checked = currentOptimizeLayout,
                     onCheckedChange = onOptimizeLayoutChange
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            // 使用书籍 CSS 样式开关
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.use_epub_css), fontSize = 14.sp, color = AppColors.TextPrimary)
+                    Spacer(Modifier.height(2.dp))
+                    Text(stringResource(R.string.use_epub_css_hint), fontSize = 12.sp, color = LightTextSecondary)
+                }
+                LiquidGlassSwitch(
+                    checked = currentUseEpubCss,
+                    onCheckedChange = onUseEpubCssChange
                 )
             }
 

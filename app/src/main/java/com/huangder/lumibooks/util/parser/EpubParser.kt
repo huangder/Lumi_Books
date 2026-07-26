@@ -31,6 +31,8 @@ class EpubParser(private val context: Context? = null) : BookParser {
 
     /** 阅读区域内容宽度（像素），用于图片缩放。0 表示未设置，回退到 DisplayMetrics 计算 */
     override var contentWidth: Int = 0
+    /** 是否加载 EPUB 自带 CSS 样式 */
+    override var useEpubCss: Boolean = false
     private var chapters: List<Chapter> = emptyList()
     private var bookTitle: String = ""
     private var bookAuthor: String = ""
@@ -47,6 +49,8 @@ class EpubParser(private val context: Context? = null) : BookParser {
     private val htmlCache = mutableMapOf<Int, String>()
     private val contentCache = mutableMapOf<Int, CharSequence>()
     private val anchorOffsets = mutableMapOf<Int, Map<String, Int>>()
+    // CSS 文件内容缓存（key = ZIP 内完整路径，避免重复读取同一文件）
+    private val cssFileCache = mutableMapOf<String, String>()
 
     override fun parse(filePath: String): BookContent {
         epubFilePath = filePath
@@ -552,7 +556,7 @@ class EpubParser(private val context: Context? = null) : BookParser {
             zipFile = ZipFile(File(epubFilePath))
             val zipEntry = findEntry(zipFile, path) ?: return ""
             val rawHtml = zipFile.getInputStream(zipEntry).bufferedReader().readText()
-            val processedHtml = processHtml(zipFile, rawHtml, optimizeLayout)
+            val processedHtml = processHtml(zipFile, rawHtml, optimizeLayout, chapterPath = path)
             htmlCache[chapterIndex] = processedHtml
             return processedHtml
         } catch (e: Exception) {
@@ -653,6 +657,7 @@ class EpubParser(private val context: Context? = null) : BookParser {
         htmlCache.clear()
         contentCache.clear()  // 段间距/首行缩进变更时也需要清空内容缓存
         anchorOffsets.clear()
+        cssFileCache.clear()
     }
 
     /**
@@ -783,15 +788,71 @@ class EpubParser(private val context: Context? = null) : BookParser {
     /**
      * 处理HTML：将图片转为Base64内嵌，并根据 optimizeLayout 决定是否包裹优化CSS。
      * @param optimizeLayout true=包裹自定义CSS覆盖EPUB样式，false=保留EPUB原始CSS
+     * @param chapterPath 章节在ZIP中的完整路径，用于解析相对CSS引用
      */
-    private fun processHtml(zipFile: ZipFile, html: String, optimizeLayout: Boolean = true): String {
+    private fun processHtml(zipFile: ZipFile, html: String, optimizeLayout: Boolean = true, chapterPath: String = ""): String {
         val result = embedImages(zipFile, html)
 
         return if (optimizeLayout) {
             wrapWithOptimizedLayout(result, paragraphSpacingDp, firstLineIndentChars)
         } else {
-            wrapWithOriginalLayout(result)
+            val epubCss = if (useEpubCss && chapterPath.isNotEmpty()) {
+                extractEpubCss(zipFile, html, chapterPath)
+            } else {
+                ""
+            }
+            wrapWithOriginalLayout(result, epubCss)
         }
+    }
+
+    /**
+     * 从章节HTML中提取 <link rel="stylesheet"> 引用的CSS文件，从ZIP读取并拼接为字符串。
+     * 使用 cssFileCache 避免重复读取同一文件。
+     */
+    private fun extractEpubCss(zipFile: ZipFile, html: String, chapterPath: String): String {
+        val chapterDir = chapterPath.substringBeforeLast("/", "")
+        val linkRegex = Regex(
+            """<link[^>]+rel\s*=\s*["']stylesheet["'][^>]*href\s*=\s*["']([^"']+)["'][^>]*>""",
+            setOf(RegexOption.IGNORE_CASE)
+        )
+        val hrefRegex = Regex(
+            """href\s*=\s*["']([^"']+)["']""",
+            RegexOption.IGNORE_CASE
+        )
+        // 同时支持 href 在 rel 之前的写法
+        val allLinkTags = Regex("""<link\b[^>]*>""", RegexOption.IGNORE_CASE)
+            .findAll(html)
+            .filter { it.value.contains("stylesheet", ignoreCase = true) }
+            .mapNotNull { hrefRegex.find(it.value)?.groupValues?.get(1) }
+            .toList()
+
+        if (allLinkTags.isEmpty()) return ""
+
+        val sb = StringBuilder()
+        for (href in allLinkTags) {
+            if (href.startsWith("data:") || href.startsWith("http://") || href.startsWith("https://")) continue
+            val rawPath = if (href.startsWith("/")) {
+                href.trimStart('/')
+            } else if (chapterDir.isEmpty()) {
+                href
+            } else {
+                "$chapterDir/$href"
+            }
+            val cssPath = normalizePath(rawPath)
+            // 命中缓存直接用，否则从 ZIP 读取并缓存
+            val cssContent = cssFileCache.getOrPut(cssPath) {
+                try {
+                    val entry = findEntry(zipFile, cssPath)
+                    entry?.let { zipFile.getInputStream(it).bufferedReader().readText() } ?: ""
+                } catch (_: Exception) { "" }
+            }
+            if (cssContent.isNotEmpty()) {
+                sb.append("/* $cssPath */\n")
+                sb.append(cssContent)
+                sb.append("\n")
+            }
+        }
+        return sb.toString()
     }
 
     /** 将 HTML 中的图片转为 Base64 data URI */
@@ -859,8 +920,16 @@ class EpubParser(private val context: Context? = null) : BookParser {
         """.trimMargin()
     }
 
-    /** 保留原始排版：只添加 viewport，保留EPUB自带CSS */
-    private fun wrapWithOriginalLayout(body: String): String {
+    /**
+     * 保留原始排版：只添加 viewport，可选注入EPUB自带CSS。
+     * @param epubCss 从EPUB ZIP中提取的CSS内容，为空时不注入
+     */
+    private fun wrapWithOriginalLayout(body: String, epubCss: String = ""): String {
+        val epubStyleBlock = if (epubCss.isNotEmpty()) {
+            "\n<style id=\"epub-original-css\">\n$epubCss\n</style>"
+        } else {
+            ""
+        }
         return """
             |<html>
             |<head>
@@ -869,7 +938,7 @@ class EpubParser(private val context: Context? = null) : BookParser {
             |  * { box-sizing: border-box; }
             |  body { overflow: hidden; visibility: hidden; }
             |  img { max-width: 100%; height: auto; }
-            |</style>
+            |</style>$epubStyleBlock
             |</head>
             |<body>$body</body>
             |</html>

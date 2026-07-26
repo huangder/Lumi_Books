@@ -1331,6 +1331,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 customBackgrounds = uiState.customReaderBackgrounds,
                 currentBrightness = uiState.brightness,
                 currentOptimizeLayout = uiState.optimizeLayout,
+                currentUseEpubCss = uiState.useEpubCss,
                 currentChineseMode = uiState.chineseMode,
                 currentPageTransition = uiState.pageTransition,
                 onFontSizeChange = { viewModel.saveFontSize(it) },
@@ -1341,6 +1342,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 onDeleteBackground = { viewModel.deleteCustomReaderBackground(it) },
                 onBrightnessChange = { viewModel.saveBrightness(it) },
                 onOptimizeLayoutChange = { viewModel.saveOptimizeLayout(it) },
+                onUseEpubCssChange = { viewModel.saveUseEpubCss(it) },
                 onChineseModeChange = { viewModel.saveChineseMode(it) },
                 onPageTransitionChange = { viewModel.savePageTransition(it) },
                 onOpenAdvanced = {
