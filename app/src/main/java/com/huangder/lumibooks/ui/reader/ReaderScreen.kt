@@ -2061,23 +2061,17 @@ private fun ReaderTopBar(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
-                .padding(horizontal = 28.dp, vertical = 20.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(start = 28.dp, top = 42.dp, end = 28.dp, bottom = 0.dp),
+            verticalAlignment = Alignment.Top
         ) {
-            Box(
-                modifier = Modifier
-                    .width(82.dp),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                ReaderTopBarButton(
-                    icon = Icons.Default.KeyboardArrowLeft,
-                    contentDescription = stringResource(R.string.reader_back),
-                    tint = contentColor,
-                    backgroundColor = controlBackground,
-                    contentScrimColor = glassContentScrimColor,
-                    onClick = onBack
-                )
-            }
+            ReaderTopBarButton(
+                icon = Icons.Default.KeyboardArrowLeft,
+                contentDescription = stringResource(R.string.reader_back),
+                tint = contentColor,
+                backgroundColor = controlBackground,
+                contentScrimColor = glassContentScrimColor,
+                onClick = onBack
+            )
             Text(
                 text = title,
                 fontSize = 12.sp,
@@ -2085,18 +2079,11 @@ private fun ReaderTopBar(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f).align(Alignment.CenterVertically)
             )
-            // 右侧按钮竖向排列，layout 上报单按钮高度防止撑高 Row
+            // 右侧按钮竖向排列
             Column(
-                modifier = Modifier
-                    .width(36.dp)
-                    .layout { measurable, constraints ->
-                        val placeable = measurable.measure(constraints)
-                        layout(placeable.width, 36.dp.roundToPx()) {
-                            placeable.place(0, 0)
-                        }
-                    },
+                modifier = Modifier.width(36.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.Top)
             ) {

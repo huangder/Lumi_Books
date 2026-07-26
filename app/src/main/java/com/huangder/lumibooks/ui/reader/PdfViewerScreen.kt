@@ -96,6 +96,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -773,7 +774,7 @@ private fun PdfTopBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(140.dp)
+            .height(180.dp)
             .then(
                 if (isLiquidGlass) {
                     Modifier
@@ -795,37 +796,39 @@ private fun PdfTopBar(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
-                .padding(horizontal = 28.dp, vertical = 28.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(start = 28.dp, top = 42.dp, end = 28.dp, bottom = 0.dp),
+            verticalAlignment = Alignment.Top
         ) {
-            // 左侧：返回按钮 + 页码
-            LiquidGlassSurface(
-                shape = CircleShape,
-                fallbackColor = AppColors.BgGray.copy(alpha = 0.8f),
-                contentScrimColor = glassContentScrimColor,
-                modifier = Modifier
-                    .size(36.dp),
-                onClick = onBack,
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.ArrowBack, stringResource(R.string.pdf_back), tint = AppColors.TextPrimary, modifier = Modifier.size(18.dp))
-            }
-            Spacer(Modifier.width(10.dp))
-            // 页码徽章：半透明黑底 + 圆角矩形
-            LiquidGlassSurface(
-                shape = RoundedCornerShape(16.dp),
-                fallbackColor = Color.Black.copy(alpha = 0.35f),
-                contentScrimColor = glassContentScrimColor,
-                modifier = Modifier
-                    .height(28.dp)
-            ) {
-                Text(
-                    text = "${currentPage + 1} / $pageCount",
-                    fontSize = 12.sp,
-                    color = if (isLiquidGlass) AppColors.TextPrimary else Color.White,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(horizontal = 12.dp)
-                )
+            // 左侧：返回按钮 + 页码（内部垂直居中，整体与右侧第一个按钮对齐）
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                LiquidGlassSurface(
+                    shape = CircleShape,
+                    fallbackColor = AppColors.BgGray.copy(alpha = 0.8f),
+                    contentScrimColor = glassContentScrimColor,
+                    modifier = Modifier
+                        .size(36.dp),
+                    onClick = onBack,
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.ArrowBack, stringResource(R.string.pdf_back), tint = AppColors.TextPrimary, modifier = Modifier.size(18.dp))
+                }
+                Spacer(Modifier.width(10.dp))
+                // 页码徽章：半透明黑底 + 圆角矩形
+                LiquidGlassSurface(
+                    shape = RoundedCornerShape(16.dp),
+                    fallbackColor = Color.Black.copy(alpha = 0.35f),
+                    contentScrimColor = glassContentScrimColor,
+                    modifier = Modifier
+                        .height(28.dp)
+                ) {
+                    Text(
+                        text = "${currentPage + 1} / $pageCount",
+                        fontSize = 12.sp,
+                        color = if (isLiquidGlass) AppColors.TextPrimary else Color.White,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
+                }
             }
 
             // 中间：书名
@@ -838,16 +841,13 @@ private fun PdfTopBar(
                 modifier = Modifier
                     .weight(1f)
                     .padding(horizontal = 8.dp)
+                    .align(Alignment.CenterVertically)
             )
 
-            // 右侧按钮：竖向排列，容器高度固定防止撑高 Row
-            Box(
-                modifier = Modifier
-                    .size(36.dp),
-                contentAlignment = Alignment.TopCenter
-            ) {
+            // 右侧按钮：竖向排列
             Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.Top),
+                modifier = Modifier.width(36.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.Top),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 LiquidGlassSurface(
@@ -901,7 +901,6 @@ private fun PdfTopBar(
                     )
                 }
             }
-            }  // Box
         }
     }
 }
