@@ -20,11 +20,11 @@ abstract class PageAnimationController(
         /** FastOutSlowInEasing 等效插值器 */
         val FAST_OUT_SLOW_IN: Interpolator = PathInterpolator(0.4f, 0.0f, 0.2f, 1.0f)
         /** 翻页动画时长 ms */
-        const val ANIM_DURATION = 300
+        const val ANIM_DURATION = 260
         /** 回弹动画时长 ms */
-        const val BOUNCE_DURATION = 350
+        const val BOUNCE_DURATION = 280
         /** 翻页触发阈值（占屏幕宽度的比例） */
-        const val FLIP_THRESHOLD = 0.12f
+        const val FLIP_THRESHOLD = 0.08f
         /** 阴影渐隐时长 ms */
         private const val SHADOW_FADE_DURATION = 200
         private const val TAG = "PageAnim"
@@ -258,6 +258,10 @@ abstract class PageAnimationController(
     // ── Animation control ──
 
     open fun abortAnim() {
+        // 🔥 快速翻页：如果打断的是一个进行中的翻页（非回弹），立即提交翻页
+        // direction 在此时还是有效的 NEXT/PREV，onAnimationComplete 可以读到
+        val committedDir = if (isFlipAnim && isRunning) direction else Direction.NONE
+
         if (!scroller.isFinished) {
             scroller.abortAnimation()
         }
@@ -266,9 +270,14 @@ abstract class PageAnimationController(
         isFlipAnim = false
         isShadowFading = false
         shadowFadeAlpha = 0f
-        direction = Direction.NONE
-        // 🔥 确保 UI 刷新到空闲状态
+        // 先保留 direction，让回调能读到，完成后再清
+        if (committedDir == Direction.NONE) direction = Direction.NONE
         readView.invalidate()
+
+        if (committedDir != Direction.NONE) {
+            onAnimationComplete?.invoke()  // → shiftForward / shiftBackward
+            direction = Direction.NONE
+        }
     }
 
     protected open fun startBounceBack() {

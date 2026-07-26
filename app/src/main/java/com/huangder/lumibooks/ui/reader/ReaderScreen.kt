@@ -343,14 +343,6 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         LocalConfiguration.current.screenWidthDp.dp.toPx().toInt()
     }
 
-    // 字号拖拽去抖：避免 PillSlider 拖拽时每秒触发 20-50 次重排
-    var debouncedFontSize by remember { mutableFloatStateOf(uiState.fontSize) }
-    LaunchedEffect(Unit) {
-        snapshotFlow { uiState.fontSize }
-            .debounce(200)
-            .collect { debouncedFontSize = it }
-    }
-
     // ReadView 引用
     val readViewRef = remember { mutableStateOf<ReadView?>(null) }
     val continuousScrollRequests = remember { MutableSharedFlow<Int>(extraBufferCapacity = 1) }
@@ -811,7 +803,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         menuReappearKey++
                     },
                     onChapterVisible = viewModel::onContinuousScrollPosition,
-                    onRestoreComplete = viewModel::clearPendingPageFraction
+                    onRestoreComplete = viewModel::clearPendingPageFraction,
+                    chineseMode = uiState.chineseMode
                 )
             } else if (uiState.useNewEngine) {
             AndroidView(
@@ -1007,7 +1000,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     }
                 },
                 update = { readView ->
-                    val fontSizePx = debouncedFontSize * density.density
+                    val fontSizePx = uiState.fontSize * density.density
                     val measuredWidth = readView.width.takeIf { it > 0 } ?: readerScreenWidthPx
                     val contentWidthPx = (
                         measuredWidth - (
@@ -1790,7 +1783,7 @@ private fun ReaderCornerContentValue(
             color = contentColor,
             fontSize = AppType.Caption,
             textAlign = if (alignEnd) TextAlign.End else TextAlign.Start,
-            maxLines = 1,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.fillMaxWidth()
         )
@@ -2291,7 +2284,7 @@ private fun ReaderMenuStatus(
             text = chapterTitle,
             color = contentColor.copy(alpha = 0.68f),
             fontSize = 11.sp,
-            maxLines = 1,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
         )
@@ -2446,7 +2439,8 @@ private fun ContinuousScrollReader(
     onSelectionChanging: () -> Unit,
     onSelection: (chapterIndex: Int, selection: ContinuousTextSelection) -> Unit,
     onChapterVisible: (chapterIndex: Int, chapterFraction: Float) -> Unit,
-    onRestoreComplete: () -> Unit
+    onRestoreComplete: () -> Unit,
+    chineseMode: String = "original"
 ) {
     if (chapterCount <= 0) return
 
@@ -2594,8 +2588,13 @@ private fun ContinuousScrollReader(
             )
         ) {
         items(chapterCount, key = { it }) { chapterIndex ->
-            val chapterText by produceState<CharSequence?>(initialValue = null, chapterIndex) {
-                value = withContext(Dispatchers.IO) { viewModel.getChapterText(chapterIndex) }
+            val chapterText by produceState<CharSequence?>(initialValue = null, chapterIndex, chineseMode) {
+                val rawText = withContext(Dispatchers.IO) { viewModel.getChapterText(chapterIndex) }
+                value = if (chineseMode != "original" && rawText != null) {
+                    com.huangder.lumibooks.util.ChineseConverter.convert(rawText.toString(), chineseMode)
+                } else {
+                    rawText
+                }
                 loadedChapters[chapterIndex] = true
                 android.util.Log.e(
                     "ContinuousProgressDebug",

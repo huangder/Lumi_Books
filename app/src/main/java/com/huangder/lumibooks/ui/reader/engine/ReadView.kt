@@ -166,12 +166,17 @@ class ReadView(context: Context) : FrameLayout(context) {
 
         animationController.onCanFlip = { dir ->
             if (isJumpSettling) false else when (dir) {
-                PageAnimationController.Direction.NEXT -> slotManager.getNextSlot().isLoaded
+                PageAnimationController.Direction.NEXT -> {
+                    val next = slotManager.getNextSlot()
+                    next.isLoaded || (next.chapterIndex >= 0 && next.pageIndex >= 0)
+                }
                 PageAnimationController.Direction.PREV -> {
-                    // 全书第一页时禁止往前翻
                     val cur = slotManager.getCurSlot()
                     val isBookFirstPage = cur.chapterIndex == 0 && cur.pageIndex == 0
-                    !isBookFirstPage && slotManager.getPrevSlot().isLoaded
+                    if (isBookFirstPage) false else {
+                        val prev = slotManager.getPrevSlot()
+                        prev.isLoaded || (prev.chapterIndex >= 0 && prev.pageIndex >= 0)
+                    }
                 }
                 else -> false
             }
@@ -749,7 +754,7 @@ class ReadView(context: Context) : FrameLayout(context) {
 
                 // 仅在 500ms 窗口内拦截水平滑动（超过 500ms 视为选择扩展，不拦截）
                 // dx > dy * 0.3f：允许更自然的斜向拖拽（拇指弧线有垂直分量）
-                if (dt < 500L && dx > 16f && dx > dy * 0.3f) {
+                if (dt < 500L && dx > 8f && dx > dy * 0.3f) {
                     Log.d(TAG, "Handle page swipe at dx=$dx dy=$dy dt=$dt")
                     rvIsHandlingPageGesture = true
                     clearCurrentSelection()

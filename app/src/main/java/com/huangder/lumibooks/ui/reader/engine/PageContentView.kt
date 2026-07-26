@@ -124,6 +124,22 @@ class PageContentView(context: Context) : FrameLayout(context) {
     }
 
     /**
+     * 渐变动画用：把背景清为透明，让 ReadView 的实心背景充当"静止底层"。
+     * 这样只有文字内容会随 alpha 淡入，背景不会动。
+     * 动画结束后由 [restoreBackgroundForFade] 或下一次 [setReaderBackground] 恢复。
+     */
+    internal fun stripBackgroundForFade() {
+        setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        backgroundImageView.alpha = 0f   // 图片背景也隐藏，由对面页的图片保持视觉连续
+    }
+
+    /** 渐变动画结束 / abort 时恢复背景色；图片背景由下一次 setReaderBackground 完整恢复。 */
+    internal fun restoreBackgroundForFade(bgColor: Int) {
+        setBackgroundColor(bgColor)
+        backgroundImageView.alpha = 1f
+    }
+
+    /**
      * 压制系统浮动工具栏：选词时使用自定义菜单而非系统菜单。
      * 必须在 onSelectionAction 回调设置之后调用，
      * 否则自定义菜单也会被压制。

@@ -34,11 +34,11 @@ import kotlin.math.sin
 class CurlPageAnim(readView: ReadView) : PageAnimationController(readView) {
 
     companion object {
-        private const val TAP_DURATION_MS = 460
-        private const val MIN_SETTLE_DURATION_MS = 180
-        private const val MAX_SETTLE_DURATION_MS = 460
-        private const val COMMIT_PROGRESS = 0.22f
-        private const val FLING_VELOCITY_DP_PER_SECOND = 900f
+        private const val TAP_DURATION_MS = 360
+        private const val MIN_SETTLE_DURATION_MS = 150
+        private const val MAX_SETTLE_DURATION_MS = 360
+        private const val COMMIT_PROGRESS = 0.14f
+        private const val FLING_VELOCITY_DP_PER_SECOND = 450f
         private const val GEOMETRY_EPSILON = 0.1f
     }
 
@@ -89,6 +89,10 @@ class CurlPageAnim(readView: ReadView) : PageAnimationController(readView) {
     private var maxLength = 0f
     private var isRightTopOrLeftBottom = false
 
+    // 🔥 curl 拖拽锚点：direction 首次确定时记录手指位置，
+    // 使 curl 初始偏移为 0，消除松开前纸张突变。
+    private var curlDragOriginX = 0f
+
     private val reflectionMatrix = Matrix()
     private val reflectionValues = floatArrayOf(
         1f, 0f, 0f,
@@ -133,6 +137,14 @@ class CurlPageAnim(readView: ReadView) : PageAnimationController(readView) {
     private var underBitmap: Bitmap? = null
     private var snapshotsReady = false
 
+    // 🔥 RadialGradient 缓存：避免每帧 new shader，减少 GC 压力。
+    // 索引 0 = 手指落点 shadow，索引 1 = bezierVertex1 shadow。
+    private val radialCx = floatArrayOf(Float.NaN, Float.NaN)
+    private val radialCy = floatArrayOf(Float.NaN, Float.NaN)
+    private val radialR  = floatArrayOf(0f, 0f)
+    private val radialColors = intArrayOf(0, 0)
+    private val radialShaders = arrayOfNulls<RadialGradient>(2)
+
     private var gestureStarted = false
     private var settleCompletesPage = false
     private var velocityTracker: VelocityTracker? = null
@@ -168,13 +180,18 @@ class CurlPageAnim(readView: ReadView) : PageAnimationController(readView) {
                     configureCorner(startY)
                     snapshotsReady = capturePages(newDirection)
                     isDragging = snapshotsReady
+                    // 🔥 记录 curl 起点锚点：以此为 0 offset 计算 touchX，
+                    // 避免手势识别阈值（16px）造成纸张初始突变。
+                    curlDragOriginX = event.x
                 }
 
                 if (snapshotsReady && direction != Direction.NONE) {
                     val width = readView.width.toFloat()
+                    // curlDx 从 curlDragOriginX 累积，保证 curl 从边缘平滑起步
+                    val curlDx = event.x - curlDragOriginX
                     touchX = when (direction) {
-                        Direction.NEXT -> width + 2f * min(dx, 0f)
-                        Direction.PREV -> -width + 2f * max(dx, 0f)
+                        Direction.NEXT -> width + 2f * min(curlDx, 0f)
+                        Direction.PREV -> -width + 2f * max(curlDx, 0f)
                         Direction.NONE -> event.x
                     }.coerceIn(-width, width - 1f)
                     isDragging = true
@@ -702,34 +719,40 @@ class CurlPageAnim(readView: ReadView) : PageAnimationController(readView) {
 
         canvas.save()
         canvas.clipPath(path0)
-        drawRadialShadow(canvas, renderTouchX, renderTouchY, radius, 0x16000000)
-        drawRadialShadow(
-            canvas,
-            bezierVertex1.x,
-            bezierVertex1.y,
-            radius * 0.74f,
-            0x10000000
-        )
+        // 🔥 cacheIdx 0/1 — 避免每帧重建 RadialGradient
+        drawRadialShadow(canvas, 0, renderTouchX, renderTouchY, radius, 0x16000000)
+        drawRadialShadow(canvas, 1, bezierVertex1.x, bezierVertex1.y, radius * 0.74f, 0x10000000)
         canvas.restore()
         ambientShadowPaint.shader = null
     }
 
     private fun drawRadialShadow(
         canvas: Canvas,
+        cacheIdx: Int,
         centerX: Float,
         centerY: Float,
         radius: Float,
         centerColor: Int
     ) {
         if (radius <= 1f || !centerX.isFinite() || !centerY.isFinite()) return
-        ambientShadowPaint.shader = RadialGradient(
-            centerX,
-            centerY,
-            radius,
-            intArrayOf(centerColor, 0x06000000, 0x00000000),
-            floatArrayOf(0f, 0.40f, 1f),
-            Shader.TileMode.CLAMP
-        )
+        // 🔥 位移或半径变化超过 1.5px 才重建 shader，其余帧复用缓存对象
+        if (abs(centerX - radialCx[cacheIdx]) > 1.5f ||
+            abs(centerY - radialCy[cacheIdx]) > 1.5f ||
+            abs(radius   - radialR[cacheIdx])  > 1.5f ||
+            centerColor != radialColors[cacheIdx]
+        ) {
+            radialCx[cacheIdx]     = centerX
+            radialCy[cacheIdx]     = centerY
+            radialR[cacheIdx]      = radius
+            radialColors[cacheIdx] = centerColor
+            radialShaders[cacheIdx] = RadialGradient(
+                centerX, centerY, radius,
+                intArrayOf(centerColor, 0x06000000, 0x00000000),
+                floatArrayOf(0f, 0.40f, 1f),
+                Shader.TileMode.CLAMP
+            )
+        }
+        ambientShadowPaint.shader = radialShaders[cacheIdx]
         canvas.drawCircle(centerX, centerY, radius, ambientShadowPaint)
     }
 
@@ -751,10 +774,9 @@ class CurlPageAnim(readView: ReadView) : PageAnimationController(readView) {
             bezierStart2.y
         )
 
-        drawEdgeStroke(canvas, 30f * density, 0x01000000)
-        drawEdgeStroke(canvas, 22f * density, 0x02000000)
-        drawEdgeStroke(canvas, 14f * density, 0x03000000)
-        drawEdgeStroke(canvas, 7f * density, 0x05000000)
+        // 🔥 3 passes 代替 5 passes —— 视觉接近，draw call 减少 40%
+        drawEdgeStroke(canvas, 26f * density, 0x02000000)
+        drawEdgeStroke(canvas, 12f * density, 0x04000000)
         drawEdgeStroke(canvas, max(1.5f, density * 1.5f), 0x09000000)
     }
 

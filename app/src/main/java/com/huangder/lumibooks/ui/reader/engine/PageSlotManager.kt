@@ -234,9 +234,27 @@ class PageSlotManager(
     fun shiftForward() {
         val nextSlot = slots[SLOT_NEXT]
         if (!nextSlot.isLoaded) {
-            Log.w(TAG, "shiftForward blocked: NEXT slot not loaded")
+            // 🔥 快速翻页：NEXT 还在加载中也推进传送带，不丢页
+            Log.w(TAG, "shiftForward: NEXT not loaded, advancing anyway")
             val (nextCh, nextPg) = resolveNextPage()
-            if (nextCh >= 0 && nextPg >= 0) loadSlot(SLOT_NEXT, nextCh, nextPg)
+            if (nextCh < 0 || nextPg < 0) {
+                notifyPageChanged()
+                return
+            }
+            recycleSlot(SLOT_PREV)
+            moveSlot(SLOT_CUR, SLOT_PREV)
+            // 手动设置 CUR（用推算的下一页位置）
+            val curSlot = slots[SLOT_CUR]
+            curSlot.chapterIndex = nextCh
+            curSlot.pageIndex = nextPg
+            curSlot.globalPageIndex = layoutEngine.localToGlobal(nextCh, nextPg)
+            curSlot.isLoaded = false
+            curSlot.contentView.clear()
+            currentChapterIndex = nextCh
+            currentGlobalPage = curSlot.globalPageIndex
+            loadSlot(SLOT_CUR, nextCh, nextPg)
+            val (nnCh, nnPg) = resolveNextPage()
+            if (nnCh >= 0 && nnPg >= 0) loadSlot(SLOT_NEXT, nnCh, nnPg)
             notifyPageChanged()
             return
         }
@@ -261,9 +279,27 @@ class PageSlotManager(
     fun shiftBackward() {
         val prevSlot = slots[SLOT_PREV]
         if (!prevSlot.isLoaded) {
-            Log.w(TAG, "shiftBackward blocked: PREV slot not loaded")
+            // 🔥 快速翻页：PREV 还在加载中也推进传送带，不丢页
+            Log.w(TAG, "shiftBackward: PREV not loaded, advancing anyway")
             val (prevCh, prevPg) = resolvePrevPage()
-            if (prevCh >= 0 && prevPg >= 0) loadSlot(SLOT_PREV, prevCh, prevPg)
+            if (prevCh < 0 || prevPg < 0) {
+                notifyPageChanged()
+                return
+            }
+            recycleSlot(SLOT_NEXT)
+            moveSlot(SLOT_CUR, SLOT_NEXT)
+            // 手动设置 CUR（用推算的前一页位置）
+            val curSlot = slots[SLOT_CUR]
+            curSlot.chapterIndex = prevCh
+            curSlot.pageIndex = prevPg
+            curSlot.globalPageIndex = layoutEngine.localToGlobal(prevCh, prevPg)
+            curSlot.isLoaded = false
+            curSlot.contentView.clear()
+            currentChapterIndex = prevCh
+            currentGlobalPage = curSlot.globalPageIndex
+            loadSlot(SLOT_CUR, prevCh, prevPg)
+            val (ppCh, ppPg) = resolvePrevPage()
+            if (ppCh >= 0 && ppPg >= 0) loadSlot(SLOT_PREV, ppCh, ppPg)
             notifyPageChanged()
             return
         }

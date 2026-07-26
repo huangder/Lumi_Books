@@ -5,86 +5,78 @@ import android.graphics.Canvas
 /**
  * 渐变切换翻页动画。
  *
- * 滑动时不响应手势（页面不跟随手指移动），
- * 松手后通过 alpha 淡入淡出切换到下一页。
- *
- * 点击翻页仍然正常工作（左/右侧点击触发渐变动画）。
+ * 顺序渐变：当前页文字先淡出（progress 0→0.5），下一页文字再淡入（progress 0.5→1）。
+ * 两个 PageContentView 背景在动画期间均清为透明，ReadView 实心背景全程静止不动。
  */
 class FadePageAnim(readView: ReadView) : PageAnimationController(readView) {
 
-    /** 动画进度 0f..1f（0=当前页完全显示，1=下一页完全显示） */
+    /** 动画进度 0f..1f */
     private var fadeProgress: Float = 0f
+
+    companion object {
+        // 🔥 渐变专属时长：比翻页动画慢，避免闪烁感
+        private const val FADE_DURATION_MS = 400
+    }
+
+    /** 动画期间被清背景的视图，abort/complete 时恢复 */
+    private var fadingOutView: PageContentView? = null
+    private var fadingInView: PageContentView? = null
+
+    // ── 绘制 ──
 
     override fun onDraw(canvas: Canvas) {
         val vw = readView.width.toFloat()
-        val vh = readView.height.toFloat()
-        if (vw <= 0 || vh <= 0) return
+        if (vw <= 0) return
 
         when {
-            // 动画进行中：当前页淡出，目标页淡入
-            isRunning && direction == Direction.NEXT -> {
-                readView.curPageView.alpha = 1f - fadeProgress
-                readView.nextPageView.alpha = fadeProgress
-                readView.prevPageView.alpha = 0f
-                // 位置固定
-                readView.curPageView.translationX = 0f
-                readView.curPageView.translationY = 0f
-                readView.nextPageView.translationX = 0f
-                readView.nextPageView.translationY = 0f
-                readView.prevPageView.translationX = -vw
-                readView.prevPageView.translationY = 0f
-                // z-order
-                readView.nextPageView.translationZ = 2f
-                readView.curPageView.translationZ = 1f
-                readView.prevPageView.translationZ = 0f
-            }
-            isRunning && direction == Direction.PREV -> {
-                readView.curPageView.alpha = 1f - fadeProgress
-                readView.prevPageView.alpha = fadeProgress
-                readView.nextPageView.alpha = 0f
-                readView.curPageView.translationX = 0f
-                readView.curPageView.translationY = 0f
-                readView.prevPageView.translationX = 0f
-                readView.prevPageView.translationY = 0f
-                readView.nextPageView.translationX = vw
-                readView.nextPageView.translationY = 0f
-                readView.prevPageView.translationZ = 2f
-                readView.curPageView.translationZ = 1f
-                readView.nextPageView.translationZ = 0f
+            isRunning && direction != Direction.NONE -> {
+                val outgoing = readView.curPageView
+                val incoming = if (direction == Direction.NEXT) readView.nextPageView
+                               else readView.prevPageView
+                val hidden   = if (direction == Direction.NEXT) readView.prevPageView
+                               else readView.nextPageView
+
+                // 🔥 顺序渐变：旧页先淡出（0→0.55），新页后淡入（0.45→1.0）
+                // 10% 交叠区让过渡更柔和，避免中间出现硬切感
+                outgoing.alpha = (1f - fadeProgress / 0.55f).coerceIn(0f, 1f)
+                incoming.alpha = ((fadeProgress - 0.45f) / 0.55f).coerceIn(0f, 1f)
+                hidden.alpha   = 0f
+
+                outgoing.translationX = 0f; outgoing.translationY = 0f
+                incoming.translationX = 0f; incoming.translationY = 0f
+                hidden.translationX   = if (direction == Direction.NEXT) -vw else vw
+                hidden.translationY   = 0f
+
+                // z-order：新页始终在旧页之上（旧页淡出后新页淡入时不被遮挡）
+                incoming.translationZ = 2f
+                outgoing.translationZ = 1f
+                hidden.translationZ   = 0f
             }
             else -> {
-                // 空闲状态：当前页完全显示，其他页隐藏
-                readView.curPageView.alpha = 1f
+                // 空闲：只显示当前页
+                readView.curPageView.alpha  = 1f
                 readView.prevPageView.alpha = 0f
                 readView.nextPageView.alpha = 0f
-                readView.curPageView.translationX = 0f
-                readView.curPageView.translationY = 0f
-                readView.prevPageView.translationX = -vw
-                readView.prevPageView.translationY = 0f
-                readView.nextPageView.translationX = vw
-                readView.nextPageView.translationY = 0f
-                readView.curPageView.translationZ = 2f
+                readView.curPageView.translationX  = 0f;  readView.curPageView.translationY  = 0f
+                readView.prevPageView.translationX = -vw; readView.prevPageView.translationY = 0f
+                readView.nextPageView.translationX = vw;  readView.nextPageView.translationY = 0f
+                readView.curPageView.translationZ  = 2f
                 readView.prevPageView.translationZ = 0f
                 readView.nextPageView.translationZ = 0f
             }
         }
     }
 
-    fun drawOverlay(canvas: Canvas) {
-        // 渐变模式不需要阴影
-    }
+    fun drawOverlay(@Suppress("UNUSED_PARAMETER") canvas: Canvas) = Unit
 
-    // ── 触摸处理覆写 ──
-    // 渐变模式下，滑动不响应，只在松手时触发动画
+    // ── 触摸 ──
 
     override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
         when (event.action) {
             android.view.MotionEvent.ACTION_DOWN -> {
                 abortAnim()
-                startX = event.x
-                startY = event.y
-                touchX = startX
-                touchY = startY
+                startX = event.x; startY = event.y
+                touchX = startX;  touchY = startY
                 hasMoved = false
                 downTime = System.currentTimeMillis()
                 direction = Direction.NONE
@@ -92,47 +84,35 @@ class FadePageAnim(readView: ReadView) : PageAnimationController(readView) {
                 return true
             }
             android.view.MotionEvent.ACTION_MOVE -> {
-                // 渐变模式：滑动时不响应，只检测是否移动过
-                if (Math.abs(event.x - startX) > 12f || Math.abs(event.y - startY) > 12f) {
-                    hasMoved = true
-                }
+                if (Math.abs(event.x - startX) > 12f || Math.abs(event.y - startY) > 12f) hasMoved = true
                 return true
             }
             android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
                 if (!isDragging) return false
                 isDragging = false
-
                 val dx = event.x - startX
                 val dt = System.currentTimeMillis() - downTime
 
                 if (!hasMoved && dt < 300L) {
-                    // 点击
-                    val viewWidth = readView.width.toFloat()
-                    val relX = event.x / viewWidth
+                    val relX = event.x / readView.width.toFloat()
                     when {
                         relX < 0.3f -> onTapLeft?.invoke()
                         relX > 0.7f -> onTapRight?.invoke()
-                        else -> onTapCenter?.invoke()
+                        else        -> onTapCenter?.invoke()
                     }
                     return true
                 }
-
                 if (hasMoved) {
-                    // 滑动手势：根据方向决定翻页
                     direction = when {
-                        dx > 20f -> Direction.PREV
+                        dx > 20f  -> Direction.PREV
                         dx < -20f -> Direction.NEXT
-                        else -> Direction.NONE
+                        else      -> Direction.NONE
                     }
-
-                    if (direction != Direction.NONE) {
-                        // 检查目标槽位是否已加载，防止章节末页跳过边界
-                        if (onCanFlip?.invoke(direction) == true) {
-                            isFlipAnim = true
-                            startAnim(fromDrag = false)
-                        } else {
-                            direction = Direction.NONE
-                        }
+                    if (direction != Direction.NONE && onCanFlip?.invoke(direction) == true) {
+                        isFlipAnim = true
+                        startAnim(fromDrag = false)
+                    } else {
+                        direction = Direction.NONE
                     }
                 }
                 return true
@@ -141,40 +121,60 @@ class FadePageAnim(readView: ReadView) : PageAnimationController(readView) {
         return false
     }
 
+    // ── 动画控制 ──
+
     override fun startAnim(fromDrag: Boolean) {
         if (direction == Direction.NONE) return
         isRunning = true
         fadeProgress = 0f
-        // 使用 Scroller 驱动 fadeProgress 从 0 到 1
-        scroller.startScroll(0, 0, 1000, 0, ANIM_DURATION)
+
+        // 🔥 清除两页背景 → ReadView 底色静止不动，只有文字参与动画
+        val incoming = if (direction == Direction.NEXT) readView.nextPageView else readView.prevPageView
+        readView.curPageView.stripBackgroundForFade()
+        incoming.stripBackgroundForFade()
+        fadingOutView = readView.curPageView
+        fadingInView  = incoming
+
+        scroller.startScroll(0, 0, 1000, 0, FADE_DURATION_MS)
         readView.postInvalidateOnAnimation()
     }
 
     fun startFromTap(dir: Direction) {
-        direction = dir
+        direction  = dir
         isFlipAnim = true
         startAnim(fromDrag = false)
     }
 
     override fun computeScroll(): Boolean {
         if (scroller.computeScrollOffset()) {
-            // 将 Scroller 的 X 值（0→1000）映射为 fadeProgress（0→1）
             fadeProgress = scroller.currX / 1000f
             readView.invalidate()
             return true
         }
         if (isRunning) {
             isRunning = false
-            val wasFlip = isFlipAnim
             if (isFlipAnim) {
-                isFlipAnim = false
-                // 确保最终状态
-                fadeProgress = 1f
-                onAnimationComplete?.invoke()
+                isFlipAnim    = false
+                fadeProgress  = 1f
+                restoreBackgrounds()          // 先恢复背景，再触发槽位切换
+                onAnimationComplete?.invoke() // 槽位切换后 configureCurrentPageView 完整重设背景
             }
             direction = Direction.NONE
             readView.invalidate()
         }
         return false
+    }
+
+    override fun abortAnim() {
+        restoreBackgrounds()
+        super.abortAnim()
+    }
+
+    private fun restoreBackgrounds() {
+        val bg = readView.bgColor
+        fadingOutView?.restoreBackgroundForFade(bg)
+        fadingInView?.restoreBackgroundForFade(bg)
+        fadingOutView = null
+        fadingInView  = null
     }
 }

@@ -274,6 +274,7 @@ fun ThemeSettingsSheet(
                 onValueChange = onFontSizeChange,
                 valueRange = 12f..28f,
                 step = 1f,
+                onDragValueChange = onFontSizeChange,
                 modifier = Modifier.padding(horizontal = 24.dp)
             )
 

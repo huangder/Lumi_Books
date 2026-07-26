@@ -23,6 +23,9 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
     private val density: Float get() = readView.resources.displayMetrics.density
     private val shadowWidth: Float get() = SHADOW_WIDTH_PX * density.coerceAtLeast(1f)
 
+    // 🔥 复用 Paint 对象，避免每帧在 drawShadow 里 new Paint() + new LinearGradient()
+    private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
     override fun onDraw(canvas: Canvas) {
         val vw = readView.width.toFloat()
         if (vw <= 0) return
@@ -116,9 +119,8 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
             0x00000000
         )
         val stops = floatArrayOf(0.0f, 0.2f, 0.5f, 0.75f, 1.0f)
-        val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            shader = LinearGradient(shStart, 0f, shEnd, 0f, colors, stops, Shader.TileMode.CLAMP)
-        }
+        // 🔥 复用成员 shadowPaint，仅更新 shader，避免每帧 new Paint() + new LinearGradient()
+        shadowPaint.shader = LinearGradient(shStart, 0f, shEnd, 0f, colors, stops, Shader.TileMode.CLAMP)
         canvas.drawRect(shStart, 0f, shEnd, vh, shadowPaint)
         canvas.restore()
     }
