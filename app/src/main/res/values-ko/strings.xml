@@ -299,6 +299,9 @@
     <string name="reader_notes">메모</string>
     <string name="reader_search">검색</string>
     <string name="reader_theme">테마</string>
+    <string name="reader_edit">편집</string>
+    <string name="txt_editor_discard_title">변경 사항을 버리겠습니까?</string>
+    <string name="txt_editor_discard_message">저장되지 않은 변경 사항이 있습니다. 나가시겠습니까?</string>
     <string name="reader_toc">목차</string>
     <string name="reader_close">닫기</string>
     <string name="reader_chapter_fallback">제%d장</string>

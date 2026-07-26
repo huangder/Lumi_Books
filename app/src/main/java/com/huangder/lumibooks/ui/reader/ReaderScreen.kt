@@ -76,6 +76,7 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.CircularProgressIndicator
@@ -137,6 +138,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableSharedFlow
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.activity.compose.rememberLauncherForActivityResult
+import android.app.Activity
+import com.huangder.lumibooks.ui.navigation.Screen
 import androidx.core.graphics.ColorUtils
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.text.font.FontWeight
@@ -566,6 +570,16 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         onNavigateBack()
     }
     BackHandler(enabled = !isAnySheetOpen) { exitReader() }
+
+    // TxtEditor Activity 返回后刷新内容
+    val txtEditorLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            viewModel.reloadContent()
+        }
+    }
+
     val shouldHandleVolumePageTurn = uiState.volumeKeyPageTurnEnabled &&
         !uiState.isMenuVisible &&
         !isAnySheetOpen &&
@@ -1086,6 +1100,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     (it.characterOffset == currentBookmarkOffset ||
                         (it.characterOffset == null && it.position.toInt() == uiState.currentPageIndex))
                 }
+                val isTxtBook = uiState.book?.format?.name == "TXT"
                 ReaderTopBar(
                     title = bookTitle,
                     onBack = exitReader,
@@ -1117,6 +1132,17 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                 title = readViewRef.value?.getCurrentPageBookmarkTitle()
                             )
                         }
+                    },
+                    isTxtBook = isTxtBook,
+                    onEditClick = {
+                        viewModel.hideMenu()
+                        val charOffset = readViewRef.value?.getCurrentPageStartCharacterOffset() ?: 0
+                        val intent = Intent(context, TxtEditorActivity::class.java).apply {
+                            putExtra(TxtEditorActivity.EXTRA_BOOK_ID, bookId)
+                            putExtra(TxtEditorActivity.EXTRA_CHAPTER_INDEX, uiState.currentChapterIndex)
+                            putExtra(TxtEditorActivity.EXTRA_CHAR_OFFSET, charOffset)
+                        }
+                        txtEditorLauncher.launch(intent)
                     }
                 )
             }
@@ -2027,7 +2053,9 @@ private fun ReaderTopBar(
     isTtsActive: Boolean = false,
     onTtsClick: () -> Unit = {},
     isBookmarked: Boolean = false,
-    onBookmarkToggle: () -> Unit = {}
+    onBookmarkToggle: () -> Unit = {},
+    isTxtBook: Boolean = false,
+    onEditClick: () -> Unit = {}
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val controlBackground = if (contentColor == Color.White) {
@@ -2038,7 +2066,7 @@ private fun ReaderTopBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(140.dp)
+            .height(if (isTxtBook) 200.dp else 140.dp)
     ) {
         if (!isLiquidGlass) {
             Box(
@@ -2079,7 +2107,7 @@ private fun ReaderTopBar(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.weight(1f).align(Alignment.CenterVertically)
+                modifier = Modifier.weight(1f).align(Alignment.Top).padding(top = 10.dp)
             )
             // 右侧按钮竖向排列
             Column(
@@ -2103,6 +2131,16 @@ private fun ReaderTopBar(
                         contentScrimColor = glassContentScrimColor,
                         onClick = onBookmarkToggle
                     )
+                    if (isTxtBook) {
+                        ReaderTopBarButton(
+                            icon = Icons.Default.Edit,
+                            contentDescription = stringResource(R.string.reader_edit),
+                            tint = contentColor,
+                            backgroundColor = controlBackground,
+                            contentScrimColor = glassContentScrimColor,
+                            onClick = onEditClick
+                        )
+                    }
             }
         }
     }

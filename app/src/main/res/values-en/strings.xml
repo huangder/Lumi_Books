@@ -299,6 +299,9 @@
     <string name="reader_notes">Notes</string>
     <string name="reader_search">Search</string>
     <string name="reader_theme">Theme</string>
+    <string name="reader_edit">Edit</string>
+    <string name="txt_editor_discard_title">Discard Changes?</string>
+    <string name="txt_editor_discard_message">You have unsaved changes. Leave anyway?</string>
     <string name="reader_toc">Contents</string>
     <string name="reader_close">Close</string>
     <string name="reader_chapter_fallback">Ch.%d</string>

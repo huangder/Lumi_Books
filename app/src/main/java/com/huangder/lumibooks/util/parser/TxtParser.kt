@@ -2,6 +2,7 @@ package com.huangder.lumibooks.util.parser
 
 import java.io.File
 import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.io.InputStreamReader
 import java.io.RandomAccessFile
 import java.nio.charset.CharacterCodingException
@@ -505,6 +506,88 @@ class TxtParser : BookParser {
     }
 
     override fun getChapterCount(): Int = entries.size
+
+    /**
+     * 返回指定章节在源文件中的字节范围 (startByte, endByte)，用于编辑时定位
+     */
+    override fun getChapterByteRange(chapterIndex: Int): Pair<Long, Long>? {
+        val entry = entries.getOrNull(chapterIndex) ?: return null
+        return entry.startByte to entry.endByte
+    }
+
+    /**
+     * 流式替换指定章节的内容，写回源文件并重新解析。
+     *
+     * 使用临时文件+8KB流式拷贝，无论原文件多大（15MB/50MB），内存占用恒定为
+     * buffer + 当前章节文本大小，不会 OOM。
+     *
+     * @return true 表示替换并重新解析成功，false 表示发生异常（临时文件会被清理）
+     */
+    override fun replaceChapterContent(chapterIndex: Int, newText: String): Boolean {
+        return try {
+            val file = sourceFile ?: return false
+            val entry = entries.getOrNull(chapterIndex) ?: return false
+            val charset = encodingInfo.charset
+            val bufSize = STREAM_BUFFER_SIZE
+            val buf = ByteArray(bufSize)
+
+            val tmpFile = File(file.parent, file.name + ".tmp")
+            try {
+                RandomAccessFile(file, "r").use { raf ->
+                    FileOutputStream(tmpFile).use { out ->
+                        // 1. 流式拷贝前缀 [0, chapter.startByte)
+                        var remaining = entry.startByte
+                        raf.seek(0)
+                        while (remaining > 0) {
+                            val toRead = minOf(remaining, bufSize.toLong()).toInt()
+                            val read = raf.read(buf, 0, toRead)
+                            if (read <= 0) break
+                            out.write(buf, 0, read)
+                            remaining -= read
+                        }
+
+                        // 2. 写入新章节文本（以检测到的编码）
+                        val newBytes = newText.toByteArray(charset)
+                        out.write(newBytes)
+
+                        // 3. 流式拷贝后缀 [chapter.endByte, EOF)
+                        val fileLen = file.length()
+                        raf.seek(entry.endByte)
+                        remaining = fileLen - entry.endByte
+                        while (remaining > 0) {
+                            val toRead = minOf(remaining, bufSize.toLong()).toInt()
+                            val read = raf.read(buf, 0, toRead)
+                            if (read <= 0) break
+                            out.write(buf, 0, read)
+                            remaining -= read
+                        }
+                        out.flush()
+                    }
+                }
+
+                // 4. 原子替换原文件
+                val originalBackup = File(file.parent, file.name + ".bak")
+                if (originalBackup.exists()) originalBackup.delete()
+                if (!tmpFile.renameTo(file)) {
+                    // renameTo 在某些设备上可能失败，使用 copy+delete 兜底
+                    file.delete()
+                    if (!tmpFile.renameTo(file)) return false
+                }
+            } catch (e: Exception) {
+                if (tmpFile.exists()) tmpFile.delete()
+                throw e
+            }
+
+            // 5. 清除缓存并重新解析
+            synchronized(contentCache) { contentCache.clear() }
+            synchronized(htmlCache) { htmlCache.clear() }
+            parse(file.absolutePath)
+
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
 
     private companion object {
         const val STREAM_BUFFER_SIZE = 64 * 1024

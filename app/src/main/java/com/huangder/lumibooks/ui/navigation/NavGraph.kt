@@ -57,7 +57,6 @@ import com.huangder.lumibooks.ui.animation.PageEntranceTracker
 import com.huangder.lumibooks.ui.animation.PAGE_ENTRANCE_PLAYBACK_MILLIS
 import com.huangder.lumibooks.ui.reader.PdfViewerScreen
 import com.huangder.lumibooks.ui.reader.ReaderScreen
-import com.huangder.lumibooks.ui.reader.PdfViewerScreen
 import com.huangder.lumibooks.ui.reader.ReaderViewModel
 import com.huangder.lumibooks.ui.statistics.StatisticsScreen
 import com.huangder.lumibooks.domain.model.BookFormat
@@ -115,7 +114,12 @@ private fun ReaderRouter(
                 )
                 LaunchedEffect(Unit) { onLoadingComplete() }
             } else {
-                ReaderScreen(bookId = bookId, onNavigateBack = onNavigateBack, onLoadingComplete = onLoadingComplete, viewModel = viewModel)
+                ReaderScreen(
+                    bookId = bookId,
+                    onNavigateBack = onNavigateBack,
+                    onLoadingComplete = onLoadingComplete,
+                    viewModel = viewModel
+                )
             }
         }
     }

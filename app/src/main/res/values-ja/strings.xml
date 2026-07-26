@@ -299,6 +299,9 @@
     <string name="reader_notes">メモ</string>
     <string name="reader_search">検索</string>
     <string name="reader_theme">テーマ</string>
+    <string name="reader_edit">編集</string>
+    <string name="txt_editor_discard_title">変更を破棄しますか？</string>
+    <string name="txt_editor_discard_message">未保存の変更があります。本当に離れますか？</string>
     <string name="reader_toc">目次</string>
     <string name="reader_close">閉じる</string>
     <string name="reader_chapter_fallback">第%d章</string>

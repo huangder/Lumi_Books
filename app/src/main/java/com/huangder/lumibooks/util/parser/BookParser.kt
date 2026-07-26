@@ -83,4 +83,16 @@ interface BookParser {
         val bodyMatch = Regex("<body[^>]*>(.*?)</body>", RegexOption.DOT_MATCHES_ALL).find(full)
         return bodyMatch?.groupValues?.get(1) ?: full
     }
+
+    /**
+     * 返回指定章节在源文件中的字节范围 (startByte, endByte)。
+     * 仅 TxtParser 等字节偏移类解析器支持，其他格式返回 null。
+     */
+    fun getChapterByteRange(chapterIndex: Int): Pair<Long, Long>? = null
+
+    /**
+     * 流式替换指定章节内容并写回源文件，随后重新解析以更新章节索引。
+     * 仅 TxtParser 支持，其他格式返回 false。
+     */
+    fun replaceChapterContent(chapterIndex: Int, newText: String): Boolean = false
 }

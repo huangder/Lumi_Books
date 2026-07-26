@@ -1420,6 +1420,46 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
+    /**
+     * 重新解析文件并刷新阅读状态（TXT编辑后调用）。
+     * 会保留当前章节和页面的最佳匹配位置。
+     */
+    fun reloadContent() {
+        viewModelScope.launch {
+            val book = _uiState.value.book ?: return@launch
+            val p = parser ?: return@launch
+            val oldChapterIndex = _uiState.value.currentChapterIndex
+            val oldChapterTitle = _uiState.value.chapterTitles.getOrNull(oldChapterIndex).orEmpty()
+
+            val newContent = withContext(Dispatchers.IO) {
+                p.parse(book.filePath)
+            }
+            val newChapterTitles = newContent.chapters.map { it.title }
+            val newChapterCount = newContent.chapters.size
+
+            // 尝试通过标题匹配恢复章节位置，失败则回退到索引
+            val bestChapterIndex = if (oldChapterTitle.isNotBlank()) {
+                newChapterTitles.indexOf(oldChapterTitle).coerceAtLeast(0)
+            } else {
+                oldChapterIndex.coerceIn(0, (newChapterCount - 1).coerceAtLeast(0))
+            }
+
+            _uiState.value = _uiState.value.copy(
+                chapterCount = newChapterCount,
+                chapterTitles = newChapterTitles,
+                tocEntries = newContent.tocEntries.ifEmpty {
+                    newChapterTitles.mapIndexed { i, t ->
+                        com.huangder.lumibooks.util.parser.TocEntry(t, 1, i)
+                    }
+                },
+                currentChapterIndex = bestChapterIndex,
+                currentPageIndex = 0
+            )
+            preloadAdjacentChapters()
+            saveProgress()
+        }
+    }
+
     // -- 书签和笔记 --
 
     fun addBookmark(characterOffset: Int? = null, title: String? = null) {

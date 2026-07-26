@@ -301,6 +301,9 @@
     <string name="reader_notes">笔记</string>
     <string name="reader_search">搜索</string>
     <string name="reader_theme">主题</string>
+    <string name="reader_edit">编辑</string>
+    <string name="txt_editor_discard_title">放弃修改？</string>
+    <string name="txt_editor_discard_message">你有未保存的修改，确定要离开吗？</string>
     <string name="reader_toc">目录</string>
     <string name="reader_close">关闭</string>
     <string name="reader_chapter_fallback">第%d章</string>
