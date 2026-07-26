@@ -167,6 +167,8 @@ class PageSlotManager(
                         if (prevCh >= 0 && prevPg >= 0) loadSlot(SLOT_PREV, prevCh, prevPg)
                         val (nextCh, nextPg) = resolveNextPage()
                         if (nextCh >= 0 && nextPg >= 0) loadSlot(SLOT_NEXT, nextCh, nextPg)
+                        // 后台静默预加载 ch+1、ch+2 的 layout，下次翻到时直接命中缓存
+                        eagerPreloadUpcoming(chapterIndex)
                     }
                 }
             } catch (e: CancellationException) {
@@ -184,6 +186,45 @@ class PageSlotManager(
             }
         }
         slotJobs[slotIdx] = thisJob
+    }
+
+    /**
+     * 后台静默预加载当前章节之后的 2 章 layout，使翻章时几乎无等待。
+     * 低优先级 fire-and-forget，不阻塞主流程，失败静默忽略。
+     */
+    private fun eagerPreloadUpcoming(currentChapter: Int) {
+        val provider = contentProvider ?: return
+        for (ahead in 1..2) {
+            val target = currentChapter + ahead
+            if (target >= chapterCount) break
+            if (layoutEngine.getChapterLayout(target) != null) continue  // 已缓存，跳过
+            scope.launch {
+                try {
+                    val text = withContext(Dispatchers.IO) { provider(target) }
+                        ?.takeUnless { it.isEmpty() } ?: return@launch
+                    layoutEngine.layout(target, text)  // 结果自动进入 layoutCache
+                    Log.d(TAG, "EagerPreload: chapter $target layout cached")
+                } catch (_: Exception) { }
+            }
+        }
+    }
+
+    /**
+     * 退出阅读时调用：预跑当前章节的 layout 存入 layoutCache。
+     * 若 layoutEngine 由 ViewModel 持有则缓存跨实例存活，下次重入直接命中。
+     */
+    fun preloadCurrentChapter() {
+        val curChapter = currentChapterIndex
+        val provider = contentProvider ?: return
+        if (layoutEngine.getChapterLayout(curChapter) != null) return  // 已缓存
+        scope.launch {
+            try {
+                val text = withContext(Dispatchers.IO) { provider(curChapter) }
+                    ?.takeUnless { it.isEmpty() } ?: return@launch
+                layoutEngine.layout(curChapter, text)
+                Log.d(TAG, "preloadCurrentChapter: chapter $curChapter cached for re-entry")
+            } catch (_: Exception) { }
+        }
     }
 
     /**

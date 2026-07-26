@@ -432,6 +432,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         savedBrightness.floatValue = window?.attributes?.screenBrightness ?: -1f
         onDispose {
             activity?.isInReaderScreen = false
+            readViewRef.value?.preloadForExit()  // 退出前预缓存当前章节 layout，供重入直接命中
             viewModel.saveAndPause()
             viewModel.clearError()
             // 恢复系统亮度
@@ -809,7 +810,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             } else if (uiState.useNewEngine) {
             AndroidView(
                 factory = { ctx ->
-                    ReadView(ctx).apply {
+                    ReadView(ctx, viewModel.pageLayoutEngine).apply {
                         setCallbacks(object : ReadViewCallbacks {
                             override fun onPageChanged(
                                 globalPage: Int,

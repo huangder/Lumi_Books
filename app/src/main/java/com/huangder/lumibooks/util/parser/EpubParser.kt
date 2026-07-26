@@ -138,7 +138,12 @@ class EpubParser(private val context: Context? = null) : BookParser {
             try {
                 val entry = findEntry(zipFile, fullPath)
                 if (entry != null) {
-                    val rawHtml = zipFile.getInputStream(entry).bufferedReader().readText()
+                    // 只读前 4096 字节提取标题（<title>/<h1> 必定在文件头部），避免读取整个章节 HTML
+                    val stream = zipFile.getInputStream(entry)
+                    val preview = ByteArray(4096)
+                    val bytesRead = stream.read(preview).coerceAtLeast(0)
+                    stream.close()
+                    val rawHtml = String(preview, 0, bytesRead, Charsets.UTF_8)
                     val title = extractTitle(rawHtml) ?: "第${index + 1}章"
                     result.add(Triple(title, href, fullPath))
                     android.util.Log.d("EpubParser", "extractChapterInfo: [$index] title=$title path=$fullPath")

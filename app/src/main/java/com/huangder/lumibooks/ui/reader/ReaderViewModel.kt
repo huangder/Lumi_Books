@@ -191,6 +191,12 @@ class ReaderViewModel @Inject constructor(
 
     private val bookId: String = savedStateHandle.get<String>("bookId") ?: ""
 
+    /**
+     * PageLayoutEngine 由 ViewModel 持有，跨 ReadView 实例存活。
+     * ReadView 退出后 layoutCache 保留，重新进入时直接命中缓存，消除首屏等待。
+     */
+    val pageLayoutEngine = com.huangder.lumibooks.ui.reader.engine.PageLayoutEngine()
+
     private val _uiState = MutableStateFlow(ReaderUiState())
     val uiState: StateFlow<ReaderUiState> = _uiState.asStateFlow()
 

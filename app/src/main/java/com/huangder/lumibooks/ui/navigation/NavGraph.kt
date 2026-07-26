@@ -244,10 +244,9 @@ fun MainNavGraph(
         previousRoute = currentRoute
     }
 
-    // 延迟导航：过渡动画入场完成后才跳转阅读页
+    // 立即导航到阅读页，边播入场动画边加载书籍，并行进行
     LaunchedEffect(pendingBookId) {
         val bookId = pendingBookId ?: return@LaunchedEffect
-        delay(600) // 等入场动画完成
         if (pendingBookId != bookId || !showTransition) return@LaunchedEffect
         navController.navigate(Screen.Reader.createRoute(bookId))
         pendingBookId = null

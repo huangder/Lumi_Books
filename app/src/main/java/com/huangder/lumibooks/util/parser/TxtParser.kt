@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.util.parser
 
+import android.content.Context
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -10,7 +11,7 @@ import java.nio.charset.Charset
 import java.nio.charset.CodingErrorAction
 import java.util.LinkedHashMap
 
-class TxtParser : BookParser {
+class TxtParser(private val context: Context? = null) : BookParser {
     override var paragraphSpacingDp: Float = 0f
     override var firstLineIndentChars: Float = 0f
     override var contentWidth: Int = 0
@@ -48,26 +49,34 @@ class TxtParser : BookParser {
         require(file.isFile) { "TXT file not found: $filePath" }
 
         sourceFile = file
-        encodingInfo = detectEncoding(file)
         synchronized(contentCache) { contentCache.clear() }
         synchronized(htmlCache) { htmlCache.clear() }
 
-        val headings = findChapterHeadings(file, encodingInfo)
-        entries = if (headings.size >= 2) {
-            buildHeadingEntries(file, headings, encodingInfo)
+        // 优先从磁盘缓存加载章节索引，避免每次重新全文扫描
+        val cached = loadChapterCache(file)
+        if (cached != null) {
+            encodingInfo = cached.first
+            entries = cached.second
         } else {
-            buildFallbackEntries(file, encodingInfo)
-        }
-
-        if (entries.isEmpty()) {
-            entries = listOf(
-                TxtChapterEntry(
-                    index = 0,
-                    title = file.nameWithoutExtension,
-                    startByte = encodingInfo.contentStart,
-                    endByte = file.length()
+            encodingInfo = detectEncoding(file)
+            val headings = findChapterHeadings(file, encodingInfo)
+            entries = if (headings.size >= 2) {
+                buildHeadingEntries(file, headings, encodingInfo)
+            } else {
+                buildFallbackEntries(file, encodingInfo)
+            }
+            if (entries.isEmpty()) {
+                entries = listOf(
+                    TxtChapterEntry(
+                        index = 0,
+                        title = file.nameWithoutExtension,
+                        startByte = encodingInfo.contentStart,
+                        endByte = file.length()
+                    )
                 )
-            )
+            }
+            // 解析完成后写入缓存，供下次打开使用
+            saveChapterCache(file, encodingInfo, entries)
         }
 
         return BookContent(
@@ -82,6 +91,75 @@ class TxtParser : BookParser {
                 )
             }
         )
+    }
+
+    /**
+     * 从磁盘缓存加载章节索引。
+     * 缓存文件以文件路径哈希命名，并记录 fileSize + lastModified 用于失效校验。
+     * 文件被修改或首次打开时返回 null，触发全文解析。
+     */
+    private fun loadChapterCache(file: File): Pair<EncodingInfo, List<TxtChapterEntry>>? {
+        val cacheFile = getCacheFile(file) ?: return null
+        if (!cacheFile.exists()) return null
+        return try {
+            val lines = cacheFile.readLines(Charsets.UTF_8)
+            if (lines.size < 5) return null
+            if (lines[0] != CACHE_VERSION) return null
+            val fileSize = lines[1].toLongOrNull() ?: return null
+            val lastModified = lines[2].toLongOrNull() ?: return null
+            // 校验文件未被修改
+            if (fileSize != file.length() || lastModified != file.lastModified()) return null
+
+            val charsetName = lines[3]
+            val contentStart = lines[4].toLongOrNull() ?: return null
+            val charset = try { Charset.forName(charsetName) } catch (_: Exception) { return null }
+            val encoding = EncodingInfo(charset, contentStart)
+
+            val chapterEntries = lines.drop(5).mapIndexedNotNull { i, line ->
+                val parts = line.split("|", limit = 4)
+                if (parts.size != 4) return@mapIndexedNotNull null
+                val index = parts[0].toIntOrNull() ?: return@mapIndexedNotNull null
+                val title = parts[1]
+                val startByte = parts[2].toLongOrNull() ?: return@mapIndexedNotNull null
+                val endByte = parts[3].toLongOrNull() ?: return@mapIndexedNotNull null
+                TxtChapterEntry(index, title, startByte, endByte)
+            }
+            if (chapterEntries.isEmpty()) return null
+            Pair(encoding, chapterEntries)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * 将章节索引写入磁盘缓存。写入失败时静默忽略，不影响阅读。
+     */
+    private fun saveChapterCache(file: File, encoding: EncodingInfo, chapters: List<TxtChapterEntry>) {
+        val cacheFile = getCacheFile(file) ?: return
+        try {
+            cacheFile.parentFile?.mkdirs()
+            val sb = StringBuilder()
+            sb.appendLine(CACHE_VERSION)
+            sb.appendLine(file.length())
+            sb.appendLine(file.lastModified())
+            sb.appendLine(encoding.charset.name())
+            sb.appendLine(encoding.contentStart)
+            for (entry in chapters) {
+                // 标题中的 | 替换为全角，避免破坏分隔格式
+                val safeTitle = entry.title.replace("|", "｜")
+                sb.appendLine("${entry.index}|$safeTitle|${entry.startByte}|${entry.endByte}")
+            }
+            cacheFile.writeText(sb.toString(), Charsets.UTF_8)
+        } catch (_: Exception) {
+            // 缓存写入失败不影响功能，静默忽略
+        }
+    }
+
+    /** 根据文件路径生成缓存文件路径 */
+    private fun getCacheFile(file: File): File? {
+        val cacheDir = context?.cacheDir ?: return null
+        val hash = file.absolutePath.hashCode().toString(16)
+        return File(cacheDir, "txt_index/$hash.cache")
     }
 
     private fun detectEncoding(file: File): EncodingInfo {
@@ -99,34 +177,36 @@ class TxtParser : BookParser {
             }
         }
 
+        // 只采样前 512 KB 判断编码，避免对大文件读取全部内容。
+        // 任何中文文件在前 512 KB 内必然出现非 ASCII 字节，足以区分 UTF-8 和 GBK。
+        val sampleSize = (512 * 1024L).coerceAtMost(file.length()).toInt()
+        val sample = ByteArray(sampleSize)
+        val actualRead = FileInputStream(file).use { it.read(sample) }.coerceAtLeast(0)
         val utf8Decoder = Charsets.UTF_8.newDecoder()
             .onMalformedInput(CodingErrorAction.REPORT)
             .onUnmappableCharacter(CodingErrorAction.REPORT)
         return try {
-            InputStreamReader(FileInputStream(file), utf8Decoder).use { reader ->
-                val buffer = CharArray(STREAM_BUFFER_SIZE)
-                while (reader.read(buffer) != -1) {
-                    // Decode the whole stream without retaining its contents.
-                }
-            }
+            utf8Decoder.decode(java.nio.ByteBuffer.wrap(sample, 0, actualRead))
             EncodingInfo(Charsets.UTF_8, 0L)
-        } catch (_: CharacterCodingException) {
+        } catch (_: java.nio.charset.CharacterCodingException) {
             EncodingInfo(Charset.forName("GBK"), 0L)
         }
     }
 
     private fun findChapterHeadings(file: File, encoding: EncodingInfo): List<Heading> {
-        for (pattern in CHAPTER_PATTERNS) {
-            val matches = mutableListOf<Heading>()
-            forEachLinePrefix(file, encoding, encoding.contentStart, file.length()) { start, _, prefix ->
-                val line = prefix.trimEnd('\r', '\n')
-                if (pattern.containsMatchIn(line)) {
-                    matches += Heading(line.trim().take(50), start)
+        // 一次扫描同时匹配所有模式，避免对大文件重复全文扫描（原来最多 5 次）
+        val matchesByPattern = Array(CHAPTER_PATTERNS.size) { mutableListOf<Heading>() }
+        forEachLinePrefix(file, encoding, encoding.contentStart, file.length()) { start, _, prefix ->
+            val line = prefix.trimEnd('\r', '\n')
+            for (i in CHAPTER_PATTERNS.indices) {
+                if (CHAPTER_PATTERNS[i].containsMatchIn(line)) {
+                    matchesByPattern[i] += Heading(line.trim().take(50), start)
+                    break  // 一行只归入一个模式，避免重复计数
                 }
             }
-            if (matches.size >= 2) return matches
         }
-        return emptyList()
+        // 返回优先级最高（索引最小）且匹配数 >= 2 的模式结果
+        return matchesByPattern.firstOrNull { it.size >= 2 } ?: emptyList()
     }
 
     private fun buildHeadingEntries(
@@ -591,6 +671,7 @@ class TxtParser : BookParser {
     }
 
     private companion object {
+        const val CACHE_VERSION = "TXT_INDEX_V1"
         const val STREAM_BUFFER_SIZE = 64 * 1024
         const val HEADING_PREFIX_BYTES = 512
         const val TITLE_PREFIX_BYTES = 512

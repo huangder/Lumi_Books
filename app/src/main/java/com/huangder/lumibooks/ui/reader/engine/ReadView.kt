@@ -62,7 +62,7 @@ data class SelectionInfo(
     val selEndX: Float
 )
 
-class ReadView(context: Context) : FrameLayout(context) {
+class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null) : FrameLayout(context) {
 
     companion object {
         private const val TAG = "ReadView"
@@ -70,7 +70,8 @@ class ReadView(context: Context) : FrameLayout(context) {
     }
 
     // ── 子组件 ──
-    val layoutEngine = PageLayoutEngine()
+    val layoutEngine: PageLayoutEngine = externalLayoutEngine ?: PageLayoutEngine()
+    private val ownsLayoutEngine: Boolean = externalLayoutEngine == null
     lateinit var slotManager: PageSlotManager
         private set
     lateinit var animationController: PageAnimationController
@@ -876,12 +877,21 @@ class ReadView(context: Context) : FrameLayout(context) {
 
     // ── 生命周期 ──
 
+    /**
+     * 退出阅读时调用：在后台静默预跑当前章节的 content + layout，
+     * 结果存入 layoutCache（由 ViewModel 持有的 engine，跨实例存活）。
+     */
+    fun preloadForExit() {
+        slotManager.preloadCurrentChapter()
+    }
+
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
         animationController.abortAnim()
         (animationController as? CurlPageAnim)?.destroy()
         slotManager.destroy()
-        layoutEngine.invalidateAll()
+        // 只有自己创建的 engine 才清缓存；外部传入的由 ViewModel 保活，供重入命中
+        if (ownsLayoutEngine) layoutEngine.invalidateAll()
     }
 
     // ── 内部方法 ──

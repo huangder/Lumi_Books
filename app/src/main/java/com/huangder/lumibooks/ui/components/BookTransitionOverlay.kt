@@ -110,13 +110,12 @@ fun BookTransitionOverlay(
         }
     }
 
-    // 退场动画
+    // 退场动画：isReady 后立即开始，不额外等待
     LaunchedEffect(isReady) {
         if (isReady && sheetAlpha.value > 0.5f && !isClosing.value) {
             isClosing.value = true
-            delay(200)
             launch { sheetAlpha.animateTo(0f, tween(200)) }
-            launch { sheetScale.animateTo(0.95f, tween(250)) }
+            launch { sheetScale.animateTo(1.06f, tween(250)) }
             launch { scrimAlpha.animateTo(0f, tween(300)) }
             delay(300)
             onTransitionComplete()

@@ -8,7 +8,7 @@ object BookParserFactory {
         return when (format) {
             BookFormat.EPUB -> EpubParser(context)
             BookFormat.PDF -> PdfParser(context)
-            BookFormat.TXT -> TxtParser()
+            BookFormat.TXT -> TxtParser(context)
         }
     }
 }
