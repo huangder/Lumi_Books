@@ -965,11 +965,21 @@ fun AdvancedSettingsSheet(
         }
     }
 
-    // 预览文本用的字体
+    // 预览文本用的字体（自定义字体从文件路径加载，与阅读页保持一致）
+    val customPreviewFontFamily = remember(customFontPath) {
+        if (customFontPath != null) {
+            runCatching {
+                val file = java.io.File(customFontPath)
+                if (file.exists()) FontFamily(android.graphics.Typeface.createFromFile(file))
+                else FontFamily.Default
+            }.getOrDefault(FontFamily.Default)
+        } else FontFamily.Default
+    }
     val previewFont = when (currentFontType) {
         "serif" -> androidx.compose.ui.text.font.FontFamily.Serif
         "fangsong" -> FangSong
         "kaiti" -> KaiTi
+        "custom" -> customPreviewFontFamily
         else -> androidx.compose.ui.text.font.FontFamily.Default
     }
     val resolvedPreviewText = previewText.ifBlank { stringResource(R.string.preview_text) }

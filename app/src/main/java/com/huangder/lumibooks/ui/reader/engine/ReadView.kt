@@ -282,15 +282,6 @@ class ReadView(context: Context) : FrameLayout(context) {
             }
             else -> android.graphics.Typeface.DEFAULT
         }
-        val (marginTop, marginBottom) = balancedVerticalMargins(
-            baseMarginTop = baseMarginTop,
-            baseMarginBottom = baseMarginBottom,
-            fontSizePx = currentFontSizePx,
-            lineHeightMultiplier = currentLineHeightMult,
-            lineSpacingExtraPx = lineSpacingExtra,
-            typeface = customTypeface
-        )
-
         // 三个槽位都配置，确保翻页时样式一致
         for (view in listOf(prevPageView, curPageView, nextPageView)) {
             view.configure(
@@ -301,9 +292,9 @@ class ReadView(context: Context) : FrameLayout(context) {
                 letterSpacingPx = currentLetterSpacingDp * density,
                 typeface = customTypeface,
                 marginLeftPx = marginLeft,
-                marginTopPx = marginTop,
+                marginTopPx = baseMarginTop,
                 marginRightPx = marginRight,
-                marginBottomPx = marginBottom,
+                marginBottomPx = baseMarginBottom,
                 highlightColor = highlightColor,
                 accentColor = accentColor
             )
@@ -384,6 +375,7 @@ class ReadView(context: Context) : FrameLayout(context) {
         val lineHeightChanged = Math.abs(currentLineHeightMult - lineHeightMult) > 0.01f
         val letterSpacingChanged = Math.abs(currentLetterSpacingDp - letterSpacingDp) > 0.05f
         val fontTypeChanged = currentFontType != fontType
+        val customFontPathChanged = currentCustomFontPath != customFontPath
         val marginChanged = Math.abs(currentMarginLeftDp - marginLeftDp) > 0.5f ||
             Math.abs(currentMarginRightDp - marginRightDp) > 0.5f ||
             Math.abs(currentMarginTopDp - marginTopDp) > 0.5f ||
@@ -393,8 +385,8 @@ class ReadView(context: Context) : FrameLayout(context) {
         val paragraphSpacingChanged = Math.abs(currentParagraphSpacingDp - paragraphSpacingDp) > 0.01f
         val sizeChanged = !isConfigured || configuredWidth != width || configuredHeight != height
         val needsRelayout = themeChanged || chapterCountChanged || fontSizeChanged || lineHeightChanged ||
-                letterSpacingChanged || fontTypeChanged || marginChanged || overlayInsetChanged ||
-                paragraphSpacingChanged || sizeChanged
+                letterSpacingChanged || fontTypeChanged || customFontPathChanged || marginChanged ||
+                overlayInsetChanged || paragraphSpacingChanged || sizeChanged
 
         // 🔥 无变化时提前返回，避免菜单切换等 recomposition 触发不必要的重配置
         if (isConfigured && !needsRelayout) {
@@ -445,14 +437,6 @@ class ReadView(context: Context) : FrameLayout(context) {
             }
             else -> null
         }
-        val (marginTop, marginBottom) = balancedVerticalMargins(
-            baseMarginTop = baseMarginTop,
-            baseMarginBottom = baseMarginBottom,
-            fontSizePx = fontSizePx,
-            lineHeightMultiplier = lineHeightMult,
-            lineSpacingExtraPx = lineSpacing,
-            typeface = customTypeface ?: android.graphics.Typeface.DEFAULT
-        )
 
         layoutEngine.configure(
             width = width,
@@ -465,8 +449,8 @@ class ReadView(context: Context) : FrameLayout(context) {
             customTypeface = customTypeface,
             marginLeftPx = marginLeft,
             marginRightPx = marginRight,
-            marginTopPx = marginTop,
-            marginBottomPx = marginBottom,
+            marginTopPx = baseMarginTop,
+            marginBottomPx = baseMarginBottom,
             textColor = textColor,
             chapterCount = chapterCount
         )

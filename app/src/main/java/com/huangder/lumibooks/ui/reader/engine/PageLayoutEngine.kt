@@ -158,9 +158,16 @@ class PageLayoutEngine {
             .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)  // CJK 文本不需要断字
             .build()
 
+        // 留出安全边距：
+        // - 1px 舍入余量，消除 TextView 与 StaticLayout 的取整差异
+        // - descent 缓冲：某些自定义字体的字形 descent 超过 StaticLayout 报告的 lineBottom，
+        //   不预留时最后一行字符会超出底边距被横向截断。使用实际 descent 的 1.5 倍作为缓冲。
         val pages = mutableListOf<PageLayout>()
-        // 留出 1px 舍入余量，避免 TextView 与 StaticLayout 的取整差异把字形压到下边界外。
-        val effectiveVh = (input.visibleHeight - 1).coerceAtLeast(1).toFloat()
+        // 留出安全边距：
+        // - descent 缓冲：某些自定义字体的字形 descent 超过 StaticLayout 报告的 lineBottom，
+        //   不预留时最后一行字符会超出底边距被横向截断。使用实际 descent 的 1.5 倍作为缓冲。
+        val descentBuffer = (input.textPaint.descent() * 1.5f).coerceAtLeast(2f)
+        val effectiveVh = (input.visibleHeight.toFloat() - descentBuffer).coerceAtLeast(1f)
         var pageStartLine = 0
         var pageIdx = 0
         var globalCharOffset = 0
