@@ -891,6 +891,17 @@ class ReaderViewModel @Inject constructor(
                         parser!!.parse(book.filePath)
                     }
 
+                    // 解析出更准确的作者时，静默回填数据库并用新值更新 UI
+                    val parsedAuthor = content.author
+                    val unknownAuthorTokens = setOf("未知作者", "著者不明", "unknown author", "unknown", "作者不详", "作者不詳", "")
+                    val storedIsUnknown = book.author.trim().lowercase() in unknownAuthorTokens
+                    val parsedIsReal = parsedAuthor.isNotBlank() && parsedAuthor.trim().lowercase() !in unknownAuthorTokens
+                    val displayBook = if (storedIsUnknown && parsedIsReal) {
+                        val updated = book.copy(author = parsedAuthor)
+                        bookRepository.updateBook(updated)
+                        updated
+                    } else book
+
                     val chapterCount = content.chapters.size
                     require(chapterCount > 0) { "书籍没有可阅读内容" }
                     val chapterTitles = content.chapters.map { it.title }
@@ -908,7 +919,7 @@ class ReaderViewModel @Inject constructor(
 
                     val isPdf = book.format.name == "PDF"
                     _uiState.value = _uiState.value.copy(
-                        book = book,
+                        book = displayBook,
                         chapterCount = chapterCount,
                         chapterTitles = chapterTitles,
                         tocEntries = tocEntries,

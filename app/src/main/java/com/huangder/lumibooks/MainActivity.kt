@@ -166,10 +166,26 @@ class MainActivity : ComponentActivity() {
             parser.extractCoverPath(file.absolutePath)
         } catch (_: Exception) { null }
 
+        // 导入时从文件解析真实标题和作者，而不是写死"未知作者"
+        val (parsedTitle, parsedAuthor) = if (format == BookFormat.EPUB) {
+            try {
+                val parser = com.huangder.lumibooks.util.parser.EpubParser(this)
+                val content = parser.parse(file.absolutePath)
+                val t = content.title.takeIf { it.isNotBlank() && it != file.nameWithoutExtension }
+                    ?: fileName.substringBeforeLast('.')
+                val a = content.author.takeIf { it.isNotBlank() && it != "未知作者" } ?: "未知作者"
+                t to a
+            } catch (_: Exception) {
+                fileName.substringBeforeLast('.') to "未知作者"
+            }
+        } else {
+            fileName.substringBeforeLast('.') to "未知作者"
+        }
+
         val book = Book(
             id = FileUtils.generateBookId(),
-            title = fileName.substringBeforeLast('.'),
-            author = "未知作者",
+            title = parsedTitle,
+            author = parsedAuthor,
             filePath = file.absolutePath,
             coverPath = coverPath,
             format = format,

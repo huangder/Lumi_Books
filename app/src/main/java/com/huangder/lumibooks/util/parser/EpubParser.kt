@@ -104,9 +104,27 @@ class EpubParser(private val context: Context? = null) : BookParser {
     }
 
     private fun extractMetadata(opfContent: String, tag: String): String? {
-        val regex = """<$tag[^>]*>([^<]+)</$tag>""".toRegex()
-        return regex.find(opfContent)?.groupValues?.get(1)
+        val tagName = tag.substringAfterLast(":")
+        val r1 = """<[a-zA-Z0-9_]*:?${Regex.escape(tagName)}[^>]*>([^<]+)</[a-zA-Z0-9_]*:?${Regex.escape(tagName)}>""".toRegex(RegexOption.IGNORE_CASE)
+        val v1 = r1.find(opfContent)?.groupValues?.get(1)?.trim()
+        if (!v1.isNullOrBlank()) return decodeXmlEntities(v1)
+
+        val r2 = """<meta[^>]+\bproperty="${Regex.escape(tag)}"[^>]*>([^<]+)</meta>""".toRegex(RegexOption.IGNORE_CASE)
+        val v2 = r2.find(opfContent)?.groupValues?.get(1)?.trim()
+        if (!v2.isNullOrBlank()) return decodeXmlEntities(v2)
+
+        return null
     }
+
+    private fun decodeXmlEntities(s: String): String = s
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&#160;", " ")
+        .replace(Regex("&#(\\d+);")) { mr -> mr.groupValues[1].toIntOrNull()?.toChar()?.toString() ?: mr.value }
+        .replace(Regex("&#x([0-9a-fA-F]+);")) { mr -> mr.groupValues[1].toIntOrNull(16)?.toChar()?.toString() ?: mr.value }
 
     /**
      * 提取章节路径和标题（读HTML提取标题，但不处理图片）
