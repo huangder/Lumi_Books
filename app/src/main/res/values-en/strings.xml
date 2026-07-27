@@ -326,6 +326,8 @@
     <string name="show_reader_battery_hint">Battery icon and percentage</string>
     <string name="volume_key_page_turn">Turn pages with volume keys</string>
     <string name="volume_key_page_turn_hint">Volume up for previous, volume down for next</string>
+    <string name="bionic_reading">Bionic reading</string>
+    <string name="bionic_reading_hint">Bold the first part of each word to guide your eyes and improve focus</string>
     <string name="reader_edge_tap_page_turn">Turn pages by tapping the edges</string>
     <string name="reader_edge_tap_page_turn_hint">Choose what left and right edge taps do</string>
     <string name="reader_edge_tap_left_previous_right_next">Previous / Next</string>
@@ -476,8 +478,8 @@
     <string name="splash_screen_description">Show the branded screen when the app starts</string>
     <string name="splash_setting_next_launch">Takes effect the next time the app starts</string>
     <!-- MinerU third-party cloud parsing -->
-    <string name="category_third_party_services">Third-party services</string>
-    <string name="title_third_party_services">Third-party Services</string>
+    <string name="category_third_party_services">Services</string>
+    <string name="title_third_party_services">Services</string>
     <string name="category_mineru">MINERU</string>
     <string name="title_mineru">MinerU Cloud Parsing</string>
     <string name="mineru_powered_by">Powered by MinerU</string>
@@ -625,6 +627,38 @@
     <string name="external_tts_http_warning_desc">HTTP connections are not encrypted. Your API key and reading text may travel over the network in plain text and can be intercepted. HTTPS is strongly recommended.</string>
     <string name="external_tts_http_confirm">I understand the HTTP risk and still want to enable it</string>
     <string name="external_tts_http_enable">Enable HTTP</string>
+    <!-- WebDAV sync -->
+    <string name="category_webdav">WebDAV sync</string>
+    <string name="title_webdav">WebDAV Sync</string>
+    <string name="title_webdav_configuration">Configure WebDAV sync</string>
+    <string name="webdav_enabled_status">Enabled</string>
+    <string name="webdav_not_configured">Not configured</string>
+    <string name="webdav_server_url_label">Server address</string>
+    <string name="webdav_server_url_hint">https://dav.example.com/remote.php/dav/</string>
+    <string name="webdav_username_label">Username</string>
+    <string name="webdav_password_label">Password</string>
+    <string name="webdav_password_hint">Enter WebDAV password</string>
+    <string name="webdav_token_saved">Encrypted and saved; leave blank to keep using it</string>
+    <string name="webdav_token_storage_notice">Your password is encrypted and stored only in Android KeyStore on this device; it is never shared with anyone else.</string>
+    <string name="webdav_show_password">Show password</string>
+    <string name="webdav_hide_password">Hide password</string>
+    <string name="webdav_sync_now">Sync now</string>
+    <string name="webdav_test_connection">Test connection</string>
+    <string name="webdav_test_success">Connected; the WebDAV service is available</string>
+    <string name="webdav_test_failed">Connection failed. Check the server address, username, and password.</string>
+    <string name="webdav_sync_success">Sync completed</string>
+    <string name="webdav_sync_failed">Sync failed. Check your network and the server.</string>
+    <string name="webdav_disable">Disable WebDAV sync</string>
+    <string name="webdav_clear_config">Clear configuration</string>
+    <string name="webdav_enable">Save and enable</string>
+    <string name="webdav_configure">Configure</string>
+    <string name="webdav_save_configuration">Save configuration</string>
+    <string name="webdav_last_sync_time">Last sync: %1$s</string>
+    <string name="webdav_status_card_title">Connection status</string>
+    <string name="webdav_sync_path_hint">Sync directory (optional, defaults to LumiBooks)</string>
+    <string name="webdav_required_fields">Enter the server address and username</string>
+    <string name="webdav_third_party_title">About WebDAV sync</string>
+    <string name="webdav_third_party_notice">WebDAV sync uses your own WebDAV server. Book files, reading progress, notes, and bookmarks are uploaded to that server. LumiBooks does not transfer data to its own servers and does not control the availability or security of third-party servers.</string>
     <string name="epub_render_mode">EPUB layout</string>
     <string name="epub_book_layout">Book layout</string>
     <string name="epub_reader_layout">Reader layout</string>
@@ -638,4 +672,7 @@
     <string name="epub_layout_first_open_title">EPUB layout</string>
     <string name="epub_layout_first_open_message">If this book includes its own layout, tap the center of the screen, open Theme, and choose Book layout.</string>
     <string name="epub_layout_first_open_confirm">Got it</string>
+    <string name="screen_sleep_timeout">Screen sleep timeout</string>
+    <string name="screen_sleep_timeout_follow_system">Follow system</string>
+    <string name="screen_sleep_timeout_hint">Displaying a static image for a long time may cause uneven screen colors</string>
 </resources>

@@ -12,6 +12,7 @@ import android.widget.FrameLayout
 import com.huangder.lumibooks.domain.model.Note
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapAction
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
+import com.huangder.lumibooks.ui.reader.BionicReadingFormatter
 import com.huangder.lumibooks.tts.TtsPageContent
 import com.huangder.lumibooks.tts.TtsPageLocation
 import com.huangder.lumibooks.util.ChineseConverter
@@ -136,6 +137,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var currentTopOverlayInsetDp: Float = 0f
     private var currentBottomOverlayInsetDp: Float = 0f
     private var currentParagraphSpacingDp: Float = 0f
+    private var currentBionicReadingEnabled: Boolean = false
     private var currentChineseMode: String = "original"
     private var currentPageTransition: String = "slide"
     private var currentEdgeTapMode: ReaderEdgeTapMode = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT
@@ -341,8 +343,13 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     }
 
     fun setContentProvider(provider: suspend (Int) -> CharSequence?) {
-        contentProvider = provider
-        slotManager.contentProvider = provider
+        val formattedProvider: suspend (Int) -> CharSequence? = { chapterIndex ->
+            provider(chapterIndex)?.let { content ->
+                BionicReadingFormatter.format(content, currentBionicReadingEnabled)
+            }
+        }
+        contentProvider = formattedProvider
+        slotManager.contentProvider = formattedProvider
     }
 
     fun configure(
@@ -362,6 +369,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         topOverlayInsetDp: Float = 0f,
         bottomOverlayInsetDp: Float = 0f,
         paragraphSpacingDp: Float = 2f,
+        bionicReadingEnabled: Boolean = false,
         width: Int = this.width,
         height: Int = this.height
     ) {
@@ -382,6 +390,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             currentTopOverlayInsetDp = topOverlayInsetDp
             currentBottomOverlayInsetDp = bottomOverlayInsetDp
             currentParagraphSpacingDp = paragraphSpacingDp
+            currentBionicReadingEnabled = bionicReadingEnabled
             return
         }
 
@@ -399,10 +408,11 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val overlayInsetChanged = Math.abs(currentTopOverlayInsetDp - topOverlayInsetDp) > 0.5f ||
             Math.abs(currentBottomOverlayInsetDp - bottomOverlayInsetDp) > 0.5f
         val paragraphSpacingChanged = Math.abs(currentParagraphSpacingDp - paragraphSpacingDp) > 0.01f
+        val bionicReadingChanged = currentBionicReadingEnabled != bionicReadingEnabled
         val sizeChanged = !isConfigured || configuredWidth != width || configuredHeight != height
         val needsRelayout = themeChanged || chapterCountChanged || fontSizeChanged || lineHeightChanged ||
                 letterSpacingChanged || fontTypeChanged || customFontPathChanged || marginChanged ||
-                overlayInsetChanged || paragraphSpacingChanged || sizeChanged
+                overlayInsetChanged || paragraphSpacingChanged || bionicReadingChanged || sizeChanged
 
         // 🔥 无变化时提前返回，避免菜单切换等 recomposition 触发不必要的重配置
         if (isConfigured && !needsRelayout) {
@@ -427,6 +437,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         currentTopOverlayInsetDp = topOverlayInsetDp
         currentBottomOverlayInsetDp = bottomOverlayInsetDp
         currentParagraphSpacingDp = paragraphSpacingDp
+        currentBionicReadingEnabled = bionicReadingEnabled
         configuredWidth = width
         configuredHeight = height
 
@@ -479,7 +490,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
         if (needsRelayout) {
             // 字号变化前捕获当前内容位置，以便重新分页后修正页码
-            if (fontSizeChanged) {
+            if (fontSizeChanged || bionicReadingChanged) {
                 val curSlot = slotManager.getCurSlot()
                 if (curSlot.isLoaded) {
                     slotManager.pendingStartCharOffset = curSlot.contentView.chapterStartOffset

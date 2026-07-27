@@ -37,6 +37,7 @@ import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.FormatSize
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material.icons.outlined.Cloud
@@ -275,6 +276,17 @@ fun ThirdPartyServicesDetail(viewModel: SettingsViewModel) {
             }
         ) {
             context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "external_tts"))
+        }
+        Spacer(Modifier.height(AppSpace.sm))
+        CategoryItem(
+            icon = Icons.Outlined.Sync,
+            label = stringResource(R.string.category_webdav),
+            supportingText = when {
+                uiState.webdavConfig.enabled -> stringResource(R.string.webdav_enabled_status)
+                else -> stringResource(R.string.webdav_not_configured)
+            }
+        ) {
+            context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "webdav"))
         }
 }
 

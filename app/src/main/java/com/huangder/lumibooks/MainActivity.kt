@@ -103,6 +103,14 @@ class MainActivity : ComponentActivity() {
     /** 非空时由当前阅读页接管音量键；阅读页离开或设置关闭时恢复系统音量行为。 */
     var readerVolumeKeyHandler: ((ReaderPageDirection) -> Unit)? = null
 
+    /** Resets the reader-specific screen sleep timer after user input. */
+    var readerUserInteractionHandler: (() -> Unit)? = null
+
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        if (isInReaderScreen) readerUserInteractionHandler?.invoke()
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val handler = readerVolumeKeyHandler
         val direction = when (event.keyCode) {

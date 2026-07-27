@@ -141,6 +141,8 @@ data class ReaderUiState(
     val showReaderPageNumber: Boolean = true,
     val showReaderBattery: Boolean = true,
     val volumeKeyPageTurnEnabled: Boolean = false,
+    val bionicReadingEnabled: Boolean = false,
+    val screenSleepTimeoutSeconds: Int = DataStoreManager.DEFAULT_SCREEN_SLEEP_TIMEOUT_SECONDS,
     val readerEdgeTapMode: ReaderEdgeTapMode = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT,
     val readerTopLeftContent: ReaderCornerContent = defaultReaderCornerContent(ReaderPageCorner.TOP_LEFT),
     val readerTopRightContent: ReaderCornerContent = defaultReaderCornerContent(ReaderPageCorner.TOP_RIGHT),
@@ -191,7 +193,8 @@ class ReaderViewModel @Inject constructor(
     private val pdfConversionManager: PdfConversionManager,
     private val pdfTextExtractor: PdfTextExtractor,
     private val mineruManualImportManager: MineruManualImportManager,
-    private val mineruTokenStore: MineruTokenStore
+    private val mineruTokenStore: MineruTokenStore,
+    private val webdavSyncManager: com.huangder.lumibooks.data.sync.WebdavSyncManager
 ) : ViewModel() {
 
     private companion object {
@@ -500,6 +503,16 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.volumeKeyPageTurnEnabled.collectLatest { enabled ->
                 _uiState.value = _uiState.value.copy(volumeKeyPageTurnEnabled = enabled)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.bionicReadingEnabled.collectLatest { enabled ->
+                _uiState.value = _uiState.value.copy(bionicReadingEnabled = enabled)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.screenSleepTimeoutSeconds.collectLatest { seconds ->
+                _uiState.value = _uiState.value.copy(screenSleepTimeoutSeconds = seconds)
             }
         }
         viewModelScope.launch {
@@ -933,6 +946,17 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch { dataStoreManager.saveVolumeKeyPageTurnEnabled(enabled) }
     }
 
+    fun saveBionicReadingEnabled(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(bionicReadingEnabled = enabled)
+        viewModelScope.launch { dataStoreManager.saveBionicReadingEnabled(enabled) }
+    }
+
+    fun saveScreenSleepTimeoutSeconds(seconds: Int) {
+        if (seconds !in DataStoreManager.SCREEN_SLEEP_TIMEOUT_SECONDS_OPTIONS) return
+        _uiState.value = _uiState.value.copy(screenSleepTimeoutSeconds = seconds)
+        viewModelScope.launch { dataStoreManager.saveScreenSleepTimeoutSeconds(seconds) }
+    }
+
     fun saveReaderEdgeTapMode(mode: ReaderEdgeTapMode) {
         _uiState.value = _uiState.value.copy(readerEdgeTapMode = mode)
         viewModelScope.launch { dataStoreManager.saveReaderEdgeTapMode(mode) }
@@ -982,6 +1006,7 @@ class ReaderViewModel @Inject constructor(
             showReaderPageNumber = true,
             showReaderBattery = true,
             volumeKeyPageTurnEnabled = false,
+            bionicReadingEnabled = false,
             readerEdgeTapMode = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT,
             readerTopLeftContent = defaultReaderCornerContent(ReaderPageCorner.TOP_LEFT),
             readerTopRightContent = defaultReaderCornerContent(ReaderPageCorner.TOP_RIGHT),
@@ -1003,6 +1028,8 @@ class ReaderViewModel @Inject constructor(
         saveMarginBottom(64f)
         saveReaderTextColor(null)
         saveVolumeKeyPageTurnEnabled(false)
+        saveBionicReadingEnabled(false)
+        saveScreenSleepTimeoutSeconds(DataStoreManager.DEFAULT_SCREEN_SLEEP_TIMEOUT_SECONDS)
         saveReaderEdgeTapMode(ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT)
         ReaderPageCorner.entries.forEach { corner ->
             saveReaderCornerContent(corner, defaultReaderCornerContent(corner))
@@ -1039,6 +1066,12 @@ class ReaderViewModel @Inject constructor(
         continuousProgressJob?.cancel()
         saveProgress()
         saveReadingSession()
+        // Trigger WebDAV full sync when leaving reader
+        viewModelScope.launch {
+            try {
+                webdavSyncManager.fullSync()
+            } catch (_: Exception) { }
+        }
     }
 
     private fun loadBook() {
@@ -1830,6 +1863,8 @@ class ReaderViewModel @Inject constructor(
             state.epubLocatorJson.takeIf { state.epubRenderMode == EpubRenderMode.BOOK_LAYOUT }
         )
         bookRepository.updateLastReadTime(book.id, System.currentTimeMillis())
+        // Trigger debounced WebDAV sync for reading progress
+        webdavSyncManager.scheduleReadingProgressSync(book.id)
     }
 
     fun clearError() {

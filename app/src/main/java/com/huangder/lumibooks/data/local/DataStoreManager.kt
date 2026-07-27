@@ -14,6 +14,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.huangder.lumibooks.domain.model.CustomFontPreset
 import com.huangder.lumibooks.domain.model.CustomFontPresetCodec
+import com.huangder.lumibooks.domain.model.WebdavConfig
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPresetCodec
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
@@ -45,6 +46,10 @@ class DataStoreManager @Inject constructor(
     }
 
     companion object {
+        const val SCREEN_SLEEP_TIMEOUT_FOLLOW_SYSTEM = 0
+        val SCREEN_SLEEP_TIMEOUT_SECONDS_OPTIONS = listOf(SCREEN_SLEEP_TIMEOUT_FOLLOW_SYSTEM, 30, 60, 300, 600, 1200, 1800, 2400, 3000, 3600, 5400, 7200)
+        const val DEFAULT_SCREEN_SLEEP_TIMEOUT_SECONDS = SCREEN_SLEEP_TIMEOUT_FOLLOW_SYSTEM
+
         // 阅读设置
         private val FONT_SIZE = floatPreferencesKey("font_size")
         private val LINE_HEIGHT = floatPreferencesKey("line_height")
@@ -72,6 +77,8 @@ class DataStoreManager @Inject constructor(
         private val SHOW_READER_PAGE_NUMBER = booleanPreferencesKey("show_reader_page_number")
         private val SHOW_READER_BATTERY = booleanPreferencesKey("show_reader_battery")
         private val VOLUME_KEY_PAGE_TURN = booleanPreferencesKey("volume_key_page_turn")
+        private val BIONIC_READING_ENABLED = booleanPreferencesKey("bionic_reading_enabled")
+        private val SCREEN_SLEEP_TIMEOUT_SECONDS = intPreferencesKey("screen_sleep_timeout_seconds")
         private val READER_EDGE_TAP_MODE = stringPreferencesKey("reader_edge_tap_mode")
         private val READER_TOP_LEFT_CONTENT = stringPreferencesKey("reader_top_left_content")
         private val READER_TOP_RIGHT_CONTENT = stringPreferencesKey("reader_top_right_content")
@@ -111,6 +118,12 @@ class DataStoreManager @Inject constructor(
         private val EXTERNAL_TTS_CONSENT_VERSION = intPreferencesKey("external_tts_consent_version")
         private val EXTERNAL_TTS_CONSENT_ACCEPTED_AT = longPreferencesKey("external_tts_consent_accepted_at")
         private val EXTERNAL_TTS_CACHE_LIMIT_MB = intPreferencesKey("external_tts_cache_limit_mb")
+        // WebDAV 同步设置
+        private val WEBDAV_ENABLED = booleanPreferencesKey("webdav_enabled")
+        private val WEBDAV_SERVER_URL = stringPreferencesKey("webdav_server_url")
+        private val WEBDAV_USERNAME = stringPreferencesKey("webdav_username")
+        private val WEBDAV_SYNC_PATH = stringPreferencesKey("webdav_sync_path")
+        private val WEBDAV_LAST_SYNC_TIME = longPreferencesKey("webdav_last_sync_time")
         // 应用语言
         private val APP_LANGUAGE = stringPreferencesKey("app_language")
 
@@ -226,6 +239,16 @@ class DataStoreManager @Inject constructor(
         preferences[VOLUME_KEY_PAGE_TURN] ?: false
     }
 
+    val bionicReadingEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[BIONIC_READING_ENABLED] ?: false
+    }
+
+    val screenSleepTimeoutSeconds: Flow<Int> = context.dataStore.data.map { preferences ->
+        preferences[SCREEN_SLEEP_TIMEOUT_SECONDS]
+            ?.takeIf { it in SCREEN_SLEEP_TIMEOUT_SECONDS_OPTIONS }
+            ?: DEFAULT_SCREEN_SLEEP_TIMEOUT_SECONDS
+    }
+
     val readerEdgeTapMode: Flow<ReaderEdgeTapMode> = context.dataStore.data.map { preferences ->
         ReaderEdgeTapMode.fromKey(preferences[READER_EDGE_TAP_MODE])
     }
@@ -324,6 +347,17 @@ class DataStoreManager @Inject constructor(
                 ExternalTtsConfig.MIN_AUDIO_CACHE_LIMIT_MB,
                 ExternalTtsConfig.MAX_AUDIO_CACHE_LIMIT_MB
             )
+    }
+
+    // WebDAV 同步设置
+    val webdavConfig: Flow<WebdavConfig> = context.dataStore.data.map { preferences ->
+        WebdavConfig(
+            enabled = preferences[WEBDAV_ENABLED] ?: false,
+            serverUrl = preferences[WEBDAV_SERVER_URL] ?: "",
+            username = preferences[WEBDAV_USERNAME] ?: "",
+            syncPath = preferences[WEBDAV_SYNC_PATH] ?: "LumiBooks",
+            lastSyncTime = preferences[WEBDAV_LAST_SYNC_TIME] ?: 0L
+        )
     }
 
     fun externalTtsResumePosition(bookId: String): Flow<ExternalTtsResumePosition?> =
@@ -493,6 +527,19 @@ class DataStoreManager @Inject constructor(
         }
     }
 
+    suspend fun saveBionicReadingEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[BIONIC_READING_ENABLED] = enabled
+        }
+    }
+
+    suspend fun saveScreenSleepTimeoutSeconds(seconds: Int) {
+        if (seconds !in SCREEN_SLEEP_TIMEOUT_SECONDS_OPTIONS) return
+        context.dataStore.edit { preferences ->
+            preferences[SCREEN_SLEEP_TIMEOUT_SECONDS] = seconds
+        }
+    }
+
     suspend fun saveReaderEdgeTapMode(mode: ReaderEdgeTapMode) {
         context.dataStore.edit { preferences ->
             preferences[READER_EDGE_TAP_MODE] = mode.key
@@ -548,6 +595,8 @@ class DataStoreManager @Inject constructor(
             preferences[SHOW_READER_PAGE_NUMBER] = true
             preferences[SHOW_READER_BATTERY] = true
             preferences[VOLUME_KEY_PAGE_TURN] = false
+            preferences[BIONIC_READING_ENABLED] = false
+            preferences[SCREEN_SLEEP_TIMEOUT_SECONDS] = DEFAULT_SCREEN_SLEEP_TIMEOUT_SECONDS
             preferences[READER_EDGE_TAP_MODE] = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT.key
             ReaderPageCorner.entries.forEach { corner ->
                 preferences[readerCornerKey(corner)] = defaultReaderCornerContent(corner).key
@@ -838,6 +887,30 @@ class DataStoreManager @Inject constructor(
     suspend fun disableExternalTts() {
         context.dataStore.edit { preferences ->
             preferences[EXTERNAL_TTS_ENABLED] = false
+        }
+    }
+
+    // WebDAV
+    suspend fun saveWebdavConfig(config: WebdavConfig) {
+        val normalized = config.normalized()
+        context.dataStore.edit { preferences ->
+            preferences[WEBDAV_ENABLED] = normalized.enabled
+            preferences[WEBDAV_SERVER_URL] = normalized.serverUrl
+            preferences[WEBDAV_USERNAME] = normalized.username
+            preferences[WEBDAV_SYNC_PATH] = normalized.syncPath
+            preferences[WEBDAV_LAST_SYNC_TIME] = normalized.lastSyncTime
+        }
+    }
+
+    suspend fun disableWebdav() {
+        context.dataStore.edit { preferences ->
+            preferences[WEBDAV_ENABLED] = false
+        }
+    }
+
+    suspend fun updateWebdavLastSyncTime(timeMillis: Long) {
+        context.dataStore.edit { preferences ->
+            preferences[WEBDAV_LAST_SYNC_TIME] = timeMillis
         }
     }
 

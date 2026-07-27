@@ -57,6 +57,8 @@ class SettingsViewModel @Inject constructor(
     private val externalTtsEngine: ExternalTtsEngine,
     private val mineruManualImportManager: MineruManualImportManager,
     private val externalTtsAudioCache: ExternalTtsAudioCache,
+    private val webdavSyncManager: com.huangder.lumibooks.data.sync.WebdavSyncManager,
+    private val webdavTokenStore: com.huangder.lumibooks.data.local.WebdavTokenStore,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -208,6 +210,14 @@ class SettingsViewModel @Inject constructor(
                         storageInfo = state.storageInfo.copy(externalTtsCacheLimitMb = limitMb)
                     )
                 }
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.webdavConfig.collectLatest { config ->
+                _uiState.value = _uiState.value.copy(
+                    webdavConfig = config,
+                    webdavHasToken = webdavTokenStore.hasToken()
+                )
             }
         }
     }
@@ -897,6 +907,72 @@ class SettingsViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(
             updateCheck = _uiState.value.updateCheck.copy(showAppUpdateDialog = false)
         )
+    }
+
+    // ─── WebDAV 同步 ──────────────────────────────────────────────────
+
+    fun enableWebdav(config: com.huangder.lumibooks.domain.model.WebdavConfig, password: String) {
+        viewModelScope.launch {
+            if (password.isNotBlank()) {
+                webdavTokenStore.save(password)
+            }
+            dataStoreManager.saveWebdavConfig(config.copy(enabled = true))
+        }
+    }
+
+    fun disableWebdav(clearKey: Boolean = false) {
+        viewModelScope.launch {
+            dataStoreManager.disableWebdav()
+            if (clearKey) {
+                webdavTokenStore.clear()
+            }
+        }
+    }
+
+    fun clearWebdavConfig() {
+        viewModelScope.launch {
+            webdavTokenStore.clear()
+            dataStoreManager.disableWebdav()
+        }
+    }
+
+    fun testWebdavConnection() {
+        viewModelScope.launch {
+            val config = _uiState.value.webdavConfig.normalized()
+            val password = webdavTokenStore.read() ?: ""
+            if (config.serverUrl.isBlank() || password.isBlank()) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, R.string.webdav_required_fields, Toast.LENGTH_SHORT).show()
+                }
+                return@launch
+            }
+            val result = webdavSyncManager.testConnection(config.serverUrl, config.username, password)
+            withContext(Dispatchers.Main) {
+                Toast.makeText(
+                    context,
+                    if (result.success) R.string.webdav_test_success else R.string.webdav_test_failed,
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    fun syncWebdavNow() {
+        viewModelScope.launch {
+            val config = _uiState.value.webdavConfig
+            if (!config.enabled) return@launch
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "正在同步…", Toast.LENGTH_SHORT).show()
+            }
+            val result = webdavSyncManager.fullSync()
+            withContext(Dispatchers.Main) {
+                Toast.makeText(
+                    context,
+                    if (result.success) result.message else result.message,
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
     }
 
     private fun addFileToZip(zip: ZipOutputStream, entryName: String, file: File) {

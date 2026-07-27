@@ -176,6 +176,7 @@ import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.MainActivity
 import com.huangder.lumibooks.ReaderPageDirection
 import com.huangder.lumibooks.ui.theme.KaiTi
@@ -509,13 +510,24 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     // 亮度控制：保存系统原始亮度，退出时恢复
     val window = (context as? android.app.Activity)?.window
     val savedBrightness = remember { mutableFloatStateOf(-1f) }
+    var screenSleepResetToken by remember { mutableIntStateOf(0) }
 
     DisposableEffect(Unit) {
         activity?.isInReaderScreen = true
+        val userInteractionHandler: () -> Unit = {
+            screenSleepResetToken += 1
+        }
+        activity?.readerUserInteractionHandler = userInteractionHandler
         // 保存系统原始亮度
         savedBrightness.floatValue = window?.attributes?.screenBrightness ?: -1f
         onDispose {
             activity?.isInReaderScreen = false
+            activity?.let {
+                if (it.readerUserInteractionHandler === userInteractionHandler) {
+                    it.readerUserInteractionHandler = null
+                }
+            }
+            window?.decorView?.keepScreenOn = false
             readViewRef.value?.preloadForExit()  // 退出前预缓存当前章节 layout，供重入直接命中
             viewModel.saveAndPause()
             viewModel.clearError()
@@ -528,7 +540,18 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         }
     }
 
-    // 应用阅读器亮度
+    // 阅读页保持亮屏，达到所选时长后恢复系统休眠策略
+    LaunchedEffect(window, uiState.screenSleepTimeoutSeconds, screenSleepResetToken) {
+        val decorView = window?.decorView ?: return@LaunchedEffect
+        if (uiState.screenSleepTimeoutSeconds == DataStoreManager.SCREEN_SLEEP_TIMEOUT_FOLLOW_SYSTEM) {
+            decorView.keepScreenOn = false
+            return@LaunchedEffect
+        }
+        decorView.keepScreenOn = true
+        kotlinx.coroutines.delay(uiState.screenSleepTimeoutSeconds * 1_000L)
+        decorView.keepScreenOn = false
+    }
+
     SideEffect {
         window?.let { w ->
             val targetBrightness = uiState.brightness
@@ -548,7 +571,10 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_PAUSE -> viewModel.onAppBackgrounded()
-                Lifecycle.Event.ON_RESUME -> viewModel.onAppForegrounded()
+                Lifecycle.Event.ON_RESUME -> {
+                    viewModel.onAppForegrounded()
+                    screenSleepResetToken++
+                }
                 else -> {}
             }
         }
@@ -891,6 +917,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     textColorOverride = uiState.readerTextColor,
                     theme = uiState.readerTheme,
                     preservePublisherBackground = uiState.preserveEpubBackground,
+                    bionicReadingEnabled = uiState.bionicReadingEnabled,
                     restoreLocatorJson = uiState.epubLocatorJson,
                     restoreProgression = uiState.pendingPageFraction,
                     initialFragment = epubPendingFragment,
@@ -987,6 +1014,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     backgroundImagePath = readerBackgroundImagePath,
                     horizontalMargin = uiState.marginLeftDp,
                     verticalMargin = uiState.marginTopDp,
+                    bionicReadingEnabled = uiState.bionicReadingEnabled,
                     viewModel = viewModel,
                     notes = notes,
                     searchHighlight = continuousSearchHighlight,
@@ -1258,7 +1286,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         marginBottomDp = uiState.marginBottomDp,
                         topOverlayInsetDp = if (hasTopReaderStatus) 38f else 0f,
                         bottomOverlayInsetDp = 0f,
-                        paragraphSpacingDp = uiState.paragraphSpacing
+                        paragraphSpacingDp = uiState.paragraphSpacing,
+                        bionicReadingEnabled = uiState.bionicReadingEnabled
                     )
                     readView.setReaderBackground(
                         backgroundColor = readerBackgroundColorInt,
@@ -1739,9 +1768,13 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 readerBottomLeftContent = uiState.readerBottomLeftContent,
                 readerBottomRightContent = uiState.readerBottomRightContent,
                 volumeKeyPageTurnEnabled = uiState.volumeKeyPageTurnEnabled,
+                bionicReadingEnabled = uiState.bionicReadingEnabled,
+                screenSleepTimeoutSeconds = uiState.screenSleepTimeoutSeconds,
                 readerEdgeTapMode = uiState.readerEdgeTapMode,
                 onReaderCornerContentChange = viewModel::saveReaderCornerContent,
                 onVolumeKeyPageTurnEnabledChange = { viewModel.saveVolumeKeyPageTurnEnabled(it) },
+                onBionicReadingEnabledChange = viewModel::saveBionicReadingEnabled,
+                onScreenSleepTimeoutChange = viewModel::saveScreenSleepTimeoutSeconds,
                 onReaderEdgeTapModeChange = viewModel::saveReaderEdgeTapMode,
                 onTextColorChange = { viewModel.saveReaderTextColor(it) },
                 onResetSettings = {
@@ -2942,6 +2975,7 @@ private fun ContinuousScrollReader(
     backgroundImagePath: String?,
     horizontalMargin: Float,
     verticalMargin: Float,
+    bionicReadingEnabled: Boolean,
     viewModel: ReaderViewModel,
     notes: List<com.huangder.lumibooks.domain.model.Note>,
     searchHighlight: ContinuousSearchHighlight?,
@@ -3117,9 +3151,12 @@ private fun ContinuousScrollReader(
             DisposableEffect(chapterIndex) {
                 onDispose { loadedChapters.remove(chapterIndex) }
             }
-            val selectableText = remember(chapterText, notes, searchHighlight, searchHighlightAlpha.value) {
+            val selectableText = remember(
+                chapterText, notes, searchHighlight, searchHighlightAlpha.value, bionicReadingEnabled
+            ) {
                 continuousSpannableText(
                     text = chapterText,
+                    bionicReadingEnabled = bionicReadingEnabled,
                     notes = notes.filter { it.chapterIndex == chapterIndex },
                     searchHighlight = searchHighlight?.takeIf { it.chapterIndex == chapterIndex },
                     searchHighlightAlpha = searchHighlightAlpha.value
@@ -3165,11 +3202,14 @@ private fun ContinuousScrollReader(
 
 private fun continuousSpannableText(
     text: CharSequence?,
+    bionicReadingEnabled: Boolean,
     notes: List<com.huangder.lumibooks.domain.model.Note>,
     searchHighlight: ContinuousSearchHighlight?,
     searchHighlightAlpha: Float
 ): SpannableStringBuilder {
-    val content = SpannableStringBuilder(text ?: "")
+    val content = SpannableStringBuilder(
+        BionicReadingFormatter.format(text ?: "", bionicReadingEnabled)
+    )
     notes.forEach { note ->
         val start = note.startPosition.coerceIn(0, content.length)
         val end = note.endPosition.coerceIn(0, content.length)

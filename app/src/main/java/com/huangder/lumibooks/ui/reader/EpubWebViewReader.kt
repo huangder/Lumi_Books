@@ -186,6 +186,7 @@ internal fun EpubWebViewReader(
     textColorOverride: Int?,
     theme: String,
     preservePublisherBackground: Boolean = true,
+    bionicReadingEnabled: Boolean = false,
     restoreLocatorJson: String?,
     restoreProgression: Float,
     initialFragment: String? = null,
@@ -227,6 +228,7 @@ internal fun EpubWebViewReader(
     val latestTextColorOverride = rememberUpdatedState(textColorOverride)
     val latestTheme = rememberUpdatedState(theme)
     val latestPreservePublisherBackground = rememberUpdatedState(preservePublisherBackground)
+    val latestBionicReadingEnabled = rememberUpdatedState(bionicReadingEnabled)
     val latestRestoreLocator = rememberUpdatedState(restoreLocatorJson)
     val latestRestoreProgression = rememberUpdatedState(restoreProgression)
     val latestInitialFragment = rememberUpdatedState(initialFragment)
@@ -282,6 +284,7 @@ internal fun EpubWebViewReader(
                         textColorOverride = latestTextColorOverride.value,
                         theme = latestTheme.value,
                         preservePublisherBackground = latestPreservePublisherBackground.value,
+                        bionicReadingEnabled = latestBionicReadingEnabled.value,
                         restoreLocatorJson = null,
                         restoreProgression = if (target.pageIndex == Int.MAX_VALUE) 1f else 0f,
                         initialFragment = null,
@@ -685,6 +688,7 @@ internal fun EpubWebViewReader(
                             textColorOverride = latestTextColorOverride.value,
                             theme = latestTheme.value,
                             preservePublisherBackground = latestPreservePublisherBackground.value,
+                            bionicReadingEnabled = latestBionicReadingEnabled.value,
                             restoreLocatorJson = latestRestoreLocator.value,
                             restoreProgression = latestRestoreProgression.value,
                             initialFragment = latestInitialFragment.value,
@@ -712,6 +716,7 @@ internal fun EpubWebViewReader(
                             latestTextColorOverride.value,
                             latestTheme.value,
                             latestPreservePublisherBackground.value,
+                            latestBionicReadingEnabled.value,
                             latestContinuousScroll.value,
                             latestPageTransition.value,
                             latestMarginTopDp.value,
@@ -756,7 +761,7 @@ internal fun EpubWebViewReader(
             }
             val nextConfigKey = configKey(
                 chapterIndex, fontSizeSp, fontType, fontFilePath, textColorOverride, theme,
-                preservePublisherBackground, continuousScroll,
+                preservePublisherBackground, bionicReadingEnabled, continuousScroll,
                 pageTransition, marginTopDp, marginRightDp, marginBottomDp, marginLeftDp, initialFragment,
                 searchRequest, locatorRequest, pageRequest
             )
@@ -811,6 +816,7 @@ internal fun EpubWebViewReader(
                     textColorOverride = textColorOverride,
                     theme = theme,
                     preservePublisherBackground = preservePublisherBackground,
+                    bionicReadingEnabled = bionicReadingEnabled,
                     restoreLocatorJson = restoreLocatorJson,
                     restoreProgression = restoreProgression,
                     initialFragment = initialFragment,
@@ -891,6 +897,7 @@ private fun configKey(
     textColorOverride: Int?,
     theme: String,
     preservePublisherBackground: Boolean,
+    bionicReadingEnabled: Boolean,
     continuousScroll: Boolean,
     pageTransition: String,
     marginTopDp: Float,
@@ -909,6 +916,7 @@ private fun configKey(
     textColorOverride ?: -1,
     theme,
     preservePublisherBackground,
+    bionicReadingEnabled,
     continuousScroll,
     pageTransition,
     marginTopDp,
@@ -930,6 +938,7 @@ private fun configureReader(
     textColorOverride: Int?,
     theme: String,
     preservePublisherBackground: Boolean,
+    bionicReadingEnabled: Boolean,
     restoreLocatorJson: String?,
     restoreProgression: Float,
     initialFragment: String?,
@@ -963,6 +972,7 @@ private fun configureReader(
     val config = JSONObject()
         .put("theme", theme)
         .put("preservePublisherBackground", preservePublisherBackground)
+        .put("bionicReading", bionicReadingEnabled)
         .putOpt("fontFamily", fontFamily)
         .putOpt("fontUrl", readerFontUrl)
         .putOpt("textColor", textColorOverride?.let { String.format("#%06X", it and 0xFFFFFF) })

@@ -87,6 +87,10 @@ data class SettingsUiState(
     val backupStatus: String = "",     // 操作状态提示
     val isProcessing: Boolean = false, // 是否正在执行备份/恢复
 
+    // WebDAV 同步
+    val webdavConfig: com.huangder.lumibooks.domain.model.WebdavConfig = com.huangder.lumibooks.domain.model.WebdavConfig(),
+    val webdavHasToken: Boolean = false,
+
     // 检查更新
     val updateCheck: UpdateCheckDisplay = UpdateCheckDisplay()
 )

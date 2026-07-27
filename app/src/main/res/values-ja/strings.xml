@@ -314,6 +314,8 @@
     <string name="show_reader_battery_hint">バッテリーアイコンと残量</string>
     <string name="volume_key_page_turn">音量キーでページ送り</string>
     <string name="volume_key_page_turn_hint">音量を上げるキーで前へ、下げるキーで次へ</string>
+    <string name="bionic_reading">バイオニックリーディング</string>
+    <string name="bionic_reading_hint">単語の前半を太字にして、視線の移動と集中を助けます</string>
     <string name="reader_edge_tap_page_turn">画面両端のタップでページ送り</string>
     <string name="reader_edge_tap_page_turn_hint">左右の端をタップしたときの動作を選択</string>
     <string name="reader_edge_tap_left_previous_right_next">前へ / 次へ</string>
@@ -462,8 +464,8 @@
     <string name="splash_screen_description">アプリ起動時にブランド画面を表示します</string>
     <string name="splash_setting_next_launch">次回の起動時に適用されます</string>
     <!-- MinerU third-party cloud parsing -->
-    <string name="category_third_party_services">サードパーティサービス</string>
-    <string name="title_third_party_services">サードパーティサービス</string>
+    <string name="category_third_party_services">サービス</string>
+    <string name="title_third_party_services">サービス</string>
     <string name="category_mineru">MINERU</string>
     <string name="title_mineru">MinerU クラウド解析</string>
     <string name="mineru_powered_by">Powered by MinerU</string>
@@ -611,6 +613,38 @@
     <string name="external_tts_http_warning_desc">HTTP 接続は暗号化されません。API キーと朗読テキストがネットワーク上を平文で送信され、傍受される可能性があります。HTTPS を強く推奨します。</string>
     <string name="external_tts_http_confirm">HTTP のリスクを理解したうえで有効にする</string>
     <string name="external_tts_http_enable">HTTP を有効にする</string>
+    <!-- WebDAV 同期 -->
+    <string name="category_webdav">WebDAV 同期</string>
+    <string name="title_webdav">WebDAV 同期</string>
+    <string name="title_webdav_configuration">WebDAV 同期の設定</string>
+    <string name="webdav_enabled_status">有効</string>
+    <string name="webdav_not_configured">未設定</string>
+    <string name="webdav_server_url_label">サーバーアドレス</string>
+    <string name="webdav_server_url_hint">https://dav.example.com/remote.php/dav/</string>
+    <string name="webdav_username_label">ユーザー名</string>
+    <string name="webdav_password_label">パスワード</string>
+    <string name="webdav_password_hint">パスワードを入力</string>
+    <string name="webdav_token_saved">暗号化して保存済み；空欄のままでも使用可</string>
+    <string name="webdav_token_storage_notice">パスワードは Android KeyStore で暗号化され、この端末にのみ保存されます。</string>
+    <string name="webdav_show_password">パスワードを表示</string>
+    <string name="webdav_hide_password">パスワードを非表示</string>
+    <string name="webdav_sync_now">今すぐ同期</string>
+    <string name="webdav_test_connection">接続テスト</string>
+    <string name="webdav_test_success">接続成功、WebDAV サービスは利用可能です</string>
+    <string name="webdav_test_failed">接続失敗。サーバーアドレス、ユーザー名、パスワードを確認してください。</string>
+    <string name="webdav_sync_success">同期完了</string>
+    <string name="webdav_sync_failed">同期失敗。ネットワークとサーバーの状態を確認してください。</string>
+    <string name="webdav_disable">WebDAV 同期を無効にする</string>
+    <string name="webdav_clear_config">設定をクリア</string>
+    <string name="webdav_enable">保存して有効にする</string>
+    <string name="webdav_configure">設定</string>
+    <string name="webdav_save_configuration">設定を保存</string>
+    <string name="webdav_last_sync_time">前回の同期：%1$s</string>
+    <string name="webdav_status_card_title">接続状態</string>
+    <string name="webdav_sync_path_hint">同期ディレクトリ（任意、デフォルト LumiBooks）</string>
+    <string name="webdav_required_fields">サーバーアドレスとユーザー名を入力してください</string>
+    <string name="webdav_third_party_title">WebDAV 同期について</string>
+    <string name="webdav_third_party_notice">WebDAV 同期はお客様ご自身の WebDAV サーバーを利用します。書籍ファイル、読書の進捗、メモ、しおりがそのサーバーにアップロードされます。LumiBooks は自社サーバーにデータを送信せず、第三者サーバーの可用性やセキュリティについて管理しません。</string>
     <string name="epub_render_mode">EPUB レイアウト</string>
     <string name="epub_book_layout">書籍の元レイアウト</string>
     <string name="epub_reader_layout">リーダーレイアウト</string>
@@ -624,4 +658,7 @@
     <string name="epub_layout_first_open_title">EPUB レイアウトのヒント</string>
     <string name="epub_layout_first_open_message">この本に独自のレイアウトが含まれている場合は、画面中央をタップし、「テーマ」から「書籍の元レイアウト」を選択できます。</string>
     <string name="epub_layout_first_open_confirm">了解</string>
+    <string name="screen_sleep_timeout">画面のスリープ時間</string>
+    <string name="screen_sleep_timeout_follow_system">システム設定に従う</string>
+    <string name="screen_sleep_timeout_hint">静止画面を長時間表示すると、画面の色むらが生じることがあります</string>
 </resources>

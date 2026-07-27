@@ -91,6 +91,7 @@ import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassTransparency
 import com.huangder.lumibooks.R
+import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
 import com.huangder.lumibooks.util.epub.EpubRenderMode
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
@@ -1026,9 +1027,13 @@ fun AdvancedSettingsSheet(
     readerBottomLeftContent: ReaderCornerContent,
     readerBottomRightContent: ReaderCornerContent,
     volumeKeyPageTurnEnabled: Boolean = false,
+    bionicReadingEnabled: Boolean = false,
+    screenSleepTimeoutSeconds: Int = DataStoreManager.DEFAULT_SCREEN_SLEEP_TIMEOUT_SECONDS,
     readerEdgeTapMode: ReaderEdgeTapMode = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT,
     onReaderCornerContentChange: (ReaderPageCorner, ReaderCornerContent) -> Unit,
     onVolumeKeyPageTurnEnabledChange: (Boolean) -> Unit = {},
+    onBionicReadingEnabledChange: (Boolean) -> Unit = {},
+    onScreenSleepTimeoutChange: (Int) -> Unit = {},
     onReaderEdgeTapModeChange: (ReaderEdgeTapMode) -> Unit = {},
     onTextColorChange: (Int?) -> Unit,
     onResetSettings: () -> Unit,
@@ -1212,6 +1217,16 @@ fun AdvancedSettingsSheet(
                 }
                 Spacer(Modifier.height(12.dp))
 
+                AdvancedSettingsGroup {
+                    AdvancedToggleRow(
+                        title = stringResource(R.string.bionic_reading),
+                        hint = stringResource(R.string.bionic_reading_hint),
+                        checked = bionicReadingEnabled,
+                        onCheckedChange = onBionicReadingEnabledChange
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+
                 if (!preservePublisherLayout) {
                 AdvancedSettingsGroup {
                     SettingSlider(stringResource(R.string.label_line_height), currentLineHeight, 1.0f..2.5f, 0.1f, { String.format("%.1fx", it) }, onLineHeightChange)
@@ -1258,6 +1273,11 @@ fun AdvancedSettingsSheet(
                     ReaderEdgeTapModeSetting(
                         selected = readerEdgeTapMode,
                         onSelected = onReaderEdgeTapModeChange
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    ScreenSleepTimeoutSetting(
+                        selectedSeconds = screenSleepTimeoutSeconds,
+                        onSelected = onScreenSleepTimeoutChange
                     )
                     Spacer(Modifier.height(16.dp))
                     AdvancedToggleRow(
@@ -1630,6 +1650,126 @@ private fun ReaderEdgeTapModeSetting(
             }
         }
     }
+}
+
+@Composable
+private fun ScreenSleepTimeoutSetting(
+    selectedSeconds: Int,
+    onSelected: (Int) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    var menuAnchorBounds by remember { mutableStateOf(Rect.Zero) }
+    val options = DataStoreManager.SCREEN_SLEEP_TIMEOUT_SECONDS_OPTIONS
+    val labeledOptions = options.map { seconds -> seconds to screenSleepTimeoutLabel(seconds) }
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val liquidMenuHost = LocalLiquidGlassMenuHost.current
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(end = 12.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.screen_sleep_timeout),
+                fontSize = 14.sp,
+                color = AppColors.TextPrimary
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = stringResource(R.string.screen_sleep_timeout_hint),
+                fontSize = 11.sp,
+                color = LightTextSecondary.copy(alpha = 0.72f)
+            )
+        }
+
+        Box {
+            Box(
+                modifier = Modifier
+                    .width(128.dp)
+                    .height(38.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(LightBgGray)
+                    .onGloballyPositioned { menuAnchorBounds = it.boundsInRoot() }
+                    .clickable {
+                        if (isLiquidGlass && liquidMenuHost != null && menuAnchorBounds != Rect.Zero) {
+                            liquidMenuHost.show(
+                                LiquidGlassMenuSpec(
+                                    anchorBounds = menuAnchorBounds,
+                                    width = 128.dp,
+                                    items = labeledOptions.map { (seconds, label) ->
+                                        LiquidGlassMenuItem(
+                                            label = label,
+                                            selected = seconds == selectedSeconds,
+                                            onClick = { onSelected(seconds) }
+                                        )
+                                    }
+                                )
+                            )
+                        } else {
+                            expanded = true
+                        }
+                    }
+                    .padding(horizontal = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = screenSleepTimeoutLabel(selectedSeconds),
+                    fontSize = 12.sp,
+                    color = AppColors.TextPrimary,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(end = 16.dp)
+                )
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = LightTextSecondary,
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .size(16.dp)
+                )
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                shape = RoundedCornerShape(18.dp),
+                containerColor = LightCardBg,
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp
+            ) {
+                labeledOptions.forEach { (seconds, label) ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = label,
+                                fontSize = 13.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        },
+                        onClick = {
+                            expanded = false
+                            onSelected(seconds)
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun screenSleepTimeoutLabel(seconds: Int): String = when {
+    seconds == DataStoreManager.SCREEN_SLEEP_TIMEOUT_FOLLOW_SYSTEM ->
+        stringResource(R.string.screen_sleep_timeout_follow_system)
+    seconds < 60 -> stringResource(R.string.time_seconds, seconds)
+    else -> stringResource(R.string.time_minutes, seconds / 60)
 }
 
 @Composable

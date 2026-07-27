@@ -314,6 +314,8 @@
     <string name="show_reader_battery_hint">배터리 아이콘과 잔량</string>
     <string name="volume_key_page_turn">음량 키로 페이지 넘기기</string>
     <string name="volume_key_page_turn_hint">음량 높임은 이전 페이지, 낮춤은 다음 페이지</string>
+    <string name="bionic_reading">바이오닉 리딩</string>
+    <string name="bionic_reading_hint">단어 앞부분을 굵게 표시해 시선 이동과 집중을 돕습니다</string>
     <string name="reader_edge_tap_page_turn">화면 양쪽 탭으로 페이지 넘기기</string>
     <string name="reader_edge_tap_page_turn_hint">왼쪽과 오른쪽 가장자리를 탭할 때의 동작을 선택하세요</string>
     <string name="reader_edge_tap_left_previous_right_next">이전 / 다음</string>
@@ -462,8 +464,8 @@
     <string name="splash_screen_description">앱을 시작할 때 브랜드 화면 표시</string>
     <string name="splash_setting_next_launch">다음 앱 시작 시 적용됩니다</string>
     <!-- MinerU third-party cloud parsing -->
-    <string name="category_third_party_services">타사 서비스</string>
-    <string name="title_third_party_services">타사 서비스</string>
+    <string name="category_third_party_services">서비스</string>
+    <string name="title_third_party_services">서비스</string>
     <string name="category_mineru">MINERU</string>
     <string name="title_mineru">MinerU 클라우드 분석</string>
     <string name="mineru_powered_by">Powered by MinerU</string>
@@ -611,6 +613,38 @@
     <string name="external_tts_http_warning_desc">HTTP 연결은 암호화되지 않습니다. API 키와 낭독 텍스트가 네트워크에서 평문으로 전송되어 가로채일 수 있습니다. HTTPS를 강력히 권장합니다.</string>
     <string name="external_tts_http_confirm">HTTP 위험을 이해했으며 계속 사용합니다</string>
     <string name="external_tts_http_enable">HTTP 사용</string>
+    <!-- WebDAV 동기화 -->
+    <string name="category_webdav">WebDAV 동기화</string>
+    <string name="title_webdav">WebDAV 동기화</string>
+    <string name="title_webdav_configuration">WebDAV 동기화 구성</string>
+    <string name="webdav_enabled_status">사용</string>
+    <string name="webdav_not_configured">구성되지 않음</string>
+    <string name="webdav_server_url_label">서버 주소</string>
+    <string name="webdav_server_url_hint">https://dav.example.com/remote.php/dav/</string>
+    <string name="webdav_username_label">사용자 이름</string>
+    <string name="webdav_password_label">비밀번호</string>
+    <string name="webdav_password_hint">비밀번호 입력</string>
+    <string name="webdav_token_saved">암호화되어 저장됨; 비워두면 계속 사용</string>
+    <string name="webdav_token_storage_notice">비밀번호는 Android KeyStore로 암호화되어 이 기기에만 저장됩니다.</string>
+    <string name="webdav_show_password">비밀번호 표시</string>
+    <string name="webdav_hide_password">비밀번호 숨기기</string>
+    <string name="webdav_sync_now">지금 동기화</string>
+    <string name="webdav_test_connection">연결 테스트</string>
+    <string name="webdav_test_success">연결 성공, WebDAV 서비스 사용 가능</string>
+    <string name="webdav_test_failed">연결 실패. 서버 주소, 사용자 이름, 비밀번호를 확인하세요.</string>
+    <string name="webdav_sync_success">동기화 완료</string>
+    <string name="webdav_sync_failed">동기화 실패. 네트워크와 서버 상태를 확인하세요.</string>
+    <string name="webdav_disable">WebDAV 동기화 비활성화</string>
+    <string name="webdav_clear_config">구성 지우기</string>
+    <string name="webdav_enable">저장 및 활성화</string>
+    <string name="webdav_configure">구성</string>
+    <string name="webdav_save_configuration">구성 저장</string>
+    <string name="webdav_last_sync_time">마지막 동기화: %1$s</string>
+    <string name="webdav_status_card_title">연결 상태</string>
+    <string name="webdav_sync_path_hint">동기화 디렉터리(선택 사항, 기본값 LumiBooks)</string>
+    <string name="webdav_required_fields">서버 주소와 사용자 이름을 입력하세요</string>
+    <string name="webdav_third_party_title">WebDAV 동기화 정보</string>
+    <string name="webdav_third_party_notice">WebDAV 동기화는 사용자 자신의 WebDAV 서버를 사용합니다. 도서 파일, 읽기 진행 상황, 메모, 책갈피가 해당 서버에 업로드됩니다. LumiBooks는 LumiBooks 자체 서버로 데이터를 전송하지 않으며, 타사 서버의 가용성이나 보안을 통제하지 않습니다.</string>
     <string name="epub_render_mode">EPUB 레이아웃</string>
     <string name="epub_book_layout">책 원본 레이아웃</string>
     <string name="epub_reader_layout">리더 레이아웃</string>
@@ -624,4 +658,7 @@
     <string name="epub_layout_first_open_title">EPUB 레이아웃 안내</string>
     <string name="epub_layout_first_open_message">이 책에 자체 레이아웃이 포함되어 있다면 화면 중앙을 탭한 뒤 ‘테마’에서 ‘책 원본 레이아웃’을 선택할 수 있습니다.</string>
     <string name="epub_layout_first_open_confirm">확인</string>
+    <string name="screen_sleep_timeout">화면 절전 시간</string>
+    <string name="screen_sleep_timeout_follow_system">시스템 설정 따르기</string>
+    <string name="screen_sleep_timeout_hint">정지 화면을 오래 표시하면 화면 색상이 고르지 않게 보일 수 있습니다</string>
 </resources>

@@ -110,6 +110,17 @@ class DetailActivity : ComponentActivity() {
                         "external_tts_config" -> DetailPage(stringResource(R.string.title_external_tts_configuration), onBack) {
                             ExternalTtsConfigurationDetail(viewModel, onSaved = onBack)
                         }
+                        "webdav" -> DetailPage(stringResource(R.string.title_webdav), onBack) {
+                            WebdavSettingsDetail(viewModel) {
+                                startActivity(
+                                    Intent(this@DetailActivity, DetailActivity::class.java)
+                                        .putExtra("category", "webdav_config")
+                                )
+                            }
+                        }
+                        "webdav_config" -> DetailPage(stringResource(R.string.title_webdav_configuration), onBack) {
+                            WebdavConfigurationDetail(viewModel, onSaved = onBack)
+                        }
                         "changelog" -> DetailPage(stringResource(R.string.title_changelog), onBack) { ChangelogDetail() }
                         else -> DetailPage(stringResource(R.string.title_about), onBack) { AboutDetail(viewModel) }
                     }

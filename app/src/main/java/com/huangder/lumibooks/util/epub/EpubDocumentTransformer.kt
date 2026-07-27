@@ -180,7 +180,7 @@ html.lumi-green body { color: #1b5e20 !important; }
     viewportWidth: 0, viewportHeight: 0, paginating: false, configured: false, mediaSettled: false,
     pendingProgression: undefined, publisherBox: null, publisherBackground: null, scrollGuard: false, initialFragmentApplied: false,
     transition: 'slide', animationTimer: 0, suppressClickUntil: 0, preservePublisherBackground: true,
-    pendingPreparedPage: null, prepareSerial: 0,
+    bionicReading: false, pendingPreparedPage: null, prepareSerial: 0,
     insets: { top: 0, right: 0, bottom: 0, left: 0 }
   };
   var resizeTimer = 0;
@@ -989,6 +989,112 @@ html.lumi-green body { color: #1b5e20 !important; }
     }
   }
 
+  function isBionicCjkCharacter(character) {
+    var codePoint = character.codePointAt(0);
+    return (codePoint >= 0x3400 && codePoint <= 0x4DBF) ||
+      (codePoint >= 0x4E00 && codePoint <= 0x9FFF) ||
+      (codePoint >= 0xF900 && codePoint <= 0xFAFF) ||
+      (codePoint >= 0x20000 && codePoint <= 0x2FA1F) ||
+      (codePoint >= 0x3040 && codePoint <= 0x30FF) ||
+      (codePoint >= 0x31F0 && codePoint <= 0x31FF) ||
+      (codePoint >= 0xFF66 && codePoint <= 0xFF9D) ||
+      (codePoint >= 0x1100 && codePoint <= 0x11FF) ||
+      (codePoint >= 0x3130 && codePoint <= 0x318F) ||
+      (codePoint >= 0xA960 && codePoint <= 0xA97F) ||
+      (codePoint >= 0xAC00 && codePoint <= 0xD7AF) ||
+      (codePoint >= 0xD7B0 && codePoint <= 0xD7FF);
+  }
+
+  function isBionicWordCharacter(character) {
+    if (isBionicCjkCharacter(character)) return false;
+    if (/[A-Za-z0-9]/.test(character)) return true;
+    return character.toLocaleUpperCase() !== character.toLocaleLowerCase();
+  }
+
+  function applyBionicReading(enabled) {
+    enabled = enabled === true;
+    if (!document.body || state.bionicReading === enabled) return;
+    state.bionicReading = enabled;
+
+    if (!enabled) {
+      var bionicSpans = Array.prototype.slice.call(document.querySelectorAll('span[data-lumi-bionic]'));
+      var parents = [];
+      bionicSpans.forEach(function (span) {
+        var parent = span.parentNode;
+        if (!parent) return;
+        parents.push(parent);
+        parent.replaceChild(document.createTextNode(span.textContent || ''), span);
+      });
+      parents.forEach(function (parent) { if (parent.normalize) parent.normalize(); });
+      return;
+    }
+
+    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+    var textNodes = [];
+    var current = null;
+    while ((current = walker.nextNode())) {
+      var parent = current.parentElement;
+      if (!parent || !current.nodeValue || !current.nodeValue.trim()) continue;
+      if (parent.closest('script,style,noscript,textarea,pre,code,svg,math,[data-lumi-bionic]')) continue;
+      textNodes.push(current);
+    }
+
+    textNodes.forEach(function (textNode) {
+      if (!textNode.parentNode) return;
+      var characters = Array.from(textNode.nodeValue || '');
+      var fragment = document.createDocumentFragment();
+      var plainText = '';
+      var hasFixation = false;
+
+      function flushPlainText() {
+        if (!plainText) return;
+        fragment.appendChild(document.createTextNode(plainText));
+        plainText = '';
+      }
+
+      function appendFixation(value) {
+        if (!value) return;
+        flushPlainText();
+        var span = document.createElement('span');
+        span.setAttribute('data-lumi-bionic', '1');
+        span.style.setProperty('font-weight', '700', 'important');
+        span.textContent = value;
+        fragment.appendChild(span);
+        hasFixation = true;
+      }
+
+      var index = 0;
+      while (index < characters.length) {
+        if (isBionicCjkCharacter(characters[index])) {
+          var cjkEnd = index + 1;
+          while (cjkEnd < characters.length && isBionicCjkCharacter(characters[cjkEnd])) cjkEnd++;
+          for (var cjkIndex = index; cjkIndex < cjkEnd; cjkIndex += 2) {
+            appendFixation(characters[cjkIndex]);
+            if (cjkIndex + 1 < cjkEnd) plainText += characters[cjkIndex + 1];
+          }
+          index = cjkEnd;
+          continue;
+        }
+
+        if (isBionicWordCharacter(characters[index])) {
+          var wordEnd = index + 1;
+          while (wordEnd < characters.length && isBionicWordCharacter(characters[wordEnd])) wordEnd++;
+          var fixationEnd = index + Math.ceil((wordEnd - index) / 2);
+          appendFixation(characters.slice(index, fixationEnd).join(''));
+          plainText += characters.slice(fixationEnd, wordEnd).join('');
+          index = wordEnd;
+          continue;
+        }
+
+        plainText += characters[index];
+        index++;
+      }
+
+      flushPlainText();
+      if (hasFixation) textNode.parentNode.replaceChild(fragment, textNode);
+    });
+  }
+
   function applyReaderOverrides(config) {
     var existing = document.getElementById('lumi-reader-overrides');
     var family = config.fontFamily ? String(config.fontFamily) : '';
@@ -1031,6 +1137,7 @@ html.lumi-green body { color: #1b5e20 !important; }
     state.configured = true;
     capturePublisherBackground(document.body);
     applyReaderOverrides(config);
+    applyBionicReading(config.bionicReading === true);
     document.documentElement.classList.toggle('lumi-ignore-publisher-background', !state.preservePublisherBackground);
     document.documentElement.classList.remove('lumi-night', 'lumi-sepia', 'lumi-green');
     if (config.theme === 'night') document.documentElement.classList.add('lumi-night');

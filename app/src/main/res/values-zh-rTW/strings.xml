@@ -314,6 +314,8 @@
     <string name="show_reader_battery_hint">電量圖示與百分比</string>
     <string name="volume_key_page_turn">音量鍵翻頁</string>
     <string name="volume_key_page_turn_hint">音量增加鍵上一頁，音量減少鍵下一頁</string>
+    <string name="bionic_reading">仿生閱讀</string>
+    <string name="bionic_reading_hint">加粗詞語的前半部分，幫助視線快速定位並提升閱讀專注度</string>
     <string name="reader_edge_tap_page_turn">點擊螢幕兩側翻頁</string>
     <string name="reader_edge_tap_page_turn_hint">設定點擊左、右兩側時的翻頁方向</string>
     <string name="reader_edge_tap_left_previous_right_next">左上右下</string>
@@ -462,8 +464,8 @@
     <string name="splash_screen_description">啟動時顯示品牌開屏畫面</string>
     <string name="splash_setting_next_launch">將在下次啟動時生效</string>
     <!-- MinerU 第三方雲端解析 -->
-    <string name="category_third_party_services">第三方服務</string>
-    <string name="title_third_party_services">第三方服務</string>
+    <string name="category_third_party_services">服務</string>
+    <string name="title_third_party_services">服務</string>
     <string name="category_mineru">MINERU</string>
     <string name="title_mineru">MinerU 雲端解析</string>
     <string name="mineru_powered_by">Powered by MinerU</string>
@@ -611,6 +613,38 @@
     <string name="external_tts_http_warning_desc">HTTP 連線不加密，你的 API Key 與朗讀文字可能以明文在網路中傳輸，有遭竊聽的風險。強烈建議使用 HTTPS。</string>
     <string name="external_tts_http_confirm">我了解 HTTP 風險，仍要開啟</string>
     <string name="external_tts_http_enable">確認開啟 HTTP</string>
+    <!-- WebDAV 同步 -->
+    <string name="category_webdav">WebDAV 同步</string>
+    <string name="title_webdav">WebDAV 同步</string>
+    <string name="title_webdav_configuration">設定 WebDAV 同步</string>
+    <string name="webdav_enabled_status">已啟用</string>
+    <string name="webdav_not_configured">未設定</string>
+    <string name="webdav_server_url_label">伺服器位址</string>
+    <string name="webdav_server_url_hint">https://dav.example.com/remote.php/dav/</string>
+    <string name="webdav_username_label">使用者名稱</string>
+    <string name="webdav_password_label">密碼</string>
+    <string name="webdav_password_hint">輸入 WebDAV 密碼</string>
+    <string name="webdav_token_saved">已加密儲存；留空可繼續使用</string>
+    <string name="webdav_token_storage_notice">密碼僅加密儲存在本機 Android KeyStore，不會洩露給任何其他方。</string>
+    <string name="webdav_show_password">顯示密碼</string>
+    <string name="webdav_hide_password">隱藏密碼</string>
+    <string name="webdav_sync_now">立即同步</string>
+    <string name="webdav_test_connection">測試連線</string>
+    <string name="webdav_test_success">連線成功，WebDAV 服務可用</string>
+    <string name="webdav_test_failed">連線失敗，請檢查伺服器位址、使用者名稱和密碼</string>
+    <string name="webdav_sync_success">同步完成</string>
+    <string name="webdav_sync_failed">同步失敗，請檢查網路和伺服器狀態</string>
+    <string name="webdav_disable">停用 WebDAV 同步</string>
+    <string name="webdav_clear_config">清除設定</string>
+    <string name="webdav_enable">儲存並啟用</string>
+    <string name="webdav_configure">設定</string>
+    <string name="webdav_save_configuration">儲存設定</string>
+    <string name="webdav_last_sync_time">上次同步：%1$s</string>
+    <string name="webdav_status_card_title">連線狀態</string>
+    <string name="webdav_sync_path_hint">同步目錄（可選，預設為 LumiBooks）</string>
+    <string name="webdav_required_fields">請填寫伺服器位址和使用者名稱</string>
+    <string name="webdav_third_party_title">關於 WebDAV 同步</string>
+    <string name="webdav_third_party_notice">WebDAV 同步使用您自行設定的 WebDAV 伺服器。書籍檔案、閱讀進度、筆記和書籤將上傳至該伺服器。LumiBooks 不傳輸資料至自身伺服器，也不管控第三方伺服器的可用性與安全性。</string>
     <string name="epub_render_mode">EPUB 排版模式</string>
     <string name="epub_book_layout">書籍原排版</string>
     <string name="epub_reader_layout">閱讀器排版</string>
@@ -624,4 +658,7 @@
     <string name="epub_layout_first_open_title">EPUB 排版提示</string>
     <string name="epub_layout_first_open_message">如果本書內建排版，可點擊螢幕中央，在「主題」中選擇「書籍原排版」。</string>
     <string name="epub_layout_first_open_confirm">知道了</string>
+    <string name="screen_sleep_timeout">螢幕休眠時間</string>
+    <string name="screen_sleep_timeout_follow_system">跟隨系統</string>
+    <string name="screen_sleep_timeout_hint">長時間顯示靜止畫面可能導致螢幕顯色不均</string>
 </resources>
