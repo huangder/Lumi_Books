@@ -41,6 +41,9 @@ import com.huangder.lumibooks.util.parser.BookParser
 import com.huangder.lumibooks.util.parser.BookParserFactory
 import com.huangder.lumibooks.util.parser.BookLinkTarget
 import com.huangder.lumibooks.util.parser.PdfParser
+import com.huangder.lumibooks.util.epub.EpubRenderMode
+import com.huangder.lumibooks.util.epub.EpubRenderSession
+import com.huangder.lumibooks.util.epub.EpubRenderSource
 import com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatter
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.service.TtsForegroundService
@@ -110,6 +113,7 @@ data class ReaderUiState(
     val customFonts: List<com.huangder.lumibooks.domain.model.CustomFontPreset> = emptyList(),
     val readerBackgroundSelection: String = "day",
     val customReaderBackgrounds: List<ReaderBackgroundPreset> = emptyList(),
+    val preserveEpubBackground: Boolean = true,
     val readerTextColor: Int? = null,
     val error: String? = null,
     /** 全局页码（跨所有章节），新引擎用 */
@@ -120,6 +124,9 @@ data class ReaderUiState(
     val optimizeLayout: Boolean = true,
     /** 是否加载 EPUB 自带 CSS 样式（per-book） */
     val useEpubCss: Boolean = false,
+    val epubRenderMode: EpubRenderMode = EpubRenderMode.READER_LAYOUT,
+    val showEpubLayoutHint: Boolean = false,
+    val epubLocatorJson: String? = null,
     /** 简繁转换模式："original" | "simplified" | "traditional" */
     val chineseMode: String = "original",
     /** 翻页效果："slide" | "scroll" | "fade" */
@@ -220,6 +227,7 @@ class ReaderViewModel @Inject constructor(
     val ttsPageTurnRequests = ttsController.pageTurnRequests
 
     private var parser: BookParser? = null
+    private var epubRenderSession: EpubRenderSession? = null
     private var sessionStartTime: Long = System.currentTimeMillis()
     private var pausedTime: Long = 0L  // 进入后台的时间戳
     private var isPaused: Boolean = false
@@ -437,6 +445,11 @@ class ReaderViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            dataStoreManager.preserveEpubBackground.collectLatest { preserve ->
+                _uiState.value = _uiState.value.copy(preserveEpubBackground = preserve)
+            }
+        }
+        viewModelScope.launch {
             dataStoreManager.readerTextColor.collectLatest { color ->
                 _uiState.value = _uiState.value.copy(readerTextColor = color)
             }
@@ -588,6 +601,10 @@ class ReaderViewModel @Inject constructor(
             dataStoreManager.saveReaderBackgroundState(theme, theme)
         }
     }
+    fun savePreserveEpubBackground(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(preserveEpubBackground = enabled)
+        viewModelScope.launch { dataStoreManager.savePreserveEpubBackground(enabled) }
+    }
 
     fun saveReaderTextColor(color: Int?) {
         _uiState.value = _uiState.value.copy(readerTextColor = color)
@@ -730,6 +747,97 @@ class ReaderViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    @Synchronized
+    fun getEpubRenderSession(): EpubRenderSession? {
+        epubRenderSession?.let { return it }
+        val source = parser as? EpubRenderSource ?: return null
+        return source.openRenderSession().also { epubRenderSession = it }
+    }
+
+    fun dismissEpubLayoutHint() {
+        if (!_uiState.value.showEpubLayoutHint) return
+        _uiState.value = _uiState.value.copy(showEpubLayoutHint = false)
+        viewModelScope.launch {
+            dataStoreManager.markEpubLayoutHintShown(bookId)
+        }
+    }
+
+    fun saveEpubRenderMode(mode: EpubRenderMode) {
+        val state = _uiState.value
+        if (state.book?.format?.name != "EPUB" || state.epubRenderMode == mode) return
+        val chapterProgression = if (state.totalPages > 0) {
+            state.currentPageIndex.toFloat() / state.totalPages
+        } else {
+            state.pendingPageFraction
+        }.coerceIn(0f, 1f)
+        saveProgress()
+        _uiState.value = state.copy(
+            epubRenderMode = mode,
+            currentPageIndex = 0,
+            totalPages = 0,
+            pageReady = false,
+            isLoading = state.isLoading,
+            pendingPageFraction = chapterProgression,
+            epubLocatorJson = null
+        )
+        viewModelScope.launch {
+            dataStoreManager.saveEpubRenderMode(bookId, mode)
+            if (mode == EpubRenderMode.BOOK_LAYOUT && epubRenderSession == null) {
+                withContext(Dispatchers.IO) { getEpubRenderSession() }
+            }
+        }
+    }
+
+    fun fallbackFromUnsupportedEpubWebView() {
+        val state = _uiState.value
+        if (state.book?.format?.name != "EPUB" || state.epubRenderMode != EpubRenderMode.BOOK_LAYOUT) return
+        val chapterProgression = if (state.totalPages > 0) {
+            state.currentPageIndex.toFloat() / state.totalPages
+        } else {
+            state.pendingPageFraction
+        }.coerceIn(0f, 1f)
+        _uiState.value = state.copy(
+            epubRenderMode = EpubRenderMode.READER_LAYOUT,
+            currentPageIndex = 0,
+            totalPages = 0,
+            pageReady = false,
+            isLoading = true,
+            pendingPageFraction = chapterProgression,
+            epubLocatorJson = null
+        )
+    }
+
+    fun onEpubPageReady(pageIndex: Int, pageCount: Int, locatorJson: String?) {
+        _uiState.value = _uiState.value.copy(
+            currentPageIndex = pageIndex.coerceAtLeast(0),
+            totalPages = pageCount.coerceAtLeast(1),
+            pageReady = true,
+            isLoading = false,
+            epubLocatorJson = locatorJson ?: _uiState.value.epubLocatorJson,
+            pendingPageFraction = 0f
+        )
+        ttsController.onPageVisible(bookId, _uiState.value.currentChapterIndex, pageIndex)
+        saveProgress()
+    }
+
+    fun onEpubChapterTurn(direction: Int) {
+        val state = _uiState.value
+        val chapterDelta = if (direction > 0) 1 else -1
+        val targetChapter = (state.currentChapterIndex + chapterDelta)
+            .coerceIn(0, (state.chapterCount - 1).coerceAtLeast(0))
+        if (targetChapter == state.currentChapterIndex) return
+        _uiState.value = state.copy(
+            currentChapterIndex = targetChapter,
+            currentPageIndex = 0,
+            totalPages = 0,
+            pageReady = false,
+            isLoading = true,
+            epubLocatorJson = null,
+            pendingPageFraction = if (direction < 0) 1f else 0f
+        )
+        preloadAdjacentChapters()
     }
 
     fun saveOptimizeLayout(enabled: Boolean) {
@@ -887,6 +995,20 @@ class ReaderViewModel @Inject constructor(
     }
 
     /** 从 URI 导入字体文件到内部存储，注册到自定义字体列表，返回新建的 CustomFontPreset */
+    fun resetBookLayoutReaderSettings() {
+        saveFontType("system")
+        saveMarginLeft(38f)
+        saveMarginRight(38f)
+        saveMarginTop(64f)
+        saveMarginBottom(64f)
+        saveReaderTextColor(null)
+        saveVolumeKeyPageTurnEnabled(false)
+        saveReaderEdgeTapMode(ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT)
+        ReaderPageCorner.entries.forEach { corner ->
+            saveReaderCornerContent(corner, defaultReaderCornerContent(corner))
+        }
+    }
+
     suspend fun importFont(
         context: android.content.Context,
         uri: android.net.Uri
@@ -926,6 +1048,15 @@ class ReaderViewModel @Inject constructor(
                 val book = bookRepository.getBookById(bookId)
                 if (book != null) {
                     parser = BookParserFactory.createParser(book.format, context)
+
+                    val isEpub = book.format.name == "EPUB"
+                    val epubRenderMode = if (isEpub) {
+                        dataStoreManager.migrateEpubRenderMode(bookId)
+                    } else {
+                        EpubRenderMode.READER_LAYOUT
+                    }
+                    val showEpubLayoutHint = isEpub &&
+                        !dataStoreManager.epubLayoutHintShown(bookId).first()
 
                     // 读取设置
                     val optimize = dataStoreManager.optimizeLayout(bookId).first()
@@ -982,6 +1113,9 @@ class ReaderViewModel @Inject constructor(
                         useNewEngine = !isPdf,  // TXT/EPUB 用新 Canvas 引擎，PDF 保留 WebView
                         optimizeLayout = optimize,
                         useEpubCss = useEpubCss,
+                        epubRenderMode = epubRenderMode,
+                        showEpubLayoutHint = showEpubLayoutHint,
+                        epubLocatorJson = book.locatorJson.takeIf { epubRenderMode == EpubRenderMode.BOOK_LAYOUT },
                         chineseMode = chineseMode,
                         pageTransition = pageTransition,
                         paragraphSpacing = paragraphSpacing,
@@ -989,6 +1123,10 @@ class ReaderViewModel @Inject constructor(
                         pdfPageMode = pdfPageMode,
                         error = null
                     )
+
+                    if (isEpub && epubRenderMode == EpubRenderMode.BOOK_LAYOUT) {
+                        withContext(Dispatchers.IO) { getEpubRenderSession() }
+                    }
 
                     if (isPdf) {
                         // PDF 使用独立 PdfViewerScreen，不生成 Base64 HTML。
@@ -1089,14 +1227,25 @@ class ReaderViewModel @Inject constructor(
      * 跳转到指定章节（由Slider调用）
      */
     fun setChapter(chapterIndex: Int) {
-        if (chapterIndex == _uiState.value.currentChapterIndex) return
-        _uiState.value = _uiState.value.copy(currentChapterIndex = chapterIndex)
-        if (!_uiState.value.useNewEngine) loadChapterContent()
-        saveProgress()
+        val state = _uiState.value
+        if (chapterIndex == state.currentChapterIndex) return
+        val isBookLayoutEpub = state.book?.format?.name == "EPUB" &&
+            state.epubRenderMode == EpubRenderMode.BOOK_LAYOUT
+        _uiState.value = state.copy(
+            currentChapterIndex = chapterIndex,
+            currentPageIndex = if (isBookLayoutEpub) 0 else state.currentPageIndex,
+            totalPages = if (isBookLayoutEpub) 0 else state.totalPages,
+            pageReady = if (isBookLayoutEpub) false else state.pageReady,
+            isLoading = if (isBookLayoutEpub) true else state.isLoading,
+            epubLocatorJson = if (isBookLayoutEpub) null else state.epubLocatorJson,
+            pendingPageFraction = if (isBookLayoutEpub) 0f else state.pendingPageFraction
+        )
+        if (!state.useNewEngine) loadChapterContent()
+        if (!isBookLayoutEpub) saveProgress()
     }
 
     /**
-     * 🔥 仅更新章节索引（不加载 HTML）。TXT Bitmap 引擎跨章翻页时用。
+     * Updates the visible chapter/page without asking the parser to load HTML.
      */
     fun updatePosition(chapterIndex: Int, pageIndex: Int, totalPages: Int) {
         _uiState.value = _uiState.value.copy(
@@ -1564,6 +1713,7 @@ class ReaderViewModel @Inject constructor(
             chapterIndex = state.currentChapterIndex,
             position = characterOffset?.let(::bookmarkPositionForCharacterOffset)
                 ?: state.currentPageIndex.toFloat(),
+            locatorJson = state.epubLocatorJson.takeIf { state.epubRenderMode == EpubRenderMode.BOOK_LAYOUT },
             title = title?.takeIf { it.isNotBlank() }
                 ?: "第${state.currentChapterIndex + 1}章 第${state.currentPageIndex + 1}页",
             createdAt = System.currentTimeMillis()
@@ -1595,7 +1745,9 @@ class ReaderViewModel @Inject constructor(
         chapterIndex: Int = -1,
         startPosition: Int = 0,
         endPosition: Int = 0,
-        color: String = "#FFEB3B"
+        color: String = "#FFEB3B",
+        startLocatorJson: String? = null,
+        endLocatorJson: String? = null
     ) {
         val state = _uiState.value
         val book = state.book ?: return
@@ -1604,6 +1756,8 @@ class ReaderViewModel @Inject constructor(
             chapterIndex = if (chapterIndex >= 0) chapterIndex else state.currentChapterIndex,
             startPosition = if (startPosition > 0 || chapterIndex >= 0) startPosition else 0,
             endPosition = if (endPosition > 0 || chapterIndex >= 0) endPosition else selectedText.length,
+            startLocatorJson = startLocatorJson,
+            endLocatorJson = endLocatorJson,
             selectedText = selectedText,
             note = noteText,
             color = color,
@@ -1670,7 +1824,11 @@ class ReaderViewModel @Inject constructor(
                 "global=$progress"
         )
 
-        bookRepository.updateReadingProgress(book.id, progress)
+        bookRepository.updateReadingProgress(
+            book.id,
+            progress,
+            state.epubLocatorJson.takeIf { state.epubRenderMode == EpubRenderMode.BOOK_LAYOUT }
+        )
         bookRepository.updateLastReadTime(book.id, System.currentTimeMillis())
     }
 
@@ -1793,6 +1951,8 @@ class ReaderViewModel @Inject constructor(
 
     override fun onCleared() {
         (parser as? PdfParser)?.close()
+        runCatching { epubRenderSession?.close() }
+        epubRenderSession = null
         preloadCache.clear()
         super.onCleared()
     }

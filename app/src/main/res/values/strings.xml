@@ -394,6 +394,7 @@
     <string name="preview_text">落霞与孤鹜齐飞，秋水共长天一色。渔舟唱晚，响穷彭蠡之滨；雁阵惊寒，声断衡阳之浦。</string>
     <string name="font_label">字体</string>
     <string name="font_system">系统</string>
+    <string name="font_publisher">书籍原字体</string>
     <string name="font_fangsong">仿宋</string>
     <string name="font_kaiti">楷体</string>
     <string name="font_custom">自定义</string>
@@ -641,4 +642,17 @@
     <string name="pdf_convert_error_mineru_manual_format">无法识别所选结果。请选择 MinerU 下载的 ZIP 或 Markdown 文件。</string>
     <string name="pdf_convert_error_mineru_manual_too_large">MinerU 结果文件过大，无法安全导入。</string>
     <string name="pdf_convert_error_mineru_manual_import">导入 MinerU 结果失败，请确认文件完整并重试。</string>
+    <string name="epub_render_mode">EPUB 排版模式</string>
+    <string name="epub_book_layout">书籍原排版</string>
+    <string name="epub_reader_layout">阅读器排版</string>
+    <string name="epub_book_layout_hint">保留书籍自带的 HTML、CSS、字体与图文结构</string>
+    <string name="epub_reader_layout_hint">使用阅读器统一的字体、段距和页边距设置</string>
+    <string name="reader_external_link_title">&#25171;&#24320;&#22806;&#37096;&#38142;&#25509;&#65311;</string>
+    <string name="reader_external_link_message">&#36825;&#26412; EPUB &#24819;&#35201;&#25171;&#24320;&#22806;&#37096;&#24212;&#29992;&#25110;&#32593;&#31449;&#65306;\n%1$s</string>
+    <string name="reader_external_link_open">&#25171;&#24320;</string>
+    <string name="preserve_epub_background">保留原书背景</string>
+    <string name="preserve_epub_background_hint">关闭后使用当前选择的 Lumi 阅读背景</string>
+    <string name="epub_layout_first_open_title">EPUB 排版提示</string>
+    <string name="epub_layout_first_open_message">如果本书内置排版，可点击屏幕中央，在“主题”中选择“书籍原排版”。</string>
+    <string name="epub_layout_first_open_confirm">知道了</string>
 </resources>

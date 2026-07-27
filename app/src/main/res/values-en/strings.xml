@@ -390,6 +390,7 @@
     <string name="preview_text">The setting sun and the rising moon fly together, the autumn waters merge with the vast sky in one hue. Fishing boats sing at dusk, echoing across the shores of Pengli; geese formations startle at the cold, their cries fading at Hengyang\'s shore.</string>
     <string name="font_label">Font</string>
     <string name="font_system">System</string>
+    <string name="font_publisher">Publisher font</string>
     <string name="font_fangsong">FangSong</string>
     <string name="font_kaiti">KaiTi</string>
     <string name="font_custom">Custom</string>
@@ -624,4 +625,17 @@
     <string name="external_tts_http_warning_desc">HTTP connections are not encrypted. Your API key and reading text may travel over the network in plain text and can be intercepted. HTTPS is strongly recommended.</string>
     <string name="external_tts_http_confirm">I understand the HTTP risk and still want to enable it</string>
     <string name="external_tts_http_enable">Enable HTTP</string>
+    <string name="epub_render_mode">EPUB layout</string>
+    <string name="epub_book_layout">Book layout</string>
+    <string name="epub_reader_layout">Reader layout</string>
+    <string name="epub_book_layout_hint">Preserve the publisher HTML, CSS, fonts, and document structure</string>
+    <string name="epub_reader_layout_hint">Use the reader unified typography, spacing, and margins</string>
+    <string name="reader_external_link_title">Open external link?</string>
+    <string name="reader_external_link_message">This EPUB wants to open an external app or website:\n%1$s</string>
+    <string name="reader_external_link_open">Open</string>
+    <string name="preserve_epub_background">Keep original book background</string>
+    <string name="preserve_epub_background_hint">Turn off to use the selected Lumi reading background</string>
+    <string name="epub_layout_first_open_title">EPUB layout</string>
+    <string name="epub_layout_first_open_message">If this book includes its own layout, tap the center of the screen, open Theme, and choose Book layout.</string>
+    <string name="epub_layout_first_open_confirm">Got it</string>
 </resources>

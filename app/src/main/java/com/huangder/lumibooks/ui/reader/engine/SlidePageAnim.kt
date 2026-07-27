@@ -3,7 +3,10 @@ package com.huangder.lumibooks.ui.reader.engine
 import android.graphics.Canvas
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.Shader
+import android.view.View
+import kotlin.math.roundToInt
 
 /**
  * 水平视差滑动翻页动画。
@@ -13,7 +16,7 @@ import android.graphics.Shader
  * - NEXT：当前页全速左滑，下一页 30% 视差滑入
  * - 阴影在 dispatchDraw 中绘制
  */
-class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
+class SlidePageAnim(readView: PageAnimationSurface) : PageAnimationController(readView) {
 
     companion object {
         private const val SHADOW_WIDTH_PX = 250
@@ -25,17 +28,36 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
 
     // 🔥 复用 Paint 对象，避免每帧在 drawShadow 里 new Paint() + new LinearGradient()
     private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val pagePaint = Paint(Paint.DITHER_FLAG).apply {
+        isAntiAlias = false
+        isFilterBitmap = false
+    }
+    private val pageSourceRect = Rect()
+    private val pageDestinationRect = Rect()
+
+    override val drawsDirectlyOnCanvas: Boolean
+        get() = readView.snapTranslationsToPixels && !readView.animatePageViewsDirectly
 
     override fun onDraw(canvas: Canvas) {
+        if (drawsDirectlyOnCanvas) {
+            drawSnapshotPages(canvas)
+            drawOverlay(canvas)
+            return
+        }
         val vw = readView.width.toFloat()
         if (vw <= 0) return
 
-        val ox = touchX - startX
+        val ox = snapTranslation(touchX - startX)
 
         when {
             direction == Direction.NEXT -> {
+                if (readView.animatePageViewsDirectly) {
+                    readView.curPageView.visibility = View.VISIBLE
+                    readView.nextPageView.visibility = View.VISIBLE
+                    readView.prevPageView.visibility = View.INVISIBLE
+                }
                 // cur 在上层全速左滑，next 在下层 30% 视差滑入
-                readView.nextPageView.translationX = (vw + ox) * PARALLAX_RATIO
+                readView.nextPageView.translationX = snapTranslation((vw + ox) * PARALLAX_RATIO)
                 readView.curPageView.translationX = ox
                 readView.prevPageView.translationX = -vw
                 // 🔥 确保页面可见（setPageTransition 可能把 alpha 设为 0）
@@ -48,9 +70,14 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
                 readView.prevPageView.translationZ = 0f
             }
             direction == Direction.PREV -> {
+                if (readView.animatePageViewsDirectly) {
+                    readView.curPageView.visibility = View.VISIBLE
+                    readView.prevPageView.visibility = View.VISIBLE
+                    readView.nextPageView.visibility = View.INVISIBLE
+                }
                 // prev 在上层全速滑入，cur 在下层 30% 视差右移
-                readView.curPageView.translationX = ox * PARALLAX_RATIO
-                readView.prevPageView.translationX = -vw + ox
+                readView.curPageView.translationX = snapTranslation(ox * PARALLAX_RATIO)
+                readView.prevPageView.translationX = snapTranslation(-vw + ox)
                 readView.nextPageView.translationX = vw
                 // 🔥 确保页面可见
                 readView.curPageView.alpha = 1f
@@ -62,6 +89,11 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
                 readView.nextPageView.translationZ = 0f
             }
             else -> {
+                if (readView.animatePageViewsDirectly) {
+                    readView.curPageView.visibility = View.VISIBLE
+                    readView.prevPageView.visibility = View.INVISIBLE
+                    readView.nextPageView.visibility = View.INVISIBLE
+                }
                 readView.curPageView.translationX = 0f
                 readView.prevPageView.translationX = -vw
                 readView.nextPageView.translationX = vw
@@ -77,7 +109,46 @@ class SlidePageAnim(readView: ReadView) : PageAnimationController(readView) {
         }
     }
 
+    private fun drawSnapshotPages(canvas: Canvas) {
+        val width = readView.width.toFloat()
+        if (width <= 0f) return
+        val offset = snapTranslation(touchX - startX)
+        canvas.drawColor(readView.bgColor)
+        when (direction) {
+            Direction.NEXT -> {
+                drawPageBitmap(
+                    canvas,
+                    readView.nextPageView,
+                    snapTranslation((width + offset) * PARALLAX_RATIO)
+                )
+                drawPageBitmap(canvas, readView.curPageView, offset)
+            }
+            Direction.PREV -> {
+                drawPageBitmap(canvas, readView.curPageView, snapTranslation(offset * PARALLAX_RATIO))
+                drawPageBitmap(canvas, readView.prevPageView, snapTranslation(-width + offset))
+            }
+            Direction.NONE -> drawPageBitmap(canvas, readView.curPageView, 0f)
+        }
+    }
+
+    private fun drawPageBitmap(canvas: Canvas, view: android.view.View, left: Float) {
+        canvas.save()
+        canvas.translate(left, 0f)
+        if (!readView.drawPageDirectly(canvas, view)) {
+            val bitmap = (view as? PageBitmapSource)?.pageBitmap
+            if (bitmap != null && !bitmap.isRecycled) {
+                pageSourceRect.set(0, 0, bitmap.width, bitmap.height)
+                pageDestinationRect.set(0, 0, readView.width, readView.height)
+                canvas.drawBitmap(bitmap, pageSourceRect, pageDestinationRect, pagePaint)
+            }
+        }
+        canvas.restore()
+    }
+
     /** 在 dispatchDraw 的 super 之后调用，绘制阴影叠加层 */
+    private fun snapTranslation(value: Float): Float =
+        if (readView.snapTranslationsToPixels) value.roundToInt().toFloat() else value
+
     fun drawOverlay(canvas: Canvas) {
         val vw = readView.width.toFloat()
         val vh = readView.height.toFloat()

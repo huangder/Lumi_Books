@@ -317,6 +317,7 @@ fun LiquidGlassSurface(
     backdrop: Backdrop? = null,
     contentScrimColor: Color = Color.Transparent,
     transparencyOverride: Float? = null,
+    forceFallback: Boolean = false,
     enabled: Boolean = true,
     onClick: (() -> Unit)? = null,
     interactive: Boolean = onClick != null,
@@ -325,7 +326,7 @@ fun LiquidGlassSurface(
     contentAlignment: Alignment = Alignment.Center,
     content: @Composable BoxScope.() -> Unit
 ) {
-    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !forceFallback
     val isDark = LocalIsDarkTheme.current
     val transparency = (transparencyOverride ?: LocalLiquidGlassTransparency.current)
         .coerceIn(0f, 1f)
@@ -469,7 +470,11 @@ fun LiquidGlassSurface(
             .border(
                 0.8.dp,
                 Brush.verticalGradient(
-                    listOf(Color.White.copy(alpha = 0.62f), Color.White.copy(alpha = 0.16f))
+                    listOf(
+                        Color.White.copy(alpha = 0.58f),
+                        Color.White.copy(alpha = 0.12f),
+                        Color.Black.copy(alpha = 0.18f)
+                    )
                 ),
                 shape
             )
@@ -487,6 +492,18 @@ fun LiquidGlassSurface(
     val transformOriginX = (0.5f - dragDirection.x * 0.5f * originStrength).coerceIn(0f, 1f)
     val transformOriginY = (0.5f - dragDirection.y * 0.5f * originStrength).coerceIn(0f, 1f)
 
+    val fallbackDecorationModifier = if (isLiquidGlass && activeBackdrop == null) {
+        Modifier.shadow(
+            elevation = 10.dp,
+            shape = shape,
+            clip = false,
+            ambientColor = Color.Black.copy(alpha = 0.10f),
+            spotColor = Color.Black.copy(alpha = 0.12f)
+        )
+    } else {
+        Modifier
+    }
+
     Box(
         modifier = modifier
             .graphicsLayer {
@@ -496,6 +513,7 @@ fun LiquidGlassSurface(
                 translationY = edgeDrag.y * 5f * densityScale
                 transformOrigin = TransformOrigin(transformOriginX, transformOriginY)
             }
+            .then(fallbackDecorationModifier)
             .then(decorationModifier)
             .clip(shape)
             .then(semanticsModifier)

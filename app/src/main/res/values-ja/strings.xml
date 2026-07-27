@@ -611,4 +611,17 @@
     <string name="external_tts_http_warning_desc">HTTP 接続は暗号化されません。API キーと朗読テキストがネットワーク上を平文で送信され、傍受される可能性があります。HTTPS を強く推奨します。</string>
     <string name="external_tts_http_confirm">HTTP のリスクを理解したうえで有効にする</string>
     <string name="external_tts_http_enable">HTTP を有効にする</string>
+    <string name="epub_render_mode">EPUB レイアウト</string>
+    <string name="epub_book_layout">書籍の元レイアウト</string>
+    <string name="epub_reader_layout">リーダーレイアウト</string>
+    <string name="epub_book_layout_hint">出版元の HTML、CSS、フォント、図版構成を保持します</string>
+    <string name="epub_reader_layout_hint">リーダーの統一されたフォント、段落間隔、余白設定を使用します</string>
+    <string name="reader_external_link_title">外部リンクを開きますか？</string>
+    <string name="reader_external_link_message">この EPUB は外部アプリまたはウェブサイトを開こうとしています：\n%1$s</string>
+    <string name="reader_external_link_open">開く</string>
+    <string name="preserve_epub_background">原書の背景を保持</string>
+    <string name="preserve_epub_background_hint">オフにすると、現在選択中の Lumi 読書背景を使用します</string>
+    <string name="epub_layout_first_open_title">EPUB レイアウトのヒント</string>
+    <string name="epub_layout_first_open_message">この本に独自のレイアウトが含まれている場合は、画面中央をタップし、「テーマ」から「書籍の元レイアウト」を選択できます。</string>
+    <string name="epub_layout_first_open_confirm">了解</string>
 </resources>

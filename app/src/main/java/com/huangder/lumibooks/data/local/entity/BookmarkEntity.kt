@@ -10,6 +10,7 @@ data class BookmarkEntity(
     val bookId: String,
     val chapterIndex: Int,
     val position: Float,
+    val locatorJson: String? = null,
     val title: String,
     val createdAt: Long
 )

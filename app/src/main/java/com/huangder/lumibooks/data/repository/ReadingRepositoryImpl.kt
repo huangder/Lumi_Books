@@ -130,6 +130,7 @@ class ReadingRepositoryImpl @Inject constructor(
             bookId = bookId,
             chapterIndex = chapterIndex,
             position = position,
+            locatorJson = locatorJson,
             title = title,
             createdAt = createdAt
         )
@@ -141,6 +142,7 @@ class ReadingRepositoryImpl @Inject constructor(
             bookId = bookId,
             chapterIndex = chapterIndex,
             position = position,
+            locatorJson = locatorJson,
             title = title,
             createdAt = createdAt
         )
@@ -153,6 +155,8 @@ class ReadingRepositoryImpl @Inject constructor(
             chapterIndex = chapterIndex,
             startPosition = startPosition,
             endPosition = endPosition,
+            startLocatorJson = startLocatorJson,
+            endLocatorJson = endLocatorJson,
             selectedText = selectedText,
             note = note,
             color = color,
@@ -167,6 +171,8 @@ class ReadingRepositoryImpl @Inject constructor(
             chapterIndex = chapterIndex,
             startPosition = startPosition,
             endPosition = endPosition,
+            startLocatorJson = startLocatorJson,
+            endLocatorJson = endLocatorJson,
             selectedText = selectedText,
             note = note,
             color = color,

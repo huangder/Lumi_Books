@@ -11,5 +11,5 @@ interface BookRepository {
     suspend fun updateBook(book: Book)
     suspend fun deleteBook(book: Book)
     suspend fun updateLastReadTime(bookId: String, timestamp: Long)
-    suspend fun updateReadingProgress(bookId: String, progress: Float)
+    suspend fun updateReadingProgress(bookId: String, progress: Float, locatorJson: String? = null)
 }

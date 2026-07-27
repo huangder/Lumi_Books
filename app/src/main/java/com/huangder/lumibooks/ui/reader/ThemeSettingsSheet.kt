@@ -92,6 +92,7 @@ import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassTransparency
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
+import com.huangder.lumibooks.util.epub.EpubRenderMode
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
@@ -148,9 +149,12 @@ fun ThemeSettingsSheet(
     currentTheme: String,
     currentBackgroundSelection: String = currentTheme,
     customBackgrounds: List<ReaderBackgroundPreset> = emptyList(),
+    currentPreserveEpubBackground: Boolean = true,
     currentBrightness: Float = -1f,
     currentOptimizeLayout: Boolean = true,
     currentUseEpubCss: Boolean = false,
+    isEpub: Boolean = false,
+    currentEpubRenderMode: EpubRenderMode = EpubRenderMode.READER_LAYOUT,
     currentChineseMode: String = "original",
     currentPageTransition: String = "slide",
     onFontSizeChange: (Float) -> Unit,
@@ -159,9 +163,11 @@ fun ThemeSettingsSheet(
     onAddBackgroundColor: (Int) -> Unit = {},
     onAddBackgroundImage: (Uri) -> Unit = {},
     onDeleteBackground: (String) -> Unit = {},
+    onPreserveEpubBackgroundChange: (Boolean) -> Unit = {},
     onBrightnessChange: (Float) -> Unit = {},
     onOptimizeLayoutChange: (Boolean) -> Unit = {},
     onUseEpubCssChange: (Boolean) -> Unit = {},
+    onEpubRenderModeChange: (EpubRenderMode) -> Unit = {},
     onChineseModeChange: (String) -> Unit = {},
     onPageTransitionChange: (String) -> Unit = {},
     onOpenAdvanced: () -> Unit,
@@ -257,6 +263,12 @@ fun ThemeSettingsSheet(
                     color = AppColors.TextPrimary
                 )
                 Spacer(Modifier.weight(1f))
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.advanced_settings),
+                    onClick = onOpenAdvanced,
+                    contentColor = AppColors.TextPrimary
+                )
+                Spacer(Modifier.width(8.dp))
                 // 关闭按钮
                 LiquidGlassIconButton(
                     imageVector = Icons.Outlined.Close,
@@ -421,6 +433,33 @@ fun ThemeSettingsSheet(
                 onDelete = onDeleteBackground
             )
 
+            if (isEpub && currentEpubRenderMode == EpubRenderMode.BOOK_LAYOUT) {
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            stringResource(R.string.preserve_epub_background),
+                            fontSize = 14.sp,
+                            color = AppColors.TextPrimary
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            stringResource(R.string.preserve_epub_background_hint),
+                            fontSize = 12.sp,
+                            color = LightTextSecondary
+                        )
+                    }
+                    LiquidGlassSwitch(
+                        checked = currentPreserveEpubBackground,
+                        onCheckedChange = onPreserveEpubBackgroundChange
+                    )
+                }
+            }
+
+
             Spacer(Modifier.height(16.dp))
 
             // 简繁转换
@@ -498,60 +537,59 @@ fun ThemeSettingsSheet(
 
             Spacer(Modifier.height(16.dp))
 
-            // 优化书籍排版开关
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(stringResource(R.string.optimize_layout), fontSize = 14.sp, color = AppColors.TextPrimary)
-                    Spacer(Modifier.height(2.dp))
-                    Text(stringResource(R.string.optimize_layout_hint), fontSize = 12.sp, color = LightTextSecondary)
-                }
-                LiquidGlassSwitch(
-                    checked = currentOptimizeLayout,
-                    onCheckedChange = onOptimizeLayoutChange
-                )
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-            // 使用书籍 CSS 样式开关
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(stringResource(R.string.use_epub_css), fontSize = 14.sp, color = AppColors.TextPrimary)
-                    Spacer(Modifier.height(2.dp))
-                    Text(stringResource(R.string.use_epub_css_hint), fontSize = 12.sp, color = LightTextSecondary)
-                }
-                LiquidGlassSwitch(
-                    checked = currentUseEpubCss,
-                    onCheckedChange = onUseEpubCssChange
-                )
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            // 高级设置按钮
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
-                    .height(48.dp)
-                    .clip(RoundedCornerShape(28.dp))
-                    .background(LightBgGray)
-                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onOpenAdvanced() },
-                contentAlignment = Alignment.Center
-            ) {
+            if (isEpub) {
                 Text(
-                    stringResource(R.string.advanced_settings),
+                    text = stringResource(R.string.epub_render_mode),
+                    modifier = Modifier.padding(horizontal = 24.dp),
                     fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Medium,
                     color = AppColors.TextPrimary
                 )
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ModeButton(
+                        label = stringResource(R.string.epub_book_layout),
+                        isSelected = currentEpubRenderMode == EpubRenderMode.BOOK_LAYOUT,
+                        onClick = { onEpubRenderModeChange(EpubRenderMode.BOOK_LAYOUT) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    ModeButton(
+                        label = stringResource(R.string.epub_reader_layout),
+                        isSelected = currentEpubRenderMode == EpubRenderMode.READER_LAYOUT,
+                        onClick = { onEpubRenderModeChange(EpubRenderMode.READER_LAYOUT) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = stringResource(
+                        if (currentEpubRenderMode == EpubRenderMode.BOOK_LAYOUT) R.string.epub_book_layout_hint
+                        else R.string.epub_reader_layout_hint
+                    ),
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                    fontSize = 12.sp,
+                    color = LightTextSecondary
+                )
+            } else {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.optimize_layout), fontSize = 14.sp, color = AppColors.TextPrimary)
+                        Spacer(Modifier.height(2.dp))
+                        Text(stringResource(R.string.optimize_layout_hint), fontSize = 12.sp, color = LightTextSecondary)
+                    }
+                    LiquidGlassSwitch(
+                        checked = currentOptimizeLayout,
+                        onCheckedChange = onOptimizeLayoutChange
+                    )
+                }
             }
+            Spacer(Modifier.height(16.dp))
         }
     }
     }
@@ -969,6 +1007,7 @@ fun AdvancedSettingsSheet(
     currentTextColor: Color,
     currentTextColorOverride: Int?,
     currentFontSizeSp: Float,
+    preservePublisherLayout: Boolean = false,
     onLineHeightChange: (Float) -> Unit,
     onLetterSpacingChange: (Float) -> Unit,
     onFontTypeChange: (String) -> Unit,
@@ -1050,6 +1089,10 @@ fun AdvancedSettingsSheet(
     val previewRightPadding = currentMarginRight.coerceIn(0f, 80f).dp
     val previewTopPadding = (currentMarginTop / 3f).coerceIn(0f, 40f).dp
     val previewBottomPadding = (currentMarginBottom / 3f).coerceIn(0f, 40f).dp
+    val previewLineHeight = if (preservePublisherLayout) 1.5f else currentLineHeight
+    val previewLetterSpacing = if (preservePublisherLayout) 0f else currentLetterSpacing
+    val previewParagraphSpacing = if (preservePublisherLayout) 0f else currentParagraphSpacing
+    val previewFirstLineIndent = if (preservePublisherLayout) 0f else currentFirstLineIndent
 
     LiquidGlassMenuHost(modifier = Modifier.fillMaxSize()) {
         // 遮罩
@@ -1101,7 +1144,7 @@ fun AdvancedSettingsSheet(
                             bottom = previewBottomPadding
                         ),
                     verticalArrangement = Arrangement.spacedBy(
-                        currentParagraphSpacing.coerceIn(0f, 30f).dp
+                        previewParagraphSpacing.coerceIn(0f, 30f).dp
                     )
                 ) {
                     previewParagraphs.forEach { paragraph ->
@@ -1112,10 +1155,10 @@ fun AdvancedSettingsSheet(
                                 fontSize = currentFontSizeSp.sp,
                                 color = currentTextColor,
                                 fontFamily = previewFont,
-                                lineHeight = (currentFontSizeSp * currentLineHeight).sp,
-                                letterSpacing = currentLetterSpacing.sp,
+                                lineHeight = (currentFontSizeSp * previewLineHeight).sp,
+                                letterSpacing = previewLetterSpacing.sp,
                                 textIndent = androidx.compose.ui.text.style.TextIndent(
-                                    firstLine = (currentFontSizeSp * currentFirstLineIndent).sp
+                                    firstLine = (currentFontSizeSp * previewFirstLineIndent).sp
                                 )
                             )
                         )
@@ -1169,6 +1212,7 @@ fun AdvancedSettingsSheet(
                 }
                 Spacer(Modifier.height(12.dp))
 
+                if (!preservePublisherLayout) {
                 AdvancedSettingsGroup {
                     SettingSlider(stringResource(R.string.label_line_height), currentLineHeight, 1.0f..2.5f, 0.1f, { String.format("%.1fx", it) }, onLineHeightChange)
                     Spacer(Modifier.height(12.dp))
@@ -1190,6 +1234,7 @@ fun AdvancedSettingsSheet(
                 }
                 Spacer(Modifier.height(12.dp))
 
+                }
                 AdvancedSettingsGroup {
                     SettingSlider(stringResource(R.string.label_margin_top), currentMarginTop, 0f..120f, 2f, { "${it.toInt()} dp" }, onMarginTopChange)
                     Spacer(Modifier.height(12.dp))
@@ -1233,7 +1278,8 @@ fun AdvancedSettingsSheet(
                         customFonts = customFonts,
                         onFontChange = onFontTypeChange,
                         onImportFont = onImportFont,
-                        onDeleteCustomFont = onDeleteCustomFont
+                        onDeleteCustomFont = onDeleteCustomFont,
+                        usePublisherFontLabel = preservePublisherLayout
                     )
                 }
                 Spacer(Modifier.height(16.dp))
@@ -2025,7 +2071,8 @@ private fun FontSelector(
     customFonts: List<com.huangder.lumibooks.domain.model.CustomFontPreset> = emptyList(),
     onFontChange: (String) -> Unit,
     onImportFont: (android.net.Uri) -> Unit = {},
-    onDeleteCustomFont: (String) -> Unit = {}
+    onDeleteCustomFont: (String) -> Unit = {},
+    usePublisherFontLabel: Boolean = false
 ) {
     val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
@@ -2034,7 +2081,7 @@ private fun FontSelector(
     }
     var deleteArmedId by remember { mutableStateOf<String?>(null) }
 
-    val sysLabel = stringResource(R.string.font_system)
+    val sysLabel = stringResource(if (usePublisherFontLabel) R.string.font_publisher else R.string.font_system)
     val fangLabel = stringResource(R.string.font_fangsong)
     val kaiLabel  = stringResource(R.string.font_kaiti)
     val addLabel  = stringResource(R.string.font_import)

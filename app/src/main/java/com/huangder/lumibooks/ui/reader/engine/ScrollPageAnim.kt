@@ -13,7 +13,7 @@ import android.graphics.Shader
  * - PREV：当前页下滑出，上一页从顶部滑入
  * - 触摸追踪 Y 轴偏移
  */
-class ScrollPageAnim(readView: ReadView) : PageAnimationController(readView) {
+class ScrollPageAnim(readView: PageAnimationSurface) : PageAnimationController(readView) {
 
     companion object {
         private const val SHADOW_HEIGHT_PX = 120

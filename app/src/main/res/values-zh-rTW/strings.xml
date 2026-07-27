@@ -611,4 +611,17 @@
     <string name="external_tts_http_warning_desc">HTTP 連線不加密，你的 API Key 與朗讀文字可能以明文在網路中傳輸，有遭竊聽的風險。強烈建議使用 HTTPS。</string>
     <string name="external_tts_http_confirm">我了解 HTTP 風險，仍要開啟</string>
     <string name="external_tts_http_enable">確認開啟 HTTP</string>
+    <string name="epub_render_mode">EPUB 排版模式</string>
+    <string name="epub_book_layout">書籍原排版</string>
+    <string name="epub_reader_layout">閱讀器排版</string>
+    <string name="epub_book_layout_hint">保留書籍內建的 HTML、CSS、字型與圖文結構</string>
+    <string name="epub_reader_layout_hint">使用閱讀器統一的字型、段落間距與頁面邊距設定</string>
+    <string name="reader_external_link_title">開啟外部連結？</string>
+    <string name="reader_external_link_message">這本 EPUB 想要開啟外部應用程式或網站：\n%1$s</string>
+    <string name="reader_external_link_open">開啟</string>
+    <string name="preserve_epub_background">保留原書背景</string>
+    <string name="preserve_epub_background_hint">關閉後使用目前選擇的 Lumi 閱讀背景</string>
+    <string name="epub_layout_first_open_title">EPUB 排版提示</string>
+    <string name="epub_layout_first_open_message">如果本書內建排版，可點擊螢幕中央，在「主題」中選擇「書籍原排版」。</string>
+    <string name="epub_layout_first_open_confirm">知道了</string>
 </resources>

@@ -79,6 +79,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -141,6 +142,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableSharedFlow
+import org.json.JSONObject
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.activity.compose.rememberLauncherForActivityResult
 import android.app.Activity
@@ -158,6 +160,7 @@ import com.huangder.lumibooks.ui.animation.cardPressEffect
 import com.huangder.lumibooks.ui.components.ConfigurableBackHandler
 import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
+import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.components.animateBottomSheetIn
@@ -179,6 +182,9 @@ import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
+import com.huangder.lumibooks.util.epub.EpubRenderMode
+import com.huangder.lumibooks.tts.TtsPageContent
+import com.huangder.lumibooks.tts.TtsPageLocation
 import com.huangder.lumibooks.tts.TtsPlaybackState
 import com.kyant.backdrop.Backdrop
 import androidx.compose.ui.res.stringResource
@@ -351,10 +357,27 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     val readViewRef = remember { mutableStateOf<ReadView?>(null) }
     val continuousScrollRequests = remember { MutableSharedFlow<Int>(extraBufferCapacity = 1) }
     val continuousSelectionController = remember { ContinuousSelectionController() }
-    val isContinuousScrollMode = uiState.useNewEngine && uiState.pageTransition == "continuous"
+    val isBookLayoutEpub = uiState.book?.format?.name == "EPUB" &&
+        uiState.epubRenderMode == EpubRenderMode.BOOK_LAYOUT
+    val isContinuousScrollMode = !isBookLayoutEpub &&
+        uiState.useNewEngine && uiState.pageTransition == "continuous"
+    var epubPageTextProvider by remember(bookId) {
+        mutableStateOf<(suspend (Int, Int) -> EpubPageText?)?>(null)
+    }
+    var epubPageRequest by remember(bookId) { mutableStateOf<EpubPageRequest?>(null) }
+    var epubPageRequestToken by remember(bookId) { mutableIntStateOf(0) }
+    var epubSearchRequest by remember(bookId) { mutableStateOf<EpubSearchRequest?>(null) }
+    var epubSearchRequestToken by remember(bookId) { mutableIntStateOf(0) }
+    var epubLocatorRequest by remember(bookId) { mutableStateOf<EpubLocatorRequest?>(null) }
+    var epubLocatorRequestToken by remember(bookId) { mutableIntStateOf(0) }
+    var pendingExternalLink by remember(bookId) { mutableStateOf<String?>(null) }
+    var epubSelectionClearToken by remember(bookId) { mutableIntStateOf(0) }
     val clearActiveTextSelection = {
-        if (isContinuousScrollMode) continuousSelectionController.clear()
-        else readViewRef.value?.curPageView?.clearSelection()
+        when {
+            isBookLayoutEpub -> epubSelectionClearToken++
+            isContinuousScrollMode -> continuousSelectionController.clear()
+            else -> readViewRef.value?.curPageView?.clearSelection()
+        }
     }
     val jumpToContinuousChapter: (Int) -> Unit = { chapterIndex ->
         val target = chapterIndex.coerceIn(0, (uiState.chapterCount - 1).coerceAtLeast(0))
@@ -370,11 +393,55 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     }
 
     val startTtsFromCurrentPage: () -> Unit = {
-        val readView = readViewRef.value
-        if (readView == null) {
-            Toast.makeText(context, R.string.tts_page_not_ready, Toast.LENGTH_SHORT).show()
+        if (isBookLayoutEpub) {
+            val webProvider = epubPageTextProvider
+            if (webProvider == null) {
+                Toast.makeText(context, R.string.tts_page_not_ready, Toast.LENGTH_SHORT).show()
+            } else {
+                val chapterCount = uiState.chapterCount
+                viewModel.startTts { requestedChapter, requestedPage ->
+                    val webPage = webProvider(requestedChapter, requestedPage)
+                    if (webPage != null) {
+                        TtsPageContent(
+                            location = TtsPageLocation(webPage.chapterIndex, webPage.pageIndex),
+                            text = webPage.text,
+                            previous = when {
+                                webPage.pageIndex > 0 -> TtsPageLocation(webPage.chapterIndex, webPage.pageIndex - 1)
+                                webPage.chapterIndex > 0 -> TtsPageLocation(webPage.chapterIndex - 1, 0)
+                                else -> null
+                            },
+                            next = when {
+                                webPage.pageIndex + 1 < webPage.pageCount ->
+                                    TtsPageLocation(webPage.chapterIndex, webPage.pageIndex + 1)
+                                webPage.chapterIndex + 1 < chapterCount ->
+                                    TtsPageLocation(webPage.chapterIndex + 1, 0)
+                                else -> null
+                            }
+                        )
+                    } else {
+                        val chapterText = viewModel.getChapterText(requestedChapter)
+                            ?.toString()
+                            ?.replace('\uFFFC', ' ')
+                            ?.trim()
+                            ?: return@startTts null
+                        TtsPageContent(
+                            location = TtsPageLocation(requestedChapter, 0),
+                            text = chapterText,
+                            previous = (requestedChapter - 1).takeIf { it >= 0 }
+                                ?.let { TtsPageLocation(it, 0) },
+                            next = (requestedChapter + 1).takeIf { it < chapterCount }
+                                ?.let { TtsPageLocation(it, 0) }
+                        )
+                    }
+                }
+            }
         } else {
-            viewModel.startTts(readView::getTtsPageContent)
+            val readView = readViewRef.value
+            if (readView == null) {
+                Toast.makeText(context, R.string.tts_page_not_ready, Toast.LENGTH_SHORT).show()
+            } else {
+                viewModel.startTts(readView::getTtsPageContent)
+            }
         }
     }
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -399,6 +466,19 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 uiState.ttsActiveBookId != bookId ||
                 uiState.ttsPlaybackState == TtsPlaybackState.IDLE
             ) return@collect
+            if (isBookLayoutEpub) {
+                epubLocatorRequest = null
+                epubPageRequestToken++
+                epubPageRequest = EpubPageRequest(
+                    token = epubPageRequestToken,
+                    chapterIndex = request.location.chapterIndex,
+                    pageIndex = request.location.pageIndex
+                )
+                if (request.location.chapterIndex != uiState.currentChapterIndex) {
+                    viewModel.setChapter(request.location.chapterIndex)
+                }
+                return@collect
+            }
             var readView = readViewRef.value
             repeat(60) {
                 if (readView != null) return@repeat
@@ -506,6 +586,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
 
     var showNotesList by remember { mutableStateOf(false) }
     var linkReturnLocation by remember(bookId) { mutableStateOf<ReaderLinkLocation?>(null) }
+    var epubPendingFragment by remember(bookId) { mutableStateOf<String?>(null) }
     var linkReturnToken by remember(bookId) { mutableStateOf(0) }
     var linkNavigationJob by remember(bookId) { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
@@ -584,16 +665,35 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
 
     DisposableEffect(
         activity,
-        shouldHandleVolumePageTurn
+        shouldHandleVolumePageTurn,
+        isBookLayoutEpub,
+        uiState.currentChapterIndex,
+        uiState.currentPageIndex,
+        uiState.totalPages
     ) {
         if (!shouldHandleVolumePageTurn || activity == null) {
             return@DisposableEffect onDispose { }
         }
 
         val handler: (ReaderPageDirection) -> Unit = { direction ->
-            when (direction) {
-                ReaderPageDirection.PREVIOUS -> readViewRef.value?.turnToPreviousPage()
-                ReaderPageDirection.NEXT -> readViewRef.value?.turnToNextPage()
+            if (isBookLayoutEpub) {
+                val delta = if (direction == ReaderPageDirection.NEXT) 1 else -1
+                val targetPage = uiState.currentPageIndex + delta
+                if (targetPage in 0 until uiState.totalPages.coerceAtLeast(1)) {
+                    epubPageRequestToken++
+                    epubPageRequest = EpubPageRequest(
+                        token = epubPageRequestToken,
+                        chapterIndex = uiState.currentChapterIndex,
+                        pageIndex = targetPage
+                    )
+                } else {
+                    viewModel.onEpubChapterTurn(delta)
+                }
+            } else {
+                when (direction) {
+                    ReaderPageDirection.PREVIOUS -> readViewRef.value?.turnToPreviousPage()
+                    ReaderPageDirection.NEXT -> readViewRef.value?.turnToNextPage()
+                }
             }
         }
         activity.readerVolumeKeyHandler = handler
@@ -715,6 +815,29 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
 
     // 主题背景色
     val composeBgColor = Color(customBackgroundThemeColorInt)
+    val epubSession by produceState<com.huangder.lumibooks.util.epub.EpubRenderSession?>(
+        initialValue = null,
+        bookId,
+        isBookLayoutEpub
+    ) {
+        value = if (isBookLayoutEpub) {
+            withContext(Dispatchers.IO) { viewModel.getEpubRenderSession() }
+        } else {
+            null
+        }
+    }
+    val epubFontFilePath by produceState<String?>(
+        initialValue = null,
+        isBookLayoutEpub,
+        uiState.fontType,
+        uiState.customFontPath
+    ) {
+        value = if (isBookLayoutEpub) {
+            prepareEpubReaderFontPath(context.applicationContext, uiState.fontType, uiState.customFontPath)
+        } else {
+            null
+        }
+    }
     val continuousTypeface = remember(uiState.fontType, uiState.customFontPath) {
         when {
             uiState.fontType == "serif" -> android.graphics.Typeface.SERIF
@@ -730,8 +853,19 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         }
     } ?: android.graphics.Typeface.DEFAULT
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
-    val readerGlassContentScrim = menuBgColor.copy(alpha = 0.18f)
+    val readerGlassContentScrim = if (isBookLayoutEpub) {
+        // Compose cannot reliably sample a WebView into the liquid-glass backdrop. Use a
+        // restrained contrast tint so the complete capsule remains visible over book CSS.
+        if (ColorUtils.calculateLuminance(menuBgColorInt) < 0.4) {
+            Color.White.copy(alpha = 0.10f)
+        } else {
+            Color.Black.copy(alpha = 0.10f)
+        }
+    } else {
+        menuBgColor.copy(alpha = 0.18f)
+    }
     val readerGlassBackdrop = rememberLayerBackdrop()
+    val activeReaderGlassBackdrop = readerGlassBackdrop.takeIf { isLiquidGlass && !isBookLayoutEpub }
     ReaderSystemBarStyle(
         backgroundColor = composeBgColor,
         useDarkIcons = ColorUtils.calculateLuminance(customBackgroundThemeColorInt) >= 0.42
@@ -742,12 +876,104 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             modifier = Modifier
                 .fillMaxSize()
                 .then(
-                    if (isLiquidGlass) Modifier.layerBackdrop(readerGlassBackdrop)
-                    else Modifier
+                    activeReaderGlassBackdrop?.let { Modifier.layerBackdrop(it) } ?: Modifier
                 )
         ) {
             // ── 新 Canvas 引擎（TXT/EPUB） ──
-            if (uiState.useNewEngine && uiState.pageTransition == "continuous") {
+            val activeEpubSession = epubSession
+            if (isBookLayoutEpub && activeEpubSession != null) {
+                EpubWebViewReader(
+                    session = activeEpubSession,
+                    chapterIndex = uiState.currentChapterIndex,
+                    fontSizeSp = uiState.fontSize,
+                    fontType = uiState.fontType,
+                    fontFilePath = epubFontFilePath,
+                    textColorOverride = uiState.readerTextColor,
+                    theme = uiState.readerTheme,
+                    preservePublisherBackground = uiState.preserveEpubBackground,
+                    restoreLocatorJson = uiState.epubLocatorJson,
+                    restoreProgression = uiState.pendingPageFraction,
+                    initialFragment = epubPendingFragment,
+                    continuousScroll = uiState.pageTransition == "continuous",
+                    pageTransition = uiState.pageTransition,
+                    marginTopDp = uiState.marginTopDp,
+                    marginRightDp = uiState.marginRightDp,
+                    marginBottomDp = uiState.marginBottomDp,
+                    marginLeftDp = uiState.marginLeftDp,
+                    edgeTapMode = uiState.readerEdgeTapMode,
+                    notes = notes.filter { it.chapterIndex == uiState.currentChapterIndex },
+                    searchRequest = epubSearchRequest,
+                    locatorRequest = epubLocatorRequest,
+                    pageRequest = epubPageRequest,
+                    selectionClearToken = epubSelectionClearToken,
+                    onPageTextProviderReady = { epubPageTextProvider = it },
+                    onPageChanged = { pageIndex, pageCount, locatorJson ->
+                        viewModel.onEpubPageReady(pageIndex, pageCount, locatorJson)
+                        if (epubPageRequest?.chapterIndex == uiState.currentChapterIndex &&
+                            epubPageRequest?.pageIndex == pageIndex
+                        ) epubPageRequest = null
+                        if (epubSearchRequest?.chapterIndex == uiState.currentChapterIndex) {
+                            epubSearchRequest = null
+                        }
+                        if (epubLocatorRequest?.chapterIndex == uiState.currentChapterIndex) {
+                            epubLocatorRequest = null
+                        }
+                        epubPendingFragment = null
+                    },
+                    onCenterTap = viewModel::toggleMenu,
+                    onChapterTurn = { direction ->
+                        epubPendingFragment = null
+                        epubSearchRequest = null
+                        epubLocatorRequest = null
+                        epubPageRequest = null
+                        viewModel.onEpubChapterTurn(direction)
+                    },
+                    onInternalLink = { targetChapter, fragment ->
+                        epubSearchRequest = null
+                        epubLocatorRequest = null
+                        epubPageRequest = null
+                        epubPendingFragment = fragment
+                        viewModel.setChapter(targetChapter)
+                    },
+                    onExternalLink = { href ->
+                        if (isExternalBookLink(href)) pendingExternalLink = href
+                    },
+                    onSelection = { selection ->
+                        if (selection.text.isNotBlank()) {
+                            val isNewSelection = selectionState == null
+                            val existing = notes.firstOrNull { note ->
+                                note.chapterIndex == uiState.currentChapterIndex &&
+                                    note.selectedText == selection.text
+                            }
+                            selectionState = SelectionState(
+                                chapterIndex = uiState.currentChapterIndex,
+                                pageInChapter = uiState.currentPageIndex,
+                                charStart = 0,
+                                charEnd = selection.text.length,
+                                selectedText = selection.text,
+                                touchX = selection.centerX,
+                                touchY = selection.centerY,
+                                hasHighlight = existing != null,
+                                hasNote = existing?.note?.isNotEmpty() == true,
+                                existingNote = existing,
+                                selTopY = selection.top,
+                                selBottomY = selection.bottom,
+                                selStartX = selection.left,
+                                selEndX = selection.right,
+                                startLocatorJson = selection.startLocatorJson,
+                                endLocatorJson = selection.endLocatorJson
+                            )
+                            if (isNewSelection) menuReappearKey++
+                        }
+                    },
+                    onSelectionCleared = {
+                        selectionState = null
+                        showHighlightColorPicker = false
+                    },
+                    onRenderUnavailable = viewModel::fallbackFromUnsupportedEpubWebView,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else if (uiState.useNewEngine && uiState.pageTransition == "continuous") {
                 ContinuousScrollReader(
                     chapterCount = uiState.chapterCount,
                     currentChapter = uiState.currentChapterIndex,
@@ -843,7 +1069,10 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                             }
 
                             override fun onLinkClick(href: String) {
-                                if (openExternalBookLink(context, href)) return
+                                if (isExternalBookLink(href)) {
+                                    pendingExternalLink = href
+                                    return
+                                }
                                 val source = readViewRef.value?.getCurrentLocation()
                                     ?.let { ReaderLinkLocation(it.first, it.second) }
                                     ?: return
@@ -1061,9 +1290,9 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
 
         // ── 覆盖层 UI（新旧引擎共享） ──
         ProvideLiquidGlassBackdrop(
-            backdrop = readerGlassBackdrop.takeIf { isLiquidGlass }
+            backdrop = activeReaderGlassBackdrop
         ) {
-        if (!uiState.isLoading) {
+        if (!uiState.isLoading || isAnySheetOpen) {
             AnimatedVisibility(
                 visible = linkReturnLocation != null && !uiState.isMenuVisible && !isAnySheetOpen,
                 enter = fadeIn(animationSpec = tween(200)),
@@ -1105,6 +1334,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     bgColor = menuBgColor,
                     contentColor = menuContentColor,
                     glassContentScrimColor = readerGlassContentScrim,
+                    forceSolidButtons = isBookLayoutEpub,
                     isTtsActive = uiState.ttsActiveBookId == uiState.book?.id &&
                         uiState.ttsPlaybackState != TtsPlaybackState.IDLE,
                     onTtsClick = {
@@ -1211,10 +1441,11 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         currentPage = uiState.currentPageIndex + 1,
                         chapterPageCount = uiState.totalPages,
                         capsuleBgColor = capsuleBgColor,
-                        capsuleContentColor = if (isLiquidGlass) menuContentColor else capsuleContentColor,
+                        capsuleContentColor = if (isLiquidGlass && !isBookLayoutEpub) menuContentColor else capsuleContentColor,
                         readerContentColor = menuContentColor,
                         catalogProgressColor = catalogProgressColor,
                         glassContentScrimColor = readerGlassContentScrim,
+                        forceSolidCapsules = isBookLayoutEpub,
                         onCatalogClick = {
                             viewModel.hideMenu()
                             showToc = true
@@ -1335,7 +1566,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         val readView = readViewRef.value
                         if (isContinuousScrollMode) {
                             jumpToContinuousChapter(target.chapterIndex)
-                        } else if (uiState.useNewEngine && readView != null) {
+                        } else if (!isBookLayoutEpub && uiState.useNewEngine && readView != null) {
                             // Reload even when state already reports the selected chapter.
                             if (entry.anchor.isNullOrBlank()) {
                                 readView.jumpToChapter(target.chapterIndex)
@@ -1363,9 +1594,12 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 currentTheme = uiState.readerTheme,
                 currentBackgroundSelection = uiState.readerBackgroundSelection,
                 customBackgrounds = uiState.customReaderBackgrounds,
+                currentPreserveEpubBackground = uiState.preserveEpubBackground,
                 currentBrightness = uiState.brightness,
                 currentOptimizeLayout = uiState.optimizeLayout,
                 currentUseEpubCss = uiState.useEpubCss,
+                isEpub = uiState.book?.format?.name == "EPUB",
+                currentEpubRenderMode = uiState.epubRenderMode,
                 currentChineseMode = uiState.chineseMode,
                 currentPageTransition = uiState.pageTransition,
                 onFontSizeChange = { viewModel.saveFontSize(it) },
@@ -1374,13 +1608,16 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 onAddBackgroundColor = { viewModel.addCustomReaderBackgroundColor(it) },
                 onAddBackgroundImage = { viewModel.addCustomReaderBackgroundImage(it) },
                 onDeleteBackground = { viewModel.deleteCustomReaderBackground(it) },
+                onPreserveEpubBackgroundChange = viewModel::savePreserveEpubBackground,
                 onBrightnessChange = { viewModel.saveBrightness(it) },
                 onOptimizeLayoutChange = { viewModel.saveOptimizeLayout(it) },
                 onUseEpubCssChange = { viewModel.saveUseEpubCss(it) },
+                onEpubRenderModeChange = viewModel::saveEpubRenderMode,
                 onChineseModeChange = { viewModel.saveChineseMode(it) },
                 onPageTransitionChange = { viewModel.savePageTransition(it) },
                 onOpenAdvanced = {
-                    if (isLiquidGlass) requestCloseTheme = true
+                    showThemeSheet = false
+                    requestCloseTheme = false
                     showAdvancedSheet = true
                 },
                 onDismiss = { showThemeSheet = false; requestCloseTheme = false }
@@ -1405,7 +1642,23 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     }
                 },
                 onResultClick = { result ->
-                    if (isContinuousScrollMode) {
+                    if (isBookLayoutEpub) {
+                        epubSearchRequestToken++
+                        epubPendingFragment = null
+                        epubLocatorRequest = null
+                        epubPageRequest = null
+                        epubSearchRequest = EpubSearchRequest(
+                            token = epubSearchRequestToken,
+                            chapterIndex = result.chapterIndex,
+                            query = searchQuery,
+                            charOffset = result.charOffset,
+                            chapterTextLength = viewModel.getChapterText(result.chapterIndex)?.length
+                                ?.coerceAtLeast(1) ?: 1
+                        )
+                        if (result.chapterIndex != uiState.currentChapterIndex) {
+                            viewModel.setChapter(result.chapterIndex)
+                        }
+                    } else if (isContinuousScrollMode) {
                         continuousSearchHighlight = ContinuousSearchHighlight(
                             chapterIndex = result.chapterIndex,
                             start = result.charOffset,
@@ -1459,6 +1712,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 currentTextColor = Color(readerTextColorInt),
                 currentTextColorOverride = uiState.readerTextColor,
                 currentFontSizeSp = uiState.fontSize,
+                preservePublisherLayout = isBookLayoutEpub,
                 onLineHeightChange = { viewModel.saveLineHeight(it) },
                 onLetterSpacingChange = { viewModel.saveLetterSpacing(it) },
                 onFontTypeChange = { viewModel.saveFontType(it) },
@@ -1490,7 +1744,10 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 onVolumeKeyPageTurnEnabledChange = { viewModel.saveVolumeKeyPageTurnEnabled(it) },
                 onReaderEdgeTapModeChange = viewModel::saveReaderEdgeTapMode,
                 onTextColorChange = { viewModel.saveReaderTextColor(it) },
-                onResetSettings = { viewModel.resetAdvancedReaderSettings() },
+                onResetSettings = {
+                    if (isBookLayoutEpub) viewModel.resetBookLayoutReaderSettings()
+                    else viewModel.resetAdvancedReaderSettings()
+                },
                 onDismiss = { showAdvancedSheet = false; requestCloseAdvanced = false }
             )
         }
@@ -1501,11 +1758,37 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     NotesListSheet(
         visible = showNotesList,
         requestClose = requestCloseNotesList,
-        glassBackdrop = readerGlassBackdrop.takeIf { isLiquidGlass },
+        glassBackdrop = activeReaderGlassBackdrop,
         notes = viewModel.notes.collectAsState().value,
         bookmarks = bookmarks,
         onNoteClick = { note ->
-            if (isContinuousScrollMode) {
+            if (isBookLayoutEpub) {
+                val chapterTextLength = viewModel.getChapterTextLength(note.chapterIndex).coerceAtLeast(1)
+                val chapterHref = epubSession?.epubPackage?.spine?.getOrNull(note.chapterIndex)
+                    ?.manifestItem?.fullPath.orEmpty()
+                val locatorJson = note.startLocatorJson
+                    ?.takeIf { isEpubLocatorForChapter(it, chapterHref) }
+                    ?: createEpubFallbackLocator(
+                        href = chapterHref,
+                        charOffset = note.startPosition,
+                        chapterTextLength = chapterTextLength,
+                        exact = note.selectedText
+                    )
+                epubPendingFragment = null
+                epubSearchRequest = null
+                epubPageRequest = null
+                epubLocatorRequestToken++
+                epubLocatorRequest = locatorJson?.let {
+                    EpubLocatorRequest(
+                        token = epubLocatorRequestToken,
+                        chapterIndex = note.chapterIndex,
+                        locatorJson = it
+                    )
+                }
+                if (note.chapterIndex != uiState.currentChapterIndex) {
+                    viewModel.setChapter(note.chapterIndex)
+                }
+            } else if (isContinuousScrollMode) {
                 jumpToContinuousChapter(note.chapterIndex)
             } else {
                 readViewRef.value?.jumpToCharacter(note.chapterIndex, note.startPosition)
@@ -1515,7 +1798,41 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         },
         onDeleteNote = { note -> viewModel.deleteNote(note) },
         onBookmarkClick = { bm ->
-            if (isContinuousScrollMode) {
+            if (isBookLayoutEpub) {
+                val chapterHref = epubSession?.epubPackage?.spine?.getOrNull(bm.chapterIndex)
+                    ?.manifestItem?.fullPath.orEmpty()
+                val locatorJson = bm.locatorJson
+                    ?.takeIf { isEpubLocatorForChapter(it, chapterHref) }
+                    ?: bm.characterOffset?.let { characterOffset ->
+                        createEpubFallbackLocator(
+                            href = chapterHref,
+                            charOffset = characterOffset,
+                            chapterTextLength = viewModel.getChapterTextLength(bm.chapterIndex).coerceAtLeast(1)
+                        )
+                    }
+                epubPendingFragment = null
+                epubSearchRequest = null
+                if (locatorJson != null) {
+                    epubPageRequest = null
+                    epubLocatorRequestToken++
+                    epubLocatorRequest = EpubLocatorRequest(
+                        token = epubLocatorRequestToken,
+                        chapterIndex = bm.chapterIndex,
+                        locatorJson = locatorJson
+                    )
+                } else {
+                    epubLocatorRequest = null
+                    epubPageRequestToken++
+                    epubPageRequest = EpubPageRequest(
+                        token = epubPageRequestToken,
+                        chapterIndex = bm.chapterIndex,
+                        pageIndex = bm.position.toInt().coerceAtLeast(0)
+                    )
+                }
+                if (bm.chapterIndex != uiState.currentChapterIndex) {
+                    viewModel.setChapter(bm.chapterIndex)
+                }
+            } else if (isContinuousScrollMode) {
                 jumpToContinuousChapter(bm.chapterIndex)
             } else {
                 bm.characterOffset?.let { readViewRef.value?.jumpToCharacter(bm.chapterIndex, it) }
@@ -1532,7 +1849,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     SelectionMenuOverlay(
         state = selectionState,
         readerTheme = uiState.readerTheme,
-        glassBackdrop = readerGlassBackdrop.takeIf { isLiquidGlass },
+        glassBackdrop = activeReaderGlassBackdrop,
+        forceSolidSurface = isBookLayoutEpub,
         isDragging = isSelectionDragging,
         reappearKey = menuReappearKey,
         showColorPicker = showHighlightColorPicker,
@@ -1542,7 +1860,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             clearActiveTextSelection()
         },
         onColorPicked = { hexColor ->
-            val fresh = readViewRef.value?.getSelectionInfo()
+            val fresh = if (isBookLayoutEpub) null else readViewRef.value?.getSelectionInfo()
             if (fresh != null) {
                 viewModel.addNote(
                     selectedText = fresh.selectedText,
@@ -1560,7 +1878,9 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         chapterIndex = selection.chapterIndex,
                         startPosition = selection.charStart,
                         endPosition = selection.charEnd,
-                        color = hexColor
+                        color = hexColor,
+                        startLocatorJson = selection.startLocatorJson,
+                        endLocatorJson = selection.endLocatorJson
                     )
                 }
             }
@@ -1573,7 +1893,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             showHighlightColorPicker = true
         },
         onNote = {
-            val fresh = readViewRef.value?.getSelectionInfo()
+            val fresh = if (isBookLayoutEpub) null else readViewRef.value?.getSelectionInfo()
             if (fresh != null) {
                 pendingSelection = PendingSelection(
                     fresh.selectedText, fresh.chapterIndex,
@@ -1587,16 +1907,19 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         selection.selectedText,
                         selection.chapterIndex,
                         selection.charStart,
-                        selection.charEnd
+                        selection.charEnd,
+                        selection.startLocatorJson,
+                        selection.endLocatorJson
                     )
                     showNoteInput = true
                 }
             }
             selectionState = null
             showHighlightColorPicker = false
+            clearActiveTextSelection()
         },
         onSearch = {
-            val fresh = readViewRef.value?.getSelectionInfo()
+            val fresh = if (isBookLayoutEpub) null else readViewRef.value?.getSelectionInfo()
             val query = fresh?.selectedText ?: selectionState?.selectedText ?: return@SelectionMenuOverlay
             showSearch = true
             searchQuery = query
@@ -1609,9 +1932,10 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             }
             selectionState = null
             showHighlightColorPicker = false
+            clearActiveTextSelection()
         },
         onCopy = {
-            val fresh = readViewRef.value?.getSelectionInfo()
+            val fresh = if (isBookLayoutEpub) null else readViewRef.value?.getSelectionInfo()
             val text = fresh?.selectedText ?: selectionState?.selectedText ?: return@SelectionMenuOverlay
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
             clipboard.setPrimaryClip(android.content.ClipData.newPlainText("selected", text))
@@ -1655,11 +1979,49 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         }
     )
 
+    if (uiState.showEpubLayoutHint) {
+        LiquidGlassAlertDialog(
+            onDismissRequest = viewModel::dismissEpubLayoutHint,
+            backdrop = activeReaderGlassBackdrop,
+            contentScrimColor = AppColors.CardBg.copy(alpha = 0.24f),
+            backgroundBlurRadius = 16.dp,
+            transparencyOverride = 0.52f,
+            title = { Text(stringResource(R.string.epub_layout_first_open_title)) },
+            text = { Text(stringResource(R.string.epub_layout_first_open_message)) },
+            confirmButton = {
+                TextButton(onClick = viewModel::dismissEpubLayoutHint) {
+                    Text(stringResource(R.string.epub_layout_first_open_confirm))
+                }
+            }
+        )
+    }
+
     // 🔥 笔记输入弹窗（自定义菜单触发"笔记"时弹出）
+    pendingExternalLink?.let { href ->
+        AlertDialog(
+            onDismissRequest = { pendingExternalLink = null },
+            title = { Text(stringResource(R.string.reader_external_link_title)) },
+            text = { Text(stringResource(R.string.reader_external_link_message, href)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingExternalLink = null
+                        openExternalBookLink(context, href)
+                    }
+                ) { Text(stringResource(R.string.reader_external_link_open)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingExternalLink = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
     NoteInputSheet(
         visible = showNoteInput,
         requestClose = requestCloseNoteInput,
-        glassBackdrop = readerGlassBackdrop.takeIf { isLiquidGlass },
+        glassBackdrop = activeReaderGlassBackdrop,
         initialText = noteInputText,
         onTextChange = { noteInputText = it },
         onConfirm = {
@@ -1677,7 +2039,9 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     chapterIndex = ps.chapterIndex,
                     startPosition = ps.startPosition,
                     endPosition = ps.endPosition,
-                    color = "#40FFEB3B"
+                    color = "#40FFEB3B",
+                    startLocatorJson = ps.startLocatorJson,
+                    endLocatorJson = ps.endLocatorJson
                 )
                 pendingSelection = null
             }
@@ -1933,6 +2297,33 @@ private fun rememberBatteryPercentage(): Int {
     return batteryPercent
 }
 
+private fun isEpubLocatorForChapter(locatorJson: String, chapterHref: String): Boolean {
+    if (chapterHref.isBlank()) return false
+    return runCatching { JSONObject(locatorJson).optString("href") == chapterHref }.getOrDefault(false)
+}
+
+private fun createEpubFallbackLocator(
+    href: String,
+    charOffset: Int,
+    chapterTextLength: Int,
+    exact: String = ""
+): String? {
+    if (href.isBlank()) return null
+    val progression = charOffset.coerceAtLeast(0).toDouble() / chapterTextLength.coerceAtLeast(1).toDouble()
+    return JSONObject()
+        .put("version", 1)
+        .put("href", href)
+        .put("textOffset", 0)
+        .put("exact", exact)
+        .put("progression", progression.coerceIn(0.0, 1.0))
+        .toString()
+}
+
+private fun isExternalBookLink(href: String): Boolean {
+    val uri = runCatching { android.net.Uri.parse(href.trim()) }.getOrNull() ?: return false
+    return uri.scheme?.lowercase() in setOf("http", "https", "mailto", "tel")
+}
+
 private fun openExternalBookLink(context: Context, href: String): Boolean {
     val uri = runCatching { android.net.Uri.parse(href.trim()) }.getOrNull() ?: return false
     val scheme = uri.scheme?.lowercase() ?: return false
@@ -2081,6 +2472,7 @@ private fun ReaderTopBar(
     bgColor: Color = Color.White,
     contentColor: Color = AppColors.TextPrimary,
     glassContentScrimColor: Color = Color.Transparent,
+    forceSolidButtons: Boolean = false,
     isTtsActive: Boolean = false,
     onTtsClick: () -> Unit = {},
     isBookmarked: Boolean = false,
@@ -2089,7 +2481,9 @@ private fun ReaderTopBar(
     onEditClick: () -> Unit = {}
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
-    val controlBackground = if (contentColor == Color.White) {
+    val controlBackground = if (forceSolidButtons) {
+        if (contentColor == Color.White) Color(0xFF3A3A3C) else Color(0xFFF2F2F7)
+    } else if (contentColor == Color.White) {
         Color.Black.copy(alpha = 0.28f)
     } else {
         Color(0xFFF2F2F7).copy(alpha = 0.8f)
@@ -2129,6 +2523,7 @@ private fun ReaderTopBar(
                 tint = contentColor,
                 backgroundColor = controlBackground,
                 contentScrimColor = glassContentScrimColor,
+                    forceSolid = forceSolidButtons,
                 onClick = onBack
             )
             Text(
@@ -2152,6 +2547,7 @@ private fun ReaderTopBar(
                     tint = if (isTtsActive) AppColors.Accent else contentColor,
                     backgroundColor = controlBackground,
                     contentScrimColor = glassContentScrimColor,
+                    forceSolid = forceSolidButtons,
                     onClick = onTtsClick
                 )
                 ReaderTopBarButton(
@@ -2160,6 +2556,7 @@ private fun ReaderTopBar(
                         tint = if (isBookmarked) AppColors.Accent else contentColor,
                         backgroundColor = controlBackground,
                         contentScrimColor = glassContentScrimColor,
+                    forceSolid = forceSolidButtons,
                         onClick = onBookmarkToggle
                     )
                     if (isTxtBook) {
@@ -2169,6 +2566,7 @@ private fun ReaderTopBar(
                             tint = contentColor,
                             backgroundColor = controlBackground,
                             contentScrimColor = glassContentScrimColor,
+                    forceSolid = forceSolidButtons,
                             onClick = onEditClick
                         )
                     }
@@ -2184,12 +2582,14 @@ private fun ReaderTopBarButton(
     tint: Color,
     backgroundColor: Color,
     contentScrimColor: Color,
+    forceSolid: Boolean,
     onClick: () -> Unit
 ) {
     LiquidGlassSurface(
         shape = CircleShape,
         fallbackColor = backgroundColor,
         contentScrimColor = contentScrimColor,
+        forceFallback = forceSolid,
         modifier = Modifier
             .size(36.dp),
         onClick = onClick,
@@ -2216,6 +2616,7 @@ private fun FloatingReaderMenu(
     readerContentColor: Color,
     catalogProgressColor: Color,
     glassContentScrimColor: Color,
+    forceSolidCapsules: Boolean,
     onCatalogClick: () -> Unit,
     onCatalogProgressDrag: ((Float) -> Unit)? = null,
     onCatalogProgressDragEnd: ((Float) -> Unit)? = null,
@@ -2272,6 +2673,8 @@ private fun FloatingReaderMenu(
                 contentColor = capsuleContentColor,
                 progressColor = catalogProgressColor,
                 glassContentScrimColor = glassContentScrimColor,
+                forceSolid = forceSolidCapsules,
+                enabled = visible,
                 onClick = onCatalogClick,
                 onProgressDrag = onCatalogProgressDrag,
                 onProgressDragEnd = onCatalogProgressDragEnd
@@ -2291,17 +2694,17 @@ private fun FloatingReaderMenu(
             Box(modifier = Modifier.weight(1f).graphicsLayer {
                 alpha = alpha1.value; translationY = offset1.value
             }) {
-                ActionCapsule(Icons.Default.Bookmark, stringResource(R.string.reader_notes), capsuleBgColor, capsuleContentColor, glassContentScrimColor, Modifier.fillMaxWidth(), onBookmarkClick)
+                ActionCapsule(Icons.Default.Bookmark, stringResource(R.string.reader_notes), capsuleBgColor, capsuleContentColor, glassContentScrimColor, forceSolidCapsules, Modifier.fillMaxWidth(), onBookmarkClick)
             }
             Box(modifier = Modifier.weight(1f).graphicsLayer {
                 alpha = alpha2.value; translationY = offset2.value
             }) {
-                ActionCapsule(Icons.Default.Search, stringResource(R.string.reader_search), capsuleBgColor, capsuleContentColor, glassContentScrimColor, Modifier.fillMaxWidth(), onSearchClick)
+                ActionCapsule(Icons.Default.Search, stringResource(R.string.reader_search), capsuleBgColor, capsuleContentColor, glassContentScrimColor, forceSolidCapsules, Modifier.fillMaxWidth(), onSearchClick)
             }
             Box(modifier = Modifier.weight(1f).graphicsLayer {
                 alpha = alpha3.value; translationY = offset3.value
             }) {
-                ActionCapsule(Icons.Default.Settings, stringResource(R.string.reader_theme), capsuleBgColor, capsuleContentColor, glassContentScrimColor, Modifier.fillMaxWidth(), onThemeClick)
+                ActionCapsule(Icons.Default.Settings, stringResource(R.string.reader_theme), capsuleBgColor, capsuleContentColor, glassContentScrimColor, forceSolidCapsules, Modifier.fillMaxWidth(), onThemeClick)
             }
         }
     }
@@ -2356,11 +2759,13 @@ private fun CatalogCapsule(
     contentColor: Color,
     progressColor: Color,
     glassContentScrimColor: Color,
+    forceSolid: Boolean,
+    enabled: Boolean = true,   // 菜单不可见时传 false，禁止隐藏胶囊拦截触摸事件
     onClick: () -> Unit,
     onProgressDrag: ((newProgress: Float) -> Unit)? = null,
     onProgressDragEnd: ((finalProgress: Float) -> Unit)? = null,
 ) {
-    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !forceSolid
     val density = androidx.compose.ui.platform.LocalDensity.current
 
     var dragProgress by remember { mutableFloatStateOf(progress) }
@@ -2380,12 +2785,13 @@ private fun CatalogCapsule(
         shape = RoundedCornerShape(24.dp),
         fallbackColor = bgColor,
         contentScrimColor = glassContentScrimColor,
+        forceFallback = forceSolid,
         modifier = Modifier
             .fillMaxWidth()
             .height(48.dp)
-            .pointerInput(onProgressDrag != null) {
+            .pointerInput(enabled, onProgressDrag != null) {
+                if (!enabled) return@pointerInput   // 菜单隐藏时不拦截任何事件
                 if (onProgressDrag == null) {
-                    // 无拖动回调：直接用系统 tap 检测
                     detectTapGestures(onTap = { latestOnClick() })
                     return@pointerInput
                 }
@@ -2495,6 +2901,7 @@ private fun ActionCapsule(
     bgColor: Color,
     contentColor: Color,
     glassContentScrimColor: Color,
+    forceSolid: Boolean,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
@@ -2502,6 +2909,7 @@ private fun ActionCapsule(
         shape = RoundedCornerShape(22.dp),
         fallbackColor = bgColor,
         contentScrimColor = glassContentScrimColor,
+        forceFallback = forceSolid,
         modifier = modifier
             .height(44.dp),
         onClick = onClick
@@ -3168,7 +3576,9 @@ private data class PendingSelection(
     val selectedText: String,
     val chapterIndex: Int,
     val startPosition: Int,
-    val endPosition: Int
+    val endPosition: Int,
+    val startLocatorJson: String? = null,
+    val endLocatorJson: String? = null
 )
 
 private data class SelectionState(
@@ -3186,7 +3596,9 @@ private data class SelectionState(
     val selTopY: Float = 0f,
     val selBottomY: Float = 0f,
     val selStartX: Float = 0f,
-    val selEndX: Float = 0f
+    val selEndX: Float = 0f,
+    val startLocatorJson: String? = null,
+    val endLocatorJson: String? = null
 )
 
 /** 查找与选区重叠的 Note（chapterIndex 匹配 + 范围相交） */
@@ -3208,6 +3620,7 @@ private fun SelectionMenuOverlay(
     state: SelectionState?,
     readerTheme: String,
     glassBackdrop: Backdrop? = null,
+    forceSolidSurface: Boolean = false,
     isDragging: Boolean,
     reappearKey: Int,
     showColorPicker: Boolean = false,
@@ -3271,17 +3684,23 @@ private fun SelectionMenuOverlay(
     val screenWidthPx  = with(density) { configuration.screenWidthDp.dp.toPx() }
     val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
     val menuWidthPx    = with(density) { animMenuWidthDp.toPx() }
-    val menuHeightPx   = with(density) { 60.dp.toPx() }
+    val menuHeightPx   = with(density) { 52.dp.toPx() }
+    val menuGapPx      = with(density) { 14.dp.toPx() }
+    val screenEdgePx   = with(density) { 12.dp.toPx() }
 
     // 菜单定位：水平居中于选区，上下由选区位置决定
     val selCenterX = (state.selStartX + state.selEndX) / 2f
     val menuX = (selCenterX - menuWidthPx / 2f)
-        .coerceIn(12f, (screenWidthPx - menuWidthPx - 12f).coerceAtLeast(12f))
+        .coerceIn(screenEdgePx, (screenWidthPx - menuWidthPx - screenEdgePx).coerceAtLeast(screenEdgePx))
     val selCenterY = (state.selTopY + state.selBottomY) / 2f
-    val menuY = if (selCenterY > screenHeightPx * 0.5f) {
-        (state.selTopY - menuHeightPx - 16f).coerceAtLeast(12f)
-    } else {
-        (state.selBottomY + 16f).coerceAtMost((screenHeightPx - menuHeightPx - 12f).coerceAtLeast(12f))
+    val aboveY = state.selTopY - menuHeightPx - menuGapPx
+    val belowY = state.selBottomY + menuGapPx
+    val maxMenuY = (screenHeightPx - menuHeightPx - screenEdgePx).coerceAtLeast(screenEdgePx)
+    val menuY = when {
+        aboveY >= screenEdgePx -> aboveY
+        belowY <= maxMenuY -> belowY
+        selCenterY > screenHeightPx * 0.5f -> aboveY.coerceIn(screenEdgePx, maxMenuY)
+        else -> belowY.coerceIn(screenEdgePx, maxMenuY)
     }
 
     // ── 入场动画（首次显示 / 拖拽结束重新弹出） ──
@@ -3330,6 +3749,7 @@ private fun SelectionMenuOverlay(
                 fallbackColor = menuBg,
                 backdrop = glassBackdrop,
                 contentScrimColor = menuBg.copy(alpha = 0.18f),
+                forceFallback = forceSolidSurface,
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {

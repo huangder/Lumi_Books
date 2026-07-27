@@ -82,6 +82,16 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     val curPageView = PageContentView(context)
     val nextPageView = PageContentView(context)
 
+    private val animationSurface by lazy {
+        PageAnimationSurface(
+            root = this,
+            prevPageView = prevPageView,
+            curPageView = curPageView,
+            nextPageView = nextPageView,
+            backgroundColorProvider = { bgColor }
+        )
+    }
+
     // ── 外部回调 ──
     private var callbacks: ReadViewCallbacks? = null
     private var contentProvider: (suspend (Int) -> CharSequence?)? = null
@@ -163,7 +173,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         }
 
         // 初始化动画控制器
-        animationController = SlidePageAnim(this)
+        animationController = SlidePageAnim(animationSurface)
 
         animationController.onCanFlip = { dir ->
             if (isJumpSettling) false else when (dir) {
@@ -668,10 +678,10 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         (oldController as? CurlPageAnim)?.destroy()
 
         val newController = when (mode) {
-            "fade" -> FadePageAnim(this)
-            "scroll" -> ScrollPageAnim(this)
-            "curl" -> CurlPageAnim(this)
-            else -> SlidePageAnim(this)
+            "fade" -> FadePageAnim(animationSurface)
+            "scroll" -> ScrollPageAnim(animationSurface)
+            "curl" -> CurlPageAnim(animationSurface)
+            else -> SlidePageAnim(animationSurface)
         }
         // 重新绑定回调
         newController.onCanFlip = animationController.onCanFlip

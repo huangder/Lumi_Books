@@ -45,8 +45,8 @@ class BookRepositoryImpl @Inject constructor(
         bookDao.updateLastReadTime(bookId, timestamp)
     }
 
-    override suspend fun updateReadingProgress(bookId: String, progress: Float) {
-        bookDao.updateReadingProgress(bookId, progress)
+    override suspend fun updateReadingProgress(bookId: String, progress: Float, locatorJson: String?) {
+        bookDao.updateReadingProgress(bookId, progress, locatorJson)
     }
 
     private fun BookEntity.toDomain(): Book {
@@ -59,6 +59,7 @@ class BookRepositoryImpl @Inject constructor(
             format = BookFormat.valueOf(format),
             lastReadTime = lastReadTime,
             readingProgress = readingProgress,
+            locatorJson = locatorJson,
             createdAt = createdAt,
             isFavorite = isFavorite
         )
@@ -74,6 +75,7 @@ class BookRepositoryImpl @Inject constructor(
             format = format.name,
             lastReadTime = lastReadTime,
             readingProgress = readingProgress,
+            locatorJson = locatorJson,
             createdAt = createdAt,
             isFavorite = isFavorite
         )

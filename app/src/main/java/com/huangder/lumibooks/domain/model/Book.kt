@@ -9,6 +9,7 @@ data class Book(
     val format: BookFormat,
     val lastReadTime: Long,
     val readingProgress: Float,
+    val locatorJson: String? = null,
     val createdAt: Long,
     val isFavorite: Boolean = false
 )

@@ -32,6 +32,6 @@ interface BookDao {
     @Query("UPDATE books SET lastReadTime = :timestamp WHERE id = :bookId")
     suspend fun updateLastReadTime(bookId: String, timestamp: Long)
 
-    @Query("UPDATE books SET readingProgress = :progress WHERE id = :bookId")
-    suspend fun updateReadingProgress(bookId: String, progress: Float)
+    @Query("UPDATE books SET readingProgress = :progress, locatorJson = COALESCE(:locatorJson, locatorJson) WHERE id = :bookId")
+    suspend fun updateReadingProgress(bookId: String, progress: Float, locatorJson: String?)
 }

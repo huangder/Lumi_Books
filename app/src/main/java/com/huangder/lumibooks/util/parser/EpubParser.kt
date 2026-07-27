@@ -13,6 +13,11 @@ import java.io.FileInputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import kotlin.text.RegexOption
+import com.huangder.lumibooks.util.epub.EpubPackage
+import com.huangder.lumibooks.util.epub.EpubPackageReader
+import com.huangder.lumibooks.util.epub.EpubPathResolver
+import com.huangder.lumibooks.util.epub.EpubRenderSession
+import com.huangder.lumibooks.util.epub.EpubRenderSource
 
 /**
  * EPUB 解析器 — 按需加载章节
@@ -20,7 +25,7 @@ import kotlin.text.RegexOption
  * parse() 只提取元数据（标题、作者、章节列表、封面），不处理图片。
  * getChapterHtml() / getChapterContent() 按需读取并处理单个章节。
  */
-class EpubParser(private val context: Context? = null) : BookParser {
+class EpubParser(private val context: Context? = null) : BookParser, EpubRenderSource {
     companion object {
         private const val ANCHOR_MARKER_PREFIX = "\uE000LUMIBOOKS_ANCHOR:"
         private const val ANCHOR_MARKER_SUFFIX = "\uE001"
@@ -38,6 +43,7 @@ class EpubParser(private val context: Context? = null) : BookParser {
     private var bookAuthor: String = ""
     private var basePath: String = ""
     private var epubFilePath: String = ""
+    private var parsedPackage: EpubPackage? = null
 
     // 章节路径列表（spine 顺序）
     private var chapterPaths: List<String> = emptyList()
@@ -54,40 +60,58 @@ class EpubParser(private val context: Context? = null) : BookParser {
 
     override fun parse(filePath: String): BookContent {
         epubFilePath = filePath
-        val file = File(filePath)
-        val zipFile = ZipFile(file)
+        val packageModel = EpubPackageReader.read(filePath)
+        parsedPackage = packageModel
+        basePath = packageModel.basePath
+        bookTitle = packageModel.title
+        bookAuthor = packageModel.author
+        chapterPaths = packageModel.spine.map { it.manifestItem.fullPath }
+        spineHrefs = packageModel.spine.map { it.manifestItem.href }
 
-        // 读取container.xml获取OPF路径
-        val containerEntry = zipFile.getEntry("META-INF/container.xml")
-        val containerContent = zipFile.getInputStream(containerEntry).bufferedReader().readText()
-        val opfPath = extractOpfPath(containerContent)
+        val navigationTitles = packageModel.navigation.mapNotNull { item ->
+            val path = EpubPathResolver.normalize(item.href.substringBefore('#')) ?: return@mapNotNull null
+            path to item.title
+        }.toMap()
 
-        // 读取OPF文件
-        val opfEntry = zipFile.getEntry(opfPath)
-        val opfContent = zipFile.getInputStream(opfEntry).bufferedReader().readText()
-        basePath = opfPath.substringBeforeLast("/", missingDelimiterValue = "")
-
-        // 解析标题和作者
-        bookTitle = extractMetadata(opfContent, "dc:title") ?: file.nameWithoutExtension
-        bookAuthor = extractMetadata(opfContent, "dc:creator") ?: "未知作者"
-
-        // 提取章节路径和标题（只读HTML提取标题，不处理图片）
-        val chapterInfoList = extractChapterInfo(zipFile, opfContent)
-        chapterPaths = chapterInfoList.map { it.third }  // 完整路径
-        spineHrefs = chapterInfoList.map { it.second }   // 原始href，用于NCX映射
-
-        // 构造 Chapter 列表（content/htmlContent 为空，按需加载）
-        chapters = chapterInfoList.mapIndexed { index, (title, _, _) ->
+        val chapterTitles = ZipFile(filePath).use { zipFile ->
+            val entries = zipFile.entries().toList().associateBy { it.name.lowercase() }
+            chapterPaths.mapIndexed { index, chapterPath ->
+                navigationTitles[chapterPath]?.takeIf { it.isNotBlank() } ?: run {
+                    val entry = zipFile.getEntry(chapterPath) ?: entries[chapterPath.lowercase()]
+                    val preview = entry?.let {
+                        zipFile.getInputStream(it).use { input ->
+                            val buffer = ByteArray(8192)
+                            val count = input.read(buffer).coerceAtLeast(0)
+                            String(buffer, 0, count, Charsets.UTF_8)
+                        }
+                    }.orEmpty()
+                    extractTitle(preview) ?: "第${index + 1}章"
+                }
+            }
+        }
+        chapters = chapterTitles.mapIndexed { index, title ->
             Chapter(index = index, title = title, content = "", htmlContent = "")
         }
 
-        // 提取封面
-        val coverPath = extractCover(zipFile, opfContent)
+        val tocEntries = packageModel.navigation.map { item ->
+            val documentPath = item.href.substringBefore('#')
+            val chapterIndex = chapterPaths.indexOf(documentPath)
+            TocEntry(
+                title = item.title,
+                level = item.level,
+                chapterIndex = chapterIndex,
+                isGroup = chapterIndex < 0,
+                anchor = item.href.substringAfter('#', "").ifBlank { null }
+            )
+        }.ifEmpty {
+            chapterTitles.mapIndexed { index, title -> TocEntry(title, 1, index) }
+        }
 
-        // 解析 NCX/nav 构建层级目录
-        val tocEntries = buildTocEntries(zipFile, opfContent)
-
-        zipFile.close()
+        val coverPath = ZipFile(filePath).use { zipFile ->
+            val opfEntry = zipFile.getEntry(packageModel.opfPath)
+            val opfContent = opfEntry?.let { zipFile.getInputStream(it).bufferedReader().use { reader -> reader.readText() } }.orEmpty()
+            extractCover(zipFile, opfContent)
+        }
 
         return BookContent(
             title = bookTitle,
@@ -97,6 +121,9 @@ class EpubParser(private val context: Context? = null) : BookParser {
             tocEntries = tocEntries
         )
     }
+
+    override fun openRenderSession(): EpubRenderSession =
+        EpubRenderSession.open(epubFilePath, parsedPackage ?: EpubPackageReader.read(epubFilePath))
 
     private fun extractOpfPath(containerXml: String): String {
         val rootfileRegex = """full-path="([^"]+)"""".toRegex()

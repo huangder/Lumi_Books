@@ -10,6 +10,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PointF
 import android.graphics.RadialGradient
+import android.graphics.Rect
 import android.graphics.Shader
 import android.graphics.drawable.GradientDrawable
 import android.view.MotionEvent
@@ -31,12 +32,12 @@ import kotlin.math.sin
  * current/previous page, folded back, underlying page and their shadows are
  * separate clipped layers instead of a translated translucent strip.
  */
-class CurlPageAnim(readView: ReadView) : PageAnimationController(readView) {
+class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(readView) {
 
     companion object {
-        private const val TAP_DURATION_MS = 360
-        private const val MIN_SETTLE_DURATION_MS = 150
-        private const val MAX_SETTLE_DURATION_MS = 360
+        private const val TAP_DURATION_MS = 420
+        private const val MIN_SETTLE_DURATION_MS = 180
+        private const val MAX_SETTLE_DURATION_MS = 420
         private const val COMMIT_PROGRESS = 0.14f
         private const val FLING_VELOCITY_DP_PER_SECOND = 450f
         private const val GEOMETRY_EPSILON = 0.1f
@@ -45,7 +46,12 @@ class CurlPageAnim(readView: ReadView) : PageAnimationController(readView) {
     override val drawsDirectlyOnCanvas: Boolean = true
 
     private val density = readView.resources.displayMetrics.density
-    private val pagePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    private val pagePaint = Paint(Paint.DITHER_FLAG).apply {
+        isAntiAlias = false
+        isFilterBitmap = false
+    }
+    private val pageSourceRect = Rect()
+    private val pageDestinationRect = Rect()
     private val backPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
         colorFilter = ColorMatrixColorFilter(
             ColorMatrix(
@@ -135,6 +141,8 @@ class CurlPageAnim(readView: ReadView) : PageAnimationController(readView) {
 
     private var turningBitmap: Bitmap? = null
     private var underBitmap: Bitmap? = null
+    private var turningPageView: View? = null
+    private var underPageView: View? = null
     private var snapshotsReady = false
 
     // 🔥 RadialGradient 缓存：避免每帧 new shader，减少 GC 压力。
@@ -182,7 +190,9 @@ class CurlPageAnim(readView: ReadView) : PageAnimationController(readView) {
                     isDragging = snapshotsReady
                     // 🔥 记录 curl 起点锚点：以此为 0 offset 计算 touchX，
                     // 避免手势识别阈值（16px）造成纸张初始突变。
-                    curlDragOriginX = event.x
+                    // Keep the distance already travelled while the host was
+                    // deciding whether this is a paging gesture.
+                    curlDragOriginX = startX
                 }
 
                 if (snapshotsReady && direction != Direction.NONE) {
@@ -190,8 +200,8 @@ class CurlPageAnim(readView: ReadView) : PageAnimationController(readView) {
                     // curlDx 从 curlDragOriginX 累积，保证 curl 从边缘平滑起步
                     val curlDx = event.x - curlDragOriginX
                     touchX = when (direction) {
-                        Direction.NEXT -> width + 2f * min(curlDx, 0f)
-                        Direction.PREV -> -width + 2f * max(curlDx, 0f)
+                        Direction.NEXT -> width + min(curlDx, 0f)
+                        Direction.PREV -> -width + max(curlDx, 0f)
                         Direction.NONE -> event.x
                     }.coerceIn(-width, width - 1f)
                     isDragging = true
@@ -247,18 +257,29 @@ class CurlPageAnim(readView: ReadView) : PageAnimationController(readView) {
 
         canvas.save()
         canvas.clipRect(0f, 0f, width, height)
-        drawPage(canvas, underBitmap)
+        drawPage(canvas, underBitmap, underPageView)
 
         if (calculateCurlPoints()) {
-            drawCurrentPageArea(canvas, turningBitmap)
-            drawUnderlyingPageAndShadow(canvas, underBitmap)
+            drawCurrentPageArea(canvas, turningBitmap, turningPageView)
+            drawUnderlyingPageShadow(canvas, underBitmap, underPageView)
             drawCurrentPageShadow(canvas)
             drawCurlAmbientShadow(canvas)
             drawFoldedBack(canvas, turningBitmap)
             drawFeatheredFoldEdge(canvas)
         } else {
-            val fallback = if (direction == Direction.NEXT) turningBitmap else underBitmap
-            drawPage(canvas, fallback)
+            val targetSideReached = when (direction) {
+                Direction.NEXT -> touchX <= 0f
+                Direction.PREV -> touchX >= 0f
+                Direction.NONE -> false
+            }
+            val showTurningPage = when (direction) {
+                Direction.NEXT -> !targetSideReached
+                Direction.PREV -> targetSideReached
+                Direction.NONE -> false
+            }
+            val fallbackBitmap = if (showTurningPage) turningBitmap else underBitmap
+            val fallbackView = if (showTurningPage) turningPageView else underPageView
+            drawPage(canvas, fallbackBitmap, fallbackView)
         }
         canvas.restore()
     }
@@ -538,8 +559,8 @@ class CurlPageAnim(readView: ReadView) : PageAnimationController(readView) {
         return if (x.isFinite() && y.isFinite()) PointF(x, y) else null
     }
 
-    private fun drawCurrentPageArea(canvas: Canvas, bitmap: Bitmap?) {
-        bitmap ?: return
+    private fun drawCurrentPageArea(canvas: Canvas, bitmap: Bitmap?, pageView: View?) {
+        if (bitmap == null && pageView == null) return
         path0.reset()
         path0.moveTo(bezierStart1.x, bezierStart1.y)
         path0.quadTo(bezierControl1.x, bezierControl1.y, bezierEnd1.x, bezierEnd1.y)
@@ -551,12 +572,12 @@ class CurlPageAnim(readView: ReadView) : PageAnimationController(readView) {
 
         canvas.save()
         canvas.clipOutPath(path0)
-        canvas.drawBitmap(bitmap, 0f, 0f, pagePaint)
+        drawPageContent(canvas, bitmap, pageView)
         canvas.restore()
     }
 
-    private fun drawUnderlyingPageAndShadow(canvas: Canvas, bitmap: Bitmap?) {
-        bitmap ?: return
+    private fun drawUnderlyingPageShadow(canvas: Canvas, bitmap: Bitmap?, pageView: View?) {
+        if (bitmap == null && pageView == null) return
         path1.reset()
         path1.moveTo(bezierStart1.x, bezierStart1.y)
         path1.lineTo(bezierVertex1.x, bezierVertex1.y)
@@ -588,7 +609,6 @@ class CurlPageAnim(readView: ReadView) : PageAnimationController(readView) {
         canvas.save()
         canvas.clipPath(path0)
         canvas.clipPath(path1)
-        canvas.drawBitmap(bitmap, 0f, 0f, pagePaint)
         canvas.rotate(degrees, bezierStart1.x, bezierStart1.y)
         shadow.setBounds(
             min(left, right),
@@ -787,7 +807,6 @@ class CurlPageAnim(readView: ReadView) : PageAnimationController(readView) {
     }
 
     private fun drawFoldedBack(canvas: Canvas, bitmap: Bitmap?) {
-        bitmap ?: return
         val horizontalFold = abs((bezierStart1.x + bezierControl1.x) / 2f - bezierControl1.x)
         val verticalFold = abs((bezierStart2.y + bezierControl2.y) / 2f - bezierControl2.y)
         val foldShadowWidth = min(horizontalFold, verticalFold)
@@ -833,7 +852,16 @@ class CurlPageAnim(readView: ReadView) : PageAnimationController(readView) {
         canvas.clipPath(path0)
         canvas.clipPath(path1)
         canvas.drawColor(readView.bgColor)
-        canvas.drawBitmap(bitmap, reflectionMatrix, backPaint)
+        val reflectionSave = canvas.save()
+        canvas.concat(reflectionMatrix)
+        val directPage = turningPageView
+        val drewDirectPage = directPage != null && readView.drawPageDirectly(canvas, directPage)
+        if (!drewDirectPage && bitmap != null && !bitmap.isRecycled) {
+            pageSourceRect.set(0, 0, bitmap.width, bitmap.height)
+            pageDestinationRect.set(0, 0, readView.width, readView.height)
+            canvas.drawBitmap(bitmap, pageSourceRect, pageDestinationRect, backPaint)
+        }
+        canvas.restoreToCount(reflectionSave)
         val background = readView.bgColor
         backTintPaint.color = Color.argb(
             42,
@@ -877,12 +905,27 @@ class CurlPageAnim(readView: ReadView) : PageAnimationController(readView) {
             Direction.NONE -> return false
         }
 
+        turningPageView = turningView
+        underPageView = underView
+        if (readView.hasDirectPageRenderer) {
+            turningBitmap?.recycle()
+            turningBitmap = null
+            underBitmap?.recycle()
+            underBitmap = null
+            return true
+        }
+
         turningBitmap = snapshot(turningView, turningBitmap)
         underBitmap = snapshot(underView, underBitmap)
         return turningBitmap != null && underBitmap != null
     }
 
     private fun snapshot(view: View, reusable: Bitmap?): Bitmap? {
+        val frozenPage = (view as? PageBitmapSource)?.pageBitmap
+        if (frozenPage != null && !frozenPage.isRecycled) {
+            return copyFrozenPage(frozenPage, reusable)
+        }
+
         val width = readView.width
         val height = readView.height
         if (width <= 0 || height <= 0 || view.width <= 0 || view.height <= 0) return null
@@ -897,7 +940,9 @@ class CurlPageAnim(readView: ReadView) : PageAnimationController(readView) {
             reusable
         }
 
+        bitmap.density = readView.resources.displayMetrics.densityDpi
         bitmap.eraseColor(readView.bgColor)
+        val bitmapCanvas = Canvas(bitmap)
         val savedTranslationX = view.translationX
         val savedTranslationY = view.translationY
         val savedAlpha = view.alpha
@@ -905,7 +950,7 @@ class CurlPageAnim(readView: ReadView) : PageAnimationController(readView) {
             view.translationX = 0f
             view.translationY = 0f
             view.alpha = 1f
-            view.draw(Canvas(bitmap))
+            view.draw(bitmapCanvas)
         } finally {
             view.translationX = savedTranslationX
             view.translationY = savedTranslationY
@@ -914,15 +959,43 @@ class CurlPageAnim(readView: ReadView) : PageAnimationController(readView) {
         return bitmap
     }
 
-    private fun drawPage(canvas: Canvas, bitmap: Bitmap?) {
-        if (bitmap == null || bitmap.isRecycled) {
-            canvas.drawColor(readView.bgColor)
+
+    private fun copyFrozenPage(source: Bitmap, reusable: Bitmap?): Bitmap {
+        val bitmap = if (
+            reusable == null || reusable.isRecycled ||
+            reusable.width != source.width || reusable.height != source.height
+        ) {
+            reusable?.recycle()
+            Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
         } else {
-            canvas.drawBitmap(bitmap, 0f, 0f, pagePaint)
+            reusable
+        }
+        bitmap.density = source.density.takeIf { it != Bitmap.DENSITY_NONE }
+            ?: readView.resources.displayMetrics.densityDpi
+        bitmap.eraseColor(readView.bgColor)
+        pageSourceRect.set(0, 0, source.width, source.height)
+        pageDestinationRect.set(0, 0, bitmap.width, bitmap.height)
+        Canvas(bitmap).drawBitmap(source, pageSourceRect, pageDestinationRect, pagePaint)
+        return bitmap
+    }
+
+    private fun drawPage(canvas: Canvas, bitmap: Bitmap?, pageView: View?) {
+        if (!drawPageContent(canvas, bitmap, pageView)) {
+            canvas.drawColor(readView.bgColor)
         }
     }
 
+    private fun drawPageContent(canvas: Canvas, bitmap: Bitmap?, pageView: View?): Boolean {
+        if (pageView != null && readView.drawPageDirectly(canvas, pageView)) return true
+        if (bitmap == null || bitmap.isRecycled) return false
+        pageSourceRect.set(0, 0, bitmap.width, bitmap.height)
+        pageDestinationRect.set(0, 0, readView.width, readView.height)
+        canvas.drawBitmap(bitmap, pageSourceRect, pageDestinationRect, pagePaint)
+        return true
+    }
+
     private fun resetChildViews() {
+        if (readView.animatePageViewsDirectly) return
         val width = readView.width.toFloat()
         readView.curPageView.translationX = 0f
         readView.curPageView.translationY = 0f

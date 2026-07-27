@@ -8,7 +8,7 @@ import android.graphics.Canvas
  * 顺序渐变：当前页文字先淡出（progress 0→0.5），下一页文字再淡入（progress 0.5→1）。
  * 两个 PageContentView 背景在动画期间均清为透明，ReadView 实心背景全程静止不动。
  */
-class FadePageAnim(readView: ReadView) : PageAnimationController(readView) {
+class FadePageAnim(readView: PageAnimationSurface) : PageAnimationController(readView) {
 
     /** 动画进度 0f..1f */
     private var fadeProgress: Float = 0f
@@ -129,11 +129,12 @@ class FadePageAnim(readView: ReadView) : PageAnimationController(readView) {
         fadeProgress = 0f
 
         // 🔥 清除两页背景 → ReadView 底色静止不动，只有文字参与动画
-        val incoming = if (direction == Direction.NEXT) readView.nextPageView else readView.prevPageView
-        readView.curPageView.stripBackgroundForFade()
+        val incoming = (if (direction == Direction.NEXT) readView.nextPageView else readView.prevPageView) as PageContentView
+        val outgoing = readView.curPageView as PageContentView
+        outgoing.stripBackgroundForFade()
         incoming.stripBackgroundForFade()
-        fadingOutView = readView.curPageView
-        fadingInView  = incoming
+        fadingOutView = outgoing
+        fadingInView = incoming
 
         scroller.startScroll(0, 0, 1000, 0, FADE_DURATION_MS)
         readView.postInvalidateOnAnimation()

@@ -29,6 +29,7 @@ font/
 # Dev logs
 devlog/
 devdocs/
+test/
 
 # Window dumps
 window*.xml

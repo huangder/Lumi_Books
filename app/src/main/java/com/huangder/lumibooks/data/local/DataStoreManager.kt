@@ -21,6 +21,7 @@ import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
 import com.huangder.lumibooks.domain.model.ReaderPageCorner
 import com.huangder.lumibooks.domain.model.defaultReaderCornerContent
 import com.huangder.lumibooks.util.LaunchThemeController
+import com.huangder.lumibooks.util.epub.EpubRenderMode
 import com.huangder.lumibooks.tts.ExternalTtsProtocol
 import com.huangder.lumibooks.tts.ExternalTtsResumePosition
 import com.huangder.lumibooks.tts.ExternalTtsSettings
@@ -61,6 +62,7 @@ class DataStoreManager @Inject constructor(
         private val CUSTOM_FONTS = stringPreferencesKey("custom_fonts")
         private val READER_BACKGROUND_SELECTION = stringPreferencesKey("reader_background_selection")
         private val CUSTOM_READER_BACKGROUNDS = stringPreferencesKey("custom_reader_backgrounds")
+        private val PRESERVE_EPUB_BACKGROUND = booleanPreferencesKey("preserve_epub_background")
         private val READER_TEXT_COLOR = intPreferencesKey("reader_text_color")
         private val PARAGRAPH_SPACING = floatPreferencesKey("paragraph_spacing")
         private val FIRST_LINE_INDENT = floatPreferencesKey("first_line_indent")
@@ -194,6 +196,10 @@ class DataStoreManager @Inject constructor(
         context.dataStore.data.map { preferences ->
             ReaderBackgroundPresetCodec.decode(preferences[CUSTOM_READER_BACKGROUNDS])
         }
+
+    val preserveEpubBackground: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PRESERVE_EPUB_BACKGROUND] ?: true
+    }
 
     val readerTextColor: Flow<Int?> = context.dataStore.data.map { preferences ->
         preferences[READER_TEXT_COLOR]
@@ -583,6 +589,12 @@ class DataStoreManager @Inject constructor(
             preferences[ADVANCED_DEFAULTS_VERSION] = 2
         }
     }
+    suspend fun savePreserveEpubBackground(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PRESERVE_EPUB_BACKGROUND] = enabled
+        }
+    }
+
 
     suspend fun saveReaderBackgroundState(
         theme: String,
@@ -599,6 +611,50 @@ class DataStoreManager @Inject constructor(
     }
 
     /** 每本书的"优化排版"开关（per-book），默认 true */
+    fun epubRenderMode(bookId: String): Flow<EpubRenderMode> {
+        val modeKey = stringPreferencesKey("epub_render_mode_$bookId")
+        val optimizeKey = booleanPreferencesKey("optimize_layout_$bookId")
+        val cssKey = booleanPreferencesKey("use_epub_css_$bookId")
+        return context.dataStore.data.map { preferences ->
+            EpubRenderMode.fromStorage(preferences[modeKey]) ?: when {
+                preferences[cssKey] == true || preferences[optimizeKey] == false -> EpubRenderMode.BOOK_LAYOUT
+                preferences.contains(optimizeKey) || preferences.contains(cssKey) -> EpubRenderMode.READER_LAYOUT
+                else -> EpubRenderMode.READER_LAYOUT
+            }
+        }
+    }
+
+    suspend fun migrateEpubRenderMode(bookId: String): EpubRenderMode {
+        val modeKey = stringPreferencesKey("epub_render_mode_$bookId")
+        val optimizeKey = booleanPreferencesKey("optimize_layout_$bookId")
+        val cssKey = booleanPreferencesKey("use_epub_css_$bookId")
+        var resolved = EpubRenderMode.READER_LAYOUT
+        context.dataStore.edit { preferences ->
+            resolved = EpubRenderMode.fromStorage(preferences[modeKey]) ?: when {
+                preferences[cssKey] == true || preferences[optimizeKey] == false -> EpubRenderMode.BOOK_LAYOUT
+                preferences.contains(optimizeKey) || preferences.contains(cssKey) -> EpubRenderMode.READER_LAYOUT
+                else -> EpubRenderMode.READER_LAYOUT
+            }
+            preferences[modeKey] = resolved.storageValue
+        }
+        return resolved
+    }
+
+    suspend fun saveEpubRenderMode(bookId: String, mode: EpubRenderMode) {
+        val key = stringPreferencesKey("epub_render_mode_$bookId")
+        context.dataStore.edit { preferences -> preferences[key] = mode.storageValue }
+    }
+
+    fun epubLayoutHintShown(bookId: String): Flow<Boolean> {
+        val key = booleanPreferencesKey("epub_layout_hint_shown_$bookId")
+        return context.dataStore.data.map { preferences -> preferences[key] ?: false }
+    }
+
+    suspend fun markEpubLayoutHintShown(bookId: String) {
+        val key = booleanPreferencesKey("epub_layout_hint_shown_$bookId")
+        context.dataStore.edit { preferences -> preferences[key] = true }
+    }
+
     fun optimizeLayout(bookId: String): Flow<Boolean> {
         val key = booleanPreferencesKey("optimize_layout_$bookId")
         return context.dataStore.data.map { preferences ->

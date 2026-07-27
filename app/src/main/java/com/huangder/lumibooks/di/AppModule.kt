@@ -38,8 +38,11 @@ object AppModule {
             context,
             AppDatabase::class.java,
             "ebook_reader_database"
-        ).addMigrations(DatabaseMigrations.MIGRATION_2_3)
-            .fallbackToDestructiveMigration()
+        ).addMigrations(
+            DatabaseMigrations.MIGRATION_1_2,
+            DatabaseMigrations.MIGRATION_2_3,
+            DatabaseMigrations.MIGRATION_3_4
+        )
             .build()
     }
 

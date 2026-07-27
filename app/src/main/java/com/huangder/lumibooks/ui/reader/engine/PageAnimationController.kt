@@ -14,7 +14,7 @@ import android.widget.Scroller
  * 不经过 Compose 重组，消除绘制帧竞态。
  */
 abstract class PageAnimationController(
-    protected val readView: ReadView
+    protected val readView: PageAnimationSurface
 ) {
     companion object {
         /** FastOutSlowInEasing 等效插值器 */

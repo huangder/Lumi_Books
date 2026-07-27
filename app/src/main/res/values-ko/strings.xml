@@ -611,4 +611,17 @@
     <string name="external_tts_http_warning_desc">HTTP 연결은 암호화되지 않습니다. API 키와 낭독 텍스트가 네트워크에서 평문으로 전송되어 가로채일 수 있습니다. HTTPS를 강력히 권장합니다.</string>
     <string name="external_tts_http_confirm">HTTP 위험을 이해했으며 계속 사용합니다</string>
     <string name="external_tts_http_enable">HTTP 사용</string>
+    <string name="epub_render_mode">EPUB 레이아웃</string>
+    <string name="epub_book_layout">책 원본 레이아웃</string>
+    <string name="epub_reader_layout">리더 레이아웃</string>
+    <string name="epub_book_layout_hint">출판사가 지정한 HTML, CSS, 글꼴 및 문서 구조를 유지합니다</string>
+    <string name="epub_reader_layout_hint">리더의 통일된 글꼴, 문단 간격 및 여백 설정을 사용합니다</string>
+    <string name="reader_external_link_title">외부 링크를 열까요?</string>
+    <string name="reader_external_link_message">이 EPUB이 외부 앱 또는 웹사이트를 열려고 합니다:\n%1$s</string>
+    <string name="reader_external_link_open">열기</string>
+    <string name="preserve_epub_background">원본 책 배경 유지</string>
+    <string name="preserve_epub_background_hint">끄면 현재 선택한 Lumi 읽기 배경을 사용합니다</string>
+    <string name="epub_layout_first_open_title">EPUB 레이아웃 안내</string>
+    <string name="epub_layout_first_open_message">이 책에 자체 레이아웃이 포함되어 있다면 화면 중앙을 탭한 뒤 ‘테마’에서 ‘책 원본 레이아웃’을 선택할 수 있습니다.</string>
+    <string name="epub_layout_first_open_confirm">확인</string>
 </resources>

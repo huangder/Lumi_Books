@@ -301,6 +301,7 @@ fun LiquidGlassDialogHost(
 fun LiquidGlassDialog(
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
+    backdrop: Backdrop? = null,
     shape: Shape = RoundedCornerShape(28.dp),
     alignment: Alignment = Alignment.Center,
     contentScrimColor: Color = AppColors.CardBg.copy(alpha = 0.78f),
@@ -312,7 +313,7 @@ fun LiquidGlassDialog(
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val host = LocalLiquidGlassDialogHost.current
-    val sourceBackdrop = LocalLiquidGlassBackdrop.current
+    val sourceBackdrop = backdrop ?: LocalLiquidGlassBackdrop.current
     val id = remember { Any() }
     val latestDismiss by rememberUpdatedState(onDismissRequest)
     val latestContent by rememberUpdatedState(content)
@@ -367,11 +368,14 @@ fun LiquidGlassAlertDialog(
     onDismissRequest: () -> Unit,
     confirmButton: @Composable () -> Unit,
     modifier: Modifier = Modifier,
+    backdrop: Backdrop? = null,
     dismissButton: (@Composable () -> Unit)? = null,
     title: (@Composable () -> Unit)? = null,
     text: (@Composable () -> Unit)? = null,
     properties: DialogProperties = DialogProperties(),
-    contentScrimColor: Color = AppColors.CardBg.copy(alpha = 0.82f)
+    contentScrimColor: Color = AppColors.CardBg.copy(alpha = 0.82f),
+    backgroundBlurRadius: androidx.compose.ui.unit.Dp = 0.dp,
+    transparencyOverride: Float? = null
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val host = LocalLiquidGlassDialogHost.current
@@ -392,9 +396,12 @@ fun LiquidGlassAlertDialog(
     LiquidGlassDialog(
         onDismissRequest = onDismissRequest,
         modifier = modifier,
+        backdrop = backdrop,
         shape = RoundedCornerShape(32.dp),
         properties = properties,
-        contentScrimColor = contentScrimColor
+        contentScrimColor = contentScrimColor,
+        backgroundBlurRadius = backgroundBlurRadius,
+        transparencyOverride = transparencyOverride
     ) {
         Column(
             modifier = Modifier

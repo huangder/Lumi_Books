@@ -14,6 +14,7 @@ data class BookEntity(
     val format: String,
     val lastReadTime: Long,
     val readingProgress: Float,
+    val locatorJson: String? = null,
     val createdAt: Long,
     val isFavorite: Boolean = false
 )

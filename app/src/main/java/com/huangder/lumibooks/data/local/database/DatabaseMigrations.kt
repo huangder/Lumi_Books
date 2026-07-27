@@ -4,6 +4,12 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 object DatabaseMigrations {
+    val MIGRATION_1_2 = object : Migration(1, 2) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE books ADD COLUMN isFavorite INTEGER NOT NULL DEFAULT 0")
+        }
+    }
+
     val MIGRATION_2_3 = object : Migration(2, 3) {
         override fun migrate(db: SupportSQLiteDatabase) {
             db.execSQL(
@@ -30,6 +36,15 @@ object DatabaseMigrations {
                 "CREATE INDEX IF NOT EXISTS `index_book_tag_cross_refs_tagId` " +
                     "ON `book_tag_cross_refs` (`tagId`)"
             )
+        }
+    }
+
+    val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE books ADD COLUMN locatorJson TEXT")
+            db.execSQL("ALTER TABLE bookmarks ADD COLUMN locatorJson TEXT")
+            db.execSQL("ALTER TABLE notes ADD COLUMN startLocatorJson TEXT")
+            db.execSQL("ALTER TABLE notes ADD COLUMN endLocatorJson TEXT")
         }
     }
 }

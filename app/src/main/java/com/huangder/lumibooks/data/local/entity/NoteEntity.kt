@@ -11,6 +11,8 @@ data class NoteEntity(
     val chapterIndex: Int,
     val startPosition: Int,
     val endPosition: Int,
+    val startLocatorJson: String? = null,
+    val endLocatorJson: String? = null,
     val selectedText: String,
     val note: String,
     val color: String,
