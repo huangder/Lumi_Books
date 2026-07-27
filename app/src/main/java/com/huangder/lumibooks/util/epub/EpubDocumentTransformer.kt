@@ -1011,6 +1011,46 @@ html.lumi-green body { color: #1b5e20 !important; }
     return character.toLocaleUpperCase() !== character.toLocaleLowerCase();
   }
 
+  var bionicCjkSegmenters = {};
+
+  function bionicCjkLocale(value) {
+    if (/[\u3040-\u30ff\u31f0-\u31ff]/.test(value)) return 'ja';
+    if (/[\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\uac00-\ud7ff]/.test(value)) return 'ko';
+    return 'zh';
+  }
+
+  function splitBionicCjkUnits(value) {
+    var rawUnits = [];
+    var locale = bionicCjkLocale(value);
+    try {
+      if (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
+        if (!bionicCjkSegmenters[locale]) {
+          bionicCjkSegmenters[locale] = new Intl.Segmenter(locale, { granularity: 'word' });
+        }
+        Array.from(bionicCjkSegmenters[locale].segment(value)).forEach(function (part) {
+          if (part.segment && Array.from(part.segment).some(isBionicCjkCharacter)) rawUnits.push(part.segment);
+        });
+      }
+    } catch (_) { rawUnits = []; }
+
+    // Older WebViews have no Intl.Segmenter. Character units still become 2/3-character
+    // gaze chunks below, so the fallback never returns to alternating every character.
+    if (!rawUnits.length) rawUnits = Array.from(value);
+
+    var units = [];
+    rawUnits.forEach(function (unit) {
+      var characters = Array.from(unit);
+      if (characters.length <= 4) {
+        units.push(unit);
+        return;
+      }
+      for (var index = 0; index < characters.length; index += 3) {
+        units.push(characters.slice(index, index + 3).join(''));
+      }
+    });
+    return units;
+  }
+
   function applyBionicReading(enabled) {
     enabled = enabled === true;
     if (!document.body || state.bionicReading === enabled) return;
@@ -1063,15 +1103,31 @@ html.lumi-green body { color: #1b5e20 !important; }
         hasFixation = true;
       }
 
+      function appendBionicCjkRun(value) {
+        var units = splitBionicCjkUnits(value);
+        var unitIndex = 0;
+        var fixation = true;
+        while (unitIndex < units.length) {
+          var targetLength = fixation ? 2 : 3;
+          var chunk = '';
+          var characterCount = 0;
+          while (unitIndex < units.length && characterCount < targetLength) {
+            var unit = units[unitIndex++];
+            chunk += unit;
+            characterCount += Array.from(unit).length;
+          }
+          if (fixation) appendFixation(chunk);
+          else plainText += chunk;
+          fixation = !fixation;
+        }
+      }
+
       var index = 0;
       while (index < characters.length) {
         if (isBionicCjkCharacter(characters[index])) {
           var cjkEnd = index + 1;
           while (cjkEnd < characters.length && isBionicCjkCharacter(characters[cjkEnd])) cjkEnd++;
-          for (var cjkIndex = index; cjkIndex < cjkEnd; cjkIndex += 2) {
-            appendFixation(characters[cjkIndex]);
-            if (cjkIndex + 1 < cjkEnd) plainText += characters[cjkIndex + 1];
-          }
+          appendBionicCjkRun(characters.slice(index, cjkEnd).join(''));
           index = cjkEnd;
           continue;
         }

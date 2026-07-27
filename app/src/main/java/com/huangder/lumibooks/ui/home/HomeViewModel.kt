@@ -54,7 +54,9 @@ data class HomeUiState(
     /** 当前日历周的阅读数据（周日至周六） */
     val weeklyData: List<DailyReading> = emptyList(),
     /** 连胜天数 */
-    val streakDays: Int = 0
+    val streakDays: Int = 0,
+    /** WebDAV 同步已启用且至少完成过一次同步时显示云图标 */
+    val showCloudSyncIcon: Boolean = false
 )
 
 enum class SortBy {
@@ -90,6 +92,7 @@ class HomeViewModel @Inject constructor(
         loadTodayReadingTime()
         loadAvatar()
         loadWeeklyData()
+        loadWebdavSyncStatus()
     }
 
     fun loadBooks() {
@@ -180,6 +183,16 @@ class HomeViewModel @Inject constructor(
                     dailyGoal = goal,
                     weeklyData = weeklyData,
                     streakDays = streak
+                )
+            }
+        }
+    }
+
+    private fun loadWebdavSyncStatus() {
+        viewModelScope.launch {
+            dataStoreManager.webdavConfig.collectLatest { config ->
+                _uiState.value = _uiState.value.copy(
+                    showCloudSyncIcon = config.enabled && config.lastSyncTime > 0
                 )
             }
         }

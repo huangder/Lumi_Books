@@ -2,6 +2,7 @@ package com.huangder.lumibooks.data.sync
 
 import android.content.Context
 import com.huangder.lumibooks.data.local.DataStoreManager
+import java.net.URLEncoder
 import com.huangder.lumibooks.data.local.WebdavTokenStore
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.model.Bookmark
@@ -92,7 +93,7 @@ class WebdavSyncManager @Inject constructor(
                         if (file.exists()) {
                             val data = file.readBytes()
                             webdavClient.upload(
-                                "$serverUrl/$syncPath/books/${localEntry.fileName}",
+                                "$serverUrl/$syncPath/books/${encodePathSegment(localEntry.fileName)}",
                                 data, username, password
                             )
                             booksUploaded++
@@ -109,7 +110,7 @@ class WebdavSyncManager @Inject constructor(
                 if (localEntry == null || remoteEntry.lastModified > localEntry.lastModified) {
                     try {
                         val data = webdavClient.download(
-                            "$serverUrl/$syncPath/books/${remoteEntry.fileName}",
+                            "$serverUrl/$syncPath/books/${encodePathSegment(remoteEntry.fileName)}",
                             username, password
                         )
                         val booksDir = FileUtils.getBooksDirectory(context)
@@ -210,6 +211,11 @@ class WebdavSyncManager @Inject constructor(
     }
 
     // ── Private helpers ─────────────────────────────────────────────
+
+    /** Encode a file name for safe use in a URL path segment.
+     *  Handles Chinese, spaces, and other non-ASCII characters. */
+    private fun encodePathSegment(name: String): String =
+        URLEncoder.encode(name, "UTF-8").replace("+", "%20")
 
     private suspend fun buildLocalManifest(): SyncManifest {
         val books = bookRepository.getAllBooks().first()
