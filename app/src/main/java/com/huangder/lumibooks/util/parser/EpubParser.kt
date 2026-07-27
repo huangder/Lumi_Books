@@ -1001,6 +1001,17 @@ class EpubParser(private val context: Context? = null) : BookParser {
         }
     }
 
+    /** 从 manifest XML 中按 id 提取 href，兼容属性任意顺序 */
+    private fun extractHrefById(manifestContent: String, id: String): String? {
+        val escaped = Regex.escape(id)
+        // id 在 href 之前
+        val r1 = """<item\b[^>]*\bid="$escaped"[^>]*\bhref="([^"]+)"""".toRegex(RegexOption.IGNORE_CASE)
+        // href 在 id 之前
+        val r2 = """<item\b[^>]*\bhref="([^"]+)"[^>]*\bid="$escaped"""".toRegex(RegexOption.IGNORE_CASE)
+        return r1.find(manifestContent)?.groupValues?.get(1)
+            ?: r2.find(manifestContent)?.groupValues?.get(1)
+    }
+
     private fun findEntry(zipFile: ZipFile, path: String): java.util.zip.ZipEntry? {
         zipFile.getEntry(path)?.let { return it }
 
@@ -1371,18 +1382,49 @@ class EpubParser(private val context: Context? = null) : BookParser {
 
             var coverHref: String? = null
 
+            // 方式1：<meta name="cover" content="ID"> → 在 manifest 中按 id 找 href
             if (coverId != null) {
-                val itemRegex = """<item\s+id="${Regex.escape(coverId)}"\s+href="([^"]+)"""".toRegex()
-                coverHref = itemRegex.find(manifestContent)?.groupValues?.get(1)
+                coverHref = extractHrefById(manifestContent, coverId)
             }
 
+            // 方式2：EPUB 3 — <item properties="cover-image" href="...">
             if (coverHref == null) {
-                """<item\s+id="([^"]*cover[^"]*)"\s+href="([^"]+)"""".toRegex(RegexOption.IGNORE_CASE)
-                    .find(manifestContent)?.let { coverHref = it.groupValues[2] }
+                val r1 = """<item[^>]*\bproperties="[^"]*\bcover-image\b[^"]*"[^>]*\bhref="([^"]+)"""".toRegex(RegexOption.IGNORE_CASE)
+                val r2 = """<item[^>]*\bhref="([^"]+)"[^>]*\bproperties="[^"]*\bcover-image\b[^"]*"""".toRegex(RegexOption.IGNORE_CASE)
+                coverHref = r1.find(manifestContent)?.groupValues?.get(1)
+                    ?: r2.find(manifestContent)?.groupValues?.get(1)
             }
+
+            // 方式3：manifest item 的 id 含 "cover"（属性顺序不限）
             if (coverHref == null) {
-                """<item\s+[^>]*href="([^"]*cover[^"]*\.(jpg|jpeg|png|webp))"""".toRegex(RegexOption.IGNORE_CASE)
+                val coverIdPattern = """<item\b[^>]*\bid="([^"]*cover[^"]*)"[^>]*>""".toRegex(RegexOption.IGNORE_CASE)
+                coverIdPattern.find(manifestContent)?.groupValues?.get(1)?.let { id ->
+                    coverHref = extractHrefById(manifestContent, id)
+                }
+            }
+
+            // 方式4：href 本身含 "cover" 且是图片
+            if (coverHref == null) {
+                """<item\b[^>]*\bhref="([^"]*cover[^"]*\.(?:jpg|jpeg|png|webp))"""".toRegex(RegexOption.IGNORE_CASE)
                     .find(manifestContent)?.let { coverHref = it.groupValues[1] }
+            }
+
+            // 方式5：<meta name="cover"> 指向的是 HTML 章节，从该章节中提取第一张图片
+            if (coverHref == null && coverId != null) {
+                val htmlHref = extractHrefById(manifestContent, coverId)
+                if (htmlHref != null && (htmlHref.endsWith(".html", true) || htmlHref.endsWith(".xhtml", true) || htmlHref.endsWith(".htm", true))) {
+                    val htmlPath = if (basePath.isNotEmpty()) "$basePath/$htmlHref" else htmlHref
+                    val htmlEntry = findEntry(zipFile, htmlPath)
+                    if (htmlEntry != null) {
+                        val html = zipFile.getInputStream(htmlEntry).bufferedReader().readText()
+                        val imgSrc = """<img\b[^>]*\bsrc="([^"]+)"""".toRegex(RegexOption.IGNORE_CASE).find(html)?.groupValues?.get(1)
+                            ?: """xlink:href="([^"]+\.(?:jpg|jpeg|png|webp))"""".toRegex(RegexOption.IGNORE_CASE).find(html)?.groupValues?.get(1)
+                        if (imgSrc != null) {
+                            val imgPath = normalizePath(if (basePath.isNotEmpty()) "$basePath/$imgSrc" else imgSrc)
+                            if (findEntry(zipFile, imgPath) != null) coverHref = imgSrc
+                        }
+                    }
+                }
             }
 
             if (coverHref == null) {
