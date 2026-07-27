@@ -44,6 +44,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -52,6 +55,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -262,13 +272,29 @@ fun ThemeSettingsSheet(
             Spacer(Modifier.height(24.dp))
 
             // 字号区域
+            var showFontSizeDialog by remember { mutableStateOf(false) }
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(stringResource(R.string.label_font_size), fontSize = 14.sp, color = LightTextSecondary)
                 Spacer(Modifier.weight(1f))
-                Text("${currentFontSize.toInt()}sp", fontSize = 14.sp, color = LightTextSecondary)
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) { showFontSizeDialog = true }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        "${currentFontSize.toInt()} sp",
+                        fontSize = 14.sp,
+                        color = LightTextSecondary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
             Spacer(Modifier.height(4.dp))
             com.huangder.lumibooks.ui.components.PillSlider(
@@ -279,6 +305,17 @@ fun ThemeSettingsSheet(
                 onDragValueChange = onFontSizeChange,
                 modifier = Modifier.padding(horizontal = 24.dp)
             )
+            if (showFontSizeDialog) {
+                SliderValueInputDialog(
+                    label = stringResource(R.string.label_font_size),
+                    value = currentFontSize,
+                    range = 12f..28f,
+                    step = 1f,
+                    format = { "${it.toInt()} sp" },
+                    onConfirm = { onFontSizeChange(it) },
+                    onDismiss = { showFontSizeDialog = false }
+                )
+            }
 
             Spacer(Modifier.height(16.dp))
 
@@ -1765,6 +1802,148 @@ private fun TextColorDialog(
     }
 }
 
+/**
+ * 点击数值弹出的精细输入对话框，适配液态玻璃主题。
+ *
+ * @param label      滑块名称（如"字号"）
+ * @param value      当前值
+ * @param range      合法范围
+ * @param step       步长，用于输入校验（不强制但会提示）
+ * @param format     格式化函数，用于显示单位（如 "18 sp"）
+ * @param onConfirm  确认后的回调，返回 coerce 到范围内的值
+ * @param onDismiss  关闭对话框
+ */
+@Composable
+private fun SliderValueInputDialog(
+    label: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    step: Float,
+    format: (Float) -> String,
+    onConfirm: (Float) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val dialogTransparency = (LocalLiquidGlassTransparency.current - 0.10f).coerceIn(0f, 0.90f)
+    val focusRequester = remember { FocusRequester() }
+
+    val initialText = remember(value) {
+        // 去掉小数尾零：1.0 → "1"，1.5 → "1.5"
+        if (value == value.toLong().toFloat()) value.toLong().toString()
+        else value.toString()
+    }
+    var textFieldValue by remember {
+        mutableStateOf(TextFieldValue(initialText, selection = TextRange(0, initialText.length)))
+    }
+
+    val parsedFloat = textFieldValue.text.toFloatOrNull()
+    val isValid = parsedFloat != null && parsedFloat >= range.start && parsedFloat <= range.endInclusive
+
+    val confirm = {
+        val v = textFieldValue.text.toFloatOrNull()?.coerceIn(range.start, range.endInclusive)
+        if (v != null) { onConfirm(v); onDismiss() }
+    }
+
+    LiquidGlassDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
+        transparencyOverride = dialogTransparency
+    ) {
+        Column(Modifier.padding(horizontal = 28.dp, vertical = 20.dp)) {
+            // 标题行
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = label,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = AppColors.TextPrimary
+                )
+                Spacer(Modifier.weight(1f))
+                // 范围提示
+                Text(
+                    text = "${format(range.start)} ~ ${format(range.endInclusive)}",
+                    fontSize = 12.sp,
+                    color = LightTextSecondary
+                )
+            }
+
+            Spacer(Modifier.height(20.dp))
+
+            // 输入框
+            val borderColor = when {
+                textFieldValue.text.isEmpty() -> LightTextSecondary.copy(alpha = 0.3f)
+                isValid -> AppColors.TextPrimary.copy(alpha = 0.4f)
+                else -> Color(0xFFFF3B30)
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(LightBgGray)
+                    .border(1.5.dp, borderColor, RoundedCornerShape(16.dp))
+                    .padding(vertical = 16.dp, horizontal = 20.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                BasicTextField(
+                    value = textFieldValue,
+                    onValueChange = { textFieldValue = it },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Decimal,
+                        imeAction = ImeAction.Done
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { confirm() }),
+                    textStyle = TextStyle(
+                        fontSize = 32.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (isValid || textFieldValue.text.isEmpty()) AppColors.TextPrimary
+                                else Color(0xFFFF3B30),
+                        textAlign = TextAlign.Center
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester),
+                    decorationBox = { inner ->
+                        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            if (textFieldValue.text.isEmpty()) {
+                                Text(
+                                    format(value),
+                                    fontSize = 32.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = LightTextSecondary,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                            inner()
+                        }
+                    }
+                )
+            }
+
+            Spacer(Modifier.height(20.dp))
+
+            // 底部按钮
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.cancel),
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f).height(44.dp),
+                    contentColor = LightTextSecondary
+                )
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.apply_text_color), // 重用"应用"字串
+                    onClick = confirm,
+                    enabled = isValid,
+                    modifier = Modifier.weight(1f).height(44.dp),
+                    tintedColor = if (isValid) AccentColor else LightTextSecondary
+                )
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+}
+
 @Composable
 private fun SettingSlider(
     label: String,
@@ -1775,11 +1954,28 @@ private fun SettingSlider(
     onChange: (Float) -> Unit
 ) {
     var sliderValue by remember(value) { mutableFloatStateOf(value) }
+    var showInputDialog by remember { mutableStateOf(false) }
 
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(label, fontSize = 14.sp, color = AppColors.TextPrimary)
         Spacer(Modifier.weight(1f))
-        Text(format(sliderValue), fontSize = 14.sp, color = AppColors.TextPrimary)
+        // 点击数值弹出精细输入对话框
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() }
+                ) { showInputDialog = true }
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+        ) {
+            Text(
+                text = format(sliderValue),
+                fontSize = 14.sp,
+                color = AppColors.TextPrimary,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
     }
     Spacer(Modifier.height(4.dp))
     com.huangder.lumibooks.ui.components.PillSlider(
@@ -1789,6 +1985,21 @@ private fun SettingSlider(
         step = step,
         onDragValueChange = { sliderValue = it }
     )
+
+    if (showInputDialog) {
+        SliderValueInputDialog(
+            label = label,
+            value = sliderValue,
+            range = range,
+            step = step,
+            format = format,
+            onConfirm = { newVal ->
+                sliderValue = newVal
+                onChange(newVal)
+            },
+            onDismiss = { showInputDialog = false }
+        )
+    }
 }
 
 @Composable
