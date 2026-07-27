@@ -429,13 +429,13 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val lineSpacing = 2.5f * density
         val lsPx = letterSpacingDp * density
 
-        val customTypeface = when (fontType) {
-            "serif" -> android.graphics.Typeface.SERIF
-            "fangsong" -> try { androidx.core.content.res.ResourcesCompat.getFont(context, com.huangder.lumibooks.R.font.fandol_fang) }
+        val customTypeface = when {
+            fontType == "serif" -> android.graphics.Typeface.SERIF
+            fontType == "fangsong" -> try { androidx.core.content.res.ResourcesCompat.getFont(context, com.huangder.lumibooks.R.font.fandol_fang) }
                 catch (_: Exception) { null }
-            "kaiti" -> try { androidx.core.content.res.ResourcesCompat.getFont(context, com.huangder.lumibooks.R.font.lxgw_wenkai) }
+            fontType == "kaiti" -> try { androidx.core.content.res.ResourcesCompat.getFont(context, com.huangder.lumibooks.R.font.lxgw_wenkai) }
                 catch (_: Exception) { null }
-            "custom" -> {
+            fontType.startsWith("custom") -> {
                 val path = customFontPath
                 if (path != null) try { android.graphics.Typeface.createFromFile(java.io.File(path)) }
                     catch (_: Exception) { null }

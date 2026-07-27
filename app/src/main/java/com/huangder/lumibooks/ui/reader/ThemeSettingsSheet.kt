@@ -959,6 +959,7 @@ fun AdvancedSettingsSheet(
     currentLetterSpacing: Float,
     currentFontType: String,
     customFontPath: String? = null,
+    customFonts: List<com.huangder.lumibooks.domain.model.CustomFontPreset> = emptyList(),
     currentMarginLeft: Float,
     currentMarginRight: Float,
     currentMarginTop: Float,
@@ -972,6 +973,7 @@ fun AdvancedSettingsSheet(
     onLetterSpacingChange: (Float) -> Unit,
     onFontTypeChange: (String) -> Unit,
     onImportFont: (android.net.Uri) -> Unit = {},
+    onDeleteCustomFont: (String) -> Unit = {},
     onMarginLeftChange: (Float) -> Unit,
     onMarginRightChange: (Float) -> Unit,
     onMarginTopChange: (Float) -> Unit,
@@ -1033,11 +1035,11 @@ fun AdvancedSettingsSheet(
             }.getOrDefault(FontFamily.Default)
         } else FontFamily.Default
     }
-    val previewFont = when (currentFontType) {
-        "serif" -> androidx.compose.ui.text.font.FontFamily.Serif
-        "fangsong" -> FangSong
-        "kaiti" -> KaiTi
-        "custom" -> customPreviewFontFamily
+    val previewFont = when {
+        currentFontType == "serif" -> androidx.compose.ui.text.font.FontFamily.Serif
+        currentFontType == "fangsong" -> FangSong
+        currentFontType == "kaiti" -> KaiTi
+        currentFontType.startsWith("custom") -> customPreviewFontFamily
         else -> androidx.compose.ui.text.font.FontFamily.Default
     }
     val resolvedPreviewText = previewText.ifBlank { stringResource(R.string.preview_text) }
@@ -1225,7 +1227,14 @@ fun AdvancedSettingsSheet(
                 AdvancedSettingsGroup {
                     Text(stringResource(R.string.font_label), fontSize = 14.sp, color = LightTextSecondary)
                     Spacer(Modifier.height(12.dp))
-                    FontSelector(currentFont = currentFontType, customFontPath = customFontPath, onFontChange = onFontTypeChange, onImportFont = onImportFont)
+                    FontSelector(
+                        currentFont = currentFontType,
+                        customFontPath = customFontPath,
+                        customFonts = customFonts,
+                        onFontChange = onFontTypeChange,
+                        onImportFont = onImportFont,
+                        onDeleteCustomFont = onDeleteCustomFont
+                    )
                 }
                 Spacer(Modifier.height(16.dp))
 
@@ -2003,31 +2012,25 @@ private fun SettingSlider(
 }
 
 @Composable
-private fun FontSelector(currentFont: String, customFontPath: String? = null, onFontChange: (String) -> Unit, onImportFont: (android.net.Uri) -> Unit = {}) {
+private fun FontSelector(
+    currentFont: String,
+    customFontPath: String? = null,
+    customFonts: List<com.huangder.lumibooks.domain.model.CustomFontPreset> = emptyList(),
+    onFontChange: (String) -> Unit,
+    onImportFont: (android.net.Uri) -> Unit = {},
+    onDeleteCustomFont: (String) -> Unit = {}
+) {
     val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
     ) { uri ->
-        if (uri != null) {
-            onImportFont(uri)
-            onFontChange("custom")
-        }
+        if (uri != null) onImportFont(uri)
     }
 
-    // 自定义字体的 FontFamily（从文件路径加载）
-    val customFontFamily = remember(customFontPath) {
-        if (customFontPath != null) {
-            try {
-                val file = java.io.File(customFontPath)
-                if (file.exists()) FontFamily(android.graphics.Typeface.createFromFile(file))
-                else FontFamily.Default
-            } catch (_: Exception) { FontFamily.Default }
-        } else FontFamily.Default
-    }
+    // 长按待删除的字体 id
+    var deleteArmedId by remember { mutableStateOf<String?>(null) }
 
-    // 第一行：系统、衬线、仿宋
-    // 第二行：楷体、导入
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        // 第一行
+        // 第一行：系统、衬线、仿宋
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -2054,7 +2057,7 @@ private fun FontSelector(currentFont: String, customFontPath: String? = null, on
                 modifier = Modifier.weight(1f)
             )
         }
-        // 第二行
+        // 第二行：楷体 + 自定义字体（动态）
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -2066,38 +2069,90 @@ private fun FontSelector(currentFont: String, customFontPath: String? = null, on
                 fontFamily = KaiTi,
                 modifier = Modifier.weight(1f)
             )
-            // 导入字体按钮
-            val hasCustomFont = customFontPath != null
-            val label = if (hasCustomFont) stringResource(R.string.font_custom) else stringResource(R.string.font_import)
+            // 已导入的自定义字体按钮
+            customFonts.forEachIndexed { index, preset ->
+                val fontFamily = remember(preset.path) {
+                    runCatching {
+                        val f = java.io.File(preset.path)
+                        if (f.exists()) FontFamily(android.graphics.Typeface.createFromFile(f))
+                        else FontFamily.Default
+                    }.getOrDefault(FontFamily.Default)
+                }
+                val isSelected = currentFont == preset.fontTypeKey
+                val isDeleteArmed = deleteArmedId == preset.id
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .then(
+                            if (isSelected) Modifier.border(2.dp, AccentColor, RoundedCornerShape(12.dp))
+                            else Modifier.border(1.dp, LightTextSecondary, RoundedCornerShape(12.dp))
+                        )
+                        .background(AppColors.CardBg)
+                        .pointerInput(preset.id, isSelected) {
+                            detectTapGestures(
+                                onTap = {
+                                    if (isDeleteArmed) {
+                                        onDeleteCustomFont(preset.id)
+                                        deleteArmedId = null
+                                    } else {
+                                        deleteArmedId = null
+                                        onFontChange(preset.fontTypeKey)
+                                    }
+                                },
+                                onLongPress = {
+                                    if (isSelected) deleteArmedId = preset.id
+                                }
+                            )
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = preset.displayName(index),
+                        fontSize = 14.sp,
+                        fontFamily = fontFamily,
+                        color = if (isSelected) AccentColor else LightTextSecondary
+                    )
+                    // 删除遮罩
+                    if (isDeleteArmed) {
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .background(Color.Black.copy(alpha = 0.48f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Delete,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+            }
+            // "+" 导入按钮（始终可见）
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .height(48.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .then(
-                        if (hasCustomFont && currentFont == "custom")
-                            Modifier.border(2.dp, AccentColor, RoundedCornerShape(12.dp))
-                        else
-                            Modifier.border(1.dp, LightTextSecondary, RoundedCornerShape(12.dp))
-                    )
+                    .border(1.dp, LightTextSecondary, RoundedCornerShape(12.dp))
                     .background(AppColors.CardBg)
                     .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                        if (hasCustomFont) {
-                            onFontChange("custom")
-                        } else {
-                            launcher.launch(arrayOf("font/ttf", "font/otf", "application/octet-stream"))
-                        }
+                        deleteArmedId = null
+                        launcher.launch(arrayOf("font/ttf", "font/otf", "application/octet-stream"))
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    label,
-                    fontSize = 14.sp,
-                    fontFamily = if (hasCustomFont) customFontFamily else FontFamily.Default,
-                    color = if (hasCustomFont && currentFont == "custom") AccentColor else LightTextSecondary
+                Icon(
+                    imageVector = Icons.Outlined.Add,
+                    contentDescription = stringResource(R.string.font_import),
+                    tint = LightTextSecondary,
+                    modifier = Modifier.size(20.dp)
                 )
             }
-            Spacer(Modifier.weight(1f)) // 占位，保持第二行左对齐
         }
     }
 }

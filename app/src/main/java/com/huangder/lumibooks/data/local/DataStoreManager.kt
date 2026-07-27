@@ -12,6 +12,8 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.huangder.lumibooks.domain.model.CustomFontPreset
+import com.huangder.lumibooks.domain.model.CustomFontPresetCodec
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPresetCodec
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
@@ -56,6 +58,7 @@ class DataStoreManager @Inject constructor(
         private val MARGIN_BOTTOM = floatPreferencesKey("margin_bottom")
         private val BRIGHTNESS = floatPreferencesKey("brightness")
         private val CUSTOM_FONT_PATH = stringPreferencesKey("custom_font_path")
+        private val CUSTOM_FONTS = stringPreferencesKey("custom_fonts")
         private val READER_BACKGROUND_SELECTION = stringPreferencesKey("reader_background_selection")
         private val CUSTOM_READER_BACKGROUNDS = stringPreferencesKey("custom_reader_backgrounds")
         private val READER_TEXT_COLOR = intPreferencesKey("reader_text_color")
@@ -173,7 +176,12 @@ class DataStoreManager @Inject constructor(
         preferences[BRIGHTNESS] ?: -1f
     }
 
-    /** 自定义导入字体文件路径 */
+    /** 用户导入的所有自定义字体列表 */
+    val customFonts: Flow<List<CustomFontPreset>> = context.dataStore.data.map { preferences ->
+        CustomFontPresetCodec.decode(preferences[CUSTOM_FONTS])
+    }
+
+    /** 自定义导入字体文件路径（旧版单字体，保留向后兼容） */
     val customFontPath: Flow<String?> = context.dataStore.data.map { preferences ->
         preferences[CUSTOM_FONT_PATH]
     }
@@ -421,6 +429,12 @@ class DataStoreManager @Inject constructor(
         context.dataStore.edit { preferences ->
             if (path != null) preferences[CUSTOM_FONT_PATH] = path
             else preferences.remove(CUSTOM_FONT_PATH)
+        }
+    }
+
+    suspend fun saveCustomFonts(presets: List<CustomFontPreset>) {
+        context.dataStore.edit { preferences ->
+            preferences[CUSTOM_FONTS] = CustomFontPresetCodec.encode(presets)
         }
     }
 

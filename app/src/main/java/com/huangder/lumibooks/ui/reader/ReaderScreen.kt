@@ -712,15 +712,15 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     // 主题背景色
     val composeBgColor = Color(customBackgroundThemeColorInt)
     val continuousTypeface = remember(uiState.fontType, uiState.customFontPath) {
-        when (uiState.fontType) {
-            "serif" -> android.graphics.Typeface.SERIF
-            "fangsong" -> runCatching {
+        when {
+            uiState.fontType == "serif" -> android.graphics.Typeface.SERIF
+            uiState.fontType == "fangsong" -> runCatching {
                 androidx.core.content.res.ResourcesCompat.getFont(context, R.font.fandol_fang)
             }.getOrNull()
-            "kaiti" -> runCatching {
+            uiState.fontType == "kaiti" -> runCatching {
                 androidx.core.content.res.ResourcesCompat.getFont(context, R.font.lxgw_wenkai)
             }.getOrNull()
-            "custom" -> uiState.customFontPath
+            uiState.fontType.startsWith("custom") -> uiState.customFontPath
                 ?.let { path -> runCatching { android.graphics.Typeface.createFromFile(path) }.getOrNull() }
             else -> android.graphics.Typeface.DEFAULT
         }
@@ -1416,6 +1416,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 currentLetterSpacing = uiState.letterSpacing,
                 currentFontType = uiState.fontType,
                 customFontPath = uiState.customFontPath,
+                customFonts = uiState.customFonts,
                 currentMarginLeft = uiState.marginLeftDp,
                 currentMarginRight = uiState.marginRightDp,
                 currentMarginTop = uiState.marginTopDp,
@@ -1430,13 +1431,14 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 onFontTypeChange = { viewModel.saveFontType(it) },
                 onImportFont = { uri ->
                     scope.launch {
-                        val path = viewModel.importFont(context, uri)
-                        if (path != null) {
-                            viewModel.saveCustomFontPath(path)
-                            viewModel.saveFontType("custom")
+                        val preset = viewModel.importFont(context, uri)
+                        if (preset != null) {
+                            viewModel.saveCustomFontPath(preset.path)
+                            viewModel.saveFontType(preset.fontTypeKey)
                         }
                     }
                 },
+                onDeleteCustomFont = { id -> viewModel.deleteCustomFont(id) },
                 onMarginLeftChange = { viewModel.saveMarginLeft(it) },
                 onMarginRightChange = { viewModel.saveMarginRight(it) },
                 onMarginTopChange = { viewModel.saveMarginTop(it) },

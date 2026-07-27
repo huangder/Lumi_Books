@@ -104,8 +104,10 @@ data class ReaderUiState(
     val readerTheme: String = "day",
     /** 亮度 0f~1f，-1f 跟随系统 */
     val brightness: Float = -1f,
-    /** 自定义导入字体文件路径 */
+    /** 自定义导入字体文件路径（当前选中的字体） */
     val customFontPath: String? = null,
+    /** 所有已导入的自定义字体列表 */
+    val customFonts: List<com.huangder.lumibooks.domain.model.CustomFontPreset> = emptyList(),
     val readerBackgroundSelection: String = "day",
     val customReaderBackgrounds: List<ReaderBackgroundPreset> = emptyList(),
     val readerTextColor: Int? = null,
@@ -425,6 +427,11 @@ class ReaderViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            dataStoreManager.customFonts.collectLatest { fonts ->
+                _uiState.value = _uiState.value.copy(customFonts = fonts)
+            }
+        }
+        viewModelScope.launch {
             dataStoreManager.readerBackgroundSelection.collectLatest { selection ->
                 _uiState.value = _uiState.value.copy(readerBackgroundSelection = selection)
             }
@@ -690,6 +697,27 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch { dataStoreManager.saveCustomFontPath(path) }
     }
 
+    /** 删除指定自定义字体：从列表移除、删文件、若当前正用该字体则切换回 system */
+    fun deleteCustomFont(id: String) {
+        val current = _uiState.value
+        val updated = current.customFonts.filter { it.id != id }
+        val deletedPath = current.customFonts.find { it.id == id }?.path
+        // 如果当前用的是被删字体，切回 system
+        if (current.fontType == "custom:$id") {
+            saveFontType("system")
+            saveCustomFontPath(updated.firstOrNull()?.path)
+        }
+        _uiState.value = current.copy(customFonts = updated)
+        viewModelScope.launch {
+            dataStoreManager.saveCustomFonts(updated)
+            if (deletedPath != null) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    runCatching { java.io.File(deletedPath).delete() }
+                }
+            }
+        }
+    }
+
     fun saveOptimizeLayout(enabled: Boolean) {
         // 开启"优化排版"时，自动关闭"使用书籍CSS"
         val newUseEpubCss = if (enabled) false else _uiState.value.useEpubCss
@@ -844,16 +872,28 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    /** 从 URI 导入字体文件到内部存储，返回文件路径 */
-    suspend fun importFont(context: android.content.Context, uri: android.net.Uri): String? {
+    /** 从 URI 导入字体文件到内部存储，注册到自定义字体列表，返回新建的 CustomFontPreset */
+    suspend fun importFont(
+        context: android.content.Context,
+        uri: android.net.Uri
+    ): com.huangder.lumibooks.domain.model.CustomFontPreset? {
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             try {
+                val id = java.util.UUID.randomUUID().toString().replace("-", "").take(12)
                 val fontDir = java.io.File(context.filesDir, "fonts").apply { mkdirs() }
-                val target = java.io.File(fontDir, "custom_font.ttf")
+                val target = java.io.File(fontDir, "custom_$id.ttf")
                 context.contentResolver.openInputStream(uri)?.use { input ->
                     target.outputStream().use { output -> input.copyTo(output) }
                 }
-                if (target.exists() && target.length() > 0) target.absolutePath else null
+                if (target.exists() && target.length() > 0) {
+                    val preset = com.huangder.lumibooks.domain.model.CustomFontPreset(id, target.absolutePath)
+                    val updated = _uiState.value.customFonts + preset
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        _uiState.value = _uiState.value.copy(customFonts = updated, customFontPath = preset.path)
+                    }
+                    dataStoreManager.saveCustomFonts(updated)
+                    preset
+                } else null
             } catch (_: Exception) { null }
         }
     }
