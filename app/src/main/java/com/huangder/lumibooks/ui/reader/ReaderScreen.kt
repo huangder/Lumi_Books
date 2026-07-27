@@ -112,6 +112,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -1227,6 +1231,35 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                             viewModel.hideMenu()
                             showThemeSheet = true
                         },
+                        onCatalogProgressDrag = run {
+                            // 节流：最多每 300ms 执行一次实际跳转，避免频繁 layout 重算
+                            var lastJumpMs = 0L
+                            { newProgress: Float ->
+                                val now = System.currentTimeMillis()
+                                if (now - lastJumpMs >= 300L) {
+                                    lastJumpMs = now
+                                    if (isContinuousScrollMode) {
+                                        val target = ((newProgress / 100f) * uiState.chapterCount)
+                                            .toInt().coerceIn(0, (uiState.chapterCount - 1).coerceAtLeast(0))
+                                        continuousScrollRequests.tryEmit(target)
+                                        viewModel.onContinuousScrollPosition(target, 0f)
+                                    } else {
+                                        readViewRef.value?.jumpToGlobalProgress(newProgress)
+                                    }
+                                }
+                            }
+                        },
+                        onCatalogProgressDragEnd = { finalProgress ->
+                            // 拖拽结束时强制执行一次最终跳转
+                            if (isContinuousScrollMode) {
+                                val target = ((finalProgress / 100f) * uiState.chapterCount)
+                                    .toInt().coerceIn(0, (uiState.chapterCount - 1).coerceAtLeast(0))
+                                continuousScrollRequests.tryEmit(target)
+                                viewModel.onContinuousScrollPosition(target, 0f)
+                            } else {
+                                readViewRef.value?.jumpToGlobalProgress(finalProgress)
+                            }
+                        },
                         modifier = Modifier.align(Alignment.BottomCenter)
                     )
                 }
@@ -2184,6 +2217,8 @@ private fun FloatingReaderMenu(
     catalogProgressColor: Color,
     glassContentScrimColor: Color,
     onCatalogClick: () -> Unit,
+    onCatalogProgressDrag: ((Float) -> Unit)? = null,
+    onCatalogProgressDragEnd: ((Float) -> Unit)? = null,
     onBookmarkClick: () -> Unit,
     onSearchClick: () -> Unit,
     onThemeClick: () -> Unit,
@@ -2237,7 +2272,9 @@ private fun FloatingReaderMenu(
                 contentColor = capsuleContentColor,
                 progressColor = catalogProgressColor,
                 glassContentScrimColor = glassContentScrimColor,
-                onClick = onCatalogClick
+                onClick = onCatalogClick,
+                onProgressDrag = onCatalogProgressDrag,
+                onProgressDragEnd = onCatalogProgressDragEnd
             )
         }
         ReaderMenuStatus(
@@ -2319,17 +2356,80 @@ private fun CatalogCapsule(
     contentColor: Color,
     progressColor: Color,
     glassContentScrimColor: Color,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onProgressDrag: ((newProgress: Float) -> Unit)? = null,
+    onProgressDragEnd: ((finalProgress: Float) -> Unit)? = null,
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val density = androidx.compose.ui.platform.LocalDensity.current
+
+    var dragProgress by remember { mutableFloatStateOf(progress) }
+    var isDragging by remember { mutableStateOf(false) }
+    LaunchedEffect(progress) { if (!isDragging) dragProgress = progress }
+
+    val displayProgress = if (isDragging) dragProgress else progress
+
+    // 关闭 LiquidGlassSurface 内部手势（interactive=false），
+    // 统一在外层用 awaitEachGesture 处理：短按→onClick，横向滑动→改进度
+    val latestOnClick by rememberUpdatedState(onClick)
+    val latestOnDrag by rememberUpdatedState(onProgressDrag)
+    val latestOnDragEnd by rememberUpdatedState(onProgressDragEnd)
+    val latestDragProgress by rememberUpdatedState(dragProgress)
+
     LiquidGlassSurface(
         shape = RoundedCornerShape(24.dp),
         fallbackColor = bgColor,
         contentScrimColor = glassContentScrimColor,
         modifier = Modifier
             .fillMaxWidth()
-            .height(48.dp),
-        onClick = onClick,
+            .height(48.dp)
+            .pointerInput(onProgressDrag != null) {
+                if (onProgressDrag == null) {
+                    // 无拖动回调：直接用系统 tap 检测
+                    detectTapGestures(onTap = { latestOnClick() })
+                    return@pointerInput
+                }
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    var cumDrag = 0f
+                    var dragging = false
+                    var latestLocal = dragProgress  // 本次手势的进度起始值
+
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val ch = event.changes.firstOrNull { it.id == down.id } ?: break
+
+                        val dx = ch.positionChange().x
+                        cumDrag += dx
+
+                        // 超过 touchSlop 才算拖动
+                        if (!dragging && kotlin.math.abs(cumDrag) >= viewConfiguration.touchSlop) {
+                            dragging = true
+                            isDragging = true
+                        }
+
+                        if (dragging) {
+                            ch.consume()
+                            val dpDelta = with(density) { dx.toDp().value }
+                            val progressDelta = dpDelta * 0.25f    // 0.25% per dp
+                            latestLocal = (latestLocal + progressDelta).coerceIn(0f, 100f)
+                            dragProgress = latestLocal
+                            latestOnDrag?.invoke(latestLocal)
+                        }
+
+                        if (ch.changedToUpIgnoreConsumed()) {
+                            if (!dragging) latestOnClick()   // 短按视为点击
+                            else latestOnDragEnd?.invoke(latestLocal)
+                            isDragging = false
+                            break
+                        }
+                        if (!ch.pressed) break
+                    }
+                    isDragging = false
+                }
+            },
+        onClick = null,          // 手势由上面的 pointerInput 全权处理
+        interactive = false,     // 关闭 LiquidGlass 内部高亮/偏移效果，避免视觉跳动
         contentAlignment = Alignment.TopStart
     ) {
         if (isLiquidGlass) {
@@ -2345,7 +2445,7 @@ private fun CatalogCapsule(
                 Box(
                     modifier = Modifier
                         .fillMaxHeight()
-                        .fillMaxWidth((progress / 100f).coerceIn(0f, 1f))
+                        .fillMaxWidth((displayProgress / 100f).coerceIn(0f, 1f))
                         .clip(CircleShape)
                         .background(AppColors.Accent.copy(alpha = 0.82f))
                 )
@@ -2354,21 +2454,21 @@ private fun CatalogCapsule(
             Box(
                 modifier = Modifier
                     .fillMaxHeight()
-                    .fillMaxWidth((progress / 100f).coerceIn(0f, 1f))
+                    .fillMaxWidth((displayProgress / 100f).coerceIn(0f, 1f))
                     .clip(RoundedCornerShape(24.dp))
                     .background(progressColor)
             )
         }
         val leftColor = if (isLiquidGlass) {
             contentColor
-        } else if (progress > 5f) {
+        } else if (displayProgress > 5f) {
             Color.White
         } else {
             contentColor
         }
         val rightColor = if (isLiquidGlass) {
             contentColor.copy(alpha = 0.62f)
-        } else if (progress > 70f) {
+        } else if (displayProgress > 70f) {
             Color.White.copy(alpha = 0.9f)
         } else {
             contentColor.copy(alpha = 0.5f)
@@ -2383,7 +2483,7 @@ private fun CatalogCapsule(
             Spacer(Modifier.width(8.dp))
             Text(stringResource(R.string.reader_toc), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = leftColor)
             Spacer(Modifier.weight(1f))
-            Text(formatReadingProgressPercent(progress), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = rightColor)
+            Text(formatReadingProgressPercent(displayProgress), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = rightColor)
         }
     }
 }

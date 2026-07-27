@@ -197,11 +197,13 @@ class TxtParser(private val context: Context? = null) : BookParser {
         // 一次扫描同时匹配所有模式，避免对大文件重复全文扫描（原来最多 5 次）
         val matchesByPattern = Array(CHAPTER_PATTERNS.size) { mutableListOf<Heading>() }
         forEachLinePrefix(file, encoding, encoding.contentStart, file.length()) { start, _, prefix ->
-            val line = prefix.trimEnd('\r', '\n')
+            // 🔥 同时 trim 首尾：中文TXT常见全角空格缩进如「　　第一章」
+            // 原来只 trimEnd 导致 ^ 锚定失败，触发 fallback 用正文首行当标题
+            val line = prefix.trim()
             for (i in CHAPTER_PATTERNS.indices) {
                 if (CHAPTER_PATTERNS[i].containsMatchIn(line)) {
-                    matchesByPattern[i] += Heading(line.trim().take(50), start)
-                    break  // 一行只归入一个模式，避免重复计数
+                    matchesByPattern[i] += Heading(line.take(50), start)
+                    break
                 }
             }
         }
@@ -238,15 +240,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
         val ranges = splitRange(file, encoding, fullRange, FALLBACK_TARGET_CHARS, splitAtTarget = true)
         return RandomAccessFile(file, "r").use { reader ->
             ranges.mapIndexed { index, range ->
-                val firstLine = decodePrefix(
-                    reader,
-                    encoding.charset,
-                    range.startByte,
-                    range.endByte,
-                    TITLE_PREFIX_BYTES
-                ).lineSequence().firstOrNull()?.trim().orEmpty().take(30)
-                val title = firstLine.ifBlank { "第${index + 1}部分" }
-                TxtChapterEntry(index, "第${index + 1}章 $title", range.startByte, range.endByte)
+                TxtChapterEntry(index, "第${index + 1}章", range.startByte, range.endByte)
             }
         }
     }
@@ -671,7 +665,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
     }
 
     private companion object {
-        const val CACHE_VERSION = "TXT_INDEX_V1"
+        const val CACHE_VERSION = "TXT_INDEX_V2"  // V2: trim行首空格修复章节识别
         const val STREAM_BUFFER_SIZE = 64 * 1024
         const val HEADING_PREFIX_BYTES = 512
         const val TITLE_PREFIX_BYTES = 512

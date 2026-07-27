@@ -274,13 +274,13 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         // = accent + 25% alpha
         val highlightColor = (accentColor and 0x00FFFFFF) or 0x40000000.toInt()
 
-        val customTypeface = when (currentFontType) {
-            "serif" -> android.graphics.Typeface.SERIF
-            "fangsong" -> try { androidx.core.content.res.ResourcesCompat.getFont(context, com.huangder.lumibooks.R.font.fandol_fang) }
+        val customTypeface = when {
+            currentFontType == "serif" -> android.graphics.Typeface.SERIF
+            currentFontType == "fangsong" -> try { androidx.core.content.res.ResourcesCompat.getFont(context, com.huangder.lumibooks.R.font.fandol_fang) }
                 catch (_: Exception) { null } ?: android.graphics.Typeface.DEFAULT
-            "kaiti" -> try { androidx.core.content.res.ResourcesCompat.getFont(context, com.huangder.lumibooks.R.font.lxgw_wenkai) }
+            currentFontType == "kaiti" -> try { androidx.core.content.res.ResourcesCompat.getFont(context, com.huangder.lumibooks.R.font.lxgw_wenkai) }
                 catch (_: Exception) { null } ?: android.graphics.Typeface.DEFAULT
-            "custom" -> {
+            currentFontType.startsWith("custom") -> {
                 val path = currentCustomFontPath
                 if (path != null) try { android.graphics.Typeface.createFromFile(java.io.File(path)) }
                     catch (_: Exception) { android.graphics.Typeface.DEFAULT }
@@ -505,6 +505,23 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         animationController.abortAnim()
         layoutEngine.invalidateChapter(chapterIndex)
         slotManager.jumpTo(chapterIndex, pageInChapter)
+    }
+
+    /**
+     * 根据全书阅读进度百分比（0-100）跳转。
+     * 按章节比例定位（不依赖全量页数缓存），若目标章节已布局则精确到页。
+     */
+    fun jumpToGlobalProgress(progressPercent: Float) {
+        val chapterCount = layoutEngine.getChapterCount().takeIf { it > 0 } ?: return
+        val rawPos = (progressPercent / 100f) * chapterCount
+        val targetChapter = rawPos.toInt().coerceIn(0, chapterCount - 1)
+        val chapterFraction = rawPos - targetChapter
+        val chapterLayout = layoutEngine.getChapterLayout(targetChapter)
+        val targetPage = if (chapterLayout != null && chapterLayout.totalPages > 0) {
+            (chapterFraction * chapterLayout.totalPages).toInt()
+                .coerceIn(0, chapterLayout.totalPages - 1)
+        } else 0
+        jumpToChapter(targetChapter, targetPage)
     }
 
     /** 跳转到章节内包含指定字符偏移的页面。 */

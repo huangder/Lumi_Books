@@ -115,11 +115,12 @@ class PageLayoutEngine {
         ownTextPaint.linkColor = textColor   // 🔥 同步：避免主题切换后 URLSpan 颜色不同步
 
         // 字体
-        val tf = when (fontType) {
-            "serif" -> Typeface.SERIF
-            "sans_serif" -> Typeface.SANS_SERIF
-            "monospace" -> Typeface.MONOSPACE
-            "fangsong", "kaiti", "custom" -> customTypeface ?: Typeface.DEFAULT
+        val tf = when {
+            fontType == "serif" -> Typeface.SERIF
+            fontType == "sans_serif" -> Typeface.SANS_SERIF
+            fontType == "monospace" -> Typeface.MONOSPACE
+            fontType == "fangsong" || fontType == "kaiti" || fontType.startsWith("custom") ->
+                customTypeface ?: Typeface.DEFAULT
             else -> Typeface.DEFAULT
         }
         ownTextPaint.typeface = tf
@@ -163,10 +164,10 @@ class PageLayoutEngine {
         // - descent 缓冲：某些自定义字体的字形 descent 超过 StaticLayout 报告的 lineBottom，
         //   不预留时最后一行字符会超出底边距被横向截断。使用实际 descent 的 1.5 倍作为缓冲。
         val pages = mutableListOf<PageLayout>()
-        // 留出安全边距：
-        // - descent 缓冲：某些自定义字体的字形 descent 超过 StaticLayout 报告的 lineBottom，
-        //   不预留时最后一行字符会超出底边距被横向截断。使用实际 descent 的 1.5 倍作为缓冲。
-        val descentBuffer = (input.textPaint.descent() * 1.5f).coerceAtLeast(2f)
+        // 🔥 descent 缓冲改用更保守的策略：
+        // textPaint.descent() 只反映主字体，繁体字等走 fallback 字体时实际 descent 更大。
+        // 初次用 3x 做粗筛，然后对每页的实际最后一行再用 sl.getLineDescent() 精确回退。
+        val descentBuffer = (input.textPaint.descent() * 3f).coerceAtLeast(4f)
         val effectiveVh = (input.visibleHeight.toFloat() - descentBuffer).coerceAtLeast(1f)
         var pageStartLine = 0
         var pageIdx = 0
@@ -185,6 +186,22 @@ class PageLayoutEngine {
                 }
                 accumulatedHeight += lineHeight
                 pageEndLine++
+            }
+
+            // 🔥 精确回退：用最后一行的实际 descent（含 fallback 字体）验证不溢出。
+            // lineTop(lastLine) 相对 pageStart 的偏移 = accumulatedHeight - lastLineHeight
+            if (pageEndLine > pageStartLine) {
+                val lastLine = pageEndLine - 1
+                val lastLineHeight = (sl.getLineBottom(lastLine) - sl.getLineTop(lastLine)).toFloat()
+                val lastLineTopOffset = accumulatedHeight - lastLineHeight
+                val actualBottom = lastLineTopOffset +
+                        (-sl.getLineAscent(lastLine)).toFloat() +    // ascent 为负
+                        sl.getLineDescent(lastLine).toFloat()
+                if (actualBottom > input.visibleHeight.toFloat() && pageEndLine > pageStartLine + 1) {
+                    // 最后一行真实字形底部超出可视区，将其挪到下一页
+                    pageEndLine--
+                    accumulatedHeight -= lastLineHeight
+                }
             }
 
             // 🔥 收尾优化：将纯空白行（仅有 \n 的行）纳入当前页底部

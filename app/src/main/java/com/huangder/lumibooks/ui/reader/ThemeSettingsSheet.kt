@@ -2011,6 +2011,13 @@ private fun SettingSlider(
     }
 }
 
+// FontSelector 用的条目类型（sealed interface 不能是 local，放到文件级）
+private sealed interface FontSelectorItem {
+    data class Fixed(val key: String, val staticLabel: String, val family: FontFamily) : FontSelectorItem
+    data class Custom(val preset: com.huangder.lumibooks.domain.model.CustomFontPreset, val index: Int) : FontSelectorItem
+    data object AddButton : FontSelectorItem
+}
+
 @Composable
 private fun FontSelector(
     currentFont: String,
@@ -2025,133 +2032,105 @@ private fun FontSelector(
     ) { uri ->
         if (uri != null) onImportFont(uri)
     }
-
-    // 长按待删除的字体 id
     var deleteArmedId by remember { mutableStateOf<String?>(null) }
 
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        // 第一行：系统、衬线、仿宋
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            FontButton(
-                label = stringResource(R.string.font_system),
-                isSelected = currentFont == "system",
-                onClick = { onFontChange("system") },
-                fontFamily = FontFamily.Default,
-                modifier = Modifier.weight(1f)
-            )
-            FontButton(
-                label = "Serif",
-                isSelected = currentFont == "serif",
-                onClick = { onFontChange("serif") },
-                fontFamily = FontFamily.Serif,
-                modifier = Modifier.weight(1f)
-            )
-            FontButton(
-                label = stringResource(R.string.font_fangsong),
-                isSelected = currentFont == "fangsong",
-                onClick = { onFontChange("fangsong") },
-                fontFamily = FangSong,
-                modifier = Modifier.weight(1f)
-            )
+    val sysLabel = stringResource(R.string.font_system)
+    val fangLabel = stringResource(R.string.font_fangsong)
+    val kaiLabel  = stringResource(R.string.font_kaiti)
+    val addLabel  = stringResource(R.string.font_import)
+
+    val items = remember(customFonts, sysLabel, fangLabel, kaiLabel) {
+        buildList<FontSelectorItem> {
+            add(FontSelectorItem.Fixed("system",   sysLabel,  FontFamily.Default))
+            add(FontSelectorItem.Fixed("serif",    "Serif",   FontFamily.Serif))
+            add(FontSelectorItem.Fixed("fangsong", fangLabel, FangSong))
+            add(FontSelectorItem.Fixed("kaiti",    kaiLabel,  KaiTi))
+            customFonts.forEachIndexed { i, p -> add(FontSelectorItem.Custom(p, i)) }
+            add(FontSelectorItem.AddButton)
         }
-        // 第二行：楷体 + 自定义字体（动态）
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            FontButton(
-                label = stringResource(R.string.font_kaiti),
-                isSelected = currentFont == "kaiti",
-                onClick = { onFontChange("kaiti") },
-                fontFamily = KaiTi,
-                modifier = Modifier.weight(1f)
-            )
-            // 已导入的自定义字体按钮
-            customFonts.forEachIndexed { index, preset ->
-                val fontFamily = remember(preset.path) {
-                    runCatching {
-                        val f = java.io.File(preset.path)
-                        if (f.exists()) FontFamily(android.graphics.Typeface.createFromFile(f))
-                        else FontFamily.Default
-                    }.getOrDefault(FontFamily.Default)
-                }
-                val isSelected = currentFont == preset.fontTypeKey
-                val isDeleteArmed = deleteArmedId == preset.id
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(48.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .then(
-                            if (isSelected) Modifier.border(2.dp, AccentColor, RoundedCornerShape(12.dp))
-                            else Modifier.border(1.dp, LightTextSecondary, RoundedCornerShape(12.dp))
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        items.chunked(3).forEach { rowItems ->
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                rowItems.forEach { item ->
+                    when (item) {
+                        is FontSelectorItem.Fixed -> FontButton(
+                            label = item.staticLabel,
+                            isSelected = currentFont == item.key,
+                            onClick = { onFontChange(item.key) },
+                            fontFamily = item.family,
+                            modifier = Modifier.weight(1f)
                         )
-                        .background(AppColors.CardBg)
-                        .pointerInput(preset.id, isSelected) {
-                            detectTapGestures(
-                                onTap = {
-                                    if (isDeleteArmed) {
-                                        onDeleteCustomFont(preset.id)
-                                        deleteArmedId = null
-                                    } else {
-                                        deleteArmedId = null
-                                        onFontChange(preset.fontTypeKey)
+                        is FontSelectorItem.Custom -> {
+                            val preset = item.preset
+                            val fontFamily = remember(preset.path) {
+                                runCatching {
+                                    val f = java.io.File(preset.path)
+                                    if (f.exists()) FontFamily(android.graphics.Typeface.createFromFile(f))
+                                    else FontFamily.Default
+                                }.getOrDefault(FontFamily.Default)
+                            }
+                            val isSelected = currentFont == preset.fontTypeKey
+                            val isDeleteArmed = deleteArmedId == preset.id
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .then(
+                                        if (isSelected) Modifier.border(2.dp, AccentColor, RoundedCornerShape(12.dp))
+                                        else Modifier.border(1.dp, LightTextSecondary, RoundedCornerShape(12.dp))
+                                    )
+                                    .background(AppColors.CardBg)
+                                    .pointerInput(preset.id, isDeleteArmed) {
+                                        detectTapGestures(
+                                            onTap = {
+                                                if (isDeleteArmed) {
+                                                    onDeleteCustomFont(preset.id)
+                                                    deleteArmedId = null
+                                                } else {
+                                                    deleteArmedId = null
+                                                    onFontChange(preset.fontTypeKey)
+                                                }
+                                            },
+                                            onLongPress = { deleteArmedId = preset.id }
+                                        )
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(preset.displayName(item.index), fontSize = 14.sp, fontFamily = fontFamily,
+                                    color = if (isSelected) AccentColor else LightTextSecondary)
+                                if (isDeleteArmed) {
+                                    Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.48f)),
+                                        contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Outlined.Delete, null, tint = Color.White, modifier = Modifier.size(20.dp))
                                     }
-                                },
-                                onLongPress = {
-                                    if (isSelected) deleteArmedId = preset.id
                                 }
-                            )
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = preset.displayName(index),
-                        fontSize = 14.sp,
-                        fontFamily = fontFamily,
-                        color = if (isSelected) AccentColor else LightTextSecondary
-                    )
-                    // 删除遮罩
-                    if (isDeleteArmed) {
-                        Box(
+                            }
+                        }
+                        FontSelectorItem.AddButton -> Box(
                             modifier = Modifier
-                                .matchParentSize()
-                                .background(Color.Black.copy(alpha = 0.48f)),
+                                .weight(1f)
+                                .height(48.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .border(1.dp, LightTextSecondary, RoundedCornerShape(12.dp))
+                                .background(AppColors.CardBg)
+                                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                    deleteArmedId = null
+                                    launcher.launch(arrayOf("font/ttf", "font/otf", "application/octet-stream"))
+                                },
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Delete,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
-                            )
+                            Icon(Icons.Outlined.Add, addLabel, tint = LightTextSecondary, modifier = Modifier.size(20.dp))
                         }
                     }
                 }
-            }
-            // "+" 导入按钮（始终可见）
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(48.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .border(1.dp, LightTextSecondary, RoundedCornerShape(12.dp))
-                    .background(AppColors.CardBg)
-                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                        deleteArmedId = null
-                        launcher.launch(arrayOf("font/ttf", "font/otf", "application/octet-stream"))
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Add,
-                    contentDescription = stringResource(R.string.font_import),
-                    tint = LightTextSecondary,
-                    modifier = Modifier.size(20.dp)
-                )
+                // 如果这行不足 3 个，补 Spacer 占位
+                repeat(3 - rowItems.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }

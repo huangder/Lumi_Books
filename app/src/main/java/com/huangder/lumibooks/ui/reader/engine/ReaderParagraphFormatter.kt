@@ -25,54 +25,43 @@ object ReaderParagraphFormatter {
         if (indentCharacters <= 0f || textSizePx <= 0f) return result
 
         val desiredIndentPx = indentCharacters * textSizePx
-        val measuringPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-            textSize = textSizePx
+
+        // 第一遍：收集所有段落的 (段首, 首个非空白字符位置, 段尾) 三元组
+        // 在修改文本前完成，避免删除操作影响后续索引计算
+        data class ParaInfo(val start: Int, val firstContent: Int, val end: Int)
+        val paragraphs = mutableListOf<ParaInfo>()
+        var paraStart = 0
+        for (i in 0..result.length) {
+            if (i == result.length || result[i] == '\n') {
+                var firstContent = paraStart
+                while (firstContent < i && result[firstContent].isHorizontalIndent()) firstContent++
+                if (firstContent < i) {   // 非空段落
+                    val containsImage = result.getSpans(paraStart, i, ImageSpan::class.java).isNotEmpty()
+                    if (!containsImage) paragraphs.add(ParaInfo(paraStart, firstContent, i))
+                }
+                paraStart = i + 1
+            }
         }
 
-        var paragraphStart = 0
-        var nonEmptyParagraphIndex = 0
+        // 第二遍：倒序处理，删除原有段首空白并加 LeadingMarginSpan
+        // 倒序保证删除字符后，前面段落的索引仍然有效
+        paragraphs.asReversed().forEachIndexed { reversedIndex, para ->
+            val forwardIndex = paragraphs.size - 1 - reversedIndex
+            val shouldSkip = skipFirstNonEmptyParagraph && forwardIndex == 0
+            if (shouldSkip) return@forEachIndexed
 
-        fun formatParagraph(paragraphEnd: Int) {
-            var firstContent = paragraphStart
-            while (firstContent < paragraphEnd && result[firstContent].isHorizontalIndent()) {
-                firstContent++
-            }
-            if (firstContent >= paragraphEnd) return
+            // 删除已有的行首缩进字符（全角空格/半角空格/\t）
+            val wsLen = para.firstContent - para.start
+            if (wsLen > 0) result.delete(para.start, para.firstContent)
 
-            val shouldSkip = skipFirstNonEmptyParagraph && nonEmptyParagraphIndex == 0
-            nonEmptyParagraphIndex++
-            if (shouldSkip) return
-
-            val containsImage = result.getSpans(paragraphStart, paragraphEnd, ImageSpan::class.java)
-                .isNotEmpty()
-            if (containsImage) return
-
-            var existingIndentPx = 0f
-            for (index in paragraphStart until firstContent) {
-                existingIndentPx += if (result[index] == '\t') {
-                    textSizePx * 2f
-                } else {
-                    measuringPaint.measureText(result, index, index + 1)
-                }
-            }
-            val remainingIndentPx = (desiredIndentPx - existingIndentPx)
-                .coerceAtLeast(0f)
-                .roundToInt()
-            if (remainingIndentPx <= 0) return
-
+            // 直接用 LeadingMarginSpan 打上精确的缩进，不依赖字符测量
+            val newEnd = para.end - wsLen
             result.setSpan(
-                LeadingMarginSpan.Standard(remainingIndentPx, 0),
-                paragraphStart,
-                paragraphEnd,
+                LeadingMarginSpan.Standard(desiredIndentPx.roundToInt(), 0),
+                para.start,
+                newEnd,
                 Spannable.SPAN_INCLUSIVE_INCLUSIVE
             )
-        }
-
-        for (index in 0..result.length) {
-            if (index == result.length || result[index] == '\n') {
-                formatParagraph(index)
-                paragraphStart = index + 1
-            }
         }
         return result
     }

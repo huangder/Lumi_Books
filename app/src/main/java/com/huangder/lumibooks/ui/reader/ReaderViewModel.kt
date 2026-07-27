@@ -532,8 +532,22 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun saveFontType(ft: String) {
-        _uiState.value = _uiState.value.copy(fontType = ft)
-        viewModelScope.launch { dataStoreManager.saveFontType(ft) }
+        var newState = _uiState.value.copy(fontType = ft)
+        // 🔥 选自定义字体时同步更新 customFontPath，让 ReadView 立即生效
+        if (ft.startsWith("custom:")) {
+            val id = ft.removePrefix("custom:")
+            val path = _uiState.value.customFonts.find { it.id == id }?.path
+            if (path != null) newState = newState.copy(customFontPath = path)
+        }
+        _uiState.value = newState
+        viewModelScope.launch {
+            dataStoreManager.saveFontType(ft)
+            if (ft.startsWith("custom:")) {
+                val id = ft.removePrefix("custom:")
+                val path = newState.customFontPath
+                if (path != null) dataStoreManager.saveCustomFontPath(path)
+            }
+        }
     }
 
     fun saveMarginLeft(value: Float) {
