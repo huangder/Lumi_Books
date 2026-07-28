@@ -1,6 +1,6 @@
 {
   "config_version": 1,
-  "generated_at": "2026-07-28T00:10:00+08:00",
+  "generated_at": "2026-07-29T00:00:00+08:00",
   "latest_version": "1.1.00",
   "latest_version_code": 5,
   "release_url": "https://github.com/huangder/Lumi_Books/releases/latest",
@@ -16,11 +16,11 @@
     "force_update_below_version_code": 0
   },
   "notice": {
-    "id": "notice-20260728-placeholder",
-    "enabled": false,
+    "id": "notice-20260729-monthly-release-manual",
+    "enabled": true,
     "min_version_code": 1,
-    "max_version_code": 5,
-    "title": "通知",
-    "message": "这里填写通知内容。"
+    "max_version_code": 999999,
+    "title": "Lumi 使用与更新说明",
+    "message": "如有 LUMI 使用问题，可在 https://github.com/huangder/Lumi_Books 或 huangder.top 首页中点击 **“GitHub 开源”** 查看 **LUMI 使用手册**。\n\n感谢大家一直以来对 Lumi 的支持和使用！\n\n由于开发和时间成本较高，**后续版本更新将改为按月发布**。每月的更新会集中一批经过充分测试的新功能和修复，而不是零散推送。\n\n除非遇到 **严重影响使用的紧急 bug**，我会第一时间修复发版。\n\n感谢理解，**你们的每一条反馈开发人员都会看 ❤️**"
   }
 }
