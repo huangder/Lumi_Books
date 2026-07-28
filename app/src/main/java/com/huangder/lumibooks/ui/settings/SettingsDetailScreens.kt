@@ -879,7 +879,8 @@ fun AboutDetail(viewModel: SettingsViewModel) {
                 context.startActivity(intent)
                 if (!update.isForceUpdate) viewModel.dismissAppUpdateDialog()
             },
-            onLater = { if (!update.isForceUpdate) viewModel.dismissAppUpdateDialog() }
+            onLater = { if (!update.isForceUpdate) viewModel.dismissAppUpdateDialog() },
+            onIgnoreVersion = if (update.isForceUpdate) null else viewModel::ignoreCurrentAppUpdate
         )
     }
 

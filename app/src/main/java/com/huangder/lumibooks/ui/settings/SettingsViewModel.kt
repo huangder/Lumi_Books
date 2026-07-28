@@ -879,6 +879,7 @@ class SettingsViewModel @Inject constructor(
                     hasAppUpdate = result.hasAppUpdate,
                     isForceUpdate = result.isForceUpdate,
                     appVersion = result.appVersion,
+                    latestVersionCode = result.latestVersionCode,
                     releaseUrl = result.releaseUrl,
                     updateTitle = result.updateTitle,
                     updateMessage = result.updateMessage,
@@ -931,6 +932,15 @@ class SettingsViewModel @Inject constructor(
     }
 
     // ─── WebDAV 同步 ──────────────────────────────────────────────────
+
+    /** Ignore the current update version; the same versionCode will not auto-pop on startup. */
+    fun ignoreCurrentAppUpdate() {
+        val versionCode = _uiState.value.updateCheck.latestVersionCode
+        viewModelScope.launch {
+            dataStoreManager.ignoreAppUpdate(versionCode)
+            dismissAppUpdateDialog()
+        }
+    }
 
     fun enableWebdav(config: com.huangder.lumibooks.domain.model.WebdavConfig, password: String) {
         viewModelScope.launch {

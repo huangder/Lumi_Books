@@ -144,6 +144,7 @@ class DataStoreManager @Inject constructor(
         // 是否已完成首次启动的更新检查
         private val HAS_CHECKED_UPDATE_ON_START = booleanPreferencesKey("has_checked_update_on_start")
         private val ACKNOWLEDGED_NOTICE_IDS = stringSetPreferencesKey("acknowledged_notice_ids")
+        private val IGNORED_APP_UPDATE_VERSION_CODE = longPreferencesKey("ignored_app_update_version_code")
     }
 
     // 阅读设置
@@ -1091,6 +1092,11 @@ class DataStoreManager @Inject constructor(
         preferences[ACKNOWLEDGED_NOTICE_IDS] ?: emptySet()
     }
 
+    /** App update versionCode ignored by the user. Same version will not auto-pop again. */
+    val ignoredAppUpdateVersionCode: Flow<Long> = context.dataStore.data.map { preferences ->
+        preferences[IGNORED_APP_UPDATE_VERSION_CODE] ?: 0L
+    }
+
     suspend fun saveAcceptedTermsVersion(version: Int) {
         context.dataStore.edit { preferences ->
             preferences[ACCEPTED_TERMS_VERSION] = version
@@ -1115,6 +1121,13 @@ class DataStoreManager @Inject constructor(
         context.dataStore.edit { preferences ->
             val existing = preferences[ACKNOWLEDGED_NOTICE_IDS] ?: emptySet()
             preferences[ACKNOWLEDGED_NOTICE_IDS] = existing + normalized
+        }
+    }
+
+    suspend fun ignoreAppUpdate(versionCode: Long) {
+        if (versionCode <= 0L) return
+        context.dataStore.edit { preferences ->
+            preferences[IGNORED_APP_UPDATE_VERSION_CODE] = versionCode
         }
     }
 

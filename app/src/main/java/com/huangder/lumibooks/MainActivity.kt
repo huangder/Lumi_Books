@@ -72,6 +72,7 @@ private data class PendingPolicyUpdate(
 
 private data class PendingAppUpdate(
     val appVersion: String,
+    val latestVersionCode: Long,
     val title: String,
     val message: String,
     val changelog: String,
@@ -365,6 +366,14 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onLater = {
                                     if (!appUpdate.force) pendingAppUpdate = null
+                                },
+                                onIgnoreVersion = if (appUpdate.force) null else {
+                                    {
+                                        lifecycleScope.launch {
+                                            dataStoreManager.ignoreAppUpdate(appUpdate.latestVersionCode)
+                                        }
+                                        pendingAppUpdate = null
+                                    }
                                 }
                             )
                         }
@@ -456,6 +465,7 @@ class MainActivity : ComponentActivity() {
                 val acceptedTerms = dataStoreManager.acceptedTermsVersion.first()
                 val acceptedPrivacy = dataStoreManager.acceptedPrivacyVersion.first()
                 val acknowledgedNoticeIds = dataStoreManager.acknowledgedNoticeIds.first()
+                val ignoredAppUpdateVersionCode = dataStoreManager.ignoredAppUpdateVersionCode.first()
 
                 val result = UpdateChecker.evaluate(
                     config = config,
@@ -465,16 +475,25 @@ class MainActivity : ComponentActivity() {
                     acceptedPrivacy = acceptedPrivacy
                 )
 
-                val nextAppUpdate = result.takeIf { it.hasAppUpdate }?.let {
-                    PendingAppUpdate(
-                        appVersion = it.appVersion,
-                        title = it.updateTitle,
-                        message = it.updateMessage,
-                        changelog = it.changelog,
-                        releaseUrl = it.releaseUrl,
-                        force = it.isForceUpdate
-                    )
-                }
+                val nextAppUpdate = result
+                    .takeIf {
+                        it.hasAppUpdate && !(
+                                !it.isForceUpdate &&
+                                        it.latestVersionCode > 0L &&
+                                        it.latestVersionCode == ignoredAppUpdateVersionCode
+                                )
+                    }
+                    ?.let {
+                        PendingAppUpdate(
+                            appVersion = it.appVersion,
+                            latestVersionCode = it.latestVersionCode,
+                            title = it.updateTitle,
+                            message = it.updateMessage,
+                            changelog = it.changelog,
+                            releaseUrl = it.releaseUrl,
+                            force = it.isForceUpdate
+                        )
+                    }
                 val nextNotice = result.notice
                     ?.takeIf { it.id !in acknowledgedNoticeIds }
                     ?.let { PendingRemoteNotice(id = it.id, title = it.title, message = it.message) }

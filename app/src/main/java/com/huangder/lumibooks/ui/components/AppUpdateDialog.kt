@@ -28,7 +28,8 @@ fun AppUpdateDialog(
     changelog: String = "",
     force: Boolean = false,
     onDownload: () -> Unit,
-    onLater: () -> Unit
+    onLater: () -> Unit,
+    onIgnoreVersion: (() -> Unit)? = null
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val displayMessage = updateMessage.ifBlank {
@@ -93,6 +94,13 @@ fun AppUpdateDialog(
         },
         dismissButton = if (force) null else {
             {
+                onIgnoreVersion?.let { ignore ->
+                    LiquidGlassTextButton(
+                        text = "\u5ffd\u7565\u8be5\u7248\u672c",
+                        contentColor = AppColors.TextSecondary,
+                        onClick = ignore
+                    )
+                }
                 LiquidGlassTextButton(
                     text = "\u7a0d\u540e",
                     contentColor = AppColors.TextSecondary,
