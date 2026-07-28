@@ -49,15 +49,15 @@ body{
 .nav-logo{display:flex;align-items:center;gap:8px;text-decoration:none;color:var(--primary)}
 .nav-logo img{width:34px;height:34px;border-radius:8px;transition:transform .3s}
 .nav-logo:hover img{transform:scale(1.08)}
-.nav-logo span{font-size:22px;font-weight:700;color:var(--ink)}
-.nav-links{display:flex;gap:32px;list-style:none}
-.nav-links a{text-decoration:none;font-size:16px;font-weight:600;color:var(--muted);transition:color .15s}
+.nav-logo span{font-size:22px;font-weight:700;color:var(--ink);line-height:1}
+.nav-links{display:flex;gap:32px;list-style:none;align-items:center}
+.nav-links a{text-decoration:none;font-size:16px;font-weight:600;color:var(--muted);transition:color .15s;line-height:1}
 .nav-links a:hover{color:var(--ink)}
 .nav-links a.active{color:var(--ink);border-bottom:2px solid var(--ink);padding-bottom:2px}
 .nav-cta{display:flex;align-items:center;gap:12px}
-.btn-nav-download{background:var(--primary);color:#fff;text-decoration:none;padding:10px 20px;border-radius:9999px;font-size:14px;font-weight:500;transition:background .2s,transform .2s}
+.btn-nav-download{background:var(--primary);color:#fff;text-decoration:none;padding:10px 20px;border-radius:9999px;font-size:14px;font-weight:500;line-height:1;transition:background .2s,transform .2s}
 .btn-nav-download:hover{background:var(--primary-active);transform:scale(1.04)}
-.btn-nav-sponsor{background:transparent;color:var(--ink);text-decoration:none;padding:9px 19px;border-radius:9999px;font-size:14px;font-weight:500;border:1.5px solid var(--hairline);transition:border-color .2s,color .2s,background .2s}
+.btn-nav-sponsor{background:transparent;color:var(--ink);text-decoration:none;padding:9px 19px;border-radius:9999px;font-size:14px;font-weight:500;line-height:1;border:1.5px solid var(--hairline);transition:border-color .2s,color .2s,background .2s}
 .btn-nav-sponsor:hover{border-color:var(--ink);background:rgba(0,0,0,0.03)}
 
 /* Mobile "…" more menu */
@@ -206,11 +206,6 @@ body{
       <span class="role-icon">🔧</span>
       <div class="role-label">开发人员</div>
       <div class="role-name">huangder、Corundum-Ling</div>
-    </div>
-    <div class="glass thanks-item reveal">
-      <span class="role-icon">🛠️</span>
-      <div class="role-label">开发人员</div>
-      <div class="role-name">huangder</div>
     </div>
   </div>
 </section>

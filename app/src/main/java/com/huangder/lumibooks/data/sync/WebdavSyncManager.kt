@@ -3,6 +3,7 @@ package com.huangder.lumibooks.data.sync
 import android.content.Context
 import android.util.Log
 import com.huangder.lumibooks.data.local.DataStoreManager
+import com.huangder.lumibooks.util.BookFileAccess
 import java.net.URLEncoder
 import com.huangder.lumibooks.data.local.WebdavTokenStore
 import com.huangder.lumibooks.domain.model.Book
@@ -24,7 +25,6 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
-import java.io.FileInputStream
 import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -89,12 +89,7 @@ class WebdavSyncManager @Inject constructor(
                         Log.w("WebDAV", "Upload skip: book not in DB id=$bookId")
                         continue
                     }
-                    val file = File(book.filePath)
-                    if (!file.exists()) {
-                        Log.w("WebDAV", "Upload skip: file missing path=${book.filePath} book=${book.title}")
-                        continue
-                    }
-                    val data = file.readBytes()
+                    val data = readBookData(book.filePath)
                     webdavClient.upload(
                         "$serverUrl/$syncPath/books/${encodePathSegment(localEntry.fileName)}",
                         data, username, password
@@ -197,21 +192,43 @@ class WebdavSyncManager @Inject constructor(
         val dataMap = mutableMapOf<String, SyncFileEntry>()
 
         for (book in books) {
-            val file = File(book.filePath)
-            if (file.exists()) {
-                val sha = sha256(file)
+            val exists: Boolean
+            val fileName: String
+            val sizeBytes: Long
+            val lastModified: Long
+
+            if (BookFileAccess.isContentUri(book.filePath)) {
+                val size = BookFileAccess.size(context, book.filePath)
+                exists = size > 0L
+                fileName = book.title + when (book.format) {
+                    com.huangder.lumibooks.domain.model.BookFormat.EPUB -> ".epub"
+                    com.huangder.lumibooks.domain.model.BookFormat.PDF -> ".pdf"
+                    else -> ".txt"
+                }
+                sizeBytes = size
+                lastModified = book.lastReadTime // fallback — SAF docs don't have file timestamps
+            } else {
+                val file = File(book.filePath)
+                exists = file.exists()
+                fileName = file.name
+                sizeBytes = if (exists) file.length() else 0L
+                lastModified = if (exists) file.lastModified() else 0L
+            }
+
+            if (exists) {
+                val sha = readBookData(book.filePath).let { sha256Bytes(it) }
                 booksMap[book.id] = SyncFileEntry(
-                    fileName = file.name,
+                    fileName = fileName,
                     sha256 = sha,
-                    sizeBytes = file.length(),
-                    lastModified = file.lastModified()
+                    sizeBytes = sizeBytes,
+                    lastModified = lastModified
                 )
             }
 
             // Build data entry using the book's lastReadTime as proxy for data freshness
             dataMap[book.id] = SyncFileEntry(
                 fileName = "${book.id}.json",
-                sha256 = "", // will be replaced after upload
+                sha256 = "",
                 sizeBytes = 0,
                 lastModified = book.lastReadTime
             )
@@ -402,15 +419,20 @@ class WebdavSyncManager @Inject constructor(
         bookRepository.insertBook(book)
     }
 
-    private fun sha256(file: File): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        FileInputStream(file).use { fis ->
-            val buffer = ByteArray(8192)
-            var bytesRead: Int
-            while (fis.read(buffer).also { bytesRead = it } != -1) {
-                digest.update(buffer, 0, bytesRead)
+    /** Read all bytes from a book regardless of storage type (app-internal file or SAF content URI). */
+    private fun readBookData(location: String): ByteArray {
+        return if (BookFileAccess.isContentUri(location)) {
+            BookFileAccess.openSeekable(context, location).use { source ->
+                File(source.path).readBytes()
             }
+        } else {
+            File(location).readBytes()
         }
+    }
+
+    private fun sha256Bytes(data: ByteArray): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        digest.update(data)
         return digest.digest().joinToString("") { "%02x".format(it) }
     }
 }

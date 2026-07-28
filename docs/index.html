@@ -218,6 +218,7 @@
         .nav-logo .logo-text {
             font-size: 22px;
             font-weight: 700;
+            line-height: 1;
             color: var(--ink);
         }
         .nav-links {
@@ -231,7 +232,7 @@
             color: var(--muted);
             font-size: 16px;
             font-weight: 600;
-            line-height: 1.25;
+            line-height: 1;
             transition: color 0.15s;
         }
         .nav-links a:hover { color: var(--ink); }
@@ -248,14 +249,14 @@
             border-radius: var(--radius-full);
             font-size: 14px;
             font-weight: 500;
-            line-height: 1.29;
+            line-height: 1;
             transition: background 0.2s ease, transform 0.2s ease;
         }
         .btn-nav-download:hover { background: var(--primary-active); transform: scale(1.04); }
         .btn-nav-sponsor {
             background: transparent; color: var(--ink);
             text-decoration: none; padding: 9px 19px;
-            border-radius: var(--radius-full); font-size: 14px; font-weight: 500;
+            border-radius: var(--radius-full); font-size: 14px; font-weight: 500; line-height: 1;
             border: 1.5px solid var(--hairline);
             transition: border-color 0.2s, color 0.2s, background 0.2s;
         }
@@ -465,11 +466,14 @@
             margin-top: var(--space-base);
         }
         .pill-badge {
+            display: inline-flex;
+            align-items: center;
             padding: 8px 18px;
             border-radius: var(--radius-full);
             border: 1px solid rgba(255,255,255,0.6);
             font-size: 14px;
             font-weight: 500;
+            line-height: 1;
             color: var(--muted);
             background: rgba(255,255,255,0.5);
             backdrop-filter: blur(8px);
