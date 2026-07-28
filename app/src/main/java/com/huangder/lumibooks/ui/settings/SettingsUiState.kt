@@ -24,8 +24,12 @@ data class StorageInfo(
  */
 data class UpdateCheckDisplay(
     val hasAppUpdate: Boolean = false,
+    val isForceUpdate: Boolean = false,
     val appVersion: String = "",
     val releaseUrl: String = "",
+    val updateTitle: String = "\u53d1\u73b0\u65b0\u7248\u672c",
+    val updateMessage: String = "",
+    val changelog: String = "",
     val hasTermsUpdate: Boolean = false,
     val termsVersion: Int = 0,
     val hasPrivacyUpdate: Boolean = false,
@@ -59,6 +63,7 @@ data class SettingsUiState(
     val liquidGlassHdrHighlightEnabled: Boolean = false,
     val darkMode: String = "system",       // "system" / "light" / "dark"
     val entranceAnimationsEnabled: Boolean = true,
+    val eInkModeEnabled: Boolean = false,
     val predictiveBackEnabled: Boolean = true,
     val splashEnabled: Boolean = true,
     val readerTheme: String = "day",       // "day" / "night" / "sepia" / "green"

@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.huangder.lumibooks.domain.model.CustomFontPreset
 import com.huangder.lumibooks.domain.model.CustomFontPresetCodec
@@ -96,9 +97,11 @@ class DataStoreManager @Inject constructor(
         private val LIQUID_GLASS_HDR_HIGHLIGHT_ENABLED = booleanPreferencesKey("liquid_glass_hdr_highlight_enabled")
         private val DARK_MODE = stringPreferencesKey("dark_mode")
         private val ENTRANCE_ANIMATIONS_ENABLED = booleanPreferencesKey("entrance_animations_enabled")
+        private val E_INK_MODE_ENABLED = booleanPreferencesKey("e_ink_mode_enabled")
         private val PREDICTIVE_BACK_ENABLED = booleanPreferencesKey("predictive_back_enabled")
         private val SPLASH_ENABLED = booleanPreferencesKey("splash_enabled")
         private val LAST_READ_BOOK = stringPreferencesKey("last_read_book")
+        private val BOOKSHELF_LAYOUT_MODE = intPreferencesKey("bookshelf_layout_mode")
         private val HAS_SEEN_WELCOME = booleanPreferencesKey("has_seen_welcome")
         private val COMPLETED_WELCOME_INSTALL_TIME = longPreferencesKey("completed_welcome_install_time")
 
@@ -124,12 +127,14 @@ class DataStoreManager @Inject constructor(
         private val WEBDAV_USERNAME = stringPreferencesKey("webdav_username")
         private val WEBDAV_SYNC_PATH = stringPreferencesKey("webdav_sync_path")
         private val WEBDAV_LAST_SYNC_TIME = longPreferencesKey("webdav_last_sync_time")
+        private val WEBDAV_SYNC_MODE = stringPreferencesKey("webdav_sync_mode")
         private val WEBDAV_SYNCED_BOOK_IDS = stringPreferencesKey("webdav_synced_book_ids")
         // 应用语言
         private val APP_LANGUAGE = stringPreferencesKey("app_language")
 
         // 个人信息
         private val AVATAR_URI = stringPreferencesKey("avatar_uri")
+        private val AUTHORIZED_BOOK_DIRECTORIES = stringPreferencesKey("authorized_book_directories")
         private val NICKNAME = stringPreferencesKey("nickname")
 
         // 已接受的条款/政策版本（用于检查更新）
@@ -138,6 +143,7 @@ class DataStoreManager @Inject constructor(
 
         // 是否已完成首次启动的更新检查
         private val HAS_CHECKED_UPDATE_ON_START = booleanPreferencesKey("has_checked_update_on_start")
+        private val ACKNOWLEDGED_NOTICE_IDS = stringSetPreferencesKey("acknowledged_notice_ids")
     }
 
     // 阅读设置
@@ -295,6 +301,14 @@ class DataStoreManager @Inject constructor(
         preferences[ENTRANCE_ANIMATIONS_ENABLED] ?: true
     }
 
+    val eInkModeEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[E_INK_MODE_ENABLED] ?: false
+    }
+
+    val bookshelfLayoutMode: Flow<Int> = context.dataStore.data.map { preferences ->
+        (preferences[BOOKSHELF_LAYOUT_MODE] ?: 2).coerceIn(1, 3)
+    }
+
     val predictiveBackEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[PREDICTIVE_BACK_ENABLED] ?: true
     }
@@ -357,7 +371,8 @@ class DataStoreManager @Inject constructor(
             serverUrl = preferences[WEBDAV_SERVER_URL] ?: "",
             username = preferences[WEBDAV_USERNAME] ?: "",
             syncPath = preferences[WEBDAV_SYNC_PATH] ?: "LumiBooks",
-            lastSyncTime = preferences[WEBDAV_LAST_SYNC_TIME] ?: 0L
+            lastSyncTime = preferences[WEBDAV_LAST_SYNC_TIME] ?: 0L,
+            syncMode = preferences[WEBDAV_SYNC_MODE] ?: "auto"
         )
     }
 
@@ -383,11 +398,27 @@ class DataStoreManager @Inject constructor(
         preferences[AVATAR_URI]
     }
 
+    val authorizedBookDirectories: Flow<List<String>> = context.dataStore.data.map { preferences ->
+        preferences[AUTHORIZED_BOOK_DIRECTORIES]
+            .orEmpty()
+            .lineSequence()
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .distinct()
+            .toList()
+    }
+
     val nickname: Flow<String> = context.dataStore.data.map { preferences ->
         preferences[NICKNAME] ?: "读者"
     }
 
     // 保存方法
+    suspend fun saveBookshelfLayoutMode(mode: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[BOOKSHELF_LAYOUT_MODE] = mode.coerceIn(1, 3)
+        }
+    }
+
     suspend fun saveFontSize(fontSize: Float) {
         context.dataStore.edit { preferences ->
             preferences[FONT_SIZE] = fontSize
@@ -819,6 +850,12 @@ class DataStoreManager @Inject constructor(
         }
     }
 
+    suspend fun saveEInkModeEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[E_INK_MODE_ENABLED] = enabled
+        }
+    }
+
     suspend fun savePredictiveBackEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PREDICTIVE_BACK_ENABLED] = enabled
@@ -906,6 +943,13 @@ class DataStoreManager @Inject constructor(
             preferences[WEBDAV_USERNAME] = normalized.username
             preferences[WEBDAV_SYNC_PATH] = normalized.syncPath
             preferences[WEBDAV_LAST_SYNC_TIME] = normalized.lastSyncTime
+            preferences[WEBDAV_SYNC_MODE] = normalized.syncMode
+        }
+    }
+
+    suspend fun saveWebdavSyncMode(mode: String) {
+        context.dataStore.edit { preferences ->
+            preferences[WEBDAV_SYNC_MODE] = mode
         }
     }
 
@@ -994,6 +1038,34 @@ class DataStoreManager @Inject constructor(
         }
     }
 
+    suspend fun addAuthorizedBookDirectory(uri: String) {
+        context.dataStore.edit { preferences ->
+            val directories = preferences[AUTHORIZED_BOOK_DIRECTORIES]
+                .orEmpty()
+                .lineSequence()
+                .map(String::trim)
+                .filter(String::isNotEmpty)
+                .toMutableSet()
+            directories += uri
+            preferences[AUTHORIZED_BOOK_DIRECTORIES] = directories.sorted().joinToString("\n")
+        }
+    }
+
+    suspend fun removeAuthorizedBookDirectory(uri: String) {
+        context.dataStore.edit { preferences ->
+            val directories = preferences[AUTHORIZED_BOOK_DIRECTORIES]
+                .orEmpty()
+                .lineSequence()
+                .map(String::trim)
+                .filter(String::isNotEmpty)
+                .filterNot { it == uri }
+                .distinct()
+                .sorted()
+                .toList()
+            preferences[AUTHORIZED_BOOK_DIRECTORIES] = directories.joinToString("\n")
+        }
+    }
+
     suspend fun saveNickname(name: String) {
         context.dataStore.edit { preferences ->
             preferences[NICKNAME] = name
@@ -1014,6 +1086,11 @@ class DataStoreManager @Inject constructor(
         preferences[HAS_CHECKED_UPDATE_ON_START] ?: false
     }
 
+    /** Acknowledged remote notice IDs; each notice ID is shown only once. */
+    val acknowledgedNoticeIds: Flow<Set<String>> = context.dataStore.data.map { preferences ->
+        preferences[ACKNOWLEDGED_NOTICE_IDS] ?: emptySet()
+    }
+
     suspend fun saveAcceptedTermsVersion(version: Int) {
         context.dataStore.edit { preferences ->
             preferences[ACCEPTED_TERMS_VERSION] = version
@@ -1029,6 +1106,15 @@ class DataStoreManager @Inject constructor(
     suspend fun saveHasCheckedUpdateOnStart(checked: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[HAS_CHECKED_UPDATE_ON_START] = checked
+        }
+    }
+
+    suspend fun acknowledgeNotice(id: String) {
+        val normalized = id.trim()
+        if (normalized.isBlank()) return
+        context.dataStore.edit { preferences ->
+            val existing = preferences[ACKNOWLEDGED_NOTICE_IDS] ?: emptySet()
+            preferences[ACKNOWLEDGED_NOTICE_IDS] = existing + normalized
         }
     }
 

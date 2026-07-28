@@ -15,38 +15,23 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.DialogProperties
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 
 @Composable
-fun AppUpdateDialog(
-    appVersion: String,
-    updateTitle: String = "\u53d1\u73b0\u65b0\u7248\u672c",
-    updateMessage: String = "",
-    changelog: String = "",
-    force: Boolean = false,
-    onDownload: () -> Unit,
-    onLater: () -> Unit
+fun RemoteNoticeDialog(
+    title: String,
+    message: String,
+    onConfirm: () -> Unit
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
-    val displayMessage = updateMessage.ifBlank {
-        if (force) {
-            "\u5f53\u524d\u7248\u672c\u9700\u8981\u66f4\u65b0\u540e\u624d\u80fd\u7ee7\u7eed\u4f7f\u7528\u3002"
-        } else {
-            "\u65b0\u7248\u672c $appVersion \u5df2\u53d1\u5e03\uff0c\u662f\u5426\u524d\u5f80\u4e0b\u8f7d\uff1f"
-        }
-    }
-    val displayChangelog = changelog.ifBlank { "\u6682\u65e0\u66f4\u65b0\u65e5\u5fd7\u3002" }
 
     LiquidGlassAlertDialog(
-        onDismissRequest = { if (!force) onLater() },
+        onDismissRequest = onConfirm,
         title = {
             Text(
-                text = updateTitle.ifBlank {
-                    if (force) "\u9700\u8981\u66f4\u65b0" else "\u53d1\u73b0\u65b0\u7248\u672c"
-                },
+                text = title,
                 fontSize = AppType.Body,
                 fontWeight = FontWeight.Bold,
                 color = AppColors.TextPrimary
@@ -54,24 +39,12 @@ fun AppUpdateDialog(
         },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = displayMessage,
-                    fontSize = AppType.BodySmall,
-                    color = AppColors.TextSecondary
-                )
-                Spacer(modifier = Modifier.height(14.dp))
-                Text(
-                    text = "\u66f4\u65b0\u65e5\u5fd7",
-                    fontSize = AppType.BodySmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = AppColors.TextPrimary
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = displayChangelog,
+                    text = message,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 220.dp)
+                        .heightIn(max = 260.dp)
                         .background(
                             color = AppColors.BgGray.copy(alpha = if (isLiquidGlass) 0.48f else 0.92f),
                             shape = RoundedCornerShape(18.dp)
@@ -86,24 +59,11 @@ fun AppUpdateDialog(
         },
         confirmButton = {
             LiquidGlassTextButton(
-                text = if (force) "\u4e0b\u8f7d\u65b0\u7248\u672c" else "\u4e0b\u8f7d",
+                text = "\u6536\u5230",
                 tintedColor = AppColors.Accent,
-                onClick = onDownload
+                onClick = onConfirm
             )
         },
-        dismissButton = if (force) null else {
-            {
-                LiquidGlassTextButton(
-                    text = "\u7a0d\u540e",
-                    contentColor = AppColors.TextSecondary,
-                    onClick = onLater
-                )
-            }
-        },
-        properties = DialogProperties(
-            dismissOnBackPress = !force,
-            dismissOnClickOutside = !force
-        ),
         contentScrimColor = AppColors.CardBg.copy(alpha = if (isLiquidGlass) 0.74f else 0.92f)
     )
 }

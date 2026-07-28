@@ -2,6 +2,7 @@ package com.huangder.lumibooks.ui.settings
 
 import android.content.Context
 import android.widget.Toast
+import androidx.core.content.pm.PackageInfoCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import coil.Coil
@@ -138,6 +139,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.entranceAnimationsEnabled.collectLatest { enabled ->
                 _uiState.value = _uiState.value.copy(entranceAnimationsEnabled = enabled)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.eInkModeEnabled.collectLatest { enabled ->
+                _uiState.value = _uiState.value.copy(eInkModeEnabled = enabled)
             }
         }
         viewModelScope.launch {
@@ -326,6 +332,14 @@ class SettingsViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(entranceAnimationsEnabled = enabled)
         viewModelScope.launch {
             dataStoreManager.saveEntranceAnimationsEnabled(enabled)
+        }
+    }
+
+    fun saveEInkModeEnabled(enabled: Boolean) {
+        if (_uiState.value.eInkModeEnabled == enabled) return
+        _uiState.value = _uiState.value.copy(eInkModeEnabled = enabled)
+        viewModelScope.launch {
+            dataStoreManager.saveEInkModeEnabled(enabled)
         }
     }
 
@@ -841,14 +855,17 @@ class SettingsViewModel @Inject constructor(
                 return@launch
             }
 
-            val currentVersion = try {
-                context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0"
-            } catch (_: Exception) { "1.0" }
+            val packageInfo = try {
+                context.packageManager.getPackageInfo(context.packageName, 0)
+            } catch (_: Exception) { null }
+            val currentVersion = packageInfo?.versionName ?: "1.0"
+            val currentVersionCode = packageInfo?.let { PackageInfoCompat.getLongVersionCode(it) } ?: 0L
 
             val state = _uiState.value.updateCheck
             val result = UpdateChecker.evaluate(
                 config = config,
                 currentVersion = currentVersion,
+                currentVersionCode = currentVersionCode,
                 acceptedTerms = state.acceptedTermsVersion,
                 acceptedPrivacy = state.acceptedPrivacyVersion
             )
@@ -860,8 +877,12 @@ class SettingsViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(
                 updateCheck = state.copy(
                     hasAppUpdate = result.hasAppUpdate,
+                    isForceUpdate = result.isForceUpdate,
                     appVersion = result.appVersion,
                     releaseUrl = result.releaseUrl,
+                    updateTitle = result.updateTitle,
+                    updateMessage = result.updateMessage,
+                    changelog = result.changelog,
                     hasTermsUpdate = result.hasTermsUpdate,
                     termsVersion = result.termsVersion,
                     hasPrivacyUpdate = result.hasPrivacyUpdate,
@@ -954,6 +975,12 @@ class SettingsViewModel @Inject constructor(
                     Toast.LENGTH_SHORT
                 ).show()
             }
+        }
+    }
+
+    fun saveWebdavSyncMode(mode: String) {
+        viewModelScope.launch {
+            dataStoreManager.saveWebdavSyncMode(mode)
         }
     }
 

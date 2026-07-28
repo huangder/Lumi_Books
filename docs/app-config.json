@@ -1,0 +1,26 @@
+﻿{
+  "config_version": 1,
+  "generated_at": "2026-07-28T00:00:00Z",
+  "latest_version": "1.1.00",
+  "latest_version_code": 5,
+  "release_url": "https://github.com/huangder/Lumi_Books/releases/latest",
+  "terms_version": 0,
+  "privacy_version": 0,
+  "update": {
+    "latest_version_code": 5,
+    "latest_version_name": "1.1.00",
+    "download_url": "https://github.com/huangder/Lumi_Books/releases/latest",
+    "title": "发现新版本",
+    "message": "新版本已经发布，建议前往下载更新。",
+    "changelog": "暂无更新日志。",
+    "force_update_below_version_code": 0
+  },
+  "notice": {
+    "id": "notice-20260728-placeholder",
+    "enabled": false,
+    "min_version_code": 1,
+    "max_version_code": 5,
+    "title": "通知",
+    "message": "这里填写通知内容。"
+  }
+}

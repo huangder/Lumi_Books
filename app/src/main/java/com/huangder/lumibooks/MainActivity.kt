@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
+import androidx.core.content.pm.PackageInfoCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.rememberNavController
 import com.huangder.lumibooks.data.local.DataStoreManager
@@ -40,8 +41,10 @@ import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.ui.navigation.MainNavGraph
 import com.huangder.lumibooks.tts.TtsController
 import com.huangder.lumibooks.ui.splash.SplashScreen
+import com.huangder.lumibooks.ui.components.AppUpdateDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
 import com.huangder.lumibooks.ui.components.PolicyUpdateDialog
+import com.huangder.lumibooks.ui.components.RemoteNoticeDialog
 import com.huangder.lumibooks.ui.settings.WebViewActivity
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.util.FileUtils
@@ -64,6 +67,22 @@ private data class PendingPolicyUpdate(
     val termsVersion: Int,
     val hasPrivacyUpdate: Boolean,
     val privacyVersion: Int
+)
+
+
+private data class PendingAppUpdate(
+    val appVersion: String,
+    val title: String,
+    val message: String,
+    val changelog: String,
+    val releaseUrl: String,
+    val force: Boolean
+)
+
+private data class PendingRemoteNotice(
+    val id: String,
+    val title: String,
+    val message: String
 )
 
 enum class ReaderPageDirection {
@@ -103,14 +122,6 @@ class MainActivity : ComponentActivity() {
     /** 非空时由当前阅读页接管音量键；阅读页离开或设置关闭时恢复系统音量行为。 */
     var readerVolumeKeyHandler: ((ReaderPageDirection) -> Unit)? = null
 
-    /** Resets the reader-specific screen sleep timer after user input. */
-    var readerUserInteractionHandler: (() -> Unit)? = null
-
-    override fun onUserInteraction() {
-        super.onUserInteraction()
-        if (isInReaderScreen) readerUserInteractionHandler?.invoke()
-    }
-
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val handler = readerVolumeKeyHandler
         val direction = when (event.keyCode) {
@@ -127,7 +138,14 @@ class MainActivity : ComponentActivity() {
         return super.dispatchKeyEvent(event)
     }
 
-    /** 待处理的条款/政策更新（非 null 时弹窗） */
+    // Startup dialog pending states.
+    /** Pending app update dialog; non-null means show it after startup. */
+    private var pendingAppUpdate by mutableStateOf<PendingAppUpdate?>(null)
+
+    /** Pending remote notice dialog; non-null means show it after startup. */
+    private var pendingRemoteNotice by mutableStateOf<PendingRemoteNotice?>(null)
+
+    /** Pending terms/privacy policy update dialog; non-null means show it after startup. */
     private var pendingPolicyUpdate by mutableStateOf<PendingPolicyUpdate?>(null)
 
     override fun onNewIntent(intent: Intent) {
@@ -238,38 +256,46 @@ class MainActivity : ComponentActivity() {
             val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = false)
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
             val entranceAnimationsEnabled by dataStoreManager.entranceAnimationsEnabled.collectAsState(initial = true)
+            val eInkModeEnabled by dataStoreManager.eInkModeEnabled.collectAsState(initial = false)
             val predictiveBackEnabled by dataStoreManager.predictiveBackEnabled.collectAsState(initial = true)
-            val isDark = when (darkMode) {
+            val isDark = if (eInkModeEnabled) {
+                false
+            } else when (darkMode) {
                 "dark" -> true
                 "light" -> false
                 else -> systemDarkMode
             }
-            val isLiquidGlass = appTheme == "liquid_glass"
+            val effectiveAppTheme = if (eInkModeEnabled && appTheme == "liquid_glass") "lumi" else appTheme
+            val isLiquidGlass = !eInkModeEnabled && effectiveAppTheme == "liquid_glass"
             val mainBackdrop = rememberLayerBackdrop()
 
             // 条款/政策更新弹窗状态
             var policyDialog by remember { mutableStateOf<PendingPolicyUpdate?>(null) }
             var showSplash by remember { mutableStateOf(splashEnabledAtLaunch) }
 
-            LaunchedEffect(Unit) {
-                if (splashEnabledAtLaunch) {
-                    delay(1_100)
+            LaunchedEffect(eInkModeEnabled) {
+                if (eInkModeEnabled) {
+                    showSplash = false
+                } else {
+                    if (splashEnabledAtLaunch) {
+                        delay(1_100)
+                    }
+                    showSplash = false
                 }
-                showSplash = false
             }
 
             val mainContentAlpha by animateFloatAsState(
-                targetValue = if (showSplash) 0f else 1f,
+                targetValue = if (eInkModeEnabled || !showSplash) 1f else 0f,
                 animationSpec = tween(460),
                 label = "mainContentAlpha"
             )
             val mainContentScale by animateFloatAsState(
-                targetValue = if (showSplash) 0.985f else 1f,
+                targetValue = if (eInkModeEnabled || !showSplash) 1f else 0.985f,
                 animationSpec = tween(520),
                 label = "mainContentScale"
             )
             val mainContentOffset by animateDpAsState(
-                targetValue = if (showSplash) 12.dp else 0.dp,
+                targetValue = if (eInkModeEnabled || !showSplash) 0.dp else 12.dp,
                 animationSpec = tween(520),
                 label = "mainContentOffset"
             )
@@ -283,10 +309,11 @@ class MainActivity : ComponentActivity() {
 
             EBookReaderTheme(
                 darkTheme = isDark,
-                dynamicColor = appTheme == "material3",
-                appTheme = appTheme,
+                dynamicColor = effectiveAppTheme == "material3",
+                appTheme = effectiveAppTheme,
                 liquidGlassTransparency = liquidGlassTransparency,
-                liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled
+                liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled && !eInkModeEnabled,
+                eInkMode = eInkModeEnabled
             ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -313,40 +340,75 @@ class MainActivity : ComponentActivity() {
                         ) {
                             MainNavGraph(
                                 navController = navController,
-                                entranceAnimationsEnabled = entranceAnimationsEnabled && !showSplash,
-                                predictiveBackEnabled = predictiveBackEnabled,
+                                entranceAnimationsEnabled = entranceAnimationsEnabled && !showSplash && !eInkModeEnabled,
+                                predictiveBackEnabled = predictiveBackEnabled && !eInkModeEnabled,
                                 requestedOpenBookId = requestedOpenBookId,
                                 onBeforeOpenDifferentBook = ttsController::stop,
                                 onOpenBookRequestConsumed = { requestedOpenBookId = null }
                             )
                         }
 
-                    // ── 条款/政策更新弹窗 ──
-                    policyDialog?.let { update ->
-                        PolicyUpdateDialog(
-                            hasTermsUpdate = update.hasTermsUpdate,
-                            termsVersion = update.termsVersion,
-                            hasPrivacyUpdate = update.hasPrivacyUpdate,
-                            privacyVersion = update.privacyVersion,
-                            onAccept = {
-                                lifecycleScope.launch {
-                                    if (update.hasTermsUpdate) {
-                                        dataStoreManager.saveAcceptedTermsVersion(update.termsVersion)
-                                    }
-                                    if (update.hasPrivacyUpdate) {
-                                        dataStoreManager.saveAcceptedPrivacyVersion(update.privacyVersion)
-                                    }
+                    // Remote startup dialog priority: app update > notice > policy.
+                    val appUpdate = pendingAppUpdate
+                    val remoteNotice = pendingRemoteNotice
+                    when {
+                        appUpdate != null -> {
+                            AppUpdateDialog(
+                                appVersion = appUpdate.appVersion,
+                                updateTitle = appUpdate.title,
+                                updateMessage = appUpdate.message,
+                                changelog = appUpdate.changelog,
+                                force = appUpdate.force,
+                                onDownload = {
+                                    openRemoteUrl(appUpdate.releaseUrl)
+                                    if (!appUpdate.force) pendingAppUpdate = null
+                                },
+                                onLater = {
+                                    if (!appUpdate.force) pendingAppUpdate = null
                                 }
-                                policyDialog = null
-                            },
-                            onDecline = { finishAffinity() },
-                            onViewTerms = { openUpdateDocument("用户协议", "terms.html") },
-                            onViewPrivacy = { openUpdateDocument("隐私政策", "privacy.html") }
-                        )
+                            )
                         }
+                        remoteNotice != null -> {
+                            RemoteNoticeDialog(
+                                title = remoteNotice.title,
+                                message = remoteNotice.message,
+                                onConfirm = {
+                                    lifecycleScope.launch {
+                                        dataStoreManager.acknowledgeNotice(remoteNotice.id)
+                                    }
+                                    pendingRemoteNotice = null
+                                }
+                            )
+                        }
+                        policyDialog != null -> {
+                            val update = policyDialog
+                            if (update != null) {
+                                PolicyUpdateDialog(
+                                    hasTermsUpdate = update.hasTermsUpdate,
+                                    termsVersion = update.termsVersion,
+                                    hasPrivacyUpdate = update.hasPrivacyUpdate,
+                                    privacyVersion = update.privacyVersion,
+                                    onAccept = {
+                                        lifecycleScope.launch {
+                                            if (update.hasTermsUpdate) {
+                                                dataStoreManager.saveAcceptedTermsVersion(update.termsVersion)
+                                            }
+                                            if (update.hasPrivacyUpdate) {
+                                                dataStoreManager.saveAcceptedPrivacyVersion(update.privacyVersion)
+                                            }
+                                        }
+                                        policyDialog = null
+                                    },
+                                    onDecline = { finishAffinity() },
+                                    onViewTerms = { openUpdateDocument("用户协议", "terms.html") },
+                                    onViewPrivacy = { openUpdateDocument("隐私政策", "privacy.html") }
+                                )
+                            }
+                        }
+                    }
 
                         AnimatedVisibility(
-                            visible = showSplash,
+                            visible = showSplash && !eInkModeEnabled,
                             exit = fadeOut(animationSpec = tween(260)),
                             modifier = Modifier.fillMaxSize()
                         ) {
@@ -371,6 +433,12 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    private fun openRemoteUrl(url: String) {
+        if (url.isBlank()) return
+        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    }
+
+
     /**
      * 启动时自动检查更新：拉取 update_config.json，
      * 对比条款/政策版本，如有更新则标记待弹窗。
@@ -379,25 +447,55 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val config = UpdateChecker.fetchUpdateConfig() ?: return@launch
-                val currentVersion = try {
-                    packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0"
-                } catch (_: Exception) { "1.0" }
+                val packageInfo = try {
+                    packageManager.getPackageInfo(packageName, 0)
+                } catch (_: Exception) { null }
+                val currentVersion = packageInfo?.versionName ?: "1.0"
+                val currentVersionCode = packageInfo?.let { PackageInfoCompat.getLongVersionCode(it) } ?: 0L
 
                 val acceptedTerms = dataStoreManager.acceptedTermsVersion.first()
                 val acceptedPrivacy = dataStoreManager.acceptedPrivacyVersion.first()
+                val acknowledgedNoticeIds = dataStoreManager.acknowledgedNoticeIds.first()
 
-                val result = UpdateChecker.evaluate(config, currentVersion, acceptedTerms, acceptedPrivacy)
+                val result = UpdateChecker.evaluate(
+                    config = config,
+                    currentVersion = currentVersion,
+                    currentVersionCode = currentVersionCode,
+                    acceptedTerms = acceptedTerms,
+                    acceptedPrivacy = acceptedPrivacy
+                )
 
-                if (result.hasTermsUpdate || result.hasPrivacyUpdate) {
-                    pendingPolicyUpdate = PendingPolicyUpdate(
+                val nextAppUpdate = result.takeIf { it.hasAppUpdate }?.let {
+                    PendingAppUpdate(
+                        appVersion = it.appVersion,
+                        title = it.updateTitle,
+                        message = it.updateMessage,
+                        changelog = it.changelog,
+                        releaseUrl = it.releaseUrl,
+                        force = it.isForceUpdate
+                    )
+                }
+                val nextNotice = result.notice
+                    ?.takeIf { it.id !in acknowledgedNoticeIds }
+                    ?.let { PendingRemoteNotice(id = it.id, title = it.title, message = it.message) }
+                val nextPolicy = if (result.hasTermsUpdate || result.hasPrivacyUpdate) {
+                    PendingPolicyUpdate(
                         hasTermsUpdate = result.hasTermsUpdate,
                         termsVersion = result.termsVersion,
                         hasPrivacyUpdate = result.hasPrivacyUpdate,
                         privacyVersion = result.privacyVersion
                     )
+                } else {
+                    null
+                }
+
+                withContext(Dispatchers.Main) {
+                    pendingAppUpdate = nextAppUpdate
+                    pendingRemoteNotice = nextNotice
+                    pendingPolicyUpdate = nextPolicy
                 }
             } catch (_: Exception) {
-                // 静默失败，不打扰用户
+                // Fail silently so startup is not blocked.
             }
         }
     }

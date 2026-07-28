@@ -211,33 +211,82 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
     val appThemeOptions = listOf(
         "lumi" to stringResource(R.string.app_theme_lumi),
-        "material3" to stringResource(R.string.app_theme_material3),
-        "liquid_glass" to stringResource(R.string.app_theme_liquid_glass)
-    )
-    val darkModeOptions = listOf(
-        "system" to stringResource(R.string.dark_mode_system),
-        "light" to stringResource(R.string.dark_mode_light),
-        "dark" to stringResource(R.string.dark_mode_dark)
-    )
-    val themeOptions = listOf(
-        "day" to stringResource(R.string.theme_day),
-        "night" to stringResource(R.string.theme_night),
-        "sepia" to stringResource(R.string.theme_sepia),
-        "green" to stringResource(R.string.theme_green)
-    )
+        "material3" to stringResource(R.string.app_theme_material3)
+    ) + if (uiState.eInkModeEnabled) {
+        emptyList()
+    } else {
+        listOf("liquid_glass" to stringResource(R.string.app_theme_liquid_glass))
+    }
+    val darkModeOptions = if (uiState.eInkModeEnabled) {
+        listOf("light" to stringResource(R.string.dark_mode_light))
+    } else {
+        listOf(
+            "system" to stringResource(R.string.dark_mode_system),
+            "light" to stringResource(R.string.dark_mode_light),
+            "dark" to stringResource(R.string.dark_mode_dark)
+        )
+    }
+    val themeOptions = if (uiState.eInkModeEnabled) {
+        listOf("day" to stringResource(R.string.theme_day))
+    } else {
+        listOf(
+            "day" to stringResource(R.string.theme_day),
+            "night" to stringResource(R.string.theme_night),
+            "sepia" to stringResource(R.string.theme_sepia),
+            "green" to stringResource(R.string.theme_green)
+        )
+    }
 
     DetailCard {
         DropdownSettingRow(
             icon = Icons.Outlined.Palette,
             label = stringResource(R.string.label_app_theme),
             options = appThemeOptions,
-            selected = uiState.appTheme,
+            selected = if (uiState.eInkModeEnabled && uiState.appTheme == "liquid_glass") "lumi" else uiState.appTheme,
             onSelect = viewModel::saveAppTheme
         )
     }
 
+    Spacer(Modifier.height(12.dp))
+
+    DetailCard {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Outlined.Speed,
+                contentDescription = null,
+                tint = AppColors.TextSecondary,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(Modifier.width(AppSpace.md))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.label_e_ink_mode),
+                    fontSize = AppType.Body,
+                    color = AppColors.TextPrimary
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    stringResource(R.string.e_ink_mode_description),
+                    fontSize = AppType.Caption,
+                    color = AppColors.TextSecondary
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            LiquidGlassSwitch(
+                checked = uiState.eInkModeEnabled,
+                onCheckedChange = viewModel::saveEInkModeEnabled
+            )
+        }
+    }
+
+
     AnimatedVisibility(
-        visible = uiState.appTheme == "liquid_glass",
+        visible = uiState.appTheme == "liquid_glass" && !uiState.eInkModeEnabled,
         enter = expandVertically(animationSpec = tween(260)) +
             slideInVertically(animationSpec = tween(260)) { it / 3 } +
             fadeIn(animationSpec = tween(180)),
@@ -296,7 +345,7 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
             icon = Icons.Outlined.Brightness6,
             label = stringResource(R.string.label_dark_mode),
             options = darkModeOptions,
-            selected = uiState.darkMode,
+            selected = if (uiState.eInkModeEnabled) "light" else uiState.darkMode,
             onSelect = viewModel::saveDarkMode
         )
     }
@@ -404,7 +453,7 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
             icon = Icons.Outlined.Palette,
             label = stringResource(R.string.label_reader_theme),
             options = themeOptions,
-            selected = uiState.readerTheme,
+            selected = if (uiState.eInkModeEnabled) "day" else uiState.readerTheme,
             onSelect = viewModel::saveReaderTheme
         )
     }
@@ -821,12 +870,16 @@ fun AboutDetail(viewModel: SettingsViewModel) {
     if (update.showAppUpdateDialog) {
         AppUpdateDialog(
             appVersion = update.appVersion,
+            updateTitle = update.updateTitle,
+            updateMessage = update.updateMessage,
+            changelog = update.changelog,
+            force = update.isForceUpdate,
             onDownload = {
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(update.releaseUrl))
                 context.startActivity(intent)
-                viewModel.dismissAppUpdateDialog()
+                if (!update.isForceUpdate) viewModel.dismissAppUpdateDialog()
             },
-            onLater = { viewModel.dismissAppUpdateDialog() }
+            onLater = { if (!update.isForceUpdate) viewModel.dismissAppUpdateDialog() }
         )
     }
 

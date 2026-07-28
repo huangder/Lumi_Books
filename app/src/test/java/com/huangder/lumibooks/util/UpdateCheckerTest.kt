@@ -32,8 +32,13 @@ class UpdateCheckerTest {
                 latestVersion = remoteVersion,
                 latestVersionCode = 0,
                 releaseUrl = "",
+                updateTitle = "",
+                updateMessage = "",
+                changelog = "",
+                forceUpdateBelowVersionCode = 0L,
                 termsVersion = 0,
-                privacyVersion = 0
+                privacyVersion = 0,
+                notice = null
             ),
             currentVersion = currentVersion,
             acceptedTerms = 0,

@@ -3,46 +3,68 @@ package com.huangder.lumibooks.util
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * 统一检查更新工具：通过 GitHub Raw 上的 update_config.json
- * 一次请求覆盖 App 版本、用户协议版本、隐私政策版本三项检查。
+ * Remote notice and update checker.
  *
- * 配置文件地址：
- * https://raw.githubusercontent.com/huangder/android_books/main/update_config.json
+ * The app reads docs/app-config.json from the GitHub repository Raw URL at startup
+ * or when the user manually checks for updates. This static file drives notice,
+ * normal update, and forced update dialogs without a separate server.
+ *
+ * Config URL:
+ * https://raw.githubusercontent.com/huangder/Lumi_Books/main/docs/app-config.json
  */
 object UpdateChecker {
 
     private const val TAG = "UpdateChecker"
 
-    /** GitHub Raw CDN 上的更新配置 URL */
-    private const val CONFIG_URL =
-        "https://raw.githubusercontent.com/huangder/android_books/main/update_config.json"
-    private const val LATEST_RELEASE_URL =
-        "https://api.github.com/repos/huangder/android_books/releases/latest"
+    /** GitHub repository Raw config URL. Do not use a custom domain for mobile reliability. */
+    private const val CONFIG_URL = "https://raw.githubusercontent.com/huangder/Lumi_Books/main/docs/app-config.json"
 
-    /** 网络请求超时（毫秒） */
+    /** Network request timeout. */
     private const val TIMEOUT_MS = 10_000
 
-    // ─── 数据模型 ────────────────────────────────────────────
+    // Public models: keep fields compatible with the old update_config.json and the new app-config.json.
 
-    /** 远程更新配置 */
-    data class UpdateConfig(
-        val latestVersion: String,
-        val latestVersionCode: Int,
-        val releaseUrl: String,
-        val termsVersion: Int,
-        val privacyVersion: Int
+    /** Remote notice config. */
+    data class NoticeConfig(
+        val id: String,
+        val enabled: Boolean,
+        val minVersionCode: Long,
+        val maxVersionCode: Long,
+        val title: String,
+        val message: String
     )
 
-    /** 各项检查结果汇总 */
+    /** Remote update config. */
+    data class UpdateConfig(
+        val latestVersion: String,
+        val latestVersionCode: Long,
+        val releaseUrl: String,
+        val updateTitle: String,
+        val updateMessage: String,
+        val changelog: String,
+        val forceUpdateBelowVersionCode: Long,
+        val termsVersion: Int,
+        val privacyVersion: Int,
+        val notice: NoticeConfig?
+    )
+
+    /** Evaluated remote check result. */
     data class CheckResult(
         val hasAppUpdate: Boolean = false,
+        val isForceUpdate: Boolean = false,
         val appVersion: String = "",
+        val latestVersionCode: Long = 0L,
         val releaseUrl: String = "",
+        val updateTitle: String = "\u53d1\u73b0\u65b0\u7248\u672c",
+        val updateMessage: String = "",
+        val changelog: String = "",
+        val notice: NoticeConfig? = null,
         val hasTermsUpdate: Boolean = false,
         val termsVersion: Int = 0,
         val hasPrivacyUpdate: Boolean = false,
@@ -50,43 +72,56 @@ object UpdateChecker {
         val isNetworkError: Boolean = false
     )
 
-    private data class GitHubRelease(
-        val version: String,
-        val releaseUrl: String
-    )
-
-    // ─── 公开方法 ────────────────────────────────────────────
+    // Public models: keep fields compatible with the old update_config.json and the new app-config.json.
 
     /**
-     * 从 GitHub Raw 拉取更新配置。
-     * @return UpdateConfig 成功时返回，网络/解析失败返回 null
+     * Fetch static config from GitHub Raw.
+     * @return UpdateConfig on success, or null for network/JSON failures.
      */
     suspend fun fetchUpdateConfig(): UpdateConfig? {
         return withContext(Dispatchers.IO) {
-            val configured = fetchConfiguredUpdate()
-            val latestRelease = fetchLatestRelease()
-
-            if (configured == null && latestRelease == null) return@withContext null
-
-            UpdateConfig(
-                latestVersion = latestRelease?.version ?: configured?.latestVersion.orEmpty(),
-                latestVersionCode = configured?.latestVersionCode ?: 0,
-                releaseUrl = latestRelease?.releaseUrl ?: configured?.releaseUrl.orEmpty(),
-                termsVersion = configured?.termsVersion ?: 0,
-                privacyVersion = configured?.privacyVersion ?: 0
-            )
+            fetchConfiguredUpdate()
         }
     }
 
     private fun fetchConfiguredUpdate(): UpdateConfig? {
         return try {
-            val json = JSONObject(openJsonConnection(CONFIG_URL))
+            val cacheBustedUrl = "$CONFIG_URL?t=${System.currentTimeMillis() / (60 * 60 * 1000)}"
+            val json = JSONObject(openJsonConnection(cacheBustedUrl))
+            val updateJson = json.optJSONObject("update")
+            val noticeJson = json.optJSONObject("notice")
+
             UpdateConfig(
-                latestVersion = json.optString("latest_version", ""),
-                latestVersionCode = json.optInt("latest_version_code", 0),
-                releaseUrl = json.optString("release_url", ""),
+                latestVersion = updateJson.optStringCompat(
+                    keys = arrayOf("latest_version_name", "latest_version"),
+                    fallback = json.optString("latest_version", "")
+                ),
+                latestVersionCode = updateJson.optLongCompat(
+                    keys = arrayOf("latest_version_code"),
+                    fallback = json.optLong("latest_version_code", 0L)
+                ),
+                releaseUrl = updateJson.optStringCompat(
+                    keys = arrayOf("download_url", "release_url"),
+                    fallback = json.optString("release_url", "")
+                ),
+                updateTitle = updateJson.optStringCompat(
+                    keys = arrayOf("title"),
+                    fallback = json.optString("update_title", "\u53d1\u73b0\u65b0\u7248\u672c")
+                ).ifBlank { "\u53d1\u73b0\u65b0\u7248\u672c" },
+                updateMessage = updateJson.optStringCompat(
+                    keys = arrayOf("message"),
+                    fallback = json.optString("update_message", "")
+                ),
+                changelog = updateJson.optChangelog(
+                    fallback = json.optChangelog(fallback = "")
+                ),
+                forceUpdateBelowVersionCode = updateJson.optLongCompat(
+                    keys = arrayOf("force_update_below_version_code", "min_supported_version_code"),
+                    fallback = json.optLong("force_update_below_version_code", 0L)
+                ),
                 termsVersion = json.optInt("terms_version", 0),
-                privacyVersion = json.optInt("privacy_version", 0)
+                privacyVersion = json.optInt("privacy_version", 0),
+                notice = parseNotice(noticeJson)
             )
         } catch (e: Exception) {
             Log.w(TAG, "Failed to fetch update config: ${e.message}")
@@ -94,16 +129,20 @@ object UpdateChecker {
         }
     }
 
-    private fun fetchLatestRelease(): GitHubRelease? {
-        return try {
-            val json = JSONObject(openJsonConnection(LATEST_RELEASE_URL))
-            val version = json.optString("tag_name", "").trim()
-            val releaseUrl = json.optString("html_url", "").trim()
-            if (version.isBlank() || releaseUrl.isBlank()) null else GitHubRelease(version, releaseUrl)
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to fetch latest GitHub release: ${e.message}")
-            null
-        }
+    private fun parseNotice(json: JSONObject?): NoticeConfig? {
+        if (json == null) return null
+        val id = json.optString("id", "").trim()
+        val title = json.optString("title", "").trim()
+        val message = json.optString("message", "").trim()
+        if (id.isBlank() || title.isBlank() || message.isBlank()) return null
+        return NoticeConfig(
+            id = id,
+            enabled = json.optBoolean("enabled", false),
+            minVersionCode = json.optLong("min_version_code", 0L),
+            maxVersionCode = json.optLong("max_version_code", Long.MAX_VALUE),
+            title = title,
+            message = message
+        )
     }
 
     private fun openJsonConnection(urlString: String): String {
@@ -111,8 +150,9 @@ object UpdateChecker {
         conn.connectTimeout = TIMEOUT_MS
         conn.readTimeout = TIMEOUT_MS
         conn.requestMethod = "GET"
-        conn.setRequestProperty("Accept", "application/vnd.github+json")
+        conn.setRequestProperty("Accept", "application/json")
         conn.setRequestProperty("User-Agent", "LumiBooks-Android")
+        conn.setRequestProperty("Cache-Control", "no-cache")
 
         return try {
             if (conn.responseCode != HttpURLConnection.HTTP_OK) {
@@ -125,28 +165,48 @@ object UpdateChecker {
     }
 
     /**
-     * 执行完整的更新检查，对比远程配置与本地状态。
+     * Evaluate whether current local state should show update, notice, or policy dialogs.
      *
-     * @param currentVersion  本地 App 版本号（BuildConfig.VERSION_NAME）
-     * @param acceptedTerms   本地已接受的用户协议版本
-     * @param acceptedPrivacy 本地已接受的隐私政策版本
+     * @param currentVersion     Current app versionName; fallback only when versionCode is unavailable.
+     * @param currentVersionCode Current app versionCode; preferred for update comparison.
+     * @param acceptedTerms      Terms version accepted by the user.
+     * @param acceptedPrivacy    Privacy policy version accepted by the user.
      */
     fun evaluate(
         config: UpdateConfig,
         currentVersion: String,
+        currentVersionCode: Long = 0L,
         acceptedTerms: Int,
         acceptedPrivacy: Int
     ): CheckResult {
-        val hasAppUpdate = config.latestVersion.isNotEmpty() &&
-                isRemoteVersionNewer(config.latestVersion, currentVersion)
+        val hasAppUpdate = if (config.latestVersionCode > 0L && currentVersionCode > 0L) {
+            config.latestVersionCode > currentVersionCode
+        } else {
+            config.latestVersion.isNotEmpty() && isRemoteVersionNewer(config.latestVersion, currentVersion)
+        }
+
+        val isForceUpdate = config.forceUpdateBelowVersionCode > 0L &&
+                currentVersionCode > 0L &&
+                currentVersionCode < config.forceUpdateBelowVersionCode
 
         val hasTermsUpdate = config.termsVersion > acceptedTerms
         val hasPrivacyUpdate = config.privacyVersion > acceptedPrivacy
+        val eligibleNotice = config.notice?.takeIf { notice ->
+            notice.enabled &&
+                    currentVersionCode >= notice.minVersionCode &&
+                    currentVersionCode <= notice.maxVersionCode
+        }
 
         return CheckResult(
-            hasAppUpdate = hasAppUpdate,
+            hasAppUpdate = hasAppUpdate || isForceUpdate,
+            isForceUpdate = isForceUpdate,
             appVersion = config.latestVersion,
+            latestVersionCode = config.latestVersionCode,
             releaseUrl = config.releaseUrl,
+            updateTitle = config.updateTitle,
+            updateMessage = config.updateMessage,
+            changelog = config.changelog,
+            notice = eligibleNotice,
             hasTermsUpdate = hasTermsUpdate,
             termsVersion = config.termsVersion,
             hasPrivacyUpdate = hasPrivacyUpdate,
@@ -177,5 +237,38 @@ object UpdateChecker {
             .removePrefix("v")
             .removePrefix("V")
             .split('.')
-            .map { it.toIntOrNull() ?: 0 }
+            .map { part -> part.takeWhile { it.isDigit() }.toIntOrNull() ?: 0 }
+
+    private fun JSONObject?.optStringCompat(keys: Array<String>, fallback: String): String {
+        if (this == null) return fallback
+        for (key in keys) {
+            val value = optString(key, "").trim()
+            if (value.isNotBlank()) return value
+        }
+        return fallback
+    }
+
+    private fun JSONObject?.optLongCompat(keys: Array<String>, fallback: Long): Long {
+        if (this == null) return fallback
+        for (key in keys) {
+            if (has(key)) return optLong(key, fallback)
+        }
+        return fallback
+    }
+
+    private fun JSONObject?.optChangelog(fallback: String): String {
+        if (this == null) return fallback
+        optString("changelog", "").trim().takeIf { it.isNotBlank() }?.let { return it }
+        optString("release_notes", "").trim().takeIf { it.isNotBlank() }?.let { return it }
+        val array = optJSONArray("changelog_items") ?: optJSONArray("release_note_items")
+        return array?.joinLines().orEmpty().ifBlank { fallback }
+    }
+
+    private fun JSONArray.joinLines(): String {
+        val lines = mutableListOf<String>()
+        for (index in 0 until length()) {
+            optString(index, "").trim().takeIf { it.isNotBlank() }?.let { lines += "- $it" }
+        }
+        return lines.joinToString("\n")
+    }
 }
