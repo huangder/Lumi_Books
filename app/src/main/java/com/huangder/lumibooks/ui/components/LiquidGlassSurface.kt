@@ -322,6 +322,7 @@ fun LiquidGlassSurface(
     onClick: (() -> Unit)? = null,
     interactive: Boolean = onClick != null,
     effectPadding: Dp = 0.dp,
+    outlineWidth: Dp = 0.8.dp,
     decorationModifier: Modifier = Modifier,
     contentAlignment: Alignment = Alignment.Center,
     content: @Composable BoxScope.() -> Unit
@@ -449,7 +450,8 @@ fun LiquidGlassSurface(
             transparency = transparency,
             contentScrimColor = contentScrimColor,
             pressProgress = pressProgress,
-            scaleOnPress = false
+            scaleOnPress = false,
+            outlineWidth = outlineWidth
         )
     } else if (isLiquidGlass) {
         val fallbackScrim = if (contentScrimColor.alpha > 0f) {
@@ -467,16 +469,22 @@ fun LiquidGlassSurface(
                     )
                 )
             )
-            .border(
-                0.8.dp,
-                Brush.verticalGradient(
-                    listOf(
-                        Color.White.copy(alpha = 0.58f),
-                        Color.White.copy(alpha = 0.12f),
-                        Color.Black.copy(alpha = 0.18f)
+            .then(
+                if (outlineWidth > 0.dp) {
+                    Modifier.border(
+                        outlineWidth,
+                        Brush.verticalGradient(
+                            listOf(
+                                Color.White.copy(alpha = 0.58f),
+                                Color.White.copy(alpha = 0.12f),
+                                Color.Black.copy(alpha = 0.18f)
+                            )
+                        ),
+                        shape
                     )
-                ),
-                shape
+                } else {
+                    Modifier
+                }
             )
     } else {
         Modifier.clip(shape).background(fallbackColor)

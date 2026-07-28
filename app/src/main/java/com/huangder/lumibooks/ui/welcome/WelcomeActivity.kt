@@ -14,11 +14,13 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
+import com.huangder.lumibooks.BuildConfig
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.ui.components.LocalPredictiveBackEnabled
 import com.huangder.lumibooks.ui.settings.SponsorActivity
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.util.LaunchThemeController
+import com.huangder.lumibooks.util.LocaleHelper
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -35,6 +37,11 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class WelcomeActivity : ComponentActivity() {
 
+    companion object {
+        const val EXTRA_DEBUG_PREVIEW_LANGUAGE_SETUP = "debug_preview_language_setup"
+        const val EXTRA_DEBUG_PREVIEW_POLICY_DOCUMENT = "debug_preview_policy_document"
+    }
+
     override fun attachBaseContext(newBase: android.content.Context) {
         super.attachBaseContext(com.huangder.lumibooks.util.LocaleHelper.applyLanguage(newBase))
     }
@@ -46,13 +53,28 @@ class WelcomeActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
+        val isDebugLanguagePreview = BuildConfig.DEBUG && intent.getBooleanExtra(
+            EXTRA_DEBUG_PREVIEW_LANGUAGE_SETUP,
+            false
+        )
+        val isDebugPolicyPreview = BuildConfig.DEBUG && intent.getBooleanExtra(
+            EXTRA_DEBUG_PREVIEW_POLICY_DOCUMENT,
+            false
+        )
+        val isDebugWelcomePreview = isDebugLanguagePreview || isDebugPolicyPreview
         val installState = readInstallState()
-        val (completedInstallTime, splashEnabled) = runBlocking {
-            dataStoreManager.completedWelcomeInstallTime.first() to
-                dataStoreManager.splashEnabled.first()
+        val (completedInstallTime, splashEnabled, hasCompletedLanguageSetup) = runBlocking {
+            Triple(
+                dataStoreManager.completedWelcomeInstallTime.first(),
+                dataStoreManager.splashEnabled.first(),
+                dataStoreManager.hasCompletedWelcomeLanguageSetup.first()
+            )
         }
-        LaunchThemeController.deferSplashEnabled(this, splashEnabled)
-        if (!installState.shouldShowWelcome(completedInstallTime)) {
+        val initialLanguage = LocaleHelper.getLanguage(this)
+        if (!isDebugWelcomePreview) {
+            LaunchThemeController.deferSplashEnabled(this, splashEnabled)
+        }
+        if (!isDebugWelcomePreview && !installState.shouldShowWelcome(completedInstallTime)) {
             startMainActivity(splashEnabled)
             return
         }
@@ -63,22 +85,34 @@ class WelcomeActivity : ComponentActivity() {
             val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = false)
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
             val predictiveBackEnabled by dataStoreManager.predictiveBackEnabled.collectAsState(initial = true)
-            val isDark = when (darkMode) {
-                "dark" -> true
-                "light" -> false
-                else -> isSystemInDarkTheme()
+            val eInkModeEnabled by dataStoreManager.eInkModeEnabled.collectAsState(initial = false)
+            val isDark = if (eInkModeEnabled) {
+                false
+            } else {
+                when (darkMode) {
+                    "dark" -> true
+                    "light" -> false
+                    else -> isSystemInDarkTheme()
+                }
             }
+            val effectiveAppTheme = if (eInkModeEnabled && appTheme == "liquid_glass") "lumi" else appTheme
 
             EBookReaderTheme(
                 darkTheme = isDark,
-                dynamicColor = appTheme == "material3",
-                appTheme = appTheme,
+                dynamicColor = effectiveAppTheme == "material3",
+                appTheme = effectiveAppTheme,
                 liquidGlassTransparency = liquidGlassTransparency,
                 liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled
             ) {
                 com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
                     predictiveBackEnabled = predictiveBackEnabled,
-                    onBack = { finish() }
+                    onBack = {
+                        if (isDebugWelcomePreview) {
+                            startMainActivity(splashEnabled)
+                        } else {
+                            finish()
+                        }
+                    }
                 )
                 CompositionLocalProvider(LocalPredictiveBackEnabled provides predictiveBackEnabled) {
                     Surface(
@@ -90,18 +124,44 @@ class WelcomeActivity : ComponentActivity() {
                         ) {
                             WelcomeScreen(
                                 isUpdate = installState.isUpdate,
+                                isNewInstallation = !installState.isUpdate,
+                                shouldShowLanguageSetup = isDebugLanguagePreview || !hasCompletedLanguageSetup,
+                                initialLanguage = initialLanguage,
+                                initialEInkMode = eInkModeEnabled,
+                                isEInkMode = eInkModeEnabled,
                                 isDark = isDark,
-                                isLiquidGlass = appTheme == "liquid_glass",
+                                isLiquidGlass = !eInkModeEnabled && effectiveAppTheme == "liquid_glass",
                                 onFinished = {
-                                    runBlocking {
-                                        dataStoreManager.completeWelcomeFlow(installState.installMarker)
+                                    if (!isDebugWelcomePreview) {
+                                        runBlocking {
+                                            dataStoreManager.completeWelcomeFlow(installState.installMarker)
+                                        }
                                     }
                                     startMainActivity(splashEnabled)
                                 },
-                                onExit = { finish() },
+                                onExit = {
+                                    if (isDebugWelcomePreview) {
+                                        startMainActivity(splashEnabled)
+                                    } else {
+                                        finish()
+                                    }
+                                },
                                 onOpenSponsor = {
                                     startActivity(Intent(this@WelcomeActivity, SponsorActivity::class.java))
                                 },
+                                onLanguageSetupComplete = { language, eInkEnabled ->
+                                    if (isDebugWelcomePreview) {
+                                        startMainActivity(splashEnabled)
+                                    } else {
+                                        LocaleHelper.saveLanguage(this@WelcomeActivity, language)
+                                        lifecycleScope.launch {
+                                            dataStoreManager.saveEInkModeEnabled(eInkEnabled)
+                                            dataStoreManager.saveWelcomeLanguageSetupCompleted()
+                                            recreate()
+                                        }
+                                    }
+                                },
+                                startOnIntroduction = isDebugPolicyPreview,
                                 onEnableLiquidGlass = {
                                     lifecycleScope.launch {
                                         dataStoreManager.enableLiquidGlassTheme()

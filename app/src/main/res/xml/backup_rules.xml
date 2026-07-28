@@ -2,4 +2,5 @@
 <full-backup-content>
     <exclude domain="sharedpref" path="mineru_secure.xml" />
     <exclude domain="sharedpref" path="external_tts_secure.xml" />
+    <exclude domain="sharedpref" path="webdav_secure.xml" />
 </full-backup-content>

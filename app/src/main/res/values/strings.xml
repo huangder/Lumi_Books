@@ -422,7 +422,7 @@
     <!-- 欢迎页 -->
     <string name="welcome_title">欢迎使用</string>
     <string name="welcome_update_title">你已更新到新版本</string>
-    <string name="welcome_desc">Lumi 是一款纯粹的本地图书阅读器。我们绝不会在未经许可的情况下收集任何个人信息，且承诺永久不设网络账号服务。所有的阅读数据均储存在您的本地设备中，请务必定期做好数据备份以防丢失。Lumi 坚持最小权限原则，不会向您索取任何无关的敏感权限。点击\"继续\"按钮，即表示您已阅读并同意</string>
+    <string name="welcome_desc">Lumi 是一款开源、本地优先的图书阅读器。阅读数据默认保存在您的设备中；WebDAV 同步、MinerU 云端解析、第三方 TTS 等网络功能均需您主动配置或启用，可能会向对应服务发送书籍、阅读数据或朗读文本。Lumi 不使用分析或广告追踪 SDK。点击"继续"按钮，即表示您已阅读并同意</string>
     <string name="welcome_privacy">《隐私政策》</string>
     <string name="welcome_and">和</string>
     <string name="welcome_terms">《用户协议》</string>
@@ -434,6 +434,30 @@
     <string name="welcome_support_message">欢迎前往「设置 > 赞助开发」支持我们。每一份捐赠都将全部用于 Lumi 的持续开发与完善。</string>
     <string name="welcome_open_sponsor">前往捐赠页</string>
     <string name="welcome_start_using">开始使用</string>
+    <string name="welcome_language_title">语言</string>
+    <string name="welcome_language_subtitle">选择你所使用的语言</string>
+    <string name="welcome_previous">上一步</string>
+    <string name="welcome_next">下一步</string>
+    <string name="welcome_liquid_glass_title">液态玻璃主题 · 全面焕新</string>
+    <string name="welcome_liquid_glass_subtitle">精心设计并适配的液态玻璃主题，让 Lumi 的每个场景都有出色的交互体验。</string>
+    <string name="welcome_mineru_preview_title">内置 MinerU 解析接口</string>
+    <string name="welcome_mineru_preview_subtitle">MinerU 让 PDF OCR 解析更加准确。</string>
+    <string name="welcome_bookshelf_preview_title">书库功能升级</string>
+    <string name="welcome_bookshelf_preview_subtitle">多选书籍和搜索功能得到增强，书籍再多也不怕。</string>
+    <string name="welcome_enable_liquid_glass">将主题设置为液态玻璃</string>
+    <string name="welcome_liquid_glass_enabled">已设置为液态玻璃</string>
+    <string name="welcome_switching_theme">正在切换</string>
+    <string name="welcome_liquid_glass_preview_caption">不再是简单的纯色和模糊，而是具有玻璃形态的折射效果。</string>
+    <string name="welcome_liquid_glass_home_description">液态玻璃主题 · 全面焕新</string>
+    <string name="welcome_liquid_glass_dialog_description">液态玻璃主题 · 全面焕新</string>
+    <string name="welcome_liquid_glass_reader_description">液态玻璃主题 · 全面焕新</string>
+    <string name="welcome_mineru_preview_description">内置 MinerU 解析接口</string>
+    <string name="welcome_bookshelf_preview_description">书库功能升级</string>
+    <string name="welcome_privacy_summary">Lumi 是一款本地优先的图书阅读器。阅读数据默认保存在您的设备中；WebDAV、MinerU、第三方 TTS 等网络功能仅在您主动配置或启用时传输相应数据。Lumi 不使用分析或广告追踪。点击“继续”，即表示您已阅读并同意</string>
+    <string name="welcome_policy_punctuation">。</string>
+    <string name="welcome_app_icon_description">Lumi 应用图标</string>
+    <string name="welcome_privacy_content">Lumi 隐私政策\n\n生效日期：2026年6月29日\n最近更新：2026年7月28日\n应用名称：Lumi\n包名：com.huangder.lumibooks\n开发者：huangder\n联系邮箱：huangder0104@126.com\n\n一、核心原则\nLumi 是开源、本地优先的电子书阅读器。阅读、书架、进度、书签、笔记和大多数设置默认保存在本机。只有在您主动配置或启用 WebDAV 同步、MinerU 云端解析、第三方 TTS 合成、更新检查或外部链接访问时，才会发生相应网络请求。\n\n二、权限用途\n• 读取存储/媒体权限：读取您选择的 EPUB、TXT、PDF、封面或图片资源。\n• 写入外部存储（Android 9 及以下）：兼容旧系统保存文件或写回您授权编辑的 TXT。\n• INTERNET / ACCESS_NETWORK_STATE：用于更新和政策版本检查、WebDAV、MinerU、第三方 TTS 以及您点击的外部链接。\n• WRITE_SETTINGS：仅在您启用自定义亮屏时间时修改系统屏幕关闭时间。\n• 前台服务和通知权限：用于 TTS 后台播放、PDF/MinerU 解析或 WebDAV 同步进度通知。\n本应用不申请位置、相机/麦克风、通讯录、电话状态、短信、日历等与阅读无关的敏感权限。\n\n三、本地保存的数据\n电子书文件、阅读进度、书签、笔记及选中文本、阅读时长、阅读偏好、文件/文件夹授权 URI、TXT 编辑内容、MinerU 设置、WebDAV 设置、第三方 TTS 设置和本地 TTS 音频缓存。MinerU Token、WebDAV 密码、第三方 TTS API Key 使用 Android Keystore 加密保存，并排除系统备份/设备迁移。\n\n四、会传输数据的可选场景\n• WebDAV 同步：向您配置的服务器上传/下载书籍文件、书籍清单、阅读进度、书签、笔记和选中文本。\n• MinerU 云端解析：向 OpenDataLab/MinerU 发送您选定的 PDF、解析参数、任务标识；精准解析还会使用您的个人 Token。\n• 第三方 TTS：向您选择的 OpenAI TTS、Xiaomi MiMo 或兼容服务发送当前朗读文本段、模型/音色、风格提示和必要鉴权信息，并在本地缓存返回音频。\n• 外部链接：仅在您主动点击 GitHub、反馈、下载或第三方协议链接时访问对应网站。\n如不希望书籍或文本离开设备，请不要启用 WebDAV、MinerU 云端解析或第三方 TTS，并使用本地阅读、本地解析和系统 TTS。\n\n五、我们不做什么\n本应用不收集姓名、手机号、精确位置、通讯录或设备标识用于追踪；不集成分析、广告、用户画像、第三方推送或崩溃上报 SDK；不提供 Lumi 账号系统或开发者运营的云端书库。\n\n六、第三方服务\nMinerU/OpenDataLab、您选择的 WebDAV 服务商或自建服务器、OpenAI、Xiaomi MiMo 或自定义 TTS 服务均独立于 Lumi 运营。其可用性、计费、数据保存、删除和合规要求由对应服务条款和隐私政策决定。\n\n七、数据管理\n您可以在应用内清除阅读历史、缓存和相关配置，或随时卸载应用。卸载会删除应用私有数据，但不会自动删除您自行管理的原始电子书文件、WebDAV 服务器副本或第三方服务已经处理的数据。\n\n八、联系我们\n开发者：huangder\n邮箱：huangder0104@126.com\nGitHub Issues：欢迎在项目仓库提交反馈。\n\n本隐私政策最后更新于 2026年7月28日。</string>
+    <string name="welcome_terms_content">Lumi 用户协议\n\n生效日期：2026年6月29日\n最近更新：2026年7月28日\n应用名称：Lumi\n包名：com.huangder.lumibooks\n开发者：huangder\n联系邮箱：huangder0104@126.com\n\n一、接受协议\n下载、安装、打开或使用 Lumi，即表示您已阅读、理解并同意本协议。如不同意，请停止使用本应用。\n\n二、应用功能\nLumi 是开源、本地优先的电子书阅读器，支持 EPUB、TXT、PDF 阅读，本地书架、阅读进度、书签、笔记、阅读统计、系统 TTS、TXT 编辑、文件/文件夹授权读取、可选 MinerU 云端 PDF 解析、可选 WebDAV 同步，以及可选 OpenAI TTS、Xiaomi MiMo 或兼容第三方 TTS。\n本应用不提供 Lumi 账号注册、登录或开发者运营的云端书库。WebDAV、MinerU 和第三方 TTS 均需您主动配置、启用或确认。\n\n三、您的权利\n您可以免费使用可用功能，自主管理阅读数据、缓存和配置；可以随时停用 WebDAV、MinerU、第三方 TTS 并清除相关 Token、密码或 API Key；可以在遵守开源许可证的前提下查看、修改和分发源代码。\n\n四、您的义务\n• 确保您阅读、导入、编辑、解析、朗读或同步的电子书及文本不侵犯他人知识产权或其他合法权益。\n• 仅上传、同步或发送您有权处理的文件和文本，不传输 DRM 保护内容、他人敏感个人信息、商业秘密或依法不得传输的内容。\n• 自行选择并保管 WebDAV 密码、MinerU Token、第三方 TTS API Key，遵守对应服务商协议、隐私政策、费用和限额规则。\n• 使用 TXT 编辑器保存前自行确认内容并备份重要文件，避免误改或覆盖。\n• 不得利用本应用从事违法、侵权或破坏网络服务安全的活动。\n\n五、免责声明\n本应用按“现状”提供，不保证对所有文件、设备、系统版本和第三方接口完全兼容。因设备故障、误操作、权限撤销、文件损坏、同步冲突、第三方服务不可用、计费变化或政策调整造成的损失，由您自行承担。WebDAV、MinerU、第三方 TTS 均由第三方或您自建环境独立提供，本应用不保证其可用性、数据完整性、保存期限、删除效果、合成或解析质量。TXT 编辑会改变您授权保存的文件内容，请提前备份。\n\n六、隐私保护\n阅读数据默认保存在本机；只有在您主动配置或启用 WebDAV、MinerU、第三方 TTS、更新检查或外部链接访问时，才会发生相应网络请求。具体请见《隐私政策》。\n\n七、协议变更与终止\n我们可能因功能、法律法规或第三方服务变化更新本协议，并更新最近更新日期。您可随时停止使用并卸载应用；卸载会删除应用私有数据，但不会自动删除原始电子书文件、WebDAV 服务器副本或第三方服务已经处理的数据。\n\n八、联系我们\n开发者：huangder\n邮箱：huangder0104@126.com\nGitHub Issues：欢迎在项目仓库提交反馈。\n\n本用户协议最后更新于 2026年7月28日。</string>
 
     <!-- PDF阅读器 -->
     <string name="pdf_back">返回</string>

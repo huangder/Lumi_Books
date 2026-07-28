@@ -22,6 +22,7 @@ import androidx.compose.material.icons.outlined.NetworkCheck
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -82,6 +83,7 @@ fun WebdavSettingsDetail(
         WebdavStatusCard(
             isEnabled = isEnabled,
             lastSyncText = lastSyncText,
+            isSyncing = uiState.isWebdavSyncing,
             onConfigure = onConfigure
         )
 
@@ -107,7 +109,7 @@ fun WebdavSettingsDetail(
             WebdavSecondaryButton(
                 label = stringResource(R.string.webdav_sync_now),
                 icon = Icons.Outlined.Sync,
-                onClick = viewModel::syncWebdavNow
+                onClick = { if (!uiState.isWebdavSyncing) viewModel.syncWebdavNow() }
             )
         }
 
@@ -267,6 +269,7 @@ fun WebdavConfigurationDetail(
 private fun WebdavStatusCard(
     isEnabled: Boolean,
     lastSyncText: String,
+    isSyncing: Boolean,
     onConfigure: () -> Unit
 ) {
     Column(
@@ -276,32 +279,48 @@ private fun WebdavStatusCard(
             .background(AppColors.CardBg)
             .padding(AppSpace.md)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = if (isEnabled) Icons.Outlined.CheckCircle else Icons.Outlined.CloudOff,
-                contentDescription = null,
-                tint = if (isEnabled) AppColors.Accent else AppColors.TextSecondary,
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(Modifier.width(AppSpace.sm))
-            Text(
-                text = stringResource(R.string.webdav_status_card_title),
-                fontSize = AppType.Body,
-                fontWeight = FontWeight.Medium,
-                color = AppColors.TextPrimary
-            )
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.align(Alignment.Center)
+            ) {
+                Icon(
+                    imageVector = if (isEnabled) Icons.Outlined.CheckCircle else Icons.Outlined.CloudOff,
+                    contentDescription = null,
+                    tint = if (isEnabled) AppColors.Accent else AppColors.TextSecondary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(AppSpace.sm))
+                Text(
+                    text = stringResource(R.string.webdav_status_card_title),
+                    fontSize = AppType.Body,
+                    fontWeight = FontWeight.Medium,
+                    color = AppColors.TextPrimary
+                )
+            }
+            if (isSyncing) {
+                CircularProgressIndicator(
+                    color = AppColors.Accent,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .size(18.dp)
+                )
+            }
         }
         Spacer(Modifier.height(AppSpace.sm))
         Text(
             text = if (isEnabled) stringResource(R.string.webdav_enabled_status)
                 else stringResource(R.string.webdav_not_configured),
             fontSize = AppType.BodySmall,
-            color = AppColors.TextSecondary
+            color = AppColors.TextSecondary,
+            modifier = Modifier.align(Alignment.CenterHorizontally)
         )
         Text(
             text = lastSyncText,
             fontSize = AppType.Caption,
-            color = AppColors.TextSecondary
+            color = AppColors.TextSecondary,
+            modifier = Modifier.align(Alignment.CenterHorizontally)
         )
     }
 }

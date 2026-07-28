@@ -46,6 +46,7 @@ import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
 import com.huangder.lumibooks.ui.components.PolicyUpdateDialog
 import com.huangder.lumibooks.ui.components.RemoteNoticeDialog
 import com.huangder.lumibooks.ui.settings.WebViewActivity
+import com.huangder.lumibooks.ui.welcome.WelcomeActivity
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.util.FileUtils
 import com.huangder.lumibooks.util.LaunchThemeController
@@ -236,6 +237,25 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+
+        val debugPreviewLanguage = intent.getBooleanExtra(
+            WelcomeActivity.EXTRA_DEBUG_PREVIEW_LANGUAGE_SETUP,
+            false
+        )
+        val debugPreviewPolicy = intent.getBooleanExtra(
+            WelcomeActivity.EXTRA_DEBUG_PREVIEW_POLICY_DOCUMENT,
+            false
+        )
+        if (BuildConfig.DEBUG && (debugPreviewLanguage || debugPreviewPolicy)) {
+            startActivity(
+                Intent(this, WelcomeActivity::class.java)
+                    .putExtra(WelcomeActivity.EXTRA_DEBUG_PREVIEW_LANGUAGE_SETUP, debugPreviewLanguage)
+                    .putExtra(WelcomeActivity.EXTRA_DEBUG_PREVIEW_POLICY_DOCUMENT, debugPreviewPolicy)
+            )
+            finish()
+            return
+        }
+
         systemDarkMode = resources.configuration.isNightModeEnabled()
 
         // 处理外部文件打开（冷启动）

@@ -1,16 +1,20 @@
 package com.huangder.lumibooks.data.sync
 
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Credentials
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import okio.BufferedSink
 import org.w3c.dom.Element
 import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.net.URL
+import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -177,11 +181,63 @@ class WebdavClient @Inject constructor() {
 
         val response = client.newCall(request).execute()
         if (!response.isSuccessful) {
-            val code = response.code
-            response.close()
-            throw WebdavException("Upload failed — HTTP $code")
+            throw uploadException("PUT", request.url.toString(), response)
         }
         response.close()
+    }
+
+    @Throws(WebdavException::class)
+    suspend fun uploadStream(
+        url: String,
+        contentLength: Long,
+        inputStreamProvider: () -> InputStream,
+        username: String,
+        password: String,
+        contentType: String = "application/octet-stream"
+    ): WebdavUploadResult = withContext(Dispatchers.IO) {
+        val requestBody = object : RequestBody() {
+            private val digest = MessageDigest.getInstance("SHA-256")
+            private var finalizedSha256: String? = null
+            private var writtenBytes: Long = 0L
+
+            override fun contentType() = contentType.toMediaType()
+
+            override fun contentLength(): Long = if (contentLength >= 0L) contentLength else -1L
+
+            override fun writeTo(sink: BufferedSink) {
+                digest.reset()
+                writtenBytes = 0L
+                inputStreamProvider().use { input ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read == -1) break
+                        digest.update(buffer, 0, read)
+                        sink.write(buffer, 0, read)
+                        writtenBytes += read.toLong()
+                    }
+                }
+                finalizedSha256 = digest.digest().joinToString("") { "%02x".format(it) }
+            }
+
+            fun result(): WebdavUploadResult = WebdavUploadResult(
+                sha256 = finalizedSha256.orEmpty(),
+                bytesWritten = writtenBytes
+            )
+        }
+
+        val request = Request.Builder()
+            .url(url)
+            .header("Authorization", authHeader(username, password))
+            .put(requestBody)
+            .build()
+
+        val response = client.newCall(request).execute()
+        if (!response.isSuccessful) {
+            throw uploadException("PUT_STREAM", request.url.toString(), response)
+        }
+        response.close()
+        requestBody.result()
     }
 
     // ── MKCOL (create directory) ────────────────────────────────────
@@ -244,15 +300,33 @@ class WebdavClient @Inject constructor() {
         var current = serverUrl
         for (seg in segments) {
             current = joinUrl(current, seg)
-            try {
-                createDirectory(current, username, password)
-            } catch (_: WebdavException) {
-                // 405 or already exists — continue
-            }
+            createDirectory(current, username, password)
         }
     }
 
     // ── XML parsing ─────────────────────────────────────────────────
+
+    private fun uploadException(operation: String, url: String, response: okhttp3.Response): WebdavException {
+        val code = response.code
+        val rawBody = runCatching { response.body?.string().orEmpty() }.getOrDefault("")
+        val detail = rawBody
+            .replace(Regex("<[^>]*>"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+            .take(300)
+        val server = response.header("Server").orEmpty()
+        val requestId = response.header("X-Request-Id")
+            ?: response.header("X-Nutstore-Request-Id")
+            ?: response.header("X-Cloud-Trace-Context")
+        response.close()
+
+        Log.e(
+            TAG,
+            "$operation failed: HTTP $code, url=$url, server=$server, requestId=${requestId.orEmpty()}, body=$detail"
+        )
+        val suffix = if (detail.isBlank()) "" else " - $detail"
+        return WebdavException("HTTP $code$suffix", statusCode = code)
+    }
 
     private fun parsePropfindResponse(xml: String, baseUrl: String): List<WebdavResource> {
         val resources = mutableListOf<WebdavResource>()
@@ -329,6 +403,7 @@ class WebdavClient @Inject constructor() {
     // ── Constants ───────────────────────────────────────────────────
 
     private companion object {
+        const val TAG = "WebDAV"
         val XML_MEDIA_TYPE = "application/xml; charset=utf-8".toMediaType()
 
         const val PROPFIND_BODY_DEPTH_1 = """
@@ -344,6 +419,11 @@ class WebdavClient @Inject constructor() {
     }
 }
 
+data class WebdavUploadResult(
+    val sha256: String,
+    val bytesWritten: Long
+)
+
 data class WebdavResource(
     val href: String,
     val isCollection: Boolean,
@@ -351,4 +431,4 @@ data class WebdavResource(
     val lastModified: Long
 )
 
-class WebdavException(message: String) : Exception(message)
+class WebdavException(message: String, val statusCode: Int? = null) : Exception(message)

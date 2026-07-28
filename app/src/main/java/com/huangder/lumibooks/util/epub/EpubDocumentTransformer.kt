@@ -281,8 +281,8 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     writingMode: 'horizontal-tb', reverseAxis: false, pageStep: 1, pageOffsets: [0],
     viewportWidth: 0, viewportHeight: 0, paginating: false, configured: false, mediaSettled: false,
     pendingProgression: undefined, publisherBox: null, publisherBackground: null, scrollGuard: false, initialFragmentApplied: false,
-    transition: 'slide', animationTimer: 0, suppressClickUntil: 0, preservePublisherBackground: true,
-    bionicReading: false, pendingPreparedPage: null, prepareSerial: 0,
+    transition: 'slide', nativePaging: false, animationTimer: 0, suppressClickUntil: 0, preservePublisherBackground: true,
+    bionicReading: false, chineseMode: 'original', chineseMap: null, pendingPreparedPage: null, prepareSerial: 0,
     insets: { top: 0, right: 0, bottom: 0, left: 0 }
   };
   var resizeTimer = 0;
@@ -1283,6 +1283,46 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     });
   }
 
+  function convertChineseText(value, mapping) {
+    if (!mapping || !value) return value || '';
+    return Array.from(value).map(function (character) {
+      return mapping[character] || character;
+    }).join('');
+  }
+
+  function applyChineseConversion(config) {
+    var mode = config.chineseMode === 'simplified' || config.chineseMode === 'traditional' ?
+      config.chineseMode : 'original';
+    var source = Array.from(String(config.chineseSource || ''));
+    var target = Array.from(String(config.chineseTarget || ''));
+    var mapping = Object.create(null);
+    if (mode !== 'original') {
+      for (var index = 0; index < Math.min(source.length, target.length); index++) {
+        mapping[source[index]] = target[index];
+      }
+    }
+    state.chineseMode = mode;
+    state.chineseMap = mode === 'original' ? null : mapping;
+
+    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+    var textNodes = [];
+    var current = null;
+    while ((current = walker.nextNode())) {
+      var parent = current.parentElement;
+      if (!parent || !current.nodeValue) continue;
+      if (parent.closest('script,style,noscript,textarea,pre,code,svg,math,' +
+          '#lumi-page-stage,#lumi-footnote-popover')) continue;
+      textNodes.push(current);
+    }
+    textNodes.forEach(function (textNode) {
+      if (typeof textNode.__lumiOriginalText !== 'string') {
+        textNode.__lumiOriginalText = textNode.nodeValue || '';
+      }
+      textNode.nodeValue = mode === 'original' ? textNode.__lumiOriginalText :
+        convertChineseText(textNode.__lumiOriginalText, mapping);
+    });
+  }
+
   function applyReaderOverrides(config) {
     var existing = document.getElementById('lumi-reader-overrides');
     var family = config.fontFamily ? String(config.fontFamily) : '';
@@ -1315,6 +1355,7 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     state.flow = config.flow === 'scrolled' ? 'scrolled' : 'paginated';
     state.transition = config.transition === 'fade' ? 'fade' :
       (config.transition === 'none' ? 'none' : (config.transition === 'curl' ? 'curl' : 'slide'));
+    state.nativePaging = config.nativePaging === true;
     var insets = config.insets || {};
     state.insets = {
       top: Math.max(0, Number(insets.top) || 0), right: Math.max(0, Number(insets.right) || 0),
@@ -1326,6 +1367,7 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     state.configured = true;
     capturePublisherBackground(document.body);
     applyReaderOverrides(config);
+    applyChineseConversion(config);
     applyBionicReading(config.bionicReading === true);
     document.documentElement.classList.toggle('lumi-ignore-publisher-background', !state.preservePublisherBackground);
     document.documentElement.classList.remove('lumi-night', 'lumi-sepia', 'lumi-green');
@@ -1388,7 +1430,7 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
   }
 
   function findText(exact, progression) {
-    exact = exact ? String(exact) : '';
+    exact = exact ? convertChineseText(String(exact), state.chineseMap) : '';
     if (!exact) return false;
     var index = textIndex();
     var haystack = index.text.toLocaleLowerCase();
@@ -1752,7 +1794,7 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     }
 
     var horizontal = state.flow === 'paginated' && !state.fixed && Math.abs(dx) >= Math.abs(dy) * 1.15;
-    var shouldTurn = horizontal && (Math.abs(dx) >= Math.min(72, state.viewportWidth * 0.16) ||
+    var shouldTurn = !state.nativePaging && horizontal && (Math.abs(dx) >= Math.min(72, state.viewportWidth * 0.16) ||
       (Math.abs(dx) >= 18 && Math.abs(velocityX) >= 0.42));
     var imageTap = !touchPaging && !shouldTurn && !!tappedImage && Math.abs(dx) < 12 && Math.abs(dy) < 12;
     var isTap = !touchPaging && !shouldTurn && !anchor && !interactiveTarget && !tappedImage && Math.abs(dx) < 12 && Math.abs(dy) < 12;

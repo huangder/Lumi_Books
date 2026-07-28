@@ -8,6 +8,7 @@ import android.util.Log
 import java.io.Closeable
 import java.io.File
 import java.io.FileInputStream
+import java.io.InputStream
 
 /**
  * Opens both app-managed file paths and Storage Access Framework document URIs.
@@ -78,6 +79,24 @@ object BookFileAccess {
             if (cursor.moveToFirst() && !cursor.isNull(0)) return cursor.getLong(0)
         }
         return runCatching { openDescriptor(context, location).use { it.statSize.coerceAtLeast(0L) } }.getOrDefault(0L)
+    }
+
+    fun readBytes(context: Context, location: String): ByteArray {
+        openInputStream(context, location).use { input ->
+            return input.readBytes()
+        }
+    }
+
+    fun openInputStream(context: Context, location: String): InputStream {
+        if (!isContentUri(location)) return File(location).inputStream().buffered()
+        return context.contentResolver.openInputStream(Uri.parse(location))
+            ?.buffered()
+            ?: error("Unable to open book document")
+    }
+
+    fun displayName(context: Context, location: String): String? {
+        if (!isContentUri(location)) return File(location).name
+        return queryDisplayName(context, Uri.parse(location))
     }
 
     private fun queryDisplayName(context: Context, uri: Uri): String? {

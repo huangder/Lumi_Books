@@ -12,7 +12,7 @@
 
 # Lumi — 为阅读而生
 
-> 简洁优雅的 Android 本地电子书阅读器，支持 EPUB、PDF、TXT 格式。隐私优先，完全离线。
+> 简洁优雅的 Android 本地电子书阅读器，支持 EPUB、PDF、TXT 格式。隐私优先，本地优先。
 
 [![Version](https://img.shields.io/badge/version-1.6.00-coral)](https://github.com/huangder/Lumi_Books/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)

@@ -64,7 +64,8 @@ data class HomeUiState(
     /** 连胜天数 */
     val streakDays: Int = 0,
     /** WebDAV 同步已完成的书籍 ID 集合，用于在书架标题旁显示云图标 */
-    val syncedBookIds: Set<String> = emptySet()
+    val syncedBookIds: Set<String> = emptySet(),
+    val isWebdavSyncing: Boolean = false
 )
 
 enum class SortBy {
@@ -234,12 +235,18 @@ class HomeViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(syncedBookIds = ids)
             }
         }
+        viewModelScope.launch {
+            webdavSyncManager.isSyncing.collectLatest { syncing ->
+                _uiState.value = _uiState.value.copy(isWebdavSyncing = syncing)
+            }
+        }
     }
 
     fun syncWebdavNow() {
         Toast.makeText(application, R.string.webdav_syncing, Toast.LENGTH_SHORT).show()
         viewModelScope.launch {
-            webdavSyncManager.fullSync()
+            val result = webdavSyncManager.fullSync()
+            Toast.makeText(application, result.message, Toast.LENGTH_LONG).show()
         }
     }
 

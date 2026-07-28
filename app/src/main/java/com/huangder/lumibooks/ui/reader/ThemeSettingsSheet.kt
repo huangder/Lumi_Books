@@ -226,7 +226,7 @@ fun ThemeSettingsSheet(
         Box(
             Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .fillMaxHeight(if (isLiquidGlass) 0.54f else 0.5f)
+                .fillMaxHeight(if (isLiquidGlass) 0.58f else 0.54f)
                 .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress)
         ) {
             Box(
@@ -268,6 +268,7 @@ fun ThemeSettingsSheet(
                 LiquidGlassTextButton(
                     text = stringResource(R.string.advanced_settings),
                     onClick = onOpenAdvanced,
+                    tintedColor = if (isLiquidGlass) null else AppColors.BgGray,
                     contentColor = AppColors.TextPrimary
                 )
                 Spacer(Modifier.width(8.dp))
@@ -417,6 +418,47 @@ fun ThemeSettingsSheet(
                 }
             }
 
+            Spacer(Modifier.height(16.dp))
+
+            if (isEpub) {
+                Text(
+                    text = stringResource(R.string.epub_render_mode),
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = AppColors.TextPrimary
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ModeButton(
+                        label = stringResource(R.string.epub_book_layout),
+                        isSelected = currentEpubRenderMode == EpubRenderMode.BOOK_LAYOUT,
+                        onClick = { onEpubRenderModeChange(EpubRenderMode.BOOK_LAYOUT) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    ModeButton(
+                        label = stringResource(R.string.epub_reader_layout),
+                        isSelected = currentEpubRenderMode == EpubRenderMode.READER_LAYOUT,
+                        onClick = { onEpubRenderModeChange(EpubRenderMode.READER_LAYOUT) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = stringResource(
+                        if (currentEpubRenderMode == EpubRenderMode.BOOK_LAYOUT) R.string.epub_book_layout_hint
+                        else R.string.epub_reader_layout_hint
+                    ),
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                    fontSize = 12.sp,
+                    color = LightTextSecondary
+                )
+                Spacer(Modifier.height(16.dp))
+            }
+
             // 阅读背景区域
             Text(
                 stringResource(R.string.reading_background),
@@ -559,43 +601,7 @@ fun ThemeSettingsSheet(
 
             Spacer(Modifier.height(16.dp))
 
-            if (isEpub) {
-                Text(
-                    text = stringResource(R.string.epub_render_mode),
-                    modifier = Modifier.padding(horizontal = 24.dp),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = AppColors.TextPrimary
-                )
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    ModeButton(
-                        label = stringResource(R.string.epub_book_layout),
-                        isSelected = currentEpubRenderMode == EpubRenderMode.BOOK_LAYOUT,
-                        onClick = { onEpubRenderModeChange(EpubRenderMode.BOOK_LAYOUT) },
-                        modifier = Modifier.weight(1f)
-                    )
-                    ModeButton(
-                        label = stringResource(R.string.epub_reader_layout),
-                        isSelected = currentEpubRenderMode == EpubRenderMode.READER_LAYOUT,
-                        onClick = { onEpubRenderModeChange(EpubRenderMode.READER_LAYOUT) },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = stringResource(
-                        if (currentEpubRenderMode == EpubRenderMode.BOOK_LAYOUT) R.string.epub_book_layout_hint
-                        else R.string.epub_reader_layout_hint
-                    ),
-                    modifier = Modifier.padding(horizontal = 24.dp),
-                    fontSize = 12.sp,
-                    color = LightTextSecondary
-                )
-            } else {
+            if (!isEpub) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -1138,6 +1144,9 @@ fun AdvancedSettingsSheet(
             modifier = Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .fillMaxHeight(0.90f)
+                .pointerInput(Unit) {
+                    detectTapGestures(onTap = {})
+                }
                 .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress),
             contentModifier = Modifier
                 .fillMaxSize()

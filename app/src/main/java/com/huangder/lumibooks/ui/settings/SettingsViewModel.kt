@@ -82,6 +82,11 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            webdavSyncManager.isSyncing.collectLatest { syncing ->
+                _uiState.value = _uiState.value.copy(isWebdavSyncing = syncing)
+            }
+        }
+        viewModelScope.launch {
             dataStoreManager.nickname.collectLatest { name ->
                 _uiState.value = _uiState.value.copy(nickname = name)
             }

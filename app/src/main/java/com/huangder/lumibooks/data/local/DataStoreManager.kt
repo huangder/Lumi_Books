@@ -104,6 +104,7 @@ class DataStoreManager @Inject constructor(
         private val BOOKSHELF_LAYOUT_MODE = intPreferencesKey("bookshelf_layout_mode")
         private val HAS_SEEN_WELCOME = booleanPreferencesKey("has_seen_welcome")
         private val COMPLETED_WELCOME_INSTALL_TIME = longPreferencesKey("completed_welcome_install_time")
+        private val HAS_COMPLETED_WELCOME_LANGUAGE_SETUP = booleanPreferencesKey("has_completed_welcome_language_setup")
 
         // MinerU 第三方云解析设置
         private val MINERU_MODE = stringPreferencesKey("mineru_mode")
@@ -328,6 +329,15 @@ class DataStoreManager @Inject constructor(
 
     val completedWelcomeInstallTime: Flow<Long> = context.dataStore.data.map { preferences ->
         preferences[COMPLETED_WELCOME_INSTALL_TIME] ?: 0L
+    }
+
+    /**
+     * The language and e-ink setup was introduced after the original welcome flow.
+     * Keep its completion state independent from the per-version welcome marker so
+     * existing users see it once after updating, while future updates skip it.
+     */
+    val hasCompletedWelcomeLanguageSetup: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[HAS_COMPLETED_WELCOME_LANGUAGE_SETUP] ?: false
     }
 
     val mineruMode: Flow<String> = context.dataStore.data.map { preferences ->
@@ -879,6 +889,12 @@ class DataStoreManager @Inject constructor(
     suspend fun saveHasSeenWelcome(seen: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[HAS_SEEN_WELCOME] = seen
+        }
+    }
+
+    suspend fun saveWelcomeLanguageSetupCompleted(completed: Boolean = true) {
+        context.dataStore.edit { preferences ->
+            preferences[HAS_COMPLETED_WELCOME_LANGUAGE_SETUP] = completed
         }
     }
 

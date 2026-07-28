@@ -9,6 +9,7 @@ import android.view.ContextMenu
 import android.view.Menu
 import android.view.MenuItem
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceError
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -35,6 +36,7 @@ import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import com.huangder.lumibooks.util.ChineseConverter
 import com.huangder.lumibooks.util.epub.EpubPageProgressionDirection
 import com.huangder.lumibooks.util.epub.EpubRenderSession
 import com.huangder.lumibooks.util.epub.EpubRenditionLayout
@@ -197,6 +199,7 @@ internal fun EpubWebViewReader(
     theme: String,
     preservePublisherBackground: Boolean = true,
     bionicReadingEnabled: Boolean = false,
+    chineseMode: String = "original",
     restoreLocatorJson: String?,
     restoreProgression: Float,
     initialFragment: String? = null,
@@ -242,6 +245,7 @@ internal fun EpubWebViewReader(
     val latestTheme = rememberUpdatedState(theme)
     val latestPreservePublisherBackground = rememberUpdatedState(preservePublisherBackground)
     val latestBionicReadingEnabled = rememberUpdatedState(bionicReadingEnabled)
+    val latestChineseMode = rememberUpdatedState(chineseMode)
     val latestRestoreLocator = rememberUpdatedState(restoreLocatorJson)
     val latestRestoreProgression = rememberUpdatedState(restoreProgression)
     val latestInitialFragment = rememberUpdatedState(initialFragment)
@@ -327,10 +331,12 @@ internal fun EpubWebViewReader(
                         theme = latestTheme.value,
                         preservePublisherBackground = latestPreservePublisherBackground.value,
                         bionicReadingEnabled = latestBionicReadingEnabled.value,
+                        chineseMode = latestChineseMode.value,
                         restoreLocatorJson = null,
                         restoreProgression = if (target.pageIndex == Int.MAX_VALUE) 1f else 0f,
                         initialFragment = null,
                         continuousScroll = false,
+                        nativePagingEnabled = false,
                         pageTransition = "none",
                         marginTopDp = latestMarginTopDp.value,
                         marginRightDp = latestMarginRightDp.value,
@@ -426,6 +432,36 @@ internal fun EpubWebViewReader(
                             sourceView: WebView?,
                             request: WebResourceRequest
                         ): Boolean = true
+
+                        override fun onReceivedError(
+                            sourceView: WebView,
+                            failedRequest: WebResourceRequest,
+                            error: WebResourceError
+                        ) {
+                            super.onReceivedError(sourceView, failedRequest, error)
+                            if (!failedRequest.isForMainFrame) return
+                            val request = requestProvider() ?: return
+                            pageTurnHost.markPreloadFailed(
+                                slot = slot,
+                                requested = request.target,
+                                generation = request.generation
+                            )
+                        }
+
+                        override fun onReceivedHttpError(
+                            sourceView: WebView,
+                            failedRequest: WebResourceRequest,
+                            errorResponse: WebResourceResponse
+                        ) {
+                            super.onReceivedHttpError(sourceView, failedRequest, errorResponse)
+                            if (!failedRequest.isForMainFrame) return
+                            val request = requestProvider() ?: return
+                            pageTurnHost.markPreloadFailed(
+                                slot = slot,
+                                requested = request.target,
+                                generation = request.generation
+                            )
+                        }
 
                         override fun onPageFinished(sourceView: WebView, url: String?) {
                             val request = requestProvider() ?: return
@@ -613,6 +649,7 @@ internal fun EpubWebViewReader(
                                                             pageIndex,
                                                             pageCount
                                                         )
+                                                        latestPageChanged.value(pageIndex, pageCount, locator)
                                                     }
                                                 }
                                                 if (pageTurnHost.isAwaitingPage(messageChapterIndex, pageIndex)) {
@@ -624,7 +661,6 @@ internal fun EpubWebViewReader(
                                             }
                                         }
                                     )
-                                    latestPageChanged.value(pageIndex, pageCount, locator)
                                     if (type == "ready") {
                                         chapterLoadPending.value = false
                                         view.animate().cancel()
@@ -751,10 +787,17 @@ internal fun EpubWebViewReader(
                             theme = latestTheme.value,
                             preservePublisherBackground = latestPreservePublisherBackground.value,
                             bionicReadingEnabled = latestBionicReadingEnabled.value,
+                            chineseMode = latestChineseMode.value,
                             restoreLocatorJson = latestRestoreLocator.value,
                             restoreProgression = latestRestoreProgression.value,
                             initialFragment = latestInitialFragment.value,
                             continuousScroll = latestContinuousScroll.value,
+                            nativePagingEnabled = usesNativeEpubPageTurn(
+                                session,
+                                latestChapterIndex.value,
+                                latestContinuousScroll.value,
+                                latestPageTransition.value
+                            ),
                             pageTransition = if (usesNativeEpubPageTurn(
                                 session,
                                 latestChapterIndex.value,
@@ -779,6 +822,7 @@ internal fun EpubWebViewReader(
                             latestTheme.value,
                             latestPreservePublisherBackground.value,
                             latestBionicReadingEnabled.value,
+                            latestChineseMode.value,
                             latestContinuousScroll.value,
                             latestPageTransition.value,
                             latestMarginTopDp.value,
@@ -823,7 +867,7 @@ internal fun EpubWebViewReader(
             }
             val nextConfigKey = configKey(
                 chapterIndex, fontSizeSp, fontType, fontFilePath, textColorOverride, theme,
-                preservePublisherBackground, bionicReadingEnabled, continuousScroll,
+                preservePublisherBackground, bionicReadingEnabled, chineseMode, continuousScroll,
                 pageTransition, marginTopDp, marginRightDp, marginBottomDp, marginLeftDp, initialFragment,
                 searchRequest, locatorRequest, pageRequest
             )
@@ -879,10 +923,12 @@ internal fun EpubWebViewReader(
                     theme = theme,
                     preservePublisherBackground = preservePublisherBackground,
                     bionicReadingEnabled = bionicReadingEnabled,
+                    chineseMode = chineseMode,
                     restoreLocatorJson = restoreLocatorJson,
                     restoreProgression = restoreProgression,
                     initialFragment = initialFragment,
                     continuousScroll = continuousScroll,
+                    nativePagingEnabled = nativePageTurn,
                     pageTransition = if (usesNativeEpubPageTurn(
                         session,
                         chapterIndex,
@@ -977,6 +1023,7 @@ private fun configKey(
     theme: String,
     preservePublisherBackground: Boolean,
     bionicReadingEnabled: Boolean,
+    chineseMode: String,
     continuousScroll: Boolean,
     pageTransition: String,
     marginTopDp: Float,
@@ -996,6 +1043,7 @@ private fun configKey(
     theme,
     preservePublisherBackground,
     bionicReadingEnabled,
+    chineseMode,
     continuousScroll,
     pageTransition,
     marginTopDp,
@@ -1018,10 +1066,12 @@ private fun configureReader(
     theme: String,
     preservePublisherBackground: Boolean,
     bionicReadingEnabled: Boolean,
+    chineseMode: String,
     restoreLocatorJson: String?,
     restoreProgression: Float,
     initialFragment: String?,
     continuousScroll: Boolean,
+    nativePagingEnabled: Boolean,
     pageTransition: String,
     marginTopDp: Float,
     marginRightDp: Float,
@@ -1048,16 +1098,21 @@ private fun configureReader(
         readerFontUrl != null -> "Lumi Reader Override"
         else -> null
     }
+    val chineseMapping = ChineseConverter.mappingStrings(chineseMode)
     val config = JSONObject()
         .put("theme", theme)
         .put("preservePublisherBackground", preservePublisherBackground)
         .put("bionicReading", bionicReadingEnabled)
+        .put("chineseMode", chineseMode)
+        .put("chineseSource", chineseMapping?.first.orEmpty())
+        .put("chineseTarget", chineseMapping?.second.orEmpty())
         .putOpt("fontFamily", fontFamily)
         .putOpt("fontUrl", readerFontUrl)
         .putOpt("textColor", textColorOverride?.let { String.format("#%06X", it and 0xFFFFFF) })
         .put("progression", progression)
         .put("progressionValue", restoreProgression.coerceIn(0f, 1f))
         .put("flow", if (continuousScroll) "scrolled" else "paginated")
+        .put("nativePaging", nativePagingEnabled)
         .put("transition", pageTransition)
         .put(
             "insets",

@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.os.BatteryManager
 import android.os.Build
@@ -214,6 +215,14 @@ import coil.load
 private data class ReaderLinkLocation(
     val chapterIndex: Int,
     val pageIndex: Int
+)
+
+private data class ReaderMenuSnapshot(
+    val chapterIndex: Int,
+    val chapterTitle: String,
+    val pageIndex: Int,
+    val pageCount: Int,
+    val bookProgressPercent: Float
 )
 
 private data class ContinuousSearchHighlight(
@@ -449,9 +458,11 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     val bookmarks by viewModel.bookmarks.collectAsState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val isPhone = configuration.smallestScreenWidthDp < 600
     val density = LocalDensity.current
     val readerScreenWidthPx = with(density) {
-        LocalConfiguration.current.screenWidthDp.dp.toPx().toInt()
+        configuration.screenWidthDp.dp.toPx().toInt()
     }
 
     // ReadView 引用
@@ -647,6 +658,21 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
 
     // MainActivity 引用（用于注册 ActionMode 拦截回调）
     val activity = context as? MainActivity
+
+    // 手机阅读页始终保持竖屏；离开阅读页后恢复进入前的方向策略。
+    DisposableEffect(activity, isPhone) {
+        if (activity == null || !isPhone) {
+            return@DisposableEffect onDispose { }
+        }
+
+        val previousOrientation = activity.requestedOrientation
+        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        onDispose {
+            if (activity.requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) {
+                activity.requestedOrientation = previousOrientation
+            }
+        }
+    }
 
     // TOC 跳转标记（区分用户点击 TOC 和正常翻页带来的章节变化）
 
@@ -1129,6 +1155,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     theme = effectiveReaderTheme,
                     preservePublisherBackground = effectivePreserveEpubBackground,
                     bionicReadingEnabled = effectiveBionicReadingEnabled,
+                    chineseMode = uiState.chineseMode,
                     restoreLocatorJson = uiState.epubLocatorJson,
                     restoreProgression = uiState.pendingPageFraction,
                     initialFragment = epubPendingFragment,
@@ -1586,7 +1613,45 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         ProvideLiquidGlassBackdrop(
             backdrop = activeReaderGlassBackdrop
         ) {
-        if (!uiState.isLoading || isAnySheetOpen) {
+        if (!uiState.isLoading || isAnySheetOpen || uiState.isEpubChapterHandoffInProgress) {
+            val liveChapterTitle = uiState.chapterTitles
+                .getOrNull(uiState.currentChapterIndex)
+                ?.trim()
+                .orEmpty()
+                .ifBlank {
+                    stringResource(
+                        R.string.reader_chapter_fallback,
+                        uiState.currentChapterIndex + 1
+                    )
+                }
+            val liveMenuSnapshot = ReaderMenuSnapshot(
+                chapterIndex = uiState.currentChapterIndex,
+                chapterTitle = liveChapterTitle,
+                pageIndex = uiState.currentPageIndex,
+                pageCount = uiState.totalPages,
+                bookProgressPercent = calculateBookProgressPercent(
+                    chapterIndex = uiState.currentChapterIndex,
+                    chapterCount = uiState.chapterCount,
+                    pageIndex = uiState.currentPageIndex,
+                    chapterPageCount = uiState.totalPages
+                )
+            )
+            var lastReadyMenuSnapshot by remember(bookId) {
+                mutableStateOf<ReaderMenuSnapshot?>(null)
+            }
+            SideEffect {
+                if (uiState.pageReady && !uiState.isEpubChapterHandoffInProgress) {
+                    lastReadyMenuSnapshot = liveMenuSnapshot
+                }
+            }
+            val displayedMenuSnapshot = if (
+                isBookLayoutEpub && uiState.isEpubChapterHandoffInProgress
+            ) {
+                lastReadyMenuSnapshot ?: liveMenuSnapshot
+            } else {
+                liveMenuSnapshot
+            }
+
             AnimatedVisibility(
                 visible = linkReturnLocation != null && !uiState.isMenuVisible && !isAnySheetOpen,
                 enter = if (eInkMode) EnterTransition.None else fadeIn(animationSpec = tween(200)),
@@ -1617,9 +1682,10 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     readViewRef.value?.getCurrentPageStartCharacterOffset()
                 }
                 val isCurrentPageBookmarked = bookmarks.any {
-                    it.chapterIndex == uiState.currentChapterIndex &&
+                    it.chapterIndex == displayedMenuSnapshot.chapterIndex &&
                     (it.characterOffset == currentBookmarkOffset ||
-                        (it.characterOffset == null && it.position.toInt() == uiState.currentPageIndex))
+                        (it.characterOffset == null &&
+                            it.position.toInt() == displayedMenuSnapshot.pageIndex))
                 }
                 val isTxtBook = uiState.book?.format?.name == "TXT"
                 ReaderTopBar(
@@ -1644,9 +1710,10 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     onBookmarkToggle = {
                         if (isCurrentPageBookmarked) {
                             bookmarks.firstOrNull {
-                                it.chapterIndex == uiState.currentChapterIndex &&
+                                it.chapterIndex == displayedMenuSnapshot.chapterIndex &&
                                 (it.characterOffset == currentBookmarkOffset ||
-                                    (it.characterOffset == null && it.position.toInt() == uiState.currentPageIndex))
+                                    (it.characterOffset == null &&
+                                        it.position.toInt() == displayedMenuSnapshot.pageIndex))
                             }?.let { viewModel.deleteBookmark(it) }
                         } else {
                             viewModel.addBookmark(
@@ -1669,23 +1736,11 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 )
             }
 
-            if (uiState.totalPages > 0 || uiState.useNewEngine) {
-                val chapterTitle = uiState.chapterTitles
-                    .getOrNull(uiState.currentChapterIndex)
-                    ?.trim()
-                    .orEmpty()
-                    .ifBlank {
-                        stringResource(
-                            R.string.reader_chapter_fallback,
-                            uiState.currentChapterIndex + 1
-                        )
-                    }
-                val bookProgressPercent = calculateBookProgressPercent(
-                    chapterIndex = uiState.currentChapterIndex,
-                    chapterCount = uiState.chapterCount,
-                    pageIndex = uiState.currentPageIndex,
-                    chapterPageCount = uiState.totalPages
-                )
+            if (uiState.totalPages > 0 || uiState.useNewEngine ||
+                uiState.isEpubChapterHandoffInProgress
+            ) {
+                val chapterTitle = displayedMenuSnapshot.chapterTitle
+                val bookProgressPercent = displayedMenuSnapshot.bookProgressPercent
 
                 // 底部渐变遮罩
                 val menuAlpha = remember { Animatable(0f) }
@@ -1741,8 +1796,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         visible = uiState.isMenuVisible,
                         chapterTitle = chapterTitle,
                         bookProgressPercent = bookProgressPercent,
-                        currentPage = uiState.currentPageIndex + 1,
-                        chapterPageCount = uiState.totalPages,
+                        currentPage = displayedMenuSnapshot.pageIndex + 1,
+                        chapterPageCount = displayedMenuSnapshot.pageCount,
                         capsuleBgColor = capsuleBgColor,
                         capsuleContentColor = if (isLiquidGlass && !isBookLayoutEpub) menuContentColor else capsuleContentColor,
                         readerContentColor = menuContentColor,
@@ -1803,8 +1858,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     ReaderPageCornerOverlay(
                         chapterTitle = chapterTitle,
                         bookProgressPercent = bookProgressPercent,
-                        currentPage = uiState.currentPageIndex + 1,
-                        chapterPageCount = uiState.totalPages,
+                        currentPage = displayedMenuSnapshot.pageIndex + 1,
+                        chapterPageCount = displayedMenuSnapshot.pageCount,
                         leftMarginDp = uiState.marginLeftDp,
                         rightMarginDp = uiState.marginRightDp,
                         topLeft = if (linkReturnLocation == null) {
@@ -4482,7 +4537,7 @@ private fun NoteInputSheet(
                         size = 44.dp,
                         iconSize = 20.dp,
                         contentColor = AppColors.OnAccent,
-                        normalContainerColor = AppColors.Accent.copy(alpha = 0.15f),
+                        normalContainerColor = AppColors.Accent,
                         liquidContainerColor = AppColors.Accent,
                         liquidScrimColor = AppColors.Accent.copy(alpha = 0.72f)
                     )

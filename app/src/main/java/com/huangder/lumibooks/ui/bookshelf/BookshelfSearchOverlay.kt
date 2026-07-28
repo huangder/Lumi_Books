@@ -177,6 +177,7 @@ internal fun BookshelfSearchOverlay(
     tagNamesByBook: Map<String, List<String>>,
     expandedBookId: String?,
     deletingBookIds: Set<String>,
+    syncedBookIds: Set<String>,
     onQueryChange: (String) -> Unit,
     onDismiss: () -> Unit,
     onExpandedBookChange: (String?) -> Unit,
@@ -359,6 +360,7 @@ internal fun BookshelfSearchOverlay(
                                     tagNames = tagNamesByBook[book.id].orEmpty(),
                                     expanded = expandedBookId == book.id,
                                     isDeleting = book.id in deletingBookIds,
+                                    isSynced = book.id in syncedBookIds,
                                     onExpandedChange = {
                                         onExpandedBookChange(if (expandedBookId == book.id) null else book.id)
                                     },

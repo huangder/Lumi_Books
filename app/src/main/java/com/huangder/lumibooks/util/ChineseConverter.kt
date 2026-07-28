@@ -2568,6 +2568,21 @@ object ChineseConverter {
      *             - "traditional": 转换为繁体
      * @return 转换后的文本
      */
+    fun mappingStrings(mode: String): Pair<String, String>? {
+        val mapping = when (mode) {
+            "simplified" -> traditionalToSimplified
+            "traditional" -> simplifiedToTraditional
+            else -> return null
+        }
+        val source = StringBuilder(mapping.size)
+        val target = StringBuilder(mapping.size)
+        mapping.forEach { (from, to) ->
+            source.append(from)
+            target.append(to)
+        }
+        return source.toString() to target.toString()
+    }
+
     fun convert(text: String, mode: String): String {
         return when (mode) {
             "simplified" -> toSimplified(text)

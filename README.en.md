@@ -12,7 +12,7 @@
 
 # Lumi — Born for Reading
 
-> A clean, elegant Android local ebook reader. Supports EPUB, PDF, TXT. Privacy-first, offline-first.
+> A clean, elegant Android local ebook reader. Supports EPUB, PDF, TXT. Privacy-first, local-first.
 
 [![Version](https://img.shields.io/badge/version-1.6.00-coral)](https://github.com/huangder/Lumi_Books/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)

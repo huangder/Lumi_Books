@@ -382,7 +382,7 @@
     <!-- 欢迎页 -->
     <string name="welcome_title">欢迎使用</string>
     <string name="welcome_update_title">你已更新到新版本</string>
-    <string name="welcome_desc">Lumi 是一款纯粹的本地图书阅读器。我们绝不会在未经许可的情况下收集任何个人信息，且承诺永久不设网络账号服务。所有的阅读数据均储存在您的本地设备中，请务必定期做好数据备份以防丢失。Lumi 坚持最小权限原则，不会向您索取任何无关的敏感权限。点击\"继续\"按钮，即表示您已阅读并同意</string>
+    <string name="welcome_desc">Lumi 是一款开源、本地优先的图书阅读器。阅读数据默认保存在您的设备中；WebDAV 同步、MinerU 云端解析、第三方 TTS 等网络功能均需您主动配置或启用，可能会向对应服务发送书籍、阅读数据或朗读文本。Lumi 不使用分析或广告追踪 SDK。点击"继续"按钮，即表示您已阅读并同意</string>
     <string name="welcome_privacy">《隐私政策》</string>
     <string name="welcome_and">和</string>
     <string name="welcome_terms">《用户协议》</string>

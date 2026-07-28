@@ -8,7 +8,10 @@
 :root { --bg: #FBFBFC; --card: #fff; --text: #000; --text2: #6E6E73; --line: #E5E5EA; --accent: #E85D5D; }
 @media (prefers-color-scheme: dark) { :root { --bg: #000; --card: #1C1C1E; --text: #fff; --text2: #98989D; --line: #38383A; --accent: #FF8A80; } }
 * { margin:0; padding:0; box-sizing:border-box; }
-body { background:var(--bg); color:var(--text); font:-apple-system,sans-serif; padding:20px 16px 60px; line-height:1.6; -webkit-text-size-adjust:100%; }
+html, body { width:100%; max-width:100%; overflow-x:hidden; overscroll-behavior-x:none; }
+p, li, th, td, .meta { overflow-wrap:anywhere; word-break:break-word; }
+pre, code { max-width:100%; white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; }
+body { background:var(--bg); color:var(--text); font:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; padding:20px 16px 60px; line-height:1.6; -webkit-text-size-adjust:100%; }
 h1 { font-size:24px; font-weight:700; margin-bottom:4px; }
 .meta { font-size:13px; color:var(--text2); margin-bottom:28px; }
 h2 { font-size:18px; font-weight:600; margin:28px 0 12px; padding-top:20px; border-top:1px solid var(--line); }
@@ -16,8 +19,8 @@ h2:first-of-type { border-top:none; padding-top:0; }
 h3 { font-size:15px; font-weight:600; margin:16px 0 8px; }
 p { font-size:15px; color:var(--text2); margin-bottom:10px; }
 strong { color:var(--text); }
-table { width:100%; border-collapse:collapse; margin:10px 0 16px; font-size:13px; }
-th, td { text-align:left; padding:8px; border-bottom:1px solid var(--line); }
+table { width:100%; max-width:100%; table-layout:fixed; border-collapse:collapse; margin:10px 0 16px; font-size:13px; }
+th, td { text-align:left; vertical-align:top; padding:8px; border-bottom:1px solid var(--line); }
 th { font-weight:600; color:var(--text); font-size:12px; text-transform:uppercase; }
 td { color:var(--text2); }
 ul { list-style:none; padding:0; margin-bottom:10px; }
@@ -30,91 +33,105 @@ a { color:var(--accent); }
 </head>
 <body>
 <h1>隐私政策</h1>
-<p class="meta">生效日期：2026年6月29日 · 最近更新：2026年7月22日</p>
+<p class="meta">生效日期：2026年6月29日 · 最近更新：2026年7月28日</p>
 
 <h2>一、引言</h2>
-<p>Lumi（以下简称"本应用"）是一款本地电子书阅读器。Lumi 原创代码以 MIT 许可证开源，第三方组件遵循各自许可证。我们深知隐私对您的重要性，本隐私政策旨在向您说明我们如何处理您的个人信息。</p>
-<p><strong>核心原则：本应用坚持本地优先。只有在您主动启用并选择 MinerU 云端解析时，您选定的 PDF 才会上传至第三方服务；本应用不会在后台自动上传文件。</strong></p>
-<p><strong>开源透明：本应用为开源项目，完整源代码公开可审查。</strong></p>
+<p>Lumi（以下简称“本应用”）是一款开源、本地优先的电子书阅读器。我们深知隐私对您的重要性，本隐私政策说明本应用如何处理数据，以及哪些可选功能会把数据发送到您选择或确认的网络服务。</p>
+<p><strong>核心原则：阅读、书架、进度、笔记和大多数设置默认保存在本机。只有在您主动配置或启用 WebDAV 同步、MinerU 云端解析、第三方 TTS 合成等网络功能时，相应的书籍文件、阅读数据或朗读文本才会发送到对应服务。</strong></p>
+<p><strong>开源透明：</strong>Lumi 原创代码以 MIT 许可证发布，第三方组件遵循各自许可证，完整源代码公开可审查。</p>
 
 <h2>二、权限说明</h2>
-<p>本应用仅申请以下 Android 系统权限：</p>
-<table><tr><th>权限</th><th>用途</th></tr>
-<tr><td>READ_EXTERNAL_STORAGE（Android 12 及以下）</td><td>读取电子书文件</td></tr>
-<tr><td>READ_MEDIA_IMAGES（Android 13 及以上）</td><td>读取封面图片资源</td></tr>
-<tr><td>INTERNET</td><td>检查应用更新及条款/政策变更；在用户主动选择时连接 MinerU 云端解析</td></tr></table>
+<p>本应用仅申请实现阅读和可选功能所需的 Android 系统权限：</p>
+<table>
+<tr><th>权限</th><th>用途</th><th>是否必要</th></tr>
+<tr><td>READ_EXTERNAL_STORAGE（Android 12 及以下）</td><td>读取您选择的 EPUB、TXT、PDF 等电子书文件</td><td>基础阅读需要</td></tr>
+<tr><td>WRITE_EXTERNAL_STORAGE（Android 9 及以下）</td><td>兼容旧系统保存文件、图片或写回您授权编辑的 TXT 文件</td><td>仅旧系统或对应操作需要</td></tr>
+<tr><td>READ_MEDIA_IMAGES（Android 13 及以上）</td><td>读取电子书封面、导出图片或您选择的图片资源</td><td>按系统版本需要</td></tr>
+<tr><td>INTERNET</td><td>检查更新、公告和条款/政策版本；连接您配置的 WebDAV 服务器；连接 MinerU、第三方 TTS 服务；打开您主动点击的外部链接</td><td>网络功能需要</td></tr>
+<tr><td>ACCESS_NETWORK_STATE</td><td>判断网络状态，以便执行更新检查、同步、云解析或第三方 TTS 请求</td><td>网络功能需要</td></tr>
+<tr><td>WRITE_SETTINGS</td><td>当您启用自定义亮屏时间时，修改系统屏幕关闭时间</td><td>仅启用时需要</td></tr>
+<tr><td>FOREGROUND_SERVICE / FOREGROUND_SERVICE_MEDIA_PLAYBACK</td><td>支持 TTS 后台播放和播放状态通知</td><td>听书功能需要</td></tr>
+<tr><td>FOREGROUND_SERVICE_DATA_SYNC</td><td>显示 PDF/MinerU 解析或 WebDAV 同步等长任务进度</td><td>对应任务需要</td></tr>
+<tr><td>POST_NOTIFICATIONS（Android 13 及以上）</td><td>显示朗读播放、解析和同步进度通知</td><td>用户授权后使用</td></tr>
+</table>
 <p><strong>本应用不申请以下权限：</strong></p>
 <ul>
 <li><span class="cross">✕</span> 位置信息权限</li>
 <li><span class="cross">✕</span> 相机/麦克风权限</li>
-<li style="list-style:none;margin-top:4px;font-size:13px;color:var(--text2)">💡 TTS 语音朗读使用 Android 系统文字转语音引擎，文本内容在设备本地处理，不采集、不录制、不上传任何音频数据。</li>
 <li><span class="cross">✕</span> 通讯录权限</li>
 <li><span class="cross">✕</span> 电话状态权限</li>
-<li><span class="cross">✕</span> 写入外部存储权限</li>
-<li><span class="cross">✕</span> 任何其他敏感权限</li>
+<li><span class="cross">✕</span> 短信、日历等与阅读无关的敏感权限</li>
 </ul>
 
 <h2>三、数据处理说明</h2>
-<h3>3.1 本应用处理的数据</h3>
-<p>以下数据仅存储在您的本地设备上：</p>
-<table><tr><th>数据类型</th><th>说明</th><th>存储方式</th></tr>
-<tr><td>电子书文件</td><td>您主动打开的文件</td><td>本地文件</td></tr>
-<tr><td>阅读进度</td><td>章节和页码位置</td><td>Room/SQLite</td></tr>
-<tr><td>书签记录</td><td>手动添加的书签</td><td>Room/SQLite</td></tr>
-<tr><td>阅读时长</td><td>开始/结束时间、时长</td><td>Room/SQLite</td></tr>
-<tr><td>阅读偏好</td><td>字号、主题、行距等</td><td>DataStore</td></tr>
-<tr><td>MinerU 设置</td><td>解析模式、同意版本和时间；个人 Token 使用 Android Keystore 加密</td><td>本地 DataStore/加密存储</td></tr>
-<tr><td>TTS 朗读文本</td><td>传递给系统 TTS 引擎的电子书文本（仅内存中处理，不持久化存储）</td><td>本地内存（不存储）</td></tr>
-<tr><td>最近阅读</td><td>最近打开的书籍列表及时间</td><td>Room/SQLite</td></tr></table>
+<h3>3.1 本机数据</h3>
+<p>以下数据默认保存在您的设备或您授权的文件位置：</p>
+<table>
+<tr><th>数据类型</th><th>说明</th><th>存储方式</th></tr>
+<tr><td>电子书文件</td><td>您主动导入、打开、同步下载或通过文件夹授权读取的 EPUB、TXT、PDF 文件</td><td>本地文件 / 应用沙盒 / 用户授权位置</td></tr>
+<tr><td>阅读数据</td><td>阅读进度、最近阅读、书签、笔记、选中文本、阅读时长</td><td>Room/SQLite</td></tr>
+<tr><td>阅读偏好</td><td>字号、主题、行距、翻页方式、亮屏时间等设置</td><td>DataStore</td></tr>
+<tr><td>文件夹授权</td><td>您通过系统文件选择器授予的文件或文件夹 URI 持久访问权限</td><td>系统授权记录 / 本地设置</td></tr>
+<tr><td>TXT 编辑内容</td><td>您在应用内编辑 TXT 时，修改会保存回您授权的原文件或目标文件</td><td>用户授权文件位置</td></tr>
+<tr><td>MinerU 设置</td><td>解析模式、同意版本和时间；个人 Token 使用 Android Keystore 加密</td><td>DataStore / 加密存储</td></tr>
+<tr><td>WebDAV 设置</td><td>服务器 URL、用户名、同步路径、同步模式、最近同步时间；密码使用 Android Keystore 加密</td><td>DataStore / 加密存储</td></tr>
+<tr><td>第三方 TTS 设置</td><td>服务类型、Base URL、模型、音色、风格提示、同意时间；API Key 使用 Android Keystore 加密</td><td>DataStore / 加密存储</td></tr>
+<tr><td>TTS 音频缓存</td><td>第三方 TTS 返回的音频片段会缓存在本地以减少重复请求，可自动清理或由您清除</td><td>应用缓存目录</td></tr>
+</table>
 
-<h3>3.2 网络使用说明</h3>
+<h3>3.2 会发生网络传输的场景</h3>
 <ul>
-<li>仅在以下场景发起网络请求：
-  <ul>
-    <li>启动时或手动触发"检查更新"——请求 GitHub Raw 上的 <code>update_config.json</code></li>
-    <li>打开 GitHub Releases 页面下载新版本（需用户手动点击）</li>
-    <li>用户主动选择 MinerU 云端解析——向 MinerU API 申请上传地址，将所选 PDF 上传至其 OSS 存储，轮询解析进度并从 CDN 下载结果</li>
-  </ul>
-</li>
-<li>更新检查请求不携带个人信息、设备标识或使用数据</li>
-<li>MinerU 请求会向第三方传输所选 PDF、随机化文件名、网络 IP、解析参数和任务标识；精准解析还会传输用户个人 Token</li>
-<li>本应用不使用分析、广告或用户追踪 SDK，也不会将 Token 或 PDF 发送给 LumiBooks 开发者</li>
+<li>更新、公告、条款/政策版本检查：应用可能访问项目发布页或文档地址。</li>
+<li>WebDAV 同步：当您配置并手动或自动同步时，应用会连接您填写的 WebDAV 服务器，上传/下载书籍文件、书籍清单（如文件名、哈希、大小、修改时间）以及阅读进度、书签、笔记和笔记对应的选中文本。</li>
+<li>MinerU 云端解析：当您主动选择云端解析 PDF 时，所选 PDF、随机化文件名、网络 IP、解析参数、任务标识以及精准解析所需的个人 Token 会发送至 MinerU/OpenDataLab 相关服务，并下载解析结果。</li>
+<li>第三方 TTS：当您选择 OpenAI TTS、Xiaomi MiMo 或自定义兼容服务时，当前朗读文本段、模型/音色、风格提示和必要鉴权信息会发送至您配置的第三方服务，服务端如何处理数据取决于该服务的条款和政策。</li>
+<li>外部链接：当您主动点击 GitHub、反馈、下载、第三方协议等链接时，会跳转到对应网站。</li>
 </ul>
 
 <h3>3.3 本应用不处理的数据</h3>
 <ul>
-<li>不收集个人身份信息</li>
-<li>不收集设备标识信息</li>
-<li>不收集或接收用户的阅读内容；启用 MinerU 时，文件由设备直接发送给 MinerU</li>
-<li>不使用分析或追踪工具</li>
-<li>不使用广告 SDK</li>
-<li>除用户明确发起的 MinerU 解析外，不进行文件上传或云同步</li>
+<li>不收集您的姓名、手机号、通讯录、精确位置等个人身份信息。</li>
+<li>不收集 IMEI、Android ID、MAC 地址等设备标识用于追踪。</li>
+<li>不集成第三方分析、广告、用户画像、第三方推送或崩溃上报 SDK。</li>
+<li>不提供 Lumi 账号系统或开发者运营的云端书库；WebDAV 是您自选服务器，数据由您自行控制。</li>
+<li>除上述由您主动配置、启用或点击的网络功能外，不主动上传您的书籍和阅读内容。</li>
 </ul>
 
 <h2>四、数据存储与安全</h2>
-<p>本地阅读数据存储在应用私有沙盒目录中，受 Android 系统隔离保护。MinerU Token 使用 Android Keystore 加密且排除系统备份；临时上传和下载文件会在任务结束后清理。</p>
-<p>您可以随时在应用内清除数据。卸载应用将自动删除所有应用数据。电子书源文件由您自行管理，本应用不会修改或删除您的原始文件。</p>
-
-<h2>五、第三方服务</h2>
-<p>本应用不集成分析、广告、云同步或崩溃报告服务。用户可以选择启用由上海人工智能创新中心运营的 OpenDataLab/MinerU 云端解析服务。MinerU 与 LumiBooks 独立运营，使用该服务受其<a href="https://webpub.shlab.tech/dps/opendatalab-web/odl_v5.1690/service.html">服务协议</a>和<a href="https://webpub.shlab.tech/dps/opendatalab-web/odl_v5.1690/privacy.html">个人信息保护政策</a>约束。</p>
-<p>如不希望文件离开设备，请保持 MinerU 关闭并使用本地解析。您可以随时在设置中停用 MinerU、清除个人 Token，并联系 MinerU 运营方行使其平台上的数据权利。</p>
-
-<h2>六、儿童隐私</h2>
-<p>本应用不针对 13 岁以下儿童，不会故意收集儿童的个人信息。如果您是儿童的监护人，发现儿童可能向本应用提供了个人信息，请联系我们，我们将及时删除相关信息。</p>
-
-<h2>七、隐私政策的变更</h2>
-<p>如果我们决定更新本隐私政策，我们将在应用内发布更新后的版本，并更新"最近更新"日期。重大变更将以应用内通知的方式告知您。</p>
-
-<h2>八、适用范围</h2>
-<p>本隐私政策仅适用于 Lumi 应用（com.huangder.lumibooks）在 Android 平台上的功能。不适用于通过其他方式获取您信息的第三方服务。</p>
-
-<h2>九、联系我们</h2>
-<p>如果您对本隐私政策有任何疑问、意见或建议，请通过以下方式联系我们：</p>
 <ul>
-<li>邮箱：<a href="mailto:huangder0104@126.com">huangder0104@126.com</a></li>
-<li>GitHub Issues：在项目仓库提交问题反馈</li>
+<li>阅读数据库和设置存储在应用私有沙盒中，受 Android 应用隔离机制保护。</li>
+<li>MinerU Token、WebDAV 密码、第三方 TTS API Key 使用 Android Keystore 加密保存，并已从系统备份/设备迁移规则中排除。</li>
+<li>EPUB 阅读 WebView 会阻止外部网络资源加载，出版方 CSS 仅用于本地排版展示。</li>
+<li>临时上传、下载和解析缓存会在任务结束或缓存清理时删除；第三方 TTS 音频缓存可自动淘汰。</li>
+<li>您可以在应用内清除阅读历史、书签、缓存和相关配置；卸载应用会删除应用私有数据，但不会自动删除您设备上自行管理的原始电子书文件。</li>
 </ul>
 
-<p class="note">本页面为应用内参考版本，完整版隐私政策请访问 <a href="https://huangder.top/privacy.html">huangder.top/privacy.html</a></p>
+<h2>五、第三方服务与用户自选服务</h2>
+<p>本应用不集成分析、广告、第三方推送或崩溃报告服务。以下网络能力均为可选或由用户触发：</p>
+<ul>
+<li><strong>OpenDataLab / MinerU：</strong>用于云端 PDF 解析，独立于 Lumi 运营，使用前请阅读其<a href="https://webpub.shlab.tech/dps/opendatalab-web/odl_v5.1690/service.html">服务协议</a>和<a href="https://webpub.shlab.tech/dps/opendatalab-web/odl_v5.1690/privacy.html">个人信息保护政策</a>。</li>
+<li><strong>WebDAV 服务商或自建服务器：</strong>用于同步书籍和阅读数据。服务器地址、可用性、安全性、数据保存和删除由您选择的服务方或自建环境决定。</li>
+<li><strong>第三方 TTS 服务：</strong>包括 OpenAI TTS、Xiaomi MiMo 或您配置的兼容接口。朗读文本、风格提示、API Key 使用和费用规则受对应服务条款约束。</li>
+</ul>
+<p>如不希望书籍或文本离开设备，请不要启用 WebDAV 同步、MinerU 云端解析或第三方 TTS，并使用本地阅读、本地解析和系统 TTS。</p>
+
+<h2>六、儿童隐私</h2>
+<p>本应用不针对 13 岁以下儿童，不会故意收集儿童个人信息。监护人如发现儿童可能通过可选第三方服务提交了个人信息，请联系我们并同时联系相应服务方。</p>
+
+<h2>七、隐私政策的变更</h2>
+<p>我们可能因功能、法律法规或第三方服务变化更新本政策。更新后将在应用内或网页公布，并更新“最近更新”日期；重大变化会在适当位置提示。</p>
+
+<h2>八、联系我们</h2>
+<p>如果您对本隐私政策或数据处理有任何疑问、意见或建议，请通过以下方式联系我们：</p>
+<ul>
+<li>开发者：huangder</li>
+<li>邮箱：<a href="mailto:huangder0104@126.com">huangder0104@126.com</a></li>
+<li>GitHub Issues：欢迎在项目仓库提交问题反馈</li>
+</ul>
+
+<h2>九、适用范围</h2>
+<p>本隐私政策仅适用于 Lumi 应用（com.huangder.lumibooks）在 Android 平台上的功能，不适用于第三方服务自身的数据处理活动。</p>
+<p style="font-size:13px; color:var(--muted-soft); margin-top: var(--space-xxl);">本隐私政策最后更新于 2026年7月28日。</p>
+<p class="note">本页面为应用内参考版本，完整隐私政策请访问 <a href="https://huangder.top/privacy.html">huangder.top/privacy.html</a></p>
 </body>
 </html>

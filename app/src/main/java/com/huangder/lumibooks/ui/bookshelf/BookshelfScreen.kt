@@ -46,6 +46,7 @@ import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.animation.core.Animatable
@@ -393,22 +394,20 @@ fun BookshelfScreen(
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = AppSpace.lg, vertical = AppSpace.md)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = AppSpace.lg, vertical = AppSpace.md)
                         ) {
-                            Text(
-                                text = stringResource(R.string.bookshelf_title),
-                                fontSize = AppType.Display,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = KaiTi,
-                                letterSpacing = (-0.02).sp,
-                                color = AppColors.TextPrimary
-                            )
+                            BookshelfTitle()
                             Spacer(Modifier.width(8.dp))
                             BookshelfHeaderActions(
                                 layoutMode = uiState.bookshelfLayoutMode,
+                                isSyncing = uiState.isWebdavSyncing,
                                 onSyncClick = { viewModel.syncWebdavNow() },
                                 onLayoutModeChange = viewModel::setBookshelfLayoutMode
                             )
+                            Spacer(Modifier.weight(1f))
+                            BookshelfSyncProgressIndicator(isSyncing = uiState.isWebdavSyncing)
                         }
                     }
 
@@ -518,6 +517,7 @@ fun BookshelfScreen(
                     },
                     onSyncClick = { viewModel.syncWebdavNow() },
                     layoutMode = uiState.bookshelfLayoutMode,
+                    isWebdavSyncing = uiState.isWebdavSyncing,
                     onLayoutModeChange = viewModel::setBookshelfLayoutMode,
                     onSearchBoundsChanged = { searchLauncherBounds = it },
                     modifier = Modifier
@@ -556,6 +556,7 @@ fun BookshelfScreen(
                 tagNamesByBook = tagNamesByBook,
                 expandedBookId = expandedSearchBookId,
                 deletingBookIds = deletingBookIds,
+                syncedBookIds = uiState.syncedBookIds,
                 onQueryChange = { searchQuery = it },
                 onDismiss = {
                     isSearchActive = false
@@ -915,14 +916,43 @@ private fun BookshelfCollection(
 }
 
 @Composable
+private fun BookshelfTitle(
+    modifier: Modifier = Modifier
+) {
+    Text(
+        text = stringResource(R.string.bookshelf_title),
+        fontSize = AppType.Display,
+        fontWeight = FontWeight.Bold,
+        fontFamily = KaiTi,
+        letterSpacing = (-0.02).sp,
+        color = AppColors.TextPrimary,
+        modifier = modifier
+    )
+}
+
+@Composable
+private fun BookshelfSyncProgressIndicator(isSyncing: Boolean) {
+    AnimatedVisibility(visible = isSyncing) {
+        CircularProgressIndicator(
+            color = AppColors.Accent,
+            strokeWidth = 2.dp,
+            modifier = Modifier.size(18.dp)
+        )
+    }
+}
+
+@Composable
 private fun BookshelfHeaderActions(
     layoutMode: Int,
+    isSyncing: Boolean,
     onSyncClick: () -> Unit,
-    onLayoutModeChange: (Int) -> Unit
+    onLayoutModeChange: (Int) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val contentColor = if (isLiquidGlass) AppColors.TextPrimary else Color.White
     Row(
+        modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -930,6 +960,7 @@ private fun BookshelfHeaderActions(
             imageVector = Icons.Outlined.Sync,
             contentDescription = stringResource(R.string.webdav_sync_now),
             onClick = onSyncClick,
+            enabled = !isSyncing,
             size = 32.dp,
             iconSize = 15.dp,
             contentColor = contentColor,
@@ -967,6 +998,7 @@ private fun LiquidBookshelfHeader(
     onSearchClick: () -> Unit,
     onSyncClick: () -> Unit,
     layoutMode: Int,
+    isWebdavSyncing: Boolean,
     onLayoutModeChange: (Int) -> Unit,
     onSearchBoundsChanged: (Rect) -> Unit,
     modifier: Modifier = Modifier
@@ -1091,27 +1123,26 @@ private fun LiquidBookshelfHeader(
         }
 
         Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(
-                start = AppSpace.lg,
-                top = 14.dp,
-                bottom = 10.dp
-            )
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    start = AppSpace.lg,
+                    end = AppSpace.lg,
+                    top = 14.dp,
+                    bottom = 10.dp
+                ),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = stringResource(R.string.bookshelf_title),
-                fontSize = AppType.Display,
-                fontWeight = FontWeight.Bold,
-                fontFamily = KaiTi,
-                letterSpacing = (-0.02).sp,
-                color = AppColors.TextPrimary
-            )
+            BookshelfTitle()
             Spacer(Modifier.width(8.dp))
             BookshelfHeaderActions(
                 layoutMode = layoutMode,
+                isSyncing = isWebdavSyncing,
                 onSyncClick = onSyncClick,
                 onLayoutModeChange = onLayoutModeChange
             )
+            Spacer(Modifier.weight(1f))
+            BookshelfSyncProgressIndicator(isSyncing = isWebdavSyncing)
         }
 
         BookshelfSearchLauncher(

@@ -96,6 +96,7 @@ data class ReaderUiState(
     val isMenuVisible: Boolean = false,
     val isLoading: Boolean = true,
     val pageReady: Boolean = false,
+    val isEpubChapterHandoffInProgress: Boolean = false,
     val pendingPageFraction: Float = 0f,
     val fontSize: Float = 16f,
     val lineHeight: Float = 1.5f,
@@ -799,6 +800,7 @@ class ReaderViewModel @Inject constructor(
             currentPageIndex = 0,
             totalPages = 0,
             pageReady = false,
+            isEpubChapterHandoffInProgress = false,
             isLoading = state.isLoading,
             pendingPageFraction = chapterProgression,
             epubLocatorJson = null
@@ -824,6 +826,7 @@ class ReaderViewModel @Inject constructor(
             currentPageIndex = 0,
             totalPages = 0,
             pageReady = false,
+            isEpubChapterHandoffInProgress = false,
             isLoading = true,
             pendingPageFraction = chapterProgression,
             epubLocatorJson = null
@@ -835,6 +838,7 @@ class ReaderViewModel @Inject constructor(
             currentPageIndex = pageIndex.coerceAtLeast(0),
             totalPages = pageCount.coerceAtLeast(1),
             pageReady = true,
+            isEpubChapterHandoffInProgress = false,
             isLoading = false,
             epubLocatorJson = locatorJson ?: _uiState.value.epubLocatorJson,
             pendingPageFraction = 0f
@@ -854,6 +858,7 @@ class ReaderViewModel @Inject constructor(
             currentPageIndex = 0,
             totalPages = 0,
             pageReady = false,
+            isEpubChapterHandoffInProgress = true,
             isLoading = true,
             epubLocatorJson = null,
             pendingPageFraction = if (direction < 0) 1f else 0f
@@ -1290,6 +1295,7 @@ class ReaderViewModel @Inject constructor(
             currentPageIndex = if (isBookLayoutEpub) 0 else state.currentPageIndex,
             totalPages = if (isBookLayoutEpub) 0 else state.totalPages,
             pageReady = if (isBookLayoutEpub) false else state.pageReady,
+            isEpubChapterHandoffInProgress = false,
             isLoading = if (isBookLayoutEpub) true else state.isLoading,
             epubLocatorJson = if (isBookLayoutEpub) null else state.epubLocatorJson,
             pendingPageFraction = if (isBookLayoutEpub) 0f else state.pendingPageFraction

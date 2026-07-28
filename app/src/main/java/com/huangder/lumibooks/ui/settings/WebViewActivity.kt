@@ -158,7 +158,26 @@ private fun WebViewPage(title: String, assetFile: String, isDark: Boolean, onBac
                         }
                         settings.javaScriptEnabled = true
                         settings.defaultTextEncodingName = "UTF-8"
-                        loadUrl("file:///android_asset/html/$assetFile")
+
+                        // Decode the asset ourselves before passing it to WebView. This prevents
+                        // stale file:// cache entries or device-specific charset sniffing from
+                        // turning CJK policy text into question marks after an app update.
+                        runCatching {
+                            context.assets
+                                .open("html/$assetFile")
+                                .bufferedReader(Charsets.UTF_8)
+                                .use { it.readText() }
+                        }.onSuccess { html ->
+                            loadDataWithBaseURL(
+                                "file:///android_asset/html/",
+                                html,
+                                "text/html",
+                                "UTF-8",
+                                null
+                            )
+                        }.onFailure {
+                            loadUrl("file:///android_asset/html/$assetFile")
+                        }
                     }
                 },
                 modifier = Modifier.fillMaxSize()

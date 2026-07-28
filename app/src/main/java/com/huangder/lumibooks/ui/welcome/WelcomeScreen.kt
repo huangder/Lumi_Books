@@ -1,11 +1,14 @@
 package com.huangder.lumibooks.ui.welcome
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -46,6 +49,8 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -69,6 +74,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
@@ -90,6 +96,8 @@ import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassTransparency
+import com.huangder.lumibooks.util.LocaleHelper
+import java.util.Locale
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.delay
 
@@ -109,10 +117,9 @@ private val LightSupportBackground = Color(0xFFFFECEF)
 private val DarkSupportBackground = Color(0xFF3A2429)
 
 private enum class WelcomePage {
+    LANGUAGE_SETUP,
     INTRODUCTION,
-    MINERU_PREVIEW,
     LIQUID_GLASS_PREVIEW,
-    BOOKSHELF_PREVIEW,
     SUPPORT
 }
 
@@ -122,44 +129,98 @@ private enum class UpdatePreview {
     BOOKSHELF
 }
 
-private fun WelcomePage.previousPage(): WelcomePage = when (this) {
-    WelcomePage.INTRODUCTION -> WelcomePage.INTRODUCTION
-    WelcomePage.MINERU_PREVIEW -> WelcomePage.INTRODUCTION
-    WelcomePage.LIQUID_GLASS_PREVIEW -> WelcomePage.MINERU_PREVIEW
-    WelcomePage.BOOKSHELF_PREVIEW -> WelcomePage.LIQUID_GLASS_PREVIEW
-    WelcomePage.SUPPORT -> WelcomePage.BOOKSHELF_PREVIEW
+private data class WelcomeLanguageOption(
+    val languageTag: String,
+    val label: String
+)
+
+private val welcomeLanguageOptions = listOf(
+    WelcomeLanguageOption("zh-CN", "简体中文（中国大陆）"),
+    WelcomeLanguageOption("zh-TW", "繁體中文（中國台灣）"),
+    WelcomeLanguageOption("zh-HK", "繁體中文（中國香港）"),
+    WelcomeLanguageOption("zh-MO", "繁體中文（中國澳門）"),
+    WelcomeLanguageOption("ko", "한국어"),
+    WelcomeLanguageOption("ja", "日本語"),
+    WelcomeLanguageOption("en", "English")
+)
+
+private fun defaultWelcomeLanguage(savedLanguage: String): String {
+    if (welcomeLanguageOptions.any { it.languageTag == savedLanguage }) return savedLanguage
+
+    return when (Locale.getDefault().language) {
+        "zh" -> when (Locale.getDefault().country.uppercase(Locale.ROOT)) {
+            "TW" -> "zh-TW"
+            "HK" -> "zh-HK"
+            "MO" -> "zh-MO"
+            else -> "zh-CN"
+        }
+        "ko" -> "ko"
+        "ja" -> "ja"
+        else -> "en"
+    }
 }
 
 @Composable
 fun WelcomeScreen(
     isUpdate: Boolean,
+    isNewInstallation: Boolean,
+    shouldShowLanguageSetup: Boolean,
+    initialLanguage: String,
+    initialEInkMode: Boolean,
+    isEInkMode: Boolean,
     isDark: Boolean,
     isLiquidGlass: Boolean,
     onFinished: () -> Unit,
     onExit: () -> Unit,
     onOpenSponsor: () -> Unit,
-    onEnableLiquidGlass: () -> Unit
+    onLanguageSetupComplete: (language: String, eInkEnabled: Boolean) -> Unit,
+    onEnableLiquidGlass: () -> Unit,
+    startOnIntroduction: Boolean = false
 ) {
-    var currentPage by rememberSaveable { mutableStateOf(WelcomePage.INTRODUCTION) }
-    val backgroundColor = if (isDark) DarkBackground else LightBackground
+    val pages = remember(shouldShowLanguageSetup, isNewInstallation, isEInkMode) {
+        buildList {
+            if (shouldShowLanguageSetup) add(WelcomePage.LANGUAGE_SETUP)
+            add(WelcomePage.INTRODUCTION)
+            if (isNewInstallation && !isEInkMode) add(WelcomePage.LIQUID_GLASS_PREVIEW)
+            add(WelcomePage.SUPPORT)
+        }
+    }
+    var currentPage by rememberSaveable {
+        mutableStateOf(
+            if (startOnIntroduction && WelcomePage.INTRODUCTION in pages) {
+                WelcomePage.INTRODUCTION
+            } else {
+                pages.first()
+            }
+        )
+    }
+    val pageIndex = pages.indexOf(currentPage)
+
+    LaunchedEffect(pages) {
+        if (currentPage !in pages) currentPage = WelcomePage.INTRODUCTION
+    }
 
     val predictiveBackProgress = ConfigurableBackHandler(
-        enabled = currentPage != WelcomePage.INTRODUCTION
+        enabled = pageIndex > 0
     ) {
-        currentPage = currentPage.previousPage()
+        currentPage = pages[(pageIndex - 1).coerceAtLeast(0)]
     }
 
     AnimatedContent(
         targetState = currentPage,
         modifier = Modifier
             .fillMaxSize()
-            .background(backgroundColor)
+            .background(if (isDark) DarkBackground else LightBackground)
             .graphicsLayer {
-                translationX = predictiveBackProgress * size.width * 0.12f
-                alpha = 1f - predictiveBackProgress * 0.1f
+                if (!isEInkMode) {
+                    translationX = predictiveBackProgress * size.width * 0.12f
+                    alpha = 1f - predictiveBackProgress * 0.1f
+                }
             },
         transitionSpec = {
-            if (targetState.ordinal > initialState.ordinal) {
+            if (isEInkMode) {
+                EnterTransition.None togetherWith ExitTransition.None
+            } else if (targetState.ordinal > initialState.ordinal) {
                 (slideInHorizontally(
                     animationSpec = spring(dampingRatio = 0.84f, stiffness = 460f),
                     initialOffsetX = { it }
@@ -182,36 +243,26 @@ fun WelcomeScreen(
         label = "welcomePage"
     ) { page ->
         when (page) {
+            WelcomePage.LANGUAGE_SETUP -> LanguageAndEInkPage(
+                initialLanguage = initialLanguage,
+                initialEInkMode = initialEInkMode,
+                isDark = isDark,
+                onNext = onLanguageSetupComplete
+            )
+
             WelcomePage.INTRODUCTION -> WelcomeIntroductionPage(
                 isUpdate = isUpdate,
                 isDark = isDark,
-                onContinue = { currentPage = WelcomePage.MINERU_PREVIEW },
+                onContinue = { currentPage = pages[(pages.indexOf(WelcomePage.INTRODUCTION) + 1).coerceAtMost(pages.lastIndex)] },
                 onExit = onExit
-            )
-
-            WelcomePage.MINERU_PREVIEW -> UpdatePreviewPage(
-                preview = UpdatePreview.MINERU,
-                isDark = isDark,
-                isLiquidGlass = isLiquidGlass,
-                onBack = { currentPage = WelcomePage.INTRODUCTION },
-                onNext = { currentPage = WelcomePage.LIQUID_GLASS_PREVIEW },
-                onEnableLiquidGlass = onEnableLiquidGlass
             )
 
             WelcomePage.LIQUID_GLASS_PREVIEW -> UpdatePreviewPage(
                 preview = UpdatePreview.LIQUID_GLASS,
                 isDark = isDark,
+                isEInkMode = isEInkMode,
                 isLiquidGlass = isLiquidGlass,
-                onBack = { currentPage = WelcomePage.MINERU_PREVIEW },
-                onNext = { currentPage = WelcomePage.BOOKSHELF_PREVIEW },
-                onEnableLiquidGlass = onEnableLiquidGlass
-            )
-
-            WelcomePage.BOOKSHELF_PREVIEW -> UpdatePreviewPage(
-                preview = UpdatePreview.BOOKSHELF,
-                isDark = isDark,
-                isLiquidGlass = isLiquidGlass,
-                onBack = { currentPage = WelcomePage.LIQUID_GLASS_PREVIEW },
+                onBack = { currentPage = pages[(pages.indexOf(WelcomePage.LIQUID_GLASS_PREVIEW) - 1).coerceAtLeast(0)] },
                 onNext = { currentPage = WelcomePage.SUPPORT },
                 onEnableLiquidGlass = onEnableLiquidGlass
             )
@@ -230,17 +281,19 @@ fun WelcomeScreen(
 private fun UpdatePreviewPage(
     preview: UpdatePreview,
     isDark: Boolean,
+    isEInkMode: Boolean,
     isLiquidGlass: Boolean,
     onBack: () -> Unit,
     onNext: () -> Unit,
-    onEnableLiquidGlass: () -> Unit
+    onEnableLiquidGlass: () -> Unit,
+    startOnIntroduction: Boolean = false
 ) {
     var hasEntered by remember(preview) { mutableStateOf(false) }
     var liquidGlassSelected by rememberSaveable { mutableStateOf(isLiquidGlass) }
     var themeSwitchStage by rememberSaveable { mutableIntStateOf(0) }
 
-    LaunchedEffect(preview) {
-        delay(40)
+    LaunchedEffect(preview, isEInkMode) {
+        if (!isEInkMode) delay(40)
         hasEntered = true
     }
     LaunchedEffect(isLiquidGlass) {
@@ -248,31 +301,31 @@ private fun UpdatePreviewPage(
     }
 
     val title = when (preview) {
-        UpdatePreview.MINERU -> "内置 MinerU 解析接口"
-        UpdatePreview.LIQUID_GLASS -> "液态玻璃主题 全覆盖"
-        UpdatePreview.BOOKSHELF -> "书库页面功能升级"
+        UpdatePreview.MINERU -> stringResource(R.string.welcome_mineru_preview_title)
+        UpdatePreview.LIQUID_GLASS -> stringResource(R.string.welcome_liquid_glass_title)
+        UpdatePreview.BOOKSHELF -> stringResource(R.string.welcome_bookshelf_preview_title)
     }
     val subtitle = when (preview) {
-        UpdatePreview.MINERU -> "MinerU 使得 PDF OCR 解析更加准确。"
-        UpdatePreview.LIQUID_GLASS -> "精心设计和适配的液态玻璃主题，在 LUMI 的\n各个场景下都有极其出色的交互体验。"
-        UpdatePreview.BOOKSHELF -> "多选书籍以及搜索书籍功能得到增强，\n书籍再多也不怕。"
+        UpdatePreview.MINERU -> stringResource(R.string.welcome_mineru_preview_subtitle)
+        UpdatePreview.LIQUID_GLASS -> stringResource(R.string.welcome_liquid_glass_subtitle)
+        UpdatePreview.BOOKSHELF -> stringResource(R.string.welcome_bookshelf_preview_subtitle)
     }
     val textPrimary = if (isDark) Color.White else Color.Black
     val textSecondary = if (isDark) DarkTextSecondary else LightTextSecondary
     val frameColor = if (isDark) Color(0xFF242426) else Color(0xFFF2F2F3)
     val titleProgress by animateFloatAsState(
         targetValue = if (hasEntered) 1f else 0f,
-        animationSpec = tween(360, easing = AppEasing.Decelerate),
+        animationSpec = if (isEInkMode) snap() else tween(360, easing = AppEasing.Decelerate),
         label = "previewTitleProgress"
     )
     val artworkProgress by animateFloatAsState(
         targetValue = if (hasEntered) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.72f, stiffness = 330f),
+        animationSpec = if (isEInkMode) snap() else spring(dampingRatio = 0.72f, stiffness = 330f),
         label = "previewArtworkProgress"
     )
     val buttonsProgress by animateFloatAsState(
         targetValue = if (hasEntered) 1f else 0f,
-        animationSpec = tween(360, delayMillis = 110, easing = AppEasing.Decelerate),
+        animationSpec = if (isEInkMode) snap() else tween(360, delayMillis = 110, easing = AppEasing.Decelerate),
         label = "previewButtonsProgress"
     )
     val useLiquidGlassButtons = isLiquidGlass || liquidGlassSelected
@@ -349,7 +402,7 @@ private fun UpdatePreviewPage(
 
         if (preview == UpdatePreview.LIQUID_GLASS) {
             WelcomeActionButton(
-                text = if (liquidGlassSelected) "已设置为液态玻璃" else "将主题设置为液态玻璃",
+                text = if (liquidGlassSelected) stringResource(R.string.welcome_liquid_glass_enabled) else stringResource(R.string.welcome_enable_liquid_glass),
                 onClick = {
                     if (!liquidGlassSelected && themeSwitchStage == 0) {
                         themeSwitchStage = 1
@@ -382,18 +435,19 @@ private fun UpdatePreviewPage(
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             WelcomeActionButton(
-                text = "上一步",
+                text = stringResource(R.string.welcome_previous),
                 onClick = onBack,
                 primary = false,
                 forceLiquidGlass = useLiquidGlassButtons,
                 textPrimary = textPrimary,
+                secondaryContainerColor = if (isDark) DarkBgGray else LightBgGray,
                 enabled = themeSwitchStage == 0,
                 modifier = Modifier
                     .weight(1f)
                     .height(52.dp)
             )
             WelcomeActionButton(
-                text = "下一步",
+                text = stringResource(R.string.welcome_next),
                 onClick = onNext,
                 primary = true,
                 forceLiquidGlass = useLiquidGlassButtons,
@@ -432,14 +486,14 @@ private fun UpdatePreviewArtwork(
     when (preview) {
         UpdatePreview.MINERU -> PhonePreviewFrame(
             imageRes = R.drawable.welcome_mineru_preview,
-            description = "MinerU 云端解析功能预览",
+            description = stringResource(R.string.welcome_mineru_preview_description),
             frameColor = frameColor,
             modifier = modifier
         )
 
         UpdatePreview.BOOKSHELF -> PhonePreviewFrame(
             imageRes = R.drawable.welcome_bookshelf_preview,
-            description = "升级后的书库功能预览",
+            description = stringResource(R.string.welcome_bookshelf_preview_description),
             frameColor = frameColor,
             modifier = modifier
         )
@@ -491,24 +545,24 @@ private fun LiquidGlassPreviewFrame(
     ) {
         LiquidGlassPreviewTile(
             imageRes = R.drawable.welcome_glass_home_preview,
-            description = "液态玻璃首页导航预览",
+            description = stringResource(R.string.welcome_liquid_glass_home_description),
             alignment = Alignment.BottomCenter,
             modifier = Modifier.weight(1f)
         )
         LiquidGlassPreviewTile(
             imageRes = R.drawable.welcome_glass_dialog_preview,
-            description = "液态玻璃对话框预览",
+            description = stringResource(R.string.welcome_liquid_glass_dialog_description),
             alignment = Alignment.Center,
             modifier = Modifier.weight(1f)
         )
         LiquidGlassPreviewTile(
             imageRes = R.drawable.welcome_glass_reader_preview,
-            description = "液态玻璃阅读器预览",
+            description = stringResource(R.string.welcome_liquid_glass_reader_description),
             alignment = Alignment.BottomCenter,
             modifier = Modifier.weight(1f)
         )
         Text(
-            text = "不再是简单的纯色和模糊，而是具有玻璃形态的折射效果。",
+            text = stringResource(R.string.welcome_liquid_glass_preview_caption),
             fontSize = 13.sp,
             lineHeight = 19.sp,
             textAlign = TextAlign.Center,
@@ -669,7 +723,7 @@ private fun ThemeSwitchOverlay(
                 ) {}
             }
             Text(
-                text = "正在切换",
+                text = stringResource(R.string.welcome_switching_theme),
                 color = Color(0xFF2C2C2E),
                 fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold
@@ -754,6 +808,152 @@ private fun WelcomeActionButton(
 }
 
 @Composable
+private fun LanguageAndEInkPage(
+    initialLanguage: String,
+    initialEInkMode: Boolean,
+    isDark: Boolean,
+    onNext: (language: String, eInkEnabled: Boolean) -> Unit
+) {
+    var selectedLanguage by rememberSaveable {
+        mutableStateOf(defaultWelcomeLanguage(initialLanguage))
+    }
+    var eInkEnabled by rememberSaveable { mutableStateOf(initialEInkMode) }
+    var isApplying by rememberSaveable { mutableStateOf(false) }
+    val context = LocalContext.current
+    val selectedLanguageContext = remember(context, selectedLanguage) {
+        LocaleHelper.wrapContext(context, selectedLanguage)
+    }
+    val languageTitle = selectedLanguageContext.getString(R.string.welcome_language_title)
+    val languageSubtitle = selectedLanguageContext.getString(R.string.welcome_language_subtitle)
+    val eInkTitle = selectedLanguageContext.getString(R.string.label_e_ink_mode)
+    val eInkDescription = selectedLanguageContext.getString(R.string.e_ink_mode_description)
+    val nextLabel = selectedLanguageContext.getString(R.string.welcome_next)
+    val textPrimary = if (isDark) Color.White else Color.Black
+    val textSecondary = if (isDark) DarkTextSecondary else LightTextSecondary
+    val panelColor = if (isDark) DarkBgGray else LightBgGray
+    val selectedRowColor = if (isDark) DarkCardBg else LightCardBg
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(if (isDark) DarkBackground else LightBackground)
+            .navigationBarsPadding()
+    ) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(top = 62.dp, bottom = 20.dp)
+        ) {
+            Column(modifier = Modifier.padding(horizontal = 40.dp)) {
+                Text(
+                    text = languageTitle,
+                    fontSize = 32.sp,
+                    lineHeight = 39.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = textPrimary
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = languageSubtitle,
+                    fontSize = 17.sp,
+                    lineHeight = 24.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = textSecondary
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(28.dp))
+                        .background(panelColor)
+                        .padding(12.dp)
+                ) {
+                    welcomeLanguageOptions.forEach { option ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(if (option.languageTag == selectedLanguage) selectedRowColor else Color.Transparent)
+                                .pointerInput(option.languageTag) {
+                                    detectTapGestures { selectedLanguage = option.languageTag }
+                                },
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            Text(
+                                text = option.label,
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                                fontSize = 17.sp,
+                                fontWeight = if (option.languageTag == selectedLanguage) FontWeight.SemiBold else FontWeight.Medium,
+                                color = if (option.languageTag == selectedLanguage) AccentColor else textPrimary
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(54.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = eInkTitle,
+                            fontSize = 20.sp,
+                            lineHeight = 26.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = textPrimary
+                        )
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Text(
+                            text = eInkDescription,
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp,
+                            color = textSecondary
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Switch(
+                        checked = eInkEnabled,
+                        onCheckedChange = { eInkEnabled = it },
+                        enabled = !isApplying,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = AccentColor,
+                            uncheckedThumbColor = if (isDark) Color(0xFFC7C7CC) else Color.White,
+                            uncheckedTrackColor = if (isDark) Color(0xFF505055) else Color(0xFFD5D5DA)
+                        )
+                    )
+                }
+            }
+        }
+
+        WelcomeActionButton(
+            text = nextLabel,
+            onClick = {
+                if (!isApplying) {
+                    isApplying = true
+                    onNext(selectedLanguage, eInkEnabled)
+                }
+            },
+            primary = true,
+            forceLiquidGlass = false,
+            textPrimary = textPrimary,
+            enabled = !isApplying,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp)
+                .height(52.dp)
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+    }
+}
+
+@Composable
 private fun WelcomeIntroductionPage(
     isUpdate: Boolean,
     isDark: Boolean,
@@ -784,7 +984,7 @@ private fun WelcomeIntroductionPage(
             // App Icon
             Image(
                 painter = painterResource(id = R.drawable.app_icon),
-                contentDescription = "Lumi Icon",
+                contentDescription = stringResource(R.string.welcome_app_icon_description),
                 modifier = Modifier
                     .size(80.dp)
                     .clip(RoundedCornerShape(20.dp)),
@@ -836,8 +1036,10 @@ private fun WelcomeIntroductionPage(
                 val privacyText = stringResource(R.string.welcome_privacy)
                 val andText = stringResource(R.string.welcome_and)
                 val termsText = stringResource(R.string.welcome_terms)
+                val privacySummary = stringResource(R.string.welcome_privacy_summary)
+                val policyPunctuation = stringResource(R.string.welcome_policy_punctuation)
                 val annotatedText = buildAnnotatedString {
-                    append("Lumi 是一款本地优先的图书阅读器。阅读数据存储在您的设备中；只有在您主动启用并选择 MinerU 云端解析时，所选 PDF 才会上传至第三方服务。Lumi 坚持最小权限原则，不使用分析或广告追踪。点击\"继续\"按钮，即表示您已阅读并同意")
+                    append(privacySummary)
 
                     // 隐私政策链接
                     pushStringAnnotation(tag = "PRIVACY", annotation = "privacy")
@@ -855,7 +1057,7 @@ private fun WelcomeIntroductionPage(
                     }
                     pop()
 
-                    append("。")
+                    append(policyPunctuation)
                 }
 
                 var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
@@ -1060,6 +1262,14 @@ private fun SupportProjectPage(
                     shape = RoundedCornerShape(28.dp),
                     fallbackColor = supportBackground,
                     contentScrimColor = supportBackground.copy(alpha = if (isDark) 0.48f else 0.30f),
+                    outlineWidth = 0.dp,
+                    decorationModifier = Modifier.shadow(
+                        elevation = 20.dp,
+                        shape = RoundedCornerShape(28.dp),
+                        clip = false,
+                        ambientColor = Color.Black.copy(alpha = if (isDark) 0.16f else 0.11f),
+                        spotColor = Color.Black.copy(alpha = if (isDark) 0.10f else 0.06f)
+                    ),
                     modifier = Modifier.fillMaxSize()
                 ) {}
             } else {
@@ -1342,88 +1552,97 @@ private fun FormattedPolicyContent(
     textColor: Color,
     secondaryColor: Color
 ) {
-    val lines = content.lines()
+    val lines = remember(content) {
+        content
+            .replace("\r\n", "\n")
+            .replace('\r', '\n')
+            .split('\n')
+    }
+    val firstNonBlankLine = lines.indexOfFirst { it.trim().isNotEmpty() }
+    val hasContentAfterDocumentTitle = firstNonBlankLine >= 0 &&
+        lines.drop(firstNonBlankLine + 1).any { it.trim().isNotEmpty() }
     var index = 0
 
     while (index < lines.size) {
         val line = lines[index].trim()
 
         when {
-            // 第一行是主标题（如"Lumi 隐私政策"、"Lumi 用户协议"）
-            index == 0 && line.isNotEmpty() -> {
-                Text(
-                    text = line,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = textColor,
-                    modifier = Modifier.padding(bottom = 12.dp)
-                )
+            // The sheet header already presents the document title. Only omit it when
+            // there is a real document body; a collapsed resource must never become blank.
+            index == firstNonBlankLine && hasContentAfterDocumentTitle -> {
+                index++
+                continue
             }
-            // 空行
+
             line.isEmpty() -> {
                 Spacer(modifier = Modifier.height(8.dp))
             }
-            // 一级标题（一、二、三...或阿拉伯数字开头的标题）
-            line.matches(Regex("^[一二三四五六七八九十]+、.*")) ||
-            line.matches(Regex("^\\d+\\.\\s*[^\\d].*")) && !line.matches(Regex("^\\d+\\.\\d+.*")) -> {
-                Text(
-                    text = line,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = textColor,
-                    modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
+
+            isPolicyMetadataLine(line) -> {
+                val metadataLines = buildList {
+                    while (index < lines.size && isPolicyMetadataLine(lines[index].trim())) {
+                        add(lines[index].trim())
+                        index++
+                    }
+                }
+                PolicyMetadataBlock(
+                    lines = metadataLines,
+                    textColor = textColor,
+                    secondaryColor = secondaryColor
                 )
+                Spacer(modifier = Modifier.height(14.dp))
+                continue
             }
-            // 二级标题（3.1, 3.2, 4.1 等）
-            line.matches(Regex("^\\d+\\.\\d+\\s+.*")) -> {
+
+            isPolicyPrimaryHeading(line) -> {
+                PolicySectionHeading(text = line, textColor = textColor)
+            }
+
+            isPolicySecondaryHeading(line) -> {
                 Text(
                     text = line,
                     fontSize = 15.sp,
+                    lineHeight = 22.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = textColor,
-                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                    modifier = Modifier.padding(top = 12.dp, bottom = 5.dp)
                 )
             }
-            // 列表项（以 • 或 - 开头）
-            line.startsWith("•") || line.startsWith("-") || line.startsWith("❌") -> {
-                Text(
+
+            isPolicyNotice(line) -> {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(AccentColor.copy(alpha = 0.11f))
+                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                ) {
+                    Text(
+                        text = line,
+                        fontSize = 14.sp,
+                        lineHeight = 22.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = textColor
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+            }
+
+            isPolicyBullet(line) -> {
+                PolicyBulletItem(
                     text = line,
-                    fontSize = 14.sp,
-                    color = textColor,
-                    lineHeight = 22.sp,
-                    modifier = Modifier.padding(start = 8.dp, bottom = 2.dp)
+                    textColor = textColor,
+                    secondaryColor = secondaryColor
                 )
             }
-            // 元信息行（生效日期、最近更新、应用名称、包名、开发者、邮箱）
-            line.startsWith("生效日期") || line.startsWith("最近更新") ||
-            line.startsWith("应用名称") || line.startsWith("包名") ||
-            line.startsWith("开发者") || line.startsWith("联系邮箱") -> {
-                Text(
-                    text = line,
-                    fontSize = 13.sp,
-                    color = secondaryColor,
-                    modifier = Modifier.padding(bottom = 2.dp)
-                )
-            }
-            // 核心原则（加粗显示）
-            line.startsWith("核心原则") -> {
-                Text(
-                    text = line,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = textColor,
-                    lineHeight = 22.sp,
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
-            }
-            // 普通段落
+
             else -> {
                 Text(
                     text = line,
                     fontSize = 14.sp,
-                    color = textColor,
                     lineHeight = 22.sp,
-                    modifier = Modifier.padding(bottom = 4.dp)
+                    color = textColor,
+                    modifier = Modifier.padding(bottom = 5.dp)
                 )
             }
         }
@@ -1431,234 +1650,143 @@ private fun FormattedPolicyContent(
     }
 }
 
-private fun getPrivacyPolicyContent(): String {
-    return """
-Lumi 隐私政策
-
-生效日期：2026年6月29日
-最近更新：2026年7月21日
-应用名称：Lumi
-包名：com.huangder.lumibooks
-开发者：huangder
-联系邮箱：huangder0104@126.com
-
-一、引言
-
-Lumi（以下简称"本应用"）是一款开源的本地电子书阅读器。Lumi 原创代码以 MIT 许可证发布，第三方组件遵循各自许可证。我们深知隐私对您的重要性，本隐私政策旨在向您说明我们如何处理您的个人信息。
-
-核心原则：本应用坚持本地优先。只有在您主动启用并选择 MinerU 云端解析时，您选定的 PDF 才会上传至第三方服务；本应用不会在后台自动上传文件。
-
-二、开源声明
-
-本应用为开源软件，源代码托管于 GitHub。您可以自由查看、修改和分发本应用的源代码。开源不意味着放弃隐私保护——我们依然严格遵守最小数据收集原则。
-
-三、权限说明
-
-本应用仅申请以下 Android 系统权限，且每项权限均有明确的用途说明：
-
-• READ_EXTERNAL_STORAGE（Android 12 及以下）- 读取您设备上的电子书文件（EPUB、TXT、PDF）
-• READ_MEDIA_IMAGES（Android 13 及以上）- 读取电子书中的封面图片资源
-
-• INTERNET — 检查应用更新及条款/政策变更；在用户主动选择时连接 MinerU 云端解析
-
-本应用不申请以下权限：
-
-• ❌ 位置信息权限
-• ❌ 相机/麦克风权限
-• ❌ 通讯录权限
-• ❌ 电话状态权限
-• ❌ 写入外部存储权限
-• ❌ 任何其他敏感权限
-
-四、数据处理说明
-
-4.1 本应用处理的数据
-
-阅读数据和应用设置存储在您的本地设备上；主动使用 MinerU 时的文件传输除外：
-
-• 电子书文件 - 您主动选择打开的 EPUB、TXT、PDF 文件
-• 阅读进度 - 当前阅读章节和页码位置
-• 书签记录 - 您手动添加的书签
-• 阅读时长 - 每次阅读的开始时间、结束时间、持续时长
-• 阅读偏好 - 字号、主题、行距等显示设置
-• MinerU 设置 - 模式、同意版本和时间；个人 Token 使用 Android Keystore 加密
-• 最近阅读 - 最近打开的书籍列表及时间
-
-4.2 本应用不处理的数据
-
-• ❌ 不收集您的个人身份信息（姓名、邮箱、电话等）
-• ❌ 不收集您的设备标识信息（IMEI、Android ID、MAC 地址等）
-• ❌ 不收集或接收您的阅读内容；启用 MinerU 时文件由设备直接发送给第三方
-• ❌ 不使用任何分析或追踪工具
-• ❌ 不使用任何广告 SDK
-• ❌ 除您明确发起的 MinerU 解析外，不进行文件上传或云同步
-
-五、数据存储与安全
-
-5.1 存储方式
-
-所有数据均存储在应用的私有沙盒目录中，遵循 Android 系统的应用隔离机制。其他应用无法直接访问本应用的私有数据。
-
-5.2 数据安全
-
-• 应用仅在检查更新及您主动选择 MinerU 云端解析时联网
-• 数据存储在 Android 应用沙盒中，受系统级隔离保护
-• 本应用不收集任何可识别您身份的信息
-
-5.3 数据保留
-
-• 您可以随时在应用内清除阅读历史、书签等数据
-• 卸载应用将自动删除所有应用数据
-• 电子书源文件由您自行管理，本应用不会修改或删除您的原始文件
-
-六、第三方服务
-
-本应用不集成分析、广告、推送、云同步或崩溃报告服务。您可以主动启用独立第三方 OpenDataLab/MinerU 云端解析；使用受其服务协议和个人信息保护政策约束。
-
-• ❌ 无第三方分析服务
-• ❌ 无第三方广告服务
-• ❌ 无第三方推送服务
-• ❌ 无云同步服务
-• ❌ 无崩溃报告服务
-
-七、儿童隐私
-
-本应用不针对 13 岁以下儿童，不会故意收集儿童的个人信息。如果您是儿童的监护人，发现儿童可能向本应用提供了个人信息，请联系我们，我们将及时删除相关信息。
-
-八、联系我们
-
-如果您对本隐私政策有任何疑问、意见或建议，请通过以下方式联系我们：
-
-• 开发者：huangder
-• 联系邮箱：huangder0104@126.com
-• GitHub Issues：欢迎在项目仓库提交问题反馈
-
-九、隐私政策的变更
-
-如果我们决定更新本隐私政策，我们将在应用内发布更新后的版本，并更新"最近更新"日期。重大变更将以应用内通知的方式告知您。
-
-本隐私政策最后更新于 2026年7月21日。
-    """.trimIndent()
+@Composable
+private fun PolicyMetadataBlock(
+    lines: List<String>,
+    textColor: Color,
+    secondaryColor: Color
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(secondaryColor.copy(alpha = 0.10f))
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        lines.forEach { line ->
+            val separator = line.indexOfFirst { it == '：' || it == ':' }
+            if (separator > 0) {
+                val label = line.substring(0, separator + 1)
+                val value = line.substring(separator + 1).trimStart()
+                Text(
+                    text = buildAnnotatedString {
+                        withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, color = textColor)) {
+                            append(label)
+                        }
+                        withStyle(SpanStyle(color = secondaryColor)) {
+                            append("  ")
+                            append(value)
+                        }
+                    },
+                    fontSize = 12.sp,
+                    lineHeight = 18.sp
+                )
+            } else {
+                Text(
+                    text = line,
+                    fontSize = 12.sp,
+                    lineHeight = 18.sp,
+                    color = secondaryColor
+                )
+            }
+        }
+    }
 }
 
-private fun getTermsOfServiceContent(): String {
-    return """
-Lumi 用户协议
-
-生效日期：2026年6月29日
-最近更新：2026年7月21日
-应用名称：Lumi
-包名：com.huangder.lumibooks
-开发者：huangder
-联系邮箱：huangder0104@126.com
-
-一、协议的接受
-
-欢迎使用 Lumi（以下简称"本应用"）。在使用本应用之前，请仔细阅读并充分理解本用户协议。
-
-下载、安装、打开或使用本应用，即表示您已阅读、理解并同意受本协议的约束。如果您不同意本协议的任何条款，请停止使用本应用。
-
-二、应用说明
-
-2.1 应用功能
-
-Lumi 是一款本地电子书阅读器，主要功能包括：
-
-• 阅读 EPUB、TXT、PDF 格式的电子书
-• 管理本地电子书文件
-• 记录阅读进度和书签
-• 自定义阅读界面（字号、主题、行距等）
-• 查看阅读时长统计
-• 在用户主动启用后，通过第三方 MinerU 服务将 PDF 解析为电子书
-
-2.2 应用性质
-
-本应用为本地优先应用：
-
-• 本地阅读和本地解析不上传文件；检查更新时连接 GitHub
-• MinerU 云端解析默认关闭，仅在您主动启用并选择后上传所选 PDF
-• 本应用不提供用户账号注册或登录功能
-• 阅读数据存储在本地；第三方解析数据由 MinerU 按其协议处理
-
-2.3 开源许可
-
-Lumi 原创代码以 MIT 许可证开源发布，第三方组件及改编代码遵循各自许可证。在遵守对应许可证的前提下，您可以：
-
-• 自由查看源代码
-• 在个人或商业项目中使用本应用
-• 修改源代码并重新分发
-• 在保留版权声明的前提下进行二次开发
-
-三、用户权利与义务
-
-3.1 您的权利
-
-• 您有权免费使用本应用的所有功能
-• 您有权在应用内自由管理您的阅读数据
-• 您有权随时卸载本应用并删除所有数据
-• 您有权查看、修改和分发本应用的源代码
-• 您有权对本应用提出反馈和建议
-
-3.2 您的义务
-
-• 您应确保使用本应用阅读的电子书文件不侵犯他人知识产权
-• 您不应利用本应用从事任何违反法律法规的活动
-• 您在二次开发或分发时应遵守适用的开源许可证，并保留原始版权和归属声明
-
-四、知识产权
-
-4.1 应用知识产权
-
-Lumi 原创源代码、原创界面设计、图标及品牌标识的相关权利归开发者 huangder 所有，原创代码依 MIT 许可证开放使用。第三方依赖及改编代码的权利归各自权利人所有，并继续受其许可证约束；具体归属见“开放源代码许可”页面。
-
-4.2 用户内容
-
-您通过本应用阅读的电子书文件及其内容的知识产权归原始版权人所有。本应用仅提供阅读功能，不主张对您阅读内容的任何权利。
-
-五、免责声明
-
-5.1 数据安全
-
-• 本应用尽最大努力保护您的数据安全，但不对因设备故障、系统崩溃等原因导致的数据丢失承担责任
-• 建议您定期备份重要的电子书文件和阅读数据
-• 卸载应用将导致应用数据不可恢复地删除
-
-5.2 文件兼容性
-
-• 本应用支持 EPUB、TXT、PDF 格式，但不保证对所有同格式文件的完美兼容
-• 部分电子书文件可能因格式不规范而无法正常显示
-
-5.3 使用风险
-
-• 您应自行承担使用本应用的一切风险
-• 本应用按"现状"提供，不作任何明示或暗示的保证
-• 开源代码按"原样"提供，不附带任何形式的担保
-
-六、隐私保护
-
-本应用高度重视您的隐私保护。核心要点：
-
-• 本应用不使用分析、广告或用户追踪 SDK
-• 只有在您主动选择 MinerU 时，所选 PDF 才会发送至第三方
-• 阅读数据和加密后的个人 Token 存储在您的本地设备上
-• 源代码公开透明，欢迎审查
-
-七、协议的变更
-
-我们保留随时修改本协议的权利。修改后的协议将在应用内发布，并更新"最近更新"日期。继续使用本应用即表示您接受修改后的协议。
-
-八、适用法律
-
-本协议的解释和执行适用中华人民共和国法律。因本协议引起的或与本协议有关的任何争议，应友好协商解决；协商不成的，任何一方均可向开发者所在地人民法院提起诉讼。
-
-九、联系我们
-
-如果您对本用户协议有任何疑问、意见或建议，请通过以下方式联系我们：
-
-• 开发者：huangder
-• 联系邮箱：huangder0104@126.com
-• GitHub Issues：欢迎在项目仓库提交问题反馈
-
-本用户协议最后更新于 2026年7月21日。
-    """.trimIndent()
+@Composable
+private fun PolicySectionHeading(
+    text: String,
+    textColor: Color
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 20.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .width(4.dp)
+                .height(22.dp)
+                .clip(CircleShape)
+                .background(AccentColor)
+        )
+        Spacer(modifier = Modifier.width(10.dp))
+        Text(
+            text = text,
+            fontSize = 17.sp,
+            lineHeight = 23.sp,
+            fontWeight = FontWeight.Bold,
+            color = textColor
+        )
+    }
 }
+
+@Composable
+private fun PolicyBulletItem(
+    text: String,
+    textColor: Color,
+    secondaryColor: Color
+) {
+    val (marker, body) = when {
+        text.startsWith("❌") -> "✕" to text.removePrefix("❌").trimStart()
+        text.startsWith("✓") || text.startsWith("✔") -> "✓" to text.drop(1).trimStart()
+        text.startsWith("•") -> "•" to text.removePrefix("•").trimStart()
+        text.startsWith("-") -> "•" to text.removePrefix("-").trimStart()
+        else -> "•" to text
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Text(
+            text = marker,
+            fontSize = 16.sp,
+            lineHeight = 22.sp,
+            fontWeight = FontWeight.Bold,
+            color = AccentColor
+        )
+        Spacer(modifier = Modifier.width(9.dp))
+        Text(
+            text = body,
+            modifier = Modifier.weight(1f),
+            fontSize = 14.sp,
+            lineHeight = 22.sp,
+            color = textColor
+        )
+    }
+}
+
+private fun isPolicyPrimaryHeading(line: String): Boolean {
+    return line.matches(Regex("^[一二三四五六七八九十]+、\\s*.+")) ||
+        (line.matches(Regex("^\\d+\\.\\s*[^\\d].*")) && !isPolicySecondaryHeading(line))
+}
+
+private fun isPolicySecondaryHeading(line: String): Boolean =
+    line.matches(Regex("^\\d+\\.\\d+\\s*.+"))
+
+private fun isPolicyBullet(line: String): Boolean =
+    line.startsWith("•") || line.startsWith("-") || line.startsWith("❌") ||
+        line.startsWith("✓") || line.startsWith("✔")
+
+private fun isPolicyNotice(line: String): Boolean = listOf(
+    "核心原则", "核心原則", "Core principle", "Core Principle",
+    "基本方針", "基本原則", "핵심 원칙", "핵심 원칙："
+).any(line::startsWith)
+
+private fun isPolicyMetadataLine(line: String): Boolean = listOf(
+    "生效日期", "最近更新", "应用名称", "包名", "开发者", "联系邮箱",
+    "最後更新", "最后更新", "應用名稱", "應用程式名稱", "套件名稱", "開發者", "聯絡電郵", "聯絡電子郵件",
+    "Effective date", "Last updated", "Application name", "App name", "Package name", "Developer", "Contact email", "Contact",
+    "施行日", "最終更新日", "アプリ名", "パッケージ名", "開発者", "連絡先",
+    "시행일", "최종 업데이트", "앱 이름", "패키지명", "패키지 이름", "개발자", "연락처"
+).any(line::startsWith)
+@Composable
+private fun getPrivacyPolicyContent(): String = stringResource(R.string.welcome_privacy_content)
+
+@Composable
+private fun getTermsOfServiceContent(): String = stringResource(R.string.welcome_terms_content)
