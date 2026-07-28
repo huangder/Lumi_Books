@@ -41,7 +41,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.outlined.Cloud
+import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material3.Icon
@@ -317,7 +317,7 @@ fun BookshelfScreen(
                                     isEditing = isEditing,
                                     isSelected = book.id in selectedBookIds,
                                     contextMenuState = contextMenuState,
-                                    showCloudSyncIcon = uiState.showCloudSyncIcon,
+                                    syncedBookIds = uiState.syncedBookIds,
                                     onHaptic = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
                                     onSelectionToggle = {
                                         selectedBookIds = if (book.id in selectedBookIds) {
@@ -418,7 +418,7 @@ fun BookshelfScreen(
                                     isEditing = false,
                                     isSelected = false,
                                     contextMenuState = contextMenuState,
-                                    showCloudSyncIcon = uiState.showCloudSyncIcon,
+                                    syncedBookIds = uiState.syncedBookIds,
                                     onHaptic = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
                                     onSelectionToggle = {},
                                     onClick = { onNavigateToReader(book.id, book.coverPath, book.title) }
@@ -859,7 +859,7 @@ private fun AnimatedBookGridItem(
     isEditing: Boolean,
     isSelected: Boolean,
     contextMenuState: BookContextMenuState,
-    showCloudSyncIcon: Boolean,
+    syncedBookIds: Set<String>,
     onHaptic: () -> Unit,
     onSelectionToggle: () -> Unit,
     onClick: () -> Unit
@@ -898,7 +898,7 @@ private fun AnimatedBookGridItem(
             isEditing = isEditing,
             isSelected = isSelected,
             contextMenuState = contextMenuState,
-            showCloudSyncIcon = showCloudSyncIcon,
+            syncedBookIds = syncedBookIds,
             onHaptic = onHaptic,
             onSelectionToggle = onSelectionToggle,
             onClick = onClick
@@ -915,7 +915,7 @@ private fun BookGridItem(
     isEditing: Boolean,
     isSelected: Boolean,
     contextMenuState: BookContextMenuState,
-    showCloudSyncIcon: Boolean,
+    syncedBookIds: Set<String>,
     onHaptic: () -> Unit,
     onSelectionToggle: () -> Unit,
     onClick: () -> Unit
@@ -1093,10 +1093,10 @@ private fun BookGridItem(
                     modifier = Modifier.size(12.dp)
                 )
             }
-            if (showCloudSyncIcon) {
+            if (book.id in syncedBookIds) {
                 Spacer(Modifier.width(4.dp))
                 Icon(
-                    imageVector = Icons.Outlined.Cloud,
+                    imageVector = Icons.Filled.Cloud,
                     contentDescription = stringResource(R.string.category_webdav),
                     tint = AppColors.TextSecondary,
                     modifier = Modifier.size(13.dp)

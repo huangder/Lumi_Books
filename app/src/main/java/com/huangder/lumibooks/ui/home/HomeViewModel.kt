@@ -55,8 +55,8 @@ data class HomeUiState(
     val weeklyData: List<DailyReading> = emptyList(),
     /** 连胜天数 */
     val streakDays: Int = 0,
-    /** WebDAV 同步已启用且至少完成过一次同步时显示云图标 */
-    val showCloudSyncIcon: Boolean = false
+    /** WebDAV 同步已完成的书籍 ID 集合，用于在书架标题旁显示云图标 */
+    val syncedBookIds: Set<String> = emptySet()
 )
 
 enum class SortBy {
@@ -190,10 +190,8 @@ class HomeViewModel @Inject constructor(
 
     private fun loadWebdavSyncStatus() {
         viewModelScope.launch {
-            dataStoreManager.webdavConfig.collectLatest { config ->
-                _uiState.value = _uiState.value.copy(
-                    showCloudSyncIcon = config.enabled && config.lastSyncTime > 0
-                )
+            dataStoreManager.webdavSyncedBookIds.collectLatest { ids ->
+                _uiState.value = _uiState.value.copy(syncedBookIds = ids)
             }
         }
     }

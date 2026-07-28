@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.data.sync
 
 import android.content.Context
+import android.util.Log
 import com.huangder.lumibooks.data.local.DataStoreManager
 import java.net.URLEncoder
 import com.huangder.lumibooks.data.local.WebdavTokenStore
@@ -65,104 +66,77 @@ class WebdavSyncManager @Inject constructor(
             webdavClient.ensureDirectory(serverUrl, username, password, "$syncPath/books")
             webdavClient.ensureDirectory(serverUrl, username, password, "$syncPath/data")
 
-            // 2. Download remote manifest
-            val remoteManifest = try {
-                val json = webdavClient.download(
+            // 2. Delete old manifest to force a clean rebuild.
+            //    Prevents ghost entries from polluted manifests blocking future uploads.
+            try {
+                webdavClient.delete(
                     "$serverUrl/$syncPath/manifest.json", username, password
-                ).toString(Charsets.UTF_8)
-                SyncManifest.fromJson(json)
-            } catch (_: WebdavException) {
-                SyncManifest() // no manifest yet — first sync
-            }
+                )
+            } catch (_: Exception) { }
 
-            // 3. Build local manifest
+            // 3. Build local manifest and upload everything fresh
             val localManifest = buildLocalManifest()
 
-            // 4. Diff and sync books
+            // 4. Upload all local books (individually try-catch'd)
             var booksUploaded = 0
-            var booksDownloaded = 0
+            val uploadedBookIds = mutableSetOf<String>()
 
-            // Upload local books that are newer or missing on remote
-            // Each book is individually try-catch'd so one failure doesn't abort the rest
+            // 4a. Upload all local books — fresh start, no diff needed
             for ((bookId, localEntry) in localManifest.books) {
-                val remoteEntry = remoteManifest.books[bookId]
-                if (remoteEntry == null || localEntry.lastModified > remoteEntry.lastModified) {
-                    try {
-                        val book = bookRepository.getBookById(bookId) ?: continue
-                        val file = File(book.filePath)
-                        if (file.exists()) {
-                            val data = file.readBytes()
-                            webdavClient.upload(
-                                "$serverUrl/$syncPath/books/${encodePathSegment(localEntry.fileName)}",
-                                data, username, password
-                            )
-                            booksUploaded++
-                        }
-                    } catch (_: Exception) {
-                        // Skip individual book failures
+                try {
+                    val book = bookRepository.getBookById(bookId)
+                    if (book == null) {
+                        Log.w("WebDAV", "Upload skip: book not in DB id=$bookId")
+                        continue
                     }
+                    val file = File(book.filePath)
+                    if (!file.exists()) {
+                        Log.w("WebDAV", "Upload skip: file missing path=${book.filePath} book=${book.title}")
+                        continue
+                    }
+                    val data = file.readBytes()
+                    webdavClient.upload(
+                        "$serverUrl/$syncPath/books/${encodePathSegment(localEntry.fileName)}",
+                        data, username, password
+                    )
+                    booksUploaded++
+                    uploadedBookIds.add(bookId)
+                } catch (e: Exception) {
+                    Log.e("WebDAV", "Upload failed book=$bookId file=${localEntry.fileName}: ${e.message}", e)
                 }
             }
 
-            // Download remote books that are newer or missing locally
-            for ((bookId, remoteEntry) in remoteManifest.books) {
-                val localEntry = localManifest.books[bookId]
-                if (localEntry == null || remoteEntry.lastModified > localEntry.lastModified) {
-                    try {
-                        val data = webdavClient.download(
-                            "$serverUrl/$syncPath/books/${encodePathSegment(remoteEntry.fileName)}",
-                            username, password
-                        )
-                        val booksDir = FileUtils.getBooksDirectory(context)
-                        val destFile = File(booksDir, remoteEntry.fileName)
-                        destFile.writeBytes(data)
-                        // Import book to database — reuse existing import logic
-                        importDownloadedBook(destFile, bookId, remoteEntry)
-                        booksDownloaded++
-                    } catch (_: Exception) {
-                        // Skip individual book failures
-                    }
-                }
-            }
-
-            // 5. Sync reading data (bookmarks, notes, progress)
+            // 5. Sync reading data (bookmarks, notes, progress) — upload all
             var dataSynced = 0
-            for ((bookId, localEntry) in localManifest.data) {
-                val remoteEntry = remoteManifest.data[bookId]
-                if (remoteEntry == null || localEntry.lastModified > remoteEntry.lastModified) {
-                    try {
-                        uploadBookData(bookId, serverUrl, username, password, syncPath)
-                        dataSynced++
-                    } catch (_: Exception) { }
-                }
-            }
-            for ((bookId, remoteEntry) in remoteManifest.data) {
-                val localEntry = localManifest.data[bookId]
-                if (localEntry == null || remoteEntry.lastModified > localEntry.lastModified) {
-                    try {
-                        downloadBookData(bookId, serverUrl, username, password, syncPath)
-                        dataSynced++
-                    } catch (_: Exception) { }
-                }
+            for ((bookId) in localManifest.data) {
+                try {
+                    uploadBookData(bookId, serverUrl, username, password, syncPath)
+                    dataSynced++
+                } catch (_: Exception) { }
             }
 
-            // 6. Upload new merged manifest
-            val newManifest = buildLocalManifest()
+            // 6. Upload manifest — only includes books confirmed on server
+            val rawManifest = buildLocalManifest()
+            val finalManifest = SyncManifest(
+                books = rawManifest.books.filterKeys { it in uploadedBookIds },
+                data = rawManifest.data
+            )
             webdavClient.upload(
                 "$serverUrl/$syncPath/manifest.json",
-                newManifest.toJson().toByteArray(Charsets.UTF_8),
+                finalManifest.toJson().toByteArray(Charsets.UTF_8),
                 username, password,
                 "application/json"
             )
 
-            // 7. Update last sync time
+            // 7. Update last sync time + synced book IDs (only actually-uploaded books)
             val now = System.currentTimeMillis()
             dataStoreManager.updateWebdavLastSyncTime(now)
+            dataStoreManager.saveWebdavSyncedBookIds(uploadedBookIds)
             val newConfig = normalized.copy(lastSyncTime = now)
             dataStoreManager.saveWebdavConfig(newConfig)
 
             SyncResult(
-                message = "上传 $booksUploaded 本书，下载 $booksDownloaded 本书，同步 $dataSynced 条阅读数据",
+                message = "上传 $booksUploaded 本书，同步 $dataSynced 条阅读数据",
                 success = true
             )
         } catch (e: WebdavException) {

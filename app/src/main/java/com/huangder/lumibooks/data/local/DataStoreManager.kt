@@ -124,6 +124,7 @@ class DataStoreManager @Inject constructor(
         private val WEBDAV_USERNAME = stringPreferencesKey("webdav_username")
         private val WEBDAV_SYNC_PATH = stringPreferencesKey("webdav_sync_path")
         private val WEBDAV_LAST_SYNC_TIME = longPreferencesKey("webdav_last_sync_time")
+        private val WEBDAV_SYNCED_BOOK_IDS = stringPreferencesKey("webdav_synced_book_ids")
         // 应用语言
         private val APP_LANGUAGE = stringPreferencesKey("app_language")
 
@@ -358,6 +359,12 @@ class DataStoreManager @Inject constructor(
             syncPath = preferences[WEBDAV_SYNC_PATH] ?: "LumiBooks",
             lastSyncTime = preferences[WEBDAV_LAST_SYNC_TIME] ?: 0L
         )
+    }
+
+    val webdavSyncedBookIds: Flow<Set<String>> = context.dataStore.data.map { preferences ->
+        val raw = preferences[WEBDAV_SYNCED_BOOK_IDS] ?: ""
+        if (raw.isBlank()) emptySet()
+        else raw.split(",").toSet()
     }
 
     fun externalTtsResumePosition(bookId: String): Flow<ExternalTtsResumePosition?> =
@@ -911,6 +918,12 @@ class DataStoreManager @Inject constructor(
     suspend fun updateWebdavLastSyncTime(timeMillis: Long) {
         context.dataStore.edit { preferences ->
             preferences[WEBDAV_LAST_SYNC_TIME] = timeMillis
+        }
+    }
+
+    suspend fun saveWebdavSyncedBookIds(ids: Set<String>) {
+        context.dataStore.edit { preferences ->
+            preferences[WEBDAV_SYNCED_BOOK_IDS] = ids.joinToString(",")
         }
     }
 
