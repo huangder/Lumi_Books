@@ -3,6 +3,9 @@ package com.huangder.lumibooks.ui.home
 import android.app.Application
 import android.content.Context
 import android.net.Uri
+import android.content.Intent
+import android.provider.DocumentsContract
+import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.huangder.lumibooks.R
@@ -25,6 +28,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -37,6 +41,8 @@ import javax.inject.Inject
 /** 每日阅读数据 */
 data class DailyReading(val date: String, val duration: Long, val dayLabel: String)
 
+data class BookImportCandidate(val uri: Uri, val name: String)
+
 data class HomeUiState(
     val books: List<Book> = emptyList(),
     val todayReadingTime: Long = 0,
@@ -46,7 +52,9 @@ data class HomeUiState(
     val isSearchActive: Boolean = false,
     val sortBy: SortBy = SortBy.LAST_READ,
     val isLoading: Boolean = true,
+    val bookshelfLayoutMode: Int = 2,
     val importMessage: String? = null,
+    val authorizedBookDirectories: List<String> = emptyList(),
     val tagMessage: String? = null,
     val error: String? = null,
     val tags: List<LibraryTag> = emptyList(),
@@ -73,6 +81,11 @@ class HomeViewModel @Inject constructor(
     private val webdavSyncManager: com.huangder.lumibooks.data.sync.WebdavSyncManager
 ) : ViewModel() {
 
+    private companion object {
+        val SUPPORTED_BOOK_EXTENSIONS = setOf("epub", "pdf", "txt")
+        const val READING_HISTORY_START_DATE = "1970-01-01"
+    }
+
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
@@ -94,6 +107,8 @@ class HomeViewModel @Inject constructor(
         loadAvatar()
         loadWeeklyData()
         loadWebdavSyncStatus()
+        loadBookshelfLayoutMode()
+        loadAuthorizedBookDirectories()
     }
 
     fun loadBooks() {
@@ -152,6 +167,14 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    private fun loadAuthorizedBookDirectories() {
+        viewModelScope.launch {
+            dataStoreManager.authorizedBookDirectories.collectLatest { directories ->
+                _uiState.value = _uiState.value.copy(authorizedBookDirectories = directories)
+            }
+        }
+    }
+
     private fun loadWeeklyData() {
         viewModelScope.launch {
             // 日历周：从本周日开始，到本周六结束
@@ -189,6 +212,22 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    private fun loadBookshelfLayoutMode() {
+        viewModelScope.launch {
+            dataStoreManager.bookshelfLayoutMode.collectLatest { mode ->
+                _uiState.value = _uiState.value.copy(bookshelfLayoutMode = mode)
+            }
+        }
+    }
+
+    fun setBookshelfLayoutMode(mode: Int) {
+        val normalizedMode = mode.coerceIn(1, 3)
+        _uiState.value = _uiState.value.copy(bookshelfLayoutMode = normalizedMode)
+        viewModelScope.launch {
+            dataStoreManager.saveBookshelfLayoutMode(normalizedMode)
+        }
+    }
+
     private fun loadWebdavSyncStatus() {
         viewModelScope.launch {
             dataStoreManager.webdavSyncedBookIds.collectLatest { ids ->
@@ -198,6 +237,7 @@ class HomeViewModel @Inject constructor(
     }
 
     fun syncWebdavNow() {
+        Toast.makeText(application, R.string.webdav_syncing, Toast.LENGTH_SHORT).show()
         viewModelScope.launch {
             webdavSyncManager.fullSync()
         }
@@ -265,45 +305,236 @@ class HomeViewModel @Inject constructor(
      * 全部在 Dispatchers.IO 上执行，不阻塞主线程
      */
     fun importBook(context: Context, uri: Uri) {
+        importBooks(context, listOf(uri))
+    }
+
+    fun importBooks(context: Context, uris: List<Uri>) {
+        importBooks(context, uris, copyIntoApp = true)
+    }
+
+    fun importAuthorizedBooks(context: Context, uris: List<Uri>) {
+        importBooks(context, uris, copyIntoApp = false)
+    }
+
+    private fun importBooks(context: Context, uris: List<Uri>, copyIntoApp: Boolean) {
+        if (uris.isEmpty()) return
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(importMessage = context.getString(R.string.importing))
-            try {
-                withContext(Dispatchers.IO) {
-                    val fileName = FileUtils.getFileNameFromUri(context, uri) ?: return@withContext
-                    val extension = FileUtils.getFileExtension(fileName)
-                    if (extension !in listOf("epub", "pdf", "txt")) return@withContext
+            val result = withContext(Dispatchers.IO) {
+                importDocuments(context, uris.mapNotNull { uri ->
+                    val name = FileUtils.getFileNameFromUri(context, uri) ?: return@mapNotNull null
+                    BookDocument(uri, name)
+                }, copyIntoApp = copyIntoApp)
+            }
+            _uiState.value = _uiState.value.copy(importMessage = result.toMessage(context))
+        }
+    }
 
-                    val file = FileUtils.copyFileToInternal(context, uri, fileName) ?: return@withContext
-                    val format = when (extension) {
-                        "epub" -> BookFormat.EPUB
-                        "pdf" -> BookFormat.PDF
-                        else -> BookFormat.TXT
-                    }
-
-                    // 只提取封面，不解析全部章节（避免大文件卡死）
-                    val coverPath = try {
-                        val parser = BookParserFactory.createParser(format, context)
-                        parser.extractCoverPath(file.absolutePath)
-                    } catch (_: Exception) { null }
-
-                    val book = Book(
-                        id = FileUtils.generateBookId(),
-                        title = fileName.substringBeforeLast('.'),
-                        author = context.getString(R.string.book_author_unknown),
-                        filePath = file.absolutePath,
-                        coverPath = coverPath,
-                        format = format,
-                        lastReadTime = System.currentTimeMillis(),
-                        readingProgress = 0f,
-                        createdAt = System.currentTimeMillis()
+    fun authorizeBookDirectory(
+        context: Context,
+        treeUri: Uri,
+        onDiscovered: (List<BookImportCandidate>) -> Unit
+    ) {
+        viewModelScope.launch {
+            val result = runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    treeUri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+                dataStoreManager.addAuthorizedBookDirectory(treeUri.toString())
+                withContext(Dispatchers.IO) { discoverNewBooks(context, listOf(treeUri)) }
+            }
+            result.fold(
+                onSuccess = { discovery ->
+                    onDiscovered(discovery.documents.map { BookImportCandidate(it.uri, it.name) })
+                    _uiState.value = _uiState.value.copy(
+                        importMessage = discovery.messageWhenEmpty(context)
                     )
-                    bookRepository.insertBook(book)
+                },
+                onFailure = { error ->
+                    onDiscovered(emptyList())
+                    _uiState.value = _uiState.value.copy(
+                        importMessage = context.getString(R.string.import_failed, error.message.orEmpty())
+                    )
                 }
-                _uiState.value = _uiState.value.copy(importMessage = context.getString(R.string.import_complete))
-            } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(importMessage = context.getString(R.string.import_failed, e.message ?: ""))
+            )
+        }
+    }
+
+    fun scanAuthorizedBookDirectories(
+        context: Context,
+        onDiscovered: (List<BookImportCandidate>) -> Unit
+    ) {
+        viewModelScope.launch {
+            val result = runCatching {
+                val directories = dataStoreManager.authorizedBookDirectories.first().map(Uri::parse)
+                if (directories.isEmpty()) {
+                    return@runCatching BookDiscoveryResult(noAuthorizedDirectories = true)
+                }
+                withContext(Dispatchers.IO) { discoverNewBooks(context, directories) }
+            }
+            result.fold(
+                onSuccess = { discovery ->
+                    onDiscovered(discovery.documents.map { BookImportCandidate(it.uri, it.name) })
+                    _uiState.value = _uiState.value.copy(
+                        importMessage = discovery.messageWhenEmpty(context)
+                    )
+                },
+                onFailure = { error ->
+                    onDiscovered(emptyList())
+                    _uiState.value = _uiState.value.copy(
+                        importMessage = context.getString(R.string.import_failed, error.message.orEmpty())
+                    )
+                }
+            )
+        }
+    }
+
+    private suspend fun discoverNewBooks(
+        context: Context,
+        directories: List<Uri>
+    ): BookDiscoveryResult {
+        val existingLocations = _uiState.value.books.mapTo(mutableSetOf()) { it.filePath }
+        val documents = mutableListOf<BookDocument>()
+        var inaccessibleDirectories = 0
+        directories.forEach { treeUri ->
+            runCatching { documents += discoverBooks(context, treeUri) }
+                .onFailure {
+                    inaccessibleDirectories++
+                    dataStoreManager.removeAuthorizedBookDirectory(treeUri.toString())
+                }
+        }
+        val newDocuments = documents
+            .distinctBy { it.uri.toString() }
+            .filterNot { it.uri.toString() in existingLocations }
+        return BookDiscoveryResult(
+            documents = newDocuments,
+            inaccessibleDirectories = inaccessibleDirectories
+        )
+    }
+
+    private fun discoverBooks(context: Context, treeUri: Uri): List<BookDocument> {
+        val resolver = context.contentResolver
+        val pendingDirectories = ArrayDeque<String>()
+        pendingDirectories += DocumentsContract.getTreeDocumentId(treeUri)
+        val discovered = mutableListOf<BookDocument>()
+        val projection = arrayOf(
+            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            DocumentsContract.Document.COLUMN_MIME_TYPE
+        )
+
+        while (pendingDirectories.isNotEmpty()) {
+            val parentId = pendingDirectories.removeFirst()
+            val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentId)
+            resolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
+                val idIndex = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                val nameIndex = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                val mimeIndex = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
+                while (cursor.moveToNext()) {
+                    val documentId = cursor.getString(idIndex)
+                    val name = cursor.getString(nameIndex).orEmpty()
+                    val mimeType = cursor.getString(mimeIndex).orEmpty()
+                    if (mimeType == DocumentsContract.Document.MIME_TYPE_DIR) {
+                        pendingDirectories += documentId
+                    } else if (FileUtils.getFileExtension(name) in SUPPORTED_BOOK_EXTENSIONS) {
+                        discovered += BookDocument(
+                            DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId),
+                            name
+                        )
+                    }
+                }
             }
         }
+        return discovered
+    }
+
+    private suspend fun importDocuments(
+        context: Context,
+        documents: List<BookDocument>,
+        copyIntoApp: Boolean
+    ): ImportResult {
+        var imported = 0
+        var skipped = 0
+        var failed = 0
+        documents.forEach { document ->
+            val extension = FileUtils.getFileExtension(document.name)
+            if (extension !in SUPPORTED_BOOK_EXTENSIONS) {
+                skipped++
+                return@forEach
+            }
+            runCatching {
+                val location = if (copyIntoApp) {
+                    FileUtils.copyFileToInternal(context, document.uri, document.name)?.absolutePath
+                        ?: error("Unable to copy ${document.name}")
+                } else {
+                    document.uri.toString()
+                }
+                val format = extension.toBookFormat()
+                val parser = BookParserFactory.createParser(format, context)
+                val coverPath = try {
+                    parser.extractCoverPath(location)
+                } catch (_: Exception) {
+                    null
+                } finally {
+                    parser.close()
+                }
+                val now = System.currentTimeMillis()
+                bookRepository.insertBook(
+                    Book(
+                        id = FileUtils.generateBookId(),
+                        title = document.name.substringBeforeLast('.'),
+                        author = context.getString(R.string.book_author_unknown),
+                        filePath = location,
+                        coverPath = coverPath,
+                        format = format,
+                        lastReadTime = now,
+                        readingProgress = 0f,
+                        createdAt = now
+                    )
+                )
+            }.onSuccess { imported++ }.onFailure { failed++ }
+        }
+        return ImportResult(imported = imported, skipped = skipped, failed = failed)
+    }
+
+    private data class BookDocument(val uri: Uri, val name: String)
+
+    private data class BookDiscoveryResult(
+        val documents: List<BookDocument> = emptyList(),
+        val inaccessibleDirectories: Int = 0,
+        val noAuthorizedDirectories: Boolean = false
+    ) {
+        fun messageWhenEmpty(context: Context): String? {
+            if (documents.isNotEmpty()) return null
+            return when {
+                noAuthorizedDirectories -> context.getString(R.string.import_no_authorized_directory)
+                inaccessibleDirectories > 0 -> context.getString(R.string.import_directory_permission_lost)
+                else -> context.getString(R.string.import_no_new_books)
+            }
+        }
+    }
+
+    private data class ImportResult(
+        val imported: Int = 0,
+        val skipped: Int = 0,
+        val failed: Int = 0,
+        val inaccessibleDirectories: Int = 0,
+        val noAuthorizedDirectories: Boolean = false
+    ) {
+        fun toMessage(context: Context): String = when {
+            noAuthorizedDirectories -> context.getString(R.string.import_no_authorized_directory)
+            failed > 0 -> context.getString(R.string.import_summary_with_failures, imported, failed)
+            imported > 0 -> context.getString(R.string.import_summary, imported)
+            inaccessibleDirectories > 0 -> context.getString(R.string.import_directory_permission_lost)
+            else -> context.getString(R.string.import_no_new_books)
+        }
+    }
+
+    private fun String.toBookFormat(): BookFormat = when (this) {
+        "epub" -> BookFormat.EPUB
+        "pdf" -> BookFormat.PDF
+        else -> BookFormat.TXT
     }
 
     fun clearImportMessage() {
@@ -430,7 +661,4 @@ class HomeViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(error = null)
     }
 
-    private companion object {
-        const val READING_HISTORY_START_DATE = "1970-01-01"
-    }
 }

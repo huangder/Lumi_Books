@@ -158,6 +158,7 @@ fun ThemeSettingsSheet(
     currentEpubRenderMode: EpubRenderMode = EpubRenderMode.READER_LAYOUT,
     currentChineseMode: String = "original",
     currentPageTransition: String = "slide",
+    eInkModeEnabled: Boolean = false,
     onFontSizeChange: (Float) -> Unit,
     onThemeChange: (String) -> Unit,
     onBackgroundSelect: (String) -> Unit = onThemeChange,
@@ -181,7 +182,7 @@ fun ThemeSettingsSheet(
     LaunchedEffect(visible) {
         if (visible) {
             sheetOffset.snapTo(1f)
-            sheetOffset.animateBottomSheetIn()
+            if (eInkModeEnabled) sheetOffset.snapTo(0f) else sheetOffset.animateBottomSheetIn()
         }
     }
 
@@ -197,14 +198,14 @@ fun ThemeSettingsSheet(
 
     LaunchedEffect(isClosing) {
         if (isClosing) {
-            sheetOffset.animateBottomSheetOut()
+            if (eInkModeEnabled) sheetOffset.snapTo(1f) else sheetOffset.animateBottomSheetOut()
             onDismiss()
         }
     }
 
     // 亮度值：-1f=跟随系统，0f~1f=自定义
     val brightnessPercent = if (currentBrightness < 0f) 80f else currentBrightness * 100f
-    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !eInkModeEnabled
     val isDark = LocalIsDarkTheme.current
     val sheetScrimAlpha = if (isLiquidGlass) 0.20f else 0.08f
     val sheetContentBackdrop = rememberLayerBackdrop()
@@ -425,16 +426,25 @@ fun ThemeSettingsSheet(
             )
             Spacer(Modifier.height(12.dp))
 
-            ReaderBackgroundSelector(
-                currentSelection = currentBackgroundSelection,
-                customBackgrounds = customBackgrounds,
-                onSelect = onBackgroundSelect,
-                onAddColor = onAddBackgroundColor,
-                onAddImage = onAddBackgroundImage,
-                onDelete = onDeleteBackground
-            )
+            if (eInkModeEnabled) {
+                Text(
+                    stringResource(R.string.e_ink_reader_fixed_theme_hint),
+                    fontSize = 13.sp,
+                    color = LightTextSecondary,
+                    modifier = Modifier.padding(horizontal = 24.dp)
+                )
+            } else {
+                ReaderBackgroundSelector(
+                    currentSelection = currentBackgroundSelection,
+                    customBackgrounds = customBackgrounds,
+                    onSelect = onBackgroundSelect,
+                    onAddColor = onAddBackgroundColor,
+                    onAddImage = onAddBackgroundImage,
+                    onDelete = onDeleteBackground
+                )
+            }
 
-            if (isEpub && currentEpubRenderMode == EpubRenderMode.BOOK_LAYOUT) {
+            if (!eInkModeEnabled && isEpub && currentEpubRenderMode == EpubRenderMode.BOOK_LAYOUT) {
                 Spacer(Modifier.height(12.dp))
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 24.dp),
@@ -505,36 +515,47 @@ fun ThemeSettingsSheet(
                 modifier = Modifier.padding(horizontal = 24.dp)
             )
             Spacer(Modifier.height(12.dp))
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
+            if (eInkModeEnabled) {
                 ModeButton(
-                    label = stringResource(R.string.transition_slide),
-                    isSelected = currentPageTransition == "slide",
-                    onClick = { onPageTransitionChange("slide") },
-                    modifier = Modifier.weight(1f)
+                    label = stringResource(R.string.transition_none),
+                    isSelected = true,
+                    onClick = {},
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)
                 )
-                ModeButton(
-                    label = stringResource(R.string.transition_fade),
-                    isSelected = currentPageTransition == "fade",
-                    onClick = { onPageTransitionChange("fade") },
-                    modifier = Modifier.weight(1f)
-                )
-                ModeButton(
-                    label = stringResource(R.string.transition_curl),
-                    isSelected = currentPageTransition == "curl",
-                    onClick = { onPageTransitionChange("curl") },
-                    modifier = Modifier.weight(1f)
-                )
+            } else {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    ModeButton(
+                        label = stringResource(R.string.transition_slide),
+                        isSelected = currentPageTransition == "slide",
+                        onClick = { onPageTransitionChange("slide") },
+                        modifier = Modifier.weight(1f)
+                    )
+                    ModeButton(
+                        label = stringResource(R.string.transition_fade),
+                        isSelected = currentPageTransition == "fade",
+                        onClick = { onPageTransitionChange("fade") },
+                        modifier = Modifier.weight(1f)
+                    )
+                    ModeButton(
+                        label = stringResource(R.string.transition_curl),
+                        isSelected = currentPageTransition == "curl",
+                        onClick = { onPageTransitionChange("curl") },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                if (!isEpub || currentEpubRenderMode != EpubRenderMode.BOOK_LAYOUT) {
+                    Spacer(Modifier.height(12.dp))
+                    ModeButton(
+                        label = stringResource(R.string.transition_scroll),
+                        isSelected = currentPageTransition == "continuous",
+                        onClick = { onPageTransitionChange("continuous") },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)
+                    )
+                }
             }
-            Spacer(Modifier.height(12.dp))
-            ModeButton(
-                label = stringResource(R.string.transition_scroll),
-                isSelected = currentPageTransition == "continuous",
-                onClick = { onPageTransitionChange("continuous") },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)
-            )
 
             Spacer(Modifier.height(16.dp))
 
@@ -1009,6 +1030,7 @@ fun AdvancedSettingsSheet(
     currentTextColorOverride: Int?,
     currentFontSizeSp: Float,
     preservePublisherLayout: Boolean = false,
+    eInkModeEnabled: Boolean = false,
     onLineHeightChange: (Float) -> Unit,
     onLetterSpacingChange: (Float) -> Unit,
     onFontTypeChange: (String) -> Unit,
@@ -1048,7 +1070,7 @@ fun AdvancedSettingsSheet(
         if (visible) {
             settingsScrollState.scrollTo(0)
             sheetOffset.snapTo(1f)
-            sheetOffset.animateBottomSheetIn()
+            if (eInkModeEnabled) sheetOffset.snapTo(0f) else sheetOffset.animateBottomSheetIn()
         }
     }
 
@@ -1064,7 +1086,7 @@ fun AdvancedSettingsSheet(
 
     LaunchedEffect(isClosing) {
         if (isClosing) {
-            sheetOffset.animateBottomSheetOut()
+            if (eInkModeEnabled) sheetOffset.snapTo(1f) else sheetOffset.animateBottomSheetOut()
             onDismiss()
         }
     }
@@ -1208,27 +1230,31 @@ fun AdvancedSettingsSheet(
                     .verticalScroll(settingsScrollState)
                     .padding(start = 24.dp, top = 16.dp, end = 24.dp, bottom = 24.dp)
             ) {
-                AdvancedSettingsGroup {
-                    TextColorSetting(
-                        currentOverride = currentTextColorOverride,
-                        effectiveTextColor = currentTextColor,
-                        onColorChange = onTextColorChange
-                    )
+                if (!eInkModeEnabled) {
+                    AdvancedSettingsGroup(eInkModeEnabled) {
+                        TextColorSetting(
+                            currentOverride = currentTextColorOverride,
+                            effectiveTextColor = currentTextColor,
+                            onColorChange = onTextColorChange
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
                 }
-                Spacer(Modifier.height(12.dp))
 
-                AdvancedSettingsGroup {
-                    AdvancedToggleRow(
-                        title = stringResource(R.string.bionic_reading),
-                        hint = stringResource(R.string.bionic_reading_hint),
-                        checked = bionicReadingEnabled,
-                        onCheckedChange = onBionicReadingEnabledChange
-                    )
+                if (!eInkModeEnabled) {
+                    AdvancedSettingsGroup(eInkModeEnabled) {
+                        AdvancedToggleRow(
+                            title = stringResource(R.string.bionic_reading),
+                            hint = stringResource(R.string.bionic_reading_hint),
+                            checked = bionicReadingEnabled,
+                            onCheckedChange = onBionicReadingEnabledChange
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
                 }
-                Spacer(Modifier.height(12.dp))
 
                 if (!preservePublisherLayout) {
-                AdvancedSettingsGroup {
+                AdvancedSettingsGroup(eInkModeEnabled) {
                     SettingSlider(stringResource(R.string.label_line_height), currentLineHeight, 1.0f..2.5f, 0.1f, { String.format("%.1fx", it) }, onLineHeightChange)
                     Spacer(Modifier.height(12.dp))
                     SettingSlider(stringResource(R.string.label_letter_spacing), currentLetterSpacing, 0f..10f, 0.5f, { String.format("%.1f sp", it) }, onLetterSpacingChange)
@@ -1250,7 +1276,7 @@ fun AdvancedSettingsSheet(
                 Spacer(Modifier.height(12.dp))
 
                 }
-                AdvancedSettingsGroup {
+                AdvancedSettingsGroup(eInkModeEnabled) {
                     SettingSlider(stringResource(R.string.label_margin_top), currentMarginTop, 0f..120f, 2f, { "${it.toInt()} dp" }, onMarginTopChange)
                     Spacer(Modifier.height(12.dp))
                     SettingSlider(stringResource(R.string.label_margin_bottom), currentMarginBottom, 0f..120f, 2f, { "${it.toInt()} dp" }, onMarginBottomChange)
@@ -1261,22 +1287,27 @@ fun AdvancedSettingsSheet(
                 }
                 Spacer(Modifier.height(12.dp))
 
-                AdvancedSettingsGroup {
-                    ReaderCornerLayoutSettings(
-                        topLeft = readerTopLeftContent,
-                        topRight = readerTopRightContent,
-                        bottomLeft = readerBottomLeftContent,
-                        bottomRight = readerBottomRightContent,
-                        onContentChange = onReaderCornerContentChange
-                    )
-                    Spacer(Modifier.height(16.dp))
+                AdvancedSettingsGroup(eInkModeEnabled) {
+                    if (!eInkModeEnabled) {
+                        ReaderCornerLayoutSettings(
+                            topLeft = readerTopLeftContent,
+                            topRight = readerTopRightContent,
+                            bottomLeft = readerBottomLeftContent,
+                            bottomRight = readerBottomRightContent,
+                            forceSolidMenus = preservePublisherLayout,
+                            onContentChange = onReaderCornerContentChange
+                        )
+                        Spacer(Modifier.height(16.dp))
+                    }
                     ReaderEdgeTapModeSetting(
                         selected = readerEdgeTapMode,
+                        forceSolidMenu = preservePublisherLayout,
                         onSelected = onReaderEdgeTapModeChange
                     )
                     Spacer(Modifier.height(16.dp))
                     ScreenSleepTimeoutSetting(
                         selectedSeconds = screenSleepTimeoutSeconds,
+                        forceSolidMenu = preservePublisherLayout,
                         onSelected = onScreenSleepTimeoutChange
                     )
                     Spacer(Modifier.height(16.dp))
@@ -1289,7 +1320,7 @@ fun AdvancedSettingsSheet(
                 }
                 Spacer(Modifier.height(12.dp))
 
-                AdvancedSettingsGroup {
+                AdvancedSettingsGroup(eInkModeEnabled) {
                     Text(stringResource(R.string.font_label), fontSize = 14.sp, color = LightTextSecondary)
                     Spacer(Modifier.height(12.dp))
                     FontSelector(
@@ -1331,9 +1362,10 @@ fun AdvancedSettingsSheet(
 
 @Composable
 private fun AdvancedSettingsGroup(
+    eInkModeEnabled: Boolean,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !eInkModeEnabled
     val isDark = LocalIsDarkTheme.current
     val transparency = LocalLiquidGlassTransparency.current
     val shape = RoundedCornerShape(16.dp)
@@ -1405,6 +1437,7 @@ private fun ReaderCornerLayoutSettings(
     topRight: ReaderCornerContent,
     bottomLeft: ReaderCornerContent,
     bottomRight: ReaderCornerContent,
+    forceSolidMenus: Boolean,
     onContentChange: (ReaderPageCorner, ReaderCornerContent) -> Unit
 ) {
     Text(
@@ -1424,21 +1457,25 @@ private fun ReaderCornerLayoutSettings(
     ReaderCornerSelectionRow(
         label = stringResource(R.string.reader_corner_top_left),
         selected = topLeft,
+        forceSolidMenu = forceSolidMenus,
         onSelected = { onContentChange(ReaderPageCorner.TOP_LEFT, it) }
     )
     ReaderCornerSelectionRow(
         label = stringResource(R.string.reader_corner_top_right),
         selected = topRight,
+        forceSolidMenu = forceSolidMenus,
         onSelected = { onContentChange(ReaderPageCorner.TOP_RIGHT, it) }
     )
     ReaderCornerSelectionRow(
         label = stringResource(R.string.reader_corner_bottom_left),
         selected = bottomLeft,
+        forceSolidMenu = forceSolidMenus,
         onSelected = { onContentChange(ReaderPageCorner.BOTTOM_LEFT, it) }
     )
     ReaderCornerSelectionRow(
         label = stringResource(R.string.reader_corner_bottom_right),
         selected = bottomRight,
+        forceSolidMenu = forceSolidMenus,
         onSelected = { onContentChange(ReaderPageCorner.BOTTOM_RIGHT, it) }
     )
 }
@@ -1447,13 +1484,14 @@ private fun ReaderCornerLayoutSettings(
 private fun ReaderCornerSelectionRow(
     label: String,
     selected: ReaderCornerContent,
+    forceSolidMenu: Boolean,
     onSelected: (ReaderCornerContent) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
     var menuAnchorBounds by remember { mutableStateOf(Rect.Zero) }
     val options = ReaderCornerContent.entries
     val labeledOptions = options.map { option -> option to readerCornerContentLabel(option) }
-    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val useLiquidGlassMenu = LocalAppTheme.current == "liquid_glass" && !forceSolidMenu
     val liquidMenuHost = LocalLiquidGlassMenuHost.current
 
     Row(
@@ -1472,7 +1510,7 @@ private fun ReaderCornerSelectionRow(
                     .background(LightBgGray)
                     .onGloballyPositioned { menuAnchorBounds = it.boundsInRoot() }
                     .clickable {
-                        if (isLiquidGlass && liquidMenuHost != null && menuAnchorBounds != Rect.Zero) {
+                        if (useLiquidGlassMenu && liquidMenuHost != null && menuAnchorBounds != Rect.Zero) {
                             liquidMenuHost.show(
                                 LiquidGlassMenuSpec(
                                     anchorBounds = menuAnchorBounds,
@@ -1542,6 +1580,7 @@ private fun ReaderCornerSelectionRow(
 @Composable
 private fun ReaderEdgeTapModeSetting(
     selected: ReaderEdgeTapMode,
+    forceSolidMenu: Boolean,
     onSelected: (ReaderEdgeTapMode) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -1549,7 +1588,7 @@ private fun ReaderEdgeTapModeSetting(
     val labeledOptions = ReaderEdgeTapMode.entries.map { mode ->
         mode to readerEdgeTapModeLabel(mode)
     }
-    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val useLiquidGlassMenu = LocalAppTheme.current == "liquid_glass" && !forceSolidMenu
     val liquidMenuHost = LocalLiquidGlassMenuHost.current
 
     Row(
@@ -1583,7 +1622,7 @@ private fun ReaderEdgeTapModeSetting(
                     .background(LightBgGray)
                     .onGloballyPositioned { menuAnchorBounds = it.boundsInRoot() }
                     .clickable {
-                        if (isLiquidGlass && liquidMenuHost != null && menuAnchorBounds != Rect.Zero) {
+                        if (useLiquidGlassMenu && liquidMenuHost != null && menuAnchorBounds != Rect.Zero) {
                             liquidMenuHost.show(
                                 LiquidGlassMenuSpec(
                                     anchorBounds = menuAnchorBounds,
@@ -1655,13 +1694,14 @@ private fun ReaderEdgeTapModeSetting(
 @Composable
 private fun ScreenSleepTimeoutSetting(
     selectedSeconds: Int,
+    forceSolidMenu: Boolean,
     onSelected: (Int) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
     var menuAnchorBounds by remember { mutableStateOf(Rect.Zero) }
     val options = DataStoreManager.SCREEN_SLEEP_TIMEOUT_SECONDS_OPTIONS
     val labeledOptions = options.map { seconds -> seconds to screenSleepTimeoutLabel(seconds) }
-    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val useLiquidGlassMenu = LocalAppTheme.current == "liquid_glass" && !forceSolidMenu
     val liquidMenuHost = LocalLiquidGlassMenuHost.current
 
     Row(
@@ -1695,7 +1735,7 @@ private fun ScreenSleepTimeoutSetting(
                     .background(LightBgGray)
                     .onGloballyPositioned { menuAnchorBounds = it.boundsInRoot() }
                     .clickable {
-                        if (isLiquidGlass && liquidMenuHost != null && menuAnchorBounds != Rect.Zero) {
+                        if (useLiquidGlassMenu && liquidMenuHost != null && menuAnchorBounds != Rect.Zero) {
                             liquidMenuHost.show(
                                 LiquidGlassMenuSpec(
                                     anchorBounds = menuAnchorBounds,

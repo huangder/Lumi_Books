@@ -1,6 +1,8 @@
 package com.huangder.lumibooks.ui.animation
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -13,6 +15,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
 import kotlinx.coroutines.delay
 
 /**
@@ -27,6 +30,11 @@ fun StaggeredItem(
     delayPerItem: Int = 50,
     content: @Composable () -> Unit
 ) {
+    val motionEnabled = LocalMotionEnabled.current
+    if (!motionEnabled) {
+        content()
+        return
+    }
     val visible = remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -53,12 +61,17 @@ fun SwipeToDeleteItem(
     visible: Boolean,
     content: @Composable () -> Unit
 ) {
+    val motionEnabled = LocalMotionEnabled.current
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(animationSpec = tween(300)),
-        exit = slideOutVertically(
-            animationSpec = tween(300, easing = AppEasing.Accelerate)
-        ) { -it } + fadeOut(animationSpec = tween(200))
+        enter = if (motionEnabled) fadeIn(animationSpec = tween(300)) else EnterTransition.None,
+        exit = if (motionEnabled) {
+            slideOutVertically(
+                animationSpec = tween(300, easing = AppEasing.Accelerate)
+            ) { -it } + fadeOut(animationSpec = tween(200))
+        } else {
+            ExitTransition.None
+        }
     ) {
         content()
     }

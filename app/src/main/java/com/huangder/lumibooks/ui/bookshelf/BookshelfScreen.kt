@@ -18,8 +18,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -34,9 +32,12 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed as lazyListItemsIndexed
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -47,8 +48,10 @@ import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -81,6 +84,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -93,10 +97,12 @@ import com.huangder.lumibooks.ui.animation.OverscrollBounce
 import com.huangder.lumibooks.ui.animation.PageEntranceItem
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
+import com.huangder.lumibooks.ui.components.LocalLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassButton
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuItem
+import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuSpec
 import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
 import com.huangder.lumibooks.ui.components.LocalLiquidGlassMenuHost
@@ -107,17 +113,21 @@ import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.util.FileUtils
 import androidx.compose.ui.res.stringResource
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun BookshelfScreen(
     playEntranceAnimation: Boolean = false,
     onNavigateToReader: (bookId: String, coverPath: String?, title: String) -> Unit,
+    onAddBook: () -> Unit,
     onOverlayProgressChange: (Float) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
@@ -126,7 +136,8 @@ fun BookshelfScreen(
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val contextMenuState = rememberBookContextMenuState()
-    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val eInkMode = LocalEInkMode.current
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !eInkMode
     val density = LocalDensity.current
     val bookshelfBackdrop = rememberLayerBackdrop()
     val bookshelfTopBlurBackdrop = rememberLayerBackdrop()
@@ -139,6 +150,7 @@ fun BookshelfScreen(
     var isSearchActive by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var expandedSearchBookId by remember { mutableStateOf<String?>(null) }
+    var expandedListBookId by remember { mutableStateOf<String?>(null) }
     var searchLauncherBounds by remember { mutableStateOf(Rect.Zero) }
 
     val filterTabs = buildList {
@@ -177,6 +189,7 @@ fun BookshelfScreen(
         val existingIds = uiState.books.mapTo(mutableSetOf()) { it.id }
         selectedBookIds = selectedBookIds.intersect(existingIds)
         if (expandedSearchBookId !in existingIds) expandedSearchBookId = null
+        if (expandedListBookId !in existingIds) expandedListBookId = null
     }
 
     LaunchedEffect(deletingBookIds) {
@@ -223,12 +236,6 @@ fun BookshelfScreen(
         }
     }
 
-    val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        uri?.let { viewModel.importBook(context, it) }
-    }
-
     val tagIdsByBook = remember(uiState.bookTagLinks) {
         uiState.bookTagLinks
             .groupBy { it.bookId }
@@ -253,9 +260,54 @@ fun BookshelfScreen(
         }
     }
 
+
+    LaunchedEffect(uiState.bookshelfLayoutMode, selectedFilter) {
+        expandedListBookId = null
+        if (contextMenuState.phase != ContextMenuPhase.Idle) contextMenuState.dismiss()
+    }
+
+    val toggleBookSelection: (Book) -> Unit = { book ->
+        selectedBookIds = if (book.id in selectedBookIds) {
+            selectedBookIds - book.id
+        } else {
+            selectedBookIds + book.id
+        }
+    }
+    val editBookFromList: (Book) -> Unit = { book ->
+        expandedListBookId = null
+        editingBook = book
+        showEditDialog = true
+    }
+    val deleteBookFromList: (Book) -> Unit = { book ->
+        expandedListBookId = null
+        booksPendingDeletion = listOf(book)
+        deletingBookIds = setOf(book.id)
+    }
+    val chooseCoverFromList: (Book) -> Unit = { book ->
+        expandedListBookId = null
+        coverTargetBook = book
+        coverPickerLauncher.launch("image/*")
+    }
+    val removeCoverFromList: (Book) -> Unit = { book ->
+        expandedListBookId = null
+        FileUtils.deleteCustomCover(context, book.id)
+        viewModel.reExtractCover(context, book)
+    }
+    val editTagsFromList: (Book) -> Unit = { book ->
+        expandedListBookId = null
+        tagTargetBook = book
+        showTagSheet = true
+    }
+    val openNotesFromList: (Book) -> Unit = { book ->
+        expandedListBookId = null
+        val intent = android.content.Intent(context, BookNotesActivity::class.java)
+        intent.putExtra("bookId", book.id)
+        context.startActivity(intent)
+    }
+
     val searchBlurProgress by animateFloatAsState(
         targetValue = if (isSearchActive) 1f else 0f,
-        animationSpec = tween(if (isSearchActive) 210 else 230),
+        animationSpec = if (eInkMode) snap() else tween(if (isSearchActive) 210 else 230),
         label = "bookshelfSearchBlur"
     )
     val overlayProgress = maxOf(contextMenuState.scrimAlpha.value, searchBlurProgress)
@@ -298,50 +350,34 @@ fun BookshelfScreen(
         ) {
             if (isLiquidGlass) {
                 OverscrollBounce(modifier = Modifier.fillMaxSize()) {
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(2),
-                        contentPadding = PaddingValues(
-                            start = AppSpace.lg,
-                            top = 240.dp,
-                            end = AppSpace.lg,
-                            bottom = 120.dp
-                        ),
-                        horizontalArrangement = Arrangement.spacedBy(AppSpace.lg),
-                        verticalArrangement = Arrangement.spacedBy(AppSpace.lg),
+                    BookshelfCollection(
+                        layoutMode = uiState.bookshelfLayoutMode,
+                        books = filteredBooks,
+                        tagNamesByBook = tagNamesByBook,
+                        isLoading = uiState.isLoading,
+                        playEntranceAnimation = playEntranceAnimation,
+                        deletingBookIds = deletingBookIds,
+                        isEditing = isEditing,
+                        selectedBookIds = selectedBookIds,
+                        contextMenuState = contextMenuState,
+                        syncedBookIds = uiState.syncedBookIds,
+                        expandedListBookId = expandedListBookId,
+                        topPadding = 240.dp,
+                        bottomPadding = 120.dp,
+                        onHaptic = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
+                        onSelectionToggle = toggleBookSelection,
+                        onExpandedBookChange = { expandedListBookId = it },
+                        onBookClick = { book -> onNavigateToReader(book.id, book.coverPath, book.title) },
+                        onAddBook = onAddBook,
+                        onEditInfo = editBookFromList,
+                        onDelete = deleteBookFromList,
+                        onFavorite = { book -> viewModel.updateBook(book.copy(isFavorite = !book.isFavorite)) },
+                        onCustomCover = chooseCoverFromList,
+                        onRemoveCustomCover = removeCoverFromList,
+                        onTags = editTagsFromList,
+                        onBookmarksNotes = openNotesFromList,
                         modifier = Modifier.fillMaxSize()
-                    ) {
-                        itemsIndexed(filteredBooks, key = { _, book -> book.id }) { index, book ->
-                            PageEntranceItem(play = playEntranceAnimation, index = index + 2) {
-                                AnimatedBookGridItem(
-                                    book = book,
-                                    isDeleting = book.id in deletingBookIds,
-                                    isEditing = isEditing,
-                                    isSelected = book.id in selectedBookIds,
-                                    contextMenuState = contextMenuState,
-                                    syncedBookIds = uiState.syncedBookIds,
-                                    onHaptic = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
-                                    onSelectionToggle = {
-                                        selectedBookIds = if (book.id in selectedBookIds) {
-                                            selectedBookIds - book.id
-                                        } else {
-                                            selectedBookIds + book.id
-                                        }
-                                    },
-                                    onClick = { onNavigateToReader(book.id, book.coverPath, book.title) }
-                                )
-                            }
-                        }
-                        if (!uiState.isLoading && !isEditing) {
-                            item(key = "add_book") {
-                                PageEntranceItem(
-                                    play = playEntranceAnimation,
-                                    index = filteredBooks.size + 2
-                                ) {
-                                    AddBookItem(onClick = { launcher.launch("*/*") })
-                                }
-                            }
-                        }
-                    }
+                    )
                 }
             } else {
             OverscrollBounce(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
@@ -367,19 +403,11 @@ fun BookshelfScreen(
                                 letterSpacing = (-0.02).sp,
                                 color = AppColors.TextPrimary
                             )
-                            Spacer(Modifier.width(6.dp))
-                            Icon(
-                                imageVector = Icons.Outlined.Sync,
-                                contentDescription = stringResource(R.string.webdav_sync_now),
-                                tint = AppColors.TextSecondary,
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null
-                                    ) {
-                                        viewModel.syncWebdavNow()
-                                    }
+                            Spacer(Modifier.width(8.dp))
+                            BookshelfHeaderActions(
+                                layoutMode = uiState.bookshelfLayoutMode,
+                                onSyncClick = { viewModel.syncWebdavNow() },
+                                onLayoutModeChange = viewModel::setBookshelfLayoutMode
                             )
                         }
                     }
@@ -422,40 +450,34 @@ fun BookshelfScreen(
                     Spacer(Modifier.height(AppSpace.md))
 
                     // ── 书架网格 ──
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(2),
-                        contentPadding = PaddingValues(horizontal = AppSpace.lg),
-                        horizontalArrangement = Arrangement.spacedBy(AppSpace.lg),
-                        verticalArrangement = Arrangement.spacedBy(AppSpace.lg),
+                    BookshelfCollection(
+                        layoutMode = uiState.bookshelfLayoutMode,
+                        books = filteredBooks,
+                        tagNamesByBook = tagNamesByBook,
+                        isLoading = uiState.isLoading,
+                        playEntranceAnimation = playEntranceAnimation,
+                        deletingBookIds = deletingBookIds,
+                        isEditing = false,
+                        selectedBookIds = emptySet(),
+                        contextMenuState = contextMenuState,
+                        syncedBookIds = uiState.syncedBookIds,
+                        expandedListBookId = expandedListBookId,
+                        topPadding = 0.dp,
+                        bottomPadding = 24.dp,
+                        onHaptic = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
+                        onSelectionToggle = {},
+                        onExpandedBookChange = { expandedListBookId = it },
+                        onBookClick = { book -> onNavigateToReader(book.id, book.coverPath, book.title) },
+                        onAddBook = onAddBook,
+                        onEditInfo = editBookFromList,
+                        onDelete = deleteBookFromList,
+                        onFavorite = { book -> viewModel.updateBook(book.copy(isFavorite = !book.isFavorite)) },
+                        onCustomCover = chooseCoverFromList,
+                        onRemoveCustomCover = removeCoverFromList,
+                        onTags = editTagsFromList,
+                        onBookmarksNotes = openNotesFromList,
                         modifier = Modifier.weight(1f)
-                    ) {
-                        itemsIndexed(filteredBooks, key = { _, book -> book.id }) { index, book ->
-                            PageEntranceItem(play = playEntranceAnimation, index = index + 2) {
-                                AnimatedBookGridItem(
-                                    book = book,
-                                    isDeleting = book.id in deletingBookIds,
-                                    isEditing = false,
-                                    isSelected = false,
-                                    contextMenuState = contextMenuState,
-                                    syncedBookIds = uiState.syncedBookIds,
-                                    onHaptic = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
-                                    onSelectionToggle = {},
-                                    onClick = { onNavigateToReader(book.id, book.coverPath, book.title) }
-                                )
-                            }
-                        }
-                        // 添加按钮
-                        if (!uiState.isLoading) {
-                            item(key = "add_book") {
-                                PageEntranceItem(
-                                    play = playEntranceAnimation,
-                                    index = filteredBooks.size + 2
-                                ) {
-                                    AddBookItem(onClick = { launcher.launch("*/*") })
-                                }
-                            }
-                        }
-                    }
+                    )
                 } // Column 结束
             } // OverscrollBounce 结束
         } // 内容层 Box 结束（renderEffect 模糊作用于此）
@@ -495,6 +517,8 @@ fun BookshelfScreen(
                         isSearchActive = true
                     },
                     onSyncClick = { viewModel.syncWebdavNow() },
+                    layoutMode = uiState.bookshelfLayoutMode,
+                    onLayoutModeChange = viewModel::setBookshelfLayoutMode,
                     onSearchBoundsChanged = { searchLauncherBounds = it },
                     modifier = Modifier
                         .zIndex(2f)
@@ -699,6 +723,239 @@ fun BookshelfScreen(
 }
 
 @Composable
+private fun BookshelfCollection(
+    layoutMode: Int,
+    books: List<Book>,
+    tagNamesByBook: Map<String, List<String>>,
+    isLoading: Boolean,
+    playEntranceAnimation: Boolean,
+    deletingBookIds: Set<String>,
+    isEditing: Boolean,
+    selectedBookIds: Set<String>,
+    contextMenuState: BookContextMenuState,
+    syncedBookIds: Set<String>,
+    expandedListBookId: String?,
+    topPadding: Dp,
+    bottomPadding: Dp,
+    onHaptic: () -> Unit,
+    onSelectionToggle: (Book) -> Unit,
+    onExpandedBookChange: (String?) -> Unit,
+    onBookClick: (Book) -> Unit,
+    onAddBook: () -> Unit,
+    onEditInfo: (Book) -> Unit,
+    onDelete: (Book) -> Unit,
+    onFavorite: (Book) -> Unit,
+    onCustomCover: (Book) -> Unit,
+    onRemoveCustomCover: (Book) -> Unit,
+    onTags: (Book) -> Unit,
+    onBookmarksNotes: (Book) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val targetMode = layoutMode.coerceIn(1, 3)
+    var renderedMode by remember { mutableStateOf(targetMode) }
+    var transitionInProgress by remember { mutableStateOf(false) }
+    val transitionAlpha = remember { Animatable(1f) }
+    val transitionScale = remember { Animatable(1f) }
+    val inheritedBackdrop = LocalLiquidGlassBackdrop.current
+
+    // Sequential transition: shrink/fade the current layout out, replace it, then grow/fade the
+    // new layout in. Real backdrop effects are temporarily disabled while the parent layer is
+    // animated so HyperOS never has to traverse nested blur/refraction render nodes.
+    LaunchedEffect(targetMode) {
+        if (targetMode != renderedMode) {
+            transitionInProgress = true
+            try {
+                // Give the fallback surfaces one frame to replace real backdrop effects.
+                androidx.compose.runtime.withFrameNanos { }
+                coroutineScope {
+                    launch {
+                        transitionAlpha.animateTo(
+                            0f,
+                            animationSpec = tween(140, easing = AppEasing.Standard)
+                        )
+                    }
+                    launch {
+                        transitionScale.animateTo(
+                            0.93f,
+                            animationSpec = tween(150, easing = AppEasing.Standard)
+                        )
+                    }
+                }
+
+                renderedMode = targetMode
+                transitionAlpha.snapTo(0f)
+                transitionScale.snapTo(0.93f)
+
+                // Let the replacement Lazy layout finish composition while fully transparent.
+                // Otherwise its first visible frame can arrive after the fade has already advanced.
+                androidx.compose.runtime.withFrameNanos { }
+
+                coroutineScope {
+                    launch {
+                        transitionAlpha.animateTo(
+                            1f,
+                            animationSpec = tween(190, easing = AppEasing.Decelerate)
+                        )
+                    }
+                    launch {
+                        transitionScale.animateTo(
+                            1f,
+                            animationSpec = tween(210, easing = AppEasing.Decelerate)
+                        )
+                    }
+                }
+            } finally {
+                transitionAlpha.snapTo(1f)
+                transitionScale.snapTo(1f)
+                transitionInProgress = false
+            }
+        }
+    }
+
+    // List mode intentionally keeps only the glass tint, border, and highlight. Its background is
+    // solid, so blur/refraction adds cost without adding useful visual detail.
+    ProvideLiquidGlassBackdrop(
+        backdrop = if (renderedMode == 1 || transitionInProgress) null else inheritedBackdrop
+    ) {
+        val transitionModifier = if (transitionInProgress) {
+            modifier.graphicsLayer {
+                alpha = transitionAlpha.value
+                scaleX = transitionScale.value
+                scaleY = transitionScale.value
+            }
+        } else {
+            modifier
+        }
+        Box(modifier = transitionModifier) {
+            if (renderedMode == 1) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        start = 14.dp,
+                        top = topPadding,
+                        end = 14.dp,
+                        bottom = bottomPadding
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    lazyListItemsIndexed(books, key = { _, book -> "list_${book.id}" }) { _, book ->
+                        BookshelfSearchResultItem(
+                            book = book,
+                            tagNames = tagNamesByBook[book.id].orEmpty(),
+                            expanded = !isEditing && expandedListBookId == book.id,
+                            isDeleting = book.id in deletingBookIds,
+                            isSynced = book.id in syncedBookIds,
+                            onExpandedChange = {
+                                onExpandedBookChange(
+                                    if (expandedListBookId == book.id) null else book.id
+                                )
+                            },
+                            onClick = { onBookClick(book) },
+                            onEditInfo = { onEditInfo(book) },
+                            onDelete = { onDelete(book) },
+                            onFavorite = { onFavorite(book) },
+                            onCustomCover = { onCustomCover(book) },
+                            onRemoveCustomCover = { onRemoveCustomCover(book) },
+                            onTags = { onTags(book) },
+                            onBookmarksNotes = { onBookmarksNotes(book) },
+                            selectionMode = isEditing,
+                            selected = book.id in selectedBookIds,
+                            onSelectionToggle = { onSelectionToggle(book) }
+                        )
+                    }
+                    if (!isLoading && !isEditing) {
+                        item(key = "add_book_list") {
+                            AddBookListItem(onClick = onAddBook)
+                        }
+                    }
+                }
+            } else {
+                val gridSpacing = if (renderedMode == 3) 12.dp else AppSpace.lg
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(renderedMode),
+                contentPadding = PaddingValues(
+                    start = AppSpace.lg,
+                    top = topPadding,
+                    end = AppSpace.lg,
+                    bottom = bottomPadding
+                ),
+                horizontalArrangement = Arrangement.spacedBy(gridSpacing),
+                verticalArrangement = Arrangement.spacedBy(AppSpace.lg),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                itemsIndexed(books, key = { _, book -> "grid_${renderedMode}_${book.id}" }) { index, book ->
+                    PageEntranceItem(play = playEntranceAnimation, index = index + 2) {
+                        AnimatedBookGridItem(
+                            book = book,
+                            isDeleting = book.id in deletingBookIds,
+                            isEditing = isEditing,
+                            isSelected = book.id in selectedBookIds,
+                            contextMenuState = contextMenuState,
+                            syncedBookIds = syncedBookIds,
+                            onHaptic = onHaptic,
+                            onSelectionToggle = { onSelectionToggle(book) },
+                            onClick = { onBookClick(book) }
+                        )
+                    }
+                }
+                if (!isLoading && !isEditing) {
+                    item(key = "add_book_grid_$renderedMode") {
+                        PageEntranceItem(
+                            play = playEntranceAnimation,
+                            index = books.size + 2
+                        ) {
+                            AddBookItem(onClick = onAddBook)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+}
+
+@Composable
+private fun BookshelfHeaderActions(
+    layoutMode: Int,
+    onSyncClick: () -> Unit,
+    onLayoutModeChange: (Int) -> Unit
+) {
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val contentColor = if (isLiquidGlass) AppColors.TextPrimary else Color.White
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        LiquidGlassIconButton(
+            imageVector = Icons.Outlined.Sync,
+            contentDescription = stringResource(R.string.webdav_sync_now),
+            onClick = onSyncClick,
+            size = 32.dp,
+            iconSize = 15.dp,
+            contentColor = contentColor,
+            normalContainerColor = AppColors.Accent,
+            liquidContainerColor = AppColors.CardBg,
+            liquidScrimColor = AppColors.CardBg.copy(alpha = 0.58f)
+        )
+        LiquidGlassSurface(
+            shape = CircleShape,
+            fallbackColor = if (isLiquidGlass) AppColors.CardBg else AppColors.Accent,
+            contentScrimColor = AppColors.CardBg.copy(alpha = 0.58f),
+            onClick = { onLayoutModeChange(layoutMode % 3 + 1) },
+            effectPadding = 1.dp,
+            modifier = Modifier.size(32.dp)
+        ) {
+            Text(
+                text = layoutMode.coerceIn(1, 3).toString(),
+                color = contentColor,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@Composable
 private fun LiquidBookshelfHeader(
     filterTabs: List<BookshelfFilterTab>,
     selectedFilter: BookshelfFilter,
@@ -709,6 +966,8 @@ private fun LiquidBookshelfHeader(
     onDeleteSelected: () -> Unit,
     onSearchClick: () -> Unit,
     onSyncClick: () -> Unit,
+    layoutMode: Int,
+    onLayoutModeChange: (Int) -> Unit,
     onSearchBoundsChanged: (Rect) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -847,17 +1106,11 @@ private fun LiquidBookshelfHeader(
                 letterSpacing = (-0.02).sp,
                 color = AppColors.TextPrimary
             )
-            Spacer(Modifier.width(6.dp))
-            Icon(
-                imageVector = Icons.Outlined.Sync,
-                contentDescription = stringResource(R.string.webdav_sync_now),
-                tint = AppColors.TextSecondary,
-                modifier = Modifier
-                    .size(20.dp)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { onSyncClick() }
+            Spacer(Modifier.width(8.dp))
+            BookshelfHeaderActions(
+                layoutMode = layoutMode,
+                onSyncClick = onSyncClick,
+                onLayoutModeChange = onLayoutModeChange
             )
         }
 
@@ -1153,6 +1406,58 @@ private fun BookGridItem(
 }
 
 // ─── 添加书籍 ──────────────────────────────────────────────────
+
+@Composable
+private fun AddBookListItem(onClick: () -> Unit) {
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val shape = RoundedCornerShape(if (isLiquidGlass) 24.dp else 16.dp)
+    LiquidGlassSurface(
+        shape = shape,
+        fallbackColor = AppColors.CardBg,
+        contentScrimColor = AppColors.CardBg.copy(alpha = 0.76f),
+        onClick = onClick,
+        effectPadding = 1.dp,
+        decorationModifier = Modifier.shadow(
+            elevation = 12.dp,
+            shape = shape,
+            clip = false,
+            ambientColor = Color.Black.copy(alpha = 0.08f),
+            spotColor = Color.Black.copy(alpha = 0.10f)
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(84.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 18.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .clip(CircleShape)
+                    .background(AppColors.Accent),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Add,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            Spacer(Modifier.width(16.dp))
+            Text(
+                text = stringResource(R.string.import_book),
+                color = AppColors.TextPrimary,
+                fontSize = AppType.Section,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    }
+}
 
 @Composable
 private fun AddBookItem(onClick: () -> Unit) {

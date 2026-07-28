@@ -97,4 +97,8 @@ interface BookParser {
      * 仅 TxtParser 支持，其他格式返回 false。
      */
     fun replaceChapterContent(chapterIndex: Int, newText: String): Boolean = false
+
+    /** Releases descriptors held for Storage Access Framework documents. */
+    fun close() { }
+
 }

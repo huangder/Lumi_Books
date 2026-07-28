@@ -93,6 +93,12 @@ fun WebdavSettingsDetail(
         }
 
         if (isEnabled && hasToken) {
+            // Sync mode pill selector
+            WebdavSyncModeSelector(
+                selectedMode = config.syncMode,
+                onModeChange = { viewModel.saveWebdavSyncMode(it) }
+            )
+
             WebdavSecondaryButton(
                 label = stringResource(R.string.webdav_test_connection),
                 icon = Icons.Outlined.NetworkCheck,
@@ -383,6 +389,76 @@ private fun WebdavDisclosureCard() {
             stringResource(R.string.webdav_third_party_notice),
             fontSize = AppType.Caption,
             color = AppColors.TextSecondary
+        )
+    }
+}
+
+// ─── Sync mode pill selector ────────────────────────────────────────
+
+@Composable
+private fun WebdavSyncModeSelector(
+    selectedMode: String,
+    onModeChange: (String) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(AppRadius.md))
+            .background(AppColors.CardBg)
+            .padding(AppSpace.md)
+    ) {
+        Text(
+            text = stringResource(R.string.webdav_sync_mode_label),
+            fontSize = AppType.BodySmall,
+            color = AppColors.TextSecondary
+        )
+        Spacer(Modifier.height(AppSpace.sm))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpace.sm)
+        ) {
+            WebdavModePill(
+                label = stringResource(R.string.webdav_sync_mode_auto),
+                selected = selectedMode == "auto",
+                onClick = { onModeChange("auto") },
+                modifier = Modifier.weight(1f)
+            )
+            WebdavModePill(
+                label = stringResource(R.string.webdav_sync_mode_manual),
+                selected = selectedMode == "manual",
+                onClick = { onModeChange("manual") },
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun WebdavModePill(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(25.dp))
+            .background(
+                if (selected) AppColors.Accent else AppColors.BgGray
+            )
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            )
+            .padding(vertical = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            fontSize = AppType.BodySmall,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (selected) Color.White else AppColors.TextSecondary
         )
     }
 }

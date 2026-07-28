@@ -343,6 +343,8 @@
     <string name="menu_note">メモ</string>
     <string name="menu_view_note">メモを表示</string>
     <string name="menu_remove_highlight">削除</string>
+    <string name="menu_dictionary">辞書</string>
+    <string name="dictionary_no_app">辞書または翻訳アプリが見つかりません</string>
     <string name="note_input_placeholder">メモを入力...</string>
     <string name="highlights_notes_title">ハイライトとメモ</string>
     <string name="tab_highlight">ハイライト</string>
@@ -445,6 +447,7 @@
     <!-- その他 -->
     <string name="loading_text">読み込み中</string>
     <string name="loading_dots">読み込み中...</string>
+    <string name="reader_first_open_hint">初回は読み込みに時間がかかる場合があります。初期化後は、次回からより速く開けます。</string>
     <string name="confirm_action">確認</string>
     <string name="book_author_unknown">著者不明</string>
     <string name="importing">インポート中…</string>
@@ -629,6 +632,7 @@
     <string name="webdav_show_password">パスワードを表示</string>
     <string name="webdav_hide_password">パスワードを非表示</string>
     <string name="webdav_sync_now">今すぐ同期</string>
+    <string name="webdav_syncing">同期中…</string>
     <string name="webdav_test_connection">接続テスト</string>
     <string name="webdav_test_success">接続成功、WebDAV サービスは利用可能です</string>
     <string name="webdav_test_failed">接続失敗。サーバーアドレス、ユーザー名、パスワードを確認してください。</string>
@@ -638,6 +642,9 @@
     <string name="webdav_clear_config">設定をクリア</string>
     <string name="webdav_enable">保存して有効にする</string>
     <string name="webdav_configure">設定</string>
+    <string name="webdav_sync_mode_label">同期方式</string>
+    <string name="webdav_sync_mode_auto">自動</string>
+    <string name="webdav_sync_mode_manual">手動</string>
     <string name="webdav_save_configuration">設定を保存</string>
     <string name="webdav_last_sync_time">前回の同期：%1$s</string>
     <string name="webdav_status_card_title">接続状態</string>
@@ -660,5 +667,18 @@
     <string name="epub_layout_first_open_confirm">了解</string>
     <string name="screen_sleep_timeout">画面のスリープ時間</string>
     <string name="screen_sleep_timeout_follow_system">システム設定に従う</string>
+    <string name="screen_sleep_timeout_permission_required">カスタムのスリープ時間を使用するには、システム設定の変更を許可してください</string>
     <string name="screen_sleep_timeout_hint">静止画面を長時間表示すると、画面の色むらが生じることがあります</string>
+
+    <string name="epub_image_preview">Image preview</string>
+    <string name="epub_image_save_to_gallery">Save to gallery</string>
+    <string name="epub_image_saved_to_gallery">Saved to gallery</string>
+    <string name="epub_image_save_failed">Could not save image</string>
+    <string name="epub_image_load_failed">Could not load image</string>
+    <string name="epub_image_storage_permission_denied">Storage permission is required to save the image</string>
+    <!-- E-ink mode -->
+    <string name="transition_none">アニメーションなし</string>
+    <string name="label_e_ink_mode">電子ペーパーモード</string>
+    <string name="e_ink_mode_description">電子ペーパー向けに高コントラストの明るい画面を使い、アニメーション、ぼかし、Liquid Glass を無効にします。</string>
+    <string name="e_ink_reader_fixed_theme_hint">電子ペーパーモードでは、明るい紙面、濃い文字、即時ページ送りを使用します。</string>
 </resources>

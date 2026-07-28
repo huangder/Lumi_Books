@@ -18,6 +18,8 @@ val LocalUseMaterial3Theme = staticCompositionLocalOf { false }
 val LocalAppTheme = staticCompositionLocalOf { "lumi" }
 val LocalLiquidGlassTransparency = staticCompositionLocalOf { 0.55f }
 val LocalLiquidGlassHdrHighlightEnabled = staticCompositionLocalOf { false }
+val LocalEInkMode = staticCompositionLocalOf { false }
+val LocalMotionEnabled = staticCompositionLocalOf { true }
 
 // ─── 字体 ───
 val FangSong = FontFamily(Font(R.font.fandol_fang, FontWeight.Normal))
@@ -45,30 +47,38 @@ object AppColors {
     // 强调色（粉红/珊瑚 #E85D5D）
     private val LightAccent = Color(0xFFE85D5D)
     private val DarkAccent = Color(0xFFFF8A80)
-    val Accent: Color @Composable get() = if (LocalUseMaterial3Theme.current) {
+    val Accent: Color @Composable get() = if (LocalEInkMode.current) {
+        Color.Black
+    } else if (LocalUseMaterial3Theme.current) {
         MaterialTheme.colorScheme.primary
     } else if (LocalIsDarkTheme.current) DarkAccent else LightAccent
-    val OnAccent: Color @Composable get() = if (LocalUseMaterial3Theme.current) {
+    val OnAccent: Color @Composable get() = if (LocalEInkMode.current) {
+        Color.White
+    } else if (LocalUseMaterial3Theme.current) {
         MaterialTheme.colorScheme.onPrimary
     } else Color.White
-    val ControlActive: Color @Composable get() = if (LocalUseMaterial3Theme.current) {
+    val ControlActive: Color @Composable get() = if (LocalEInkMode.current) {
+        Color.Black
+    } else if (LocalUseMaterial3Theme.current) {
         MaterialTheme.colorScheme.primary
     } else if (LocalIsDarkTheme.current) DarkTextPrimary else LightTextPrimary
     val Scrim: Color @Composable get() = if (LocalUseMaterial3Theme.current) {
         MaterialTheme.colorScheme.scrim
     } else Color.Black
     val Shadow = Color(0x08000000)
-    val CardShadow: Color @Composable get() = if (LocalUseMaterial3Theme.current) {
+    val CardShadow: Color @Composable get() = if (LocalEInkMode.current) {
+        Color.Transparent
+    } else if (LocalUseMaterial3Theme.current) {
         Color.Black.copy(alpha = 0.18f)
     } else Color(0x06000000)
 
     // Material 3 模式使用系统动态色板；Lumi 模式保留原有粉色方案。
-    val WindowBg: Color @Composable get() = if (LocalUseMaterial3Theme.current) MaterialTheme.colorScheme.background else if (LocalIsDarkTheme.current) DarkWindowBg else LightWindowBg
-    val CardBg: Color @Composable get() = if (LocalUseMaterial3Theme.current) MaterialTheme.colorScheme.surfaceContainerLow else if (LocalIsDarkTheme.current) DarkCardBg else LightCardBg
-    val TextPrimary: Color @Composable get() = if (LocalUseMaterial3Theme.current) MaterialTheme.colorScheme.onBackground else if (LocalIsDarkTheme.current) DarkTextPrimary else LightTextPrimary
-    val TextSecondary: Color @Composable get() = if (LocalUseMaterial3Theme.current) MaterialTheme.colorScheme.onSurfaceVariant else if (LocalIsDarkTheme.current) DarkTextSecondary else LightTextSecondary
-    val BgGray: Color @Composable get() = if (LocalUseMaterial3Theme.current) MaterialTheme.colorScheme.surfaceVariant else if (LocalIsDarkTheme.current) DarkBgGray else LightBgGray
-    val Divider: Color @Composable get() = if (LocalUseMaterial3Theme.current) MaterialTheme.colorScheme.outlineVariant else if (LocalIsDarkTheme.current) DarkDivider else LightDivider
+    val WindowBg: Color @Composable get() = if (LocalEInkMode.current) Color.White else if (LocalUseMaterial3Theme.current) MaterialTheme.colorScheme.background else if (LocalIsDarkTheme.current) DarkWindowBg else LightWindowBg
+    val CardBg: Color @Composable get() = if (LocalEInkMode.current) Color.White else if (LocalUseMaterial3Theme.current) MaterialTheme.colorScheme.surfaceContainerLow else if (LocalIsDarkTheme.current) DarkCardBg else LightCardBg
+    val TextPrimary: Color @Composable get() = if (LocalEInkMode.current) Color.Black else if (LocalUseMaterial3Theme.current) MaterialTheme.colorScheme.onBackground else if (LocalIsDarkTheme.current) DarkTextPrimary else LightTextPrimary
+    val TextSecondary: Color @Composable get() = if (LocalEInkMode.current) Color(0xFF444444) else if (LocalUseMaterial3Theme.current) MaterialTheme.colorScheme.onSurfaceVariant else if (LocalIsDarkTheme.current) DarkTextSecondary else LightTextSecondary
+    val BgGray: Color @Composable get() = if (LocalEInkMode.current) Color(0xFFF4F4F4) else if (LocalUseMaterial3Theme.current) MaterialTheme.colorScheme.surfaceVariant else if (LocalIsDarkTheme.current) DarkBgGray else LightBgGray
+    val Divider: Color @Composable get() = if (LocalEInkMode.current) Color(0xFFBDBDBD) else if (LocalUseMaterial3Theme.current) MaterialTheme.colorScheme.outlineVariant else if (LocalIsDarkTheme.current) DarkDivider else LightDivider
 }
 
 // ─── 字阶 ───

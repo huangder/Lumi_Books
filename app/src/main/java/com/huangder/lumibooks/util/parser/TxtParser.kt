@@ -1,6 +1,9 @@
 package com.huangder.lumibooks.util.parser
 
 import android.content.Context
+import com.huangder.lumibooks.util.BookFileAccess
+import com.huangder.lumibooks.util.FileUtils
+import com.huangder.lumibooks.util.SeekableBookSource
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -29,6 +32,8 @@ class TxtParser(private val context: Context? = null) : BookParser {
     private data class EncodingInfo(val charset: Charset, val contentStart: Long)
 
     private var sourceFile: File? = null
+    private var sourceLocation: String = ""
+    private var sourceLease: SeekableBookSource? = null
     private var encodingInfo = EncodingInfo(Charsets.UTF_8, 0L)
     private var entries: List<TxtChapterEntry> = emptyList()
 
@@ -45,10 +50,24 @@ class TxtParser(private val context: Context? = null) : BookParser {
     }
 
     override fun parse(filePath: String): BookContent {
-        val file = File(filePath)
+        sourceLease?.close()
+        val lease = if (BookFileAccess.isContentUri(filePath)) {
+            BookFileAccess.openSeekable(
+                requireNotNull(context) { "Context is required for document URIs" },
+                filePath,
+                writable = true
+            )
+        } else null
+        val file = File(lease?.path ?: filePath)
         require(file.isFile) { "TXT file not found: $filePath" }
 
+        sourceLocation = filePath
+        sourceLease = lease
         sourceFile = file
+        val displayTitle = context?.let { FileUtils.getFileNameFromLocation(it, filePath) }
+            ?.substringBeforeLast('.')
+            ?.ifBlank { null }
+            ?: file.nameWithoutExtension
         synchronized(contentCache) { contentCache.clear() }
         synchronized(htmlCache) { htmlCache.clear() }
 
@@ -69,7 +88,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
                 entries = listOf(
                     TxtChapterEntry(
                         index = 0,
-                        title = file.nameWithoutExtension,
+                        title = displayTitle,
                         startByte = encodingInfo.contentStart,
                         endByte = file.length()
                     )
@@ -80,7 +99,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
         }
 
         return BookContent(
-            title = file.nameWithoutExtension,
+            title = displayTitle,
             author = "未知作者",
             chapters = entries.map { entry ->
                 Chapter(
@@ -158,7 +177,8 @@ class TxtParser(private val context: Context? = null) : BookParser {
     /** 根据文件路径生成缓存文件路径 */
     private fun getCacheFile(file: File): File? {
         val cacheDir = context?.cacheDir ?: return null
-        val hash = file.absolutePath.hashCode().toString(16)
+        val cacheKey = sourceLocation.ifBlank { file.absolutePath }
+        val hash = cacheKey.hashCode().toString(16)
         return File(cacheDir, "txt_index/$hash.cache")
     }
 
@@ -185,11 +205,18 @@ class TxtParser(private val context: Context? = null) : BookParser {
         val utf8Decoder = Charsets.UTF_8.newDecoder()
             .onMalformedInput(CodingErrorAction.REPORT)
             .onUnmappableCharacter(CodingErrorAction.REPORT)
-        return try {
-            utf8Decoder.decode(java.nio.ByteBuffer.wrap(sample, 0, actualRead))
-            EncodingInfo(Charsets.UTF_8, 0L)
-        } catch (_: java.nio.charset.CharacterCodingException) {
+        // The fixed-size sample may end in the middle of a valid multi-byte UTF-8 character.
+        // Decode it as a non-final chunk so an incomplete trailing sequence is accepted, while
+        // malformed sequences inside the sample still make us fall back to GBK.
+        val decodeResult = utf8Decoder.decode(
+            java.nio.ByteBuffer.wrap(sample, 0, actualRead),
+            java.nio.CharBuffer.allocate(actualRead.coerceAtLeast(1)),
+            false
+        )
+        return if (decodeResult.isError) {
             EncodingInfo(Charset.forName("GBK"), 0L)
+        } else {
+            EncodingInfo(Charsets.UTF_8, 0L)
         }
     }
 
@@ -606,6 +633,15 @@ class TxtParser(private val context: Context? = null) : BookParser {
             val bufSize = STREAM_BUFFER_SIZE
             val buf = ByteArray(bufSize)
 
+            if (BookFileAccess.isContentUri(sourceLocation)) {
+                replaceDocumentRangeInPlace(file, entry, newText.toByteArray(charset), buf)
+                sourceLease?.writeBack()
+                synchronized(contentCache) { contentCache.clear() }
+                synchronized(htmlCache) { htmlCache.clear() }
+                parse(sourceLocation)
+                return true
+            }
+
             val tmpFile = File(file.parent, file.name + ".tmp")
             try {
                 RandomAccessFile(file, "r").use { raf ->
@@ -662,6 +698,56 @@ class TxtParser(private val context: Context? = null) : BookParser {
         } catch (_: Exception) {
             false
         }
+    }
+
+    private fun replaceDocumentRangeInPlace(
+        file: File,
+        entry: TxtChapterEntry,
+        replacement: ByteArray,
+        buffer: ByteArray
+    ) {
+        RandomAccessFile(file, "rw").use { raf ->
+            val originalLength = raf.length()
+            val oldLength = entry.endByte - entry.startByte
+            val delta = replacement.size.toLong() - oldLength
+
+            if (delta > 0L) {
+                raf.setLength(originalLength + delta)
+                var readEnd = originalLength
+                while (readEnd > entry.endByte) {
+                    val count = minOf(buffer.size.toLong(), readEnd - entry.endByte).toInt()
+                    val readStart = readEnd - count
+                    raf.seek(readStart)
+                    raf.readFully(buffer, 0, count)
+                    raf.seek(readStart + delta)
+                    raf.write(buffer, 0, count)
+                    readEnd = readStart
+                }
+            } else if (delta < 0L) {
+                var readPosition = entry.endByte
+                var writePosition = entry.startByte + replacement.size
+                while (readPosition < originalLength) {
+                    val count = minOf(buffer.size.toLong(), originalLength - readPosition).toInt()
+                    raf.seek(readPosition)
+                    raf.readFully(buffer, 0, count)
+                    raf.seek(writePosition)
+                    raf.write(buffer, 0, count)
+                    readPosition += count
+                    writePosition += count
+                }
+                raf.setLength(originalLength + delta)
+            }
+
+            raf.seek(entry.startByte)
+            raf.write(replacement)
+            raf.fd.sync()
+        }
+    }
+
+    override fun close() {
+        sourceLease?.close()
+        sourceLease = null
+        sourceFile = null
     }
 
     private companion object {

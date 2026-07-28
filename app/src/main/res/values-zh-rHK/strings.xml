@@ -343,6 +343,8 @@
     <string name="menu_note">筆記</string>
     <string name="menu_view_note">查看筆記</string>
     <string name="menu_remove_highlight">移除高亮</string>
+    <string name="menu_dictionary">字典</string>
+    <string name="dictionary_no_app">未找到支援查詞的字典或翻譯應用程式</string>
     <string name="note_input_placeholder">輸入筆記...</string>
     <string name="highlights_notes_title">高亮與筆記</string>
     <string name="tab_highlight">高亮</string>
@@ -445,6 +447,7 @@
     <!-- 其他 -->
     <string name="loading_text">載入中</string>
     <string name="loading_dots">載入中...</string>
+    <string name="reader_first_open_hint">首次開啟書籍時可能需要稍候，完成初始化後，再次開啟會明顯更快。</string>
     <string name="confirm_action">確認</string>
     <string name="book_author_unknown">未知作者</string>
     <string name="importing">正在匯入…</string>
@@ -629,6 +632,7 @@
     <string name="webdav_show_password">顯示密碼</string>
     <string name="webdav_hide_password">隱藏密碼</string>
     <string name="webdav_sync_now">立即同步</string>
+    <string name="webdav_syncing">正在同步…</string>
     <string name="webdav_test_connection">測試連線</string>
     <string name="webdav_test_success">連線成功，WebDAV 服務可用</string>
     <string name="webdav_test_failed">連線失敗，請檢查伺服器位址、使用者名稱和密碼</string>
@@ -638,6 +642,9 @@
     <string name="webdav_clear_config">清除設定</string>
     <string name="webdav_enable">儲存並啟用</string>
     <string name="webdav_configure">設定</string>
+    <string name="webdav_sync_mode_label">同步方式</string>
+    <string name="webdav_sync_mode_auto">自動</string>
+    <string name="webdav_sync_mode_manual">手動</string>
     <string name="webdav_save_configuration">儲存設定</string>
     <string name="webdav_last_sync_time">上次同步：%1$s</string>
     <string name="webdav_status_card_title">連線狀態</string>
@@ -660,5 +667,18 @@
     <string name="epub_layout_first_open_confirm">知道了</string>
     <string name="screen_sleep_timeout">螢幕休眠時間</string>
     <string name="screen_sleep_timeout_follow_system">跟隨系統</string>
+    <string name="screen_sleep_timeout_permission_required">若要使用自訂休眠時間，請允許修改系統設定</string>
     <string name="screen_sleep_timeout_hint">長時間顯示靜止畫面可能導致螢幕顯色不均</string>
+
+    <string name="epub_image_preview">圖片預覽</string>
+    <string name="epub_image_save_to_gallery">儲存到相簿</string>
+    <string name="epub_image_saved_to_gallery">已儲存到相簿</string>
+    <string name="epub_image_save_failed">圖片儲存失敗</string>
+    <string name="epub_image_load_failed">圖片載入失敗</string>
+    <string name="epub_image_storage_permission_denied">需要儲存空間權限才能儲存圖片</string>
+    <!-- E-ink mode -->
+    <string name="transition_none">無動畫</string>
+    <string name="label_e_ink_mode">電子墨水屏模式</string>
+    <string name="e_ink_mode_description">使用高對比淺色介面，關閉動效、模糊和 Liquid Glass，翻頁改為即時切換。</string>
+    <string name="e_ink_reader_fixed_theme_hint">電子墨水屏模式下固定使用淺色紙面、深色文字和即時翻頁。</string>
 </resources>

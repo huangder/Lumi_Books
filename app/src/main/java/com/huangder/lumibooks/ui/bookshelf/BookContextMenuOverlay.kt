@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -247,47 +249,64 @@ private fun ContextMenuLayout(
 ) {
     val density = LocalDensity.current
     val configuration = LocalConfiguration.current
-    val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
+    val screenWidthDp = configuration.screenWidthDp.dp
     val screenHeightDp = configuration.screenHeightDp.dp
-
-    val isCoverOnLeft = coverBounds.center.x < screenWidthPx / 2
 
     val coverLeftDp = with(density) { coverBounds.left.toDp() }
     val coverTopDp = with(density) { coverBounds.top.toDp() }
     val coverBottomDp = with(density) { coverBounds.bottom.toDp() }
     val coverWidthDp = with(density) { coverBounds.width.toDp() }
 
-    val panelWidth = 170.dp
-    val panelGap = 12.dp
+    val horizontalMargin = 8.dp
+    val regularPanelWidth = 170.dp
+    val regularPanelGap = 12.dp
+    val availableLeft = coverLeftDp - horizontalMargin
+    val availableRight = screenWidthDp - (coverLeftDp + coverWidthDp) - horizontalMargin
+    val canFitRegularLeft = availableLeft >= regularPanelWidth + regularPanelGap
+    val canFitRegularRight = availableRight >= regularPanelWidth + regularPanelGap
+    val useCompactMiddlePanel = !canFitRegularLeft && !canFitRegularRight
+    val panelWidth = if (useCompactMiddlePanel) 136.dp else regularPanelWidth
+    val horizontalPanelGap = if (useCompactMiddlePanel) 6.dp else regularPanelGap
+    val verticalPanelGap = 12.dp
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
 
-    val panelX = if (isCoverOnLeft) {
-        coverLeftDp + coverWidthDp + panelGap
-    } else {
-        coverLeftDp - panelWidth - panelGap
+    val placePanelOnRight = when {
+        canFitRegularRight -> true
+        canFitRegularLeft -> false
+        else -> availableRight >= availableLeft
     }
+    val desiredPanelX = if (placePanelOnRight) {
+        coverLeftDp + coverWidthDp + horizontalPanelGap
+    } else {
+        coverLeftDp - panelWidth - horizontalPanelGap
+    }
+    val maxPanelX = (screenWidthDp - panelWidth - horizontalMargin).coerceAtLeast(horizontalMargin)
+    val panelX = desiredPanelX.coerceIn(horizontalMargin, maxPanelX)
 
     // 菜单面板顶部与封面顶部对齐；如果面板超出屏幕底部，则改为底部对齐
     // 液态主题需要为悬浮 Tag 栏、间距和系统导航区预留完整安全区。
     val estimatedMenuHeight = 450.dp
     val bottomMargin = if (isLiquidGlass) 148.dp else 48.dp
-    val maxPanelY = (screenHeightDp - estimatedMenuHeight - bottomMargin).coerceAtLeast(0.dp)
-    val panelY = if (coverTopDp + estimatedMenuHeight > screenHeightDp - bottomMargin) {
-        (coverBottomDp - estimatedMenuHeight).coerceIn(0.dp, maxPanelY)
+    val topMargin = with(density) { WindowInsets.statusBars.getTop(this).toDp() } + 14.dp
+    val maxPanelY = (screenHeightDp - estimatedMenuHeight - bottomMargin).coerceAtLeast(topMargin)
+    val desiredPanelY = if (coverTopDp + estimatedMenuHeight > screenHeightDp - bottomMargin) {
+        coverBottomDp - estimatedMenuHeight
     } else {
         coverTopDp
     }
+    val panelY = desiredPanelY.coerceIn(topMargin, maxPanelY)
 
     Column(
         modifier = Modifier
             .offset(x = panelX, y = panelY)
             .width(panelWidth),
-        verticalArrangement = Arrangement.spacedBy(panelGap)
+        verticalArrangement = Arrangement.spacedBy(verticalPanelGap)
     ) {
         // 上部：信息面板（整体淡入）
         BookInfoPanel(
             book = book,
             alpha = menuAlpha,
+            compact = useCompactMiddlePanel,
             onEditInfo = onEditInfo,
             modifier = Modifier.fillMaxWidth()
         )
@@ -296,6 +315,7 @@ private fun ContextMenuLayout(
         MenuActionsPanel(
             modifier = Modifier.fillMaxWidth(),
             actionsAlpha = actionsAlpha,
+            compact = useCompactMiddlePanel,
             isFavorite = book.isFavorite,
             hasCustomCover = com.huangder.lumibooks.util.FileUtils.isCustomCover(book.coverPath),
             onAction = onAction
@@ -309,6 +329,7 @@ private fun ContextMenuLayout(
 private fun BookInfoPanel(
     book: Book,
     alpha: Float = 1f,
+    compact: Boolean = false,
     onEditInfo: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -328,7 +349,11 @@ private fun BookInfoPanel(
         },
         contentAlignment = Alignment.TopStart
     ) {
-        Column(Modifier.fillMaxWidth().padding(16.dp)) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(if (compact) 12.dp else 16.dp)
+        ) {
         Text(
             text = book.title,
             fontSize = AppType.Section,
@@ -389,6 +414,7 @@ private fun BookInfoPanel(
 private fun MenuActionsPanel(
     modifier: Modifier = Modifier,
     actionsAlpha: Float,
+    compact: Boolean = false,
     isFavorite: Boolean = false,
     hasCustomCover: Boolean = false,
     onAction: (ContextMenuAction) -> Unit
@@ -410,7 +436,9 @@ private fun MenuActionsPanel(
         contentAlignment = Alignment.TopStart
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(if (compact) 8.dp else 12.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
         val favoriteIcon = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder
@@ -434,6 +462,7 @@ private fun MenuActionsPanel(
             MenuActionItem(
                 label = item.label,
                 icon = item.icon,
+                compact = compact,
                 onClick = { onAction(item.action) }
             )
         }
@@ -448,6 +477,7 @@ private fun MenuActionItem(
     label: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     alpha: Float = 1f,
+    compact: Boolean = false,
     onClick: () -> Unit
 ) {
     Row(
@@ -457,7 +487,10 @@ private fun MenuActionItem(
             .graphicsLayer { this.alpha = alpha }
             .clip(RoundedCornerShape(AppRadius.sm))
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 10.dp)
+            .padding(
+                horizontal = if (compact) 6.dp else 10.dp,
+                vertical = if (compact) 8.dp else 10.dp
+            )
     ) {
         Icon(
             imageVector = icon,
@@ -465,7 +498,7 @@ private fun MenuActionItem(
             tint = AppColors.TextPrimary,
             modifier = Modifier.size(18.dp)
         )
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(if (compact) 7.dp else 10.dp))
         Text(
             text = label,
             fontSize = AppType.BodySmall,

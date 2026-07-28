@@ -219,7 +219,7 @@ private fun SponsorPage(onBack: () -> Unit) {
             // 感谢列表
             CreditSection(
                 title = stringResource(R.string.sponsor_thanks_title),
-                names = listOf("雋乂、匿名")
+                names = listOf("雋乂、匿名、匿名、匿名、Jun.")
             )
 
             Spacer(Modifier.height(AppSpace.md))

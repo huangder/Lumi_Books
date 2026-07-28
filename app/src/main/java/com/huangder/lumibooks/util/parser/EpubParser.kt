@@ -13,6 +13,8 @@ import java.io.FileInputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import kotlin.text.RegexOption
+import com.huangder.lumibooks.util.BookFileAccess
+import com.huangder.lumibooks.util.SeekableBookSource
 import com.huangder.lumibooks.util.epub.EpubPackage
 import com.huangder.lumibooks.util.epub.EpubPackageReader
 import com.huangder.lumibooks.util.epub.EpubPathResolver
@@ -44,6 +46,7 @@ class EpubParser(private val context: Context? = null) : BookParser, EpubRenderS
     private var basePath: String = ""
     private var epubFilePath: String = ""
     private var parsedPackage: EpubPackage? = null
+    private var sourceLease: SeekableBookSource? = null
 
     // 章节路径列表（spine 顺序）
     private var chapterPaths: List<String> = emptyList()
@@ -59,8 +62,11 @@ class EpubParser(private val context: Context? = null) : BookParser, EpubRenderS
     private val cssFileCache = mutableMapOf<String, String>()
 
     override fun parse(filePath: String): BookContent {
-        epubFilePath = filePath
-        val packageModel = EpubPackageReader.read(filePath)
+        sourceLease?.close()
+        val lease = context?.let { BookFileAccess.openSeekable(it, filePath) }
+        sourceLease = lease
+        epubFilePath = lease?.path ?: filePath
+        val packageModel = EpubPackageReader.read(epubFilePath)
         parsedPackage = packageModel
         basePath = packageModel.basePath
         bookTitle = packageModel.title
@@ -73,7 +79,7 @@ class EpubParser(private val context: Context? = null) : BookParser, EpubRenderS
             path to item.title
         }.toMap()
 
-        val chapterTitles = ZipFile(filePath).use { zipFile ->
+        val chapterTitles = ZipFile(epubFilePath).use { zipFile ->
             val entries = zipFile.entries().toList().associateBy { it.name.lowercase() }
             chapterPaths.mapIndexed { index, chapterPath ->
                 navigationTitles[chapterPath]?.takeIf { it.isNotBlank() } ?: run {
@@ -107,10 +113,10 @@ class EpubParser(private val context: Context? = null) : BookParser, EpubRenderS
             chapterTitles.mapIndexed { index, title -> TocEntry(title, 1, index) }
         }
 
-        val coverPath = ZipFile(filePath).use { zipFile ->
+        val coverPath = ZipFile(epubFilePath).use { zipFile ->
             val opfEntry = zipFile.getEntry(packageModel.opfPath)
             val opfContent = opfEntry?.let { zipFile.getInputStream(it).bufferedReader().use { reader -> reader.readText() } }.orEmpty()
-            extractCover(zipFile, opfContent)
+            extractCover(zipFile, opfContent, filePath)
         }
 
         return BookContent(
@@ -1415,7 +1421,7 @@ class EpubParser(private val context: Context? = null) : BookParser, EpubRenderS
         return null
     }
 
-    private fun extractCover(zipFile: ZipFile, opfContent: String): String? {
+    private fun extractCover(zipFile: ZipFile, opfContent: String, sourceKey: String): String? {
         val ctx = context ?: return null
 
         try {
@@ -1492,7 +1498,7 @@ class EpubParser(private val context: Context? = null) : BookParser, EpubRenderS
 
             val coversDir = File(ctx.filesDir, "covers")
             coversDir.mkdirs()
-            val coverFile = File(coversDir, "${zipFile.name.hashCode()}.jpg")
+            val coverFile = File(coversDir, "${sourceKey.hashCode()}.jpg")
             coverFile.writeBytes(bytes)
 
             return coverFile.absolutePath
@@ -1504,11 +1510,12 @@ class EpubParser(private val context: Context? = null) : BookParser, EpubRenderS
 
     override fun extractCoverPath(filePath: String): String? {
         val ctx = context ?: return null
-        val file = File(filePath)
-        if (!file.exists()) return null
-
+        var lease: SeekableBookSource? = null
         var zipFile: ZipFile? = null
         try {
+            lease = BookFileAccess.openSeekable(ctx, filePath)
+            val file = File(lease.path)
+            if (!file.exists()) return null
             zipFile = ZipFile(file)
 
             val containerEntry = zipFile.getEntry("META-INF/container.xml") ?: return null
@@ -1519,12 +1526,18 @@ class EpubParser(private val context: Context? = null) : BookParser, EpubRenderS
             val opfContent = zipFile.getInputStream(opfEntry).bufferedReader().readText()
             basePath = opfPath.substringBeforeLast("/", missingDelimiterValue = "")
 
-            return extractCover(zipFile, opfContent)
+            return extractCover(zipFile, opfContent, filePath)
         } catch (e: Exception) {
             e.printStackTrace()
             return null
         } finally {
             try { zipFile?.close() } catch (_: Exception) {}
+            lease?.close()
         }
+    }
+
+    override fun close() {
+        sourceLease?.close()
+        sourceLease = null
     }
 }

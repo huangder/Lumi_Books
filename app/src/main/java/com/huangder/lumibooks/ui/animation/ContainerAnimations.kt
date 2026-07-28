@@ -5,6 +5,8 @@ import android.graphics.RenderEffect
 import android.graphics.Shader
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -26,6 +28,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import com.huangder.lumibooks.ui.theme.AppColors
+import com.huangder.lumibooks.ui.theme.LocalEInkMode
+import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
 
 /**
  * 底部弹出容器（背景压暗 + 模糊，卡片从底部滑入）
@@ -36,6 +40,7 @@ fun BottomSheetContainer(
     onDismiss: () -> Unit,
     content: @Composable BoxScope.() -> Unit
 ) {
+    val motionEnabled = LocalMotionEnabled.current
     if (visible) {
         Box(modifier = Modifier.fillMaxSize()) {
             // 背景压暗 + 模糊
@@ -44,12 +49,20 @@ fun BottomSheetContainer(
             // 卡片从底部滑入
             AnimatedVisibility(
                 visible = visible,
-                enter = slideInVertically(
-                    animationSpec = tween(400, easing = AppEasing.Smooth)
-                ) { it } + fadeIn(animationSpec = tween(300)),
-                exit = slideOutVertically(
-                    animationSpec = tween(300, easing = AppEasing.Accelerate)
-                ) { it } + fadeOut(animationSpec = tween(200)),
+                enter = if (motionEnabled) {
+                    slideInVertically(
+                        animationSpec = tween(400, easing = AppEasing.Smooth)
+                    ) { it } + fadeIn(animationSpec = tween(300))
+                } else {
+                    EnterTransition.None
+                },
+                exit = if (motionEnabled) {
+                    slideOutVertically(
+                        animationSpec = tween(300, easing = AppEasing.Accelerate)
+                    ) { it } + fadeOut(animationSpec = tween(200))
+                } else {
+                    ExitTransition.None
+                },
                 modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter)
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
@@ -68,13 +81,14 @@ fun ScrimOverlay(
     alpha: Float = 1f,
     onClick: () -> Unit = {}
 ) {
+    val eInkMode = LocalEInkMode.current
     Box(
         modifier = Modifier
             .fillMaxSize()
             .alpha(alpha)
             .background(AppColors.Scrim.copy(alpha = 0.4f))
             .then(
-                if (Build.VERSION.SDK_INT >= 31) {
+                if (!eInkMode && Build.VERSION.SDK_INT >= 31) {
                     Modifier.graphicsLayer {
                         renderEffect = RenderEffect
                             .createBlurEffect(8f, 8f, Shader.TileMode.CLAMP)
@@ -98,10 +112,11 @@ fun FadeContainer(
     duration: Int = 300,
     content: @Composable () -> Unit
 ) {
+    val motionEnabled = LocalMotionEnabled.current
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(animationSpec = tween(duration)),
-        exit = fadeOut(animationSpec = tween(duration))
+        enter = if (motionEnabled) fadeIn(animationSpec = tween(duration)) else EnterTransition.None,
+        exit = if (motionEnabled) fadeOut(animationSpec = tween(duration)) else ExitTransition.None
     ) {
         content()
     }

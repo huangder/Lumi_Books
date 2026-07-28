@@ -146,32 +146,33 @@ body{
   .qr-card img{width:200px;height:200px}
 }
 </style>
+    <link rel="stylesheet" href="lumi-immersive.css">
 </head>
 <body>
 
 <nav class="top-nav">
-  <a href="index.html" class="nav-logo">
-    <img src="icon.png" alt="Lumi"><span>Lumi</span>
-  </a>
-  <ul class="nav-links">
-    <li><a href="features.html">功能</a></li>
-    <li><a href="privacy-section.html">隐私</a></li>
-    <li><a href="tech.html">技术</a></li>
-    <li><a href="sponsor.html" class="active">赞助</a></li>
-    <li><a href="feedback.html">反馈</a></li>
-  </ul>
-  <div class="nav-cta">
-    <a href="sponsor.html" class="btn-nav-sponsor">赞助</a>
-    <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-nav-download">获取 Lumi</a>
-  </div>
-  <button class="nav-more-btn" aria-label="更多导航" onclick="event.stopPropagation();this.nextElementSibling.classList.toggle('open')">…</button>
-  <div class="nav-more-dropdown">
-    <a href="features.html">功能</a>
-    <a href="privacy-section.html">隐私</a>
-    <a href="tech.html">技术</a>
-    <a href="sponsor.html">赞助</a>
-    <a href="feedback.html">反馈</a>
-  </div>
+    <a href="index.html" class="nav-logo" aria-label="Lumi 首页">
+        <img src="icon.png" class="logo-icon-img" alt="Lumi">
+        <span class="logo-text">Lumi</span>
+    </a>
+    <ul class="nav-links" aria-label="主导航">
+        <li><a href="features.html">功能</a></li>
+        <li><a href="privacy-section.html">隐私</a></li>
+        <li><a href="tech.html">技术</a></li>
+        <li><a href="sponsor.html" class="active" aria-current="page">赞助</a></li>
+        <li><a href="feedback.html">反馈</a></li>
+    </ul>
+    <div class="nav-cta">
+        <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-nav-download">获取 Lumi</a>
+    </div>
+    <button class="nav-more-btn" type="button" aria-label="打开导航菜单" aria-controls="lumi-nav-menu">菜单</button>
+    <div class="nav-more-dropdown" id="lumi-nav-menu">
+        <a href="features.html">功能</a>
+        <a href="privacy-section.html">隐私</a>
+        <a href="tech.html">技术</a>
+        <a href="sponsor.html" class="active" aria-current="page">赞助</a>
+        <a href="feedback.html">反馈</a>
+    </div>
 </nav>
 
 <!-- ═══ Hero ═══ -->
@@ -199,12 +200,12 @@ body{
     <div class="glass thanks-item reveal stagger-2">
       <span class="role-icon">💛</span>
       <div class="role-label">赞助开发</div>
-      <div class="role-name">雋乂、匿名</div>
+      <div class="role-name">雋乂、匿名、匿名、匿名、Jun.</div>
     </div>
     <div class="glass thanks-item reveal stagger-3">
       <span class="role-icon">🔧</span>
-      <div class="role-label">技术支持</div>
-      <div class="role-name">Corundum-Ling</div>
+      <div class="role-label">开发人员</div>
+      <div class="role-name">huangder、Corundum-Ling</div>
     </div>
     <div class="glass thanks-item reveal">
       <span class="role-icon">🛠️</span>
@@ -246,5 +247,6 @@ body{
   document.addEventListener('click',function(e){var dd=document.querySelector('.nav-more-dropdown');var btn=document.querySelector('.nav-more-btn');if(dd&&dd.classList.contains('open')&&!dd.contains(e.target)&&e.target!==btn)dd.classList.remove('open')});
 })();
 </script>
+    <script src="lumi-nav.js"></script>
 </body>
 </html>

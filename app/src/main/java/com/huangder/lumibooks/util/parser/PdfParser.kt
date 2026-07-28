@@ -3,6 +3,8 @@ package com.huangder.lumibooks.util.parser
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
+import com.huangder.lumibooks.util.BookFileAccess
+import com.huangder.lumibooks.util.FileUtils
 import java.io.File
 
 class PdfParser(private val context: Context) : BookParser {
@@ -24,11 +26,8 @@ class PdfParser(private val context: Context) : BookParser {
 
     override fun parse(filePath: String): BookContent {
         close()
-        val file = File(filePath)
-        fileName = file.nameWithoutExtension
-        fileDescriptor = android.os.ParcelFileDescriptor.open(
-            file, android.os.ParcelFileDescriptor.MODE_READ_ONLY
-        )
+        fileName = FileUtils.getFileNameFromLocation(context, filePath).substringBeforeLast('.')
+        fileDescriptor = BookFileAccess.openDescriptor(context, filePath)
         pdfRenderer = PdfRenderer(fileDescriptor!!)
         pageCount = pdfRenderer?.pageCount ?: 0
 
@@ -109,12 +108,10 @@ class PdfParser(private val context: Context) : BookParser {
      * 与 parse() 互相独立，不影响当前渲染器状态。
      */
     override fun extractCoverPath(filePath: String): String? {
-        val file = File(filePath)
-        if (!file.exists()) return null
         var fd: android.os.ParcelFileDescriptor? = null
         var renderer: PdfRenderer? = null
         return try {
-            fd = android.os.ParcelFileDescriptor.open(file, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
+            fd = BookFileAccess.openDescriptor(context, filePath)
             renderer = PdfRenderer(fd)
             if (renderer.pageCount == 0) return null
 
@@ -129,7 +126,7 @@ class PdfParser(private val context: Context) : BookParser {
 
             val coversDir = File(context.filesDir, "covers")
             coversDir.mkdirs()
-            val coverFile = File(coversDir, "${file.name.hashCode()}.jpg")
+            val coverFile = File(coversDir, "${filePath.hashCode()}.jpg")
             coverFile.outputStream().use { out ->
                 bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
             }
@@ -144,7 +141,7 @@ class PdfParser(private val context: Context) : BookParser {
         }
     }
 
-    fun close() {
+    override fun close() {
         htmlCache.clear()
         runCatching { pdfRenderer?.close() }
         runCatching { fileDescriptor?.close() }

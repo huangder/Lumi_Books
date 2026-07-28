@@ -335,6 +335,8 @@
     <string name="menu_note">笔记</string>
     <string name="menu_view_note">查看笔记</string>
     <string name="menu_remove_highlight">移除高亮</string>
+    <string name="menu_dictionary">字典</string>
+    <string name="dictionary_no_app">未找到支持查词的词典或翻译应用</string>
     <string name="note_input_placeholder">输入笔记...</string>
     <string name="highlights_notes_title">高亮与笔记</string>
     <string name="tab_highlight">高亮</string>
@@ -437,6 +439,7 @@
     <!-- 其他 -->
     <string name="loading_text">加载中</string>
     <string name="loading_dots">加载中...</string>
+    <string name="reader_first_open_hint">首次打开书籍时可能需要稍等，完成初始化后，再次打开会明显更快。</string>
     <string name="confirm_action">确认</string>
     <string name="book_author_unknown">未知作者</string>
     <string name="importing">正在导入…</string>
@@ -621,6 +624,7 @@
     <string name="webdav_show_password">显示密码</string>
     <string name="webdav_hide_password">隐藏密码</string>
     <string name="webdav_sync_now">立即同步</string>
+    <string name="webdav_syncing">正在同步…</string>
     <string name="webdav_test_connection">测试连接</string>
     <string name="webdav_test_success">连接成功，WebDAV 服务可用</string>
     <string name="webdav_test_failed">连接失败，请检查服务器地址、用户名和密码</string>
@@ -630,6 +634,9 @@
     <string name="webdav_clear_config">清除配置</string>
     <string name="webdav_enable">保存并启用</string>
     <string name="webdav_configure">配置</string>
+    <string name="webdav_sync_mode_label">同步方式</string>
+    <string name="webdav_sync_mode_auto">自动</string>
+    <string name="webdav_sync_mode_manual">手动</string>
     <string name="webdav_save_configuration">保存配置</string>
     <string name="webdav_last_sync_time">上次同步：%1$s</string>
     <string name="webdav_status_card_title">连接状态</string>
@@ -652,5 +659,35 @@
     <string name="epub_layout_first_open_confirm">知道了</string>
     <string name="screen_sleep_timeout">屏幕休眠时间</string>
     <string name="screen_sleep_timeout_follow_system">跟随系统</string>
+    <string name="screen_sleep_timeout_permission_required">若要使用自定义休眠时间，请允许修改系统设置</string>
     <string name="screen_sleep_timeout_hint">长时间显示静止画面可能导屏幕显色不均</string>
+
+    <string name="epub_image_preview">图片预览</string>
+    <string name="epub_image_save_to_gallery">保存到相册</string>
+    <string name="epub_image_saved_to_gallery">已保存到相册</string>
+    <string name="epub_image_save_failed">图片保存失败</string>
+    <string name="epub_image_load_failed">图片加载失败</string>
+    <string name="epub_image_storage_permission_denied">需要存储权限才能保存图片</string>
+    <string name="import_dialog_description">你可以一次性选择多本书籍：
+1. 选择文件：书籍将被复制到应用目录下进行读取和编辑，不影响原文件。
+2. 授权书籍文件夹：直接读取该文件夹内的书籍原文件，不复制到应用目录，TXT 编辑也会直接保存到原文件。</string>
+    <string name="import_select_files">选择文件</string>
+    <string name="import_authorize_directory">授权一个书籍文件夹</string>
+    <string name="import_refresh_directories">更新书籍文件夹内容</string>
+    <string name="import_selected_count">已选择 %1$d 本书籍</string>
+    <string name="import_confirm">确认并导入</string>
+    <string name="import_scanning_directory">正在扫描书籍文件夹…</string>
+    <string name="import_authorized_directories_current">当前授权文件夹为：%1$s</string>
+    <string name="import_authorized_directories_none">当前授权文件夹为：未授权</string>
+    <string name="import_summary">已导入 %1$d 本书籍</string>
+    <string name="import_summary_with_failures">已导入 %1$d 本，%2$d 本失败</string>
+    <string name="import_no_new_books">没有发现新书籍</string>
+    <string name="import_no_authorized_directory">尚未授权书籍文件夹</string>
+    <string name="import_directory_permission_lost">文件夹访问权限已失效，请重新授权</string>
+    <string name="import_supported_formats">支持 EPUB、PDF、TXT</string>
+    <!-- E-ink mode -->
+    <string name="transition_none">无动画</string>
+    <string name="label_e_ink_mode">电子墨水屏模式</string>
+    <string name="e_ink_mode_description">使用高对比浅色界面，关闭动效、模糊和 Liquid Glass，翻页改为即时切换。</string>
+    <string name="e_ink_reader_fixed_theme_hint">电子墨水屏模式下固定使用浅色纸面、深色文字和即时翻页。</string>
 </resources>

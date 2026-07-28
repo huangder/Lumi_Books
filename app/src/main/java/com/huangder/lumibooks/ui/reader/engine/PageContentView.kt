@@ -8,6 +8,10 @@ import android.text.Spannable
 import android.text.SpannableStringBuilder
 import android.text.style.BackgroundColorSpan
 import android.text.style.CharacterStyle
+import android.text.style.ClickableSpan
+import android.text.style.DynamicDrawableSpan
+import android.text.style.ImageSpan
+import android.text.style.URLSpan
 import android.text.style.UpdateAppearance
 import android.util.Log
 import android.util.TypedValue
@@ -439,6 +443,67 @@ class PageContentView(context: Context) : FrameLayout(context) {
 
     /** 返回指定页面坐标处的 EPUB 链接；未命中链接时返回 null。 */
     fun getLinkAt(x: Float, y: Float): String? = justifiedView.getLinkAtPosition(x, y)
+
+    /**
+     * Returns the EPUB image at the supplied page coordinate.
+     *
+     * The native [textView] is the actual visible renderer. Using its [Layout] keeps
+     * hit testing aligned with Android's ImageSpan placement instead of the legacy
+     * invisible justified renderer, whose line metrics can differ for large images.
+     */
+    fun getImageAt(x: Float, y: Float): ReaderImageHit? {
+        val spannable = textView.text as? Spannable ?: return null
+        val textLayout = textView.layout ?: return null
+        val localX = x - textView.totalPaddingLeft + textView.scrollX
+        val localY = y - textView.totalPaddingTop + textView.scrollY
+        if (localX < 0f || localY < 0f || localY >= textLayout.height) return null
+
+        val line = textLayout.getLineForVertical(localY.toInt())
+        val lineStart = textLayout.getLineStart(line)
+        val lineEnd = textLayout.getLineEnd(line)
+        val images = spannable.getSpans(lineStart, lineEnd, ImageSpan::class.java)
+        if (images.isEmpty()) return null
+
+        for (image in images) {
+            val spanStart = spannable.getSpanStart(image).coerceAtLeast(0)
+            val spanEnd = spannable.getSpanEnd(image).coerceAtLeast(spanStart + 1)
+            val drawable = image.drawable
+            val imageWidth = drawable.bounds.width().toFloat().coerceAtLeast(1f)
+            val imageHeight = drawable.bounds.height().toFloat().coerceAtLeast(1f)
+            val imageLeft = textView.totalPaddingLeft +
+                textLayout.getPrimaryHorizontal(spanStart) - textView.scrollX
+            val lineTop = textLayout.getLineTop(line).toFloat()
+            val lineBottom = textLayout.getLineBottom(line).toFloat()
+            val imageTopInLayout = when (image.verticalAlignment) {
+                DynamicDrawableSpan.ALIGN_BASELINE ->
+                    textLayout.getLineBaseline(line).toFloat() - imageHeight
+                DynamicDrawableSpan.ALIGN_CENTER ->
+                    lineTop + (lineBottom - lineTop - imageHeight) / 2f
+                else -> lineBottom - imageHeight
+            }
+            val imageTop = textView.totalPaddingTop + imageTopInLayout - textView.scrollY
+            val imageRight = imageLeft + imageWidth
+            val imageBottom = imageTop + imageHeight
+            if (x !in imageLeft..imageRight || y !in imageTop..imageBottom) continue
+
+            val url = spannable.getSpans(spanStart, spanEnd, URLSpan::class.java)
+                .firstOrNull()?.url
+            val hasAction = spannable.getSpans(spanStart, spanEnd, ClickableSpan::class.java)
+                .isNotEmpty()
+            return ReaderImageHit(
+                source = image.source.orEmpty(),
+                leftPx = imageLeft,
+                topPx = imageTop,
+                rightPx = imageRight,
+                bottomPx = imageBottom,
+                naturalWidth = drawable.intrinsicWidth.coerceAtLeast(drawable.bounds.width()),
+                naturalHeight = drawable.intrinsicHeight.coerceAtLeast(drawable.bounds.height()),
+                link = url,
+                hasAction = hasAction
+            )
+        }
+        return null
+    }
 
     /** 缓存当前页在章节中的起始字符偏移（用于选区偏移转换） */
     var chapterStartOffset: Int = 0

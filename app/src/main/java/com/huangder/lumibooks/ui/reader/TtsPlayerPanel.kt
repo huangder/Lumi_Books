@@ -75,6 +75,7 @@ fun TtsPlayerPanel(
     onCancelSleepTimer: () -> Unit,
     readerBackgroundColor: Color,
     readerContentColor: Color,
+    forceSolidSurface: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val rateOptions = remember { listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f) }
@@ -142,6 +143,7 @@ fun TtsPlayerPanel(
                 shape = rateMenuShape,
                 fallbackColor = readerBackgroundColor,
                 contentScrimColor = readerBackgroundColor.copy(alpha = 0.18f),
+                forceFallback = forceSolidSurface,
                 modifier = Modifier.width(112.dp)
             ) {
                 Column(
@@ -214,6 +216,7 @@ fun TtsPlayerPanel(
                 shape = rateMenuShape,
                 fallbackColor = readerBackgroundColor,
                 contentScrimColor = readerBackgroundColor.copy(alpha = 0.18f),
+                forceFallback = forceSolidSurface,
                 modifier = Modifier.width(120.dp)
             ) {
                 Column(
@@ -288,7 +291,7 @@ fun TtsPlayerPanel(
                 .fillMaxWidth()
                 .height(56.dp)
                 .then(
-                    if (isLiquidGlass) {
+                    if (isLiquidGlass && !forceSolidSurface) {
                         Modifier
                     } else {
                         Modifier.shadow(
@@ -304,13 +307,18 @@ fun TtsPlayerPanel(
                 shape = capsuleShape,
                 fallbackColor = readerBackgroundColor,
                 contentScrimColor = readerBackgroundColor.copy(alpha = 0.85f),
+                forceFallback = forceSolidSurface,
                 modifier = Modifier
                     .matchParentSize()
                     .then(
-                        if (isLiquidGlass) Modifier.layerBackdrop(panelBackdrop) else Modifier
+                        if (isLiquidGlass && !forceSolidSurface) {
+                            Modifier.layerBackdrop(panelBackdrop)
+                        } else {
+                            Modifier
+                        }
                     )
             ) { }
-            ProvideLiquidGlassBackdrop(panelBackdrop.takeIf { isLiquidGlass }) {
+            ProvideLiquidGlassBackdrop(panelBackdrop.takeIf { isLiquidGlass && !forceSolidSurface }) {
             Row(
                 modifier = Modifier
                     .fillMaxSize()

@@ -44,6 +44,38 @@ private val LightColorScheme = lightColorScheme(
     outline = Color(0xFFC6C6C8)
 )
 
+
+private val EInkColorScheme = lightColorScheme(
+    primary = Color.Black,
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFEDEDED),
+    onPrimaryContainer = Color.Black,
+    secondary = Color(0xFF333333),
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFE6E6E6),
+    onSecondaryContainer = Color.Black,
+    tertiary = Color(0xFF555555),
+    onTertiary = Color.White,
+    tertiaryContainer = Color(0xFFDADADA),
+    onTertiaryContainer = Color.Black,
+    background = Color.White,
+    onBackground = Color.Black,
+    surface = Color.White,
+    onSurface = Color.Black,
+    surfaceVariant = Color(0xFFF4F4F4),
+    onSurfaceVariant = Color(0xFF444444),
+    error = Color.Black,
+    onError = Color.White,
+    errorContainer = Color(0xFFE0E0E0),
+    onErrorContainer = Color.Black,
+    outline = Color(0xFF8A8A8A),
+    outlineVariant = Color(0xFFBDBDBD),
+    scrim = Color.Black,
+    inverseSurface = Color.Black,
+    inverseOnSurface = Color.White,
+    inversePrimary = Color.White
+)
+
 private val DarkColorScheme = darkColorScheme(
     primary = PrimaryDark,
     onPrimary = Color.Black,
@@ -77,19 +109,26 @@ fun EBookReaderTheme(
     appTheme: String = "lumi",
     liquidGlassTransparency: Float = 0.55f,
     liquidGlassHdrHighlightEnabled: Boolean = false,
+    eInkMode: Boolean = false,
     content: @Composable () -> Unit
 ) {
+    val effectiveDarkTheme = if (eInkMode) false else darkTheme
+    val effectiveDynamicColor = if (eInkMode) false else dynamicColor
+    val effectiveAppTheme = if (eInkMode && appTheme == "liquid_glass") "lumi" else appTheme
+    val effectiveHdrHighlightEnabled = liquidGlassHdrHighlightEnabled && !eInkMode
+
     val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+        eInkMode -> EInkColorScheme
+        effectiveDynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            if (effectiveDarkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
-        darkTheme -> DarkColorScheme
+        effectiveDarkTheme -> DarkColorScheme
         else -> LightColorScheme
     }
 
     val view = LocalView.current
-    val hdrHighlightRequested = appTheme == "liquid_glass" && liquidGlassHdrHighlightEnabled
+    val hdrHighlightRequested = effectiveAppTheme == "liquid_glass" && effectiveHdrHighlightEnabled
     val hdrHighlightActive = hdrHighlightRequested && view.display?.isHdr == true
     if (!view.isInEditMode) {
         SideEffect {
@@ -98,8 +137,8 @@ fun EBookReaderTheme(
             // 透明状态栏，内容延伸到状态栏下方
             window.statusBarColor = Color.Transparent.toArgb()
             window.navigationBarColor = Color.Transparent.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
-            WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !darkTheme
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !effectiveDarkTheme
+            WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !effectiveDarkTheme
             window.colorMode = if (hdrHighlightRequested) {
                 ActivityInfo.COLOR_MODE_HDR
             } else {
@@ -112,9 +151,11 @@ fun EBookReaderTheme(
     }
 
     CompositionLocalProvider(
-        LocalIsDarkTheme provides darkTheme,
-        LocalUseMaterial3Theme provides dynamicColor,
-        LocalAppTheme provides appTheme,
+        LocalIsDarkTheme provides effectiveDarkTheme,
+        LocalUseMaterial3Theme provides effectiveDynamicColor,
+        LocalAppTheme provides effectiveAppTheme,
+        LocalEInkMode provides eInkMode,
+        LocalMotionEnabled provides !eInkMode,
         LocalLiquidGlassTransparency provides liquidGlassTransparency.coerceIn(0f, 1f),
         LocalLiquidGlassHdrHighlightEnabled provides hdrHighlightActive
     ) {

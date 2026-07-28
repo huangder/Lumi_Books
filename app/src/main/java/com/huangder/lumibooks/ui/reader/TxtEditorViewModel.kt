@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.reader
 
+import android.app.Application
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -26,7 +27,8 @@ data class TxtEditorUiState(
 @HiltViewModel
 class TxtEditorViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
-    private val bookRepository: BookRepository
+    private val bookRepository: BookRepository,
+    private val application: Application
 ) : ViewModel() {
 
     private val bookId: String = savedStateHandle.get<String>("bookId") ?: ""
@@ -57,7 +59,7 @@ class TxtEditorViewModel @Inject constructor(
                     return@launch
                 }
 
-                val txtParser = TxtParser()
+                val txtParser = TxtParser(application)
                 withContext(Dispatchers.IO) {
                     txtParser.parse(book.filePath)
                 }
@@ -103,4 +105,11 @@ class TxtEditorViewModel @Inject constructor(
             }
         }
     }
+
+    override fun onCleared() {
+        parser?.close()
+        parser = null
+        super.onCleared()
+    }
+
 }

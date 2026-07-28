@@ -312,6 +312,7 @@
     <string name="tts_previous_sentence">Previous sentence</string>
     <string name="tts_next_sentence">Next sentence</string>
     <string name="tts_page_not_ready">The current page is not ready</string>
+    <string name="tts_no_readable_text">There is no readable text on the current page.</string>
     <string name="tts_unavailable">Text-to-speech could not start. Check the system voice engine and language data.</string>
     <string name="tts_playback_error">Speech playback failed. Check the system text-to-speech settings.</string>
     <string name="tts_notification_channel">Listen playback</string>
@@ -355,6 +356,8 @@
     <string name="menu_note">Note</string>
     <string name="menu_view_note">View Note</string>
     <string name="menu_remove_highlight">Remove Highlight</string>
+    <string name="menu_dictionary">Dictionary</string>
+    <string name="dictionary_no_app">No dictionary or translation app found</string>
     <string name="note_input_placeholder">Enter note...</string>
     <string name="highlights_notes_title">Highlights &amp; Notes</string>
     <string name="tab_highlight">Highlight</string>
@@ -459,6 +462,7 @@
     <!-- Other -->
     <string name="loading_text">Loading</string>
     <string name="loading_dots">Loading...</string>
+    <string name="reader_first_open_hint">The first open may take a little longer. Once initialized, the book will open much faster next time.</string>
     <string name="confirm_action">Confirm</string>
     <string name="book_author_unknown">Unknown Author</string>
     <string name="importing">Importing…</string>
@@ -643,6 +647,7 @@
     <string name="webdav_show_password">Show password</string>
     <string name="webdav_hide_password">Hide password</string>
     <string name="webdav_sync_now">Sync now</string>
+    <string name="webdav_syncing">Syncing…</string>
     <string name="webdav_test_connection">Test connection</string>
     <string name="webdav_test_success">Connected; the WebDAV service is available</string>
     <string name="webdav_test_failed">Connection failed. Check the server address, username, and password.</string>
@@ -652,6 +657,9 @@
     <string name="webdav_clear_config">Clear configuration</string>
     <string name="webdav_enable">Save and enable</string>
     <string name="webdav_configure">Configure</string>
+    <string name="webdav_sync_mode_label">Sync mode</string>
+    <string name="webdav_sync_mode_auto">Auto</string>
+    <string name="webdav_sync_mode_manual">Manual</string>
     <string name="webdav_save_configuration">Save configuration</string>
     <string name="webdav_last_sync_time">Last sync: %1$s</string>
     <string name="webdav_status_card_title">Connection status</string>
@@ -674,5 +682,33 @@
     <string name="epub_layout_first_open_confirm">Got it</string>
     <string name="screen_sleep_timeout">Screen sleep timeout</string>
     <string name="screen_sleep_timeout_follow_system">Follow system</string>
+    <string name="screen_sleep_timeout_permission_required">Allow modifying system settings to use a custom screen timeout</string>
     <string name="screen_sleep_timeout_hint">Displaying a static image for a long time may cause uneven screen colors</string>
+
+    <string name="epub_image_preview">Image preview</string>
+    <string name="epub_image_save_to_gallery">Save to gallery</string>
+    <string name="epub_image_saved_to_gallery">Saved to gallery</string>
+    <string name="epub_image_save_failed">Could not save image</string>
+    <string name="epub_image_load_failed">Could not load image</string>
+    <string name="epub_image_storage_permission_denied">Storage permission is required to save the image</string>
+    <string name="import_dialog_description">You can select multiple books at once:\n1. Select files: books are copied into the app for reading and editing without changing the originals.\n2. Authorize a book folder: books are read directly from their original files without copying; TXT edits are saved to the originals.</string>
+    <string name="import_select_files">Select files</string>
+    <string name="import_authorize_directory">Authorize a book folder</string>
+    <string name="import_refresh_directories">Scan authorized folders</string>
+    <string name="import_selected_count">%1$d books selected</string>
+    <string name="import_confirm">Confirm and import</string>
+    <string name="import_scanning_directory">Scanning book folders?</string>
+    <string name="import_authorized_directories_current">Current authorized folder: %1$s</string>
+    <string name="import_authorized_directories_none">Current authorized folder: None</string>
+    <string name="import_summary">Imported %1$d books</string>
+    <string name="import_summary_with_failures">Imported %1$d; %2$d failed</string>
+    <string name="import_no_new_books">No new books found</string>
+    <string name="import_no_authorized_directory">No book folder has been authorized</string>
+    <string name="import_directory_permission_lost">Folder access expired. Please authorize it again.</string>
+    <string name="import_supported_formats">Supports EPUB, PDF, and TXT</string>
+    <!-- E-ink mode -->
+    <string name="transition_none">No animation</string>
+    <string name="label_e_ink_mode">E-ink mode</string>
+    <string name="e_ink_mode_description">Use a high-contrast light interface and disable animations, blur, and Liquid Glass for e-ink screens.</string>
+    <string name="e_ink_reader_fixed_theme_hint">E-ink mode uses a light paper background, dark text, and instant page turns.</string>
 </resources>

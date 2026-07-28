@@ -2,6 +2,8 @@ package com.huangder.lumibooks.ui.bookshelf
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -13,10 +15,12 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
@@ -48,6 +52,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Label
+import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.Delete
@@ -101,6 +106,7 @@ import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.util.FileUtils
 import kotlinx.coroutines.delay
@@ -188,7 +194,8 @@ internal fun BookshelfSearchOverlay(
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     val density = LocalDensity.current
-    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val eInkMode = LocalEInkMode.current
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !eInkMode
     val positionDampingRatio = if (isLiquidGlass) 0.68f else 0.82f
     val isKeyboardVisible = WindowInsets.ime.getBottom(density) > 0
     val backgroundInteraction = remember { MutableInteractionSource() }
@@ -207,7 +214,7 @@ internal fun BookshelfSearchOverlay(
         } else {
             0f
         },
-        animationSpec = spring(dampingRatio = positionDampingRatio, stiffness = 220f),
+        animationSpec = if (eInkMode) snap() else spring(dampingRatio = positionDampingRatio, stiffness = 220f),
         label = "bookshelfSearchReturnX"
     )
     val returnOffsetY by animateFloatAsState(
@@ -216,20 +223,24 @@ internal fun BookshelfSearchOverlay(
         } else {
             0f
         },
-        animationSpec = spring(dampingRatio = positionDampingRatio, stiffness = 220f),
+        animationSpec = if (eInkMode) snap() else spring(dampingRatio = positionDampingRatio, stiffness = 220f),
         label = "bookshelfSearchReturnY"
     )
     val activeFieldHeight by animateDpAsState(
         targetValue = if (visible) 62.dp else 48.dp,
-        animationSpec = spring(
-            dampingRatio = if (isLiquidGlass) 0.74f else 0.82f,
-            stiffness = 240f
-        ),
+        animationSpec = if (eInkMode) {
+            snap()
+        } else {
+            spring(
+                dampingRatio = if (isLiquidGlass) 0.74f else 0.82f,
+                stiffness = 240f
+            )
+        },
         label = "bookshelfSearchReturnHeight"
     )
     val resultContentAlpha by animateFloatAsState(
         targetValue = if (visible) 1f else 0f,
-        animationSpec = tween(if (visible) 160 else 110),
+        animationSpec = if (eInkMode) snap() else tween(if (visible) 160 else 110),
         label = "bookshelfSearchResultExit"
     )
 
@@ -237,9 +248,9 @@ internal fun BookshelfSearchOverlay(
         keyboardController?.hide()
         onDismiss()
     }
-    LaunchedEffect(visible) {
+    LaunchedEffect(visible, eInkMode) {
         if (visible) {
-            delay(140)
+            if (!eInkMode) delay(140)
             focusRequester.requestFocus()
         } else {
             keyboardController?.hide()
@@ -248,14 +259,18 @@ internal fun BookshelfSearchOverlay(
 
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(tween(150)) + slideInVertically(
-            initialOffsetY = { (it * 0.14f).toInt() },
-            animationSpec = spring(
-                dampingRatio = if (isLiquidGlass) 0.68f else 0.84f,
-                stiffness = if (isLiquidGlass) 220f else 190f
+        enter = if (eInkMode) {
+            EnterTransition.None
+        } else {
+            fadeIn(tween(150)) + slideInVertically(
+                initialOffsetY = { (it * 0.14f).toInt() },
+                animationSpec = spring(
+                    dampingRatio = if (isLiquidGlass) 0.68f else 0.84f,
+                    stiffness = if (isLiquidGlass) 220f else 190f
+                )
             )
-        ),
-        exit = fadeOut(tween(durationMillis = 70, delayMillis = 430)),
+        },
+        exit = if (eInkMode) ExitTransition.None else fadeOut(tween(durationMillis = 70, delayMillis = 430)),
         modifier = modifier.fillMaxSize()
     ) {
         Box(
@@ -448,11 +463,12 @@ private fun ActiveBookshelfSearchField(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun BookshelfSearchResultItem(
+internal fun BookshelfSearchResultItem(
     book: Book,
     tagNames: List<String>,
     expanded: Boolean,
     isDeleting: Boolean,
+    isSynced: Boolean = false,
     onExpandedChange: () -> Unit,
     onClick: () -> Unit,
     onEditInfo: () -> Unit,
@@ -461,55 +477,79 @@ private fun BookshelfSearchResultItem(
     onCustomCover: () -> Unit,
     onRemoveCustomCover: () -> Unit,
     onTags: () -> Unit,
-    onBookmarksNotes: () -> Unit
+    onBookmarksNotes: () -> Unit,
+    selectionMode: Boolean = false,
+    selected: Boolean = false,
+    onSelectionToggle: () -> Unit = {}
 ) {
     val haptic = LocalHapticFeedback.current
+    val eInkMode = LocalEInkMode.current
     val scale by animateFloatAsState(
-        targetValue = if (isDeleting) 0.92f else 1f,
-        animationSpec = tween(280),
-        label = "searchResultDeleteScale"
+        targetValue = when {
+            isDeleting -> 0.92f
+            selectionMode -> 0.955f
+            else -> 1f
+        },
+        animationSpec = if (eInkMode) snap() else tween(180),
+        label = "searchResultInteractionScale"
     )
     val alpha by animateFloatAsState(
         targetValue = if (isDeleting) 0f else 1f,
-        animationSpec = tween(280),
+        animationSpec = if (eInkMode) snap() else tween(280),
         label = "searchResultDeleteAlpha"
     )
+
+    val interactionAnimationModifier = if (isDeleting || selectionMode) {
+        Modifier.graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+            this.alpha = alpha
+        }
+    } else {
+        Modifier
+    }
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-                this.alpha = alpha
-            }
+            .then(interactionAnimationModifier)
     ) {
         BookshelfSearchResultCard(
             book = book,
             tagNames = tagNames,
+            selected = selected,
+            isSynced = isSynced,
             modifier = Modifier.combinedClickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() },
-                onClick = onClick,
+                onClick = if (selectionMode) onSelectionToggle else onClick,
                 onLongClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onExpandedChange()
+                    if (selectionMode) onSelectionToggle() else onExpandedChange()
                 }
             )
         )
 
         AnimatedVisibility(
             visible = expanded,
-            enter = expandVertically(
-                expandFrom = Alignment.Top,
-                animationSpec = spring(dampingRatio = 0.78f, stiffness = 300f),
-                clip = false
-            ) + fadeIn(tween(130)),
-            exit = shrinkVertically(
-                shrinkTowards = Alignment.Top,
-                animationSpec = tween(190),
-                clip = false
-            ) + fadeOut(tween(140))
+            enter = if (eInkMode) {
+                EnterTransition.None
+            } else {
+                expandVertically(
+                    expandFrom = Alignment.Top,
+                    animationSpec = spring(dampingRatio = 0.78f, stiffness = 300f),
+                    clip = false
+                ) + fadeIn(tween(130))
+            },
+            exit = if (eInkMode) {
+                ExitTransition.None
+            } else {
+                shrinkVertically(
+                    shrinkTowards = Alignment.Top,
+                    animationSpec = tween(190),
+                    clip = false
+                ) + fadeOut(tween(140))
+            }
         ) {
             Column {
                 Spacer(Modifier.height(10.dp))
@@ -533,6 +573,8 @@ private fun BookshelfSearchResultItem(
 private fun BookshelfSearchResultCard(
     book: Book,
     tagNames: List<String>,
+    selected: Boolean = false,
+    isSynced: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -554,15 +596,19 @@ private fun BookshelfSearchResultCard(
         ),
         modifier = modifier
             .fillMaxWidth()
-            .height(116.dp),
+            .height(116.dp)
+            .then(
+                if (selected) Modifier.border(2.dp, AppColors.Accent, shape) else Modifier
+            ),
         contentAlignment = Alignment.CenterStart
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
             Box(
                 modifier = Modifier
                     .width(70.dp)
@@ -652,6 +698,19 @@ private fun BookshelfSearchResultCard(
                         }
                     }
                 }
+            }
+            }
+
+            if (isSynced) {
+                Icon(
+                    imageVector = Icons.Filled.Cloud,
+                    contentDescription = stringResource(R.string.category_webdav),
+                    tint = AppColors.TextSecondary,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 11.dp, end = 13.dp)
+                        .size(17.dp)
+                )
             }
         }
     }
@@ -766,11 +825,14 @@ private fun SearchActionButton(
     visible: Boolean,
     animationIndex: Int
 ) {
-    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val eInkMode = LocalEInkMode.current
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !eInkMode
     val isDark = LocalIsDarkTheme.current
     val shape = if (label == null) CircleShape else RoundedCornerShape(50)
-    val fallback = tintedColor ?: AppColors.CardBg
-    val scrim = tintedColor?.copy(alpha = 0.85f)
+    val effectiveTintedColor = tintedColor?.let { if (eInkMode) Color.Black else it }
+    val effectiveContentColor = if (eInkMode && tintedColor != null) Color.White else contentColor
+    val fallback = effectiveTintedColor ?: AppColors.CardBg
+    val scrim = effectiveTintedColor?.copy(alpha = if (eInkMode) 1f else 0.85f)
         ?: AppColors.CardBg.copy(alpha = if (isDark) 0.80f else 0.72f)
     val visibilityState = remember { MutableTransitionState(false) }
     LaunchedEffect(visible) {
@@ -778,25 +840,33 @@ private fun SearchActionButton(
     }
     AnimatedVisibility(
         visibleState = visibilityState,
-        enter = fadeIn(
-            animationSpec = tween(
-                durationMillis = 150,
-                delayMillis = animationIndex * 28
+        enter = if (eInkMode) {
+            EnterTransition.None
+        } else {
+            fadeIn(
+                animationSpec = tween(
+                    durationMillis = 150,
+                    delayMillis = animationIndex * 28
+                )
+            ) + scaleIn(
+                initialScale = 0.58f,
+                animationSpec = spring(dampingRatio = 0.62f, stiffness = 320f)
+            ) + slideInVertically(
+                initialOffsetY = { it / 2 },
+                animationSpec = spring(dampingRatio = 0.66f, stiffness = 300f)
             )
-        ) + scaleIn(
-            initialScale = 0.58f,
-            animationSpec = spring(dampingRatio = 0.62f, stiffness = 320f)
-        ) + slideInVertically(
-            initialOffsetY = { it / 2 },
-            animationSpec = spring(dampingRatio = 0.66f, stiffness = 300f)
-        ),
-        exit = fadeOut(tween(105)) + scaleOut(
-            targetScale = 0.78f,
-            animationSpec = tween(140)
-        ) + slideOutVertically(
-            targetOffsetY = { it / 4 },
-            animationSpec = tween(140)
-        )
+        },
+        exit = if (eInkMode) {
+            ExitTransition.None
+        } else {
+            fadeOut(tween(105)) + scaleOut(
+                targetScale = 0.78f,
+                animationSpec = tween(140)
+            ) + slideOutVertically(
+                targetOffsetY = { it / 4 },
+                animationSpec = tween(140)
+            )
+        }
     ) {
     LiquidGlassSurface(
         shape = shape,
@@ -827,7 +897,7 @@ private fun SearchActionButton(
             Icon(
                 imageVector = icon,
                 contentDescription = contentDescription,
-                tint = contentColor,
+                tint = effectiveContentColor,
                 modifier = Modifier.size(16.dp)
             )
         } else {
@@ -839,13 +909,13 @@ private fun SearchActionButton(
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = contentColor,
+                    tint = effectiveContentColor,
                     modifier = Modifier.size(12.dp)
                 )
                 Spacer(Modifier.width(3.dp))
                 Text(
                     text = label,
-                    color = contentColor,
+                    color = effectiveContentColor,
                     fontSize = 9.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,

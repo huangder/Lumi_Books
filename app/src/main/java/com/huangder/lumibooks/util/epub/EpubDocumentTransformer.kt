@@ -116,6 +116,101 @@ html.lumi-sepia body { color: #3e2723 !important; }
 html.lumi-green { background: #e8f5e9 !important; }
 html.lumi-green body { color: #1b5e20 !important; }
 ::selection { background: rgba(255, 193, 7, 0.42); }
+#lumi-footnote-popover {
+  position: fixed;
+  left: 12px;
+  top: 12px;
+  width: max-content;
+  min-width: 112px;
+  max-width: min(84vw, 420px);
+  max-height: min(56vh, 520px);
+  box-sizing: border-box;
+  overflow: visible;
+  z-index: 2147483646;
+  padding: 16px 18px;
+  border: 1px solid rgba(28, 28, 30, 0.14);
+  border-radius: 14px;
+  background: #fff;
+  color: #242424;
+  box-shadow: 0 18px 52px rgba(0, 0, 0, 0.15), 0 5px 18px rgba(0, 0, 0, 0.08);
+  font-family: sans-serif;
+  font-size: 16px;
+  line-height: 1.62;
+  text-align: start;
+  filter: none;
+  opacity: 0;
+  transform: translateY(var(--lumi-footnote-motion-y, -8px)) scale(0.965);
+  transform-origin: var(--lumi-footnote-arrow-x, 50%) top;
+  will-change: opacity, transform;
+  touch-action: pan-y;
+  -webkit-user-select: text;
+  user-select: text;
+}
+#lumi-footnote-popover[data-placement="below"] { --lumi-footnote-motion-y: -8px; transform-origin: var(--lumi-footnote-arrow-x, 50%) top; }
+#lumi-footnote-popover[data-placement="above"] { --lumi-footnote-motion-y: 8px; transform-origin: var(--lumi-footnote-arrow-x, 50%) bottom; }
+#lumi-footnote-popover[data-state="open"] {
+  animation: lumi-footnote-enter 190ms cubic-bezier(0.2, 0.82, 0.25, 1) both;
+}
+#lumi-footnote-popover[data-state="closing"] {
+  pointer-events: none;
+  animation: lumi-footnote-exit 150ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+#lumi-footnote-popover::before {
+  content: '';
+  position: absolute;
+  left: var(--lumi-footnote-arrow-x, 28px);
+  width: 14px;
+  height: 14px;
+  background: inherit;
+  border: inherit;
+  transform: translateX(-50%) rotate(45deg);
+}
+#lumi-footnote-popover[data-placement="below"]::before {
+  top: -8px;
+  border-right: 0;
+  border-bottom: 0;
+}
+#lumi-footnote-popover[data-placement="above"]::before {
+  bottom: -8px;
+  border-left: 0;
+  border-top: 0;
+}
+#lumi-footnote-content {
+  max-height: calc(min(56vh, 520px) - 32px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+#lumi-footnote-content > :first-child { margin-top: 0 !important; }
+#lumi-footnote-content > :last-child { margin-bottom: 0 !important; }
+#lumi-footnote-content p { margin: 0 0 0.7em !important; }
+#lumi-footnote-content img, #lumi-footnote-content svg { max-width: 100% !important; height: auto !important; }
+#lumi-footnote-loading {
+  display: block;
+  width: 20px;
+  height: 20px;
+  margin: 4px auto;
+  border: 2px solid rgba(80, 80, 80, 0.2);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: lumi-footnote-spin 0.8s linear infinite;
+}
+html.lumi-sepia #lumi-footnote-popover { background: #fff8ee; color: #3e2723; }
+html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
+@keyframes lumi-footnote-enter {
+  from { opacity: 0; transform: translateY(var(--lumi-footnote-motion-y, -8px)) scale(0.965); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes lumi-footnote-exit {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(var(--lumi-footnote-motion-y, -8px)) scale(0.975); }
+}
+@keyframes lumi-footnote-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  #lumi-footnote-popover[data-state="open"],
+  #lumi-footnote-popover[data-state="closing"] { animation-duration: 1ms; }
+}
 #lumi-page-stage {
   position: fixed;
   inset: 0;
@@ -171,7 +266,14 @@ html.lumi-green body { color: #1b5e20 !important; }
 }
 """
 
-    private const val READER_SCRIPT = """
+    private val READER_SCRIPT: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        buildString(READER_SCRIPT_PART_1.length + READER_SCRIPT_PART_2.length) {
+            append(READER_SCRIPT_PART_1)
+            append(READER_SCRIPT_PART_2)
+        }
+    }
+
+    private const val READER_SCRIPT_PART_1 = """
 (function () {
   'use strict';
   var state = {
@@ -203,6 +305,8 @@ html.lumi-green body { color: #1b5e20 !important; }
   var pageStageSide = 1;
   var pageStageProgress = 0;
   var pageStageActive = false;
+  var footnoteRequestSerial = 0;
+  var pageNotifySerial = 0;
 
   function post(type, payload) {
     try {
@@ -585,6 +689,7 @@ html.lumi-green body { color: #1b5e20 !important; }
   }
 
   function moveToPage(page, notify) {
+    var notificationSerial = ++pageNotifySerial;
     var previousPage = state.page;
     var targetPage = Math.max(0, Math.min(page, state.total - 1));
     var shouldAnimate = notify !== false && previousPage !== targetPage;
@@ -631,7 +736,20 @@ html.lumi-green body { color: #1b5e20 !important; }
         body.style.transform = 'translate3d(' + x + 'px,0,0)';
       }
     }
-    if (notify !== false) post('page', { pageIndex: state.page, pageCount: state.total, reverseAxis: state.reverseAxis, locator: currentLocator() });
+    if (notify !== false) {
+      var notifyPage = function () {
+        if (notificationSerial !== pageNotifySerial || state.page !== targetPage) return;
+        post('page', { pageIndex: state.page, pageCount: state.total, reverseAxis: state.reverseAxis, locator: currentLocator() });
+      };
+      if (state.transition === 'none' && state.flow === 'paginated') {
+        requestAnimationFrame(function () {
+          void body.offsetWidth;
+          requestAnimationFrame(notifyPage);
+        });
+      } else {
+        notifyPage();
+      }
+    }
   }
 
   function fulfillPreparedPageRequest() {
@@ -869,9 +987,18 @@ html.lumi-green body { color: #1b5e20 !important; }
     };
   }
 
+  function clearPublisherRootHorizontalInset() {
+    var root = document.documentElement;
+    root.style.setProperty('margin-left', '0px', 'important');
+    root.style.setProperty('margin-right', '0px', 'important');
+    root.style.setProperty('padding-left', '0px', 'important');
+    root.style.setProperty('padding-right', '0px', 'important');
+  }
+
   function applyPaginationBox(body) {
     var inset = readerBox();
     var horizontalInset = Math.min(state.viewportWidth - 1, Math.max(0, inset.left + inset.right));
+    clearPublisherRootHorizontalInset();
     body.style.setProperty('--lumi-page-height', state.viewportHeight + 'px');
     body.style.setProperty('--lumi-column-gap', horizontalInset + 'px');
     body.style.boxSizing = 'border-box';
@@ -991,6 +1118,9 @@ html.lumi-green body { color: #1b5e20 !important; }
     }
   }
 
+"""
+
+    private const val READER_SCRIPT_PART_2 = """
   function isBionicCjkCharacter(character) {
     var codePoint = character.codePointAt(0);
     return (codePoint >= 0x3400 && codePoint <= 0x4DBF) ||
@@ -1177,6 +1307,7 @@ html.lumi-green body { color: #1b5e20 !important; }
   }
 
   function configure(config) {
+    closeFootnotePopover(true);
     config = config || {};
     var liveLocator = state.ready ? currentLocator() : null;
     var liveProgression = state.ready && state.total > 1 ? state.page / (state.total - 1) : undefined;
@@ -1322,8 +1453,226 @@ html.lumi-green body { color: #1b5e20 !important; }
     return hadSelection;
   }
 
+  function interactiveFromTarget(target) {
+    if (!target || !target.closest) return null;
+    return target.closest(
+      'a[href],area[href],button,input,select,textarea,label,summary,img[usemap],img[ismap],' +
+      '[contenteditable=""],[contenteditable="true"],[role="button"],[role="link"],' +
+      '[role="checkbox"],[role="menuitem"],[role="radio"],[role="switch"],[role="tab"],' +
+      '[onclick],[ondblclick],[onmousedown],[onmouseup],[ontouchstart],[ontouchend]'
+    );
+  }
+
+  function imageFromTarget(target) {
+    var image = target && target.closest ? target.closest('img') : null;
+    if (!image) return null;
+    if (interactiveFromTarget(image) || image.hasAttribute('usemap') || image.hasAttribute('ismap')) return null;
+    return image;
+  }
+
+  function postImagePreview(image) {
+    if (!image) return false;
+    var source = String(image.currentSrc || image.src || image.getAttribute('src') || '').trim();
+    if (!source) return false;
+    var bounds = image.getBoundingClientRect();
+    var width = viewportWidth();
+    var height = viewportHeight();
+    var left = Math.max(0, Math.min(width, bounds.left));
+    var right = Math.max(left, Math.min(width, bounds.right));
+    var top = Math.max(0, Math.min(height, bounds.top));
+    var bottom = Math.max(top, Math.min(height, bounds.bottom));
+    post('image', {
+      source: source,
+      alt: String(image.getAttribute('alt') || ''),
+      left: left,
+      top: top,
+      right: right,
+      bottom: bottom,
+      naturalWidth: Math.max(0, image.naturalWidth || 0),
+      naturalHeight: Math.max(0, image.naturalHeight || 0),
+      pixelRatio: Math.max(1, window.devicePixelRatio || 1)
+    });
+    return true;
+  }
+
+  function semanticTokens(element) {
+    if (!element || !element.getAttribute) return '';
+    var epubType = element.getAttribute('epub:type') || '';
+    try {
+      epubType += ' ' + (element.getAttributeNS('http://www.idpf.org/2007/ops', 'type') || '');
+    } catch (_) {}
+    return (epubType + ' ' + (element.getAttribute('role') || '') + ' ' +
+      (element.getAttribute('rel') || '')).toLowerCase();
+  }
+
+  function hasFootnoteSemantics(element, reference) {
+    var tokens = semanticTokens(element);
+    if (reference && /(^|\s)(noteref|doc-noteref)(\s|$)/.test(tokens)) return true;
+    if (!reference && /(^|\s)(footnote|endnote|rearnote|doc-footnote|doc-endnote)(\s|$)/.test(tokens)) return true;
+    return false;
+  }
+
+  function hasFootnoteHint(value) {
+    return /(^|[\s_#./-])(footnotes?|endnotes?|rearnotes?|notes?|fn|en)([\s_./-]|\d|$)/i.test(String(value || ''));
+  }
+
+  function decodedFragment(url) {
+    var fragment = String(url && url.hash || '').replace(/^#/, '');
+    if (!fragment) return '';
+    try { return decodeURIComponent(fragment); } catch (_) { return fragment; }
+  }
+
+  function footnoteTarget(documentValue, fragment) {
+    if (!documentValue || !fragment) return null;
+    var target = documentValue.getElementById(fragment);
+    if (target) return target;
+    var named = documentValue.getElementsByName ? documentValue.getElementsByName(fragment) : [];
+    return named && named.length ? named[0] : null;
+  }
+
+  function isFootnoteReference(anchor) {
+    if (!anchor || !anchor.href || hasFootnoteSemantics(anchor, false)) return false;
+    var url;
+    try { url = new URL(anchor.href, document.baseURI); } catch (_) { return false; }
+    var fragment = decodedFragment(url);
+    if (!fragment) return false;
+    if (hasFootnoteSemantics(anchor, true)) return true;
+    if (hasFootnoteHint(anchor.className) || hasFootnoteHint(anchor.id) ||
+        hasFootnoteHint(anchor.getAttribute('title')) || hasFootnoteHint(fragment)) return true;
+    var sameDocument = url.origin === location.origin && url.pathname === location.pathname && url.search === location.search;
+    var target = sameDocument ? footnoteTarget(document, fragment) : null;
+    if (target && (hasFootnoteSemantics(target, false) ||
+        hasFootnoteSemantics(target.closest && target.closest('aside,li,section,div'), false))) return true;
+    return !!(anchor.closest && anchor.closest('sup') && hasFootnoteHint(fragment));
+  }
+
+  function closeFootnotePopover(immediate) {
+    footnoteRequestSerial++;
+    var existing = document.getElementById('lumi-footnote-popover');
+    if (!existing) return;
+    if (immediate) {
+      existing.remove();
+      return;
+    }
+    if (existing.getAttribute('data-state') === 'closing') return;
+    existing.setAttribute('data-state', 'closing');
+    var removed = false;
+    var removePopover = function (event) {
+      if (event && event.target !== existing) return;
+      if (removed) return;
+      removed = true;
+      if (existing.isConnected) existing.remove();
+    };
+    existing.addEventListener('animationend', removePopover);
+    window.setTimeout(removePopover, 220);
+  }
+
+  function createFootnotePopover(anchor) {
+    closeFootnotePopover(true);
+    var popover = document.createElement('aside');
+    popover.id = 'lumi-footnote-popover';
+    popover.setAttribute('role', 'dialog');
+    popover.setAttribute('aria-modal', 'false');
+    popover.setAttribute('aria-label', String(anchor.getAttribute('title') || 'Note'));
+    popover.innerHTML = '<div id="lumi-footnote-content"><span id="lumi-footnote-loading" aria-hidden="true"></span></div>';
+    document.documentElement.appendChild(popover);
+    positionFootnotePopover(popover, anchor.getBoundingClientRect());
+    window.requestAnimationFrame(function () {
+      if (popover.isConnected && popover.getAttribute('data-state') !== 'closing') {
+        popover.setAttribute('data-state', 'open');
+      }
+    });
+    return popover;
+  }
+
+  function positionFootnotePopover(popover, anchorBounds) {
+    if (!popover || !anchorBounds) return;
+    var width = viewportWidth();
+    var height = viewportHeight();
+    var gap = 12;
+    var edge = 10;
+    var popoverWidth = Math.min(popover.offsetWidth || 280, Math.max(112, width - edge * 2));
+    var popoverHeight = popover.offsetHeight || 80;
+    var anchorCenter = Math.max(edge, Math.min(width - edge, (anchorBounds.left + anchorBounds.right) / 2));
+    var left = Math.max(edge, Math.min(width - popoverWidth - edge, anchorCenter - popoverWidth / 2));
+    var roomBelow = height - anchorBounds.bottom - gap;
+    var placeBelow = roomBelow >= Math.min(popoverHeight, height * 0.34) || anchorBounds.top < height / 2;
+    var top = placeBelow ? anchorBounds.bottom + gap : anchorBounds.top - popoverHeight - gap;
+    top = Math.max(edge, Math.min(height - popoverHeight - edge, top));
+    popover.style.left = Math.round(left) + 'px';
+    popover.style.top = Math.round(top) + 'px';
+    popover.style.setProperty('--lumi-footnote-arrow-x', Math.max(18, Math.min(popoverWidth - 18, anchorCenter - left)) + 'px');
+    popover.setAttribute('data-placement', placeBelow ? 'below' : 'above');
+  }
+
+  function sanitizeFootnoteContent(target) {
+    var clone = target.cloneNode(true);
+    var removable = clone.querySelectorAll('script,style,link,iframe,frame,object,embed,form,input,textarea,select,button');
+    Array.prototype.forEach.call(removable, function (node) { node.remove(); });
+    var all = [clone].concat(Array.prototype.slice.call(clone.querySelectorAll('*')));
+    all.forEach(function (node) {
+      if (!node.removeAttribute) return;
+      var tokens = semanticTokens(node);
+      if (/(^|\s)(backlink|doc-backlink)(\s|$)/.test(tokens)) {
+        node.remove();
+        return;
+      }
+      node.removeAttribute('id');
+      node.removeAttribute('class');
+      node.removeAttribute('style');
+      node.removeAttribute('hidden');
+      node.removeAttribute('aria-hidden');
+      node.removeAttribute('href');
+      node.removeAttribute('target');
+    });
+    var holder = document.createElement('div');
+    while (clone.firstChild) holder.appendChild(clone.firstChild);
+    return holder;
+  }
+
+  function loadFootnoteTarget(url, fragment) {
+    var sameDocument = url.origin === location.origin && url.pathname === location.pathname && url.search === location.search;
+    if (sameDocument) return Promise.resolve(footnoteTarget(document, fragment));
+    if (url.origin !== location.origin) return Promise.resolve(null);
+    var resourceUrl = url.href.replace(/#.*$/, '');
+    return fetch(resourceUrl, { credentials: 'omit' }).then(function (response) {
+      if (!response.ok) return null;
+      return response.text();
+    }).then(function (source) {
+      if (!source) return null;
+      var parsed = new DOMParser().parseFromString(source, 'text/html');
+      return footnoteTarget(parsed, fragment);
+    }).catch(function () { return null; });
+  }
+
+  function showFootnotePopover(anchor) {
+    var url;
+    try { url = new URL(anchor.href, document.baseURI); } catch (_) { return Promise.resolve(false); }
+    var fragment = decodedFragment(url);
+    if (!fragment) return Promise.resolve(false);
+    var popover = createFootnotePopover(anchor);
+    var requestSerial = footnoteRequestSerial;
+    return loadFootnoteTarget(url, fragment).then(function (target) {
+      if (!target || requestSerial !== footnoteRequestSerial || !popover.isConnected) {
+        if (popover.isConnected) closeFootnotePopover();
+        return false;
+      }
+      var content = popover.querySelector('#lumi-footnote-content');
+      var sanitized = sanitizeFootnoteContent(target);
+      content.textContent = '';
+      while (sanitized.firstChild) content.appendChild(sanitized.firstChild);
+      if (!content.textContent.trim() && !content.querySelector('img,svg,math')) {
+        closeFootnotePopover();
+        return false;
+      }
+      positionFootnotePopover(popover, anchor.getBoundingClientRect());
+      return true;
+    });
+  }
+
   document.addEventListener('touchstart', function (event) {
     touchPaging = false;
+    if (event.target && event.target.closest && event.target.closest('#lumi-footnote-popover')) return;
     touchVelocityX = 0;
     if (event.touches.length !== 1) return;
     var touch = event.touches[0];
@@ -1341,6 +1690,7 @@ html.lumi-green body { color: #1b5e20 !important; }
   }, { passive: true });
 
   document.addEventListener('touchmove', function (event) {
+    if (event.target && event.target.closest && event.target.closest('#lumi-footnote-popover')) return;
     if (state.flow !== 'paginated' || state.fixed || event.touches.length !== 1) return;
     var touch = event.touches[0];
     var dx = touch.clientX - touchStartX;
@@ -1369,13 +1719,25 @@ html.lumi-green body { color: #1b5e20 !important; }
   }, { passive: false });
 
   document.addEventListener('touchend', function (event) {
+    var activePopover = document.getElementById('lumi-footnote-popover');
+    var insidePopover = event.target && event.target.closest && event.target.closest('#lumi-footnote-popover');
+    if (insidePopover) { touchPaging = false; return; }
+    if (activePopover) {
+      event.preventDefault();
+      closeFootnotePopover();
+      touchPaging = false;
+      state.suppressClickUntil = Date.now() + 450;
+      return;
+    }
     if (event.changedTouches.length !== 1) { touchPaging = false; return; }
     var touch = event.changedTouches[0];
     var dx = touch.clientX - touchStartX;
     var dy = touch.clientY - touchStartY;
     var elapsed = Math.max(1, Date.now() - touchStartTime);
     var velocityX = Math.abs(touchVelocityX) > 0.01 ? touchVelocityX : dx / elapsed;
-    var anchor = event.target && event.target.closest ? event.target.closest('a[href]') : null;
+    var anchor = event.target && event.target.closest ? event.target.closest('a[href],area[href]') : null;
+    var interactiveTarget = interactiveFromTarget(event.target);
+    var tappedImage = imageFromTarget(event.target);
 
     if (state.flow === 'scrolled' && !state.fixed) {
       var root = document.scrollingElement || document.documentElement;
@@ -1392,13 +1754,14 @@ html.lumi-green body { color: #1b5e20 !important; }
     var horizontal = state.flow === 'paginated' && !state.fixed && Math.abs(dx) >= Math.abs(dy) * 1.15;
     var shouldTurn = horizontal && (Math.abs(dx) >= Math.min(72, state.viewportWidth * 0.16) ||
       (Math.abs(dx) >= 18 && Math.abs(velocityX) >= 0.42));
-    var isTap = !touchPaging && !shouldTurn && !anchor && Math.abs(dx) < 12 && Math.abs(dy) < 12;
+    var imageTap = !touchPaging && !shouldTurn && !!tappedImage && Math.abs(dx) < 12 && Math.abs(dy) < 12;
+    var isTap = !touchPaging && !shouldTurn && !anchor && !interactiveTarget && !tappedImage && Math.abs(dx) < 12 && Math.abs(dy) < 12;
     var selection = window.getSelection && window.getSelection();
     var hasSelection = !!(selection && !selection.isCollapsed && selection.rangeCount > 0);
-    if (touchPaging || shouldTurn || isTap) event.preventDefault();
+    if (touchPaging || shouldTurn || imageTap || isTap) event.preventDefault();
     var wasPaging = touchPaging;
     touchPaging = false;
-    if (isTap && hasSelection) {
+    if ((imageTap || isTap) && hasSelection) {
       clearDocumentSelection();
       post('selectionCleared', {});
       state.suppressClickUntil = Date.now() + 450;
@@ -1416,6 +1779,12 @@ html.lumi-green body { color: #1b5e20 !important; }
       return;
     }
     if (wasPaging && state.transition !== 'fade' && state.transition !== 'none') snapBackPage();
+    if (imageTap && (!window.getSelection || window.getSelection().isCollapsed)) {
+      if (postImagePreview(tappedImage)) {
+        state.suppressClickUntil = Date.now() + 450;
+        return;
+      }
+    }
     if (isTap && (!window.getSelection || window.getSelection().isCollapsed)) {
       var ratio = touch.clientX / viewportWidth();
       if (ratio < 0.3) post('tap', { zone: 'left' });
@@ -1434,12 +1803,35 @@ html.lumi-green body { color: #1b5e20 !important; }
 
   document.addEventListener('click', function (event) {
     if (Date.now() < state.suppressClickUntil) { event.preventDefault(); return; }
-    var anchor = event.target && event.target.closest ? event.target.closest('a[href]') : null;
-    if (anchor) {
+    var activePopover = document.getElementById('lumi-footnote-popover');
+    var insidePopover = event.target && event.target.closest && event.target.closest('#lumi-footnote-popover');
+    if (insidePopover) return;
+    if (activePopover) {
+      closeFootnotePopover();
       event.preventDefault();
-      post('link', { href: anchor.href });
+      event.stopPropagation();
       return;
     }
+    var tappedImage = imageFromTarget(event.target);
+    if (tappedImage && postImagePreview(tappedImage)) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    var anchor = event.target && event.target.closest ? event.target.closest('a[href],area[href]') : null;
+    if (anchor) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (isFootnoteReference(anchor)) {
+        showFootnotePopover(anchor).then(function (shown) {
+          if (!shown) post('link', { href: anchor.href });
+        });
+      } else {
+        post('link', { href: anchor.href });
+      }
+      return;
+    }
+    if (interactiveFromTarget(event.target)) return;
     var activeSelection = window.getSelection && window.getSelection();
     if (activeSelection && !activeSelection.isCollapsed) {
       clearDocumentSelection();

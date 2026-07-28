@@ -230,6 +230,17 @@ fun BookTransitionOverlay(
                         color = AppColors.Accent,
                         strokeWidth = 2.5.dp
                     )
+
+                    Spacer(Modifier.height(18.dp))
+
+                    Text(
+                        text = stringResource(R.string.reader_first_open_hint),
+                        modifier = Modifier.padding(horizontal = AppSpace.lg),
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp,
+                        color = AppColors.TextSecondary.copy(alpha = 0.78f),
+                        textAlign = TextAlign.Center
+                    )
                 }
             }
         }

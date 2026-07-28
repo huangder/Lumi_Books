@@ -154,7 +154,7 @@ class WebdavSyncManager @Inject constructor(
         progressSyncJob = scope.launch {
             delay(5_000) // 5 second debounce
             val config = dataStoreManager.webdavConfig.first()
-            if (!config.enabled) return@launch
+            if (!config.enabled || config.syncMode != "auto") return@launch
             val password = tokenStore.read() ?: return@launch
             val n = config.normalized()
             try {

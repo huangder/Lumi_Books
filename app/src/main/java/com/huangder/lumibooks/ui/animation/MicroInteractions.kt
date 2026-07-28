@@ -14,12 +14,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
 
 /**
  * Tab 切换动画（图标放大弹跳 + 颜色渐变）
  */
 @Composable
 fun animateTabScale(isSelected: Boolean): Float {
+    if (!LocalMotionEnabled.current) return 1f
     val scale by animateFloatAsState(
         targetValue = if (isSelected) 1.15f else 1f,
         animationSpec = if (isSelected) {
@@ -40,6 +42,7 @@ fun animateTabScale(isSelected: Boolean): Float {
  */
 @Composable
 fun animateBounceScale(trigger: Boolean): Float {
+    if (!LocalMotionEnabled.current) return 1f
     val scale = remember { Animatable(1f) }
 
     LaunchedEffect(trigger) {
@@ -63,6 +66,7 @@ fun animateColorChange(
     targetColor: Color,
     duration: Int = 300
 ): Color {
+    if (!LocalMotionEnabled.current) return targetColor
     val color by animateColorAsState(
         targetValue = targetColor,
         animationSpec = tween(duration, easing = AppEasing.Standard),
@@ -76,6 +80,7 @@ fun animateColorChange(
  */
 @Composable
 fun animateRotation(trigger: Boolean): Float {
+    if (!LocalMotionEnabled.current) return 0f
     val rotation = remember { Animatable(0f) }
 
     LaunchedEffect(trigger) {
@@ -104,6 +109,7 @@ fun Modifier.bounceEnter(): Modifier = this.graphicsLayer {
  */
 @Composable
 fun animateBounceEnter(): Pair<Float, Float> {
+    if (!LocalMotionEnabled.current) return 1f to 1f
     val scale = remember { Animatable(0.8f) }
     val alpha = remember { Animatable(0f) }
 

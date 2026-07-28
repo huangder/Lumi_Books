@@ -96,6 +96,54 @@ class EpubRenderSession private constructor(
         return spineByPath[path]
     }
 
+    /** Converts an image source from a chapter's original HTML into this session's safe asset URL. */
+    fun imageUrl(sourceChapterIndex: Int, source: String): String? {
+        if (source.startsWith("data:", ignoreCase = true)) return source
+        val uri = runCatching { Uri.parse(source) }.getOrNull() ?: return null
+        if (uri.scheme == "https" && uri.host == ASSET_DOMAIN && uri.port == -1) return source
+        if (!uri.scheme.isNullOrBlank() || source.startsWith("//")) return null
+        val chapterPath = epubPackage.spine.getOrNull(sourceChapterIndex)
+            ?.manifestItem?.fullPath ?: return null
+        val imagePath = EpubPathResolver.resolve(chapterPath, source) ?: return null
+        val resource = read(imagePath) ?: return null
+        if (!resource.mediaType.startsWith("image/", ignoreCase = true)) return null
+        val encodedPath = imagePath.split('/').joinToString("/") { Uri.encode(it) }
+        return "https://$ASSET_DOMAIN/epub/$sessionToken/$encodedPath"
+    }
+
+    /** Resolves a WebView image URL back to the original EPUB resource for preview/export. */
+    @Synchronized
+    fun readImageUrl(url: String): EpubResource? {
+        if (url.startsWith("data:", ignoreCase = true)) {
+            val comma = url.indexOf(',')
+            if (comma <= 5) return null
+            val metadata = url.substring(5, comma)
+            val mediaType = metadata.substringBefore(';').ifBlank { "image/png" }
+            if (!mediaType.startsWith("image/", ignoreCase = true)) return null
+            val payload = url.substring(comma + 1)
+            val bytes = runCatching {
+                if (metadata.split(';').any { it.equals("base64", ignoreCase = true) }) {
+                    android.util.Base64.decode(payload, android.util.Base64.DEFAULT)
+                } else {
+                    Uri.decode(payload).toByteArray(Charsets.UTF_8)
+                }
+            }.getOrNull() ?: return null
+            if (bytes.isEmpty() || bytes.size > MAX_RESOURCE_BYTES) return null
+            return EpubResource("embedded-image", mediaType, bytes)
+        }
+
+        val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return null
+        if (uri.scheme != "https" || uri.host != ASSET_DOMAIN || uri.port != -1) return null
+        val prefix = "/epub/$sessionToken/"
+        val encodedPath = uri.encodedPath
+            ?.takeIf { it.startsWith(prefix) }
+            ?.removePrefix(prefix)
+            ?: return null
+        val normalized = EpubPathResolver.normalize(Uri.decode(encodedPath)) ?: return null
+        val resource = read(normalized) ?: return null
+        return resource.takeIf { it.mediaType.startsWith("image/", ignoreCase = true) }
+    }
+
     fun resolveInternalLink(sourceChapterIndex: Int, href: String): Pair<Int, String?>? {
         val uri = runCatching { Uri.parse(href) }.getOrNull()
         if (uri != null && uri.host == ASSET_DOMAIN) {

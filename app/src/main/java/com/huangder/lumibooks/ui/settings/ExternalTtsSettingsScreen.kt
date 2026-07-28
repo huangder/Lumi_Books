@@ -830,6 +830,7 @@ private fun ExternalTtsDisclosureCard() {
 private fun ExternalTtsPrimaryButton(
     label: String,
     enabled: Boolean = true,
+    forceWhiteContent: Boolean = false,
     onClick: () -> Unit
 ) {
     LiquidGlassButton(
@@ -845,7 +846,7 @@ private fun ExternalTtsPrimaryButton(
             label,
             fontSize = AppType.BodySmall,
             fontWeight = FontWeight.SemiBold,
-            color = if (enabled) Color.White else AppColors.TextSecondary
+            color = if (forceWhiteContent || enabled) Color.White else AppColors.TextSecondary
         )
     }
 }
@@ -907,7 +908,8 @@ private fun ExternalTtsConsentSheet(
                 .navigationBarsPadding()
                 .padding(horizontal = 24.dp)
                 .padding(top = 12.dp)
-                .padding(bottom = 20.dp),
+                .padding(bottom = 20.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.Center
         ) {
             Text(
@@ -925,10 +927,7 @@ private fun ExternalTtsConsentSheet(
             Spacer(Modifier.height(16.dp))
 
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 260.dp)
-                    .verticalScroll(rememberScrollState()),
+                modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 ExternalTtsRiskItem(stringResource(R.string.external_tts_risk_send))
@@ -1019,6 +1018,7 @@ private fun ExternalTtsConsentSheet(
                     stringResource(R.string.external_tts_consent_accept)
                 },
                 enabled = remainingSeconds == 0 && confirmed,
+                forceWhiteContent = true,
                 onClick = onAccept
             )
             Spacer(Modifier.height(10.dp))

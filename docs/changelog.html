@@ -168,32 +168,33 @@ body{
   .legal-band{flex-direction:column;gap:8px;text-align:center}
 }
 </style>
+    <link rel="stylesheet" href="lumi-immersive.css">
 </head>
 <body>
 
 <nav class="top-nav">
-  <a href="index.html" class="nav-logo">
-    <img src="icon.png" alt="Lumi"><span>Lumi</span>
-  </a>
-  <ul class="nav-links">
-    <li><a href="features.html">功能</a></li>
-    <li><a href="privacy-section.html">隐私</a></li>
-    <li><a href="tech.html">技术</a></li>
-    <li><a href="sponsor.html">赞助</a></li>
-    <li><a href="feedback.html">反馈</a></li>
-  </ul>
-  <div class="nav-cta">
-    <a href="sponsor.html" class="btn-nav-sponsor">赞助</a>
-    <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-nav-download">获取 Lumi</a>
-  </div>
-  <button class="nav-more-btn" aria-label="更多导航" onclick="event.stopPropagation();this.nextElementSibling.classList.toggle('open')">…</button>
-  <div class="nav-more-dropdown">
-    <a href="features.html">功能</a>
-    <a href="privacy-section.html">隐私</a>
-    <a href="tech.html">技术</a>
-    <a href="sponsor.html">赞助</a>
-    <a href="feedback.html">反馈</a>
-  </div>
+    <a href="index.html" class="nav-logo" aria-label="Lumi 首页">
+        <img src="icon.png" class="logo-icon-img" alt="Lumi">
+        <span class="logo-text">Lumi</span>
+    </a>
+    <ul class="nav-links" aria-label="主导航">
+        <li><a href="features.html">功能</a></li>
+        <li><a href="privacy-section.html">隐私</a></li>
+        <li><a href="tech.html">技术</a></li>
+        <li><a href="sponsor.html">赞助</a></li>
+        <li><a href="feedback.html">反馈</a></li>
+    </ul>
+    <div class="nav-cta">
+        <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-nav-download">获取 Lumi</a>
+    </div>
+    <button class="nav-more-btn" type="button" aria-label="打开导航菜单" aria-controls="lumi-nav-menu">菜单</button>
+    <div class="nav-more-dropdown" id="lumi-nav-menu">
+        <a href="features.html">功能</a>
+        <a href="privacy-section.html">隐私</a>
+        <a href="tech.html">技术</a>
+        <a href="sponsor.html">赞助</a>
+        <a href="feedback.html">反馈</a>
+    </div>
 </nav>
 
 <div class="page-container">
@@ -202,9 +203,46 @@ body{
     <p>Lumi 的每一次进步，都记录在这里</p>
   </div>
 
-  <!-- v1.1.00 -->
+  <!-- v1.6.00 -->
   <div class="version-block reveal s1">
     <div class="version-badge">
+      v1.6.00
+      <span class="version-date">2026-07-28</span>
+    </div>
+    <ul class="changelog-list">
+      <li><span class="tag tag-new">新增</span>TXT 编辑器（应用内编辑并保存回原文件）</li>
+      <li><span class="tag tag-new">新增</span>WebDAV 云同步（手动或自动同步书籍、进度、笔记、书签）</li>
+      <li><span class="tag tag-new">新增</span>EPUB 书版 CSS 样式适配（保留出版方 HTML/CSS/字体排版）</li>
+      <li><span class="tag tag-new">新增</span>仿生阅读（Bionic Reading，加粗单词前缀提升阅读速度）</li>
+      <li><span class="tag tag-new">新增</span>墨水屏模式（禁用所有动画，黑白色，默认排版）</li>
+      <li><span class="tag tag-new">新增</span>书架新布局</li>
+      <li><span class="tag tag-new">新增</span>导入方式：复制到应用目录 / 文件夹授权直接读取</li>
+      <li><span class="tag tag-new">新增</span>EPUB 图片点击全屏、保存到相册</li>
+      <li><span class="tag tag-new">新增</span>一次性导入多本书籍</li>
+      <li><span class="tag tag-new">新增</span>精细调节拖动条（输入精确数值）</li>
+      <li><span class="tag tag-new">新增</span>调整字号时实时预览</li>
+      <li><span class="tag tag-new">新增</span>更多自定义字体支持</li>
+      <li><span class="tag tag-new">新增</span>自定义亮屏时间</li>
+      <li><span class="tag tag-new">新增</span>拖动进度条快速跳转</li>
+      <li><span class="tag tag-new">新增</span>快速连续翻页</li>
+      <li><span class="tag tag-new">新增</span>PDF 封面自动提取</li>
+      <li><span class="tag tag-new">新增</span>注释功能</li>
+      <li><span class="tag tag-new">新增</span>字典（需自行下载支持此功能的翻译软件）</li>
+      <li><span class="tag tag-fix">修复</span>普通模式下切换字体不生效的问题</li>
+      <li><span class="tag tag-fix">修复</span>部分文字超出屏幕边界被截断的问题</li>
+      <li><span class="tag tag-fix">修复</span>渐变翻页偶尔跳过章节边界的问题</li>
+      <li><span class="tag tag-fix">修复</span>菜单隐藏状态下仍可被点击的问题</li>
+      <li><span class="tag tag-fix">修复</span>日语下 MinerU 免责弹窗排版异常</li>
+      <li><span class="tag tag-fix">修复</span>标题未自动换行被裁切的问题</li>
+      <li><span class="tag tag-fix">修复</span>上下滚动模式下繁体切换不生效的问题</li>
+      <li><span class="tag tag-opt">优化</span>应用加载速度</li>
+      <li><span class="tag tag-opt">优化</span>仿真翻页（Curl）帧率</li>
+    </ul>
+  </div>
+
+  <!-- v1.1.00 -->
+  <div class="version-block reveal s2">
+    <div class="version-badge old">
       v1.1.00
       <span class="version-date">2026-07-22</span>
     </div>
@@ -225,7 +263,7 @@ body{
   </div>
 
   <!-- v1.0.06 -->
-  <div class="version-block reveal s2">
+  <div class="version-block reveal s3">
     <div class="version-badge">
       v1.0.06
       <span class="version-date">2026-07-20</span>
@@ -239,7 +277,7 @@ body{
   </div>
 
   <!-- v1.0.05 -->
-  <div class="version-block reveal s3">
+  <div class="version-block reveal s4">
     <div class="version-badge">
       v1.0.05
       <span class="version-date">2026-07-20</span>
@@ -255,7 +293,7 @@ body{
   </div>
 
   <!-- v1.0.04 -->
-  <div class="version-block reveal s4">
+  <div class="version-block reveal s5">
     <div class="version-badge">
       v1.0.04
       <span class="version-date">2026-07-20</span>
@@ -269,7 +307,7 @@ body{
   </div>
 
   <!-- v1.0.03 -->
-  <div class="version-block reveal s5">
+  <div class="version-block reveal s6">
     <div class="version-badge old">
       v1.0.03
       <span class="version-date">2026-07-19</span>
@@ -297,7 +335,7 @@ body{
   </div>
 
   <!-- v1.0.02.13_Beta -->
-  <div class="version-block reveal s6">
+  <div class="version-block reveal s7">
     <div class="version-badge old">
       v1.0.02.13_Beta
       <span class="version-date">2026-07-09</span>
@@ -320,7 +358,7 @@ body{
   </div>
 
   <!-- v1.0.01.104_Beta -->
-  <div class="version-block reveal s7">
+  <div class="version-block reveal">
     <div class="version-badge old">
       v1.0.01.104_Beta
       <span class="version-date">2026-07-06</span>
@@ -351,5 +389,6 @@ body{
   document.addEventListener('click',function(e){var dd=document.querySelector('.nav-more-dropdown');var btn=document.querySelector('.nav-more-btn');if(dd&&dd.classList.contains('open')&&!dd.contains(e.target)&&e.target!==btn)dd.classList.remove('open')});
 })();
 </script>
+    <script src="lumi-nav.js"></script>
 </body>
 </html>

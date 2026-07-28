@@ -86,6 +86,12 @@ class LiquidGlassDialogHostState internal constructor(
 
     internal fun show(dialogSpec: LiquidGlassDialogSpec) {
         clearJob?.cancel()
+        // If the outgoing top dialog has already started hiding, replacing it must
+        // remove that stale entry. Otherwise cancelling its clear job leaves it
+        // underneath the new dialog and it reappears when the new dialog closes.
+        if (!visible && dialogs.isNotEmpty()) {
+            dialogs = dialogs.dropLast(1)
+        }
         val wasEmpty = dialogs.isEmpty()
         val existingIndex = dialogs.indexOfFirst { it.id === dialogSpec.id }
         dialogs = if (existingIndex >= 0) {
@@ -374,6 +380,7 @@ fun LiquidGlassAlertDialog(
     text: (@Composable () -> Unit)? = null,
     properties: DialogProperties = DialogProperties(),
     contentScrimColor: Color = AppColors.CardBg.copy(alpha = 0.82f),
+    backgroundScrimColor: Color = Color.Black.copy(alpha = 0.20f),
     backgroundBlurRadius: androidx.compose.ui.unit.Dp = 0.dp,
     transparencyOverride: Float? = null
 ) {
@@ -400,6 +407,7 @@ fun LiquidGlassAlertDialog(
         shape = RoundedCornerShape(32.dp),
         properties = properties,
         contentScrimColor = contentScrimColor,
+        backgroundScrimColor = backgroundScrimColor,
         backgroundBlurRadius = backgroundBlurRadius,
         transparencyOverride = transparencyOverride
     ) {

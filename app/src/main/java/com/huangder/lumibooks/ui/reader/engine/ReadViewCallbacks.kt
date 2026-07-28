@@ -20,6 +20,9 @@ interface ReadViewCallbacks {
     /** 点击 EPUB 正文中的超链接。 */
     fun onLinkClick(href: String) {}
 
+    /** Called for a plain EPUB image. Coordinates are in screen pixels. */
+    fun onImageClick(chapterIndex: Int, image: ReaderImageHit) {}
+
     /** 正在加载内容变化 */
     fun onLoadingChanged(isLoading: Boolean)
 

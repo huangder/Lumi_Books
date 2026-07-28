@@ -4,13 +4,16 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.runtime.Composable
@@ -44,6 +47,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassTransparency
 import com.kyant.backdrop.Backdrop
@@ -70,7 +74,48 @@ fun LiquidGlassSwitch(
     modifier: Modifier = Modifier,
     enabled: Boolean = true
 ) {
-    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val eInkMode = LocalEInkMode.current
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !eInkMode
+    if (eInkMode) {
+        val interactionSource = remember { MutableInteractionSource() }
+        val trackColor = if (checked) Color.Black else Color.White
+        val thumbColor = if (checked) Color.White else Color(0xFF444444)
+        val borderColor = if (enabled) Color.Black else Color(0xFF8A8A8A)
+        val thumbAlignment = if (checked) Alignment.CenterEnd else Alignment.CenterStart
+        Box(
+            modifier = modifier
+                .size(width = LiquidSwitchWidth, height = LiquidSwitchHeight)
+                .clip(CircleShape)
+                .background(trackColor)
+                .border(1.dp, borderColor, CircleShape)
+                .graphicsLayer { alpha = if (enabled) 1f else 0.45f }
+                .semantics {
+                    role = Role.Switch
+                    toggleableState = if (checked) ToggleableState.On else ToggleableState.Off
+                    if (!enabled) disabled()
+                }
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    enabled = enabled && onCheckedChange != null,
+                    role = Role.Switch
+                ) {
+                    onCheckedChange?.invoke(!checked)
+                },
+            contentAlignment = thumbAlignment
+        ) {
+            Box(
+                modifier = Modifier
+                    .padding(horizontal = LiquidSwitchThumbInset)
+                    .size(width = LiquidSwitchThumbWidth, height = LiquidSwitchThumbHeight)
+                    .clip(CircleShape)
+                    .background(thumbColor)
+                    .border(1.dp, borderColor, CircleShape)
+            )
+        }
+        return
+    }
+
     if (!isLiquidGlass) {
         Switch(
             checked = checked,

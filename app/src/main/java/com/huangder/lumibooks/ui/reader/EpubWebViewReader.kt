@@ -13,14 +13,23 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.WebMessageCompat
@@ -34,6 +43,7 @@ import org.json.JSONObject
 import com.huangder.lumibooks.domain.model.Note
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapAction
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.ByteArrayInputStream
 import kotlin.coroutines.resume
@@ -203,8 +213,10 @@ internal fun EpubWebViewReader(
     pageRequest: EpubPageRequest? = null,
     selectionClearToken: Int = 0,
     onPageTextProviderReady: ((suspend (chapterIndex: Int, pageIndex: Int) -> EpubPageText?)?) -> Unit,
+    onPageTurnHandlerReady: (((direction: Int) -> Boolean)?) -> Unit,
     onPageChanged: (pageIndex: Int, pageCount: Int, locatorJson: String?) -> Unit,
     onCenterTap: () -> Unit,
+    onImagePreviewOpen: () -> Unit,
     onChapterTurn: (direction: Int) -> Unit,
     onInternalLink: (chapterIndex: Int, fragment: String?) -> Unit,
     onExternalLink: (href: String) -> Unit,
@@ -215,6 +227,7 @@ internal fun EpubWebViewReader(
 ) {
     val latestPageChanged = rememberUpdatedState(onPageChanged)
     val latestCenterTap = rememberUpdatedState(onCenterTap)
+    val latestImagePreviewOpen = rememberUpdatedState(onImagePreviewOpen)
     val latestChapterTurn = rememberUpdatedState(onChapterTurn)
     val latestInternalLink = rememberUpdatedState(onInternalLink)
     val latestExternalLink = rememberUpdatedState(onExternalLink)
@@ -244,6 +257,7 @@ internal fun EpubWebViewReader(
     val latestLocatorRequest = rememberUpdatedState(locatorRequest)
     val latestPageRequest = rememberUpdatedState(pageRequest)
     val latestPageTextProviderReady = rememberUpdatedState(onPageTextProviderReady)
+    val latestPageTurnHandlerReady = rememberUpdatedState(onPageTurnHandlerReady)
     val webViewState = remember(session) { mutableStateOf<WebView?>(null) }
     val pageTurnHostState = remember(session) { mutableStateOf<EpubPageTurnHost?>(null) }
     val previousPreloadTarget = remember(session) { mutableStateOf<EpubPageTarget?>(null) }
@@ -256,7 +270,35 @@ internal fun EpubWebViewReader(
     val configuredKey = remember(session) { mutableStateOf("") }
     val activeDocumentUrl = remember(session) { mutableStateOf("") }
     val chapterLoadPending = remember(session) { mutableStateOf(false) }
+    var imagePreview by remember(session) { mutableStateOf<EpubImagePreviewRequest?>(null) }
+    val imagePreviewProgress = remember(session) { Animatable(0f) }
+    val imagePreviewScope = rememberCoroutineScope()
+    var imagePreviewAnimationJob by remember(session) { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    val showImagePreview: (EpubImagePreviewRequest) -> Unit = { request ->
+        latestImagePreviewOpen.value()
+        imagePreviewAnimationJob?.cancel()
+        imagePreview = request
+        imagePreviewAnimationJob = imagePreviewScope.launch {
+            imagePreviewProgress.snapTo(0f)
+            imagePreviewProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing)
+            )
+        }
+    }
+    val dismissImagePreview: () -> Unit = dismiss@{
+        if (imagePreview == null) return@dismiss
+        imagePreviewAnimationJob?.cancel()
+        imagePreviewAnimationJob = imagePreviewScope.launch {
+            imagePreviewProgress.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+            )
+            imagePreview = null
+        }
+    }
 
+    Box(modifier = modifier) {
     AndroidView(
         factory = { context ->
             if ((context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
@@ -621,6 +663,26 @@ internal fun EpubWebViewReader(
                                     if (target != null) latestInternalLink.value(target.first, target.second)
                                     else latestExternalLink.value(href)
                                 }
+                                "image" -> {
+                                    val source = payload.optString("source").trim()
+                                    if (source.isEmpty()) return
+                                    val pixelRatio = payload.optDouble(
+                                        "pixelRatio",
+                                        view.resources.displayMetrics.density.toDouble()
+                                    ).toFloat().coerceAtLeast(1f)
+                                    showImagePreview(
+                                        EpubImagePreviewRequest(
+                                            source = source,
+                                            altText = payload.optString("alt"),
+                                            leftPx = payload.optDouble("left", 0.0).toFloat() * pixelRatio,
+                                            topPx = payload.optDouble("top", 0.0).toFloat() * pixelRatio,
+                                            rightPx = payload.optDouble("right", 0.0).toFloat() * pixelRatio,
+                                            bottomPx = payload.optDouble("bottom", 0.0).toFloat() * pixelRatio,
+                                            naturalWidth = payload.optInt("naturalWidth", 0).coerceAtLeast(0),
+                                            naturalHeight = payload.optInt("naturalHeight", 0).coerceAtLeast(0)
+                                        )
+                                    )
+                                }
                                 "selectionCleared" -> {
                                     (view as? EpubContentWebView)?.dismissSelectionUi()
                                     latestSelectionCleared.value()
@@ -841,8 +903,20 @@ internal fun EpubWebViewReader(
                 applyHighlights(webView, notes)
             }
         },
-        modifier = modifier.fillMaxSize()
+        modifier = Modifier
+            .fillMaxSize()
+            .blur((12f * imagePreviewProgress.value).dp)
     )
+
+        imagePreview?.let { request ->
+            EpubImagePreviewOverlay(
+                session = session,
+                request = request,
+                progress = imagePreviewProgress.value,
+                onDismissRequest = dismissImagePreview
+            )
+        }
+    }
 
     LaunchedEffect(selectionClearToken) {
         if (selectionClearToken <= 0) return@LaunchedEffect
@@ -862,8 +936,13 @@ internal fun EpubWebViewReader(
                 requestedPage = requestedPage
             )
         }
+        latestPageTurnHandlerReady.value { direction ->
+            pageTurnHostState.value?.requestTurn(direction) == true
+        }
         onDispose {
+            imagePreviewAnimationJob?.cancel()
             latestPageTextProviderReady.value(null)
+            latestPageTurnHandlerReady.value(null)
             pageTurnHostState.value?.let { host ->
                 listOf(host.previousWebView, host.activeWebView, host.nextWebView).forEach { view ->
                     view.stopLoading()

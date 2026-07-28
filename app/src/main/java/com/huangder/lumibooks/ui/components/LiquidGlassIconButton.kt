@@ -1,6 +1,5 @@
 package com.huangder.lumibooks.ui.components
 
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -9,8 +8,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -75,34 +72,6 @@ fun LiquidGlassIconButton(
     } else {
         modifier
     }
-    val decorationModifier = if (settingsBackButton) {
-        Modifier
-            .shadow(
-                elevation = 16.dp,
-                shape = CircleShape,
-                clip = false,
-                ambientColor = Color.Black.copy(alpha = if (isDark) 0.18f else 0.07f),
-                spotColor = Color.Black.copy(alpha = if (isDark) 0.16f else 0.10f)
-            )
-            .then(
-                if (useWhiteSettingsSurface) {
-                    Modifier.border(
-                        width = 1.dp,
-                        brush = Brush.verticalGradient(
-                            listOf(
-                                Color.White,
-                                Color.Black.copy(alpha = 0.07f)
-                            )
-                        ),
-                        shape = CircleShape
-                    )
-                } else {
-                    Modifier
-                }
-            )
-    } else {
-        Modifier
-    }
     LiquidGlassSurface(
         shape = CircleShape,
         fallbackColor = if (useWhiteSettingsSurface) Color.White else liquidContainerColor,
@@ -113,8 +82,9 @@ fun LiquidGlassIconButton(
         },
         enabled = enabled,
         onClick = onClick,
-        effectPadding = 2.dp,
-        decorationModifier = decorationModifier,
+        // The settings back button fills the whole circular bounds. Padding here leaves a
+        // transparent annulus around its surface, which reads as a grey/uneven outline.
+        effectPadding = if (settingsBackButton) 0.dp else 2.dp,
         modifier = resolvedModifier.size(size)
     ) {
         Icon(

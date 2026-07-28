@@ -516,7 +516,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         layoutEngine.invalidateAll()
         val curSlot = slotManager.getCurSlot()
         if (curSlot.chapterIndex >= 0) {
-            slotManager.loadSlot(PageSlotManager.SLOT_CUR, curSlot.chapterIndex, curSlot.pageIndex)
+            slotManager.initialize(curSlot.chapterIndex, curSlot.pageIndex.coerceAtLeast(0))
         }
     }
 
@@ -689,6 +689,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         (oldController as? CurlPageAnim)?.destroy()
 
         val newController = when (mode) {
+            "none", "instant", "no_animation" -> NoPageAnim(animationSurface)
             "fade" -> FadePageAnim(animationSurface)
             "scroll" -> ScrollPageAnim(animationSurface)
             "curl" -> CurlPageAnim(animationSurface)
@@ -842,19 +843,51 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                         Log.d(TAG, "EPUB link tap: $link")
                         clearCurrentSelection()
                         callbacks?.onLinkClick(link)
-                    } else if (rvIsEdgeTouch) {
-                        // 边缘短按 → 点击翻页（复用 animationController 回调）
-                        Log.d(TAG, "Edge tap at x=${ev.x} → page turn")
-                        if (rvTouchStartX / width < 0.3f) {
-                            animationController.onTapLeft?.invoke()
-                        } else {
-                            animationController.onTapRight?.invoke()
-                        }
                     } else {
-                        // 中间短按 → 菜单切换
-                        Log.d(TAG, "Center tap detected → toggle menu")
-                        clearCurrentSelection()
-                        callbacks?.onMenuToggle()
+                        val image = curPageView.getImageAt(
+                            rvTouchStartX - curPageView.left,
+                            rvTouchStartY - curPageView.top
+                        )
+                        when {
+                            image?.link != null -> {
+                                Log.d(TAG, "EPUB linked image tap: ${image.link}")
+                                clearCurrentSelection()
+                                callbacks?.onLinkClick(image.link)
+                            }
+                            image?.hasAction == true -> {
+                                // Keep action-bearing images out of the preview path.
+                                Log.d(TAG, "EPUB action image tap ignored by preview")
+                            }
+                            image != null && image.source.isNotBlank() -> {
+                                clearCurrentSelection()
+                                val location = IntArray(2)
+                                curPageView.getLocationOnScreen(location)
+                                callbacks?.onImageClick(
+                                    getCurrentLocation()?.first ?: 0,
+                                    image.copy(
+                                        leftPx = image.leftPx + location[0],
+                                        topPx = image.topPx + location[1],
+                                        rightPx = image.rightPx + location[0],
+                                        bottomPx = image.bottomPx + location[1]
+                                    )
+                                )
+                            }
+                            rvIsEdgeTouch -> {
+                                // Edge short tap: turn the page through the existing animation callback.
+                                Log.d(TAG, "Edge tap at x=${ev.x} -> page turn")
+                                if (rvTouchStartX / width < 0.3f) {
+                                    animationController.onTapLeft?.invoke()
+                                } else {
+                                    animationController.onTapRight?.invoke()
+                                }
+                            }
+                            else -> {
+                                // Center short tap: toggle the reader menu.
+                                Log.d(TAG, "Center tap detected -> toggle menu")
+                                clearCurrentSelection()
+                                callbacks?.onMenuToggle()
+                            }
+                        }
                     }
                 }
             }
@@ -941,6 +974,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             is ScrollPageAnim -> ctrl.startFromTap(dir)
             is FadePageAnim -> ctrl.startFromTap(dir)
             is CurlPageAnim -> ctrl.startFromTap(dir)
+            is NoPageAnim -> ctrl.startFromTap(dir)
         }
     }
 

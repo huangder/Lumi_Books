@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.ui.reader
 
 import android.Manifest
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
 import android.os.Build
@@ -12,6 +13,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -124,7 +127,9 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.R
+import com.huangder.lumibooks.util.BookFileAccess
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
@@ -216,7 +221,9 @@ fun PdfViewerScreen(
     var pendingManualReplace by remember { mutableStateOf(false) }
     var observedActiveConversion by remember { mutableStateOf(false) }
     var pendingModePage by remember { mutableStateOf<Int?>(null) }
-    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val eInkMode = LocalEInkMode.current || uiState.eInkModeEnabled
+    val effectivePdfPageMode = if (eInkMode) "horizontal" else uiState.pdfPageMode
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !eInkMode
     LaunchedEffect(uiState.ttsErrorMessage) {
         val message = uiState.ttsErrorMessage ?: return@LaunchedEffect
         Toast.makeText(context, message, Toast.LENGTH_LONG).show()
@@ -306,7 +313,7 @@ fun PdfViewerScreen(
             (if (offset > 200) first + 1 else first).coerceIn(0, pageCount - 1)
         }
     }
-    val isHorizontal = uiState.pdfPageMode == "horizontal"
+    val isHorizontal = effectivePdfPageMode == "horizontal"
     val currentPage = if (isHorizontal) pagerState.currentPage else verticalPage
 
     LaunchedEffect(isHorizontal, pendingModePage) {
@@ -334,9 +341,9 @@ fun PdfViewerScreen(
             val targetPage = request.location.chapterIndex
             if (targetPage !in 0 until pageCount) return@collect
             if (isHorizontal) {
-                pagerState.animateScrollToPage(targetPage)
+                if (eInkMode) pagerState.scrollToPage(targetPage) else pagerState.animateScrollToPage(targetPage)
             } else {
-                listState.animateScrollToItem(targetPage)
+                if (eInkMode) listState.scrollToItem(targetPage) else listState.animateScrollToItem(targetPage)
             }
         }
     }
@@ -389,9 +396,9 @@ fun PdfViewerScreen(
 
             scope.launch {
                 if (isHorizontal) {
-                    pagerState.animateScrollToPage(targetPage)
+                    if (eInkMode) pagerState.scrollToPage(targetPage) else pagerState.animateScrollToPage(targetPage)
                 } else {
-                    listState.animateScrollToItem(targetPage)
+                    if (eInkMode) listState.scrollToItem(targetPage) else listState.animateScrollToItem(targetPage)
                 }
             }
         }
@@ -414,8 +421,11 @@ fun PdfViewerScreen(
     // 菜单动画（同时淡入+移动，不是先后）
     val menuAlpha = remember { Animatable(0f) }
     val menuOffset = remember { Animatable(60f) }
-    LaunchedEffect(showMenu) {
-        if (showMenu) {
+    LaunchedEffect(showMenu, eInkMode) {
+        if (eInkMode) {
+            menuAlpha.snapTo(if (showMenu) 1f else 0f)
+            menuOffset.snapTo(if (showMenu) 0f else 60f)
+        } else if (showMenu) {
             coroutineScope {
                 launch { menuAlpha.animateTo(1f, tween(300)) }
                 launch { menuOffset.animateTo(0f, tween(300, easing = AppEasing.Smooth)) }
@@ -540,8 +550,8 @@ fun PdfViewerScreen(
         // ── 顶部栏（淡入淡出）──
         AnimatedVisibility(
             visible = showMenu,
-            enter = fadeIn(tween(300)),
-            exit = fadeOut(tween(200)),
+            enter = if (eInkMode) EnterTransition.None else fadeIn(tween(300)),
+            exit = if (eInkMode) ExitTransition.None else fadeOut(tween(200)),
             modifier = Modifier.align(Alignment.TopCenter)
         ) {
             PdfTopBar(
@@ -549,17 +559,20 @@ fun PdfViewerScreen(
                 currentPage = currentPage,
                 pageCount = pageCount,
                 isBookmarked = isCurrentPageBookmarked,
-                pageMode = uiState.pdfPageMode,
+                pageMode = effectivePdfPageMode,
+                eInkModeEnabled = eInkMode,
                 glassContentScrimColor = pdfGlassContentScrim,
                 isTtsActive = uiState.ttsActiveBookId == bookId &&
                     uiState.ttsPlaybackState != TtsPlaybackState.IDLE,
                 onBack = exitReader,
                 onPageModeToggle = {
-                    pendingModePage = currentPage
-                    scale = 1f
-                    offsetX = 0f
-                    offsetY = 0f
-                    viewModel.togglePdfPageMode()
+                    if (!eInkMode) {
+                        pendingModePage = currentPage
+                        scale = 1f
+                        offsetX = 0f
+                        offsetY = 0f
+                        viewModel.togglePdfPageMode()
+                    }
                 },
                 onTtsToggle = {
                     if (uiState.ttsActiveBookId == bookId &&
@@ -648,15 +661,15 @@ fun PdfViewerScreen(
         }
         val ttsBottomPadding by animateDpAsState(
             targetValue = if (showMenu) 160.dp else 44.dp,
-            animationSpec = spring(dampingRatio = 0.82f, stiffness = 360f),
+            animationSpec = if (eInkMode) tween(0) else spring(dampingRatio = 0.82f, stiffness = 360f),
             label = "ttsBottomPadding"
         )
         AnimatedVisibility(
             visible = uiState.ttsActiveBookId == bookId &&
                 uiState.ttsPlaybackState != TtsPlaybackState.IDLE &&
                 !showPdfToc && conversionSheet == null,
-            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            enter = if (eInkMode) EnterTransition.None else slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = if (eInkMode) ExitTransition.None else slideOutVertically(targetOffsetY = { it }) + fadeOut(),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
@@ -692,7 +705,8 @@ fun PdfViewerScreen(
                 }
                 showPdfToc = false
             },
-            onDismiss = { showPdfToc = false }
+            onDismiss = { showPdfToc = false },
+            eInkModeEnabled = eInkMode
         )
 
         conversionSheet?.let { sheet ->
@@ -763,6 +777,7 @@ private fun PdfTopBar(
     pageCount: Int,
     isBookmarked: Boolean = false,
     pageMode: String,
+    eInkModeEnabled: Boolean = false,
     glassContentScrimColor: Color,
     isTtsActive: Boolean,
     onBack: () -> Unit,
@@ -770,7 +785,8 @@ private fun PdfTopBar(
     onTtsToggle: () -> Unit,
     onBookmarkToggle: () -> Unit = {}
 ) {
-    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val eInkMode = eInkModeEnabled || LocalEInkMode.current
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !eInkMode
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -850,24 +866,26 @@ private fun PdfTopBar(
                 verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.Top),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                LiquidGlassSurface(
-                    shape = CircleShape,
-                    fallbackColor = AppColors.BgGray.copy(alpha = 0.8f),
-                    contentScrimColor = glassContentScrimColor,
-                    modifier = Modifier
-                        .size(36.dp),
-                    onClick = onPageModeToggle,
-                    contentAlignment = Alignment.Center
-                ) {
-                    val isHorizontal = pageMode == "horizontal"
-                    Icon(
-                        if (isHorizontal) Icons.Default.ViewCarousel else Icons.Default.ViewAgenda,
-                        contentDescription = stringResource(
-                            if (isHorizontal) R.string.pdf_switch_to_vertical else R.string.pdf_switch_to_horizontal
-                        ),
-                        tint = AppColors.TextPrimary,
-                        modifier = Modifier.size(18.dp)
-                    )
+                if (!eInkMode) {
+                    LiquidGlassSurface(
+                        shape = CircleShape,
+                        fallbackColor = AppColors.BgGray.copy(alpha = 0.8f),
+                        contentScrimColor = glassContentScrimColor,
+                        modifier = Modifier
+                            .size(36.dp),
+                        onClick = onPageModeToggle,
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val isHorizontal = pageMode == "horizontal"
+                        Icon(
+                            if (isHorizontal) Icons.Default.ViewCarousel else Icons.Default.ViewAgenda,
+                            contentDescription = stringResource(
+                                if (isHorizontal) R.string.pdf_switch_to_vertical else R.string.pdf_switch_to_horizontal
+                            ),
+                            tint = AppColors.TextPrimary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
                 LiquidGlassSurface(
                     shape = CircleShape,
@@ -1016,19 +1034,20 @@ private fun PdfConversionBottomSheet(
     onOpenConverted: (String) -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val eInkMode = LocalEInkMode.current
     val offset = remember { Animatable(1f) }
     var isClosing by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         offset.snapTo(1f)
-        offset.animateBottomSheetIn()
+        if (eInkMode) offset.snapTo(0f) else offset.animateBottomSheetIn()
     }
 
     fun closeThen(action: () -> Unit = {}) {
         if (isClosing) return
         isClosing = true
         scope.launch {
-            offset.animateBottomSheetOut()
+            if (eInkMode) offset.snapTo(1f) else offset.animateBottomSheetOut()
             onDismiss()
             action()
         }
@@ -1083,11 +1102,16 @@ private fun PdfConversionBottomSheet(
             AnimatedContent(
                 targetState = sheet,
                 transitionSpec = {
-                    (fadeIn(tween(220)) + slideInVertically(tween(260)) { it / 5 })
-                        .togetherWith(
-                            fadeOut(tween(160)) + slideOutVertically(tween(200)) { -it / 5 }
-                        )
-                        .using(SizeTransform(clip = true))
+                    if (eInkMode) {
+                        EnterTransition.None.togetherWith(ExitTransition.None)
+                            .using(SizeTransform(clip = true))
+                    } else {
+                        (fadeIn(tween(220)) + slideInVertically(tween(260)) { it / 5 })
+                            .togetherWith(
+                                fadeOut(tween(160)) + slideOutVertically(tween(200)) { -it / 5 }
+                            )
+                            .using(SizeTransform(clip = true))
+                    }
                 },
                 label = "pdfConversionSheetContent"
             ) { currentSheet ->
@@ -1483,7 +1507,7 @@ private fun PdfCatalogCapsule(
     glassContentScrimColor: Color,
     onClick: () -> Unit
 ) {
-    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !LocalEInkMode.current
     LiquidGlassSurface(
         shape = RoundedCornerShape(24.dp),
         fallbackColor = AppColors.BgGray,
@@ -1567,8 +1591,9 @@ private fun PdfActionCapsule(icon: ImageVector, label: String, modifier: Modifie
 
 @Composable
 private fun PdfPageItem(filePath: String, pageIndex: Int, fitToViewport: Boolean) {
+    val context = LocalContext.current
     var bitmap by remember(filePath, pageIndex) { mutableStateOf<Bitmap?>(null) }
-    LaunchedEffect(filePath, pageIndex) { bitmap = renderPdfPage(filePath, pageIndex) }
+    LaunchedEffect(filePath, pageIndex) { bitmap = renderPdfPage(context, filePath, pageIndex) }
     DisposableEffect(bitmap) {
         val renderedBitmap = bitmap
         onDispose {
@@ -1593,10 +1618,10 @@ private fun PdfPageItem(filePath: String, pageIndex: Int, fitToViewport: Boolean
     }
 }
 
-private suspend fun renderPdfPage(filePath: String, pageIndex: Int): Bitmap? = withContext(Dispatchers.IO) {
+private suspend fun renderPdfPage(context: Context, filePath: String, pageIndex: Int): Bitmap? = withContext(Dispatchers.IO) {
     var bitmap: Bitmap? = null
     try {
-        ParcelFileDescriptor.open(File(filePath), ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
+        BookFileAccess.openDescriptor(context, filePath).use { descriptor ->
             PdfRenderer(descriptor).use { renderer ->
                 renderer.openPage(pageIndex).use { page ->
                     val scale = 1.5f
@@ -1636,10 +1661,12 @@ private fun PdfTocSheet(
     currentPage: Int,
     bookmarkedPages: Set<Int>,
     onPageSelected: (Int) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    eInkModeEnabled: Boolean = false
 ) {
     if (!visible || filePath.isEmpty() || pageCount <= 0) return
 
+    val eInkMode = eInkModeEnabled || LocalEInkMode.current
     val sheetOffset = remember { Animatable(1f) }
     var isClosing by remember { mutableStateOf(false) }
     var pendingPage by remember { mutableStateOf<Int?>(null) }
@@ -1648,13 +1675,13 @@ private fun PdfTocSheet(
     LaunchedEffect(visible) {
         if (visible) {
             sheetOffset.snapTo(1f)
-            sheetOffset.animateBottomSheetIn()
+            if (eInkMode) sheetOffset.snapTo(0f) else sheetOffset.animateBottomSheetIn()
         }
     }
 
     LaunchedEffect(isClosing) {
         if (isClosing) {
-            sheetOffset.animateBottomSheetOut()
+            if (eInkMode) sheetOffset.snapTo(1f) else sheetOffset.animateBottomSheetOut()
             pendingPage?.let { onPageSelected(it) }
             pendingPage = null
             onDismiss()
@@ -1662,12 +1689,13 @@ private fun PdfTocSheet(
     }
 
     // 单例 PdfRenderer，Sheet 可见期间存活
+    val context = LocalContext.current
     var rendererHolder by remember { mutableStateOf<PdfRendererHolder?>(null) }
     LaunchedEffect(visible) {
         if (visible) {
             rendererHolder = withContext(Dispatchers.IO) {
                 try {
-                    val fd = ParcelFileDescriptor.open(File(filePath), ParcelFileDescriptor.MODE_READ_ONLY)
+                    val fd = BookFileAccess.openDescriptor(context, filePath)
                     try {
                         PdfRendererHolder(fd, PdfRenderer(fd))
                     } catch (e: Exception) {

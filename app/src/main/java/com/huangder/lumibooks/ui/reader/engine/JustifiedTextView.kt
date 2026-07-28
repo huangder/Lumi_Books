@@ -14,6 +14,8 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import android.text.style.AbsoluteSizeSpan
 import android.text.style.BackgroundColorSpan
+import android.text.style.ClickableSpan
+import android.text.style.ImageSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.RelativeSizeSpan
 import android.text.style.StyleSpan
@@ -26,6 +28,18 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+
+data class ReaderImageHit(
+    val source: String,
+    val leftPx: Float,
+    val topPx: Float,
+    val rightPx: Float,
+    val bottomPx: Float,
+    val naturalWidth: Int,
+    val naturalHeight: Int,
+    val link: String? = null,
+    val hasAction: Boolean = false
+)
 
 internal fun readerLineContentEnd(
     text: CharSequence,
@@ -380,6 +394,63 @@ class JustifiedTextView @JvmOverloads constructor(
         textPaint.isStrikeThruText = false
         textPaint.color = defaultTextColor
         textPaint.textSize = defaultTextSize
+    }
+
+
+    /**
+     * Returns an image hit using the exact coordinates used by [onDraw].
+     * A URL/ClickableSpan overlapping the image is reported so callers can keep the
+     * publisher action instead of opening the image preview.
+     */
+    fun getImageAtPosition(x: Float, y: Float): ReaderImageHit? {
+        val sl = layout ?: return null
+        val text = spannable ?: return null
+        val tx = x - paddingLeft
+        val ty = y - paddingTop
+        if (tx < 0f || ty < 0f || ty >= sl.height) return null
+
+        val line = sl.getLineForVertical(ty.toInt())
+        val lineStart = sl.getLineStart(line)
+        val lineEnd = readerLineContentEnd(text, lineStart, sl.getLineEnd(line))
+        if (lineStart >= lineEnd) return null
+
+        var cursorX = 0f
+        var index = lineStart
+        while (index < lineEnd) {
+            val image = text.getSpans(index, index + 1, ImageSpan::class.java).firstOrNull()
+            if (image == null) {
+                index++
+                continue
+            }
+            val drawable = image.drawable
+            val spanStart = text.getSpanStart(image).coerceAtLeast(index)
+            val spanEnd = text.getSpanEnd(image).coerceAtLeast(spanStart + 1)
+            val imageWidth = drawable.bounds.width().toFloat().coerceAtLeast(1f)
+            val imageHeight = drawable.bounds.height().toFloat().coerceAtLeast(1f)
+            val lineHeight = sl.getLineBottom(line) - sl.getLineTop(line)
+            val imageTop = sl.getLineTop(line) + (lineHeight - imageHeight) / 2f
+            val imageBottom = imageTop + imageHeight
+            if (tx in cursorX..(cursorX + imageWidth) && ty in imageTop..imageBottom) {
+                val url = text.getSpans(spanStart, spanEnd, URLSpan::class.java)
+                    .firstOrNull()?.url
+                val hasClickableAction = text.getSpans(spanStart, spanEnd, ClickableSpan::class.java)
+                    .isNotEmpty()
+                return ReaderImageHit(
+                    source = image.source.orEmpty(),
+                    leftPx = paddingLeft + cursorX,
+                    topPx = paddingTop + imageTop,
+                    rightPx = paddingLeft + cursorX + imageWidth,
+                    bottomPx = paddingTop + imageBottom,
+                    naturalWidth = drawable.intrinsicWidth.coerceAtLeast(drawable.bounds.width()),
+                    naturalHeight = drawable.intrinsicHeight.coerceAtLeast(drawable.bounds.height()),
+                    link = url,
+                    hasAction = hasClickableAction
+                )
+            }
+            cursorX += imageWidth
+            index = spanEnd
+        }
+        return null
     }
 
     /**

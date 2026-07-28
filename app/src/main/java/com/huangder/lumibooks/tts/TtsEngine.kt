@@ -1,21 +1,28 @@
 package com.huangder.lumibooks.tts
 
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import java.util.Locale
 import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 enum class TtsEngineStatus {
     UNINITIALIZED,
@@ -24,17 +31,38 @@ enum class TtsEngineStatus {
     FAILED
 }
 
+sealed class SystemTtsException(message: String, cause: Throwable? = null) :
+    IllegalStateException(message, cause) {
+    class Initialization(cause: Throwable? = null) :
+        SystemTtsException("System TTS initialization failed", cause)
+
+    class LanguageUnavailable(val requestedLocale: Locale) :
+        SystemTtsException("System TTS language is unavailable: ${requestedLocale.toLanguageTag()}")
+
+    class Playback(val errorCode: Int? = null) :
+        SystemTtsException(
+            if (errorCode == null) "System TTS playback failed"
+            else "System TTS playback failed: $errorCode"
+        )
+}
+
 class TtsEngine(
     @ApplicationContext context: Context
 ) : TtsPlaybackEngine {
     override val isExternal: Boolean = false
+
     companion object {
         private const val TAG = "TtsEngine"
+        private const val INITIALIZATION_TIMEOUT_MS = 6_000L
+        private const val RETRY_DELAY_MS = 180L
     }
 
     private val appContext = context.applicationContext
+    private val mainHandler = Handler(Looper.getMainLooper())
     private val initializeMutex = Mutex()
     private var engine: TextToSpeech? = null
+    private var enginePackageName: String? = null
+    private var selectedLocale: Locale? = null
     private var utteranceListener: UtteranceProgressListener? = null
     private var pendingSpeechRate = 1f
     private var pendingPitch = 1f
@@ -46,68 +74,183 @@ class TtsEngine(
 
     suspend fun initialize(locale: Locale = Locale.getDefault()): Result<Unit> = initializeMutex.withLock {
         if (_engineStatus.value == TtsEngineStatus.READY && engine != null) {
-            return Result.success(Unit)
+            return@withLock Result.success(Unit)
         }
 
+        shutdownEngine()
         _engineStatus.value = TtsEngineStatus.INITIALIZING
-        return withContext(Dispatchers.Main.immediate) {
-            suspendCancellableCoroutine { continuation ->
-                var createdEngine: TextToSpeech? = null
-                createdEngine = TextToSpeech(appContext) { status ->
-                    val activeEngine = createdEngine ?: engine
-                    if (!continuation.isActive) {
-                        activeEngine?.shutdown()
-                        return@TextToSpeech
-                    }
-                    if (status != TextToSpeech.SUCCESS || activeEngine == null) {
-                        Log.e(TAG, "Initialization failed: status=$status engineAvailable=${activeEngine != null}")
-                        activeEngine?.shutdown()
-                        engine = null
-                        _engineStatus.value = TtsEngineStatus.FAILED
-                        continuation.resume(Result.failure(IllegalStateException("TTS initialization failed")))
-                        return@TextToSpeech
-                    }
+        val packages = installedEnginePackages()
+        // The null entry asks Android for the user's default engine. Explicit packages are a
+        // vendor-neutral fallback when that engine is temporarily unavailable or misconfigured.
+        val candidates = listOf<String?>(null) + packages
+        var lastFailure: Throwable? = null
 
-                    val languageResult = activeEngine.setLanguage(locale)
-                    if (languageResult == TextToSpeech.LANG_MISSING_DATA ||
-                        languageResult == TextToSpeech.LANG_NOT_SUPPORTED
-                    ) {
-                        Log.e(TAG, "Language unavailable: locale=$locale result=$languageResult")
-                        activeEngine.shutdown()
-                        engine = null
-                        _engineStatus.value = TtsEngineStatus.FAILED
-                        continuation.resume(Result.failure(IllegalStateException("TTS language is unavailable")))
-                        return@TextToSpeech
-                    }
+        candidates.forEachIndexed { index, packageName ->
+            if (index > 0) delay(RETRY_DELAY_MS)
+            val created = try {
+                createEngine(packageName)
+            } catch (error: Throwable) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                lastFailure = error
+                Log.w(TAG, "Engine initialization attempt failed: package=${packageName ?: "<default>"}", error)
+                null
+            } ?: return@forEachIndexed
 
-                    activeEngine.setSpeechRate(pendingSpeechRate)
-                    activeEngine.setPitch(pendingPitch)
-                    utteranceListener?.let(activeEngine::setOnUtteranceProgressListener)
-                    _engineStatus.value = TtsEngineStatus.READY
-                    Log.i(TAG, "Initialization ready: locale=$locale languageResult=$languageResult")
-                    continuation.resume(Result.success(Unit))
+            val chosenLocale = withContext(Dispatchers.Main.immediate) {
+                selectSupportedLocale(created, locale)
+            }
+            if (chosenLocale == null) {
+                lastFailure = SystemTtsException.LanguageUnavailable(locale)
+                Log.w(
+                    TAG,
+                    "No supported locale: package=${packageName ?: "<default>"} requested=${locale.toLanguageTag()}"
+                )
+                withContext(Dispatchers.Main.immediate) { created.shutdown() }
+                return@forEachIndexed
+            }
+
+            withContext(Dispatchers.Main.immediate) {
+                created.setSpeechRate(pendingSpeechRate)
+                created.setPitch(pendingPitch)
+                utteranceListener?.let(created::setOnUtteranceProgressListener)
+            }
+            engine = created
+            enginePackageName = packageName ?: runCatching { created.defaultEngine }
+                .getOrNull()
+                ?.takeIf { it.isNotBlank() }
+            selectedLocale = chosenLocale
+            _engineStatus.value = TtsEngineStatus.READY
+            Log.i(
+                TAG,
+                "Initialization ready: package=${enginePackageName ?: "<default>"} " +
+                    "requested=${locale.toLanguageTag()} selected=${chosenLocale.toLanguageTag()}"
+            )
+            return@withLock Result.success(Unit)
+        }
+
+        shutdownEngine()
+        _engineStatus.value = TtsEngineStatus.FAILED
+        val failure = when (val error = lastFailure) {
+            is SystemTtsException.LanguageUnavailable -> error
+            null -> SystemTtsException.Initialization()
+            else -> SystemTtsException.Initialization(error)
+        }
+        Result.failure(failure)
+    }
+
+    private suspend fun createEngine(packageName: String?): TextToSpeech =
+        withContext(Dispatchers.Main.immediate) {
+            try {
+                withTimeout(INITIALIZATION_TIMEOUT_MS) {
+                    suspendCancellableCoroutine { continuation ->
+                        var createdEngine: TextToSpeech? = null
+                        val listener = TextToSpeech.OnInitListener { status ->
+                            // Some implementations can invoke OnInitListener before their constructor
+                            // has returned. Posting guarantees createdEngine is assigned first.
+                            mainHandler.post {
+                                val activeEngine = createdEngine
+                                if (!continuation.isActive) {
+                                    activeEngine?.shutdown()
+                                    return@post
+                                }
+                                if (status == TextToSpeech.SUCCESS && activeEngine != null) {
+                                    continuation.resume(activeEngine)
+                                } else {
+                                    activeEngine?.shutdown()
+                                    continuation.resumeWithException(
+                                        SystemTtsException.Initialization(
+                                            IllegalStateException(
+                                                "status=$status engineAvailable=${activeEngine != null}"
+                                            )
+                                        )
+                                    )
+                                }
+                            }
+                        }
+
+                        try {
+                            createdEngine = if (packageName == null) {
+                                TextToSpeech(appContext, listener)
+                            } else {
+                                TextToSpeech(appContext, listener, packageName)
+                            }
+                        } catch (error: Throwable) {
+                            if (continuation.isActive) continuation.resumeWithException(error)
+                        }
+                        continuation.invokeOnCancellation {
+                            mainHandler.post { createdEngine?.shutdown() }
+                        }
+                    }
                 }
-                engine = createdEngine
-                utteranceListener?.let { createdEngine?.setOnUtteranceProgressListener(it) }
-                continuation.invokeOnCancellation {
-                    createdEngine?.shutdown()
-                    if (engine === createdEngine) engine = null
-                    _engineStatus.value = TtsEngineStatus.UNINITIALIZED
-                }
+            } catch (error: TimeoutCancellationException) {
+                throw SystemTtsException.Initialization(error)
             }
         }
+
+    private fun selectSupportedLocale(activeEngine: TextToSpeech, requested: Locale): Locale? {
+        val engineLocales = buildList {
+            runCatching { activeEngine.defaultVoice?.locale }.getOrNull()?.let(::add)
+            runCatching { activeEngine.voice?.locale }.getOrNull()?.let(::add)
+        }
+        val availableLocales = runCatching { activeEngine.availableLanguages.orEmpty() }
+            .getOrElse { error ->
+                Log.w(TAG, "Unable to enumerate TTS languages", error)
+                emptySet()
+            }
+        val candidates = TtsLocaleResolver.candidates(requested, engineLocales, availableLocales)
+        for (candidate in candidates) {
+            val result = runCatching { activeEngine.setLanguage(candidate) }
+                .getOrElse { error ->
+                    Log.w(TAG, "setLanguage threw for ${candidate.toLanguageTag()}", error)
+                    TextToSpeech.ERROR
+                }
+            Log.d(TAG, "Language candidate: ${candidate.toLanguageTag()} result=$result")
+            if (result >= TextToSpeech.LANG_AVAILABLE) return candidate
+        }
+        return null
     }
 
-    override suspend fun speak(text: String, utteranceId: String): Result<Unit> = withContext(Dispatchers.Main.immediate) {
-        val activeEngine = engine
-            ?: return@withContext Result.failure(IllegalStateException("TTS engine is not ready"))
-        val result = activeEngine.speak(text, TextToSpeech.QUEUE_FLUSH, Bundle(), utteranceId)
-        if (result == TextToSpeech.SUCCESS) {
-            Result.success(Unit)
-        } else {
-            Result.failure(IllegalStateException("TTS speak failed"))
+    @Suppress("DEPRECATION")
+    private suspend fun installedEnginePackages(): List<String> = withContext(Dispatchers.Default) {
+        runCatching {
+            appContext.packageManager
+                .queryIntentServices(Intent(TextToSpeech.Engine.INTENT_ACTION_TTS_SERVICE), 0)
+                .mapNotNull { it.serviceInfo?.packageName }
+                .distinct()
+        }.getOrElse { error ->
+            Log.w(TAG, "Unable to enumerate installed TTS engines", error)
+            emptyList()
         }
     }
+
+    override suspend fun speak(text: String, utteranceId: String): Result<Unit> =
+        withContext(Dispatchers.Main.immediate) {
+            val activeEngine = engine
+                ?: return@withContext Result.failure(SystemTtsException.Initialization())
+
+            val textLocale = TtsLocaleResolver.localeForText(text, Locale.getDefault())
+            val currentLocale = selectedLocale
+            if (textLocale != null && currentLocale?.language != textLocale.language) {
+                selectSupportedLocale(activeEngine, textLocale)?.let { selectedLocale = it }
+                    ?: Log.w(
+                        TAG,
+                        "Keeping locale=${currentLocale?.toLanguageTag()} because text locale " +
+                            "${textLocale.toLanguageTag()} is unavailable"
+                    )
+            }
+
+            val result = activeEngine.speak(text, TextToSpeech.QUEUE_FLUSH, Bundle(), utteranceId)
+            if (result == TextToSpeech.SUCCESS) {
+                Result.success(Unit)
+            } else {
+                Log.e(
+                    TAG,
+                    "speak() rejected: result=$result package=${enginePackageName ?: "<default>"} " +
+                        "locale=${selectedLocale?.toLanguageTag()} textLength=${text.length}"
+                )
+                Result.failure(SystemTtsException.Playback(result))
+            }
+        }
 
     override suspend fun pause() {
         stop()
@@ -144,13 +287,11 @@ class TtsEngine(
 
             @Deprecated("Deprecated by Android")
             override fun onError(utteranceId: String?) {
-                utteranceId?.let { listener.onError(it, IllegalStateException("System TTS playback failed")) }
+                utteranceId?.let { listener.onError(it, SystemTtsException.Playback()) }
             }
 
             override fun onError(utteranceId: String?, errorCode: Int) {
-                utteranceId?.let {
-                    listener.onError(it, IllegalStateException("System TTS playback failed: $errorCode"))
-                }
+                utteranceId?.let { listener.onError(it, SystemTtsException.Playback(errorCode)) }
             }
         }
         utteranceListener?.let { progressListener ->
@@ -158,9 +299,82 @@ class TtsEngine(
         }
     }
 
-    override fun shutdown() {
+    private fun shutdownEngine() {
         engine?.shutdown()
         engine = null
+        enginePackageName = null
+        selectedLocale = null
+    }
+
+    override fun shutdown() {
+        shutdownEngine()
         _engineStatus.value = TtsEngineStatus.UNINITIALIZED
+    }
+}
+
+internal object TtsLocaleResolver {
+    fun candidates(
+        requested: Locale,
+        engineDefaults: Collection<Locale>,
+        available: Collection<Locale>
+    ): List<Locale> {
+        val ordered = LinkedHashMap<String, Locale>()
+        fun add(locale: Locale?) {
+            if (locale == null || locale.language.isBlank()) return
+            ordered.putIfAbsent(locale.toLanguageTag().lowercase(Locale.ROOT), locale)
+        }
+
+        add(requested)
+        engineDefaults.filter { it.language == requested.language }.forEach(::add)
+        if (requested.language == Locale.CHINESE.language) {
+            add(Locale.SIMPLIFIED_CHINESE)
+            add(Locale.CHINESE)
+            add(Locale.TRADITIONAL_CHINESE)
+        } else {
+            add(Locale.forLanguageTag(requested.language))
+        }
+        available
+            .filter { it.language == requested.language }
+            .sortedWith(compareBy<Locale>({ it.country != requested.country }, { it.toLanguageTag() }))
+            .forEach(::add)
+        return ordered.values.toList()
+    }
+
+    fun localeForText(text: String, fallback: Locale): Locale? {
+        var han = 0
+        var kana = 0
+        var hangul = 0
+        var latin = 0
+        text.forEach { char ->
+            when (Character.UnicodeScript.of(char.code)) {
+                Character.UnicodeScript.HAN -> han++
+                Character.UnicodeScript.HIRAGANA,
+                Character.UnicodeScript.KATAKANA -> kana++
+                Character.UnicodeScript.HANGUL -> hangul++
+                Character.UnicodeScript.LATIN -> if (char.isLetter()) latin++
+                else -> Unit
+            }
+        }
+        val strongCount = han + kana + hangul + latin
+        if (strongCount < 4) return null
+        return when {
+            kana > 0 && han + kana >= hangul && han + kana >= latin -> Locale.JAPANESE
+            hangul >= han && hangul >= latin -> Locale.KOREAN
+            han >= latin -> if (fallback.language == Locale.CHINESE.language) {
+                fallback
+            } else {
+                Locale.SIMPLIFIED_CHINESE
+            }
+            latin > han && latin > hangul -> if (
+                fallback.language != Locale.CHINESE.language &&
+                fallback.language != Locale.JAPANESE.language &&
+                fallback.language != Locale.KOREAN.language
+            ) {
+                fallback
+            } else {
+                Locale.ENGLISH
+            }
+            else -> null
+        }
     }
 }

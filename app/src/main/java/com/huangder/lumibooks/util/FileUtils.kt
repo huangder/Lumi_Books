@@ -31,7 +31,14 @@ object FileUtils {
         return try {
             val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
             val booksDir = getBooksDirectory(context)
-            val file = File(booksDir, fileName)
+            val requested = File(booksDir, fileName)
+            val file = if (!requested.exists()) requested else {
+                val base = fileName.substringBeforeLast('.', fileName)
+                val extension = fileName.substringAfterLast('.', "")
+                generateSequence(2) { it + 1 }
+                    .map { index -> File(booksDir, if (extension.isBlank()) "$base ($index)" else "$base ($index).$extension") }
+                    .first { !it.exists() }
+            }
 
             inputStream?.use { input ->
                 FileOutputStream(file).use { output ->
@@ -52,6 +59,14 @@ object FileUtils {
 
     fun getFileExtension(fileName: String): String {
         return fileName.substringAfterLast('.', "").lowercase()
+    }
+
+    fun getFileNameFromLocation(context: Context, location: String): String {
+        return if (BookFileAccess.isContentUri(location)) {
+            getFileNameFromUri(context, Uri.parse(location)) ?: "book"
+        } else {
+            File(location).name
+        }
     }
 
     fun getFileNameFromUri(context: Context, uri: Uri): String? {

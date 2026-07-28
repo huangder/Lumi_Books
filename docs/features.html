@@ -512,29 +512,29 @@
             }
         }
     </style>
+    <link rel="stylesheet" href="lumi-immersive.css">
 </head>
 <body>
 
 <!-- ========== Top Navigation ========== -->
 <nav class="top-nav">
-    <a href="index.html" class="nav-logo">
-        <img src="icon.png" alt="Lumi">
-        <span>Lumi</span>
+    <a href="index.html" class="nav-logo" aria-label="Lumi 首页">
+        <img src="icon.png" class="logo-icon-img" alt="Lumi">
+        <span class="logo-text">Lumi</span>
     </a>
-    <ul class="nav-links">
-        <li><a href="features.html" class="active">功能</a></li>
+    <ul class="nav-links" aria-label="主导航">
+        <li><a href="features.html" class="active" aria-current="page">功能</a></li>
         <li><a href="privacy-section.html">隐私</a></li>
         <li><a href="tech.html">技术</a></li>
         <li><a href="sponsor.html">赞助</a></li>
         <li><a href="feedback.html">反馈</a></li>
     </ul>
     <div class="nav-cta">
-        <a href="sponsor.html" class="btn-nav-sponsor">赞助</a>
         <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-nav-download">获取 Lumi</a>
     </div>
-    <button class="nav-more-btn" aria-label="更多导航" onclick="event.stopPropagation();this.nextElementSibling.classList.toggle('open')">…</button>
-    <div class="nav-more-dropdown">
-        <a href="features.html">功能</a>
+    <button class="nav-more-btn" type="button" aria-label="打开导航菜单" aria-controls="lumi-nav-menu">菜单</button>
+    <div class="nav-more-dropdown" id="lumi-nav-menu">
+        <a href="features.html" class="active" aria-current="page">功能</a>
         <a href="privacy-section.html">隐私</a>
         <a href="tech.html">技术</a>
         <a href="sponsor.html">赞助</a>
@@ -895,5 +895,6 @@
 })();
 </script>
 
+    <script src="lumi-nav.js"></script>
 </body>
 </html>

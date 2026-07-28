@@ -52,6 +52,7 @@ import com.huangder.lumibooks.tts.TtsPageContent
 import com.huangder.lumibooks.tts.TtsPlaybackState
 import com.huangder.lumibooks.tts.TtsPageLocation
 import com.huangder.lumibooks.tts.ExternalTtsException
+import com.huangder.lumibooks.tts.SystemTtsException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -142,6 +143,7 @@ data class ReaderUiState(
     val showReaderBattery: Boolean = true,
     val volumeKeyPageTurnEnabled: Boolean = false,
     val bionicReadingEnabled: Boolean = false,
+    val eInkModeEnabled: Boolean = false,
     val screenSleepTimeoutSeconds: Int = DataStoreManager.DEFAULT_SCREEN_SLEEP_TIMEOUT_SECONDS,
     val readerEdgeTapMode: ReaderEdgeTapMode = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT,
     val readerTopLeftContent: ReaderCornerContent = defaultReaderCornerContent(ReaderPageCorner.TOP_LEFT),
@@ -152,7 +154,8 @@ data class ReaderUiState(
     val ttsSpeechRate: Float = 1f,
     val ttsActiveBookId: String? = null,
     val ttsErrorMessage: String? = null,
-    val sleepTimerRemainingMs: Long? = null
+    val sleepTimerRemainingMs: Long? = null,
+    val contentRevision: Long = 0L
 )
 
 internal fun ReaderUiState.withReaderCornerContent(
@@ -508,6 +511,11 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.bionicReadingEnabled.collectLatest { enabled ->
                 _uiState.value = _uiState.value.copy(bionicReadingEnabled = enabled)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.eInkModeEnabled.collectLatest { enabled ->
+                _uiState.value = _uiState.value.copy(eInkModeEnabled = enabled)
             }
         }
         viewModelScope.launch {
@@ -891,6 +899,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun savePageTransition(mode: String) {
+        if (_uiState.value.eInkModeEnabled) return
         val state = _uiState.value
         val crossesContinuousBoundary =
             (state.pageTransition == "continuous") != (mode == "continuous")
@@ -921,6 +930,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun togglePdfPageMode() {
+        if (_uiState.value.eInkModeEnabled) return
         val nextMode = if (_uiState.value.pdfPageMode == "horizontal") "vertical" else "horizontal"
         _uiState.value = _uiState.value.copy(pdfPageMode = nextMode)
         viewModelScope.launch { dataStoreManager.savePdfPageMode(nextMode) }
@@ -1066,10 +1076,13 @@ class ReaderViewModel @Inject constructor(
         continuousProgressJob?.cancel()
         saveProgress()
         saveReadingSession()
-        // Trigger WebDAV full sync when leaving reader
+        // Trigger WebDAV full sync when leaving reader — only if auto mode
         viewModelScope.launch {
             try {
-                webdavSyncManager.fullSync()
+                val config = dataStoreManager.webdavConfig.first()
+                if (config.enabled && config.syncMode == "auto") {
+                    webdavSyncManager.fullSync()
+                }
             } catch (_: Exception) { }
         }
     }
@@ -1095,10 +1108,11 @@ class ReaderViewModel @Inject constructor(
                     val optimize = dataStoreManager.optimizeLayout(bookId).first()
                     val useEpubCss = dataStoreManager.useEpubCss(bookId).first()
                     val chineseMode = dataStoreManager.chineseMode().first()
-                    val pageTransition = dataStoreManager.pageTransition().first()
+                    val eInkModeEnabled = dataStoreManager.eInkModeEnabled.first()
+                    val pageTransition = if (eInkModeEnabled) "none" else dataStoreManager.pageTransition().first()
                     val paragraphSpacing = dataStoreManager.paragraphSpacing().first()
                     val firstLineIndent = dataStoreManager.firstLineIndent().first()
-                    val pdfPageMode = dataStoreManager.pdfPageMode.first()
+                    val pdfPageMode = if (eInkModeEnabled) "horizontal" else dataStoreManager.pdfPageMode.first()
 
                     // 应用段间距和首行缩进到 parser
                     parser!!.paragraphSpacingDp = paragraphSpacing
@@ -1114,11 +1128,17 @@ class ReaderViewModel @Inject constructor(
                     val unknownAuthorTokens = setOf("未知作者", "著者不明", "unknown author", "unknown", "作者不详", "作者不詳", "")
                     val storedIsUnknown = book.author.trim().lowercase() in unknownAuthorTokens
                     val parsedIsReal = parsedAuthor.isNotBlank() && parsedAuthor.trim().lowercase() !in unknownAuthorTokens
-                    val displayBook = if (storedIsUnknown && parsedIsReal) {
-                        val updated = book.copy(author = parsedAuthor)
-                        bookRepository.updateBook(updated)
-                        updated
-                    } else book
+                    var displayBook = book
+                    if (storedIsUnknown && parsedIsReal) {
+                        displayBook = displayBook.copy(author = parsedAuthor)
+                    }
+                    val parsedCoverPath = content.coverPath?.takeIf { it.isNotBlank() }
+                    if (displayBook.coverPath.isNullOrBlank() && parsedCoverPath != null) {
+                        displayBook = displayBook.copy(coverPath = parsedCoverPath)
+                    }
+                    if (displayBook != book) {
+                        bookRepository.updateBook(displayBook)
+                    }
 
                     val chapterCount = content.chapters.size
                     require(chapterCount > 0) { "书籍没有可阅读内容" }
@@ -1154,6 +1174,7 @@ class ReaderViewModel @Inject constructor(
                         paragraphSpacing = paragraphSpacing,
                         firstLineIndent = firstLineIndent,
                         pdfPageMode = pdfPageMode,
+                        eInkModeEnabled = eInkModeEnabled,
                         error = null
                     )
 
@@ -1449,6 +1470,13 @@ class ReaderViewModel @Inject constructor(
             context.getString(R.string.external_tts_error_service)
         error is ExternalTtsException.InvalidConfiguration ->
             context.getString(R.string.external_tts_error_configuration)
+        error is SystemTtsException.Initialization ||
+            error is SystemTtsException.LanguageUnavailable ->
+            context.getString(R.string.tts_unavailable)
+        error is SystemTtsException.Playback ->
+            context.getString(R.string.tts_playback_error)
+        error?.message == "No readable text found" ->
+            context.getString(R.string.tts_no_readable_text)
         else -> context.getString(R.string.tts_playback_error)
     }
 
@@ -1729,7 +1757,8 @@ class ReaderViewModel @Inject constructor(
                     }
                 },
                 currentChapterIndex = bestChapterIndex,
-                currentPageIndex = 0
+                currentPageIndex = 0,
+                contentRevision = _uiState.value.contentRevision + 1
             )
             preloadAdjacentChapters()
             saveProgress()
@@ -1985,7 +2014,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     override fun onCleared() {
-        (parser as? PdfParser)?.close()
+        parser?.close()
         runCatching { epubRenderSession?.close() }
         epubRenderSession = null
         preloadCache.clear()

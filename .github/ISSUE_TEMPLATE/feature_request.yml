@@ -1,0 +1,47 @@
+name: 💡 功能建议
+description: 提一个功能建议或改进想法
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你提出功能建议！填写前请确认：
+        - 搜索过已有 issue，确认不是重复建议
+        - 这个功能跟 Lumi 的定位（**本地离线电子书阅读器**）一致
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 🤔 要解决什么问题？
+      description: 描述一下你遇到的使用场景或痛点。这个功能能解决什么问题？
+      placeholder: 比如"目前在书架上找书很不方便，书多了以后……"
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: ✨ 你期望的方案
+      description: 说说你期望这个功能怎么工作。
+      placeholder: 比如"希望书架增加搜索框，输入关键词后实时过滤"
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 🔄 你考虑过的替代方案
+      description: 是否还有其他可行的方式可以达到相同目的？
+      placeholder: 比如"也可以用侧边栏按标签筛选，但搜索更快"
+
+  - type: textarea
+    id: mockups
+    attributes:
+      label: 🖼️ 设计草稿（如有）
+      description: 如果有草图、截图、或参考图，欢迎拖拽上传。
+      placeholder: 拖拽图片到这里
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 📝 补充信息
+      description: 还有什么其他的补充吗？

@@ -10,7 +10,8 @@ data class WebdavConfig(
     val serverUrl: String = "",       // e.g. https://dav.example.com/remote.php/dav/
     val username: String = "",
     val syncPath: String = "LumiBooks", // root directory on WebDAV server
-    val lastSyncTime: Long = 0          // epoch millis
+    val lastSyncTime: Long = 0,         // epoch millis
+    val syncMode: String = "auto"       // "auto" | "manual"
 ) {
     /** Remove leading/trailing whitespace and trailing slashes from serverUrl. */
     fun normalized(): WebdavConfig = copy(

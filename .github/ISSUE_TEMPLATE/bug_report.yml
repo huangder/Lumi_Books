@@ -1,0 +1,101 @@
+name: 🐛 Bug 报告
+description: 提交一个 bug 报告，帮助 Lumi 变得更好
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你花时间提交 bug 报告！填写前请确认：
+        - 已更新到[最新版本](https://github.com/huangder/Lumi_Books/releases)
+        - 搜索过已有 issue，确认不是重复问题
+
+  - type: input
+    id: version
+    attributes:
+      label: 📦 App 版本
+      description: 你用的是哪个版本？（在 设置 → 关于 中查看）
+      placeholder: 如 1.1.00
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: 📱 设备信息
+      description: 设备型号 + Android 版本
+      placeholder: 如 小米14 Ultra、HyperOS 3.XX.XX、Android 15
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 🐛 Bug 是什么？
+      description: 用一句话说清楚发生了什么问题。
+      placeholder: 比如"点开某本 EPUB 后闪退"
+    validations:
+      required: true
+
+  - type: textarea
+    id: how-produced
+    attributes:
+      label: ⚡ 是怎么产生的？
+      description: 描述一下你做了什么操作，问题是在哪一步出现的。
+      placeholder: |
+        比如：
+        1. 我先从文件管理器导入了一本 EPUB
+        2. 在书架上点击打开
+        3. 翻到第 30 页时…
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro-steps
+    attributes:
+      label: 🔁 复现步骤
+      description: 一步一步说明怎么让这个 bug 再次出现。越详细越好。
+      placeholder: |
+        1. 打开 Lumi
+        2. 进入书架
+        3. 点击某本书
+        4. 翻到第 X 页
+        5. 观察到的现象：______
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: ✅ 期望行为
+      description: 你期望的正常行为应该是什么？
+      placeholder: 应该正常显示第 X 页内容，不会闪退。
+
+  - type: textarea
+    id: files
+    attributes:
+      label: 📎 相关文件（重要！）
+      description: |
+        如果 bug 跟某本书有关，**请务必上传该文件**，这能让我们快速复现。
+        - 支持的格式：EPUB、PDF、TXT、截图、录屏、日志
+        - 直接拖拽文件到编辑框即可上传
+        - 截图/录屏也非常有帮助
+      placeholder: 拖拽文件到这里，或点击上传
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 📋 日志（如有）
+      description: |
+        如果闪退，可以通过 `adb logcat` 抓取日志。
+        贴出 crash 相关的关键部分即可。
+      placeholder: |
+        ```text
+        贴日志内容到此处
+        ```
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 📝 补充信息
+      description: 还有什么其他的补充吗？

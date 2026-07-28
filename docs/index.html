@@ -767,18 +767,19 @@
             .hero-phone { width: 160px; height: 320px; }
         }
     </style>
+    <link rel="stylesheet" href="lumi-immersive.css">
 </head>
-<body>
+<body class="home-page">
 
 <!-- ═══════════════════════════════════════════════════════
      Top Navigation — Glassmorphism
      ═══════════════════════════════════════════════════════ -->
 <nav class="top-nav">
-    <a href="#" class="nav-logo">
+    <a href="#" class="nav-logo" aria-label="Lumi 首页">
         <img src="icon.png" class="logo-icon-img" alt="Lumi">
         <span class="logo-text">Lumi</span>
     </a>
-    <ul class="nav-links">
+    <ul class="nav-links" aria-label="主导航">
         <li><a href="features.html">功能</a></li>
         <li><a href="privacy-section.html">隐私</a></li>
         <li><a href="tech.html">技术</a></li>
@@ -786,11 +787,10 @@
         <li><a href="feedback.html">反馈</a></li>
     </ul>
     <div class="nav-cta">
-        <a href="sponsor.html" class="btn-nav-sponsor">赞助</a>
         <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-nav-download">获取 Lumi</a>
     </div>
-    <button class="nav-more-btn" aria-label="更多导航" onclick="event.stopPropagation();this.nextElementSibling.classList.toggle('open')">…</button>
-    <div class="nav-more-dropdown">
+    <button class="nav-more-btn" type="button" aria-label="打开导航菜单" aria-controls="lumi-nav-menu">菜单</button>
+    <div class="nav-more-dropdown" id="lumi-nav-menu">
         <a href="features.html">功能</a>
         <a href="privacy-section.html">隐私</a>
         <a href="tech.html">技术</a>
@@ -802,15 +802,24 @@
 <!-- ═══════════════════════════════════════════════════════
      Hero — no rounded corners, big soft shadow, float
      ═══════════════════════════════════════════════════════ -->
-<header class="hero">
+<header class="hero immersive-hero">
+    <span class="hero-orb one" aria-hidden="true"></span>
+    <span class="hero-orb two" aria-hidden="true"></span>
+    <span class="hero-orb three" aria-hidden="true"></span>
     <div class="hero-content">
-        <h1 class="hero-entrance hero-entrance-1">一本好书的归宿，<br>是一个好的阅读器</h1>
+        <div class="hero-kicker hero-entrance hero-entrance-1">Lumi Books &middot; Local-first reader</div>
+        <h1 class="hero-entrance hero-entrance-1">把整个书架，<br><span class="hero-gradient-text">沉进一束光里</span></h1>
         <p class="hero-desc hero-entrance hero-entrance-2">
-            Lumi 为 Android 打造的本地电子书阅读器。没有广告，不需要网络，打开即读。
+            为 Android 打造的本地电子书阅读器。没有广告、无需网络、无需账号；从打开一本书开始，只留下文字、进度和安静的阅读现场。
         </p>
         <div class="hero-actions hero-entrance hero-entrance-3">
             <a href="https://github.com/huangder/Lumi_Books/releases" class="btn-primary">获取 Lumi</a>
-            <a href="https://github.com/huangder/Lumi_Books" class="btn-secondary">了解更多</a>
+            <a href="https://github.com/huangder/Lumi_Books" class="btn-secondary">GitHub 开源</a>
+        </div>
+        <div class="hero-proof-row hero-entrance hero-entrance-4" aria-label="Lumi 核心特性">
+            <div class="hero-proof"><strong>0 广告</strong><span>打开即读</span></div>
+            <div class="hero-proof"><strong>本地优先</strong><span>数据留在设备</span></div>
+            <div class="hero-proof"><strong>多格式</strong><span>EPUB / PDF / TXT</span></div>
         </div>
         <a href="https://pan.baidu.com/s/1vDdFsoqQuuZlntUTUjssZw?pwd=lumi" class="hero-backup-dl hero-entrance hero-entrance-4" target="_blank" rel="noopener">备用下载（密码 lumi）</a>
         <div class="pill-strip hero-entrance hero-entrance-4">
@@ -820,8 +829,13 @@
         </div>
     </div>
     <div class="hero-visual hero-entrance hero-entrance-3">
-        <div class="hero-phone">
-            <img src="hero.png" alt="Lumi 阅读界面截图">
+        <div class="hero-stage" aria-label="Lumi 应用界面展示">
+            <div class="float-card card-local"><b>100% 本地</b><span>无需登录 · 无追踪</span></div>
+            <div class="float-card card-format"><b>多格式阅读</b><span>EPUB / PDF / TXT</span></div>
+            <div class="float-card card-focus"><b>沉浸进度</b><span>统计、书签、笔记</span></div>
+            <div class="hero-phone">
+                <img src="hero.png" alt="Lumi 阅读界面截图">
+            </div>
         </div>
     </div>
 </header>
@@ -887,7 +901,7 @@
     <div class="download-band animate-on-scroll scale-in">
         <div class="dl-info">
             <h3>准备好开始阅读了？</h3>
-            <p>最新版本 v1.1.00 · Android 8.0 及以上</p>
+            <p>最新版本 v1.6.00 · Android 8.0 及以上</p>
             <div class="version-tag">开源免费 · 持续更新</div>
             <a href="https://pan.baidu.com/s/1vDdFsoqQuuZlntUTUjssZw?pwd=lumi" class="backup-dl" target="_blank" rel="noopener">备用下载（密码 lumi）</a>
         </div>
@@ -984,5 +998,6 @@
 })();
 </script>
 
+    <script src="lumi-nav.js"></script>
 </body>
 </html>

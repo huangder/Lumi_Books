@@ -5,6 +5,8 @@ import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -51,6 +53,9 @@ import com.huangder.lumibooks.ui.components.ConfigurableNavigationBack
 import com.huangder.lumibooks.ui.components.LocalPredictiveBackEnabled
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuHost
 import com.huangder.lumibooks.ui.home.HomeScreen
+import com.huangder.lumibooks.ui.home.ImportBooksActionSheet
+import com.huangder.lumibooks.ui.home.ImportBooksConfirmationSheet
+import com.huangder.lumibooks.ui.home.SelectedImportBook
 import com.huangder.lumibooks.ui.home.HomeViewModel
 import com.huangder.lumibooks.ui.home.ReadingGoalSheet
 import com.huangder.lumibooks.ui.animation.PageEntranceTracker
@@ -62,12 +67,14 @@ import com.huangder.lumibooks.ui.statistics.StatisticsScreen
 import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassTransparency
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassHdrHighlightEnabled
 import com.huangder.lumibooks.ui.theme.LocalUseMaterial3Theme
 import com.huangder.lumibooks.ui.theme.LocalReaderColors
 import com.huangder.lumibooks.ui.theme.ReaderColors
+import com.huangder.lumibooks.util.FileUtils
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -75,7 +82,6 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.haze
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import kotlinx.coroutines.delay
 
 /**
  * 根据书籍格式路由：PDF → 竖向滚动，EPUB/TXT → 横向翻页
@@ -95,6 +101,7 @@ private fun ReaderRouter(
     val liquidGlassTransparency = LocalLiquidGlassTransparency.current
     val liquidGlassHdrHighlightEnabled = LocalLiquidGlassHdrHighlightEnabled.current
     val useMaterial3Theme = LocalUseMaterial3Theme.current
+    val eInkMode = LocalEInkMode.current
 
     // 正文颜色由阅读主题控制，弹层和应用级控件继承全局主题。
     EBookReaderTheme(
@@ -102,7 +109,8 @@ private fun ReaderRouter(
         dynamicColor = useMaterial3Theme,
         appTheme = appTheme,
         liquidGlassTransparency = liquidGlassTransparency,
-        liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled
+        liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled && !eInkMode,
+        eInkMode = eInkMode
     ) {
         CompositionLocalProvider(LocalReaderColors provides ReaderColors.Light) {
             if (isPdf) {
@@ -171,16 +179,66 @@ fun MainNavGraph(
     var previousRoute by remember { mutableStateOf<String?>(null) }
     var bookshelfOverlayProgress by remember { mutableFloatStateOf(0f) }
     var homeGoalSheetVisible by remember { mutableStateOf(false) }
+    var showImportActions by remember { mutableStateOf(false) }
+    var showImportConfirmation by remember { mutableStateOf(false) }
+    var selectedImportBooks by remember { mutableStateOf(emptyList<SelectedImportBook>()) }
+    var selectedImportBookUris by remember { mutableStateOf(emptySet<String>()) }
+    var importCopiesIntoApp by remember { mutableStateOf(true) }
+    var isPreparingImport by remember { mutableStateOf(false) }
+    var importPreparationGeneration by remember { mutableIntStateOf(0) }
     val entranceTracker = remember { PageEntranceTracker() }
     val hazeState = remember { HazeState() }
-    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val eInkMode = LocalEInkMode.current
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !eInkMode
     val liquidGlassBackdrop = rememberLayerBackdrop()
     val homeViewModel: HomeViewModel = hiltViewModel()
     val context = LocalContext.current
     val importLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris: List<Uri> ->
+        if (showImportActions) {
+            val candidates = uris.mapNotNull { uri ->
+                val name = FileUtils.getFileNameFromUri(context, uri) ?: return@mapNotNull null
+                if (FileUtils.getFileExtension(name) !in setOf("epub", "pdf", "txt")) {
+                    return@mapNotNull null
+                }
+                SelectedImportBook(uri = uri, name = name)
+            }.distinctBy { it.uri.toString() }
+            if (candidates.isNotEmpty()) {
+                selectedImportBooks = candidates
+                selectedImportBookUris = emptySet()
+                importCopiesIntoApp = true
+                isPreparingImport = false
+                showImportActions = false
+                showImportConfirmation = true
+            }
+        }
+    }
+    val directoryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri: Uri? ->
-        uri?.let { homeViewModel.importBook(context, it) }
+        if (uri != null && showImportActions) {
+            val requestGeneration = importPreparationGeneration + 1
+            importPreparationGeneration = requestGeneration
+            isPreparingImport = true
+            homeViewModel.authorizeBookDirectory(context, uri) { candidates ->
+                if (showImportActions && importPreparationGeneration == requestGeneration) {
+                    isPreparingImport = false
+                    val selected = candidates.map { candidate ->
+                        SelectedImportBook(uri = candidate.uri, name = candidate.name)
+                    }
+                    if (selected.isNotEmpty()) {
+                        selectedImportBooks = selected
+                        selectedImportBookUris = emptySet()
+                        importCopiesIntoApp = false
+                        showImportActions = false
+                        showImportConfirmation = true
+                    }
+                }
+            }
+        } else {
+            isPreparingImport = false
+        }
     }
     val homeUiState by homeViewModel.uiState.collectAsState()
     val homeLastReadBook = remember(homeUiState.books) {
@@ -237,7 +295,9 @@ fun MainNavGraph(
             tabBarVisible = true
             if (!showTransition) synchronizeNextMainReturn = false
         } else {
-            delay(800)
+            if (!eInkMode) {
+                delay(800)
+            }
             useMainReturnTabBarTransition = false
             tabBarVisible = true
         }
@@ -278,15 +338,21 @@ fun MainNavGraph(
                     .then(
                         if (isLiquidGlass && currentRoute != Screen.Reader.route) {
                             Modifier.layerBackdrop(liquidGlassBackdrop)
-                        } else {
+                        } else if (!eInkMode) {
                             Modifier.haze(hazeState)
+                        } else {
+                            Modifier
                         }
                     )
             ) {
             composable(
                 route = Screen.Home.route,
+                enterTransition = { if (eInkMode) EnterTransition.None else null },
+                exitTransition = { if (eInkMode) ExitTransition.None else null },
                 popEnterTransition = {
-                    if (initialState.destination.route == Screen.Reader.route) {
+                    if (eInkMode) {
+                        EnterTransition.None
+                    } else if (initialState.destination.route == Screen.Reader.route) {
                         fadeIn(tween(300, easing = FastOutSlowInEasing)) + scaleIn(
                             initialScale = 0.985f,
                             animationSpec = tween(320, easing = FastOutSlowInEasing)
@@ -294,7 +360,8 @@ fun MainNavGraph(
                     } else {
                         null
                     }
-                }
+                },
+                popExitTransition = { if (eInkMode) ExitTransition.None else null }
             ) { backStackEntry ->
                 val playEntranceAnimation = rememberPageEntrancePlayback(
                     pageKey = Screen.Home.route,
@@ -305,11 +372,17 @@ fun MainNavGraph(
                 HomeScreen(
                     playEntranceAnimation = playEntranceAnimation,
                     onNavigateToReader = { bookId, coverPath, title ->
-                        transitionCover = coverPath
-                        transitionTitle = title
-                        readerReady = false
-                        showTransition = true
-                        pendingBookId = bookId
+                        if (eInkMode) {
+                            showTransition = false
+                            pendingBookId = null
+                            navController.navigate(Screen.Reader.createRoute(bookId))
+                        } else {
+                            transitionCover = coverPath
+                            transitionTitle = title
+                            readerReady = false
+                            showTransition = true
+                            pendingBookId = bookId
+                        }
                     },
                     onTabBarVisibleChange = { visible -> tabBarVisible = visible },
                     onNavigateToStatistics = {
@@ -328,7 +401,15 @@ fun MainNavGraph(
                             restoreState = true
                         }
                     },
-                    onImportClick = { importLauncher.launch("*/*") },
+                    onImportClick = {
+                        selectedImportBooks = emptyList()
+                        selectedImportBookUris = emptySet()
+                        importCopiesIntoApp = true
+                        isPreparingImport = false
+                        importPreparationGeneration++
+                        showImportActions = true
+                        showImportConfirmation = false
+                    },
                     showImportButton = !isLiquidGlass,
                     showReadingGoalSheet = homeGoalSheetVisible,
                     onReadingGoalSheetVisibleChange = { visible -> homeGoalSheetVisible = visible },
@@ -339,8 +420,12 @@ fun MainNavGraph(
 
             composable(
                 route = Screen.Bookshelf.route,
+                enterTransition = { if (eInkMode) EnterTransition.None else null },
+                exitTransition = { if (eInkMode) ExitTransition.None else null },
                 popEnterTransition = {
-                    if (initialState.destination.route == Screen.Reader.route) {
+                    if (eInkMode) {
+                        EnterTransition.None
+                    } else if (initialState.destination.route == Screen.Reader.route) {
                         fadeIn(tween(300, easing = FastOutSlowInEasing)) + scaleIn(
                             initialScale = 0.985f,
                             animationSpec = tween(320, easing = FastOutSlowInEasing)
@@ -348,7 +433,8 @@ fun MainNavGraph(
                     } else {
                         null
                     }
-                }
+                },
+                popExitTransition = { if (eInkMode) ExitTransition.None else null }
             ) { backStackEntry ->
                 val playEntranceAnimation = rememberPageEntrancePlayback(
                     pageKey = Screen.Bookshelf.route,
@@ -359,22 +445,42 @@ fun MainNavGraph(
                 BookshelfScreen(
                     playEntranceAnimation = playEntranceAnimation,
                     onNavigateToReader = { bookId, coverPath, title ->
-                        transitionCover = coverPath
-                        transitionTitle = title
-                        readerReady = false
-                        showTransition = true
-                        pendingBookId = bookId
+                        if (eInkMode) {
+                            showTransition = false
+                            pendingBookId = null
+                            navController.navigate(Screen.Reader.createRoute(bookId))
+                        } else {
+                            transitionCover = coverPath
+                            transitionTitle = title
+                            readerReady = false
+                            showTransition = true
+                            pendingBookId = bookId
+                        }
+                    },
+                    onAddBook = {
+                        selectedImportBooks = emptyList()
+                        selectedImportBookUris = emptySet()
+                        importCopiesIntoApp = true
+                        isPreparingImport = false
+                        importPreparationGeneration++
+                        showImportActions = true
+                        showImportConfirmation = false
                     },
                     onOverlayProgressChange = { progress ->
                         bookshelfOverlayProgress = progress.coerceIn(0f, 1f)
-                    }
+                    },
+                    viewModel = homeViewModel
                 )
             }
 
             composable(
                 route = Screen.Statistics.route,
+                enterTransition = { if (eInkMode) EnterTransition.None else null },
+                exitTransition = { if (eInkMode) ExitTransition.None else null },
                 popEnterTransition = {
-                    if (initialState.destination.route == Screen.Reader.route) {
+                    if (eInkMode) {
+                        EnterTransition.None
+                    } else if (initialState.destination.route == Screen.Reader.route) {
                         fadeIn(tween(300, easing = FastOutSlowInEasing)) + scaleIn(
                             initialScale = 0.985f,
                             animationSpec = tween(320, easing = FastOutSlowInEasing)
@@ -382,7 +488,8 @@ fun MainNavGraph(
                     } else {
                         null
                     }
-                }
+                },
+                popExitTransition = { if (eInkMode) ExitTransition.None else null }
             ) { backStackEntry ->
                 val playEntranceAnimation = rememberPageEntrancePlayback(
                     pageKey = Screen.Statistics.route,
@@ -399,7 +506,7 @@ fun MainNavGraph(
                 route = Screen.Reader.route,
                 arguments = listOf(navArgument("bookId") { type = NavType.StringType }),
                 popExitTransition = {
-                    if (targetState.destination.route != Screen.Reader.route) {
+                    if (!eInkMode && targetState.destination.route != Screen.Reader.route) {
                         fadeOut(tween(240, easing = FastOutSlowInEasing)) + scaleOut(
                             targetScale = 0.985f,
                             animationSpec = tween(280, easing = FastOutSlowInEasing)
@@ -434,6 +541,7 @@ fun MainNavGraph(
                 .fillMaxSize()
                 .graphicsLayer {
                     renderEffect = if (
+                        !eInkMode &&
                         bookshelfOverlayProgress > 0.01f &&
                         android.os.Build.VERSION.SDK_INT >= 31
                     ) {
@@ -449,12 +557,14 @@ fun MainNavGraph(
         ) {
         AnimatedVisibility(
             visible = tabBarVisible,
-            enter = if (useMainReturnTabBarTransition) {
+            enter = if (eInkMode) {
+                EnterTransition.None
+            } else if (useMainReturnTabBarTransition) {
                 fadeIn(animationSpec = tween(300, easing = FastOutSlowInEasing))
             } else {
                 fadeIn(animationSpec = tween(400))
             },
-            exit = fadeOut(animationSpec = tween(300)),
+            exit = if (eInkMode) ExitTransition.None else fadeOut(animationSpec = tween(300)),
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             val showLiquidImport = isLiquidGlass
@@ -481,7 +591,15 @@ fun MainNavGraph(
                 )
                 if (showLiquidImport) {
                     LiquidGlassImportButton(
-                        onClick = { importLauncher.launch("*/*") },
+                        onClick = {
+                            selectedImportBooks = emptyList()
+                            selectedImportBookUris = emptySet()
+                            importCopiesIntoApp = true
+                            isPreparingImport = false
+                            importPreparationGeneration++
+                            showImportActions = true
+                            showImportConfirmation = false
+                        },
                         liquidGlassBackdrop = liquidGlassBackdrop,
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
@@ -494,6 +612,85 @@ fun MainNavGraph(
 
         // 过渡动画覆盖层
         }
+        if (showImportActions) {
+            ImportBooksActionSheet(
+                isPreparing = isPreparingImport,
+                authorizedDirectoryUris = homeUiState.authorizedBookDirectories,
+                onDismiss = {
+                    importPreparationGeneration++
+                    isPreparingImport = false
+                    selectedImportBooks = emptyList()
+                    selectedImportBookUris = emptySet()
+                    showImportActions = false
+                },
+                onSelectFiles = {
+                    importLauncher.launch(arrayOf("*/*"))
+                },
+                onAuthorizeDirectory = {
+                    directoryLauncher.launch(null)
+                },
+                onRefreshDirectories = {
+                    val requestGeneration = importPreparationGeneration + 1
+                    importPreparationGeneration = requestGeneration
+                    isPreparingImport = true
+                    homeViewModel.scanAuthorizedBookDirectories(context) { candidates ->
+                        if (showImportActions && importPreparationGeneration == requestGeneration) {
+                            isPreparingImport = false
+                            val selected = candidates.map { candidate ->
+                                SelectedImportBook(uri = candidate.uri, name = candidate.name)
+                            }
+                            if (selected.isNotEmpty()) {
+                                selectedImportBooks = selected
+                                selectedImportBookUris = emptySet()
+                                importCopiesIntoApp = false
+                                showImportActions = false
+                                showImportConfirmation = true
+                            }
+                        }
+                    }
+                }
+            )
+        }
+
+        if (showImportConfirmation) {
+            ImportBooksConfirmationSheet(
+                selectedBooks = selectedImportBooks,
+                selectedBookUris = selectedImportBookUris,
+                onBookSelectionToggle = { book ->
+                    val uriKey = book.uri.toString()
+                    selectedImportBookUris = if (uriKey in selectedImportBookUris) {
+                        selectedImportBookUris - uriKey
+                    } else {
+                        selectedImportBookUris + uriKey
+                    }
+                },
+                onDismiss = {
+                    importPreparationGeneration++
+                    isPreparingImport = false
+                    selectedImportBooks = emptyList()
+                    selectedImportBookUris = emptySet()
+                    showImportConfirmation = false
+                },
+                onConfirmImport = {
+                    val uris = selectedImportBooks
+                        .filter { it.uri.toString() in selectedImportBookUris }
+                        .map { it.uri }
+                    if (uris.isNotEmpty()) {
+                        importPreparationGeneration++
+                        isPreparingImport = false
+                        selectedImportBooks = emptyList()
+                        selectedImportBookUris = emptySet()
+                        showImportConfirmation = false
+                        if (importCopiesIntoApp) {
+                            homeViewModel.importBooks(context, uris)
+                        } else {
+                            homeViewModel.importAuthorizedBooks(context, uris)
+                        }
+                    }
+                }
+            )
+        }
+
         ReadingGoalSheet(
             visible = homeGoalSheetVisible && currentRoute == Screen.Home.route,
             todayReadingTime = homeUiState.todayReadingTime,
@@ -505,7 +702,7 @@ fun MainNavGraph(
             onSaveGoal = { minutes -> homeViewModel.saveDailyGoal(minutes) }
         )
 
-        if (showTransition) {
+        if (showTransition && !eInkMode) {
             BookTransitionOverlay(
                 title = transitionTitle,
                 coverPath = transitionCover,
