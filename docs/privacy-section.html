@@ -183,67 +183,23 @@
     <div class="section-header animate-on-scroll">
         <div class="label">隐私保护</div>
         <h2>本地优先，云端由你决定</h2>
-        <p>阅读数据留在设备；只有主动启用 MinerU 并确认后，所选 PDF 才会上传。代码完全透明可审查。</p>
+        <p>阅读数据默认留在设备；只有主动配置或启用 WebDAV、MinerU、第三方 TTS 等网络功能时，相关书籍、阅读数据或朗读文本才会发送到对应服务。</p>
     </div>
-
     <div class="privacy-hero animate-on-scroll fade-in-only stagger-1">
         <div class="shield">🛡️</div>
         <h3>本地优先 · 主动授权 · 零追踪</h3>
-        <p>
-            Lumi 不使用任何第三方分析或广告 SDK。你的书架、阅读进度、笔记和书签存储在设备本地沙盒中。
-            可选的 MinerU 云端解析默认关闭，首次启用时会明确说明文件上传风险并征得同意。
-        </p>
+        <p>Lumi 不使用第三方分析、广告、用户画像或崩溃上报 SDK。书架、阅读进度、笔记和书签默认存储在设备本地沙盒中。可选的 WebDAV 同步、MinerU 云端解析和第三方 TTS 默认不替你启用，使用前会由你配置、确认或同意风险提示。</p>
     </div>
-
     <div class="privacy-band">
-        <div class="privacy-item animate-on-scroll stagger-1">
-            <div class="pi-icon">🚫</div>
-            <h3>联网由你触发</h3>
-            <p>除检查更新外，只有主动选择 MinerU 云端解析时才会上传所选 PDF。</p>
-        </div>
-        <div class="privacy-item animate-on-scroll stagger-2">
-            <div class="pi-icon">📵</div>
-            <h3>无追踪 SDK</h3>
-            <p>无 Firebase、无分析、无广告；MinerU 是可选且独立的第三方云解析服务。</p>
-        </div>
-        <div class="privacy-item animate-on-scroll stagger-3">
-            <div class="pi-icon">🗄️</div>
-            <h3>沙盒存储</h3>
-            <p>所有数据存储在应用私有沙盒中，系统级隔离保护。</p>
-        </div>
-        <div class="privacy-item animate-on-scroll stagger-4">
-            <div class="pi-icon">🧹</div>
-            <h3>一键清除</h3>
-            <p>应用内随时清除数据。卸载自动删除全部数据，源文件不受影响。</p>
-        </div>
+        <div class="privacy-item animate-on-scroll stagger-1"><div class="pi-icon">🌐</div><h3>联网场景透明</h3><p>除更新、公告和政策版本检查外，WebDAV 同步、MinerU 解析、第三方 TTS 与外部链接均由你主动配置、启用或点击。</p></div>
+        <div class="privacy-item animate-on-scroll stagger-2"><div class="pi-icon">📵</div><h3>无追踪 SDK</h3><p>无 Firebase、无分析、无广告、无开发者运营的账号云书库；WebDAV、MinerU 和第三方 TTS 是可选或用户自选服务。</p></div>
+        <div class="privacy-item animate-on-scroll stagger-3"><div class="pi-icon">🔐</div><h3>密钥本机加密</h3><p>MinerU Token、WebDAV 密码和第三方 TTS API Key 使用 Android Keystore 加密保存，并排除系统备份/设备迁移。</p></div>
     </div>
-
-    <div class="detail-card animate-on-scroll">
-        <h3>权限说明</h3>
-        <p>本应用仅申请以下 Android 系统权限，每项权限均有明确的用途：</p>
-        <ul>
-            <li>READ_EXTERNAL_STORAGE（Android 12 及以下）— 读取设备上的电子书文件</li>
-            <li>READ_MEDIA_IMAGES（Android 13 及以上）— 读取电子书中的封面图片</li>
-        </ul>
-        <p><strong>不申请的权限：</strong></p>
-        <ul>
-            <li><span class="cross">✕</span> 网络访问权限（INTERNET）</li>
-            <li><span class="cross">✕</span> 位置信息权限</li>
-            <li><span class="cross">✕</span> 相机/麦克风权限</li>
-            <li><span class="cross">✕</span> 通讯录权限</li>
-            <li><span class="cross">✕</span> 任何其他敏感权限</li>
-        </ul>
-    </div>
-
-    <div class="detail-card animate-on-scroll" style="margin-top: var(--space-base);">
-        <h3>开源透明</h3>
-        <p>作为开源项目，Lumi 的完整源代码公开可审查。您可以随时查阅代码，验证以上隐私承诺的真实性。我们相信，代码透明是最好的隐私保障。</p>
-        <p>所有数据处理逻辑均可在源代码中查阅——从 Room 数据库的 Entity 定义到 DataStore 的偏好存储，没有任何隐藏的数据传输或收集行为。</p>
-    </div>
-
-    <div style="text-align:center; margin-top: var(--space-xl);" class="animate-on-scroll">
-        <a href="privacy.html" class="cta-link">查看完整隐私政策 →</a>
-    </div>
+    <div class="detail-card animate-on-scroll"><h3>本地存储什么？</h3><p>应用会在本机保存书架、阅读进度、书签、笔记、选中文本、阅读时长、阅读偏好、文件/文件夹授权 URI，以及您配置的 WebDAV、MinerU、第三方 TTS 设置。第三方 TTS 返回的音频片段可能缓存在应用缓存目录中，以减少重复请求。</p></div>
+    <div class="detail-card animate-on-scroll" style="margin-top: var(--space-base);"><h3>什么时候会上传或发送内容？</h3><ul><li>WebDAV 同步：向你配置的服务器上传/下载书籍文件、书籍清单、阅读进度、书签、笔记和选中文本。</li><li>MinerU 云端解析：把你选定的 PDF、解析参数和任务标识发送给 OpenDataLab/MinerU；精准解析还会使用你的个人 Token。</li><li>第三方 TTS：把当前朗读文本段、模型/音色、风格提示和必要鉴权信息发送给你选择的 OpenAI、Xiaomi MiMo 或兼容服务。</li><li>外部链接：只有在你主动点击 GitHub、反馈、下载或第三方协议链接时才会访问对应网站。</li></ul></div>
+    <div class="detail-card animate-on-scroll" style="margin-top: var(--space-base);"><h3>权限申请</h3><p><strong>可能申请的权限：</strong></p><ul><li>READ_EXTERNAL_STORAGE（Android 12 及以下）— 读取你选择的电子书文件</li><li>WRITE_EXTERNAL_STORAGE（Android 9 及以下）— 兼容旧系统保存文件或写回授权 TXT</li><li>READ_MEDIA_IMAGES（Android 13 及以上）— 读取封面或图片资源</li><li>INTERNET / ACCESS_NETWORK_STATE — 更新检查、WebDAV、MinerU、第三方 TTS 和外部链接</li><li>WRITE_SETTINGS — 启用自定义亮屏时间时修改屏幕关闭时间</li><li>FOREGROUND_SERVICE / POST_NOTIFICATIONS — TTS 播放、解析和同步进度通知</li></ul><p><strong>不申请的权限：</strong></p><ul><li><span class="cross">✕</span> 位置信息权限</li><li><span class="cross">✕</span> 相机/麦克风权限</li><li><span class="cross">✕</span> 通讯录权限</li><li><span class="cross">✕</span> 电话状态权限</li><li><span class="cross">✕</span> 短信、日历等与阅读无关的敏感权限</li></ul></div>
+    <div class="detail-card animate-on-scroll" style="margin-top: var(--space-base);"><h3>开源透明</h3><p>作为开源项目，Lumi 的完整源代码公开可审查。你可以查阅 Room 数据库、DataStore、WebDAV、MinerU、TTS 和 WebView 网络限制等实现，验证以上隐私承诺。</p></div>
+    <div style="text-align:center; margin-top: var(--space-xl);" class="animate-on-scroll"><a href="privacy.html" class="cta-link">查看完整隐私政策 →</a></div>
 </section>
 
 <footer>

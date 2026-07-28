@@ -694,3 +694,180 @@ body:not(.home-page) .page-container li {
   .immersive-hero h1 { font-size: clamp(38px, 12vw, 54px) !important; }
   .immersive-hero .hero-desc { font-size: 16px !important; line-height: 1.62 !important; }
 }
+
+/* ── Targeted polish after first visual QA ───────────────────────────────
+   Keep these overrides at the end so they win over legacy inline page CSS. */
+
+/* Home download CTA: the immersive glass treatment made the original white
+   text too low-contrast on a pale panel. Restore a clear light-card hierarchy. */
+.home-page .download-band {
+  background:
+    radial-gradient(circle at 12% 20%, rgba(255,56,92,.18), transparent 38%),
+    linear-gradient(135deg, rgba(255,255,255,.86), rgba(255,255,255,.58) 52%, rgba(255,238,242,.70)) !important;
+  border-color: rgba(255,255,255,.82) !important;
+}
+.home-page .download-band::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(255,255,255,.62), transparent 42%);
+  z-index: 0;
+}
+.home-page .download-band > * {
+  position: relative;
+  z-index: 1;
+}
+.home-page .download-band .dl-info h3 {
+  color: var(--lumi-ink) !important;
+  text-shadow: 0 1px 0 rgba(255,255,255,.75) !important;
+}
+.home-page .download-band .dl-info p {
+  color: rgba(31,31,40,.72) !important;
+}
+.home-page .download-band .dl-info .version-tag {
+  color: rgba(31,31,40,.56) !important;
+}
+.home-page .download-band .dl-info .backup-dl {
+  color: rgba(255,56,92,.82) !important;
+  text-decoration-color: rgba(255,56,92,.34) !important;
+}
+.home-page .download-band .dl-info .backup-dl:hover {
+  color: var(--lumi-primary) !important;
+  text-decoration-color: rgba(255,56,92,.62) !important;
+}
+
+/* Home screenshots: desktop should read as one cinematic strip, not oversized 2x2. */
+.home-page .screenshots-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  align-items: start !important;
+  gap: clamp(14px, 1.8vw, 22px) !important;
+}
+.home-page .screenshot-card {
+  border-radius: 24px !important;
+}
+.home-page .screenshot-card img {
+  width: 100% !important;
+  height: auto !important;
+  display: block !important;
+}
+
+/* Privacy overview cards: the parent should be layout-only; each card gets the glass. */
+.privacy-band {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  gap: clamp(16px, 2vw, 22px) !important;
+}
+.privacy-item {
+  padding: clamp(22px, 2.4vw, 30px) clamp(20px, 2.2vw, 26px) !important;
+  border-radius: 28px !important;
+  background:
+    linear-gradient(145deg, rgba(255,255,255,.76), rgba(255,255,255,.48)) !important;
+  border: 1px solid rgba(255,255,255,.78) !important;
+  box-shadow: 0 22px 60px rgba(31,31,40,.09), inset 0 1px 0 rgba(255,255,255,.84) !important;
+}
+.privacy-item h3 { color: var(--lumi-ink) !important; }
+.privacy-item p { color: rgba(31,31,40,.68) !important; }
+
+/* Sponsor page: two thanks cards should span the same visual width as the QR card. */
+.thanks-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  width: 100% !important;
+  align-items: stretch !important;
+  gap: clamp(18px, 2vw, 28px) !important;
+}
+.thanks-item {
+  min-height: 190px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: clamp(28px, 4vw, 48px) clamp(18px, 3vw, 34px) !important;
+}
+.thanks-item .role-name {
+  max-width: 100% !important;
+  overflow-wrap: anywhere !important;
+  line-height: 1.35 !important;
+}
+
+@media (max-width: 980px) {
+  .home-page .screenshots-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  .privacy-band {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 560px) {
+  .home-page .screenshots-grid,
+  .privacy-band,
+  .thanks-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .thanks-item { min-height: 156px !important; }
+}
+
+/* Changelog page: restore rounded glass cards and breathing room. */
+.version-block {
+  position: relative !important;
+  overflow: hidden !important;
+  border-radius: 34px !important;
+  padding: clamp(26px, 3vw, 40px) clamp(24px, 3.4vw, 48px) !important;
+  margin-bottom: clamp(24px, 3vw, 36px) !important;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(255,56,92,.10), transparent 36%),
+    linear-gradient(145deg, rgba(255,255,255,.78), rgba(255,255,255,.52)) !important;
+}
+.version-block::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(120deg, rgba(255,255,255,.72), transparent 34%, rgba(255,255,255,.30));
+  z-index: 0;
+}
+.version-block > * {
+  position: relative;
+  z-index: 1;
+}
+.version-block .version-badge {
+  margin: 0 0 clamp(18px, 2vw, 26px) 0 !important;
+  box-shadow: 0 14px 34px rgba(255,56,92,.20) !important;
+}
+.version-block .version-badge.old {
+  background: rgba(255,255,255,.68) !important;
+  color: rgba(31,31,40,.64) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.80), 0 12px 30px rgba(31,31,40,.06) !important;
+}
+.changelog-list {
+  gap: 8px !important;
+  padding: 0 !important;
+}
+.changelog-list li {
+  padding: 12px 14px !important;
+  border-radius: 16px !important;
+  color: rgba(31,31,40,.72) !important;
+}
+.changelog-list li:hover {
+  background: rgba(255,255,255,.48) !important;
+}
+.changelog-list li .tag {
+  border-radius: 10px !important;
+}
+
+@media (max-width: 560px) {
+  .version-block {
+    border-radius: 28px !important;
+    padding: 22px 16px !important;
+  }
+  .changelog-list li {
+    padding: 11px 10px !important;
+    gap: 8px !important;
+  }
+}
