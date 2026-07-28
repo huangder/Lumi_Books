@@ -859,11 +859,13 @@ html.lumi-green body { color: #1b5e20 !important; }
 
   function readerBox() {
     var box = state.publisherBox;
+    var publisherHorizontalInset = Math.max(0,
+      (box.marginLeft + box.paddingLeft + box.marginRight + box.paddingRight) / 2);
     return {
       top: box.marginTop + box.paddingTop + state.insets.top,
-      right: box.marginRight + box.paddingRight + state.insets.right,
+      right: publisherHorizontalInset + state.insets.right,
       bottom: box.marginBottom + box.paddingBottom + state.insets.bottom,
-      left: box.marginLeft + box.paddingLeft + state.insets.left
+      left: publisherHorizontalInset + state.insets.left
     };
   }
 
