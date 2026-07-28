@@ -137,6 +137,78 @@ class TxtParserTest {
         assertTrue(parser.getChapterContent(1_250).contains("第1251章"))
     }
 
+    @Test
+    fun decodesBig5WhenSelectedManually() {
+        val file = writeText(
+            "big5.txt",
+            "第1章 開始\n這裡是繁體正文\n第2章 繼續\n這裡是後續內容",
+            Charset.forName("Big5")
+        )
+        val parser = TxtParser().apply { selectedEncoding = TxtEncoding.BIG5 }
+
+        val book = parser.parse(file.absolutePath)
+
+        assertEquals("Big5", parser.activeCharsetName)
+        assertEquals(2, book.chapters.size)
+        assertTrue(parser.getChapterContent(0).contains("繁體正文"))
+        assertTrue(parser.getChapterContent(1).contains("後續內容"))
+    }
+
+    @Test
+    fun decodesShiftJisWhenSelectedManually() {
+        val file = writeText(
+            "shift-jis.txt",
+            "Chapter 1\n日本語の本文です\nChapter 2\n次の章です",
+            Charset.forName("Shift_JIS")
+        )
+        val parser = TxtParser().apply { selectedEncoding = TxtEncoding.SHIFT_JIS }
+
+        val book = parser.parse(file.absolutePath)
+
+        assertEquals("Shift_JIS", parser.activeCharsetName)
+        assertEquals(2, book.chapters.size)
+        assertTrue(parser.getChapterContent(0).contains("日本語の本文です"))
+        assertTrue(parser.getChapterContent(1).contains("次の章です"))
+    }
+
+    @Test
+    fun detectsUtf16WithoutBom() {
+        val text = "第1章 开始\n第一段正文\n第2章 继续\n第二段正文"
+        val littleEndian = writeText("utf16le-no-bom.txt", text, Charsets.UTF_16LE)
+        val bigEndian = writeText("utf16be-no-bom.txt", text, Charsets.UTF_16BE)
+
+        val littleEndianParser = TxtParser()
+        val bigEndianParser = TxtParser()
+        val littleEndianBook = littleEndianParser.parse(littleEndian.absolutePath)
+        val bigEndianBook = bigEndianParser.parse(bigEndian.absolutePath)
+
+        assertEquals("UTF-16LE", littleEndianParser.activeCharsetName)
+        assertEquals("UTF-16BE", bigEndianParser.activeCharsetName)
+        assertEquals(2, littleEndianBook.chapters.size)
+        assertEquals(2, bigEndianBook.chapters.size)
+        assertTrue(littleEndianParser.getChapterContent(1).contains("第二段正文"))
+        assertTrue(bigEndianParser.getChapterContent(1).contains("第二段正文"))
+    }
+
+    @Test
+    fun reparsesChaptersAfterSelectedEncodingChanges() {
+        val file = writeText(
+            "switch-encoding.txt",
+            "第1章 開始\n繁體內容甲\n第2章 繼續\n繁體內容乙",
+            Charset.forName("Big5")
+        )
+        val parser = TxtParser().apply { selectedEncoding = TxtEncoding.UTF_8 }
+
+        parser.parse(file.absolutePath)
+        parser.selectedEncoding = TxtEncoding.BIG5
+        val reparsed = parser.parse(file.absolutePath)
+
+        assertEquals("Big5", parser.activeCharsetName)
+        assertEquals(2, reparsed.chapters.size)
+        assertTrue(parser.getChapterContent(0).contains("繁體內容甲"))
+        assertTrue(parser.getChapterContent(1).contains("繁體內容乙"))
+    }
+
     private fun writeText(name: String, text: String, charset: Charset): File {
         return temporaryFolder.newFile(name).apply { writeBytes(text.toByteArray(charset)) }
     }

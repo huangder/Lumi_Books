@@ -68,10 +68,10 @@ class WebdavSyncManager @Inject constructor(
 
     private suspend fun runFullSync(): SyncResult {
         val config = dataStoreManager.webdavConfig.first()
-        if (!config.enabled) return SyncResult("WebDAV 未启用", false)
+        if (!config.enabled) return SyncResult("WebDAV \u672a\u542f\u7528", false)
 
         val password = tokenStore.read()
-        if (password.isNullOrBlank()) return SyncResult("未配置密码", false)
+        if (password.isNullOrBlank()) return SyncResult("\u672a\u914d\u7f6e\u5bc6\u7801", false)
 
         val normalized = config.normalized()
         val serverUrl = normalized.serverUrl
@@ -79,99 +79,121 @@ class WebdavSyncManager @Inject constructor(
         val syncPath = normalized.syncPath
 
         return try {
-            // 1. Ensure remote directory structure exists
             webdavClient.ensureDirectory(serverUrl, username, password, syncPath)
             webdavClient.ensureDirectory(serverUrl, username, password, "$syncPath/books")
             webdavClient.ensureDirectory(serverUrl, username, password, "$syncPath/data")
 
-            // 2. Delete old manifest to force a clean rebuild.
-            //    Prevents ghost entries from polluted manifests blocking future uploads.
-            try {
-                webdavClient.delete(
-                    "$serverUrl/$syncPath/manifest.json", username, password
-                )
-            } catch (_: Exception) { }
+            // Never delete the manifest or blindly re-upload every book. Re-uploading unchanged
+            // books is slow and repeatedly consumes the WebDAV provider's upload allowance.
+            val remoteManifest = downloadManifestOrNull(serverUrl, username, password, syncPath)
 
             val books = bookRepository.getAllBooks().first()
-            val uploadedBooks = mutableMapOf<String, SyncFileEntry>()
-            val uploadedBookIds = mutableSetOf<String>()
+            val confirmedBooks = remoteManifest?.books?.toMutableMap() ?: mutableMapOf()
+            val confirmedBookIds = mutableSetOf<String>()
             var booksUploaded = 0
+            var booksAlreadyPresent = 0
             var booksFailed = 0
             val failedBookTitles = mutableListOf<String>()
+            var quotaError: WebdavException? = null
 
-            // 3. Upload books one by one. The request body streams from storage and computes
-            //    SHA-256 while uploading, avoiding the previous full-library pre-scan and re-scan.
             for (book in books) {
-                val entry = try {
-                    uploadBookFile(book, serverUrl, username, password, syncPath)
-                } catch (e: Exception) {
-                    Log.e("WebDAV", "Upload failed book=${book.id} file=${book.filePath}: ${e.message}", e)
-                    failedBookTitles.add(book.title)
-                    null
+                val remoteFileName = remoteBookFileName(book)
+                val localSize = BookFileAccess.size(context, book.filePath)
+                val manifestEntry = remoteManifest?.books?.get(book.id)
+                val manifestConfirmsFile = manifestEntry != null &&
+                    manifestEntry.fileName == remoteFileName &&
+                    (localSize <= 0L || manifestEntry.sizeBytes <= 0L || manifestEntry.sizeBytes == localSize)
+
+                if (manifestConfirmsFile) {
+                    confirmedBooks[book.id] = manifestEntry
+                    confirmedBookIds.add(book.id)
+                    booksAlreadyPresent++
+                    continue
                 }
 
-                if (entry != null) {
-                    uploadedBooks[book.id] = entry
-                    uploadedBookIds.add(book.id)
-                    booksUploaded++
-                } else {
+                val availableBytes = quotaError?.availableBytes
+                if (availableBytes != null && localSize > availableBytes) {
                     booksFailed++
+                    failedBookTitles.add(book.title)
+                    Log.w(
+                        "WebDAV",
+                        "Skipping book=${book.id}: size=$localSize exceeds remaining upload quota=$availableBytes"
+                    )
+                    continue
+                }
+
+                try {
+                    val entry = uploadBookFile(book, serverUrl, username, password, syncPath)
+                    if (entry != null) {
+                        confirmedBooks[book.id] = entry
+                        confirmedBookIds.add(book.id)
+                        booksUploaded++
+                    } else {
+                        booksFailed++
+                        failedBookTitles.add(book.title)
+                    }
+                } catch (error: Exception) {
+                    Log.e("WebDAV", "Upload failed book=${book.id} file=${book.filePath}: ${error.message}", error)
+                    if (error is WebdavException && error.serverCode == "TrafficRateExhausted") {
+                        quotaError = error
+                    }
+                    booksFailed++
+                    failedBookTitles.add(book.title)
                 }
             }
 
-            // 4. Sync reading data (bookmarks, notes, progress) - upload all
             var dataSynced = 0
             var dataFailed = 0
-            val dataEntries = mutableMapOf<String, SyncFileEntry>()
+            val dataEntries = remoteManifest?.data?.toMutableMap() ?: mutableMapOf()
             for (book in books) {
-                dataEntries[book.id] = buildBookDataManifestEntry(book)
                 try {
                     uploadBookData(book.id, serverUrl, username, password, syncPath)
+                    dataEntries[book.id] = buildBookDataManifestEntry(book)
                     dataSynced++
-                } catch (e: Exception) {
+                } catch (error: Exception) {
                     dataFailed++
-                    Log.e("WebDAV", "Reading data upload failed book=${book.id}: ${e.message}", e)
+                    Log.e("WebDAV", "Reading data upload failed book=${book.id}: ${error.message}", error)
                 }
             }
 
-            // 5. Upload manifest - only includes books confirmed on server
-            val finalManifest = SyncManifest(
-                books = uploadedBooks,
-                data = dataEntries
-            )
             webdavClient.upload(
                 "$serverUrl/$syncPath/manifest.json",
-                finalManifest.toJson().toByteArray(Charsets.UTF_8),
-                username, password,
+                SyncManifest(books = confirmedBooks, data = dataEntries).toJson().toByteArray(Charsets.UTF_8),
+                username,
+                password,
                 "application/json"
             )
 
-            // 6. Update last sync time + synced book IDs (only actually-uploaded books)
             val now = System.currentTimeMillis()
             dataStoreManager.updateWebdavLastSyncTime(now)
-            dataStoreManager.saveWebdavSyncedBookIds(uploadedBookIds)
-            val newConfig = normalized.copy(lastSyncTime = now)
-            dataStoreManager.saveWebdavConfig(newConfig)
+            dataStoreManager.saveWebdavSyncedBookIds(confirmedBookIds)
+            dataStoreManager.saveWebdavConfig(normalized.copy(lastSyncTime = now))
 
+            val failedNames = failedBookTitles.take(2).joinToString("\u3001")
             val failureHint = if (booksFailed > 0) {
-                val names = failedBookTitles.take(2).joinToString("、")
-                "，失败 $booksFailed 本${if (names.isNotBlank()) "：$names" else ""}"
-            } else {
-                ""
-            }
-            val dataFailureHint = if (dataFailed > 0) "，阅读数据失败 $dataFailed 条" else ""
+                "\uff0c\u5931\u8d25 $booksFailed \u672c" +
+                    if (failedNames.isNotBlank()) "\uff1a$failedNames" else ""
+            } else ""
+            val dataFailureHint = if (dataFailed > 0) {
+                "\uff0c\u9605\u8bfb\u6570\u636e\u5931\u8d25 $dataFailed \u6761"
+            } else ""
+            val quotaHint = quotaError?.let { "\n" + userFacingWebdavError(it) }.orEmpty()
             SyncResult(
-                message = "上传 $booksUploaded 本书$failureHint，同步 $dataSynced 条阅读数据$dataFailureHint",
+                message = "\u5df2\u540c\u6b65 ${confirmedBookIds.size} \u672c\u4e66" +
+                    "\uff08\u65b0\u4e0a\u4f20 $booksUploaded \u672c\uff0c\u4e91\u7aef\u5df2\u6709 $booksAlreadyPresent \u672c\uff09" +
+                    failureHint +
+                    "\uff0c\u540c\u6b65 $dataSynced \u6761\u9605\u8bfb\u6570\u636e" +
+                    dataFailureHint + quotaHint,
                 success = booksFailed == 0 && dataFailed == 0
             )
-        } catch (e: WebdavException) {
-            SyncResult(message = "同步失败：${e.message}", success = false)
-        } catch (e: Exception) {
-            SyncResult(message = "同步失败：${e.message}", success = false)
+        } catch (error: WebdavException) {
+            SyncResult(message = "\u540c\u6b65\u5931\u8d25\uff1a${userFacingWebdavError(error)}", success = false)
+        } catch (error: Exception) {
+            SyncResult(message = "\u540c\u6b65\u5931\u8d25\uff1a${error.message.orEmpty()}", success = false)
         }
     }
 
-    // ── Reading progress sync (debounced) ───────────────────────────
+    // Reading progress sync (debounced)
 
     /** Debounced sync for a single book's reading data. Call after progress changes. */
     fun scheduleReadingProgressSync(bookId: String) {
@@ -223,6 +245,23 @@ class WebdavSyncManager @Inject constructor(
      *  Handles Chinese, spaces, and other non-ASCII characters. */
     private fun encodePathSegment(name: String): String =
         URLEncoder.encode(name, "UTF-8").replace("+", "%20")
+
+    private fun userFacingWebdavError(error: WebdavException): String {
+        if (error.serverCode == "TrafficRateExhausted") {
+            val remaining = error.availableBytes?.let(::formatBytes) ?: "\u672a\u77e5"
+            val required = error.requiredBytes?.let(::formatBytes) ?: "\u672a\u77e5"
+            return "WebDAV \u670d\u52a1\u7aef\u4e0a\u4f20\u6d41\u91cf\u989d\u5ea6\u4e0d\u8db3" +
+                "\uff08\u5269\u4f59 $remaining\uff0c\u5f53\u524d\u6587\u4ef6\u9700\u8981 $required\uff09\u3002" +
+                "\u8bf7\u7b49\u5f85\u989d\u5ea6\u6062\u590d\uff0c\u6216\u5728 WebDAV \u670d\u52a1\u5546\u8c03\u6574\u4e0a\u4f20\u989d\u5ea6\u3002"
+        }
+        return error.message ?: "WebDAV \u8bf7\u6c42\u5931\u8d25"
+    }
+
+    private fun formatBytes(bytes: Long): String = when {
+        bytes >= 1024L * 1024L -> "%.1f MB".format(java.util.Locale.US, bytes / (1024.0 * 1024.0))
+        bytes >= 1024L -> "%.1f KB".format(java.util.Locale.US, bytes / 1024.0)
+        else -> "$bytes B"
+    }
 
     private suspend fun buildLocalManifest(): SyncManifest {
         val books = bookRepository.getAllBooks().first()
@@ -355,9 +394,11 @@ class WebdavSyncManager @Inject constructor(
                 sizeBytes = uploadResult.bytesWritten,
                 lastModified = lastModified
             )
+        } catch (serverError: WebdavException) {
+            // A definitive HTTP rejection will not be fixed by sending the same bytes twice.
+            throw serverError
         } catch (streamError: Exception) {
-            // Some WebDAV servers reject streamed PUT for certain paths/providers. Fall back to
-            // the older fixed byte-array upload for this single book so sync can still finish.
+            // Only fall back when streaming failed before the server returned an HTTP response.
             Log.w("WebDAV", "Stream upload failed; retrying fixed-length upload book=${book.id}: ${streamError.message}")
             val data = readBookData(book.filePath)
             webdavClient.upload(

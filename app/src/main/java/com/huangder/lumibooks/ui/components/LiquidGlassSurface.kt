@@ -38,6 +38,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.shadow
@@ -277,7 +278,9 @@ fun LiquidGlassSheetContainer(
                         }
                     )
                     .then(contentModifier)
-                    .clip(contentShape),
+                    // 圆角遮罩负责贴合弹层造型，矩形视口裁剪阻止滚动内容越过容器边界。
+                    .clip(contentShape)
+                    .clipToBounds(),
                 contentAlignment = contentAlignment,
                 content = content
             )

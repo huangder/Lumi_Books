@@ -3,11 +3,7 @@
     <application>
         <receiver
             android:name=".debug.DebugWebdavSyncReceiver"
-            android:enabled="true"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="com.huangder.lumibooks.DEBUG_WEBDAV_SYNC" />
-            </intent-filter>
-        </receiver>
+            android:enabled="false"
+            android:exported="false" />
     </application>
 </manifest>

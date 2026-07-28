@@ -743,6 +743,26 @@ class DataStoreManager @Inject constructor(
         context.dataStore.edit { preferences -> preferences[key] = mode.storageValue }
     }
 
+    fun txtEncoding(bookId: String): Flow<String> {
+        val key = stringPreferencesKey("txt_encoding_$bookId")
+        return context.dataStore.data.map { preferences -> preferences[key] ?: "auto" }
+    }
+
+    suspend fun saveTxtEncoding(bookId: String, encoding: String) {
+        val key = stringPreferencesKey("txt_encoding_$bookId")
+        context.dataStore.edit { preferences -> preferences[key] = encoding }
+    }
+
+    fun txtEncodingHintShown(bookId: String): Flow<Boolean> {
+        val key = booleanPreferencesKey("txt_encoding_hint_shown_$bookId")
+        return context.dataStore.data.map { preferences -> preferences[key] ?: false }
+    }
+
+    suspend fun markTxtEncodingHintShown(bookId: String) {
+        val key = booleanPreferencesKey("txt_encoding_hint_shown_$bookId")
+        context.dataStore.edit { preferences -> preferences[key] = true }
+    }
+
     fun epubLayoutHintShown(bookId: String): Flow<Boolean> {
         val key = booleanPreferencesKey("epub_layout_hint_shown_$bookId")
         return context.dataStore.data.map { preferences -> preferences[key] ?: false }

@@ -706,4 +706,21 @@
     <string name="label_e_ink_mode">電子ペーパーモード</string>
     <string name="e_ink_mode_description">電子ペーパー向けに高コントラストの明るい画面を使い、アニメーション、ぼかし、Liquid Glass を無効にします。</string>
     <string name="e_ink_reader_fixed_theme_hint">電子ペーパーモードでは、明るい紙面、濃い文字、即時ページ送りを使用します。</string>
+
+    <string name="reader_switch_encoding">文字コードを切替</string>
+    <string name="txt_encoding_first_open_title">TXT 文字コードのヒント</string>
+    <string name="txt_encoding_first_open_message">文字化けした場合は、画面中央をタップして「文字コードを切替」を選択してください。</string>
+    <string name="txt_encoding_first_open_confirm">了解</string>
+    <string name="txt_encoding_dialog_title">文字コードを切替</string>
+    <string name="txt_encoding_dialog_message">現在の文字コード：%1$s</string>
+    <string name="txt_encoding_auto">自動検出（現在：%1$s）</string>
+    <string name="txt_encoding_utf8">UTF-8</string>
+    <string name="txt_encoding_gb18030">GB18030（簡体字中国語）</string>
+    <string name="txt_encoding_big5">Big5（繁体字中国語）</string>
+    <string name="txt_encoding_utf16le">UTF-16 LE</string>
+    <string name="txt_encoding_utf16be">UTF-16 BE</string>
+    <string name="txt_encoding_shift_jis">Shift_JIS（日本語）</string>
+    <string name="txt_encoding_euc_kr">EUC-KR（韓国語）</string>
+    <string name="txt_encoding_windows_1252">Windows-1252（西欧）</string>
+
 </resources>

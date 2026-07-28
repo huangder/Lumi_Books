@@ -41,6 +41,8 @@ import com.huangder.lumibooks.util.parser.BookParser
 import com.huangder.lumibooks.util.parser.BookParserFactory
 import com.huangder.lumibooks.util.parser.BookLinkTarget
 import com.huangder.lumibooks.util.parser.PdfParser
+import com.huangder.lumibooks.util.parser.TxtEncoding
+import com.huangder.lumibooks.util.parser.TxtParser
 import com.huangder.lumibooks.util.epub.EpubRenderMode
 import com.huangder.lumibooks.util.epub.EpubRenderSession
 import com.huangder.lumibooks.util.epub.EpubRenderSource
@@ -128,6 +130,10 @@ data class ReaderUiState(
     val useEpubCss: Boolean = false,
     val epubRenderMode: EpubRenderMode = EpubRenderMode.READER_LAYOUT,
     val showEpubLayoutHint: Boolean = false,
+    val txtEncoding: TxtEncoding = TxtEncoding.AUTO,
+    val txtActiveCharsetName: String = "UTF-8",
+    val showTxtEncodingHint: Boolean = false,
+    val isTxtEncodingChanging: Boolean = false,
     val epubLocatorJson: String? = null,
     /** 简繁转换模式："original" | "simplified" | "traditional" */
     val chineseMode: String = "original",
@@ -786,6 +792,71 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
+    fun dismissTxtEncodingHint() {
+        if (!_uiState.value.showTxtEncodingHint) return
+        _uiState.value = _uiState.value.copy(showTxtEncodingHint = false)
+        viewModelScope.launch {
+            dataStoreManager.markTxtEncodingHintShown(bookId)
+        }
+    }
+
+    fun saveTxtEncoding(encoding: TxtEncoding) {
+        val txtParser = parser as? TxtParser ?: return
+        val state = _uiState.value
+        val book = state.book ?: return
+        if (state.isTxtEncodingChanging || state.txtEncoding == encoding) return
+
+        viewModelScope.launch {
+            val previousEncoding = state.txtEncoding
+            _uiState.value = state.copy(isTxtEncodingChanging = true, pageReady = false)
+            try {
+                txtParser.selectedEncoding = encoding
+                val content = withContext(Dispatchers.IO) { txtParser.parse(book.filePath) }
+                val chapterTitles = content.chapters.map { it.title }
+                val chapterCount = chapterTitles.size
+                require(chapterCount > 0) { "TXT 解析后没有可用章节" }
+                val restoredChapter = state.currentChapterIndex.coerceIn(0, chapterCount - 1)
+                val pageFraction = if (state.totalPages > 0) {
+                    state.currentPageIndex.toFloat() / state.totalPages
+                } else {
+                    state.pendingPageFraction
+                }.coerceIn(0f, 0.9999f)
+
+                dataStoreManager.saveTxtEncoding(bookId, encoding.storageValue)
+                preloadCache.clear()
+                pageLayoutEngine.invalidateAll()
+                _uiState.value = _uiState.value.copy(
+                    chapterCount = chapterCount,
+                    chapterTitles = chapterTitles,
+                    tocEntries = content.tocEntries.ifEmpty {
+                        chapterTitles.mapIndexed { index, title ->
+                            com.huangder.lumibooks.util.parser.TocEntry(title, 1, index)
+                        }
+                    },
+                    currentChapterIndex = restoredChapter,
+                    currentPageIndex = 0,
+                    totalPages = 0,
+                    pendingPageFraction = pageFraction,
+                    txtEncoding = encoding,
+                    txtActiveCharsetName = txtParser.activeCharsetName,
+                    isTxtEncodingChanging = false,
+                    contentRevision = _uiState.value.contentRevision + 1
+                )
+                loadChapterContent()
+                preloadAdjacentChapters()
+                saveProgress()
+            } catch (error: Exception) {
+                txtParser.selectedEncoding = previousEncoding
+                runCatching { withContext(Dispatchers.IO) { txtParser.parse(book.filePath) } }
+                _uiState.value = _uiState.value.copy(
+                    isTxtEncodingChanging = false,
+                    pageReady = true,
+                    error = error.message
+                )
+            }
+        }
+    }
+
     fun saveEpubRenderMode(mode: EpubRenderMode) {
         val state = _uiState.value
         if (state.book?.format?.name != "EPUB" || state.epubRenderMode == mode) return
@@ -1101,6 +1172,7 @@ class ReaderViewModel @Inject constructor(
                     parser = BookParserFactory.createParser(book.format, context)
 
                     val isEpub = book.format.name == "EPUB"
+                    val isTxt = book.format.name == "TXT"
                     val epubRenderMode = if (isEpub) {
                         dataStoreManager.migrateEpubRenderMode(bookId)
                     } else {
@@ -1108,6 +1180,13 @@ class ReaderViewModel @Inject constructor(
                     }
                     val showEpubLayoutHint = isEpub &&
                         !dataStoreManager.epubLayoutHintShown(bookId).first()
+                    val txtEncoding = if (isTxt) {
+                        TxtEncoding.fromStorage(dataStoreManager.txtEncoding(bookId).first())
+                    } else {
+                        TxtEncoding.AUTO
+                    }
+                    val showTxtEncodingHint = isTxt &&
+                        !dataStoreManager.txtEncodingHintShown(bookId).first()
 
                     // 读取设置
                     val optimize = dataStoreManager.optimizeLayout(bookId).first()
@@ -1123,6 +1202,7 @@ class ReaderViewModel @Inject constructor(
                     parser!!.paragraphSpacingDp = paragraphSpacing
                     parser!!.firstLineIndentChars = firstLineIndent
                     parser!!.useEpubCss = useEpubCss
+                    (parser as? TxtParser)?.selectedEncoding = txtEncoding
 
                     val content = withContext(Dispatchers.IO) {
                         parser!!.parse(book.filePath)
@@ -1173,6 +1253,9 @@ class ReaderViewModel @Inject constructor(
                         useEpubCss = useEpubCss,
                         epubRenderMode = epubRenderMode,
                         showEpubLayoutHint = showEpubLayoutHint,
+                        txtEncoding = txtEncoding,
+                        txtActiveCharsetName = (parser as? TxtParser)?.activeCharsetName ?: "UTF-8",
+                        showTxtEncodingHint = showTxtEncodingHint,
                         epubLocatorJson = book.locatorJson.takeIf { epubRenderMode == EpubRenderMode.BOOK_LAYOUT },
                         chineseMode = chineseMode,
                         pageTransition = pageTransition,

@@ -325,7 +325,21 @@ class WebdavClient @Inject constructor() {
             "$operation failed: HTTP $code, url=$url, server=$server, requestId=${requestId.orEmpty()}, body=$detail"
         )
         val suffix = if (detail.isBlank()) "" else " - $detail"
-        return WebdavException("HTTP $code$suffix", statusCode = code)
+        val quotaMatch = Regex(
+            "free\\s+rate\\s+is\\s+(\\d+)\\s+while\\s+you\\s+want\\s+to\\s+consume\\s+(\\d+)",
+            RegexOption.IGNORE_CASE
+        ).find(detail)
+        val serverCode = detail.substringBefore(' ').takeIf { token ->
+            token.isNotBlank() && token.matches(Regex("[A-Za-z][A-Za-z0-9_]+"))
+        }
+        return WebdavException(
+            message = "HTTP $code$suffix",
+            statusCode = code,
+            serverCode = serverCode,
+            availableBytes = quotaMatch?.groupValues?.getOrNull(1)?.toLongOrNull(),
+            requiredBytes = quotaMatch?.groupValues?.getOrNull(2)?.toLongOrNull(),
+            serverDetail = detail.takeIf { it.isNotBlank() }
+        )
     }
 
     private fun parsePropfindResponse(xml: String, baseUrl: String): List<WebdavResource> {
@@ -431,4 +445,11 @@ data class WebdavResource(
     val lastModified: Long
 )
 
-class WebdavException(message: String, val statusCode: Int? = null) : Exception(message)
+class WebdavException(
+    message: String,
+    val statusCode: Int? = null,
+    val serverCode: String? = null,
+    val availableBytes: Long? = null,
+    val requiredBytes: Long? = null,
+    val serverDetail: String? = null
+) : Exception(message)

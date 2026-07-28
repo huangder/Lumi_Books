@@ -53,6 +53,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -71,6 +72,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
@@ -93,6 +95,7 @@ import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -125,6 +128,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.input.pointer.pointerInput
@@ -177,6 +181,7 @@ import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
+import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.components.animateBottomSheetIn
 import com.huangder.lumibooks.ui.components.animateBottomSheetOut
@@ -201,6 +206,7 @@ import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
 import com.huangder.lumibooks.util.epub.EpubRenderMode
+import com.huangder.lumibooks.util.parser.TxtEncoding
 import com.huangder.lumibooks.tts.TtsPageContent
 import com.huangder.lumibooks.tts.TtsPageLocation
 import com.huangder.lumibooks.tts.TtsPlaybackState
@@ -898,6 +904,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     var showToc by remember { mutableStateOf(false) }
     var showThemeSheet by remember { mutableStateOf(false) }
     var showAdvancedSheet by remember { mutableStateOf(false) }
+    var showTxtEncodingDialog by remember(bookId) { mutableStateOf(false) }
 
     // 搜索状态
     var showSearch by remember { mutableStateOf(false) }
@@ -911,7 +918,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     var requestCloseSearch by remember { mutableStateOf(false) }
 
     // 处理返回键：触发退出动画，而不是直接关闭
-    val isAnySheetOpen = showNotesList || showNoteInput || showToc || showThemeSheet || showAdvancedSheet || showSearch
+    val isAnySheetOpen = showNotesList || showNoteInput || showToc || showThemeSheet ||
+        showAdvancedSheet || showSearch || showTxtEncodingDialog
     val exitReader: () -> Unit = {
         viewModel.stopTts()
         onNavigateBack()
@@ -1732,6 +1740,10 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                             putExtra(TxtEditorActivity.EXTRA_CHAR_OFFSET, charOffset)
                         }
                         txtEditorLauncher.launch(intent)
+                    },
+                    onEncodingClick = {
+                        viewModel.hideMenu()
+                        showTxtEncodingDialog = true
                     }
                 )
             }
@@ -2379,20 +2391,33 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     )
 
     if (uiState.showEpubLayoutHint) {
-        LiquidGlassAlertDialog(
-            onDismissRequest = viewModel::dismissEpubLayoutHint,
+        ReaderFirstOpenHintDialog(
+            title = stringResource(R.string.epub_layout_first_open_title),
+            message = stringResource(R.string.epub_layout_first_open_message),
+            confirmText = stringResource(R.string.epub_layout_first_open_confirm),
             backdrop = activeReaderGlassBackdrop,
-            contentScrimColor = AppColors.CardBg.copy(alpha = 0.24f),
-            backgroundScrimColor = Color.Black.copy(alpha = 0.14f),
-            backgroundBlurRadius = 0.dp,
-            transparencyOverride = 0.52f,
-            title = { Text(stringResource(R.string.epub_layout_first_open_title)) },
-            text = { Text(stringResource(R.string.epub_layout_first_open_message)) },
-            confirmButton = {
-                TextButton(onClick = viewModel::dismissEpubLayoutHint) {
-                    Text(stringResource(R.string.epub_layout_first_open_confirm))
-                }
-            }
+            onDismiss = viewModel::dismissEpubLayoutHint
+        )
+    }
+
+    if (uiState.showTxtEncodingHint) {
+        ReaderFirstOpenHintDialog(
+            title = stringResource(R.string.txt_encoding_first_open_title),
+            message = stringResource(R.string.txt_encoding_first_open_message),
+            confirmText = stringResource(R.string.txt_encoding_first_open_confirm),
+            backdrop = activeReaderGlassBackdrop,
+            onDismiss = viewModel::dismissTxtEncodingHint
+        )
+    }
+
+    if (showTxtEncodingDialog) {
+        TxtEncodingDialog(
+            currentEncoding = uiState.txtEncoding,
+            activeCharsetName = uiState.txtActiveCharsetName,
+            isEncodingChanging = uiState.isTxtEncodingChanging,
+            backdrop = activeReaderGlassBackdrop,
+            onEncodingSelected = viewModel::saveTxtEncoding,
+            onDismiss = { showTxtEncodingDialog = false }
         )
     }
 
@@ -2879,6 +2904,194 @@ private fun LinkReturnButton(
 }
 
 @Composable
+private fun ReaderFirstOpenHintDialog(
+    title: String,
+    message: String,
+    confirmText: String,
+    backdrop: Backdrop?,
+    onDismiss: () -> Unit
+) {
+    LiquidGlassAlertDialog(
+        onDismissRequest = onDismiss,
+        backdrop = backdrop,
+        contentScrimColor = AppColors.CardBg.copy(alpha = 0.78f),
+        backgroundScrimColor = Color.Black.copy(alpha = 0.10f),
+        backgroundBlurRadius = 0.dp,
+        transparencyOverride = 0.28f,
+        title = {
+            Text(
+                text = title,
+                color = AppColors.TextPrimary,
+                fontWeight = FontWeight.SemiBold
+            )
+        },
+        text = {
+            Text(
+                text = message,
+                color = AppColors.TextSecondary,
+                lineHeight = 22.sp
+            )
+        },
+        confirmButton = {
+            LiquidGlassTextButton(
+                text = confirmText,
+                onClick = onDismiss,
+                tintedColor = AppColors.Accent,
+                contentColor = AppColors.OnAccent
+            )
+        }
+    )
+}
+
+@Composable
+private fun TxtEncodingDialog(
+    currentEncoding: TxtEncoding,
+    activeCharsetName: String,
+    isEncodingChanging: Boolean,
+    backdrop: Backdrop?,
+    onEncodingSelected: (TxtEncoding) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var selectedEncoding by remember { mutableStateOf(currentEncoding) }
+    LaunchedEffect(currentEncoding, isEncodingChanging) {
+        if (!isEncodingChanging) selectedEncoding = currentEncoding
+    }
+
+    LiquidGlassAlertDialog(
+        onDismissRequest = onDismiss,
+        backdrop = backdrop,
+        contentScrimColor = AppColors.CardBg.copy(alpha = 0.82f),
+        backgroundScrimColor = Color.Black.copy(alpha = 0.10f),
+        backgroundBlurRadius = 0.dp,
+        transparencyOverride = 0.24f,
+        title = {
+            Text(
+                text = stringResource(R.string.txt_encoding_dialog_title),
+                color = AppColors.TextPrimary,
+                fontWeight = FontWeight.SemiBold
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 360.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.txt_encoding_dialog_message, activeCharsetName),
+                        color = AppColors.TextSecondary,
+                        fontSize = 13.sp
+                    )
+                    if (isEncodingChanging) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            color = AppColors.Accent,
+                            strokeWidth = 2.dp
+                        )
+                    }
+                }
+                TxtEncoding.entries.chunked(2).forEach { rowEncodings ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        rowEncodings.forEach { encoding ->
+                            TxtEncodingCapsule(
+                                encoding = encoding,
+                                activeCharsetName = activeCharsetName,
+                                selected = encoding == selectedEncoding,
+                                enabled = !isEncodingChanging,
+                                onClick = {
+                                    if (encoding != selectedEncoding) {
+                                        selectedEncoding = encoding
+                                        onEncodingSelected(encoding)
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        if (rowEncodings.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            LiquidGlassTextButton(
+                text = stringResource(R.string.confirm),
+                onClick = onDismiss,
+                tintedColor = AppColors.Accent,
+                contentColor = AppColors.OnAccent
+            )
+        }
+    )
+}
+
+@Composable
+private fun TxtEncodingCapsule(
+    encoding: TxtEncoding,
+    activeCharsetName: String,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val backgroundColor = if (selected) AppColors.Accent else AppColors.BgGray
+    val contentColor = if (selected) AppColors.OnAccent else AppColors.TextPrimary
+    val label = when (encoding) {
+        TxtEncoding.AUTO -> stringResource(R.string.txt_encoding_auto, activeCharsetName)
+        TxtEncoding.UTF_8 -> stringResource(R.string.txt_encoding_utf8)
+        TxtEncoding.GB18030 -> stringResource(R.string.txt_encoding_gb18030)
+        TxtEncoding.BIG5 -> stringResource(R.string.txt_encoding_big5)
+        TxtEncoding.UTF_16LE -> stringResource(R.string.txt_encoding_utf16le)
+        TxtEncoding.UTF_16BE -> stringResource(R.string.txt_encoding_utf16be)
+        TxtEncoding.SHIFT_JIS -> stringResource(R.string.txt_encoding_shift_jis)
+        TxtEncoding.EUC_KR -> stringResource(R.string.txt_encoding_euc_kr)
+        TxtEncoding.WINDOWS_1252 -> stringResource(R.string.txt_encoding_windows_1252)
+    }
+
+    LiquidGlassSurface(
+        shape = RoundedCornerShape(50),
+        fallbackColor = backgroundColor,
+        contentScrimColor = backgroundColor.copy(alpha = if (selected) 0.86f else 0.52f),
+        transparencyOverride = if (selected) 0.12f else 0.34f,
+        enabled = enabled,
+        modifier = modifier.heightIn(min = 44.dp),
+        onClick = onClick,
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (selected) {
+                Icon(
+                    imageVector = Icons.Outlined.Check,
+                    contentDescription = null,
+                    tint = contentColor,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.width(5.dp))
+            }
+            Text(
+                text = label,
+                color = contentColor,
+                fontSize = 12.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                maxLines = 2,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
 private fun ReaderTopBar(
     title: String,
     onBack: () -> Unit,
@@ -2891,7 +3104,8 @@ private fun ReaderTopBar(
     isBookmarked: Boolean = false,
     onBookmarkToggle: () -> Unit = {},
     isTxtBook: Boolean = false,
-    onEditClick: () -> Unit = {}
+    onEditClick: () -> Unit = {},
+    onEncodingClick: () -> Unit = {}
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !LocalEInkMode.current
     val controlBackground = if (forceSolidButtons) {
@@ -2904,7 +3118,7 @@ private fun ReaderTopBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(if (isTxtBook) 200.dp else 140.dp)
+            .height(if (isTxtBook) 250.dp else 140.dp)
     ) {
         if (!isLiquidGlass) {
             Box(
@@ -2979,8 +3193,17 @@ private fun ReaderTopBar(
                             tint = contentColor,
                             backgroundColor = controlBackground,
                             contentScrimColor = glassContentScrimColor,
-                    forceSolid = forceSolidButtons,
+                            forceSolid = forceSolidButtons,
                             onClick = onEditClick
+                        )
+                        ReaderTopBarButton(
+                            icon = Icons.Default.TextFields,
+                            contentDescription = stringResource(R.string.reader_switch_encoding),
+                            tint = contentColor,
+                            backgroundColor = controlBackground,
+                            contentScrimColor = glassContentScrimColor,
+                            forceSolid = forceSolidButtons,
+                            onClick = onEncodingClick
                         )
                     }
             }
@@ -3714,7 +3937,7 @@ private fun TocSheet(
             contentModifier = Modifier
                 .fillMaxSize()
                 .navigationBarsPadding()
-                .padding(24.dp),
+                .padding(start = 24.dp, top = 24.dp, end = 24.dp),
             fallbackColor = AppColors.CardBg,
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
         ) {
@@ -3745,7 +3968,8 @@ private fun TocSheet(
             // 目录列表（支持层级：分组标题 + 缩进章节）
             LazyColumn(
                 state = tocListState,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(bottom = 24.dp)
             ) {
                 items(tocEntries.size) { index ->
                     val entry = tocEntries[index]
@@ -4648,7 +4872,7 @@ private fun NotesListSheet(
             contentModifier = Modifier
                 .fillMaxSize()
                 .navigationBarsPadding()
-                .padding(24.dp),
+                .padding(start = 24.dp, top = 24.dp, end = 24.dp),
             fallbackColor = LightCardBg,
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             backdrop = glassBackdrop
@@ -4693,7 +4917,10 @@ private fun NotesListSheet(
                         Text(stringResource(R.string.no_bookmarks_yet), fontSize = 14.sp, color = LightTextSecondary)
                     }
                 } else {
-                    LazyColumn(modifier = Modifier.weight(1f)) {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(bottom = 24.dp)
+                    ) {
                         items(bookmarks.size, key = { bookmarks[it].id }) { idx ->
                             val bm = bookmarks[idx]
                             BookmarkListItem(
@@ -4720,7 +4947,10 @@ private fun NotesListSheet(
                         )
                     }
                 } else {
-                    LazyColumn(modifier = Modifier.weight(1f)) {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(bottom = 24.dp)
+                    ) {
                         items(items.size, key = { items[it].id }) { idx ->
                             val item = items[idx]
                             HighlightNoteItem(

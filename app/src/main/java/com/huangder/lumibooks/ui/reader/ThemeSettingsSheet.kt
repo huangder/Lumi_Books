@@ -209,6 +209,7 @@ fun ThemeSettingsSheet(
     val isDark = LocalIsDarkTheme.current
     val sheetScrimAlpha = if (isLiquidGlass) 0.20f else 0.08f
     val sheetContentBackdrop = rememberLayerBackdrop()
+    val sheetShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
 
     Box(Modifier.fillMaxSize()) {
         // 遮罩
@@ -238,7 +239,7 @@ fun ThemeSettingsSheet(
                     )
                     .liquidGlassSheetSurface(
                         fallbackColor = LightCardBg,
-                        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+                        shape = sheetShape
                     )
             )
 
@@ -247,10 +248,12 @@ fun ThemeSettingsSheet(
                 Modifier
                     .fillMaxWidth()
                     .fillMaxHeight()
+                    // 内容层单独裁切，滚动内容不会越过弹层圆角或底部边界。
+                    .clip(sheetShape)
                     .padding(start = 14.dp, end = 14.dp, bottom = 12.dp)
                     .navigationBarsPadding()
-                    .padding(top = 24.dp, bottom = 24.dp)
                     .verticalScroll(rememberScrollState())
+                    .padding(top = 24.dp, bottom = 24.dp)
             ) {
             // 标题栏
             Row(

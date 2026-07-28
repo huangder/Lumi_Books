@@ -706,4 +706,21 @@
     <string name="label_e_ink_mode">電子墨水屏模式</string>
     <string name="e_ink_mode_description">使用高對比淺色介面，關閉動效、模糊和 Liquid Glass，翻頁改為即時切換。</string>
     <string name="e_ink_reader_fixed_theme_hint">電子墨水屏模式下固定使用淺色紙面、深色文字和即時翻頁。</string>
+
+    <string name="reader_switch_encoding">切換編碼</string>
+    <string name="txt_encoding_first_open_title">TXT 編碼提示</string>
+    <string name="txt_encoding_first_open_message">如果遇到亂碼，可點擊螢幕中央選擇切換編碼。</string>
+    <string name="txt_encoding_first_open_confirm">知道了</string>
+    <string name="txt_encoding_dialog_title">切換編碼</string>
+    <string name="txt_encoding_dialog_message">目前讀取編碼：%1$s</string>
+    <string name="txt_encoding_auto">自動偵測（目前：%1$s）</string>
+    <string name="txt_encoding_utf8">UTF-8</string>
+    <string name="txt_encoding_gb18030">GB18030（簡體中文）</string>
+    <string name="txt_encoding_big5">Big5（繁體中文）</string>
+    <string name="txt_encoding_utf16le">UTF-16 LE</string>
+    <string name="txt_encoding_utf16be">UTF-16 BE</string>
+    <string name="txt_encoding_shift_jis">Shift_JIS（日文）</string>
+    <string name="txt_encoding_euc_kr">EUC-KR（韓文）</string>
+    <string name="txt_encoding_windows_1252">Windows-1252（西文）</string>
+
 </resources>

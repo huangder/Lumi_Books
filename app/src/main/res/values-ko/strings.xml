@@ -706,4 +706,21 @@
     <string name="label_e_ink_mode">전자잉크 모드</string>
     <string name="e_ink_mode_description">전자잉크 화면에 맞게 고대비 밝은 UI를 사용하고 애니메이션, 블러, Liquid Glass를 끄는다.</string>
     <string name="e_ink_reader_fixed_theme_hint">전자잉크 모드에서는 밝은 종이 배경, 어두운 글자, 즉시 페이지 넘김을 사용합니다.</string>
+
+    <string name="reader_switch_encoding">인코딩 전환</string>
+    <string name="txt_encoding_first_open_title">TXT 인코딩 안내</string>
+    <string name="txt_encoding_first_open_message">글자가 깨져 보이면 화면 중앙을 탭한 뒤 인코딩 전환을 선택하세요.</string>
+    <string name="txt_encoding_first_open_confirm">확인</string>
+    <string name="txt_encoding_dialog_title">인코딩 전환</string>
+    <string name="txt_encoding_dialog_message">현재 디코딩: %1$s</string>
+    <string name="txt_encoding_auto">자동 감지 (현재: %1$s)</string>
+    <string name="txt_encoding_utf8">UTF-8</string>
+    <string name="txt_encoding_gb18030">GB18030 (중국어 간체)</string>
+    <string name="txt_encoding_big5">Big5 (중국어 번체)</string>
+    <string name="txt_encoding_utf16le">UTF-16 LE</string>
+    <string name="txt_encoding_utf16be">UTF-16 BE</string>
+    <string name="txt_encoding_shift_jis">Shift_JIS (일본어)</string>
+    <string name="txt_encoding_euc_kr">EUC-KR (한국어)</string>
+    <string name="txt_encoding_windows_1252">Windows-1252 (서유럽어)</string>
+
 </resources>

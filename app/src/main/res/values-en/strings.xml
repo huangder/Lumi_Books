@@ -735,4 +735,21 @@
     <string name="label_e_ink_mode">E-ink mode</string>
     <string name="e_ink_mode_description">Use a high-contrast light interface and disable animations, blur, and Liquid Glass for e-ink screens.</string>
     <string name="e_ink_reader_fixed_theme_hint">E-ink mode uses a light paper background, dark text, and instant page turns.</string>
+
+    <string name="reader_switch_encoding">Switch encoding</string>
+    <string name="txt_encoding_first_open_title">TXT encoding tip</string>
+    <string name="txt_encoding_first_open_message">If the text looks garbled, tap the center of the screen and choose Switch encoding.</string>
+    <string name="txt_encoding_first_open_confirm">Got it</string>
+    <string name="txt_encoding_dialog_title">Switch encoding</string>
+    <string name="txt_encoding_dialog_message">Current decoding: %1$s</string>
+    <string name="txt_encoding_auto">Auto detect (current: %1$s)</string>
+    <string name="txt_encoding_utf8">UTF-8</string>
+    <string name="txt_encoding_gb18030">GB18030 (Simplified Chinese)</string>
+    <string name="txt_encoding_big5">Big5 (Traditional Chinese)</string>
+    <string name="txt_encoding_utf16le">UTF-16 LE</string>
+    <string name="txt_encoding_utf16be">UTF-16 BE</string>
+    <string name="txt_encoding_shift_jis">Shift_JIS (Japanese)</string>
+    <string name="txt_encoding_euc_kr">EUC-KR (Korean)</string>
+    <string name="txt_encoding_windows_1252">Windows-1252 (Western)</string>
+
 </resources>

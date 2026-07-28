@@ -21,7 +21,10 @@
 [![Sponsor](https://img.shields.io/badge/%E2%9D%A4%EF%B8%8F-%E8%B5%9E%E5%8A%A9-ff385c)](https://huangder.top/sponsor.html)
 
 <p align="center">
-  <img src="docs/hero.png" alt="Lumi 阅读界面" width="80%">
+  <a href="LUMI使用手册.jpg" target="_blank">
+    <img src="LUMI使用手册.jpg" alt="Lumi 使用手册" width="80%">
+  </a>
+  <br><sub>👆 点击查看完整使用手册</sub>
 </p>
 
 ---

@@ -34,7 +34,10 @@ class TxtParser(private val context: Context? = null) : BookParser {
     private var sourceFile: File? = null
     private var sourceLocation: String = ""
     private var sourceLease: SeekableBookSource? = null
+    var selectedEncoding: TxtEncoding = TxtEncoding.AUTO
     private var encodingInfo = EncodingInfo(Charsets.UTF_8, 0L)
+    val activeCharsetName: String
+        get() = encodingInfo.charset.name()
     private var entries: List<TxtChapterEntry> = emptyList()
 
     private val contentCache = object : LinkedHashMap<Int, String>(6, 0.75f, true) {
@@ -77,7 +80,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
             encodingInfo = cached.first
             entries = cached.second
         } else {
-            encodingInfo = detectEncoding(file)
+            encodingInfo = resolveEncoding(file)
             val headings = findChapterHeadings(file, encodingInfo)
             entries = if (headings.size >= 2) {
                 buildHeadingEntries(file, headings, encodingInfo)
@@ -122,19 +125,19 @@ class TxtParser(private val context: Context? = null) : BookParser {
         if (!cacheFile.exists()) return null
         return try {
             val lines = cacheFile.readLines(Charsets.UTF_8)
-            if (lines.size < 5) return null
+            if (lines.size < 6) return null
             if (lines[0] != CACHE_VERSION) return null
             val fileSize = lines[1].toLongOrNull() ?: return null
             val lastModified = lines[2].toLongOrNull() ?: return null
-            // 校验文件未被修改
             if (fileSize != file.length() || lastModified != file.lastModified()) return null
+            if (lines[3] != selectedEncoding.storageValue) return null
 
-            val charsetName = lines[3]
-            val contentStart = lines[4].toLongOrNull() ?: return null
+            val charsetName = lines[4]
+            val contentStart = lines[5].toLongOrNull() ?: return null
             val charset = try { Charset.forName(charsetName) } catch (_: Exception) { return null }
             val encoding = EncodingInfo(charset, contentStart)
 
-            val chapterEntries = lines.drop(5).mapIndexedNotNull { i, line ->
+            val chapterEntries = lines.drop(6).mapIndexedNotNull { _, line ->
                 val parts = line.split("|", limit = 4)
                 if (parts.size != 4) return@mapIndexedNotNull null
                 val index = parts[0].toIntOrNull() ?: return@mapIndexedNotNull null
@@ -161,6 +164,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
             sb.appendLine(CACHE_VERSION)
             sb.appendLine(file.length())
             sb.appendLine(file.lastModified())
+            sb.appendLine(selectedEncoding.storageValue)
             sb.appendLine(encoding.charset.name())
             sb.appendLine(encoding.contentStart)
             for (entry in chapters) {
@@ -180,6 +184,25 @@ class TxtParser(private val context: Context? = null) : BookParser {
         val cacheKey = sourceLocation.ifBlank { file.absolutePath }
         val hash = cacheKey.hashCode().toString(16)
         return File(cacheDir, "txt_index/$hash.cache")
+    }
+
+    private fun resolveEncoding(file: File): EncodingInfo {
+        val requestedCharset = selectedEncoding.charsetOrNull() ?: return detectEncoding(file)
+        return EncodingInfo(requestedCharset, matchingBomLength(file, requestedCharset))
+    }
+
+    private fun matchingBomLength(file: File, charset: Charset): Long {
+        val prefix = ByteArray(3)
+        val size = FileInputStream(file).use { it.read(prefix) }
+        return when {
+            charset == Charsets.UTF_8 && size >= 3 &&
+                prefix[0] == 0xEF.toByte() && prefix[1] == 0xBB.toByte() && prefix[2] == 0xBF.toByte() -> 3L
+            charset == Charsets.UTF_16BE && size >= 2 &&
+                prefix[0] == 0xFE.toByte() && prefix[1] == 0xFF.toByte() -> 2L
+            charset == Charsets.UTF_16LE && size >= 2 &&
+                prefix[0] == 0xFF.toByte() && prefix[1] == 0xFE.toByte() -> 2L
+            else -> 0L
+        }
     }
 
     private fun detectEncoding(file: File): EncodingInfo {
@@ -202,6 +225,8 @@ class TxtParser(private val context: Context? = null) : BookParser {
         val sampleSize = (512 * 1024L).coerceAtMost(file.length()).toInt()
         val sample = ByteArray(sampleSize)
         val actualRead = FileInputStream(file).use { it.read(sample) }.coerceAtLeast(0)
+        detectUtf16WithoutBom(sample, actualRead)?.let { return EncodingInfo(it, 0L) }
+
         val utf8Decoder = Charsets.UTF_8.newDecoder()
             .onMalformedInput(CodingErrorAction.REPORT)
             .onUnmappableCharacter(CodingErrorAction.REPORT)
@@ -214,9 +239,37 @@ class TxtParser(private val context: Context? = null) : BookParser {
             false
         )
         return if (decodeResult.isError) {
-            EncodingInfo(Charset.forName("GBK"), 0L)
+            EncodingInfo(Charset.forName("GB18030"), 0L)
         } else {
             EncodingInfo(Charsets.UTF_8, 0L)
+        }
+    }
+
+    private fun detectUtf16WithoutBom(sample: ByteArray, length: Int): Charset? {
+        if (length < 4) return null
+        var evenZeros = 0
+        var oddZeros = 0
+        var leNewlines = 0
+        var beNewlines = 0
+        var index = 0
+        while (index + 1 < length) {
+            val first = sample[index].toInt() and 0xFF
+            val second = sample[index + 1].toInt() and 0xFF
+            if (first == 0) evenZeros++
+            if (second == 0) oddZeros++
+            if ((first == 0x0A || first == 0x0D) && second == 0) leNewlines++
+            if (first == 0 && (second == 0x0A || second == 0x0D)) beNewlines++
+            index += 2
+        }
+        val pairs = (length / 2).coerceAtLeast(1)
+        val leSignal = oddZeros.toFloat() / pairs >= 0.20f || (leNewlines >= 2 && beNewlines == 0)
+        val beSignal = evenZeros.toFloat() / pairs >= 0.20f || (beNewlines >= 2 && leNewlines == 0)
+        return when {
+            leSignal && oddZeros > evenZeros * 2 -> Charsets.UTF_16LE
+            beSignal && evenZeros > oddZeros * 2 -> Charsets.UTF_16BE
+            leNewlines >= 2 && beNewlines == 0 -> Charsets.UTF_16LE
+            beNewlines >= 2 && leNewlines == 0 -> Charsets.UTF_16BE
+            else -> null
         }
     }
 
@@ -751,7 +804,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
     }
 
     private companion object {
-        const val CACHE_VERSION = "TXT_INDEX_V2"  // V2: trim行首空格修复章节识别
+        const val CACHE_VERSION = "TXT_INDEX_V3"  // V3: cache is scoped to the selected encoding mode
         const val STREAM_BUFFER_SIZE = 64 * 1024
         const val HEADING_PREFIX_BYTES = 512
         const val TITLE_PREFIX_BYTES = 512
