@@ -1,6 +1,6 @@
-﻿{
+{
   "config_version": 1,
-  "generated_at": "2026-07-28T00:00:00Z",
+  "generated_at": "2026-07-28T00:00:00+08:00",
   "latest_version": "1.1.00",
   "latest_version_code": 5,
   "release_url": "https://github.com/huangder/Lumi_Books/releases/latest",
@@ -16,11 +16,11 @@
     "force_update_below_version_code": 0
   },
   "notice": {
-    "id": "notice-20260728-placeholder",
-    "enabled": false,
+    "id": "notice-20260728-test-001",
+    "enabled": true,
     "min_version_code": 1,
     "max_version_code": 5,
-    "title": "通知",
-    "message": "这里填写通知内容。"
+    "title": "测试通知",
+    "message": "这是一条测试通知，用于验证启动时远程通知弹窗是否正常显示。"
   }
 }
