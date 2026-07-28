@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -354,15 +355,33 @@ fun BookshelfScreen(
                         index = 0,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(
-                            text = stringResource(R.string.bookshelf_title),
-                            fontSize = AppType.Display,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = KaiTi,
-                            letterSpacing = (-0.02).sp,
-                            color = AppColors.TextPrimary,
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(horizontal = AppSpace.lg, vertical = AppSpace.md)
-                        )
+                        ) {
+                            Text(
+                                text = stringResource(R.string.bookshelf_title),
+                                fontSize = AppType.Display,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = KaiTi,
+                                letterSpacing = (-0.02).sp,
+                                color = AppColors.TextPrimary
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Icon(
+                                imageVector = Icons.Outlined.Sync,
+                                contentDescription = stringResource(R.string.webdav_sync_now),
+                                tint = AppColors.TextSecondary,
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) {
+                                        viewModel.syncWebdavNow()
+                                    }
+                            )
+                        }
                     }
 
                     BookshelfSearchLauncher(
@@ -475,6 +494,7 @@ fun BookshelfScreen(
                         expandedSearchBookId = null
                         isSearchActive = true
                     },
+                    onSyncClick = { viewModel.syncWebdavNow() },
                     onSearchBoundsChanged = { searchLauncherBounds = it },
                     modifier = Modifier
                         .zIndex(2f)
@@ -688,6 +708,7 @@ private fun LiquidBookshelfHeader(
     onEditToggle: () -> Unit,
     onDeleteSelected: () -> Unit,
     onSearchClick: () -> Unit,
+    onSyncClick: () -> Unit,
     onSearchBoundsChanged: (Rect) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -810,19 +831,35 @@ private fun LiquidBookshelfHeader(
             }
         }
 
-        Text(
-            text = stringResource(R.string.bookshelf_title),
-            fontSize = AppType.Display,
-            fontWeight = FontWeight.Bold,
-            fontFamily = KaiTi,
-            letterSpacing = (-0.02).sp,
-            color = AppColors.TextPrimary,
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(
                 start = AppSpace.lg,
                 top = 14.dp,
                 bottom = 10.dp
             )
-        )
+        ) {
+            Text(
+                text = stringResource(R.string.bookshelf_title),
+                fontSize = AppType.Display,
+                fontWeight = FontWeight.Bold,
+                fontFamily = KaiTi,
+                letterSpacing = (-0.02).sp,
+                color = AppColors.TextPrimary
+            )
+            Spacer(Modifier.width(6.dp))
+            Icon(
+                imageVector = Icons.Outlined.Sync,
+                contentDescription = stringResource(R.string.webdav_sync_now),
+                tint = AppColors.TextSecondary,
+                modifier = Modifier
+                    .size(20.dp)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onSyncClick() }
+            )
+        }
 
         BookshelfSearchLauncher(
             onClick = onSearchClick,

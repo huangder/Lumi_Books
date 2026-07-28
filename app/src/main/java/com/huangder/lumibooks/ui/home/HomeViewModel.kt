@@ -69,7 +69,8 @@ class HomeViewModel @Inject constructor(
     private val tagRepository: TagRepository,
     private val readingRepository: ReadingRepository,
     private val dataStoreManager: DataStoreManager,
-    private val application: Application
+    private val application: Application,
+    private val webdavSyncManager: com.huangder.lumibooks.data.sync.WebdavSyncManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -193,6 +194,12 @@ class HomeViewModel @Inject constructor(
             dataStoreManager.webdavSyncedBookIds.collectLatest { ids ->
                 _uiState.value = _uiState.value.copy(syncedBookIds = ids)
             }
+        }
+    }
+
+    fun syncWebdavNow() {
+        viewModelScope.launch {
+            webdavSyncManager.fullSync()
         }
     }
 
