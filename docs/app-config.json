@@ -1,18 +1,18 @@
 {
   "config_version": 1,
-  "generated_at": "2026-07-28T00:00:00+08:00",
-  "latest_version": "1.1.00",
-  "latest_version_code": 5,
+  "generated_at": "2026-07-28T00:05:00+08:00",
+  "latest_version": "1.1.01-test",
+  "latest_version_code": 6,
   "release_url": "https://github.com/huangder/Lumi_Books/releases/latest",
   "terms_version": 0,
   "privacy_version": 0,
   "update": {
-    "latest_version_code": 5,
-    "latest_version_name": "1.1.00",
+    "latest_version_code": 6,
+    "latest_version_name": "1.1.01-test",
     "download_url": "https://github.com/huangder/Lumi_Books/releases/latest",
-    "title": "发现新版本",
-    "message": "新版本已经发布，建议前往下载更新。",
-    "changelog": "暂无更新日志。",
+    "title": "测试更新弹窗",
+    "message": "这是一个测试更新弹窗，用于验证更新日志色块和滚动效果。",
+    "changelog": "测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试\n测试",
     "force_update_below_version_code": 0
   },
   "notice": {
