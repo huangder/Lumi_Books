@@ -16,12 +16,21 @@ android {
         applicationId = "com.huangder.lumibooks"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.6.00"
+        versionCode = 6
+        versionName = "1.6.00-fix"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
+        }
+    }
+
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+            isUniversalApk = true
         }
     }
 
@@ -123,3 +132,4 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
+

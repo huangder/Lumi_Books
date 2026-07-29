@@ -1,19 +1,19 @@
 {
   "config_version": 1,
   "generated_at": "2026-07-29T00:00:00+08:00",
-  "latest_version": "1.1.00",
-  "latest_version_code": 5,
-  "release_url": "https://github.com/huangder/Lumi_Books/releases/latest",
+  "latest_version": "1.6.00-fix",
+  "latest_version_code": 6,
+  "release_url": "https://github.com/huangder/Lumi_Books/releases/tag/1.6.00-fix",
   "terms_version": 0,
   "privacy_version": 0,
   "update": {
-    "latest_version_code": 5,
-    "latest_version_name": "1.1.00",
-    "download_url": "https://github.com/huangder/Lumi_Books/releases/latest",
-    "title": "发现新版本",
-    "message": "新版本已经发布，建议前往下载更新。",
-    "changelog": "暂无更新日志。",
-    "force_update_below_version_code": 0
+    "latest_version_code": 6,
+    "latest_version_name": "1.6.00-fix",
+    "download_url": "https://github.com/huangder/Lumi_Books/releases/tag/1.6.00-fix",
+    "title": "需要更新",
+    "message": "当前版本存在部分已知影响阅读的 bug，请更新到 1.6.00-fix 后继续使用。",
+    "changelog": "修复部分已知影响阅读的 bug。",
+    "force_update_below_version_code": 6
   },
   "notice": {
     "id": "notice-20260729-monthly-release-manual-v2",
