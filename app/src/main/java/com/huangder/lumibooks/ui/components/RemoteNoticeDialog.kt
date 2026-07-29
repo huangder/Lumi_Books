@@ -13,11 +13,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
@@ -29,10 +27,9 @@ fun RemoteNoticeDialog(
     onConfirm: () -> Unit
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
-    val annotatedMessage = rememberBoldMarkdown(message)
 
     LiquidGlassAlertDialog(
-        onDismissRequest = onConfirm,
+        onDismissRequest = {},
         title = {
             Text(
                 text = title,
@@ -45,7 +42,7 @@ fun RemoteNoticeDialog(
             Column(modifier = Modifier.fillMaxWidth()) {
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = annotatedMessage,
+                    text = message,
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(max = 260.dp)
@@ -68,31 +65,10 @@ fun RemoteNoticeDialog(
                 onClick = onConfirm
             )
         },
+        properties = DialogProperties(
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false
+        ),
         contentScrimColor = AppColors.CardBg.copy(alpha = if (isLiquidGlass) 0.74f else 0.92f)
     )
-}
-
-
-@Composable
-private fun rememberBoldMarkdown(text: String) = androidx.compose.runtime.remember(text) {
-    buildAnnotatedString {
-        var index = 0
-        while (index < text.length) {
-            val start = text.indexOf("**", startIndex = index)
-            if (start < 0) {
-                append(text.substring(index))
-                break
-            }
-            append(text.substring(index, start))
-            val end = text.indexOf("**", startIndex = start + 2)
-            if (end < 0) {
-                append(text.substring(start))
-                break
-            }
-            withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = AppColors.TextPrimary)) {
-                append(text.substring(start + 2, end))
-            }
-            index = end + 2
-        }
-    }
 }

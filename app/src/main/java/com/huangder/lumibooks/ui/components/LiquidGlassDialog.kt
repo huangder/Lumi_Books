@@ -69,6 +69,7 @@ internal data class LiquidGlassDialogSpec(
     val backgroundScrimColor: Color,
     val backgroundBlurRadius: androidx.compose.ui.unit.Dp,
     val transparencyOverride: Float?,
+    val properties: DialogProperties,
     val content: @Composable BoxScope.() -> Unit
 )
 
@@ -190,7 +191,9 @@ fun LiquidGlassDialogHost(
                 modifier = Modifier.fillMaxSize()
             ) {
                 val spec = currentSpec ?: return@AnimatedVisibility
-                BackHandler(enabled = state.visible) { spec.onDismissRequest() }
+                BackHandler(enabled = state.visible) {
+                    if (spec.properties.dismissOnBackPress) spec.onDismissRequest()
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -202,9 +205,10 @@ fun LiquidGlassDialogHost(
                         .clickable(
                             enabled = state.visible,
                             indication = null,
-                            interactionSource = remember { MutableInteractionSource() },
-                            onClick = spec.onDismissRequest
-                        )
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) {
+                            if (spec.properties.dismissOnClickOutside) spec.onDismissRequest()
+                        }
                 ) {
                     val containerEnter = if (spec.alignment == Alignment.BottomCenter) {
                         scaleIn(
@@ -335,7 +339,8 @@ fun LiquidGlassDialog(
             contentScrimColor,
             backgroundScrimColor,
             backgroundBlurRadius,
-            transparencyOverride
+            transparencyOverride,
+            properties
         ) {
             host.show(
                 LiquidGlassDialogSpec(
@@ -349,6 +354,7 @@ fun LiquidGlassDialog(
                     backgroundScrimColor = backgroundScrimColor,
                     backgroundBlurRadius = backgroundBlurRadius,
                     transparencyOverride = transparencyOverride,
+                    properties = properties,
                     content = { latestContent() }
                 )
             )

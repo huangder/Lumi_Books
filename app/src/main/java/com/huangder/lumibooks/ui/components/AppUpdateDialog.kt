@@ -42,7 +42,7 @@ fun AppUpdateDialog(
     val displayChangelog = changelog.ifBlank { "\u6682\u65e0\u66f4\u65b0\u65e5\u5fd7\u3002" }
 
     LiquidGlassAlertDialog(
-        onDismissRequest = { if (!force) onLater() },
+        onDismissRequest = {},
         title = {
             Text(
                 text = updateTitle.ifBlank {
@@ -109,8 +109,8 @@ fun AppUpdateDialog(
             }
         },
         properties = DialogProperties(
-            dismissOnBackPress = !force,
-            dismissOnClickOutside = !force
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false
         ),
         contentScrimColor = AppColors.CardBg.copy(alpha = if (isLiquidGlass) 0.74f else 0.92f)
     )
