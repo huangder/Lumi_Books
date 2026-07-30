@@ -4,6 +4,9 @@
     <string name="label_entrance_animations">Motion Pro (Beta)</string>
     <string name="entrance_animations_description">Adds element animations to selected pages\nand may affect performance</string>
     <string name="label_app_theme">Theme</string>
+    <string name="label_global_font">Global font</string>
+    <string name="global_font_default">Default font</string>
+    <string name="global_font_system">System font</string>
     <string name="app_theme_lumi">Lumi Pink</string>
     <string name="app_theme_material3">Material 3</string>
     <string name="app_theme_liquid_glass">Liquid Glass</string>
@@ -298,6 +301,7 @@
     <string name="reader_bookmark">Bookmark</string>
     <string name="reader_notes">Notes</string>
     <string name="reader_search">Search</string>
+    <string name="epub_book_layout_search_unsupported">Not supported in Book Layout mode yet</string>
     <string name="reader_theme">Theme</string>
     <string name="reader_edit">Edit</string>
     <string name="txt_editor_discard_title">Discard Changes?</string>
@@ -694,8 +698,8 @@
     <string name="epub_render_mode">EPUB layout</string>
     <string name="epub_book_layout">Book layout</string>
     <string name="epub_reader_layout">Reader layout</string>
-    <string name="epub_book_layout_hint">Preserve the publisher HTML, CSS, fonts, and document structure</string>
-    <string name="epub_reader_layout_hint">Use the reader unified typography, spacing, and margins</string>
+    <string name="epub_book_layout_hint">Preserve the publisher HTML, CSS, fonts, and document structure. May use more processing resources.</string>
+    <string name="epub_reader_layout_hint">Use the reader unified typography, spacing, and margins. Smoother and faster to load.</string>
     <string name="reader_external_link_title">Open external link?</string>
     <string name="reader_external_link_message">This EPUB wants to open an external app or website:\n%1$s</string>
     <string name="reader_external_link_open">Open</string>
@@ -752,4 +756,27 @@
     <string name="txt_encoding_euc_kr">EUC-KR (Korean)</string>
     <string name="txt_encoding_windows_1252">Windows-1252 (Western)</string>
 
+    <string name="reader_writing_mode">Text direction</string>
+    <string name="reader_writing_horizontal">Horizontal</string>
+    <string name="reader_writing_vertical">Vertical</string>
+    <string name="txt_editor_loading">Loading...</string>
+    <string name="txt_editor_placeholder">Enter text...</string>
+    <string name="txt_editor_previous_chapter">Previous chapter</string>
+    <string name="txt_editor_next_chapter">Next chapter</string>
+    <string name="txt_editor_search">Search</string>
+    <string name="txt_editor_replace">Replace</string>
+    <string name="txt_editor_search_placeholder">Find text</string>
+    <string name="txt_editor_replace_placeholder">Replace with</string>
+    <string name="txt_editor_match_case">Match case</string>
+    <string name="txt_editor_scope_chapter">Chapter</string>
+    <string name="txt_editor_scope_book">Whole book</string>
+    <string name="txt_editor_no_matches">No matches</string>
+    <string name="txt_editor_match_count">%1$d / %2$d</string>
+    <string name="txt_editor_previous_match">Previous match</string>
+    <string name="txt_editor_next_match">Next match</string>
+    <string name="txt_editor_replace_current">Replace</string>
+    <string name="txt_editor_replace_all">Replace all</string>
+    <string name="txt_editor_replace_all_title">Replace throughout book</string>
+    <string name="txt_editor_replace_all_message">Replace %1$d matches throughout this book? Changes are written when you save.</string>
+    <string name="txt_editor_replaced_count">Replaced %1$d matches</string>
 </resources>

@@ -108,6 +108,7 @@ import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
+import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.util.FileUtils
 import kotlinx.coroutines.delay
 
@@ -639,6 +640,41 @@ private fun BookshelfSearchResultCard(
                         modifier = Modifier.padding(6.dp)
                     )
                 }
+
+                val readingProgress = book.readingProgress
+                    .takeIf { it.isFinite() }
+                    ?.coerceIn(0f, 1f)
+                    ?: 0f
+                if (readingProgress > 0f) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 5.dp, bottom = 6.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color.Black.copy(alpha = 0.62f))
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "${(readingProgress * 100).toInt()}%",
+                            color = Color.White,
+                            fontSize = 9.sp
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .background(Color.Black.copy(alpha = 0.15f))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(readingProgress)
+                                .height(3.dp)
+                                .background(AppColors.Accent)
+                        )
+                    }
+                }
             }
 
             Spacer(Modifier.width(16.dp))
@@ -652,7 +688,7 @@ private fun BookshelfSearchResultCard(
                     color = AppColors.TextPrimary,
                     fontSize = AppType.Section,
                     fontWeight = FontWeight.SemiBold,
-                    fontFamily = KaiTi,
+                    fontFamily = resolveAppFontFamily(KaiTi),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )

@@ -2,6 +2,7 @@ package com.huangder.lumibooks.ui.navigation
 
 import android.net.Uri
 import android.os.SystemClock
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -42,6 +43,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navArgument
 import kotlinx.coroutines.delay
+import com.huangder.lumibooks.R
 import com.huangder.lumibooks.ui.bookshelf.BookshelfScreen
 import com.huangder.lumibooks.ui.components.BookTransitionOverlay
 import com.huangder.lumibooks.ui.components.FloatingTabBar
@@ -69,6 +71,7 @@ import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
+import com.huangder.lumibooks.ui.theme.LocalGlobalFontMode
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassTransparency
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassHdrHighlightEnabled
 import com.huangder.lumibooks.ui.theme.LocalUseMaterial3Theme
@@ -102,6 +105,7 @@ private fun ReaderRouter(
     val liquidGlassHdrHighlightEnabled = LocalLiquidGlassHdrHighlightEnabled.current
     val useMaterial3Theme = LocalUseMaterial3Theme.current
     val eInkMode = LocalEInkMode.current
+    val globalFontMode = LocalGlobalFontMode.current
 
     // 正文颜色由阅读主题控制，弹层和应用级控件继承全局主题。
     EBookReaderTheme(
@@ -110,7 +114,8 @@ private fun ReaderRouter(
         appTheme = appTheme,
         liquidGlassTransparency = liquidGlassTransparency,
         liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled && !eInkMode,
-        eInkMode = eInkMode
+        eInkMode = eInkMode,
+        globalFontMode = globalFontMode
     ) {
         CompositionLocalProvider(LocalReaderColors provides ReaderColors.Light) {
             if (isPdf) {
@@ -624,10 +629,26 @@ fun MainNavGraph(
                     showImportActions = false
                 },
                 onSelectFiles = {
-                    importLauncher.launch(arrayOf("*/*"))
+                    runCatching {
+                        importLauncher.launch(arrayOf("*/*"))
+                    }.onFailure { error ->
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.import_failed, error.message.orEmpty()),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
                 },
                 onAuthorizeDirectory = {
-                    directoryLauncher.launch(null)
+                    runCatching {
+                        directoryLauncher.launch(null)
+                    }.onFailure { error ->
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.import_failed, error.message.orEmpty()),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
                 },
                 onRefreshDirectories = {
                     val requestGeneration = importPreparationGeneration + 1

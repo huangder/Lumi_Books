@@ -46,55 +46,61 @@ class BookNotesExportBuilder @Inject constructor(
         bookmarks: List<Bookmark>,
         notes: List<Note>
     ): BookNotesExportDocument = withContext(Dispatchers.IO) {
+        var parserToClose: BookParser? = null
         val parsed = if (book.format == BookFormat.PDF) {
             null
         } else {
             runCatching {
                 val parser = BookParserFactory.createParser(book.format, context)
+                parserToClose = parser
                 parser to parser.parse(book.filePath)
             }.getOrNull()
         }
-        val chapterTitles = parsed?.second?.chapters
-            ?.associate { it.index to it.title }
-            .orEmpty()
-        val exportChapterTitles = buildMap {
-            putAll(chapterTitles)
-            if (book.format == BookFormat.PDF) {
-                (bookmarks.map { it.chapterIndex } + notes.map { it.chapterIndex })
-                    .distinct()
-                    .forEach { pageIndex -> put(pageIndex, "第${pageIndex + 1}页") }
+        try {
+            val chapterTitles = parsed?.second?.chapters
+                ?.associate { it.index to it.title }
+                .orEmpty()
+            val exportChapterTitles = buildMap {
+                putAll(chapterTitles)
+                if (book.format == BookFormat.PDF) {
+                    (bookmarks.map { it.chapterIndex } + notes.map { it.chapterIndex })
+                        .distinct()
+                        .forEach { pageIndex -> put(pageIndex, "第${pageIndex + 1}页") }
+                }
             }
-        }
-        val pageTexts = when (book.format) {
-            BookFormat.PDF -> extractPdfBookmarkPages(book, bookmarks)
-            BookFormat.EPUB, BookFormat.TXT -> parsed?.first?.let { parser ->
-                layoutBookmarkPages(parser, book.format, chapterTitles, bookmarks)
-            }.orEmpty()
-        }
-        val exportBookmarks = bookmarks.map { bookmark ->
-            BookmarkExportItem(
-                bookmark = bookmark,
-                chapterTitle = exportChapterTitles[bookmark.chapterIndex]
-                    ?.trim()
-                    ?.takeIf(String::isNotEmpty)
-                    ?: if (book.format == BookFormat.PDF) {
-                        "第${bookmark.chapterIndex + 1}页"
-                    } else {
-                        "第${bookmark.chapterIndex + 1}章"
-                    },
-                pageText = pageTexts[bookmark.id]
-            )
-        }
+            val pageTexts = when (book.format) {
+                BookFormat.PDF -> extractPdfBookmarkPages(book, bookmarks)
+                BookFormat.EPUB, BookFormat.TXT -> parsed?.first?.let { parser ->
+                    layoutBookmarkPages(parser, book.format, chapterTitles, bookmarks)
+                }.orEmpty()
+            }
+            val exportBookmarks = bookmarks.map { bookmark ->
+                BookmarkExportItem(
+                    bookmark = bookmark,
+                    chapterTitle = exportChapterTitles[bookmark.chapterIndex]
+                        ?.trim()
+                        ?.takeIf(String::isNotEmpty)
+                        ?: if (book.format == BookFormat.PDF) {
+                            "第${bookmark.chapterIndex + 1}页"
+                        } else {
+                            "第${bookmark.chapterIndex + 1}章"
+                        },
+                    pageText = pageTexts[bookmark.id]
+                )
+            }
 
-        BookNotesExportDocument(
-            fileName = BookNotesExportFormatter.suggestedFileName(book.title),
-            text = BookNotesExportFormatter.format(
-                bookTitle = book.title,
-                notes = notes,
-                bookmarks = exportBookmarks,
-                chapterTitles = exportChapterTitles
+            BookNotesExportDocument(
+                fileName = BookNotesExportFormatter.suggestedFileName(book.title),
+                text = BookNotesExportFormatter.format(
+                    bookTitle = book.title,
+                    notes = notes,
+                    bookmarks = exportBookmarks,
+                    chapterTitles = exportChapterTitles
+                )
             )
-        )
+        } finally {
+            runCatching { parserToClose?.close() }
+        }
     }
 
     private suspend fun extractPdfBookmarkPages(

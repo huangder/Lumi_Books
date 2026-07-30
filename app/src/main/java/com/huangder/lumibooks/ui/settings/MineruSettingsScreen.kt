@@ -2,6 +2,7 @@ package com.huangder.lumibooks.ui.settings
 
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -227,18 +228,26 @@ fun MineruSettingsDetail(viewModel: SettingsViewModel) {
         MineruManualSection(
             importing = uiState.mineruManualImporting,
             onOpenWebsite = {
-                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(MineruConfig.MANUAL_WEB_URL)))
+                runCatching {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(MineruConfig.MANUAL_WEB_URL)))
+                }.onFailure {
+                    Toast.makeText(context, R.string.network_error, Toast.LENGTH_LONG).show()
+                }
             },
             onImportResult = {
-                manualResultPicker.launch(
-                    arrayOf(
-                        "application/zip",
-                        "application/x-zip-compressed",
-                        "text/markdown",
-                        "text/plain",
-                        "application/octet-stream"
+                runCatching {
+                    manualResultPicker.launch(
+                        arrayOf(
+                            "application/zip",
+                            "application/x-zip-compressed",
+                            "text/markdown",
+                            "text/plain",
+                            "application/octet-stream"
+                        )
                     )
-                )
+                }.onFailure {
+                    Toast.makeText(context, R.string.mineru_manual_import_failed, Toast.LENGTH_LONG).show()
+                }
             }
         )
 
@@ -431,7 +440,13 @@ private fun MineruExternalLink(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppRadius.sm))
-            .clickable { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+            .clickable {
+                runCatching {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                }.onFailure {
+                    Toast.makeText(context, R.string.network_error, Toast.LENGTH_LONG).show()
+                }
+            }
             .padding(vertical = AppSpace.sm),
         verticalAlignment = Alignment.CenterVertically
     ) {

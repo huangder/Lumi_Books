@@ -2,6 +2,7 @@ package com.huangder.lumibooks.ui.settings
 
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -115,6 +116,7 @@ import com.huangder.lumibooks.ui.components.LiquidGlassMenuItem
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuSpec
 import com.huangder.lumibooks.ui.components.LocalLiquidGlassMenuHost
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 
@@ -161,7 +163,7 @@ fun DetailPage(title: String, onBack: () -> Unit, content: @Composable () -> Uni
                     settingsBackButton = true
                 )
                 Spacer(Modifier.weight(1f))
-                Text(title, fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = FangSong, color = AppColors.TextPrimary)
+                Text(title, fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = resolveAppFontFamily(FangSong), color = AppColors.TextPrimary)
                 Spacer(Modifier.weight(1f))
                 Spacer(Modifier.size(48.dp))
             }
@@ -217,6 +219,10 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
     } else {
         listOf("liquid_glass" to stringResource(R.string.app_theme_liquid_glass))
     }
+    val globalFontOptions = listOf(
+        "default" to stringResource(R.string.global_font_default),
+        "system" to stringResource(R.string.global_font_system)
+    )
     val darkModeOptions = if (uiState.eInkModeEnabled) {
         listOf("light" to stringResource(R.string.dark_mode_light))
     } else {
@@ -244,6 +250,14 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
             options = appThemeOptions,
             selected = if (uiState.eInkModeEnabled && uiState.appTheme == "liquid_glass") "lumi" else uiState.appTheme,
             onSelect = viewModel::saveAppTheme
+        )
+        SettingsDivider()
+        DropdownSettingRow(
+            icon = Icons.Outlined.FontDownload,
+            label = stringResource(R.string.label_global_font),
+            options = globalFontOptions,
+            selected = uiState.globalFontMode,
+            onSelect = viewModel::saveGlobalFontMode
         )
     }
 
@@ -751,6 +765,9 @@ fun BackupRestoreDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
+    val genericErrorText = stringResource(R.string.error)
+    val backupPickerFailureText = stringResource(R.string.backup_failed, genericErrorText)
+    val restorePickerFailureText = stringResource(R.string.restore_failed, genericErrorText)
 
     // 备份：创建文件
     val backupLauncher = rememberLauncherForActivityResult(
@@ -778,12 +795,20 @@ fun BackupRestoreDetail(viewModel: SettingsViewModel) {
         // 备份
         ActionRow(Icons.Outlined.Upload, "备份数据") {
             val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date())
-            backupLauncher.launch("lumi_backup_$timestamp.zip")
+            runCatching {
+                backupLauncher.launch("lumi_backup_$timestamp.zip")
+            }.onFailure {
+                Toast.makeText(context, backupPickerFailureText, Toast.LENGTH_LONG).show()
+            }
         }
         SettingsDivider()
         // 恢复
         ActionRow(Icons.Outlined.Download, "恢复数据") {
-            restoreLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
+            runCatching {
+                restoreLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
+            }.onFailure {
+                Toast.makeText(context, restorePickerFailureText, Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -875,9 +900,15 @@ fun AboutDetail(viewModel: SettingsViewModel) {
             changelog = update.changelog,
             force = update.isForceUpdate,
             onDownload = {
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(update.releaseUrl))
-                context.startActivity(intent)
-                if (!update.isForceUpdate) viewModel.dismissAppUpdateDialog()
+                val opened = runCatching {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(update.releaseUrl))
+                    context.startActivity(intent)
+                }.isSuccess
+                if (!opened) {
+                    Toast.makeText(context, R.string.network_error, Toast.LENGTH_LONG).show()
+                } else if (!update.isForceUpdate) {
+                    viewModel.dismissAppUpdateDialog()
+                }
             },
             onLater = { if (!update.isForceUpdate) viewModel.dismissAppUpdateDialog() },
             onIgnoreVersion = if (update.isForceUpdate) null else viewModel::ignoreCurrentAppUpdate

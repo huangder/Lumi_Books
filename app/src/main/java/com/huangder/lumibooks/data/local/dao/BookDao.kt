@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Upsert
 import androidx.room.Update
 import com.huangder.lumibooks.data.local.entity.BookEntity
@@ -28,6 +29,30 @@ interface BookDao {
 
     @Delete
     suspend fun deleteBook(book: BookEntity)
+
+    @Query("DELETE FROM bookmarks WHERE bookId = :bookId")
+    suspend fun deleteBookmarksByBookId(bookId: String)
+
+    @Query("DELETE FROM notes WHERE bookId = :bookId")
+    suspend fun deleteNotesByBookId(bookId: String)
+
+    @Query("DELETE FROM reading_records WHERE bookId = :bookId")
+    suspend fun deleteReadingRecordsByBookId(bookId: String)
+
+    @Query("DELETE FROM book_tag_cross_refs WHERE bookId = :bookId")
+    suspend fun deleteTagLinksByBookId(bookId: String)
+
+    @Query("DELETE FROM books WHERE id = :bookId")
+    suspend fun deleteBookById(bookId: String)
+
+    @Transaction
+    suspend fun deleteBookWithRelatedData(bookId: String) {
+        deleteBookmarksByBookId(bookId)
+        deleteNotesByBookId(bookId)
+        deleteReadingRecordsByBookId(bookId)
+        deleteTagLinksByBookId(bookId)
+        deleteBookById(bookId)
+    }
 
     @Query("UPDATE books SET lastReadTime = :timestamp WHERE id = :bookId")
     suspend fun updateLastReadTime(bookId: String, timestamp: Long)

@@ -38,7 +38,7 @@ class BookRepositoryImpl @Inject constructor(
     }
 
     override suspend fun deleteBook(book: Book) {
-        bookDao.deleteBook(book.toEntity())
+        bookDao.deleteBookWithRelatedData(book.id)
     }
 
     override suspend fun updateLastReadTime(bookId: String, timestamp: Long) {

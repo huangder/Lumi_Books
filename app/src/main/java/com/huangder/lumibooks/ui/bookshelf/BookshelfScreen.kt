@@ -63,6 +63,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -115,12 +116,13 @@ import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
+import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.R
-import com.huangder.lumibooks.util.FileUtils
 import androidx.compose.ui.res.stringResource
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -179,6 +181,13 @@ fun BookshelfScreen(
         }
     }
 
+    LaunchedEffect(uiState.error) {
+        uiState.error?.let {
+            android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show()
+            viewModel.clearError()
+        }
+    }
+
     LaunchedEffect(uiState.tags) {
         val activeTagFilter = selectedFilter as? BookshelfFilter.Tag
         if (activeTagFilter != null && uiState.tags.none { it.id == activeTagFilter.tagId }) {
@@ -196,6 +205,11 @@ fun BookshelfScreen(
     LaunchedEffect(deletingBookIds) {
         if (deletingBookIds.isNotEmpty()) {
             kotlinx.coroutines.delay(350)
+            val deletesContextMenuTarget = contextMenuState.selectedBook?.id in deletingBookIds
+            if (deletesContextMenuTarget && contextMenuState.phase != ContextMenuPhase.Idle) {
+                snapshotFlow { contextMenuState.phase }
+                    .first { it == ContextMenuPhase.Idle }
+            }
             viewModel.deleteBooks(booksPendingDeletion)
             deletingBookIds = emptySet()
             booksPendingDeletion = emptyList()
@@ -218,6 +232,7 @@ fun BookshelfScreen(
 
     // 自定义封面：记录正在操作的书本
     var coverTargetBook by remember { mutableStateOf<Book?>(null) }
+    var pendingContextMenuAction by remember { mutableStateOf<PendingBookMenuAction?>(null) }
 
     // 删除动画：记录正在删除的书本 ID
     var tagTargetBook by remember { mutableStateOf<Book?>(null) }
@@ -227,14 +242,66 @@ fun BookshelfScreen(
     val coverPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        uri?.let {
-            val book = coverTargetBook ?: return@let
-            val newCoverPath = FileUtils.copyCoverImage(context, it, book.id)
-            if (newCoverPath != null) {
-                viewModel.updateBook(book.copy(coverPath = newCoverPath))
-            }
-            coverTargetBook = null
+        val book = coverTargetBook
+        coverTargetBook = null
+        if (uri != null && book != null) {
+            viewModel.updateCustomCover(book, uri)
         }
+    }
+
+    val launchCoverPicker: (Book) -> Unit = { book ->
+        coverTargetBook = book
+        runCatching { coverPickerLauncher.launch("image/*") }
+            .onFailure { error ->
+                coverTargetBook = null
+                android.widget.Toast.makeText(
+                    context,
+                    error.message ?: "Unable to open the image picker",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            }
+    }
+
+    val openBookNotes: (Book) -> Unit = { book ->
+        runCatching {
+            val intent = android.content.Intent(context, BookNotesActivity::class.java)
+                .putExtra("bookId", book.id)
+            context.startActivity(intent)
+        }.onFailure { error ->
+            android.widget.Toast.makeText(
+                context,
+                error.message ?: "Unable to open bookmarks and notes",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    LaunchedEffect(pendingContextMenuAction) {
+        val pendingAction = pendingContextMenuAction ?: return@LaunchedEffect
+        if (contextMenuState.phase != ContextMenuPhase.Idle) {
+            snapshotFlow { contextMenuState.phase }
+                .first { it == ContextMenuPhase.Idle }
+        }
+
+        val currentBook = uiState.books.firstOrNull { it.id == pendingAction.book.id }
+        if (currentBook != null) {
+            when (pendingAction.type) {
+                PendingBookMenuActionType.Favorite ->
+                    viewModel.updateBook(currentBook.copy(isFavorite = !currentBook.isFavorite))
+                PendingBookMenuActionType.CustomCover -> launchCoverPicker(currentBook)
+                PendingBookMenuActionType.RemoveCustomCover -> viewModel.removeCustomCover(currentBook)
+                PendingBookMenuActionType.BookmarksNotes -> openBookNotes(currentBook)
+                PendingBookMenuActionType.Tags -> {
+                    tagTargetBook = currentBook
+                    showTagSheet = true
+                }
+                PendingBookMenuActionType.EditInfo -> {
+                    editingBook = currentBook
+                    showEditDialog = true
+                }
+            }
+        }
+        pendingContextMenuAction = null
     }
 
     val tagIdsByBook = remember(uiState.bookTagLinks) {
@@ -286,13 +353,11 @@ fun BookshelfScreen(
     }
     val chooseCoverFromList: (Book) -> Unit = { book ->
         expandedListBookId = null
-        coverTargetBook = book
-        coverPickerLauncher.launch("image/*")
+        launchCoverPicker(book)
     }
     val removeCoverFromList: (Book) -> Unit = { book ->
         expandedListBookId = null
-        FileUtils.deleteCustomCover(context, book.id)
-        viewModel.reExtractCover(context, book)
+        viewModel.removeCustomCover(book)
     }
     val editTagsFromList: (Book) -> Unit = { book ->
         expandedListBookId = null
@@ -301,9 +366,7 @@ fun BookshelfScreen(
     }
     val openNotesFromList: (Book) -> Unit = { book ->
         expandedListBookId = null
-        val intent = android.content.Intent(context, BookNotesActivity::class.java)
-        intent.putExtra("bookId", book.id)
-        context.startActivity(intent)
+        openBookNotes(book)
     }
 
     val searchBlurProgress by animateFloatAsState(
@@ -581,13 +644,11 @@ fun BookshelfScreen(
                 },
                 onCustomCover = { book ->
                     expandedSearchBookId = null
-                    coverTargetBook = book
-                    coverPickerLauncher.launch("image/*")
+                    launchCoverPicker(book)
                 },
                 onRemoveCustomCover = { book ->
                     expandedSearchBookId = null
-                    FileUtils.deleteCustomCover(context, book.id)
-                    viewModel.reExtractCover(context, book)
+                    viewModel.removeCustomCover(book)
                 },
                 onTags = { book ->
                     expandedSearchBookId = null
@@ -596,9 +657,7 @@ fun BookshelfScreen(
                 },
                 onBookmarksNotes = { book ->
                     expandedSearchBookId = null
-                    val intent = android.content.Intent(context, BookNotesActivity::class.java)
-                    intent.putExtra("bookId", book.id)
-                    context.startActivity(intent)
+                    openBookNotes(book)
                 },
                 launcherBounds = searchLauncherBounds,
                 modifier = Modifier.zIndex(2.6f)
@@ -611,56 +670,63 @@ fun BookshelfScreen(
                 booksPendingDeletion = listOf(book)
                 deletingBookIds = setOf(book.id)
             },
-            onFavorite = { book -> viewModel.updateBook(book.copy(isFavorite = !book.isFavorite)) },
+            onFavorite = { book ->
+                pendingContextMenuAction = PendingBookMenuAction(PendingBookMenuActionType.Favorite, book)
+            },
             onCustomCover = { book ->
-                coverTargetBook = book
-                coverPickerLauncher.launch("image/*")
+                pendingContextMenuAction = PendingBookMenuAction(PendingBookMenuActionType.CustomCover, book)
             },
             onRemoveCustomCover = { book ->
-                FileUtils.deleteCustomCover(context, book.id)
-                viewModel.reExtractCover(context, book)
+                pendingContextMenuAction = PendingBookMenuAction(PendingBookMenuActionType.RemoveCustomCover, book)
             },
             onBookmarksNotes = { book ->
-                val intent = android.content.Intent(context, BookNotesActivity::class.java)
-                intent.putExtra("bookId", book.id)
-                context.startActivity(intent)
+                pendingContextMenuAction = PendingBookMenuAction(PendingBookMenuActionType.BookmarksNotes, book)
             },
             onTags = { book ->
-                tagTargetBook = book
-                showTagSheet = true
+                pendingContextMenuAction = PendingBookMenuAction(PendingBookMenuActionType.Tags, book)
             },
             onEditInfo = { book ->
-                editingBook = book
-                showEditDialog = true
+                pendingContextMenuAction = PendingBookMenuAction(PendingBookMenuActionType.EditInfo, book)
             }
         )
 
         // ── 编辑书本信息对话框（卡片风格） ──
-        if (showEditDialog && editingBook != null) {
+        editingBook?.takeIf { showEditDialog }?.let { currentEditingBook ->
             com.huangder.lumibooks.ui.components.LiquidGlassDialog(
-                onDismissRequest = { showEditDialog = false },
+                onDismissRequest = {
+                    showEditDialog = false
+                    editingBook = null
+                },
                 modifier = Modifier.imePadding(),
                 backgroundScrimColor = Color.Transparent,
                 backgroundBlurRadius = 18.dp,
                 properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
             ) {
                 com.huangder.lumibooks.ui.components.EditInputDialog(
-                            title = stringResource(R.string.edit_book_info),
-                            fields = listOf(
-                                Triple(stringResource(R.string.book_title_label), "显示原始书名", editingBook!!.title),
-                                Triple(stringResource(R.string.book_author_label), "显示原始作者", editingBook!!.author)
-                            ),
-                            onBack = { showEditDialog = false },
-                            onConfirm = { values ->
-                                viewModel.updateBook(editingBook!!.copy(title = values[0], author = values[1]))
-                                showEditDialog = false
-                            }
+                    title = stringResource(R.string.edit_book_info),
+                    fields = listOf(
+                        Triple(stringResource(R.string.book_title_label), "显示原始书名", currentEditingBook.title),
+                        Triple(stringResource(R.string.book_author_label), "显示原始作者", currentEditingBook.author)
+                    ),
+                    onBack = {
+                        showEditDialog = false
+                        editingBook = null
+                    },
+                    onConfirm = { values ->
+                        viewModel.updateBook(
+                            currentEditingBook.copy(
+                                title = values.getOrElse(0) { currentEditingBook.title },
+                                author = values.getOrElse(1) { currentEditingBook.author }
+                            )
                         )
+                        showEditDialog = false
+                        editingBook = null
+                    }
+                )
             }
         }
 
-        if (showTagSheet && tagTargetBook != null) {
-            val targetBook = tagTargetBook!!
+        tagTargetBook?.takeIf { showTagSheet }?.let { targetBook ->
             BookTagBottomSheet(
                 tags = uiState.tags,
                 selectedTagIds = tagIdsByBook[targetBook.id].orEmpty(),
@@ -923,7 +989,7 @@ private fun BookshelfTitle(
         text = stringResource(R.string.bookshelf_title),
         fontSize = AppType.Display,
         fontWeight = FontWeight.Bold,
-        fontFamily = KaiTi,
+        fontFamily = resolveAppFontFamily(KaiTi),
         letterSpacing = (-0.02).sp,
         color = AppColors.TextPrimary,
         modifier = modifier
@@ -1156,6 +1222,20 @@ private fun LiquidBookshelfHeader(
         )
     }
 }
+
+private enum class PendingBookMenuActionType {
+    Favorite,
+    CustomCover,
+    RemoveCustomCover,
+    BookmarksNotes,
+    Tags,
+    EditInfo
+}
+
+private data class PendingBookMenuAction(
+    val type: PendingBookMenuActionType,
+    val book: Book
+)
 
 private sealed interface BookshelfFilter {
     data object All : BookshelfFilter

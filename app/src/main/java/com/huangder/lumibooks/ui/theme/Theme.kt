@@ -110,6 +110,7 @@ fun EBookReaderTheme(
     liquidGlassTransparency: Float = 0.55f,
     liquidGlassHdrHighlightEnabled: Boolean = false,
     eInkMode: Boolean = false,
+    globalFontMode: String = GlobalFontMode.DEFAULT,
     content: @Composable () -> Unit
 ) {
     val effectiveDarkTheme = if (eInkMode) false else darkTheme
@@ -156,6 +157,7 @@ fun EBookReaderTheme(
         LocalAppTheme provides effectiveAppTheme,
         LocalEInkMode provides eInkMode,
         LocalMotionEnabled provides !eInkMode,
+        LocalGlobalFontMode provides GlobalFontMode.normalize(globalFontMode),
         LocalLiquidGlassTransparency provides liquidGlassTransparency.coerceIn(0f, 1f),
         LocalLiquidGlassHdrHighlightEnabled provides hdrHighlightActive
     ) {

@@ -261,7 +261,11 @@ internal fun EpubImagePreviewOverlay(
                             Manifest.permission.WRITE_EXTERNAL_STORAGE
                         ) != PackageManager.PERMISSION_GRANTED
                     ) {
-                        permissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                        runCatching {
+                            permissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                        }.onFailure {
+                            Toast.makeText(context, R.string.epub_image_save_failed, Toast.LENGTH_SHORT).show()
+                        }
                     } else {
                         saveRequestToken++
                     }

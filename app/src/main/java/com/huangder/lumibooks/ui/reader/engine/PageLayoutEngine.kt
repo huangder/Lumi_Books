@@ -5,6 +5,7 @@ import android.graphics.Typeface
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
+import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -23,7 +24,8 @@ class PageLayoutEngine {
         val generation: Long,
         val visibleWidth: Int,
         val visibleHeight: Int,
-        val textPaint: TextPaint
+        val textPaint: TextPaint,
+        val writingMode: ReaderWritingMode
     )
 
     // ── 排版参数 ──
@@ -36,6 +38,7 @@ class PageLayoutEngine {
     private var lineSpacingExtra: Float = 8f
     private var lineSpacingMultiplier: Float = 1.0f
     private var letterSpacing: Float = 0f
+    private var writingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL
 
     /**
      * 引擎自己的 TextPaint（当没有外部共用 Paint 时使用）。
@@ -75,6 +78,9 @@ class PageLayoutEngine {
     /** 总章数 */
     private var chapterCount: Int = 0
 
+    /** TXT title spans use dp units, so copied paints must retain display density. */
+    private var useDisplayDensityForSpans: Boolean = false
+
     // ── 配置 ──
 
     fun configure(
@@ -91,14 +97,18 @@ class PageLayoutEngine {
         marginTopPx: Float = 32f,
         marginBottomPx: Float = 32f,
         textColor: Int = 0xFF333333.toInt(),
-        chapterCount: Int = 0
+        chapterCount: Int = 0,
+        useDisplayDensityForSpans: Boolean = false,
+        writingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL
     ) {
         val changed = textWidth != width || textHeight != height ||
                 ownTextPaint.textSize != fontSizePx || lineSpacingExtra != lineSpacingPx ||
                 lineSpacingMultiplier != lineSpacingMult ||
                 this.letterSpacing != letterSpacingPx ||
                 marginLeft != marginLeftPx || marginRight != marginRightPx ||
-                marginTop != marginTopPx || marginBottom != marginBottomPx
+                marginTop != marginTopPx || marginBottom != marginBottomPx ||
+                this.useDisplayDensityForSpans != useDisplayDensityForSpans ||
+                this.writingMode != writingMode
 
         textWidth = width
         textHeight = height
@@ -125,6 +135,8 @@ class PageLayoutEngine {
         }
         ownTextPaint.typeface = tf
         this.chapterCount = chapterCount
+        this.useDisplayDensityForSpans = useDisplayDensityForSpans
+        this.writingMode = writingMode
 
         if (changed) {
             invalidateAll()
@@ -147,17 +159,58 @@ class PageLayoutEngine {
                 generation = layoutGeneration,
                 visibleWidth = visibleWidth,
                 visibleHeight = visibleHeight,
-                textPaint = TextPaint(activeTextPaint)
+                textPaint = TextPaint(activeTextPaint).apply {
+                    if (useDisplayDensityForSpans) {
+                        density = activeTextPaint.density
+                    }
+                },
+                writingMode = writingMode
             )
         }
 
         val sl = StaticLayout.Builder.obtain(text, 0, text.length, input.textPaint, input.visibleWidth)
             .setAlignment(Layout.Alignment.ALIGN_NORMAL)
             .setLineSpacing(lineSpacingExtra, lineSpacingMultiplier)
-            .setIncludePad(false)  // 关闭额外 padding，由 marginTop/marginBottom 精确控制
-            .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)  // CJK 每字均可断行，SIMPLE 与 HIGH_QUALITY 视觉无差异但速度快 3-5 倍
-            .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)  // CJK 文本不需要断字
+            .setIncludePad(false)
+            .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
+            .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)
             .build()
+
+        if (input.writingMode.isVertical) {
+            val verticalPages = VerticalTextLayouter.layout(
+                text = text,
+                paint = input.textPaint,
+                width = input.visibleWidth,
+                height = input.visibleHeight,
+                lineSpacingExtra = lineSpacingExtra,
+                lineSpacingMultiplier = lineSpacingMultiplier,
+                letterSpacing = letterSpacing
+            ).mapIndexed { pageIndex, page ->
+                PageLayout(
+                    chapterIndex = chapterIndex,
+                    pageIndex = pageIndex,
+                    startLine = 0,
+                    endLine = 0,
+                    startCharOffset = page.startOffset,
+                    endCharOffset = page.endOffset,
+                    verticalGeometry = page.geometry
+                )
+            }
+            val cumulativeBefore = synchronized(cacheLock) {
+                (0 until chapterIndex).sumOf { layoutCache[it]?.totalPages ?: 0 }
+            }
+            val result = ChapterLayout(
+                chapterIndex = chapterIndex,
+                pages = verticalPages,
+                staticLayout = sl,
+                totalPages = verticalPages.size,
+                cumulativePagesBefore = cumulativeBefore
+            )
+            synchronized(cacheLock) {
+                if (input.generation == layoutGeneration) layoutCache[chapterIndex] = result
+            }
+            return@withContext result
+        }
 
         // 留出安全边距：
         // - 1px 舍入余量，消除 TextView 与 StaticLayout 的取整差异

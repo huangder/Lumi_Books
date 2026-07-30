@@ -75,9 +75,12 @@ object BookFileAccess {
     fun size(context: Context, location: String): Long {
         if (!isContentUri(location)) return File(location).takeIf { it.exists() }?.length() ?: 0L
         val uri = Uri.parse(location)
-        context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
-            if (cursor.moveToFirst() && !cursor.isNull(0)) return cursor.getLong(0)
-        }
+        val queriedSize = runCatching {
+            context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getLong(0) else null
+            }
+        }.getOrNull()
+        if (queriedSize != null) return queriedSize.coerceAtLeast(0L)
         return runCatching { openDescriptor(context, location).use { it.statSize.coerceAtLeast(0L) } }.getOrDefault(0L)
     }
 

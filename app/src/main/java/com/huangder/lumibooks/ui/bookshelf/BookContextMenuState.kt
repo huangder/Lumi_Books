@@ -14,6 +14,7 @@ import androidx.compose.ui.geometry.Rect
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.ui.animation.AppEasing
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -33,6 +34,8 @@ enum class ContextMenuPhase {
  * 长按上下文菜单状态管理
  */
 class BookContextMenuState(private val scope: CoroutineScope) {
+    private var transitionJob: Job? = null
+
     var phase by mutableStateOf(ContextMenuPhase.Idle)
         private set
 
@@ -117,7 +120,8 @@ class BookContextMenuState(private val scope: CoroutineScope) {
         // 触发震动
         onHaptic()
 
-        scope.launch {
+        transitionJob?.cancel()
+        transitionJob = scope.launch {
             coroutineScope {
                 // 封面放大
                 launch {
@@ -176,7 +180,9 @@ class BookContextMenuState(private val scope: CoroutineScope) {
                     )
                 }
             }
-            phase = ContextMenuPhase.Visible
+            if (phase == ContextMenuPhase.Enlarging) {
+                phase = ContextMenuPhase.Visible
+            }
         }
     }
 
@@ -191,9 +197,10 @@ class BookContextMenuState(private val scope: CoroutineScope) {
      */
     fun dismiss() {
         if (phase != ContextMenuPhase.Visible && phase != ContextMenuPhase.Enlarging) return
+        transitionJob?.cancel()
         phase = ContextMenuPhase.Dismissing
 
-        scope.launch {
+        transitionJob = scope.launch {
             // ① 操作项 + 信息面板并行消失
             coroutineScope {
                 launch {

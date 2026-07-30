@@ -21,10 +21,27 @@ val LocalLiquidGlassHdrHighlightEnabled = staticCompositionLocalOf { false }
 val LocalEInkMode = staticCompositionLocalOf { false }
 val LocalMotionEnabled = staticCompositionLocalOf { true }
 
+object GlobalFontMode {
+    const val DEFAULT = "default"
+    const val SYSTEM = "system"
+
+    fun normalize(value: String): String = if (value == SYSTEM) SYSTEM else DEFAULT
+}
+
+val LocalGlobalFontMode = staticCompositionLocalOf { GlobalFontMode.DEFAULT }
+
 // ─── 字体 ───
 val FangSong = FontFamily(Font(R.font.fandol_fang, FontWeight.Normal))
 val KaiTi = FontFamily(Font(R.font.lxgw_wenkai, FontWeight.Normal))
 val SansSerif = FontFamily.Default
+
+/**
+ * Resolves decorative app typography without affecting the reader's own font setting.
+ * The default mode preserves the bundled font; system mode uses the platform font.
+ */
+@Composable
+fun resolveAppFontFamily(defaultFontFamily: FontFamily): FontFamily =
+    if (LocalGlobalFontMode.current == GlobalFontMode.SYSTEM) FontFamily.Default else defaultFontFamily
 
 // ─── 颜色（自动适配深色模式）───
 object AppColors {

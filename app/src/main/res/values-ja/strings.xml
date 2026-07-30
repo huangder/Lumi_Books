@@ -4,6 +4,9 @@
     <string name="label_entrance_animations">モーション Pro (Beta)</string>
     <string name="entrance_animations_description">一部のページに要素アニメーションを追加します。\n性能に影響する場合があります</string>
     <string name="label_app_theme">テーマ</string>
+    <string name="label_global_font">アプリ全体のフォント</string>
+    <string name="global_font_default">デフォルトフォント</string>
+    <string name="global_font_system">システムフォント</string>
     <string name="app_theme_lumi">Lumi ピンク</string>
     <string name="app_theme_material3">Material 3</string>
     <string name="app_theme_liquid_glass">リキッドガラス</string>
@@ -298,6 +301,7 @@
     <string name="reader_bookmark">ブックマーク</string>
     <string name="reader_notes">メモ</string>
     <string name="reader_search">検索</string>
+    <string name="epub_book_layout_search_unsupported">書籍の元レイアウトでは現在サポートされていません</string>
     <string name="reader_theme">テーマ</string>
     <string name="reader_edit">編集</string>
     <string name="txt_editor_discard_title">変更を破棄しますか？</string>
@@ -680,8 +684,8 @@
     <string name="epub_render_mode">EPUB レイアウト</string>
     <string name="epub_book_layout">書籍の元レイアウト</string>
     <string name="epub_reader_layout">リーダーレイアウト</string>
-    <string name="epub_book_layout_hint">出版元の HTML、CSS、フォント、図版構成を保持します</string>
-    <string name="epub_reader_layout_hint">リーダーの統一されたフォント、段落間隔、余白設定を使用します</string>
+    <string name="epub_book_layout_hint">出版元の HTML、CSS、フォント、図版構成を保持します。処理負荷が高くなる場合があります</string>
+    <string name="epub_reader_layout_hint">リーダーの統一されたフォント、段落間隔、余白設定を使用します。より滑らかで、読み込みも高速です</string>
     <string name="reader_external_link_title">外部リンクを開きますか？</string>
     <string name="reader_external_link_message">この EPUB は外部アプリまたはウェブサイトを開こうとしています：\n%1$s</string>
     <string name="reader_external_link_open">開く</string>
@@ -723,4 +727,27 @@
     <string name="txt_encoding_euc_kr">EUC-KR（韓国語）</string>
     <string name="txt_encoding_windows_1252">Windows-1252（西欧）</string>
 
+    <string name="reader_writing_mode">組み方向</string>
+    <string name="reader_writing_horizontal">横組み</string>
+    <string name="reader_writing_vertical">縦組み</string>
+    <string name="txt_editor_loading">読み込み中...</string>
+    <string name="txt_editor_placeholder">テキストを入力...</string>
+    <string name="txt_editor_previous_chapter">前の章</string>
+    <string name="txt_editor_next_chapter">次の章</string>
+    <string name="txt_editor_search">検索</string>
+    <string name="txt_editor_replace">置換</string>
+    <string name="txt_editor_search_placeholder">検索する文字列</string>
+    <string name="txt_editor_replace_placeholder">置換後の文字列</string>
+    <string name="txt_editor_match_case">大文字と小文字を区別</string>
+    <string name="txt_editor_scope_chapter">現在の章</string>
+    <string name="txt_editor_scope_book">本全体</string>
+    <string name="txt_editor_no_matches">一致なし</string>
+    <string name="txt_editor_match_count">%1$d / %2$d</string>
+    <string name="txt_editor_previous_match">前を検索</string>
+    <string name="txt_editor_next_match">次を検索</string>
+    <string name="txt_editor_replace_current">置換</string>
+    <string name="txt_editor_replace_all">すべて置換</string>
+    <string name="txt_editor_replace_all_title">本全体を置換</string>
+    <string name="txt_editor_replace_all_message">本全体の %1$d 件を置換します。変更は保存時に書き込まれます。</string>
+    <string name="txt_editor_replaced_count">%1$d 件を置換しました</string>
 </resources>

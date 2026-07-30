@@ -34,6 +34,7 @@ import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.FangSong
+import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
@@ -77,6 +78,9 @@ class WebViewActivity : ComponentActivity() {
         val liquidGlassTransparency = runBlocking {
             dataStoreManager.liquidGlassTransparency.first()
         }
+        val globalFontMode = runBlocking {
+            dataStoreManager.globalFontMode.first()
+        }
         val liquidGlassHdrHighlightEnabled = runBlocking {
             dataStoreManager.liquidGlassHdrHighlightEnabled.first()
         }
@@ -93,7 +97,8 @@ class WebViewActivity : ComponentActivity() {
                 dynamicColor = appTheme == "material3",
                 appTheme = appTheme,
                 liquidGlassTransparency = liquidGlassTransparency,
-                liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled
+                liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled,
+                globalFontMode = globalFontMode
             ) {
                 com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
                     predictiveBackEnabled = predictiveBackEnabled,
@@ -133,7 +138,7 @@ private fun WebViewPage(title: String, assetFile: String, isDark: Boolean, onBac
                     settingsBackButton = true
                 )
                 Spacer(Modifier.weight(1f))
-                Text(title, fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = FangSong, color = AppColors.TextPrimary)
+                Text(title, fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = resolveAppFontFamily(FangSong), color = AppColors.TextPrimary)
                 Spacer(Modifier.weight(1f))
                 Spacer(Modifier.size(48.dp))
             }

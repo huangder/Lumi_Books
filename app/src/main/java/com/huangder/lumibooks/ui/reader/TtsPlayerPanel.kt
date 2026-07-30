@@ -225,7 +225,7 @@ fun TtsPlayerPanel(
                 ) {
                     timerOptionsMinutes.forEachIndexed { index, minutes ->
                         val label = timerOptionLabels[index]
-                        val offset = if (timerActive) ((sleepTimerRemainingMs!! + 59_999) / 60_000).toInt() else -1
+                        val offset = sleepTimerRemainingMs?.let { ((it + 59_999) / 60_000).toInt() } ?: -1
                         val selected = timerActive && minutes == offset
                         Box(
                             modifier = Modifier
@@ -391,7 +391,7 @@ fun TtsPlayerPanel(
                         )
 
                         Text(
-                            text = if (timerActive) formatSleepTimer(sleepTimerRemainingMs!!) else "定时",
+                            text = sleepTimerRemainingMs?.let(::formatSleepTimer) ?: "定时",
                             color = readerContentColor,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,

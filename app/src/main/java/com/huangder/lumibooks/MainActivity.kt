@@ -174,7 +174,17 @@ class MainActivity : ComponentActivity() {
         if (intent?.action != Intent.ACTION_VIEW) return
         val uri = intent.data ?: return
         lifecycleScope.launch(Dispatchers.IO) {
-            importBookFromUri(uri)
+            val result = runCatching { importBookFromUri(uri) }
+            result.exceptionOrNull()?.let { error ->
+                Log.e("MainActivity", "Unable to import external book", error)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        getString(R.string.import_failed, error.message.orEmpty()),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
         }
     }
 
@@ -189,20 +199,28 @@ class MainActivity : ComponentActivity() {
             "pdf" -> BookFormat.PDF
             else -> BookFormat.TXT
         }
-        val coverPath = try {
+        val coverPath = runCatching {
             val parser = BookParserFactory.createParser(format, this)
-            parser.extractCoverPath(file.absolutePath)
-        } catch (_: Exception) { null }
+            try {
+                parser.extractCoverPath(file.absolutePath)
+            } finally {
+                runCatching { parser.close() }
+            }
+        }.getOrNull()
 
         // 导入时从文件解析真实标题和作者，而不是写死"未知作者"
         val (parsedTitle, parsedAuthor) = if (format == BookFormat.EPUB) {
             try {
                 val parser = com.huangder.lumibooks.util.parser.EpubParser(this)
-                val content = parser.parse(file.absolutePath)
-                val t = content.title.takeIf { it.isNotBlank() && it != file.nameWithoutExtension }
-                    ?: fileName.substringBeforeLast('.')
-                val a = content.author.takeIf { it.isNotBlank() && it != "未知作者" } ?: "未知作者"
-                t to a
+                try {
+                    val content = parser.parse(file.absolutePath)
+                    val t = content.title.takeIf { it.isNotBlank() && it != file.nameWithoutExtension }
+                        ?: fileName.substringBeforeLast('.')
+                    val a = content.author.takeIf { it.isNotBlank() && it != "未知作者" } ?: "未知作者"
+                    t to a
+                } finally {
+                    runCatching { parser.close() }
+                }
             } catch (_: Exception) {
                 fileName.substringBeforeLast('.') to "未知作者"
             }
@@ -221,7 +239,13 @@ class MainActivity : ComponentActivity() {
             readingProgress = 0f,
             createdAt = System.currentTimeMillis()
         )
-        bookRepository.insertBook(book)
+        try {
+            bookRepository.insertBook(book)
+        } catch (error: Throwable) {
+            FileUtils.deleteAppManagedBookFile(this, file.absolutePath)
+            FileUtils.deleteAppOwnedFile(this, coverPath)
+            throw error
+        }
         withContext(Dispatchers.Main) {
             Toast.makeText(this@MainActivity, "导入成功了喵~(=^‥^=)", Toast.LENGTH_SHORT).show()
         }
@@ -273,6 +297,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = "lumi")
+            val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = "default")
             val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = 0.55f)
             val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = false)
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
@@ -334,7 +359,8 @@ class MainActivity : ComponentActivity() {
                 appTheme = effectiveAppTheme,
                 liquidGlassTransparency = liquidGlassTransparency,
                 liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled && !eInkModeEnabled,
-                eInkMode = eInkModeEnabled
+                eInkMode = eInkModeEnabled,
+                globalFontMode = globalFontMode
             ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -464,7 +490,12 @@ class MainActivity : ComponentActivity() {
 
     private fun openRemoteUrl(url: String) {
         if (url.isBlank()) return
-        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        runCatching {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        }.onFailure { error ->
+            Log.w("MainActivity", "Failed to open remote URL", error)
+            Toast.makeText(this, R.string.network_error, Toast.LENGTH_LONG).show()
+        }
     }
 
 

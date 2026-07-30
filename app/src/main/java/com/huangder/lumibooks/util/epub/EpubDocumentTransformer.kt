@@ -282,6 +282,7 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     viewportWidth: 0, viewportHeight: 0, paginating: false, configured: false, mediaSettled: false,
     pendingProgression: undefined, publisherBox: null, publisherBackground: null, scrollGuard: false, initialFragmentApplied: false,
     transition: 'slide', nativePaging: false, animationTimer: 0, suppressClickUntil: 0, preservePublisherBackground: true,
+    edgeTapLeft: -1, edgeTapRight: 1,
     bionicReading: false, chineseMode: 'original', chineseMap: null, pendingPreparedPage: null, prepareSerial: 0,
     insets: { top: 0, right: 0, bottom: 0, left: 0 }
   };
@@ -305,6 +306,8 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
   var pageStageSide = 1;
   var pageStageProgress = 0;
   var pageStageActive = false;
+  var pageStageGeneration = 0;
+  var pageStageDurationOverride = 0;
   var footnoteRequestSerial = 0;
   var pageNotifySerial = 0;
 
@@ -578,6 +581,7 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
   }
 
   function clearPageStage() {
+    ++pageStageGeneration;
     if (!pageStage) return;
     pageStage.removeAttribute('data-active');
     pageStage.style.display = 'none';
@@ -597,6 +601,17 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     body.style.transform = 'translate3d(' + pageX(page) + 'px,0,0)';
     body.style.visibility = 'visible';
     clearPageStage();
+  }
+
+  function settleActivePageStageForInput(notify) {
+    clearTimeout(state.animationTimer);
+    if (!pageStageActive) return false;
+    ++pageNotifySerial;
+    settlePageStage(state.page);
+    if (notify !== false) {
+      post('page', { pageIndex: state.page, pageCount: state.total, reverseAxis: state.reverseAxis, locator: currentLocator() });
+    }
+    return true;
   }
 
   function preparePageStage(targetPage) {
@@ -629,7 +644,9 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     var width = Math.max(1, state.viewportWidth);
     var completeX = -pageStageSide * width;
     var currentX = typeof dragDx === 'number' ? dragDx : completeX * progress;
-    var targetParallaxRatio = state.transition === 'curl' ? 0.10 : 0.24;
+    // Keep the incoming page visually behind the current sheet instead of
+    // making both pages look like a flat two-page translation.
+    var targetParallaxRatio = state.transition === 'curl' ? 0.06 : 0.08;
     var targetParallax = pageStageSide * width * targetParallaxRatio * (1 - progress);
     if (!keepTransition) {
       pageStageCurrent.style.transition = 'none';
@@ -669,16 +686,27 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
 
   function animatePageStage(commit, notify) {
     if (!pageStageActive) return;
-    var duration = state.transition === 'curl' ? 360 : 260;
+    var baseDuration = state.transition === 'curl' ? 360 : 260;
+    var remaining = commit ? 1 - pageStageProgress : pageStageProgress;
+    var duration = Math.max(110, Math.round(baseDuration * Math.max(0.3, remaining)));
+    if (pageStageDurationOverride > 0) {
+      duration = Math.min(duration, pageStageDurationOverride);
+      pageStageDurationOverride = 0;
+    }
     var easing = state.transition === 'curl' ? 'cubic-bezier(.18,.78,.16,1)' : 'cubic-bezier(.2,.72,.2,1)';
     pageStageCurrent.style.transition = 'transform ' + duration + 'ms ' + easing + ', clip-path ' + duration + 'ms ' + easing + ', filter ' + duration + 'ms ease';
     pageStageTarget.style.transition = 'transform ' + duration + 'ms ' + easing + ', filter ' + duration + 'ms ease';
     pageStageShadow.style.transition = 'transform ' + duration + 'ms ' + easing + ', opacity ' + duration + 'ms ease';
     void pageStage.offsetWidth;
     var destination = commit ? 1 : 0;
-    requestAnimationFrame(function () { updatePageStage(destination, undefined, true); });
+    var animationGeneration = pageStageGeneration;
+    requestAnimationFrame(function () {
+      if (!pageStageActive || animationGeneration !== pageStageGeneration) return;
+      updatePageStage(destination, undefined, true);
+    });
     clearTimeout(state.animationTimer);
     state.animationTimer = setTimeout(function () {
+      if (!pageStageActive || animationGeneration !== pageStageGeneration) return;
       var settledPage = commit ? pageStageTo : pageStageFrom;
       state.page = settledPage;
       settlePageStage(settledPage);
@@ -752,6 +780,49 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     }
   }
 
+  function syncToPage(page) {
+    var notificationSerial = ++pageNotifySerial;
+    var targetPage = Math.max(0, Math.min(page, state.total - 1));
+    var body = document.body;
+    clearTimeout(state.animationTimer);
+    touchPaging = false;
+    clearPageStage();
+    state.page = targetPage;
+    body.style.visibility = 'visible';
+    body.style.transition = 'none';
+    body.style.opacity = '1';
+    if (state.flow === 'scrolled') {
+      body.style.transform = '';
+      window.scrollTo(0, state.page * state.viewportHeight);
+    } else {
+      window.scrollTo(0, 0);
+      body.style.transform = 'translate3d(' + pageX(state.page) + 'px,0,0)';
+    }
+    requestAnimationFrame(function () {
+      void body.offsetWidth;
+      requestAnimationFrame(function () {
+        if (notificationSerial !== pageNotifySerial || state.page !== targetPage) return;
+        post('page', {
+          pageIndex: state.page,
+          pageCount: state.total,
+          reverseAxis: state.reverseAxis,
+          locator: currentLocator()
+        });
+      });
+    });
+  }
+
+  function turnByDirection(direction) {
+    direction = Number(direction) < 0 ? -1 : 1;
+    // Do not queue input behind a running transition. Finalize the already
+    // committed page synchronously, then start the next adjacent animation.
+    var interrupted = settleActivePageStageForInput(true);
+    if (interrupted) pageStageDurationOverride = state.transition === 'curl' ? 190 : 150;
+    var target = state.page + direction;
+    if (target >= 0 && target < state.total) moveToPage(target, true);
+    else post('chapterTurn', { direction: direction });
+  }
+
   function fulfillPreparedPageRequest() {
     var request = state.pendingPreparedPage;
     if (!request || !state.ready || state.paginating) return false;
@@ -765,7 +836,8 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
           requestToken: request.token,
           pageIndex: state.page,
           pageCount: state.total,
-          reverseAxis: state.reverseAxis
+          reverseAxis: state.reverseAxis,
+          locator: currentLocator()
         });
       });
     });
@@ -1356,6 +1428,8 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     state.transition = config.transition === 'fade' ? 'fade' :
       (config.transition === 'none' ? 'none' : (config.transition === 'curl' ? 'curl' : 'slide'));
     state.nativePaging = config.nativePaging === true;
+    state.edgeTapLeft = Number(config.edgeTapLeft) > 0 ? 1 : -1;
+    state.edgeTapRight = Number(config.edgeTapRight) < 0 ? -1 : 1;
     var insets = config.insets || {};
     state.insets = {
       top: Math.max(0, Number(insets.top) || 0), right: Math.max(0, Number(insets.right) || 0),
@@ -1714,6 +1788,7 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
 
   document.addEventListener('touchstart', function (event) {
     touchPaging = false;
+    pageStageDurationOverride = 0;
     if (event.target && event.target.closest && event.target.closest('#lumi-footnote-popover')) return;
     touchVelocityX = 0;
     if (event.touches.length !== 1) return;
@@ -1724,16 +1799,15 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     touchStartTime = Date.now();
     touchLastTime = touchStartTime;
     if (pageStageActive) {
-      settlePageStage(state.page);
-      post('page', { pageIndex: state.page, pageCount: state.total, reverseAxis: state.reverseAxis, locator: currentLocator() });
+      settleActivePageStageForInput(true);
+      pageStageDurationOverride = state.transition === 'curl' ? 210 : 170;
     }
     touchBaseX = state.flow === 'paginated' ? pageX(state.page) : 0;
-    clearTimeout(state.animationTimer);
-  }, { passive: true });
+  }, { passive: true, capture: true });
 
   document.addEventListener('touchmove', function (event) {
     if (event.target && event.target.closest && event.target.closest('#lumi-footnote-popover')) return;
-    if (state.flow !== 'paginated' || state.fixed || event.touches.length !== 1) return;
+    if (state.nativePaging || state.flow !== 'paginated' || state.fixed || event.touches.length !== 1) return;
     var touch = event.touches[0];
     var dx = touch.clientX - touchStartX;
     var dy = touch.clientY - touchStartY;
@@ -1782,6 +1856,7 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     var tappedImage = imageFromTarget(event.target);
 
     if (state.flow === 'scrolled' && !state.fixed) {
+      pageStageDurationOverride = 0;
       var root = document.scrollingElement || document.documentElement;
       var atTop = window.scrollY <= 1;
       var atBottom = window.scrollY + state.viewportHeight >= root.scrollHeight - 2;
@@ -1804,6 +1879,7 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     var wasPaging = touchPaging;
     touchPaging = false;
     if ((imageTap || isTap) && hasSelection) {
+      pageStageDurationOverride = 0;
       clearDocumentSelection();
       post('selectionCleared', {});
       state.suppressClickUntil = Date.now() + 450;
@@ -1815,6 +1891,7 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
       if (target >= 0 && target < state.total) moveToPage(target, true);
       else {
         if (wasPaging && state.transition !== 'fade' && state.transition !== 'none') snapBackPage();
+        else pageStageDurationOverride = 0;
         post('chapterTurn', { direction: advances ? 1 : -1 });
       }
       state.suppressClickUntil = Date.now() + 450;
@@ -1823,21 +1900,33 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     if (wasPaging && state.transition !== 'fade' && state.transition !== 'none') snapBackPage();
     if (imageTap && (!window.getSelection || window.getSelection().isCollapsed)) {
       if (postImagePreview(tappedImage)) {
+        pageStageDurationOverride = 0;
         state.suppressClickUntil = Date.now() + 450;
         return;
       }
     }
     if (isTap && (!window.getSelection || window.getSelection().isCollapsed)) {
       var ratio = touch.clientX / viewportWidth();
-      if (ratio < 0.3) post('tap', { zone: 'left' });
-      else if (ratio > 0.7) post('tap', { zone: 'right' });
-      else post('tap', { zone: 'center' });
+      if (ratio < 0.3) {
+        if (state.nativePaging) post('tap', { zone: 'left' });
+        else turnByDirection(state.edgeTapLeft);
+      }
+      else if (ratio > 0.7) {
+        if (state.nativePaging) post('tap', { zone: 'right' });
+        else turnByDirection(state.edgeTapRight);
+      }
+      else {
+        pageStageDurationOverride = 0;
+        post('tap', { zone: 'center' });
+      }
       state.suppressClickUntil = Date.now() + 450;
     }
+    else pageStageDurationOverride = 0;
   }, { passive: false });
 
   document.addEventListener('touchcancel', function () {
     if (touchPaging && state.flow === 'paginated' && state.transition !== 'fade' && state.transition !== 'none') snapBackPage();
+    else pageStageDurationOverride = 0;
     touchPaging = false;
   }, { passive: true });
 
@@ -1882,8 +1971,14 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
       return;
     }
     var ratio = event.clientX / viewportWidth();
-    if (ratio < 0.3) post('tap', { zone: 'left' });
-    else if (ratio > 0.7) post('tap', { zone: 'right' });
+    if (ratio < 0.3) {
+      if (state.nativePaging) post('tap', { zone: 'left' });
+      else turnByDirection(state.edgeTapLeft);
+    }
+    else if (ratio > 0.7) {
+      if (state.nativePaging) post('tap', { zone: 'right' });
+      else turnByDirection(state.edgeTapRight);
+    }
     else post('tap', { zone: 'center' });
   }, true);
 
@@ -1986,9 +2081,10 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
 
   window.LumiReader = {
     configure: configure,
-    next: function () { if (state.page + 1 < state.total) moveToPage(state.page + 1, true); else post('chapterTurn', { direction: 1 }); },
-    previous: function () { if (state.page > 0) moveToPage(state.page - 1, true); else post('chapterTurn', { direction: -1 }); },
+    next: function () { turnByDirection(1); },
+    previous: function () { turnByDirection(-1); },
     goToPage: function (page) { moveToPage(page, true); },
+    syncToPage: syncToPage,
     preparePage: preparePage,
     goToFragment: function (fragment) {
       var id = decodeURIComponent(String(fragment || '').replace(/^#/, ''));

@@ -4,6 +4,9 @@
     <string name="label_entrance_animations">动效 Pro (Beta)</string>
     <string name="entrance_animations_description">为部分页面添加元素\n动效，这可能会影响性能</string>
     <string name="label_app_theme">主题</string>
+    <string name="label_global_font">全局字体</string>
+    <string name="global_font_default">默认字体</string>
+    <string name="global_font_system">系统字体</string>
     <string name="app_theme_lumi">Lumi 粉</string>
     <string name="app_theme_material3">Material 3</string>
     <string name="app_theme_liquid_glass">液态玻璃</string>
@@ -300,6 +303,7 @@
     <string name="reader_bookmark">书签</string>
     <string name="reader_notes">笔记</string>
     <string name="reader_search">搜索</string>
+    <string name="epub_book_layout_search_unsupported">原排版模式下暂不支持</string>
     <string name="reader_theme">主题</string>
     <string name="reader_edit">编辑</string>
     <string name="txt_editor_discard_title">放弃修改？</string>
@@ -712,8 +716,8 @@
     <string name="epub_render_mode">EPUB 排版模式</string>
     <string name="epub_book_layout">书籍原排版</string>
     <string name="epub_reader_layout">阅读器排版</string>
-    <string name="epub_book_layout_hint">保留书籍自带的 HTML、CSS、字体与图文结构</string>
-    <string name="epub_reader_layout_hint">使用阅读器统一的字体、段距和页边距设置</string>
+    <string name="epub_book_layout_hint">保留书籍自带的 HTML、CSS、字体与图文结构，可能会增大性能开销</string>
+    <string name="epub_reader_layout_hint">使用阅读器统一的字体、段距和页边距设置，更流畅，加载更快</string>
     <string name="reader_external_link_title">&#25171;&#24320;&#22806;&#37096;&#38142;&#25509;&#65311;</string>
     <string name="reader_external_link_message">&#36825;&#26412; EPUB &#24819;&#35201;&#25171;&#24320;&#22806;&#37096;&#24212;&#29992;&#25110;&#32593;&#31449;&#65306;\n%1$s</string>
     <string name="reader_external_link_open">&#25171;&#24320;</string>
@@ -772,4 +776,27 @@
     <string name="txt_encoding_euc_kr">EUC-KR（韩文）</string>
     <string name="txt_encoding_windows_1252">Windows-1252（西文）</string>
 
+    <string name="reader_writing_mode">排版方向</string>
+    <string name="reader_writing_horizontal">横排</string>
+    <string name="reader_writing_vertical">竖排</string>
+    <string name="txt_editor_loading">加载中...</string>
+    <string name="txt_editor_placeholder">输入文本内容...</string>
+    <string name="txt_editor_previous_chapter">上一章</string>
+    <string name="txt_editor_next_chapter">下一章</string>
+    <string name="txt_editor_search">搜索</string>
+    <string name="txt_editor_replace">替换</string>
+    <string name="txt_editor_search_placeholder">输入搜索内容</string>
+    <string name="txt_editor_replace_placeholder">输入替换内容</string>
+    <string name="txt_editor_match_case">区分大小写</string>
+    <string name="txt_editor_scope_chapter">当前章节</string>
+    <string name="txt_editor_scope_book">全书</string>
+    <string name="txt_editor_no_matches">未找到匹配项</string>
+    <string name="txt_editor_match_count">%1$d / %2$d</string>
+    <string name="txt_editor_previous_match">上一处</string>
+    <string name="txt_editor_next_match">下一处</string>
+    <string name="txt_editor_replace_current">替换当前</string>
+    <string name="txt_editor_replace_all">替换全部</string>
+    <string name="txt_editor_replace_all_title">替换全书</string>
+    <string name="txt_editor_replace_all_message">将替换全书中的 %1$d 处匹配内容，修改会在保存后写入文件。</string>
+    <string name="txt_editor_replaced_count">已替换 %1$d 处</string>
 </resources>

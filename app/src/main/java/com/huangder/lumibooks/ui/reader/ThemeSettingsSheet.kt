@@ -72,6 +72,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.semantics.contentDescription
@@ -82,6 +83,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import coil.compose.AsyncImage
 import androidx.core.graphics.ColorUtils
 import com.huangder.lumibooks.ui.theme.FangSong
@@ -90,6 +94,7 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassTransparency
+import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
@@ -97,6 +102,7 @@ import com.huangder.lumibooks.util.epub.EpubRenderMode
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
+import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.domain.model.ReaderPageCorner
 import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
@@ -156,6 +162,8 @@ fun ThemeSettingsSheet(
     currentUseEpubCss: Boolean = false,
     isEpub: Boolean = false,
     currentEpubRenderMode: EpubRenderMode = EpubRenderMode.READER_LAYOUT,
+    currentWritingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL,
+    supportsWritingMode: Boolean = true,
     currentChineseMode: String = "original",
     currentPageTransition: String = "slide",
     eInkModeEnabled: Boolean = false,
@@ -170,6 +178,7 @@ fun ThemeSettingsSheet(
     onOptimizeLayoutChange: (Boolean) -> Unit = {},
     onUseEpubCssChange: (Boolean) -> Unit = {},
     onEpubRenderModeChange: (EpubRenderMode) -> Unit = {},
+    onWritingModeChange: (ReaderWritingMode) -> Unit = {},
     onChineseModeChange: (String) -> Unit = {},
     onPageTransitionChange: (String) -> Unit = {},
     onOpenAdvanced: () -> Unit,
@@ -264,7 +273,7 @@ fun ThemeSettingsSheet(
                     stringResource(R.string.theme_settings_title),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    fontFamily = KaiTi,
+                    fontFamily = resolveAppFontFamily(KaiTi),
                     color = AppColors.TextPrimary
                 )
                 Spacer(Modifier.weight(1f))
@@ -462,6 +471,35 @@ fun ThemeSettingsSheet(
                 Spacer(Modifier.height(16.dp))
             }
 
+            if (supportsWritingMode) {
+                Text(
+                    text = stringResource(R.string.reader_writing_mode),
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = AppColors.TextPrimary
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ModeButton(
+                        label = stringResource(R.string.reader_writing_horizontal),
+                        isSelected = currentWritingMode == ReaderWritingMode.HORIZONTAL,
+                        onClick = { onWritingModeChange(ReaderWritingMode.HORIZONTAL) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    ModeButton(
+                        label = stringResource(R.string.reader_writing_vertical),
+                        isSelected = currentWritingMode == ReaderWritingMode.VERTICAL_RL,
+                        onClick = { onWritingModeChange(ReaderWritingMode.VERTICAL_RL) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
+            }
+
             // 阅读背景区域
             Text(
                 stringResource(R.string.reading_background),
@@ -591,7 +629,8 @@ fun ThemeSettingsSheet(
                         modifier = Modifier.weight(1f)
                     )
                 }
-                if (!isEpub || currentEpubRenderMode != EpubRenderMode.BOOK_LAYOUT) {
+                if ((!isEpub || currentEpubRenderMode != EpubRenderMode.BOOK_LAYOUT) &&
+                    currentWritingMode != ReaderWritingMode.VERTICAL_RL) {
                     Spacer(Modifier.height(12.dp))
                     ModeButton(
                         label = stringResource(R.string.transition_scroll),
@@ -1039,6 +1078,7 @@ fun AdvancedSettingsSheet(
     currentTextColorOverride: Int?,
     currentFontSizeSp: Float,
     preservePublisherLayout: Boolean = false,
+    currentWritingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL,
     eInkModeEnabled: Boolean = false,
     onLineHeightChange: (Float) -> Unit,
     onLetterSpacingChange: (Float) -> Unit,
@@ -1129,6 +1169,24 @@ fun AdvancedSettingsSheet(
     val previewLetterSpacing = if (preservePublisherLayout) 0f else currentLetterSpacing
     val previewParagraphSpacing = if (preservePublisherLayout) 0f else currentParagraphSpacing
     val previewFirstLineIndent = if (preservePublisherLayout) 0f else currentFirstLineIndent
+    val previewContext = LocalContext.current
+    val verticalPreviewTypeface = remember(previewContext, currentFontType, customFontPath) {
+        when {
+            currentFontType == "serif" -> android.graphics.Typeface.SERIF
+            currentFontType == "fangsong" -> androidx.core.content.res.ResourcesCompat.getFont(
+                previewContext,
+                R.font.fandol_fang
+            ) ?: android.graphics.Typeface.DEFAULT
+            currentFontType == "kaiti" -> androidx.core.content.res.ResourcesCompat.getFont(
+                previewContext,
+                R.font.lxgw_wenkai
+            ) ?: android.graphics.Typeface.DEFAULT
+            currentFontType.startsWith("custom") && customFontPath != null -> runCatching {
+                android.graphics.Typeface.createFromFile(java.io.File(customFontPath))
+            }.getOrDefault(android.graphics.Typeface.DEFAULT)
+            else -> android.graphics.Typeface.DEFAULT
+        }
+    }
 
     LiquidGlassMenuHost(modifier = Modifier.fillMaxSize()) {
         // 遮罩
@@ -1172,35 +1230,53 @@ fun AdvancedSettingsSheet(
                         contentScale = ContentScale.Crop
                     )
                 }
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(top = 62.dp)
-                        .padding(
-                            start = previewLeftPadding,
-                            top = previewTopPadding,
-                            end = previewRightPadding,
-                            bottom = previewBottomPadding
-                        ),
-                    verticalArrangement = Arrangement.spacedBy(
-                        previewParagraphSpacing.coerceIn(0f, 30f).dp
+                if (currentWritingMode.isVertical && !preservePublisherLayout) {
+                    VerticalAdvancedPreview(
+                        text = previewParagraphs.joinToString("\n"),
+                        fontSizeSp = currentFontSizeSp,
+                        textColor = currentTextColor,
+                        typeface = verticalPreviewTypeface,
+                        lineHeight = previewLineHeight,
+                        letterSpacingDp = previewLetterSpacing,
+                        paragraphSpacingDp = previewParagraphSpacing,
+                        firstLineIndentCharacters = previewFirstLineIndent,
+                        marginLeft = previewLeftPadding,
+                        marginTop = 62.dp + previewTopPadding,
+                        marginRight = previewRightPadding,
+                        marginBottom = previewBottomPadding,
+                        modifier = Modifier.fillMaxSize()
                     )
-                ) {
-                    previewParagraphs.forEach { paragraph ->
-                        Text(
-                            text = paragraph,
-                            modifier = Modifier.fillMaxWidth(),
-                            style = androidx.compose.ui.text.TextStyle(
-                                fontSize = currentFontSizeSp.sp,
-                                color = currentTextColor,
-                                fontFamily = previewFont,
-                                lineHeight = (currentFontSizeSp * previewLineHeight).sp,
-                                letterSpacing = previewLetterSpacing.sp,
-                                textIndent = androidx.compose.ui.text.style.TextIndent(
-                                    firstLine = (currentFontSizeSp * previewFirstLineIndent).sp
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(top = 62.dp)
+                            .padding(
+                                start = previewLeftPadding,
+                                top = previewTopPadding,
+                                end = previewRightPadding,
+                                bottom = previewBottomPadding
+                            ),
+                        verticalArrangement = Arrangement.spacedBy(
+                            previewParagraphSpacing.coerceIn(0f, 30f).dp
+                        )
+                    ) {
+                        previewParagraphs.forEach { paragraph ->
+                            Text(
+                                text = paragraph,
+                                modifier = Modifier.fillMaxWidth(),
+                                style = androidx.compose.ui.text.TextStyle(
+                                    fontSize = currentFontSizeSp.sp,
+                                    color = currentTextColor,
+                                    fontFamily = previewFont,
+                                    lineHeight = (currentFontSizeSp * previewLineHeight).sp,
+                                    letterSpacing = previewLetterSpacing.sp,
+                                    textIndent = androidx.compose.ui.text.style.TextIndent(
+                                        firstLine = (currentFontSizeSp * previewFirstLineIndent).sp
+                                    )
                                 )
                             )
-                        )
+                        }
                     }
                 }
 
@@ -1855,6 +1931,115 @@ private fun buildPreviewParagraphs(text: String): List<String> {
 }
 
 @Composable
+private fun VerticalAdvancedPreview(
+    text: String,
+    fontSizeSp: Float,
+    textColor: Color,
+    typeface: android.graphics.Typeface,
+    lineHeight: Float,
+    letterSpacingDp: Float,
+    paragraphSpacingDp: Float,
+    firstLineIndentCharacters: Float,
+    marginLeft: androidx.compose.ui.unit.Dp,
+    marginTop: androidx.compose.ui.unit.Dp,
+    marginRight: androidx.compose.ui.unit.Dp,
+    marginBottom: androidx.compose.ui.unit.Dp,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    val previewView = remember(context) {
+        com.huangder.lumibooks.ui.reader.engine.PageContentView(context).apply {
+            setReaderBackground(android.graphics.Color.TRANSPARENT, null)
+        }
+    }
+    var previewSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+
+    val fontSizePx = fontSizeSp * density.density
+    val letterSpacingPx = with(density) { letterSpacingDp.dp.toPx() }
+    val paragraphSpacingPx = with(density) { paragraphSpacingDp.dp.toPx() }
+    val marginLeftPx = with(density) { marginLeft.toPx() }
+    val marginTopPx = with(density) { marginTop.toPx() }
+    val marginRightPx = with(density) { marginRight.toPx() }
+    val marginBottomPx = with(density) { marginBottom.toPx() }
+    val lineSpacingExtraPx = with(density) { 2.5.dp.toPx() }
+    val textColorArgb = textColor.toArgb()
+
+    LaunchedEffect(
+        previewView,
+        previewSize,
+        text,
+        fontSizePx,
+        textColorArgb,
+        typeface,
+        lineHeight,
+        letterSpacingPx,
+        paragraphSpacingPx,
+        firstLineIndentCharacters,
+        marginLeftPx,
+        marginTopPx,
+        marginRightPx,
+        marginBottomPx
+    ) {
+        if (previewSize.width <= 0 || previewSize.height <= 0) return@LaunchedEffect
+        val formatted = com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatter.applyFirstLineIndent(
+            text = text,
+            indentCharacters = firstLineIndentCharacters,
+            textSizePx = fontSizePx,
+            paragraphSpacingPx = paragraphSpacingPx,
+            skipFirstNonEmptyParagraph = false
+        )
+        val contentWidth = (previewSize.width - marginLeftPx - marginRightPx).toInt().coerceAtLeast(1)
+        val contentHeight = (previewSize.height - marginTopPx - marginBottomPx).toInt().coerceAtLeast(1)
+        val paint = android.text.TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = fontSizePx
+            color = textColorArgb
+            this.typeface = typeface
+            this.density = density.density
+            isSubpixelText = true
+        }
+        val page = com.huangder.lumibooks.ui.reader.engine.VerticalTextLayouter.layout(
+            text = formatted,
+            paint = paint,
+            width = contentWidth,
+            height = contentHeight,
+            lineSpacingExtra = lineSpacingExtraPx,
+            lineSpacingMultiplier = lineHeight,
+            letterSpacing = letterSpacingPx
+        ).firstOrNull()
+
+        previewView.configure(
+            fontSizePx = fontSizePx,
+            textColor = textColorArgb,
+            lineHeightMult = lineHeight,
+            lineSpacingExtraPx = lineSpacingExtraPx,
+            letterSpacingPx = letterSpacingPx,
+            typeface = typeface,
+            marginLeftPx = marginLeftPx,
+            marginTopPx = marginTopPx,
+            marginRightPx = marginRightPx,
+            marginBottomPx = marginBottomPx,
+            writingMode = ReaderWritingMode.VERTICAL_RL
+        )
+        if (page == null) {
+            previewView.setPageContent("", 0, 0)
+        } else {
+            previewView.setPageContent(
+                fullText = formatted,
+                startChar = page.startOffset,
+                endChar = page.endOffset,
+                verticalGeometry = page.geometry
+            )
+        }
+    }
+
+    AndroidView(
+        factory = { previewView },
+        modifier = modifier.onSizeChanged { previewSize = it }
+    )
+}
+
+@Composable
 private fun TextColorSetting(
     currentOverride: Int?,
     effectiveTextColor: Color,
@@ -1907,7 +2092,7 @@ private fun TextColorSetting(
             )
         }
         TextColorSwatch(
-            color = if (isCustomColor) Color(currentOverride!!) else LightBgGray,
+            color = currentOverride?.takeIf { isCustomColor }?.let(::Color) ?: LightBgGray,
             isSelected = isCustomColor,
             contentDescription = stringResource(R.string.text_color_custom),
             onClick = { showCustomColorDialog = true }

@@ -127,6 +127,11 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            dataStoreManager.globalFontMode.collectLatest { mode ->
+                _uiState.value = _uiState.value.copy(globalFontMode = mode)
+            }
+        }
+        viewModelScope.launch {
             dataStoreManager.liquidGlassTransparency.collectLatest { transparency ->
                 _uiState.value = _uiState.value.copy(liquidGlassTransparency = transparency)
             }
@@ -300,6 +305,15 @@ class SettingsViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(appTheme = theme)
         viewModelScope.launch {
             dataStoreManager.saveAppTheme(theme)
+        }
+    }
+
+    fun saveGlobalFontMode(mode: String) {
+        val normalized = if (mode == "system") "system" else "default"
+        if (_uiState.value.globalFontMode == normalized) return
+        _uiState.value = _uiState.value.copy(globalFontMode = normalized)
+        viewModelScope.launch {
+            dataStoreManager.saveGlobalFontMode(normalized)
         }
     }
 

@@ -12,6 +12,7 @@ import android.widget.FrameLayout
 import com.huangder.lumibooks.domain.model.Note
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapAction
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
+import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.ui.reader.BionicReadingFormatter
 import com.huangder.lumibooks.tts.TtsPageContent
 import com.huangder.lumibooks.tts.TtsPageLocation
@@ -89,7 +90,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             prevPageView = prevPageView,
             curPageView = curPageView,
             nextPageView = nextPageView,
-            backgroundColorProvider = { bgColor }
+            backgroundColorProvider = { bgColor },
+            reversePageProgressProvider = { currentWritingMode.isVertical }
         )
     }
 
@@ -138,9 +140,11 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var currentBottomOverlayInsetDp: Float = 0f
     private var currentParagraphSpacingDp: Float = 0f
     private var currentBionicReadingEnabled: Boolean = false
+    private var currentUseDisplayDensityForSpans: Boolean = false
     private var currentChineseMode: String = "original"
     private var currentPageTransition: String = "slide"
     private var currentEdgeTapMode: ReaderEdgeTapMode = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT
+    private var currentWritingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL
     private var currentReaderBackgroundColor: Int? = null
     private var currentReaderBackgroundImagePath: String? = null
     private var currentReaderTextColor: Int? = null
@@ -181,14 +185,14 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             if (isJumpSettling) false else when (dir) {
                 PageAnimationController.Direction.NEXT -> {
                     val next = slotManager.getNextSlot()
-                    next.isLoaded || (next.chapterIndex >= 0 && next.pageIndex >= 0)
+                    next.isLoaded
                 }
                 PageAnimationController.Direction.PREV -> {
                     val cur = slotManager.getCurSlot()
                     val isBookFirstPage = cur.chapterIndex == 0 && cur.pageIndex == 0
                     if (isBookFirstPage) false else {
                         val prev = slotManager.getPrevSlot()
-                        prev.isLoaded || (prev.chapterIndex >= 0 && prev.pageIndex >= 0)
+                        prev.isLoaded
                     }
                 }
                 else -> false
@@ -204,14 +208,14 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         }
 
         animationController.onTapLeft = {
-            performEdgeTap(currentEdgeTapMode.leftAction)
+            performEdgeTap(effectiveEdgeTapAction(currentEdgeTapMode.leftAction))
         }
         animationController.onTapCenter = {
             clearCurrentSelection()
             callbacks?.onMenuToggle()
         }
         animationController.onTapRight = {
-            performEdgeTap(currentEdgeTapMode.rightAction)
+            performEdgeTap(effectiveEdgeTapAction(currentEdgeTapMode.rightAction))
         }
 
         // 🔥 长按回调保留（边缘长按时触发），执行程序化选词
@@ -314,7 +318,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 marginRightPx = marginRight,
                 marginBottomPx = baseMarginBottom,
                 highlightColor = highlightColor,
-                accentColor = accentColor
+                accentColor = accentColor,
+                writingMode = currentWritingMode
             )
             view.setReaderBackground(bgColor, currentReaderBackgroundImagePath)
         }
@@ -343,6 +348,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     }
 
     fun setContentProvider(provider: suspend (Int) -> CharSequence?) {
+        slotManager.clearContentCache()
         val formattedProvider: suspend (Int) -> CharSequence? = { chapterIndex ->
             provider(chapterIndex)?.let { content ->
                 BionicReadingFormatter.format(content, currentBionicReadingEnabled)
@@ -370,6 +376,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         bottomOverlayInsetDp: Float = 0f,
         paragraphSpacingDp: Float = 2f,
         bionicReadingEnabled: Boolean = false,
+        useDisplayDensityForSpans: Boolean = false,
+        writingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL,
         width: Int = this.width,
         height: Int = this.height
     ) {
@@ -391,6 +399,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             currentBottomOverlayInsetDp = bottomOverlayInsetDp
             currentParagraphSpacingDp = paragraphSpacingDp
             currentBionicReadingEnabled = bionicReadingEnabled
+            currentUseDisplayDensityForSpans = useDisplayDensityForSpans
+            currentWritingMode = writingMode
             return
         }
 
@@ -409,10 +419,20 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             Math.abs(currentBottomOverlayInsetDp - bottomOverlayInsetDp) > 0.5f
         val paragraphSpacingChanged = Math.abs(currentParagraphSpacingDp - paragraphSpacingDp) > 0.01f
         val bionicReadingChanged = currentBionicReadingEnabled != bionicReadingEnabled
+        val paginationLayoutChanged =
+            currentUseDisplayDensityForSpans != useDisplayDensityForSpans
+        val writingModeChanged = currentWritingMode != writingMode
+        val writingModeAnchor = if (writingModeChanged) {
+            slotManager.getCurSlot().takeIf { it.isLoaded }?.contentView?.chapterStartOffset
+        } else {
+            null
+        }
+        if (writingModeChanged) animationController.abortAnim()
         val sizeChanged = !isConfigured || configuredWidth != width || configuredHeight != height
         val needsRelayout = themeChanged || chapterCountChanged || fontSizeChanged || lineHeightChanged ||
                 letterSpacingChanged || fontTypeChanged || customFontPathChanged || marginChanged ||
-                overlayInsetChanged || paragraphSpacingChanged || bionicReadingChanged || sizeChanged
+                overlayInsetChanged || paragraphSpacingChanged || bionicReadingChanged ||
+                paginationLayoutChanged || writingModeChanged || sizeChanged
 
         // 🔥 无变化时提前返回，避免菜单切换等 recomposition 触发不必要的重配置
         if (isConfigured && !needsRelayout) {
@@ -438,6 +458,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         currentBottomOverlayInsetDp = bottomOverlayInsetDp
         currentParagraphSpacingDp = paragraphSpacingDp
         currentBionicReadingEnabled = bionicReadingEnabled
+        currentUseDisplayDensityForSpans = useDisplayDensityForSpans
+        currentWritingMode = writingMode
+        if (writingModeChanged) resetPageViewPositions()
         configuredWidth = width
         configuredHeight = height
 
@@ -479,7 +502,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             marginTopPx = baseMarginTop,
             marginBottomPx = baseMarginBottom,
             textColor = textColor,
-            chapterCount = chapterCount
+            chapterCount = chapterCount,
+            useDisplayDensityForSpans = useDisplayDensityForSpans,
+            writingMode = writingMode
         )
 
         configureCurrentPageView()
@@ -489,6 +514,10 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         layoutEngine.sharedTextPaint = curPageView.textView.paint
 
         if (needsRelayout) {
+            slotManager.clearContentCache()
+            if (writingModeChanged) {
+                slotManager.pendingStartCharOffset = writingModeAnchor ?: -1
+            }
             // 字号变化前捕获当前内容位置，以便重新分页后修正页码
             if (fontSizeChanged || bionicReadingChanged) {
                 val curSlot = slotManager.getCurSlot()
@@ -513,6 +542,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
      */
     fun forceRelayout() {
         if (!isConfigured) return
+        slotManager.clearContentCache()
         layoutEngine.invalidateAll()
         val curSlot = slotManager.getCurSlot()
         if (curSlot.chapterIndex >= 0) {
@@ -705,16 +735,21 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
         animationController = newController
         // 重置页面位置状态（防止切换时残留偏移）
-        prevPageView.translationX = -width.toFloat()
+        resetPageViewPositions()
+        invalidate()
+    }
+
+    private fun resetPageViewPositions() {
+        val pageWidth = width.toFloat()
+        prevPageView.translationX = if (currentWritingMode.isVertical) pageWidth else -pageWidth
         prevPageView.translationY = 0f
         prevPageView.alpha = 0f
         curPageView.translationX = 0f
         curPageView.translationY = 0f
         curPageView.alpha = 1f
-        nextPageView.translationX = width.toFloat()
+        nextPageView.translationX = if (currentWritingMode.isVertical) -pageWidth else pageWidth
         nextPageView.translationY = 0f
         nextPageView.alpha = 0f
-        invalidate()
     }
 
     /** 设置左右边缘短按的翻页方向；滑动手势方向保持不变。 */
@@ -735,17 +770,25 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     }
 
     fun turnToPreviousPage(): Boolean {
-        if (isJumpSettling || animationController.isRunning) return false
+        if (isJumpSettling) return false
+        finishRunningPageTurnForNewInput()
         val current = slotManager.getCurSlot()
         val isBookFirstPage = current.chapterIndex == 0 && current.pageIndex == 0
-        if (isBookFirstPage || !slotManager.getPrevSlot().isLoaded) return false
+        val previous = slotManager.getPrevSlot()
+        if (isBookFirstPage || !previous.isLoaded) return false
         clearCurrentSelection()
         startTapAnimation(PageAnimationController.Direction.PREV)
         return true
     }
 
+    private fun effectiveEdgeTapAction(action: ReaderEdgeTapAction): ReaderEdgeTapAction =
+        if (currentWritingMode.isVertical) action.reversed() else action
+
     fun turnToNextPage(): Boolean {
-        if (isJumpSettling || animationController.isRunning || !slotManager.getNextSlot().isLoaded) return false
+        if (isJumpSettling) return false
+        finishRunningPageTurnForNewInput()
+        val next = slotManager.getNextSlot()
+        if (!next.isLoaded) return false
         clearCurrentSelection()
         startTapAnimation(PageAnimationController.Direction.NEXT)
         return true
@@ -798,6 +841,10 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                     Log.d(TAG, "Handle page swipe at dx=$dx dy=$dy dt=$dt")
                     rvIsHandlingPageGesture = true
                     clearCurrentSelection()
+
+                    // Let the old settle continue under the initial touch. Commit it
+                    // only after this stream is confirmed as a new horizontal turn.
+                    finishRunningPageTurnForNewInput()
 
                     // 先取消子 TextView 的原生触摸序列，再把完整序列交给动画控制器。
                     val cancelEvent = MotionEvent.obtain(ev)
@@ -968,13 +1015,25 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     // ── 内部方法 ──
 
     private fun startTapAnimation(dir: PageAnimationController.Direction) {
-        if (isJumpSettling || animationController.isRunning) return
+        if (isJumpSettling) return
+        finishRunningPageTurnForNewInput()
         when (val ctrl = animationController) {
             is SlidePageAnim -> ctrl.startFromTap(dir)
             is ScrollPageAnim -> ctrl.startFromTap(dir)
             is FadePageAnim -> ctrl.startFromTap(dir)
             is CurlPageAnim -> ctrl.startFromTap(dir)
             is NoPageAnim -> ctrl.startFromTap(dir)
+        }
+    }
+
+    /**
+     * Rapid edge taps are not queued. The in-flight committed animation is
+     * finalized synchronously, which shifts the slot tape, and the new tap can
+     * immediately start against that new current page.
+     */
+    private fun finishRunningPageTurnForNewInput() {
+        if (animationController.isRunning) {
+            animationController.completeRunningFlipForNewInput()
         }
     }
 
@@ -1062,6 +1121,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 topOverlayInsetDp = currentTopOverlayInsetDp,
                 bottomOverlayInsetDp = currentBottomOverlayInsetDp,
                 paragraphSpacingDp = currentParagraphSpacingDp,
+                bionicReadingEnabled = currentBionicReadingEnabled,
+                useDisplayDensityForSpans = currentUseDisplayDensityForSpans,
+                writingMode = currentWritingMode,
                 width = layoutWidth,
                 height = layoutHeight
             )
@@ -1077,7 +1139,6 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     fun getSelectionInfo(sourceView: PageContentView? = null): SelectionInfo? {
         val pageView = sourceView ?: curPageView
         val tv = pageView.textView
-        val layout = tv.layout ?: return null
         val spannable = tv.text as? android.text.Spannable ?: return null
         val selStart = android.text.Selection.getSelectionStart(spannable)
         val selEnd = android.text.Selection.getSelectionEnd(spannable)
@@ -1087,6 +1148,21 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val slot = slotManager.getSlotForView(pageView) ?: return null
         val chapterIdx = slot.chapterIndex
         val chapterStartOffset = pageView.chapterStartOffset
+        if (currentWritingMode.isVertical) {
+            val (firstBounds, lastBounds) = pageView.getVerticalSelectionBounds() ?: return null
+            return SelectionInfo(
+                selectedText = text,
+                chapterIndex = chapterIdx,
+                chapterStartOffset = chapterStartOffset,
+                pageStart = selStart,
+                pageEnd = selEnd,
+                selTopY = minOf(firstBounds.top, lastBounds.top),
+                selBottomY = maxOf(firstBounds.bottom, lastBounds.bottom),
+                selStartX = firstBounds.centerX,
+                selEndX = lastBounds.centerX
+            )
+        }
+        val layout = tv.layout ?: return null
         val hiddenStartLine = layout.getLineForOffset(selStart)
         val hiddenStartLineOffset = layout.getLineStart(hiddenStartLine)
         val visualStartLineInfo = pageView.getVisualLineInfo(selStart)

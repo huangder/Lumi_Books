@@ -58,6 +58,7 @@ class SettingsActivity : ComponentActivity() {
 
         setContent {
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = initialAppTheme)
+            val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = "default")
             val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = initialTransparency)
             val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = initialHdrHighlightEnabled)
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = initialDarkMode)
@@ -73,7 +74,8 @@ class SettingsActivity : ComponentActivity() {
                 dynamicColor = appTheme == "material3",
                 appTheme = appTheme,
                 liquidGlassTransparency = liquidGlassTransparency,
-                liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled
+                liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled,
+                globalFontMode = globalFontMode
             ) {
                 val settingsBackdrop = rememberLayerBackdrop()
                 com.huangder.lumibooks.ui.components.ConfigurableActivityBack(

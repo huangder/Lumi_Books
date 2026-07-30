@@ -96,6 +96,7 @@ import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassTransparency
+import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.util.LocaleHelper
 import java.util.Locale
 import androidx.compose.ui.res.stringResource
@@ -1507,7 +1508,7 @@ private fun PolicyBottomSheet(
                     text = title,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    fontFamily = KaiTi,
+                    fontFamily = resolveAppFontFamily(KaiTi),
                     color = textPrimary
                 )
 

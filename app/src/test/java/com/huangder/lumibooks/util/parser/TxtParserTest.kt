@@ -87,6 +87,52 @@ class TxtParserTest {
     }
 
     @Test
+    fun ignoresNumberedAppendixListsWhenBuildingChapterIndex() {
+        val text = buildString {
+            append("作品正文开头\n")
+            repeat(180) { index ->
+                append("这是正文第").append(index + 1).append("段，")
+                append("用于确保末尾的编号问答不会被识别成整本书的目录。".repeat(3))
+                append('\n')
+            }
+            append("同居三十题\n")
+            for (number in 14..30) {
+                append(number).append("、 测试问题").append(number).append('\n')
+                append("这是对应问题的简短回答。\n")
+            }
+        }
+        val file = writeText("numbered-appendix.txt", text, Charsets.UTF_8)
+        val parser = TxtParser()
+
+        val book = parser.parse(file.absolutePath)
+        val restored = buildString {
+            for (index in 0 until parser.getChapterCount()) {
+                append(parser.getChapterContent(index))
+            }
+        }
+
+        assertTrue(book.chapters.none { it.title.matches(Regex("^\\d{1,3}[.、\\s]")) })
+        assertTrue(restored.contains("作品正文开头"))
+        assertTrue(restored.contains("21、 测试问题21"))
+        assertTrue(restored.contains("这是对应问题的简短回答"))
+    }
+
+    @Test
+    fun recognizesStandaloneChineseNumeralsAsChapterHeadings() {
+        val file = writeText(
+            "chinese-numeral-headings.txt",
+            "一\n第一部分正文\n二\n第二部分正文\n三\n第三部分正文",
+            Charsets.UTF_8
+        )
+        val parser = TxtParser()
+
+        val book = parser.parse(file.absolutePath)
+
+        assertEquals(listOf("一", "二", "三"), book.chapters.map { it.title })
+        assertTrue(parser.getChapterContent(1).contains("第二部分正文"))
+    }
+
+    @Test
     fun escapesHtmlOnDemand() {
         val file = writeText("escape.txt", "A & B < C > D", Charsets.UTF_8)
         val parser = TxtParser()
@@ -207,6 +253,83 @@ class TxtParserTest {
         assertEquals(2, reparsed.chapters.size)
         assertTrue(parser.getChapterContent(0).contains("繁體內容甲"))
         assertTrue(parser.getChapterContent(1).contains("繁體內容乙"))
+    }
+
+    @Test
+    fun appliesEditorOperationsInOrder() {
+        val operations = listOf<TxtEditOperation>(
+            TxtSetChapterText(0, "Alpha alpha beta"),
+            TxtReplaceText(
+                chapterIndex = null,
+                query = "alpha",
+                replacement = "done",
+                ignoreCase = true
+            ),
+            TxtReplaceText(
+                chapterIndex = 1,
+                query = "beta",
+                replacement = "other",
+                ignoreCase = false
+            ),
+            TxtReplaceRange(0, 0, 4, "X")
+        )
+
+        assertEquals("X done beta", applyTxtEditOperations(0, "original", operations))
+        assertEquals("original", applyTxtEditOperations(2, "original", operations))
+    }
+
+    @Test
+    fun rewritesMultipleChaptersAndPreservesUtf8BomAndLineEndings() {
+        val file = temporaryFolder.newFile("rewrite-all.txt")
+        file.outputStream().use { output ->
+            output.write(byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()))
+            output.write(
+                "第1章 开始\r\n正文甲\r\n\r\n第2章 继续\r\n正文乙\r\n"
+                    .toByteArray(Charsets.UTF_8)
+            )
+        }
+        val parser = TxtParser()
+        parser.parse(file.absolutePath)
+
+        val result = parser.rewriteWithOperations(
+            listOf(
+                TxtSetChapterText(0, "第1章 开始\r\n草稿甲"),
+                TxtReplaceText(
+                    chapterIndex = null,
+                    query = "正文",
+                    replacement = "内容",
+                    ignoreCase = false
+                )
+            )
+        )
+
+        val bytes = file.readBytes()
+        assertTrue(result.success)
+        assertTrue(bytes.take(3) == listOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()))
+        val text = String(bytes, 3, bytes.size - 3, Charsets.UTF_8)
+        assertTrue(text.contains("草稿甲"))
+        assertTrue(text.contains("内容乙"))
+        assertTrue(text.contains("\r\n"))
+        assertTrue(parser.getChapterContent(1).contains("内容乙"))
+    }
+
+    @Test
+    fun abortsRewriteWhenSelectedEncodingCannotRepresentDraft() {
+        val file = writeText(
+            "windows-1252.txt",
+            "Chapter 1\r\nplain text\r\nChapter 2\r\nmore text",
+            Charset.forName("windows-1252")
+        )
+        val original = file.readBytes()
+        val parser = TxtParser().apply { selectedEncoding = TxtEncoding.WINDOWS_1252 }
+        parser.parse(file.absolutePath)
+
+        val result = parser.rewriteWithOperations(
+            listOf(TxtSetChapterText(0, "Chapter 1\r\n无法编码"))
+        )
+
+        assertFalse(result.success)
+        assertTrue(original.contentEquals(file.readBytes()))
     }
 
     private fun writeText(name: String, text: String, charset: Charset): File {

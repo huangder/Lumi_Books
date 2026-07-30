@@ -3,13 +3,14 @@ package com.huangder.lumibooks.ui.reader.engine
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PointF
 import android.graphics.RadialGradient
 import android.graphics.Rect
-import android.graphics.Region
 import android.graphics.Shader
 import android.graphics.drawable.GradientDrawable
 import android.view.MotionEvent
@@ -31,17 +32,12 @@ import kotlin.math.sin
  * current/previous page, folded back, underlying page and their shadows are
  * separate clipped layers instead of a translated translucent strip.
  */
-class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(readView) {
+internal class EpubLegacyCurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(readView) {
 
     companion object {
-        private const val TAP_DURATION_MS = 500
-        private const val CSS_TAP_DURATION_MS = 1100
-        private const val MIN_SETTLE_DURATION_MS = 220
-        private const val MAX_SETTLE_DURATION_MS = 500
-        private const val CSS_MIN_SETTLE_DURATION_MS = 360
-        private const val CSS_MAX_SETTLE_DURATION_MS = 950
-        private const val CHAINED_SETTLE_DURATION_MS = 240
-        private const val CSS_SETTLE_CORNER_DISTANCE_FACTOR = 0.18f
+        private const val TAP_DURATION_MS = 420
+        private const val MIN_SETTLE_DURATION_MS = 180
+        private const val MAX_SETTLE_DURATION_MS = 420
         private const val COMMIT_PROGRESS = 0.14f
         private const val FLING_VELOCITY_DP_PER_SECOND = 450f
         private const val GEOMETRY_EPSILON = 0.1f
@@ -56,23 +52,21 @@ class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
     }
     private val pageSourceRect = Rect()
     private val pageDestinationRect = Rect()
+    private val backPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+        colorFilter = ColorMatrixColorFilter(
+            ColorMatrix(
+                floatArrayOf(
+                    0.94f, 0f, 0f, 0f, 6f,
+                    0f, 0.94f, 0f, 0f, 6f,
+                    0f, 0f, 0.94f, 0f, 6f,
+                    0f, 0f, 0f, 0.96f, 0f
+                )
+            )
+        )
+    }
     private val backTintPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val ambientShadowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val foldTextureMatrix = Matrix()
-    private val foldTexturePaint = Paint(Paint.DITHER_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
-        alpha = 100
-    }
-    private val seamCoverPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
-        strokeJoin = Paint.Join.ROUND
-    }
     private val edgeFeatherPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
-        strokeJoin = Paint.Join.ROUND
-    }
-    private val continuousFoldShadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
@@ -81,10 +75,6 @@ class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
     private val path0 = Path()
     private val path1 = Path()
     private val foldEdgePath = Path()
-    private val viewportRegion = Region()
-    private val curledRegion = Region()
-    private val visibleFrontRegion = Region()
-    private val visibleFoldRegion = Region()
     private val bezierStart1 = PointF()
     private val bezierControl1 = PointF()
     private val bezierVertex1 = PointF()
@@ -108,6 +98,13 @@ class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
     // 🔥 curl 拖拽锚点：direction 首次确定时记录手指位置，
     // 使 curl 初始偏移为 0，消除松开前纸张突变。
     private var curlDragOriginX = 0f
+
+    private val reflectionMatrix = Matrix()
+    private val reflectionValues = floatArrayOf(
+        1f, 0f, 0f,
+        0f, 1f, 0f,
+        0f, 0f, 1f
+    )
 
     private val folderShadowLR = gradient(
         GradientDrawable.Orientation.LEFT_RIGHT,
@@ -144,8 +141,6 @@ class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
 
     private var turningBitmap: Bitmap? = null
     private var underBitmap: Bitmap? = null
-    private var ownedTurningBitmap: Bitmap? = null
-    private var ownedUnderBitmap: Bitmap? = null
     private var turningPageView: View? = null
     private var underPageView: View? = null
     private var snapshotsReady = false
@@ -160,23 +155,9 @@ class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
 
     private var gestureStarted = false
     private var settleCompletesPage = false
-    private var settleTargetY = Float.NaN
-    private var settleExpedited = false
-    private var finalFramePending = false
     private var velocityTracker: VelocityTracker? = null
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (!readView.isPageProgressReversed) return handleTouchEvent(event)
-        val mirroredEvent = MotionEvent.obtain(event)
-        mirroredEvent.setLocation(readView.width - event.x, event.y)
-        return try {
-            handleTouchEvent(mirroredEvent)
-        } finally {
-            mirroredEvent.recycle()
-        }
-    }
-
-    private fun handleTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 abortAnim()
@@ -269,17 +250,6 @@ class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
     }
 
     override fun onDraw(canvas: Canvas) {
-        if (!readView.isPageProgressReversed) {
-            drawCurl(canvas)
-            return
-        }
-        val saveCount = canvas.save()
-        canvas.scale(-1f, 1f, readView.width * 0.5f, 0f)
-        drawCurl(canvas)
-        canvas.restoreToCount(saveCount)
-    }
-
-    private fun drawCurl(canvas: Canvas) {
         if (!snapshotsReady || direction == Direction.NONE) return
         val width = readView.width.toFloat()
         val height = readView.height.toFloat()
@@ -291,21 +261,11 @@ class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
 
         if (calculateCurlPoints()) {
             drawCurrentPageArea(canvas, turningBitmap, turningPageView)
-            buildFoldEdgePath()
-            drawUnderPageSeamFeather(canvas)
-            if (readView.hasDirectPageRenderer) {
-                drawContinuousFoldShadow(canvas)
-            } else {
-                drawUnderlyingPageShadow(canvas, underBitmap, underPageView)
-                drawCurrentPageShadow(canvas)
-                drawCurlAmbientShadow(canvas)
-            }
-            drawFoldedBack(canvas)
+            drawUnderlyingPageShadow(canvas, underBitmap, underPageView)
+            drawCurrentPageShadow(canvas)
+            drawCurlAmbientShadow(canvas)
+            drawFoldedBack(canvas, turningBitmap)
             drawFeatheredFoldEdge(canvas)
-            if (isCommittedFrameFullyOffscreen()) {
-                if (!scroller.isFinished) scroller.abortAnimation()
-                finalFramePending = true
-            }
         } else {
             val targetSideReached = when (direction) {
                 Direction.NEXT -> touchX <= 0f
@@ -322,12 +282,6 @@ class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
             drawPage(canvas, fallbackBitmap, fallbackView)
         }
         canvas.restore()
-        if (finalFramePending) {
-            finalFramePending = false
-            readView.post {
-                if (isRunning && !isDragging) finishSettle()
-            }
-        }
     }
 
     override fun startAnim(fromDrag: Boolean) {
@@ -344,6 +298,7 @@ class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
         direction = dir
         startY = readView.height * 0.82f
         configureCorner(startY)
+        val nearCornerY = nearCornerY()
         if (dir == Direction.NEXT) {
             startX = readView.width - 1f
             touchX = startX
@@ -351,7 +306,7 @@ class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
             startX = 1f
             touchX = -readView.width.toFloat()
         }
-        touchY = if (readView.hasDirectPageRenderer) cssSettleTargetY() else nearCornerY()
+        touchY = nearCornerY
         snapshotsReady = capturePages(dir)
         if (!snapshotsReady) {
             resetToIdle()
@@ -359,9 +314,7 @@ class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
         }
 
         isFlipAnim = true
-        settleToPage(
-            if (readView.hasDirectPageRenderer) CSS_TAP_DURATION_MS else TAP_DURATION_MS
-        )
+        settleToPage(TAP_DURATION_MS)
     }
 
     override fun computeScroll(): Boolean {
@@ -369,14 +322,7 @@ class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
             touchX = scroller.currX.toFloat()
             touchY = scroller.currY.toFloat()
             if (scroller.currX == scroller.finalX && scroller.currY == scroller.finalY) {
-                if (readView.hasDirectPageRenderer) {
-                    // Both commit and bounce-back keep the overlay alive until
-                    // their terminal frame has actually passed through onDraw.
-                    finalFramePending = true
-                    readView.postInvalidateOnAnimation()
-                } else {
-                    finishSettle()
-                }
+                finishSettle()
             } else {
                 readView.postInvalidateOnAnimation()
             }
@@ -384,12 +330,7 @@ class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
         }
 
         if (isRunning) {
-            if (readView.hasDirectPageRenderer) {
-                finalFramePending = true
-                readView.postInvalidateOnAnimation()
-            } else {
-                finishSettle()
-            }
+            finishSettle()
             return true
         }
         return false
@@ -415,53 +356,13 @@ class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
         recycleVelocityTracker()
         gestureStarted = false
         settleCompletesPage = false
-        settleTargetY = Float.NaN
-        settleExpedited = false
-        finalFramePending = false
         isRunning = false
         isDragging = false
         isFlipAnim = false
         snapshotsReady = false
+        direction = Direction.NONE
         resetChildViews()
         readView.invalidate()
-        direction = Direction.NONE
-    }
-
-    override fun completeRunningFlipForNewInput(): Boolean {
-        val committedDirection = if (
-            isFlipAnim && isRunning && settleCompletesPage && direction != Direction.NONE
-        ) direction else Direction.NONE
-        if (committedDirection == Direction.NONE) return false
-
-        if (readView.hasDirectPageRenderer) {
-            if (!settleExpedited) {
-                if (!scroller.isFinished) scroller.abortAnimation()
-                settleExpedited = true
-                startScrollTo(
-                    completionTargetX(),
-                    resolvedSettleTargetY(),
-                    CHAINED_SETTLE_DURATION_MS
-                )
-            }
-            // Keep the current curl visible until its paper edge has actually
-            // left the screen. The host can retain the new intent meanwhile.
-            return false
-        }
-
-        if (!scroller.isFinished) scroller.abortAnimation()
-        recycleVelocityTracker()
-        gestureStarted = false
-        settleCompletesPage = false
-        isRunning = false
-        isDragging = false
-        isFlipAnim = false
-        snapshotsReady = false
-        resetChildViews()
-        direction = committedDirection
-        onAnimationComplete?.invoke()
-        direction = Direction.NONE
-        readView.invalidate()
-        return true
     }
 
     override fun getOffsetX(): Float = touchX - startX
@@ -470,69 +371,29 @@ class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
 
     fun destroy() {
         abortAnim()
-        ownedTurningBitmap?.takeUnless { it.isRecycled }?.recycle()
-        ownedUnderBitmap?.takeUnless { it.isRecycled }?.recycle()
+        turningBitmap?.recycle()
+        underBitmap?.recycle()
         turningBitmap = null
         underBitmap = null
-        ownedTurningBitmap = null
-        ownedUnderBitmap = null
     }
 
     private fun settleToPage(fixedDurationMs: Int? = null) {
         settleCompletesPage = true
-        settleExpedited = false
-        finalFramePending = false
-        settleTargetY = resolvedSettleTargetY()
-        if (hasReachedCompletionTarget()) {
-            finishSettle()
-            return
+        val targetX = if (direction == Direction.NEXT) {
+            -readView.width.toFloat()
+        } else {
+            readView.width - 1f
         }
-        startScrollTo(completionTargetX(), settleTargetY, fixedDurationMs)
-    }
-
-    private fun hasReachedCompletionTarget(): Boolean = when (direction) {
-        Direction.NEXT -> touchX <= completionTargetX()
-        Direction.PREV -> touchX >= completionTargetX()
-        Direction.NONE -> false
-    }
-
-    private fun completionTargetX(): Float {
-        val width = readView.width.coerceAtLeast(1).toFloat()
-        val distance = if (readView.hasDirectPageRenderer) {
-            CurlTerminalGeometry.completionDistance(width, readView.height.toFloat())
-        } else width
-        return when (direction) {
-            Direction.NEXT -> -distance
-            Direction.PREV -> distance
-            Direction.NONE -> touchX
-        }
-    }
-
-    private fun resolvedSettleTargetY(): Float {
-        if (!readView.hasDirectPageRenderer) return nearCornerY()
-        if (settleTargetY.isFinite()) return settleTargetY
-        return cssSettleTargetY()
-    }
-
-    private fun cssSettleTargetY(): Float {
-        val height = readView.height.coerceAtLeast(1).toFloat()
-        val cornerDistance = height * CSS_SETTLE_CORNER_DISTANCE_FACTOR
-        return if (cornerY == 0f) cornerDistance else height - cornerDistance
+        startScrollTo(targetX, nearCornerY(), fixedDurationMs)
     }
 
     private fun startScrollTo(targetX: Float, targetY: Float, fixedDurationMs: Int? = null) {
         val width = readView.width.coerceAtLeast(1).toFloat()
         val remaining = (abs(targetX - touchX) / width).coerceIn(0f, 1.5f)
-        val duration = fixedDurationMs ?: if (readView.hasDirectPageRenderer) {
-            val distanceFraction = (remaining / 1.5f).coerceIn(0f, 1f)
-            (CSS_MIN_SETTLE_DURATION_MS +
-                (CSS_MAX_SETTLE_DURATION_MS - CSS_MIN_SETTLE_DURATION_MS) * distanceFraction
-                ).toInt().coerceIn(CSS_MIN_SETTLE_DURATION_MS, CSS_MAX_SETTLE_DURATION_MS)
-        } else {
-            (MIN_SETTLE_DURATION_MS +
+        val duration = fixedDurationMs ?: (
+            MIN_SETTLE_DURATION_MS +
                 (MAX_SETTLE_DURATION_MS - MIN_SETTLE_DURATION_MS) * min(remaining, 1f)
-                ).toInt().coerceIn(MIN_SETTLE_DURATION_MS, MAX_SETTLE_DURATION_MS)
-        }
+            ).toInt().coerceIn(MIN_SETTLE_DURATION_MS, MAX_SETTLE_DURATION_MS)
 
         val dx = (targetX - touchX).toInt()
         val dy = (targetY - touchY).toInt()
@@ -562,9 +423,6 @@ class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
 
     private fun resetToIdle() {
         settleCompletesPage = false
-        settleTargetY = Float.NaN
-        settleExpedited = false
-        finalFramePending = false
         snapshotsReady = false
         direction = Direction.NONE
         isRunning = false
@@ -599,12 +457,7 @@ class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
         val height = readView.height.toFloat()
         if (width <= 0f || height <= 0f) return false
 
-        val horizontalLimit = if (readView.hasDirectPageRenderer) {
-            CurlTerminalGeometry.completionDistance(width, height)
-        } else {
-            width * 1.2f
-        }
-        renderTouchX = touchX.coerceIn(-horizontalLimit, horizontalLimit)
+        renderTouchX = touchX.coerceIn(-width * 1.2f, width * 1.2f)
         renderTouchY = touchY.coerceIn(1f, height - 1f)
         if (abs(renderTouchX - cornerX) < GEOMETRY_EPSILON) {
             renderTouchX = cornerX - GEOMETRY_EPSILON
@@ -923,64 +776,6 @@ class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
         canvas.drawCircle(centerX, centerY, radius, ambientShadowPaint)
     }
 
-    private fun buildFoldEdgePath() {
-        foldEdgePath.reset()
-        foldEdgePath.moveTo(bezierStart1.x, bezierStart1.y)
-        foldEdgePath.quadTo(
-            bezierControl1.x,
-            bezierControl1.y,
-            bezierEnd1.x,
-            bezierEnd1.y
-        )
-        foldEdgePath.lineTo(renderTouchX, renderTouchY)
-        foldEdgePath.lineTo(bezierEnd2.x, bezierEnd2.y)
-        foldEdgePath.quadTo(
-            bezierControl2.x,
-            bezierControl2.y,
-            bezierStart2.x,
-            bezierStart2.y
-        )
-    }
-
-    private fun drawUnderPageSeamFeather(canvas: Canvas) {
-        if (readView.curlBackTextureMode != CurlBackTextureMode.FADED_MIRROR) return
-
-        foldEdgePath.reset()
-        foldEdgePath.moveTo(bezierStart1.x, bezierStart1.y)
-        foldEdgePath.quadTo(
-            bezierControl1.x,
-            bezierControl1.y,
-            bezierEnd1.x,
-            bezierEnd1.y
-        )
-        foldEdgePath.lineTo(renderTouchX, renderTouchY)
-        foldEdgePath.lineTo(bezierEnd2.x, bezierEnd2.y)
-        foldEdgePath.quadTo(
-            bezierControl2.x,
-            bezierControl2.y,
-            bezierStart2.x,
-            bezierStart2.y
-        )
-
-        canvas.save()
-        canvas.clipPath(path0)
-        drawUnderPageSeamStroke(canvas, 14f * density, 0.52f)
-        drawUnderPageSeamStroke(canvas, 6f * density, 0.90f)
-        canvas.restore()
-    }
-
-    private fun drawUnderPageSeamStroke(canvas: Canvas, width: Float, alpha: Float) {
-        val background = readView.bgColor
-        seamCoverPaint.strokeWidth = width
-        seamCoverPaint.color = Color.argb(
-            (alpha * 255f).toInt(),
-            Color.red(background),
-            Color.green(background),
-            Color.blue(background)
-        )
-        canvas.drawPath(foldEdgePath, seamCoverPaint)
-    }
-
     private fun drawFeatheredFoldEdge(canvas: Canvas) {
         foldEdgePath.reset()
         foldEdgePath.moveTo(bezierStart1.x, bezierStart1.y)
@@ -1011,58 +806,7 @@ class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
         canvas.drawPath(foldEdgePath, edgeFeatherPaint)
     }
 
-    private fun drawContinuousFoldShadow(canvas: Canvas) {
-        val diagonal = hypot(
-            readView.width.toDouble(),
-            readView.height.toDouble()
-        ).toFloat().coerceAtLeast(1f)
-        val depth = (touchToCornerDistance / diagonal).coerceIn(0f, 1f)
-        val widthScale = 0.72f + depth * 0.28f
-
-        canvas.save()
-        canvas.clipPath(path0)
-        drawContinuousFoldShadowStroke(canvas, 34f * density * widthScale, 0x05000000)
-        drawContinuousFoldShadowStroke(canvas, 18f * density * widthScale, 0x0A000000)
-        drawContinuousFoldShadowStroke(canvas, 7f * density * widthScale, 0x16000000)
-        canvas.restore()
-    }
-
-    private fun drawContinuousFoldShadowStroke(canvas: Canvas, width: Float, color: Int) {
-        continuousFoldShadowPaint.strokeWidth = width.coerceAtLeast(1f)
-        continuousFoldShadowPaint.color = color
-        canvas.drawPath(foldEdgePath, continuousFoldShadowPaint)
-    }
-
-    private fun isCommittedFrameFullyOffscreen(): Boolean {
-        if (!readView.hasDirectPageRenderer || !settleCompletesPage ||
-            !isRunning || isDragging
-        ) return false
-        val width = readView.width
-        val height = readView.height
-        if (width <= 0 || height <= 0) return false
-
-        viewportRegion.set(0, 0, width, height)
-        curledRegion.setEmpty()
-        curledRegion.setPath(path0, viewportRegion)
-        visibleFrontRegion.set(viewportRegion)
-        visibleFrontRegion.op(curledRegion, Region.Op.DIFFERENCE)
-        visibleFoldRegion.setEmpty()
-        visibleFoldRegion.setPath(path1, viewportRegion)
-        val frontSettled = when (direction) {
-            Direction.NEXT -> isNegligible(visibleFrontRegion)
-            Direction.PREV -> isNegligible(curledRegion)
-            Direction.NONE -> false
-        }
-        return frontSettled && isNegligible(visibleFoldRegion)
-    }
-
-    private fun isNegligible(region: Region): Boolean {
-        if (region.isEmpty) return true
-        val bounds = region.bounds
-        return bounds.width() <= 2 || bounds.height() <= 2
-    }
-
-    private fun drawFoldedBack(canvas: Canvas) {
+    private fun drawFoldedBack(canvas: Canvas, bitmap: Bitmap?) {
         val horizontalFold = abs((bezierStart1.x + bezierControl1.x) / 2f - bezierControl1.x)
         val verticalFold = abs((bezierStart2.y + bezierControl2.y) / 2f - bezierControl2.y)
         val foldShadowWidth = min(horizontalFold, verticalFold)
@@ -1088,14 +832,39 @@ class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
             folderShadow = folderShadowRL
         }
 
+        val distance = hypot(
+            (cornerX - bezierControl1.x).toDouble(),
+            (bezierControl2.y - cornerY).toDouble()
+        ).toFloat()
+        if (distance < GEOMETRY_EPSILON) return
+        val xRatio = (cornerX - bezierControl1.x) / distance
+        val yRatio = (bezierControl2.y - cornerY) / distance
+        reflectionValues[0] = 1f - 2f * yRatio * yRatio
+        reflectionValues[1] = 2f * xRatio * yRatio
+        reflectionValues[3] = reflectionValues[1]
+        reflectionValues[4] = 1f - 2f * xRatio * xRatio
+        reflectionMatrix.reset()
+        reflectionMatrix.setValues(reflectionValues)
+        reflectionMatrix.preTranslate(-bezierControl1.x, -bezierControl1.y)
+        reflectionMatrix.postTranslate(bezierControl1.x, bezierControl1.y)
+
         canvas.save()
         canvas.clipPath(path0)
         canvas.clipPath(path1)
         canvas.drawColor(readView.bgColor)
-        val hasFoldTexture = drawFoldBackTexture(canvas)
+        val reflectionSave = canvas.save()
+        canvas.concat(reflectionMatrix)
+        val directPage = turningPageView
+        val drewDirectPage = directPage != null && readView.drawPageDirectly(canvas, directPage)
+        if (!drewDirectPage && bitmap != null && !bitmap.isRecycled) {
+            pageSourceRect.set(0, 0, bitmap.width, bitmap.height)
+            pageDestinationRect.set(0, 0, readView.width, readView.height)
+            canvas.drawBitmap(bitmap, pageSourceRect, pageDestinationRect, backPaint)
+        }
+        canvas.restoreToCount(reflectionSave)
         val background = readView.bgColor
         backTintPaint.color = Color.argb(
-            if (hasFoldTexture) 64 else 42,
+            42,
             Color.red(background),
             Color.green(background),
             Color.blue(background)
@@ -1107,32 +876,15 @@ class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
             readView.height.toFloat(),
             backTintPaint
         )
-        if (!readView.hasDirectPageRenderer) {
-            canvas.rotate(degrees, bezierStart1.x, bezierStart1.y)
-            folderShadow.setBounds(
-                min(left, right),
-                bezierStart1.y.toInt(),
-                max(left, right),
-                (bezierStart1.y + maxLength).toInt()
-            )
-            folderShadow.draw(canvas)
-        }
+        canvas.rotate(degrees, bezierStart1.x, bezierStart1.y)
+        folderShadow.setBounds(
+            min(left, right),
+            bezierStart1.y.toInt(),
+            max(left, right),
+            (bezierStart1.y + maxLength).toInt()
+        )
+        folderShadow.draw(canvas)
         canvas.restore()
-    }
-
-    private fun drawFoldBackTexture(canvas: Canvas): Boolean {
-        if (readView.curlBackTextureMode != CurlBackTextureMode.FADED_MIRROR) return false
-        val reflection = CurlReflectionGeometry.between(
-            cornerX = cornerX,
-            cornerY = cornerY,
-            touchX = renderTouchX,
-            touchY = renderTouchY
-        ) ?: return false
-
-        foldTextureMatrix.setValues(reflection.matrixValues())
-        val bitmap = turningBitmap?.takeUnless { it.isRecycled } ?: return false
-        canvas.drawBitmap(bitmap, foldTextureMatrix, foldTexturePaint)
-        return true
     }
 
     private fun capturePages(dir: Direction): Boolean {
@@ -1156,47 +908,27 @@ class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
         turningPageView = turningView
         underPageView = underView
         if (readView.hasDirectPageRenderer) {
-            ownedTurningBitmap?.takeUnless { it.isRecycled }?.recycle()
-            ownedTurningBitmap = null
-            // Main page content remains live, but the reflected paper back uses
-            // the stable cached texture supplied by the placeholder page.
-            turningBitmap = frozenPage(turningView)
-            ownedUnderBitmap?.takeUnless { it.isRecycled }?.recycle()
-            ownedUnderBitmap = null
+            turningBitmap?.recycle()
+            turningBitmap = null
+            underBitmap?.recycle()
             underBitmap = null
             return true
         }
 
-        // EpubSnapshotPageView already owns stable, page-sized bitmaps. Borrow
-        // them directly so starting a curl never copies two full screens on the
-        // UI thread. Canvas reader pages still use the reusable owned buffers.
-        turningBitmap = frozenPage(turningView) ?: snapshot(turningView, ownedTurningBitmap).also {
-            ownedTurningBitmap = it
-        }
-        underBitmap = frozenPage(underView) ?: snapshot(underView, ownedUnderBitmap).also {
-            ownedUnderBitmap = it
-        }
+        turningBitmap = snapshot(turningView, turningBitmap)
+        underBitmap = snapshot(underView, underBitmap)
         return turningBitmap != null && underBitmap != null
     }
 
-    private fun frozenPage(view: View): Bitmap? =
-        (view as? PageBitmapSource)?.pageBitmap?.takeUnless { it.isRecycled }
-
     private fun snapshot(view: View, reusable: Bitmap?): Bitmap? {
+        val frozenPage = (view as? PageBitmapSource)?.pageBitmap
+        if (frozenPage != null && !frozenPage.isRecycled) {
+            return copyFrozenPage(frozenPage, reusable)
+        }
+
         val width = readView.width
         val height = readView.height
         if (width <= 0 || height <= 0 || view.width <= 0 || view.height <= 0) return null
-
-        // A prefetched slot is marked loaded immediately after its text is assigned.
-        // During very fast consecutive turns Android may not have run the following
-        // layout pass yet, so drawing it at once can capture only the page background.
-        // Resolve that pending layout synchronously before freezing the curl frames.
-        if (view.isLayoutRequested) {
-            val widthSpec = View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY)
-            val heightSpec = View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
-            view.measure(widthSpec, heightSpec)
-            view.layout(0, 0, width, height)
-        }
 
         val bitmap = if (
             reusable == null || reusable.isRecycled ||
@@ -1208,7 +940,7 @@ class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
             reusable
         }
 
-        bitmap.density = view.resources.displayMetrics.densityDpi
+        bitmap.density = readView.resources.displayMetrics.densityDpi
         bitmap.eraseColor(readView.bgColor)
         val bitmapCanvas = Canvas(bitmap)
         val savedTranslationX = view.translationX
@@ -1228,6 +960,25 @@ class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
     }
 
 
+    private fun copyFrozenPage(source: Bitmap, reusable: Bitmap?): Bitmap {
+        val bitmap = if (
+            reusable == null || reusable.isRecycled ||
+            reusable.width != source.width || reusable.height != source.height
+        ) {
+            reusable?.recycle()
+            Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
+        } else {
+            reusable
+        }
+        bitmap.density = source.density.takeIf { it != Bitmap.DENSITY_NONE }
+            ?: readView.resources.displayMetrics.densityDpi
+        bitmap.eraseColor(readView.bgColor)
+        pageSourceRect.set(0, 0, source.width, source.height)
+        pageDestinationRect.set(0, 0, bitmap.width, bitmap.height)
+        Canvas(bitmap).drawBitmap(source, pageSourceRect, pageDestinationRect, pagePaint)
+        return bitmap
+    }
+
     private fun drawPage(canvas: Canvas, bitmap: Bitmap?, pageView: View?) {
         if (!drawPageContent(canvas, bitmap, pageView)) {
             canvas.drawColor(readView.bgColor)
@@ -1235,29 +986,12 @@ class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
     }
 
     private fun drawPageContent(canvas: Canvas, bitmap: Bitmap?, pageView: View?): Boolean {
-        val saveCount = if (readView.isPageProgressReversed) {
-            canvas.save().also {
-                canvas.scale(-1f, 1f, readView.width * 0.5f, 0f)
-            }
-        } else {
-            -1
-        }
-        try {
-            if (pageView != null && readView.drawPageDirectly(canvas, pageView)) return true
-            if (bitmap == null || bitmap.isRecycled) return false
-            pageSourceRect.set(0, 0, bitmap.width, bitmap.height)
-            if (readView.curlBackTextureMode == CurlBackTextureMode.FADED_MIRROR) {
-                // CSS snapshots are surface-sized. Equal source/destination pixel
-                // bounds guarantee a 1:1 raster copy and bypass density conversion.
-                pageDestinationRect.set(0, 0, bitmap.width, bitmap.height)
-            } else {
-                pageDestinationRect.set(0, 0, readView.width, readView.height)
-            }
-            canvas.drawBitmap(bitmap, pageSourceRect, pageDestinationRect, pagePaint)
-            return true
-        } finally {
-            if (saveCount >= 0) canvas.restoreToCount(saveCount)
-        }
+        if (pageView != null && readView.drawPageDirectly(canvas, pageView)) return true
+        if (bitmap == null || bitmap.isRecycled) return false
+        pageSourceRect.set(0, 0, bitmap.width, bitmap.height)
+        pageDestinationRect.set(0, 0, readView.width, readView.height)
+        canvas.drawBitmap(bitmap, pageSourceRect, pageDestinationRect, pagePaint)
+        return true
     }
 
     private fun resetChildViews() {
@@ -1268,12 +1002,12 @@ class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
         readView.curPageView.alpha = 1f
         readView.curPageView.translationZ = 2f
 
-        readView.prevPageView.translationX = idleTranslationX(Direction.PREV, width)
+        readView.prevPageView.translationX = -width
         readView.prevPageView.translationY = 0f
         readView.prevPageView.alpha = 0f
         readView.prevPageView.translationZ = 0f
 
-        readView.nextPageView.translationX = idleTranslationX(Direction.NEXT, width)
+        readView.nextPageView.translationX = width
         readView.nextPageView.translationY = 0f
         readView.nextPageView.alpha = 0f
         readView.nextPageView.translationZ = 0f
@@ -1293,3 +1027,4 @@ class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
         }
     }
 }
+

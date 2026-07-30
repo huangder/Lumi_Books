@@ -31,6 +31,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -48,10 +49,11 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.KaiTi
+import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import androidx.compose.ui.res.stringResource
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import java.io.File
 
 /**
@@ -110,16 +112,23 @@ fun BookTransitionOverlay(
         }
     }
 
-    // 退场动画：isReady 后立即开始，不额外等待
+    // The reader can become ready before the entrance animation is visibly complete.
+    // Do not drop that one-shot ready signal just because the sheet alpha is still low.
     LaunchedEffect(isReady) {
-        if (isReady && sheetAlpha.value > 0.5f && !isClosing.value) {
-            isClosing.value = true
+        if (!isReady || isClosing.value) return@LaunchedEffect
+
+        // Wait until the entrance is visible, unless the user requests back first.
+        snapshotFlow { sheetAlpha.value to isClosing.value }
+            .first { (alpha, closing) -> alpha > 0.5f || closing }
+        if (isClosing.value) return@LaunchedEffect
+
+        isClosing.value = true
+        coroutineScope {
             launch { sheetAlpha.animateTo(0f, tween(200)) }
             launch { sheetScale.animateTo(1.06f, tween(250)) }
             launch { scrimAlpha.animateTo(0f, tween(300)) }
-            delay(300)
-            onTransitionComplete()
         }
+        onTransitionComplete()
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -207,7 +216,7 @@ fun BookTransitionOverlay(
                         text = title,
                         fontSize = 22.sp,
                         fontWeight = FontWeight.Bold,
-                        fontFamily = KaiTi,
+                        fontFamily = resolveAppFontFamily(KaiTi),
                         color = AppColors.TextPrimary,
                         textAlign = TextAlign.Center
                     )

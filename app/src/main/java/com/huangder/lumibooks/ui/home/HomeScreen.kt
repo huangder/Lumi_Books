@@ -90,6 +90,7 @@ import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.SansSerif
+import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.ui.animation.PageEntranceItem
 import com.huangder.lumibooks.util.TimeUtils
 
@@ -135,6 +136,13 @@ fun HomeScreen(
         uiState.importMessage?.let {
             Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
             viewModel.clearImportMessage()
+        }
+    }
+
+    LaunchedEffect(uiState.error) {
+        uiState.error?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            viewModel.clearError()
         }
     }
 
@@ -298,7 +306,7 @@ private fun HomeHeader(
             text = stringResource(R.string.home_page),
             fontSize = AppType.Display,
             fontWeight = FontWeight.Bold,
-            fontFamily = KaiTi,
+            fontFamily = resolveAppFontFamily(KaiTi),
             letterSpacing = (-0.02).sp,
             color = AppColors.TextPrimary
         )
@@ -410,7 +418,7 @@ private fun ContinueReadingCard(book: Book, onClick: () -> Unit, onToggleFavorit
                 text = book.title,
                 fontSize = AppType.Body,
                 fontWeight = FontWeight.SemiBold,
-                fontFamily = KaiTi,
+                fontFamily = resolveAppFontFamily(KaiTi),
                 color = AppColors.TextPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -546,7 +554,7 @@ private fun SectionHeader(title: String) {
         text = title,
         fontSize = AppType.Section,
         fontWeight = FontWeight.Bold,
-        fontFamily = KaiTi,
+        fontFamily = resolveAppFontFamily(KaiTi),
         color = AppColors.TextPrimary,
         modifier = Modifier.padding(horizontal = AppSpace.lg)
     )

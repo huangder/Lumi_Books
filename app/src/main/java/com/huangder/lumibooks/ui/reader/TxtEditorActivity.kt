@@ -29,8 +29,8 @@ import javax.inject.Inject
  *   1. rememberLayerBackdrop() 在 EBookReaderTheme 内创建
  *   2. LiquidGlassDialogHost(backdrop = ...) 使弹窗拿到真实折射
  *   3. Box.layerBackdrop(...) 捕获内容像素
- *   4. ProvideLiquidGlassBackdrop(null) 阻断内容内部的 LiquidGlassSurface
- *      访问 backdrop，防止 MIUI MiBackgroundBlurBlend 递归崩溃
+ *   4. ProvideLiquidGlassBackdrop(null) 阻断正文隐式访问 backdrop；仅底部控件显式接收
+ *      mainBackdrop，兼顾玻璃效果与 MIUI MiBackgroundBlurBlend 稳定性
  */
 @AndroidEntryPoint
 class TxtEditorActivity : ComponentActivity() {
@@ -58,6 +58,7 @@ class TxtEditorActivity : ComponentActivity() {
 
         setContent {
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = "lumi")
+            val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = "default")
             val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = 0.55f)
             val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = false)
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
@@ -72,7 +73,8 @@ class TxtEditorActivity : ComponentActivity() {
                 darkTheme = isDark,
                 appTheme = appTheme,
                 liquidGlassTransparency = liquidGlassTransparency,
-                liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled
+                liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled,
+                globalFontMode = globalFontMode
             ) {
                 val mainBackdrop = rememberLayerBackdrop()
                 LiquidGlassDialogHost(
@@ -87,10 +89,10 @@ class TxtEditorActivity : ComponentActivity() {
                             )
                     ) {
                         // ProvideLiquidGlassBackdrop(null) 是防崩溃关键：
-                        // 阻断 TxtEditorScreen 内的 LiquidGlassSurface（按钮等）
-                        // 访问外层 backdrop，避免"采样→重渲→再采样"递归
+                        // 阻断正文隐式访问外层 backdrop；底部控件通过参数显式使用。
                         ProvideLiquidGlassBackdrop(null) {
                             TxtEditorScreen(
+                                backdrop = mainBackdrop.takeIf { isLiquidGlass },
                                 onNavigateBack = { saved ->
                                     if (saved) setResult(Activity.RESULT_OK)
                                     finish()

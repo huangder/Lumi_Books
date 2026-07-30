@@ -2,6 +2,7 @@ package com.huangder.lumibooks.ui.settings
 
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -54,6 +55,7 @@ import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.FangSong
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
+import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -73,6 +75,7 @@ class FeedbackActivity : ComponentActivity() {
 
         setContent {
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = "lumi")
+            val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = "default")
             val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = 0.55f)
             val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = false)
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
@@ -88,7 +91,8 @@ class FeedbackActivity : ComponentActivity() {
                 dynamicColor = appTheme == "material3",
                 appTheme = appTheme,
                 liquidGlassTransparency = liquidGlassTransparency,
-                liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled
+                liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled,
+                globalFontMode = globalFontMode
             ) {
                 com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
                     predictiveBackEnabled = predictiveBackEnabled,
@@ -133,7 +137,7 @@ private fun FeedbackPage(onBack: () -> Unit) {
                     settingsBackButton = true
                 )
                 Spacer(Modifier.weight(1f))
-                Text(stringResource(R.string.feedback_title), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = FangSong, color = AppColors.TextPrimary)
+                Text(stringResource(R.string.feedback_title), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = resolveAppFontFamily(FangSong), color = AppColors.TextPrimary)
                 Spacer(Modifier.weight(1f))
                 Spacer(Modifier.size(48.dp))
             }
@@ -189,7 +193,11 @@ private fun FeedbackPage(onBack: () -> Unit) {
                 label = stringResource(R.string.feedback_website),
                 title = "huangder.top",
                 onClick = {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://huangder.top")))
+                    runCatching {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://huangder.top")))
+                    }.onFailure {
+                        Toast.makeText(context, R.string.network_error, Toast.LENGTH_LONG).show()
+                    }
                 }
             )
 
@@ -199,9 +207,13 @@ private fun FeedbackPage(onBack: () -> Unit) {
                 label = stringResource(R.string.feedback_github_issues),
                 title = stringResource(R.string.feedback_github_issues_desc),
                 onClick = {
-                    context.startActivity(
-                        Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/huangder/Lumi_Books/issues"))
-                    )
+                    runCatching {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/huangder/Lumi_Books/issues"))
+                        )
+                    }.onFailure {
+                        Toast.makeText(context, R.string.network_error, Toast.LENGTH_LONG).show()
+                    }
                 }
             )
 

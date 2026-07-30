@@ -541,7 +541,9 @@ fun LiquidGlassSurface(
                 if (highlightAlpha > 0.001f && highlightSpread.value > 0.001f) {
                     val radius = max(size.width, size.height) *
                         (0.10f + 1.05f * highlightSpread.value)
-                    if (hdrHighlightEnabled) {
+                    if (hdrHighlightEnabled &&
+                        android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q
+                    ) {
                         hdrHighlightPaint.shader = AndroidRadialGradient(
                             highlightCenter.x,
                             highlightCenter.y,

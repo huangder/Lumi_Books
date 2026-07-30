@@ -14,7 +14,7 @@ import android.os.Build
 import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
-import com.huangder.lumibooks.ui.reader.engine.CurlPageAnim
+import com.huangder.lumibooks.ui.reader.engine.EpubLegacyCurlPageAnim
 import com.huangder.lumibooks.ui.reader.engine.PageAnimationController
 import com.huangder.lumibooks.ui.reader.engine.PageAnimationSurface
 import com.huangder.lumibooks.ui.reader.engine.PageBitmapSource
@@ -62,22 +62,30 @@ private class EpubSnapshotPageView(context: Context) : View(context), PageBitmap
  */
 internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
     companion object {
-        private const val MAX_QUEUED_TURNS = 8
         private const val BUSY_TAP_MOVE_LIMIT_PX = 12f
-        private const val SLIDE_HANDOFF_COMPOSITOR_GUARD_MS = 120L
     }
 
     enum class PreloadSlot { PREVIOUS, NEXT }
+    enum class WebViewRole { PREVIOUS, ACTIVE, NEXT }
 
     val previousWebView = EpubContentWebView(context)
     val activeWebView = EpubContentWebView(context)
     val nextWebView = EpubContentWebView(context)
+
+    fun allWebViews(): List<EpubContentWebView> =
+        listOf(previousWebView, activeWebView, nextWebView)
+
+    fun roleOf(view: EpubContentWebView): WebViewRole? = when (view) {
+        previousWebView -> WebViewRole.PREVIOUS
+        activeWebView -> WebViewRole.ACTIVE
+        nextWebView -> WebViewRole.NEXT
+        else -> null
+    }
     private val preloadMask = View(context)
 
     private val previousPage = EpubSnapshotPageView(context)
     private val currentPage = EpubSnapshotPageView(context)
     private val nextPage = EpubSnapshotPageView(context)
-    private val handoffPage = EpubSnapshotPageView(context)
 
     private val snapshotSurface = PageAnimationSurface(
         root = this,
@@ -100,6 +108,7 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
     private var controller: PageAnimationController = SlidePageAnim(liveSlideSurface)
     private var transition = "slide"
     private var nativePagingEnabled = true
+    private var nativeTouchPagingEnabled = true
     private var reverseAxis = false
     private var pagingGesture = false
     private var suppressTouchStream = false
@@ -110,7 +119,7 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
     private var waitingForTarget: EpubPageTarget? = null
     private val queuedTurns = ArrayDeque<PageAnimationController.Direction>()
     private var busyTouchStream = false
-    private var busyGestureHasMoved = false
+    private var busyTurnQueuedForGesture = false
     private var currentTarget = EpubPageTarget(-1, 0)
     private var previousTarget: EpubPageTarget? = null
     private var nextTarget: EpubPageTarget? = null
@@ -118,8 +127,6 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
     private var nextGeneration = 0
     private var previousReady = false
     private var nextReady = false
-    private var previousFailed = false
-    private var nextFailed = false
     private var frozenPreviousTarget: EpubPageTarget? = null
     private var frozenNextTarget: EpubPageTarget? = null
     private var pageBackgroundColor = Color.WHITE
@@ -129,8 +136,6 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
     private var previousBitmap: Bitmap? = null
     private var currentBitmap: Bitmap? = null
     private var nextBitmap: Bitmap? = null
-    private var handoffBitmap: Bitmap? = null
-    private var liveHandoffView: EpubContentWebView? = null
 
     var onPageCommit: ((direction: Int, target: EpubPageTarget) -> Unit)? = null
     var onBusyEdgeTapDirection: ((isLeftEdge: Boolean) -> Int)? = null
@@ -147,7 +152,6 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         addView(previousPage, matchParentParams())
         addView(currentPage, matchParentParams())
         addView(nextPage, matchParentParams())
-        addView(handoffPage, matchParentParams())
 
         previousWebView.alpha = 0f
         previousWebView.visibility = View.VISIBLE
@@ -155,7 +159,6 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         nextWebView.visibility = View.VISIBLE
         preloadMask.visibility = View.INVISIBLE
         hideAnimationPages()
-        hideHandoffPage()
         bindControllerCallbacks()
     }
 
@@ -166,7 +169,6 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         previousWebView.setBackgroundColor(color)
         activeWebView.setBackgroundColor(color)
         nextWebView.setBackgroundColor(color)
-        handoffPage.setBackgroundColor(color)
     }
 
     fun setReverseAxis(reverse: Boolean) {
@@ -176,26 +178,26 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
     fun setNativePagingEnabled(enabled: Boolean) {
         nativePagingEnabled = enabled
         if (!enabled) queuedTurns.clear()
-        if (!enabled) clearHandoffSnapshot()
-        if (!enabled && (overlayActive || pagingGesture || waitingForTarget != null || busyTouchStream)) {
+        if (!enabled && (overlayActive || pagingGesture)) {
             controller.abortAnim()
-            busyTouchStream = false
-            busyGestureHasMoved = false
             resetAnimationOverlay()
         }
+    }
+
+    fun setNativeTouchPagingEnabled(enabled: Boolean) {
+        nativeTouchPagingEnabled = enabled
     }
 
     fun setTransition(mode: String) {
         val normalized = if (mode == "curl") "curl" else "slide"
         if (normalized == transition) return
         controller.abortAnim()
-        (controller as? CurlPageAnim)?.destroy()
+        (controller as? EpubLegacyCurlPageAnim)?.destroy()
         queuedTurns.clear()
         busyTouchStream = false
-        busyGestureHasMoved = false
         transition = normalized
         controller = if (normalized == "curl") {
-            CurlPageAnim(snapshotSurface)
+            EpubLegacyCurlPageAnim(snapshotSurface)
         } else {
             SlidePageAnim(liveSlideSurface)
         }
@@ -222,33 +224,15 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         activeWebView.animate().cancel()
         activeWebView.translationX = 0f
         activeWebView.translationY = 0f
-        val useLiveHandoff = controller is SlidePageAnim && liveHandoffView != null
-        activeWebView.translationZ = if (useLiveHandoff) 2f else 5f
+        activeWebView.translationZ = 5f
         activeWebView.alpha = 1f
         activeWebView.visibility = View.VISIBLE
-        val finishHandoff = {
-            if (waitingForTarget == incomingTarget) {
-                waitingForTarget = null
-                resetLivePageViews()
-                liveHandoffView = null
-                clearHandoffSnapshot()
-                onSettled?.invoke()
-                post(::drainQueuedTurns)
-                invalidate()
-            }
-        }
-        if (useLiveHandoff) {
-            activeWebView.postOnAnimation {
-                activeWebView.postOnAnimation {
-                    activeWebView.postDelayed(
-                        finishHandoff,
-                        SLIDE_HANDOFF_COMPOSITOR_GUARD_MS
-                    )
-                }
-            }
-        } else {
-            finishHandoff()
-        }
+        activeWebView.bringToFront()
+        waitingForTarget = null
+        resetLivePageViews()
+        onSettled?.invoke()
+        post(::drainQueuedTurns)
+        invalidate()
     }
 
     fun isAwaitingPage(chapterIndex: Int, pageIndex: Int): Boolean =
@@ -256,13 +240,27 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
 
     fun hasPendingPageHandoff(): Boolean = waitingForTarget != null
 
-    fun markPreloadLoading(slot: PreloadSlot, target: EpubPageTarget?, generation: Int) {
+    fun keepActiveWebViewCoveredForHandoff() {
+        activeWebView.animate().cancel()
+        activeWebView.alpha = 1f
+        activeWebView.visibility = View.VISIBLE
+    }
+
+    fun preloadTarget(slot: PreloadSlot): EpubPageTarget? = when (slot) {
+        PreloadSlot.PREVIOUS -> previousTarget
+        PreloadSlot.NEXT -> nextTarget
+    }
+
+    fun markPreloadLoading(
+        slot: PreloadSlot,
+        target: EpubPageTarget?,
+        generation: Int
+    ): Boolean {
         when (slot) {
             PreloadSlot.PREVIOUS -> {
                 previousTarget = target
                 previousGeneration = generation
                 previousReady = false
-                previousFailed = false
                 previousPreparedBitmap?.recycle()
                 previousPreparedBitmap = null
                 previousWebView.translationX = 0f
@@ -273,7 +271,6 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
                 nextTarget = target
                 nextGeneration = generation
                 nextReady = false
-                nextFailed = false
                 nextPreparedBitmap?.recycle()
                 nextPreparedBitmap = null
                 nextWebView.translationX = 0f
@@ -281,7 +278,7 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
                 nextWebView.visibility = View.VISIBLE
             }
         }
-        post(::drainQueuedTurns)
+        return false
     }
 
     fun markPreloadReady(
@@ -299,7 +296,6 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
                 previousPreparedBitmap = snapshot(sourceView, previousPreparedBitmap)
                 previousTarget = actual
                 previousReady = previousPreparedBitmap != null
-                previousFailed = false
             }
             PreloadSlot.NEXT -> {
                 if (nextTarget != requested || nextGeneration != generation) return
@@ -307,7 +303,6 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
                 nextPreparedBitmap = snapshot(sourceView, nextPreparedBitmap)
                 nextTarget = actual
                 nextReady = nextPreparedBitmap != null
-                nextFailed = false
             }
         }
         post(::drainQueuedTurns)
@@ -322,14 +317,12 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
             PreloadSlot.PREVIOUS -> {
                 if (previousTarget != requested || previousGeneration != generation) return
                 previousReady = false
-                previousFailed = true
                 previousPreparedBitmap?.recycle()
                 previousPreparedBitmap = null
             }
             PreloadSlot.NEXT -> {
                 if (nextTarget != requested || nextGeneration != generation) return
                 nextReady = false
-                nextFailed = true
                 nextPreparedBitmap?.recycle()
                 nextPreparedBitmap = null
             }
@@ -338,36 +331,33 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
     }
 
     fun turnFromTap(direction: Int): Boolean {
-        return requestTurn(direction)
-    }
-
-    fun requestTurn(direction: Int): Boolean {
-        if (!nativePagingEnabled || transition !in setOf("slide", "curl") || direction == 0) return false
+        if (!nativePagingEnabled || transition !in setOf("slide", "curl")) return false
         val controllerDirection = if (direction > 0) {
             PageAnimationController.Direction.NEXT
         } else {
             PageAnimationController.Direction.PREV
         }
-        if (overlayActive || waitingForTarget != null || pagingGesture || busyTouchStream ||
-            queuedTurns.isNotEmpty()
-        ) {
-            return enqueueTurn(controllerDirection)
+        if (transition == "curl" && (overlayActive || waitingForTarget != null)) {
+            enqueueTurn(controllerDirection)
+            return true
         }
-        if (isTargetFailed(controllerDirection)) return true
-        // Native paging owns the whole page-turn gesture. A missing target is
-        // either a real book boundary or a short preload/configuration window;
-        // handing it back to WebView can advance the CSS page without animation.
-        if (!hasTarget(controllerDirection)) return true
-        if (canFlip(controllerDirection) && startTurnFromTap(controllerDirection)) return true
-        return enqueueTurn(controllerDirection)
+        if (overlayActive || waitingForTarget != null) return false
+        return startTurnFromTap(controllerDirection)
     }
 
+    fun requestTurn(direction: Int): Boolean = turnFromTap(direction)
+
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        if (busyTouchStream ||
-                event.actionMasked == MotionEvent.ACTION_DOWN &&
-                (overlayActive || waitingForTarget != null)
+        if (!nativeTouchPagingEnabled && !overlayActive && waitingForTarget == null &&
+            !busyTouchStream
         ) {
-            return handleBusyTurnTouch(event)
+            return super.dispatchTouchEvent(event)
+        }
+        if (transition == "curl" && (busyTouchStream ||
+                event.actionMasked == MotionEvent.ACTION_DOWN &&
+                (overlayActive || waitingForTarget != null))
+        ) {
+            return handleBusyCurlTouch(event)
         }
         if (suppressTouchStream) {
             if (event.actionMasked == MotionEvent.ACTION_UP ||
@@ -383,6 +373,14 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         }
         if (!nativePagingEnabled || transition !in setOf("slide", "curl")) {
             return super.dispatchTouchEvent(event)
+        }
+        if (event.actionMasked == MotionEvent.ACTION_DOWN && overlayActive) {
+            controller.abortAnim()
+            if (waitingForTarget != null) {
+                suppressTouchStream = true
+                return true
+            }
+            resetAnimationOverlay()
         }
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
@@ -408,18 +406,8 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
                     } else {
                         PageAnimationController.Direction.PREV
                     }
-                    // A direct drag takes priority over any previously queued
-                    // tap/volume requests. Swipe gestures themselves are never
-                    // queued: once the finger is released, no deferred turns
-                    // should keep running.
-                    queuedTurns.clear()
                     if (!canFlip(direction) || !prepareAnimationPages()) {
-                        val cancel = MotionEvent.obtain(event).apply { action = MotionEvent.ACTION_CANCEL }
-                        super.dispatchTouchEvent(cancel)
-                        cancel.recycle()
-                        busyTouchStream = true
-                        busyGestureHasMoved = true
-                        return true
+                        return super.dispatchTouchEvent(event)
                     }
                     pagingGesture = true
                     overlayActive = true
@@ -477,14 +465,14 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         if (overlayActive) {
             when (val current = controller) {
                 is SlidePageAnim -> current.drawOverlay(canvas)
-                is CurlPageAnim -> current.drawOverlay(canvas)
+                is EpubLegacyCurlPageAnim -> current.drawOverlay(canvas)
             }
         }
     }
 
     override fun onDetachedFromWindow() {
         controller.abortAnim()
-        (controller as? CurlPageAnim)?.destroy()
+        (controller as? EpubLegacyCurlPageAnim)?.destroy()
         queuedTurns.clear()
         recyclePageBitmaps()
         super.onDetachedFromWindow()
@@ -531,13 +519,6 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
             targetView.alpha = 1f
             targetView.visibility = View.VISIBLE
             targetView.bringToFront()
-            if (controller is SlidePageAnim) {
-                liveHandoffView = targetView
-                clearHandoffSnapshot()
-            } else {
-                liveHandoffView = null
-                showHandoffSnapshot(direction)
-            }
 
             onPageCommit?.invoke(
                 if (direction == PageAnimationController.Direction.NEXT) 1 else -1,
@@ -553,48 +534,39 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         PageAnimationController.Direction.NONE -> false
     }
 
-    private fun hasTarget(direction: PageAnimationController.Direction): Boolean = when (direction) {
-        PageAnimationController.Direction.NEXT -> nextTarget != null
-        PageAnimationController.Direction.PREV -> previousTarget != null
-        PageAnimationController.Direction.NONE -> false
-    }
-
-    private fun isTargetFailed(direction: PageAnimationController.Direction): Boolean = when (direction) {
-        PageAnimationController.Direction.NEXT -> nextFailed
-        PageAnimationController.Direction.PREV -> previousFailed
-        PageAnimationController.Direction.NONE -> false
-    }
-
     private fun startTurnFromTap(direction: PageAnimationController.Direction): Boolean {
         if (!canFlip(direction) || !prepareAnimationPages()) return false
         overlayActive = true
         when (val current = controller) {
-            is CurlPageAnim -> current.startFromTap(direction)
+            is EpubLegacyCurlPageAnim -> current.startFromTap(direction)
             is SlidePageAnim -> current.startFromTap(direction)
         }
         invalidate()
         return true
     }
 
-    private fun enqueueTurn(direction: PageAnimationController.Direction): Boolean {
-        if (direction == PageAnimationController.Direction.NONE) return false
-        if (queuedTurns.size < MAX_QUEUED_TURNS) queuedTurns.addLast(direction)
+    private fun enqueueTurn(direction: PageAnimationController.Direction) {
+        if (direction == PageAnimationController.Direction.NONE) return
+        // Busy input represents the user's latest intent, not a playback list.
+        // Keeping a backlog makes pages continue turning after the finger lifts.
+        queuedTurns.clear()
+        queuedTurns.addLast(direction)
         post(::drainQueuedTurns)
-        return true
     }
 
     private fun drainQueuedTurns() {
-        if (!nativePagingEnabled || transition !in setOf("slide", "curl") || overlayActive ||
+        if (!nativePagingEnabled || transition != "curl" || overlayActive ||
             waitingForTarget != null || pagingGesture || busyTouchStream
         ) return
 
         while (queuedTurns.isNotEmpty()) {
             val direction = queuedTurns.peekFirst()
-            if (isTargetFailed(direction)) {
-                queuedTurns.removeFirst()
-                continue
+            val targetExists = when (direction) {
+                PageAnimationController.Direction.NEXT -> nextTarget != null
+                PageAnimationController.Direction.PREV -> previousTarget != null
+                PageAnimationController.Direction.NONE -> false
             }
-            if (!hasTarget(direction)) {
+            if (!targetExists) {
                 queuedTurns.removeFirst()
                 continue
             }
@@ -604,52 +576,27 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         }
     }
 
-    private fun handleBusyTurnTouch(event: MotionEvent): Boolean {
+    private fun handleBusyCurlTouch(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 touchStartX = event.x
                 touchStartY = event.y
                 touchDownTime = event.eventTime
                 busyTouchStream = true
-                busyGestureHasMoved = false
+                busyTurnQueuedForGesture = false
             }
             MotionEvent.ACTION_MOVE -> {
-                val dx = abs(event.x - touchStartX)
-                val dy = abs(event.y - touchStartY)
-                if (dx > 4f && dx > dy * 0.3f) {
-                    busyGestureHasMoved = true
-                    queuedTurns.clear()
-
-                    // If the preceding animation/handoff finishes while the
-                    // finger is still down, resume as a real interactive drag
-                    // from the original down position. If the finger is already
-                    // up, nothing is retained or replayed later.
-                    val direction = directionForHorizontalMove(event.x)
-                    if (!overlayActive && waitingForTarget == null &&
-                        canFlip(direction) && prepareAnimationPages()
-                    ) {
-                        busyTouchStream = false
-                        pagingGesture = true
-                        overlayActive = true
-
-                        val mappedStartX = if (reverseAxis) width - touchStartX else touchStartX
-                        val down = MotionEvent.obtain(
-                            event.downTime,
-                            event.eventTime,
-                            MotionEvent.ACTION_DOWN,
-                            mappedStartX,
-                            touchStartY,
-                            event.metaState
-                        )
-                        controller.onTouchEvent(down)
-                        down.recycle()
-                        dispatchMappedEvent(event)
-                        invalidate()
+                if (!busyTurnQueuedForGesture) {
+                    val dx = abs(event.x - touchStartX)
+                    val dy = abs(event.y - touchStartY)
+                    if (dx > 4f && dx > dy * 0.3f) {
+                        enqueueTurn(directionForHorizontalMove(event.x))
+                        busyTurnQueuedForGesture = true
                     }
                 }
             }
             MotionEvent.ACTION_UP -> {
-                if (!busyGestureHasMoved) {
+                if (!busyTurnQueuedForGesture) {
                     val dx = abs(event.x - touchStartX)
                     val dy = abs(event.y - touchStartY)
                     val elapsed = event.eventTime - touchDownTime
@@ -668,17 +615,18 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
                     }
                 }
                 busyTouchStream = false
-                busyGestureHasMoved = false
+                busyTurnQueuedForGesture = false
                 post(::drainQueuedTurns)
             }
             MotionEvent.ACTION_CANCEL -> {
                 busyTouchStream = false
-                busyGestureHasMoved = false
-                post(::drainQueuedTurns)
+                busyTurnQueuedForGesture = false
+                queuedTurns.clear()
             }
         }
         return true
     }
+
     private fun directionForHorizontalMove(currentX: Float): PageAnimationController.Direction {
         val physicalNext = currentX < touchStartX
         val logicalNext = if (reverseAxis) !physicalNext else physicalNext
@@ -894,47 +842,11 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         overlayActive = false
         pagingGesture = false
         waitingForTarget = null
-        liveHandoffView = null
         frozenPreviousTarget = null
         frozenNextTarget = null
         resetLivePageViews()
         hideAnimationPages()
-        clearHandoffSnapshot()
         invalidate()
-    }
-
-    private fun showHandoffSnapshot(direction: PageAnimationController.Direction) {
-        val source = when (direction) {
-            PageAnimationController.Direction.NEXT -> nextPreparedBitmap
-            PageAnimationController.Direction.PREV -> previousPreparedBitmap
-            PageAnimationController.Direction.NONE -> null
-        }
-        handoffBitmap = copyBitmap(source, handoffBitmap)
-        if (handoffBitmap == null) {
-            hideHandoffPage()
-            return
-        }
-        handoffPage.setSnapshotBitmap(handoffBitmap)
-        handoffPage.translationX = 0f
-        handoffPage.translationY = 0f
-        handoffPage.translationZ = 8f
-        handoffPage.alpha = 1f
-        handoffPage.visibility = View.VISIBLE
-        handoffPage.bringToFront()
-    }
-
-    private fun clearHandoffSnapshot() {
-        hideHandoffPage()
-        handoffPage.setSnapshotBitmap(null)
-        handoffBitmap?.recycle()
-        handoffBitmap = null
-    }
-
-    private fun hideHandoffPage() {
-        handoffPage.alpha = 0f
-        handoffPage.visibility = View.INVISIBLE
-        handoffPage.translationX = 0f
-        handoffPage.translationY = 0f
     }
 
     private fun hideAnimationPages() {
@@ -955,14 +867,11 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         previousBitmap?.recycle()
         currentBitmap?.recycle()
         nextBitmap?.recycle()
-        handoffBitmap?.recycle()
         previousPreparedBitmap = null
         nextPreparedBitmap = null
         previousBitmap = null
         currentBitmap = null
         nextBitmap = null
-        handoffPage.setSnapshotBitmap(null)
-        handoffBitmap = null
     }
 
     private fun matchParentParams() = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)

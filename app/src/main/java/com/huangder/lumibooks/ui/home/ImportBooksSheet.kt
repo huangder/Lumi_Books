@@ -409,12 +409,14 @@ private fun SelectedBookPreview(
         val format = runCatching { BookFormat.valueOf(extension) }.getOrNull()
         if (format == BookFormat.EPUB || format == BookFormat.PDF) {
             value = withContext(Dispatchers.IO) {
-                val parser = BookParserFactory.createParser(format, context)
-                try {
-                    parser.extractCoverPath(book.uri.toString())
-                } finally {
-                    parser.close()
-                }
+                runCatching {
+                    val parser = BookParserFactory.createParser(format, context)
+                    try {
+                        parser.extractCoverPath(book.uri.toString())
+                    } finally {
+                        runCatching { parser.close() }
+                    }
+                }.getOrNull()
             }
         }
     }

@@ -202,9 +202,11 @@ import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.MainActivity
 import com.huangder.lumibooks.ReaderPageDirection
 import com.huangder.lumibooks.ui.theme.KaiTi
+import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
+import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.util.epub.EpubRenderMode
 import com.huangder.lumibooks.util.parser.TxtEncoding
 import com.huangder.lumibooks.tts.TtsPageContent
@@ -477,13 +479,60 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     val continuousSelectionController = remember { ContinuousSelectionController() }
     val isEpub = uiState.book?.format?.name == "EPUB"
     val isBookLayoutEpub = isEpub && uiState.epubRenderMode == EpubRenderMode.BOOK_LAYOUT
+    val isVerticalWriting = uiState.readerWritingMode == ReaderWritingMode.VERTICAL_RL &&
+        uiState.useNewEngine && !isBookLayoutEpub
     val effectivePageTransition = if (isBookLayoutEpub && basePageTransition == "continuous") {
         "slide"
+    } else if (isVerticalWriting) {
+        uiState.readerWritingMode.effectivePageTransition(basePageTransition)
     } else {
         basePageTransition
     }
     val isContinuousScrollMode = !eInkMode && !isBookLayoutEpub &&
         uiState.useNewEngine && effectivePageTransition == "continuous"
+    var renderedContinuousScrollMode by remember(bookId) {
+        mutableStateOf(isContinuousScrollMode)
+    }
+    val readerModeTransitionProgress = remember(bookId) { Animatable(1f) }
+    var lastPagedChapter by remember(bookId) { mutableIntStateOf(uiState.currentChapterIndex) }
+    var lastPagedPage by remember(bookId) { mutableIntStateOf(uiState.currentPageIndex) }
+    var lastPagedTransition by remember(bookId) {
+        mutableStateOf(effectivePageTransition.takeUnless { it == "continuous" } ?: "slide")
+    }
+    SideEffect {
+        if (uiState.useNewEngine && !isBookLayoutEpub && !isContinuousScrollMode) {
+            lastPagedChapter = uiState.currentChapterIndex
+            lastPagedPage = uiState.currentPageIndex
+            if (effectivePageTransition != "continuous") {
+                lastPagedTransition = effectivePageTransition
+            }
+        }
+    }
+    LaunchedEffect(isContinuousScrollMode, eInkMode, uiState.useNewEngine, isBookLayoutEpub) {
+        if (renderedContinuousScrollMode == isContinuousScrollMode) {
+            readerModeTransitionProgress.snapTo(1f)
+            return@LaunchedEffect
+        }
+        if (eInkMode || !uiState.useNewEngine || isBookLayoutEpub) {
+            renderedContinuousScrollMode = isContinuousScrollMode
+            readerModeTransitionProgress.snapTo(1f)
+            return@LaunchedEffect
+        }
+
+        // Fade and shrink the outgoing reader completely before swapping engines. Keeping only one
+        // Android-backed reader composed at a time avoids stale callbacks and texture overlap.
+        readerModeTransitionProgress.animateTo(
+            targetValue = 0f,
+            animationSpec = tween(durationMillis = 160, easing = FastOutSlowInEasing)
+        )
+        renderedContinuousScrollMode = isContinuousScrollMode
+        // Give the incoming reader one frame to attach and measure while it is still transparent.
+        withFrameNanos { }
+        readerModeTransitionProgress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing)
+        )
+    }
     var epubPageTextProvider by remember(bookId) {
         mutableStateOf<(suspend (Int, Int) -> EpubPageText?)?>(null)
     }
@@ -611,7 +660,11 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
-            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            runCatching {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }.onFailure {
+                startTtsFromCurrentPage()
+            }
         } else {
             startTtsFromCurrentPage()
         }
@@ -743,7 +796,15 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             Settings.ACTION_MANAGE_WRITE_SETTINGS,
             Uri.parse("package:${context.packageName}")
         )
-        writeSettingsLauncher.launch(intent)
+        runCatching {
+            writeSettingsLauncher.launch(intent)
+        }.onFailure {
+            Toast.makeText(
+                context,
+                R.string.screen_sleep_timeout_permission_required,
+                Toast.LENGTH_LONG
+            ).show()
+        }
     }
     LaunchedEffect(uiState.screenSleepTimeoutSeconds) {
         if (uiState.screenSleepTimeoutSeconds != DataStoreManager.SCREEN_SLEEP_TIMEOUT_FOLLOW_SYSTEM &&
@@ -827,17 +888,21 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     }
 
     // 恢复阅读进度：pendingPageFraction > 0 时跳转到目标页
-    LaunchedEffect(uiState.pageReady, uiState.pendingPageFraction) {
-        if (uiState.pageReady && uiState.pendingPageFraction > 0f && readViewRef.value != null) {
-            val totalPages = readViewRef.value!!.getChapterPageCount(uiState.currentChapterIndex)
-            if (totalPages > 0) {
-                val targetPage = (totalPages * uiState.pendingPageFraction).toInt()
-                    .coerceIn(0, totalPages - 1)
-                if (targetPage > 0) {
-                    readViewRef.value!!.jumpToChapter(uiState.currentChapterIndex, targetPage)
-                }
-                viewModel.clearPendingPageFraction()
+    LaunchedEffect(uiState.pageReady, uiState.pendingPageFraction, isContinuousScrollMode) {
+        // Continuous scroll owns pendingPageFraction while crossing the mode boundary. Letting the
+        // detached paged reader consume it first resets single-chapter TXT books to their first page.
+        if (isContinuousScrollMode || !uiState.pageReady || uiState.pendingPageFraction <= 0f) {
+            return@LaunchedEffect
+        }
+        val readView = readViewRef.value ?: return@LaunchedEffect
+        val totalPages = readView.getChapterPageCount(uiState.currentChapterIndex)
+        if (totalPages > 0) {
+            val targetPage = (totalPages * uiState.pendingPageFraction).toInt()
+                .coerceIn(0, totalPages - 1)
+            if (targetPage > 0) {
+                readView.jumpToChapter(uiState.currentChapterIndex, targetPage)
             }
+            viewModel.clearPendingPageFraction()
         }
     }
 
@@ -908,7 +973,13 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
 
     // 搜索状态
     var showSearch by remember { mutableStateOf(false) }
-
+    val showBookLayoutSearchUnsupportedToast = {
+        Toast.makeText(
+            context,
+            R.string.epub_book_layout_search_unsupported,
+            Toast.LENGTH_SHORT
+        ).show()
+    }
     // 请求关闭状态（用于触发退出动画）
     var requestCloseNotesList by remember { mutableStateOf(false) }
     var requestCloseNoteInput by remember { mutableStateOf(false) }
@@ -1145,6 +1216,13 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .graphicsLayer {
+                    val progress = readerModeTransitionProgress.value
+                    alpha = progress
+                    val scale = 0.96f + (0.04f * progress)
+                    scaleX = scale
+                    scaleY = scale
+                }
                 .blur(if (eInkMode) 0.dp else (12f * readerImagePreviewProgress.value).dp)
                 .then(
                     activeReaderGlassBackdrop?.let { Modifier.layerBackdrop(it) } ?: Modifier
@@ -1248,7 +1326,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     onRenderUnavailable = viewModel::fallbackFromUnsupportedEpubWebView,
                     modifier = Modifier.fillMaxSize()
                 )
-            } else if (uiState.useNewEngine && effectivePageTransition == "continuous") {
+            } else if (uiState.useNewEngine && renderedContinuousScrollMode) {
                 ContinuousScrollReader(
                     chapterCount = uiState.chapterCount,
                     currentChapter = uiState.currentChapterIndex,
@@ -1260,8 +1338,12 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     textColor = readerTextColorInt,
                     backgroundColor = readerBackgroundColorInt,
                     backgroundImagePath = readerBackgroundImagePath,
-                    horizontalMargin = uiState.marginLeftDp,
-                    verticalMargin = uiState.marginTopDp,
+                    marginLeft = uiState.marginLeftDp,
+                    marginRight = uiState.marginRightDp,
+                    marginTop = uiState.marginTopDp,
+                    marginBottom = uiState.marginBottomDp,
+                    paragraphSpacing = uiState.paragraphSpacing,
+                    firstLineIndent = uiState.firstLineIndent,
                     bionicReadingEnabled = effectiveBionicReadingEnabled,
                     contentRevision = uiState.contentRevision,
                     viewModel = viewModel,
@@ -1568,8 +1650,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         fontSizePx = fontSizePx,
                         theme = effectiveReaderTheme,
                         chapterCount = uiState.chapterCount,
-                        startChapter = uiState.currentChapterIndex,
-                        startPage = uiState.currentPageIndex,
+                        startChapter = if (isContinuousScrollMode) lastPagedChapter else uiState.currentChapterIndex,
+                        startPage = if (isContinuousScrollMode) lastPagedPage else uiState.currentPageIndex,
                         lineHeightMult = uiState.lineHeight,
                         letterSpacingDp = uiState.letterSpacing,
                         fontType = uiState.fontType,
@@ -1581,7 +1663,9 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         topOverlayInsetDp = if (hasTopReaderStatus) 38f else 0f,
                         bottomOverlayInsetDp = 0f,
                         paragraphSpacingDp = uiState.paragraphSpacing,
-                        bionicReadingEnabled = effectiveBionicReadingEnabled
+                        bionicReadingEnabled = effectiveBionicReadingEnabled,
+                        useDisplayDensityForSpans = uiState.book?.format?.name == "TXT",
+                        writingMode = uiState.readerWritingMode
                     )
                     readView.setReaderBackground(
                         backgroundColor = readerBackgroundColorInt,
@@ -1592,7 +1676,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     // 简繁转换
                     readView.setChineseMode(uiState.chineseMode)
                     // 翻页效果
-                    readView.setPageTransition(effectivePageTransition)
+                    readView.setPageTransition(if (isContinuousScrollMode) lastPagedTransition else effectivePageTransition)
                     // 左右边缘点击翻页方向（不影响滑动手势）
                     readView.setEdgeTapMode(uiState.readerEdgeTapMode)
                 },
@@ -1739,7 +1823,12 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                             putExtra(TxtEditorActivity.EXTRA_CHAPTER_INDEX, uiState.currentChapterIndex)
                             putExtra(TxtEditorActivity.EXTRA_CHAR_OFFSET, charOffset)
                         }
-                        txtEditorLauncher.launch(intent)
+                        runCatching {
+                            txtEditorLauncher.launch(intent)
+                        }.onFailure { error ->
+                            Log.w("ReaderScreen", "Failed to open TXT editor", error)
+                            Toast.makeText(context, R.string.error, Toast.LENGTH_SHORT).show()
+                        }
                     },
                     onEncodingClick = {
                         viewModel.hideMenu()
@@ -1826,7 +1915,11 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         },
                         onSearchClick = {
                             viewModel.hideMenu()
-                            showSearch = true
+                            if (isBookLayoutEpub) {
+                                showBookLayoutSearchUnsupportedToast()
+                            } else {
+                                showSearch = true
+                            }
                         },
                         onThemeClick = {
                             viewModel.hideMenu()
@@ -1971,6 +2064,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 currentUseEpubCss = uiState.useEpubCss,
                 isEpub = uiState.book?.format?.name == "EPUB",
                 currentEpubRenderMode = uiState.epubRenderMode,
+                currentWritingMode = uiState.readerWritingMode,
+                supportsWritingMode = uiState.useNewEngine && !isBookLayoutEpub,
                 currentChineseMode = uiState.chineseMode,
                 currentPageTransition = effectivePageTransition,
                 onFontSizeChange = { viewModel.saveFontSize(it) },
@@ -1984,6 +2079,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 onOptimizeLayoutChange = { viewModel.saveOptimizeLayout(it) },
                 onUseEpubCssChange = { viewModel.saveUseEpubCss(it) },
                 onEpubRenderModeChange = viewModel::saveEpubRenderMode,
+                onWritingModeChange = viewModel::saveReaderWritingMode,
                 onChineseModeChange = { viewModel.saveChineseMode(it) },
                 onPageTransitionChange = { viewModel.savePageTransition(it) },
                 onOpenAdvanced = {
@@ -1997,7 +2093,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
 
             // 搜索弹窗
             SearchSheet(
-                visible = showSearch,
+                visible = showSearch && !isBookLayoutEpub,
                 requestClose = requestCloseSearch,
                 query = searchQuery,
                 results = searchResults,
@@ -2085,6 +2181,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 currentTextColorOverride = effectiveReaderTextColor,
                 currentFontSizeSp = uiState.fontSize,
                 preservePublisherLayout = isBookLayoutEpub,
+                currentWritingMode = uiState.readerWritingMode,
                 onLineHeightChange = { viewModel.saveLineHeight(it) },
                 onLetterSpacingChange = { viewModel.saveLetterSpacing(it) },
                 onFontTypeChange = { viewModel.saveFontType(it) },
@@ -2305,16 +2402,22 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             clearActiveTextSelection()
         },
         onSearch = {
-            val fresh = if (isBookLayoutEpub) null else readViewRef.value?.getSelectionInfo()
-            val query = fresh?.selectedText ?: selectionState?.selectedText ?: return@SelectionMenuOverlay
-            showSearch = true
-            searchQuery = query
-            isSearching = true
-            hasSearched = true
-            searchResults = emptyList()
-            scope.launch {
-                searchResults = viewModel.searchAllChapters(query)
-                isSearching = false
+            if (isBookLayoutEpub) {
+                showBookLayoutSearchUnsupportedToast()
+            } else {
+                val query = readViewRef.value?.getSelectionInfo()?.selectedText
+                    ?: selectionState?.selectedText
+                if (query != null) {
+                    showSearch = true
+                    searchQuery = query
+                    isSearching = true
+                    hasSearched = true
+                    searchResults = emptyList()
+                    scope.launch {
+                        searchResults = viewModel.searchAllChapters(query)
+                        isSearching = false
+                    }
+                }
             }
             selectionState = null
             showHighlightColorPicker = false
@@ -3584,8 +3687,12 @@ private fun ContinuousScrollReader(
     textColor: Int,
     backgroundColor: Int,
     backgroundImagePath: String?,
-    horizontalMargin: Float,
-    verticalMargin: Float,
+    marginLeft: Float,
+    marginRight: Float,
+    marginTop: Float,
+    marginBottom: Float,
+    paragraphSpacing: Float,
+    firstLineIndent: Float,
     bionicReadingEnabled: Boolean,
     contentRevision: Long,
     viewModel: ReaderViewModel,
@@ -3623,9 +3730,18 @@ private fun ContinuousScrollReader(
         var stableFrames = 0
         repeat(300) {
             withFrameNanos { }
+            if (loadedChapters[target] != true) {
+                lastSize = -1
+                stableFrames = 0
+                return@repeat
+            }
+
             val item = listState.layoutInfo.visibleItemsInfo
                 .firstOrNull { it.index == target && it.size > 0 }
-            if (loadedChapters[target] != true || item == null) {
+            if (item == null) {
+                // Chapters before the target can expand after their placeholders load and push the
+                // target out of the viewport. Re-anchor until its real, stable height is measurable.
+                listState.scrollToItem(target)
                 lastSize = -1
                 stableFrames = 0
                 return@repeat
@@ -3742,28 +3858,33 @@ private fun ContinuousScrollReader(
                 .fillMaxSize()
                 .pointerInput(Unit) { detectTapGestures(onTap = { onMenuToggle() }) },
             contentPadding = PaddingValues(
-                start = horizontalMargin.dp,
-                end = horizontalMargin.dp,
-                top = verticalMargin.dp,
-                bottom = verticalMargin.dp
+                start = marginLeft.dp,
+                end = marginRight.dp,
+                top = marginTop.dp,
+                bottom = marginBottom.dp
             )
         ) {
         items(chapterCount, key = { it }) { chapterIndex ->
-            val chapterText by produceState<CharSequence?>(initialValue = null, chapterIndex, chineseMode, contentRevision) {
+            val chapterText by produceState<CharSequence?>(
+                initialValue = null,
+                chapterIndex,
+                chineseMode,
+                contentRevision,
+                fontSize,
+                paragraphSpacing,
+                firstLineIndent
+            ) {
                 val rawText = withContext(Dispatchers.IO) { viewModel.getChapterText(chapterIndex) }
-                value = if (chineseMode != "original" && rawText != null) {
-                    com.huangder.lumibooks.util.ChineseConverter.convert(rawText.toString(), chineseMode)
-                } else {
-                    rawText
+                value = rawText?.let {
+                    // LeadingMarginSpan (first-line indent), image spans, and paragraph spacing must
+                    // survive simplified/traditional conversion in the continuous reader.
+                    com.huangder.lumibooks.util.ChineseConverter.convertPreservingSpans(it, chineseMode)
                 }
                 loadedChapters[chapterIndex] = true
                 android.util.Log.e(
                     "ContinuousProgressDebug",
                     "chapterLoaded chapter=$chapterIndex textLength=${value?.length ?: -1}"
                 )
-            }
-            DisposableEffect(chapterIndex) {
-                onDispose { loadedChapters.remove(chapterIndex) }
             }
             val selectableText = remember(
                 chapterText, notes, searchHighlight, searchHighlightAlpha.value, bionicReadingEnabled
@@ -3947,7 +4068,7 @@ private fun TocSheet(
                     stringResource(R.string.reader_toc),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    fontFamily = KaiTi,
+                    fontFamily = resolveAppFontFamily(KaiTi),
                     color = AppColors.TextPrimary
                 )
                 Spacer(Modifier.weight(1f))
@@ -4100,7 +4221,7 @@ private fun SearchSheet(
                         stringResource(R.string.reader_search),
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
-                        fontFamily = KaiTi,
+                        fontFamily = resolveAppFontFamily(KaiTi),
                         color = AppColors.TextPrimary
                     )
                     Spacer(Modifier.weight(1f))
@@ -4497,6 +4618,15 @@ private fun SelectionMenuOverlay(
     }
 
     Box(Modifier.fillMaxSize()) {
+        Box(
+            Modifier
+                .matchParentSize()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onDismiss
+                )
+        )
         AnimatedContent(
             targetState = menuMode,
             transitionSpec = {
@@ -4750,7 +4880,7 @@ private fun NoteInputSheet(
                         contentColor = AppColors.TextPrimary,
                         normalContainerColor = AppColors.BgGray
                     )
-                    Text(stringResource(R.string.reader_notes), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = KaiTi, color = AppColors.TextPrimary, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
+                    Text(stringResource(R.string.reader_notes), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = resolveAppFontFamily(KaiTi), color = AppColors.TextPrimary, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
                     LiquidGlassIconButton(
                         imageVector = Icons.Outlined.Check,
                         contentDescription = "确认",
@@ -4883,7 +5013,7 @@ private fun NotesListSheet(
                     stringResource(R.string.highlights_notes_title),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    fontFamily = KaiTi,
+                    fontFamily = resolveAppFontFamily(KaiTi),
                     color = AppColors.TextPrimary
                 )
                 Spacer(Modifier.weight(1f))

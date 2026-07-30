@@ -79,6 +79,30 @@ abstract class PageAnimationController(
     /** 🔥 翻页前校验：目标方向是否允许翻页（目标槽位已加载？） */
     var onCanFlip: ((Direction) -> Boolean)? = null
 
+    /** Maps a physical horizontal drag to semantic page progress. */
+    protected fun directionForHorizontalDelta(deltaX: Float, threshold: Float): Direction {
+        return when (
+            horizontalPageDirectionForDelta(deltaX, threshold, readView.isPageProgressReversed)
+        ) {
+            HorizontalPageDirection.NEXT -> Direction.NEXT
+            HorizontalPageDirection.PREVIOUS -> Direction.PREV
+            HorizontalPageDirection.NONE -> Direction.NONE
+        }
+    }
+
+    /** Physical X sign at completion: -1 moves left, +1 moves right. */
+    protected fun horizontalTurnSign(turnDirection: Direction): Float {
+        val pageDirection = when (turnDirection) {
+            Direction.NEXT -> HorizontalPageDirection.NEXT
+            Direction.PREV -> HorizontalPageDirection.PREVIOUS
+            Direction.NONE -> HorizontalPageDirection.NONE
+        }
+        return horizontalPageTurnSign(pageDirection, readView.isPageProgressReversed)
+    }
+
+    protected fun idleTranslationX(turnDirection: Direction, width: Float): Float =
+        -horizontalTurnSign(turnDirection) * width
+
     // ── 抽象方法 ──
 
     /** 在 ReadView.dispatchDraw 中调用，绘制动画帧 */
@@ -143,11 +167,7 @@ abstract class PageAnimationController(
 
                 if (hasMoved) {
                     val cumulativeDx = event.x - startX
-                    direction = when {
-                        cumulativeDx > 12f -> Direction.PREV
-                        cumulativeDx < -12f -> Direction.NEXT
-                        else -> Direction.NONE
-                    }
+                    direction = directionForHorizontalDelta(cumulativeDx, 12f)
                     readView.invalidate()
                 }
                 return true
@@ -188,11 +208,7 @@ abstract class PageAnimationController(
                     val fraction = Math.abs(dx) / viewWidth
 
                     // 🔥 根据最终累计偏移重算方向（支持手势反悔）
-                    direction = when {
-                        dx > 12f -> Direction.PREV
-                        dx < -12f -> Direction.NEXT
-                        else -> Direction.NONE
-                    }
+                    direction = directionForHorizontalDelta(dx, 12f)
 
                     if (fraction >= FLIP_THRESHOLD && direction != Direction.NONE) {
                         if (onCanFlip?.invoke(direction) == true) {
@@ -258,10 +274,6 @@ abstract class PageAnimationController(
     // ── Animation control ──
 
     open fun abortAnim() {
-        // 🔥 快速翻页：如果打断的是一个进行中的翻页（非回弹），立即提交翻页
-        // direction 在此时还是有效的 NEXT/PREV，onAnimationComplete 可以读到
-        val committedDir = if (isFlipAnim && isRunning) direction else Direction.NONE
-
         if (!scroller.isFinished) {
             scroller.abortAnimation()
         }
@@ -270,14 +282,25 @@ abstract class PageAnimationController(
         isFlipAnim = false
         isShadowFading = false
         shadowFadeAlpha = 0f
-        // 先保留 direction，让回调能读到，完成后再清
-        if (committedDir == Direction.NONE) direction = Direction.NONE
+        direction = Direction.NONE
         readView.invalidate()
+    }
 
-        if (committedDir != Direction.NONE) {
-            onAnimationComplete?.invoke()  // → shiftForward / shiftBackward
-            direction = Direction.NONE
-        }
+    /** Commit a settling page only after a new page-turn intent is confirmed. */
+    open fun completeRunningFlipForNewInput(): Boolean {
+        val committedDirection = if (isFlipAnim && isRunning) direction else Direction.NONE
+        if (committedDirection == Direction.NONE) return false
+        if (!scroller.isFinished) scroller.abortAnimation()
+        isRunning = false
+        isDragging = false
+        isFlipAnim = false
+        isShadowFading = false
+        shadowFadeAlpha = 0f
+        direction = committedDirection
+        onAnimationComplete?.invoke()
+        direction = Direction.NONE
+        readView.invalidate()
+        return true
     }
 
     protected open fun startBounceBack() {

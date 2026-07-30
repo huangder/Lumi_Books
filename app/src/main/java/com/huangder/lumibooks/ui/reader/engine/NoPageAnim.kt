@@ -79,11 +79,11 @@ class NoPageAnim(readView: PageAnimationSurface) : PageAnimationController(readV
         readView.curPageView.translationY = 0f
         readView.curPageView.alpha = 1f
         readView.curPageView.translationZ = 1f
-        readView.prevPageView.translationX = -readView.width.toFloat()
+        readView.prevPageView.translationX = idleTranslationX(Direction.PREV, readView.width.toFloat())
         readView.prevPageView.translationY = 0f
         readView.prevPageView.alpha = 0f
         readView.prevPageView.translationZ = 0f
-        readView.nextPageView.translationX = readView.width.toFloat()
+        readView.nextPageView.translationX = idleTranslationX(Direction.NEXT, readView.width.toFloat())
         readView.nextPageView.translationY = 0f
         readView.nextPageView.alpha = 0f
         readView.nextPageView.translationZ = 0f

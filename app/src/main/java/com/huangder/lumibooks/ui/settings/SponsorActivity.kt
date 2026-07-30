@@ -2,6 +2,7 @@ package com.huangder.lumibooks.ui.settings
 
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -56,6 +57,7 @@ import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.FangSong
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
+import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -75,6 +77,7 @@ class SponsorActivity : ComponentActivity() {
 
         setContent {
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = "lumi")
+            val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = "default")
             val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = 0.55f)
             val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = false)
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
@@ -90,7 +93,8 @@ class SponsorActivity : ComponentActivity() {
                 dynamicColor = appTheme == "material3",
                 appTheme = appTheme,
                 liquidGlassTransparency = liquidGlassTransparency,
-                liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled
+                liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled,
+                globalFontMode = globalFontMode
             ) {
                 com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
                     predictiveBackEnabled = predictiveBackEnabled,
@@ -135,7 +139,7 @@ private fun SponsorPage(onBack: () -> Unit) {
                     settingsBackButton = true
                 )
                 Spacer(Modifier.weight(1f))
-                Text(stringResource(R.string.sponsor_title), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = FangSong, color = AppColors.TextPrimary)
+                Text(stringResource(R.string.sponsor_title), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = resolveAppFontFamily(FangSong), color = AppColors.TextPrimary)
                 Spacer(Modifier.weight(1f))
                 Spacer(Modifier.size(48.dp))
             }
@@ -227,14 +231,22 @@ private fun SponsorPage(onBack: () -> Unit) {
             // 开发人员
             DeveloperSection(
                 onHuangderClick = {
-                    context.startActivity(
-                        Intent(Intent.ACTION_VIEW, Uri.parse("https://xhslink.com/m/5AbhNhfh7hE"))
-                    )
+                    runCatching {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse("https://xhslink.com/m/5AbhNhfh7hE"))
+                        )
+                    }.onFailure {
+                        Toast.makeText(context, R.string.network_error, Toast.LENGTH_LONG).show()
+                    }
                 },
                 onCorundumLingClick = {
-                    context.startActivity(
-                        Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Corundum-Ling"))
-                    )
+                    runCatching {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Corundum-Ling"))
+                        )
+                    }.onFailure {
+                        Toast.makeText(context, R.string.network_error, Toast.LENGTH_LONG).show()
+                    }
                 }
             )
 

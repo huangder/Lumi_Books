@@ -9,6 +9,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.LinkedHashMap
 
 /**
  * 3 槽位页级 conveyor belt 管理器。
@@ -40,6 +41,10 @@ class PageSlotManager(
     private val slotJobs = arrayOfNulls<Job>(3)
     private val requestTokens = LongArray(3)
     private var chapterCount: Int = 0
+    private val chapterTextCache = object : LinkedHashMap<Int, CharSequence>(4, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, CharSequence>?): Boolean =
+            size > 4
+    }
 
     /** 字号变化时暂存当前页的字符起始偏移，供 loadSlot 搜索修正后的页码 */
     var pendingStartCharOffset: Int = -1
@@ -99,6 +104,13 @@ class PageSlotManager(
         slot.isLoaded = false
         slot.contentView.clear()
 
+        val cachedText = chapterTextCache[chapterIndex]
+        val cachedLayout = layoutEngine.getChapterLayout(chapterIndex)
+        if (!cachedText.isNullOrEmpty() && cachedLayout != null) {
+            populateSlot(slotIdx, chapterIndex, pageInChapter, requestToken, cachedText, cachedLayout)
+            return
+        }
+
         val thisJob = scope.launch {
             try {
                 val text = withContext(Dispatchers.IO) { contentProvider?.invoke(chapterIndex) }
@@ -109,68 +121,10 @@ class PageSlotManager(
                     if (slotIdx == SLOT_CUR) notifyPageChanged()
                     return@launch
                 }
+                chapterTextCache[chapterIndex] = text
                 val chapterLayout = layoutEngine.layout(chapterIndex, text)
                 if (!isCurrentRequest(slotIdx, requestToken)) return@launch
-
-                if (chapterLayout.totalPages <= 0) {
-                    slot.isLoaded = false
-                    if (slotIdx == SLOT_CUR) notifyPageChanged()
-                    return@launch
-                }
-
-                var actualPage = pageInChapter
-
-                // 字号变化后，根据字符偏移修正页码（保持阅读内容位置不变）
-                if (slotIdx == SLOT_CUR && pendingStartCharOffset >= 0) {
-                    val correctedPage = chapterLayout.pages.indexOfFirst { page ->
-                        pendingStartCharOffset >= page.startCharOffset &&
-                                pendingStartCharOffset < page.endCharOffset
-                    }
-                    if (correctedPage >= 0) {
-                        actualPage = correctedPage
-                        slot.pageIndex = correctedPage
-                        Log.d(TAG, "Font-size correction: charOffset=$pendingStartCharOffset -> page $correctedPage")
-                    }
-                    pendingStartCharOffset = -1  // 消费一次
-                }
-                if (slotIdx == SLOT_PREV && actualPage == 0 && chapterIndex < currentChapterIndex) {
-                    actualPage = chapterLayout.totalPages - 1
-                    slot.pageIndex = actualPage
-                }
-
-                if (actualPage < 0 || actualPage >= chapterLayout.totalPages) {
-                    val clampedPage = actualPage.coerceIn(0, chapterLayout.totalPages - 1)
-                    Log.w(TAG, "Page clamped: slot=$slotIdx ch=$chapterIndex pg=$actualPage->$clampedPage")
-                    actualPage = clampedPage
-                    slot.pageIndex = clampedPage
-                }
-
-                // 设置页面文本内容
-                val pageLayout = chapterLayout.pages[actualPage]
-                val highlights = highlightProvider?.invoke(chapterIndex) ?: emptyList()
-                if (!isCurrentRequest(slotIdx, requestToken)) return@launch
-                // 追踪 LeadingMarginSpan 存活情况
-                val lmsBefore = if (text is android.text.Spannable) text.getSpans(0, text.length, android.text.style.LeadingMarginSpan::class.java) else emptyArray()
-                Log.d(TAG, "loadSlot: text type=${text.javaClass.simpleName} LeadingMarginSpans=${lmsBefore.size} startChar=${pageLayout.startCharOffset} endChar=${pageLayout.endCharOffset}")
-                slot.contentView.setPageContent(text, pageLayout.startCharOffset, pageLayout.endCharOffset, highlights)
-
-                if (isCurrentRequest(slotIdx, requestToken) &&
-                    slot.chapterIndex == chapterIndex && slot.pageIndex == actualPage
-                ) {
-                    slot.globalPageIndex = layoutEngine.localToGlobal(chapterIndex, actualPage)
-                    slot.isLoaded = true
-                    Log.d(TAG, "Slot $slotIdx loaded: ch=$chapterIndex pg=$actualPage")
-
-                    if (slotIdx == SLOT_CUR) {
-                        notifyPageChanged()
-                        val (prevCh, prevPg) = resolvePrevPage()
-                        if (prevCh >= 0 && prevPg >= 0) loadSlot(SLOT_PREV, prevCh, prevPg)
-                        val (nextCh, nextPg) = resolveNextPage()
-                        if (nextCh >= 0 && nextPg >= 0) loadSlot(SLOT_NEXT, nextCh, nextPg)
-                        // 后台静默预加载 ch+1、ch+2 的 layout，下次翻到时直接命中缓存
-                        eagerPreloadUpcoming(chapterIndex)
-                    }
-                }
+                populateSlot(slotIdx, chapterIndex, pageInChapter, requestToken, text, chapterLayout)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -188,6 +142,68 @@ class PageSlotManager(
         slotJobs[slotIdx] = thisJob
     }
 
+    private fun populateSlot(
+        slotIdx: Int,
+        chapterIndex: Int,
+        requestedPage: Int,
+        requestToken: Long,
+        text: CharSequence,
+        chapterLayout: ChapterLayout
+    ) {
+        val slot = slots[slotIdx]
+        if (!isCurrentRequest(slotIdx, requestToken)) return
+        if (chapterLayout.totalPages <= 0) {
+            slot.isLoaded = false
+            if (slotIdx == SLOT_CUR) notifyPageChanged()
+            return
+        }
+
+        var actualPage = requestedPage
+        if (slotIdx == SLOT_CUR && pendingStartCharOffset >= 0) {
+            val correctedPage = chapterLayout.pages.indexOfFirst { page ->
+                pendingStartCharOffset >= page.startCharOffset &&
+                    pendingStartCharOffset < page.endCharOffset
+            }
+            if (correctedPage >= 0) {
+                actualPage = correctedPage
+                slot.pageIndex = correctedPage
+            }
+            pendingStartCharOffset = -1
+        }
+        if (slotIdx == SLOT_PREV && actualPage == 0 && chapterIndex < currentChapterIndex) {
+            actualPage = chapterLayout.totalPages - 1
+            slot.pageIndex = actualPage
+        }
+        if (actualPage !in 0 until chapterLayout.totalPages) {
+            actualPage = actualPage.coerceIn(0, chapterLayout.totalPages - 1)
+            slot.pageIndex = actualPage
+        }
+
+        val pageLayout = chapterLayout.pages[actualPage]
+        val highlights = highlightProvider?.invoke(chapterIndex) ?: emptyList()
+        slot.contentView.setPageContent(
+            text,
+            pageLayout.startCharOffset,
+            pageLayout.endCharOffset,
+            highlights,
+            pageLayout.verticalGeometry
+        )
+        if (!isCurrentRequest(slotIdx, requestToken) ||
+            slot.chapterIndex != chapterIndex || slot.pageIndex != actualPage
+        ) return
+
+        slot.globalPageIndex = layoutEngine.localToGlobal(chapterIndex, actualPage)
+        slot.isLoaded = true
+        if (slotIdx == SLOT_CUR) {
+            notifyPageChanged()
+            val (prevCh, prevPg) = resolvePrevPage()
+            if (prevCh >= 0 && prevPg >= 0) loadSlot(SLOT_PREV, prevCh, prevPg)
+            val (nextCh, nextPg) = resolveNextPage()
+            if (nextCh >= 0 && nextPg >= 0) loadSlot(SLOT_NEXT, nextCh, nextPg)
+            eagerPreloadUpcoming(chapterIndex)
+        }
+    }
+
     /**
      * 后台静默预加载当前章节之后的 2 章 layout，使翻章时几乎无等待。
      * 低优先级 fire-and-forget，不阻塞主流程，失败静默忽略。
@@ -202,6 +218,7 @@ class PageSlotManager(
                 try {
                     val text = withContext(Dispatchers.IO) { provider(target) }
                         ?.takeUnless { it.isEmpty() } ?: return@launch
+                    chapterTextCache[target] = text
                     layoutEngine.layout(target, text)  // 结果自动进入 layoutCache
                     Log.d(TAG, "EagerPreload: chapter $target layout cached")
                 } catch (_: Exception) { }
@@ -237,7 +254,13 @@ class PageSlotManager(
         val text = contentProvider?.let { kotlinx.coroutines.runBlocking(Dispatchers.IO) { it(cur.chapterIndex) } } ?: return
         val pageLayout = cl.pages.getOrNull(cur.pageIndex) ?: return
         val highlights = highlightProvider?.invoke(cur.chapterIndex) ?: emptyList()
-        cur.contentView.setPageContent(text, pageLayout.startCharOffset, pageLayout.endCharOffset, highlights)
+        cur.contentView.setPageContent(
+            text,
+            pageLayout.startCharOffset,
+            pageLayout.endCharOffset,
+            highlights,
+            pageLayout.verticalGeometry
+        )
     }
 
     /**
@@ -263,7 +286,13 @@ class PageSlotManager(
                 if (isCurrentRequest(SLOT_CUR, requestToken) &&
                     currentCur.chapterIndex == ci && currentCur.pageIndex == pi && currentCur.isLoaded
                 ) {
-                    currentCur.contentView.setPageContent(text, pageLayout.startCharOffset, pageLayout.endCharOffset, highlights)
+                    currentCur.contentView.setPageContent(
+                        text,
+                        pageLayout.startCharOffset,
+                        pageLayout.endCharOffset,
+                        highlights,
+                        pageLayout.verticalGeometry
+                    )
                 }
             }
         }
@@ -439,7 +468,8 @@ class PageSlotManager(
             textViewText = fromSlot.contentView.textView.text,
             justifiedText = fromSlot.contentView.getJustifiedText(),
             justifyLastLine = fromSlot.contentView.shouldJustifyLastLine(),
-            chapterStartOffset = fromSlot.contentView.chapterStartOffset
+            chapterStartOffset = fromSlot.contentView.chapterStartOffset,
+            verticalGeometry = fromSlot.contentView.getVerticalGeometry()
         )
         // 🔥 诊断：syncText 只 invalidate 了子 View（textView/justifiedView），
         // 但父容器 PageContentView 的硬件 Display List 可能未失效。
@@ -486,8 +516,13 @@ class PageSlotManager(
     fun getNextSlot(): SlotState = slots[SLOT_NEXT]
     fun getSlotForView(view: PageContentView): SlotState? = slots.firstOrNull { it.contentView === view }
 
+    fun clearContentCache() {
+        chapterTextCache.clear()
+    }
+
     fun destroy() {
         for (i in 0..2) recycleSlot(i)
+        chapterTextCache.clear()
         scope.cancel()
     }
 }

@@ -62,6 +62,7 @@ import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.SansSerif
+import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import java.util.Calendar
 
 @Composable
@@ -92,7 +93,7 @@ fun StatisticsScreen(
                             text = stringResource(R.string.stats_title),
                             fontSize = AppType.Display,
                             fontWeight = FontWeight.Bold,
-                            fontFamily = KaiTi,
+                            fontFamily = resolveAppFontFamily(KaiTi),
                             letterSpacing = (-0.02).sp,
                             color = AppColors.TextPrimary,
                             modifier = Modifier.padding(horizontal = AppSpace.lg, vertical = AppSpace.md)
@@ -215,7 +216,7 @@ private fun WeeklyOverview(uiState: StatisticsUiState, viewModel: StatisticsView
                 titleText,
                 fontSize = AppType.Section,
                 fontWeight = FontWeight.Bold,
-                fontFamily = KaiTi,
+                fontFamily = resolveAppFontFamily(KaiTi),
                 color = AppColors.TextPrimary,
                 modifier = Modifier.weight(1f)
             )
@@ -361,7 +362,7 @@ private fun MonthlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsView
                 stringResource(R.string.year_format, year) + monthNames[month],
                 fontSize = AppType.Section,
                 fontWeight = FontWeight.Bold,
-                fontFamily = KaiTi,
+                fontFamily = resolveAppFontFamily(KaiTi),
                 color = AppColors.TextPrimary,
                 modifier = Modifier.weight(1f)
             )
@@ -536,7 +537,7 @@ private fun YearlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsViewM
                 stringResource(R.string.year_format, displayYear),
                 fontSize = AppType.Section,
                 fontWeight = FontWeight.Bold,
-                fontFamily = KaiTi,
+                fontFamily = resolveAppFontFamily(KaiTi),
                 color = AppColors.TextPrimary,
                 modifier = Modifier.weight(1f)
             )
@@ -705,7 +706,7 @@ private fun MostReadBooks(books: List<MostReadBook>) {
             .cardPressEffect()
             .padding(AppSpace.md)
     ) {
-        Text(stringResource(R.string.most_read_books), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = KaiTi, color = AppColors.TextPrimary)
+        Text(stringResource(R.string.most_read_books), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = resolveAppFontFamily(KaiTi), color = AppColors.TextPrimary)
         Spacer(Modifier.height(AppSpace.md))
 
         if (books.isEmpty()) {

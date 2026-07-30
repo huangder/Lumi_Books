@@ -21,6 +21,7 @@ import com.huangder.lumibooks.domain.model.ReaderBackgroundPresetCodec
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
 import com.huangder.lumibooks.domain.model.ReaderPageCorner
+import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.domain.model.defaultReaderCornerContent
 import com.huangder.lumibooks.util.LaunchThemeController
 import com.huangder.lumibooks.util.epub.EpubRenderMode
@@ -93,6 +94,7 @@ class DataStoreManager @Inject constructor(
 
         // 应用设置
         private val APP_THEME = stringPreferencesKey("app_theme")
+        private val GLOBAL_FONT_MODE = stringPreferencesKey("global_font_mode")
         private val LIQUID_GLASS_TRANSPARENCY = floatPreferencesKey("liquid_glass_transparency")
         private val LIQUID_GLASS_HDR_HIGHLIGHT_ENABLED = booleanPreferencesKey("liquid_glass_hdr_highlight_enabled")
         private val DARK_MODE = stringPreferencesKey("dark_mode")
@@ -285,6 +287,10 @@ class DataStoreManager @Inject constructor(
     // 应用设置
     val appTheme: Flow<String> = context.dataStore.data.map { preferences ->
         preferences[APP_THEME] ?: "lumi"
+    }
+
+    val globalFontMode: Flow<String> = context.dataStore.data.map { preferences ->
+        if (preferences[GLOBAL_FONT_MODE] == "system") "system" else "default"
     }
 
     val liquidGlassTransparency: Flow<Float> = context.dataStore.data.map { preferences ->
@@ -798,6 +804,18 @@ class DataStoreManager @Inject constructor(
         context.dataStore.edit { it[key] = enabled }
     }
 
+    fun readerWritingMode(bookId: String): Flow<ReaderWritingMode> {
+        val key = stringPreferencesKey("reader_writing_mode_$bookId")
+        return context.dataStore.data.map { preferences ->
+            ReaderWritingMode.fromKey(preferences[key])
+        }
+    }
+
+    suspend fun saveReaderWritingMode(bookId: String, mode: ReaderWritingMode) {
+        val key = stringPreferencesKey("reader_writing_mode_$bookId")
+        context.dataStore.edit { preferences -> preferences[key] = mode.key }
+    }
+
     /** 简繁转换模式："original" | "simplified" | "traditional" */
     fun chineseMode(): Flow<String> {
         val key = stringPreferencesKey("chinese_mode")
@@ -847,6 +865,12 @@ class DataStoreManager @Inject constructor(
     suspend fun saveAppTheme(theme: String) {
         context.dataStore.edit { preferences ->
             preferences[APP_THEME] = theme
+        }
+    }
+
+    suspend fun saveGlobalFontMode(mode: String) {
+        context.dataStore.edit { preferences ->
+            preferences[GLOBAL_FONT_MODE] = if (mode == "system") "system" else "default"
         }
     }
 

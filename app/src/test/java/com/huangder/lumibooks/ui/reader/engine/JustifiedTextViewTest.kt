@@ -118,4 +118,64 @@ class JustifiedTextViewTest {
             0.001f
         )
     }
+
+    @Test
+    fun verticalAndHorizontalModesMapOppositeSwipesToSemanticProgress() {
+        assertEquals(
+            HorizontalPageDirection.NEXT,
+            horizontalPageDirectionForDelta(-40f, 12f, reversePageProgress = false)
+        )
+        assertEquals(
+            HorizontalPageDirection.PREVIOUS,
+            horizontalPageDirectionForDelta(40f, 12f, reversePageProgress = false)
+        )
+        assertEquals(
+            HorizontalPageDirection.NEXT,
+            horizontalPageDirectionForDelta(40f, 12f, reversePageProgress = true)
+        )
+        assertEquals(
+            HorizontalPageDirection.PREVIOUS,
+            horizontalPageDirectionForDelta(-40f, 12f, reversePageProgress = true)
+        )
+        assertEquals(
+            HorizontalPageDirection.NONE,
+            horizontalPageDirectionForDelta(12f, 12f, reversePageProgress = true)
+        )
+    }
+
+    @Test
+    fun verticalNextMovesRightAndPreviousMovesLeft() {
+        assertEquals(-1f, horizontalPageTurnSign(HorizontalPageDirection.NEXT, false))
+        assertEquals(1f, horizontalPageTurnSign(HorizontalPageDirection.PREVIOUS, false))
+        assertEquals(1f, horizontalPageTurnSign(HorizontalPageDirection.NEXT, true))
+        assertEquals(-1f, horizontalPageTurnSign(HorizontalPageDirection.PREVIOUS, true))
+    }
+
+    @Test
+    fun verticalPunctuationIsMappedOnlyForPresentation() {
+        assertEquals("︐", verticalPresentationText("，"))
+        assertEquals("︒", verticalPresentationText("。"))
+        assertEquals("︵", verticalPresentationText("（"))
+        assertEquals("︾", verticalPresentationText("》"))
+        assertEquals("中", verticalPresentationText("中"))
+    }
+
+    @Test
+    fun westernClustersRotateWhileChineseAndEmojiStayUpright() {
+        assertTrue(shouldRotateVerticalCluster("A"))
+        assertTrue(shouldRotateVerticalCluster("2026"))
+        assertTrue(shouldRotateVerticalCluster("β"))
+        assertFalse(shouldRotateVerticalCluster("中"))
+        assertFalse(shouldRotateVerticalCluster("😀"))
+    }
+
+    @Test
+    fun verticalKinsokuClassifiesCommonOpeningAndClosingPunctuation() {
+        assertTrue(isVerticalColumnStartProhibited("。"))
+        assertTrue(isVerticalColumnStartProhibited("）"))
+        assertTrue(isVerticalColumnEndProhibited("（"))
+        assertTrue(isVerticalColumnEndProhibited("《"))
+        assertFalse(isVerticalColumnStartProhibited("中"))
+        assertFalse(isVerticalColumnEndProhibited("中"))
+    }
 }

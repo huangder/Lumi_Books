@@ -28,19 +28,25 @@ object FileUtils {
     }
 
     fun copyFileToInternal(context: Context, uri: Uri, fileName: String): File? {
+        var destination: File? = null
         return try {
-            val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
+            val inputStream: InputStream = context.contentResolver.openInputStream(uri) ?: return null
             val booksDir = getBooksDirectory(context)
-            val requested = File(booksDir, fileName)
+            val providerName = File(fileName).name
+            val safeFileName = providerName.takeUnless {
+                it.isBlank() || it == "." || it == ".."
+            } ?: "book"
+            val requested = File(booksDir, safeFileName)
             val file = if (!requested.exists()) requested else {
-                val base = fileName.substringBeforeLast('.', fileName)
-                val extension = fileName.substringAfterLast('.', "")
+                val base = safeFileName.substringBeforeLast('.', safeFileName)
+                val extension = safeFileName.substringAfterLast('.', "")
                 generateSequence(2) { it + 1 }
                     .map { index -> File(booksDir, if (extension.isBlank()) "$base ($index)" else "$base ($index).$extension") }
                     .first { !it.exists() }
             }
+            destination = file
 
-            inputStream?.use { input ->
+            inputStream.use { input ->
                 FileOutputStream(file).use { output ->
                     input.copyTo(output)
                 }
@@ -48,6 +54,7 @@ object FileUtils {
 
             file
         } catch (e: Exception) {
+            destination?.let { partialFile -> runCatching { partialFile.delete() } }
             e.printStackTrace()
             null
         }
@@ -70,19 +77,13 @@ object FileUtils {
     }
 
     fun getFileNameFromUri(context: Context, uri: Uri): String? {
-        val cursor = context.contentResolver.query(uri, null, null, null, null)
-        return cursor?.use {
-            if (it.moveToFirst()) {
-                val nameIndex = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                if (nameIndex >= 0) {
-                    it.getString(nameIndex)
-                } else {
-                    null
-                }
-            } else {
-                null
+        return runCatching {
+            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (!cursor.moveToFirst()) return@use null
+                val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (nameIndex >= 0) cursor.getString(nameIndex) else null
             }
-        }
+        }.getOrNull()
     }
 
     /**
@@ -91,21 +92,22 @@ object FileUtils {
      * @return 复制后的文件路径，失败返回 null
      */
     fun copyCoverImage(context: Context, uri: Uri, bookId: String): String? {
+        var destination: File? = null
         return try {
             val inputStream = context.contentResolver.openInputStream(uri) ?: return null
             val coversDir = getCoversDirectory(context)
-            // 先删除该书之前的自定义封面
-            coversDir.listFiles()?.filter { it.name.startsWith("custom_${bookId}_") }?.forEach { it.delete() }
-            // 用时间戳命名，避免与原始封面冲突
-            val file = File(coversDir, "custom_${bookId}_${System.currentTimeMillis()}.jpg")
+            val destinationFile = File(coversDir, "custom_${bookId}_${System.currentTimeMillis()}.jpg")
+            destination = destinationFile
             inputStream.use { input ->
-                FileOutputStream(file).use { output ->
+                FileOutputStream(destinationFile).use { output ->
                     input.copyTo(output)
                 }
             }
-            file.absolutePath
-        } catch (e: Exception) {
-            e.printStackTrace()
+
+            destinationFile.absolutePath
+        } catch (error: Exception) {
+            destination?.let { partialFile -> runCatching { partialFile.delete() } }
+            error.printStackTrace()
             null
         }
     }
@@ -114,8 +116,20 @@ object FileUtils {
      * 删除书本的自定义封面文件
      */
     fun deleteCustomCover(context: Context, bookId: String) {
-        val coversDir = getCoversDirectory(context)
-        coversDir.listFiles()?.filter { it.name.startsWith("custom_${bookId}_") }?.forEach { it.delete() }
+        deleteOtherCustomCovers(context, bookId, keepLocation = null)
+    }
+
+    fun deleteOtherCustomCovers(context: Context, bookId: String, keepLocation: String?) {
+        runCatching {
+            val keepFile = keepLocation?.let(::File)?.canonicalFile
+            val coversDir = getCoversDirectory(context)
+            coversDir.listFiles()
+                ?.filter { cover ->
+                    cover.name.startsWith("custom_${bookId}_") &&
+                        runCatching { cover.canonicalFile != keepFile }.getOrDefault(true)
+                }
+                ?.forEach { cover -> runCatching { cover.delete() } }
+        }
     }
 
     /**
@@ -136,6 +150,47 @@ object FileUtils {
             e.printStackTrace()
             false
         }
+    }
+
+    /** Returns true only for files copied/generated inside this app's books directory. */
+    fun isAppManagedBookLocation(context: Context, location: String): Boolean {
+        if (BookFileAccess.isContentUri(location)) return false
+        return isInsideDirectory(File(location), getBooksDirectory(context))
+    }
+
+    /**
+     * Deletes the physical book only when it belongs to the app-managed books directory.
+     * SAF/authorized-directory documents and arbitrary external paths are deliberately kept.
+     */
+    fun deleteAppManagedBookFile(context: Context, location: String): Boolean {
+        if (!isAppManagedBookLocation(context, location)) return true
+        return deleteFile(File(location))
+    }
+
+    /** Deletes a derived file only when it is inside an app-private directory. */
+    fun deleteAppOwnedFile(context: Context, location: String?): Boolean {
+        if (location.isNullOrBlank() || BookFileAccess.isContentUri(location)) return true
+        val file = File(location)
+        val ownedRoots = listOfNotNull(
+            context.filesDir,
+            context.cacheDir,
+            context.getExternalFilesDir(null)
+        )
+        if (ownedRoots.none { root -> isInsideDirectory(file, root) }) return true
+        return deleteFile(file)
+    }
+
+    fun deleteTxtIndexCache(context: Context, sourceLocation: String) {
+        val hash = sourceLocation.hashCode().toString(16)
+        deleteFile(File(context.cacheDir, "txt_index/$hash.cache"))
+    }
+
+    private fun isInsideDirectory(file: File, directory: File): Boolean {
+        return runCatching {
+            val canonicalFile = file.canonicalFile
+            val canonicalDirectory = directory.canonicalFile
+            canonicalFile.path.startsWith(canonicalDirectory.path + File.separator)
+        }.getOrDefault(false)
     }
 
     fun getFileSize(file: File): Long {

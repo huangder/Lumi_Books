@@ -27,8 +27,9 @@ class PdfParser(private val context: Context) : BookParser {
     override fun parse(filePath: String): BookContent {
         close()
         fileName = FileUtils.getFileNameFromLocation(context, filePath).substringBeforeLast('.')
-        fileDescriptor = BookFileAccess.openDescriptor(context, filePath)
-        pdfRenderer = PdfRenderer(fileDescriptor!!)
+        val descriptor = BookFileAccess.openDescriptor(context, filePath)
+        fileDescriptor = descriptor
+        pdfRenderer = PdfRenderer(descriptor)
         pageCount = pdfRenderer?.pageCount ?: 0
 
         // 每页作为独立"章节"，ReaderViewModel 控制无动画切换

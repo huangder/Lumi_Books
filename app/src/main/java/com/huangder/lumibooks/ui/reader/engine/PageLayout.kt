@@ -10,5 +10,6 @@ data class PageLayout(
     val startLine: Int,
     val endLine: Int,           // exclusive
     val startCharOffset: Int,
-    val endCharOffset: Int      // exclusive
+    val endCharOffset: Int,     // exclusive
+    val verticalGeometry: VerticalPageGeometry? = null
 )

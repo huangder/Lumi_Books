@@ -68,6 +68,7 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
+import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import java.util.Calendar
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -292,7 +293,7 @@ private fun TodayReadingContent(
         text = if (hasGoal) stringResource(R.string.today_reading_label) else todayStatusText,
         fontSize = 20.sp,
         fontWeight = FontWeight.Bold,
-        fontFamily = KaiTi,
+        fontFamily = resolveAppFontFamily(KaiTi),
         color = textPrimary
     )
 
@@ -498,7 +499,7 @@ private fun GoalPicker(
         text = stringResource(R.string.set_daily_goal),
         fontSize = 20.sp,
         fontWeight = FontWeight.Bold,
-        fontFamily = KaiTi,
+        fontFamily = resolveAppFontFamily(KaiTi),
         color = textPrimary
     )
 

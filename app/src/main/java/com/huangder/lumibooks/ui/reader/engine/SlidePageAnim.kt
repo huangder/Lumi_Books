@@ -51,15 +51,16 @@ class SlidePageAnim(readView: PageAnimationSurface) : PageAnimationController(re
 
         when {
             direction == Direction.NEXT -> {
+                val turnSign = horizontalTurnSign(direction)
                 if (readView.animatePageViewsDirectly) {
                     readView.curPageView.visibility = View.VISIBLE
                     readView.nextPageView.visibility = View.VISIBLE
                     readView.prevPageView.visibility = View.INVISIBLE
                 }
                 // cur 在上层全速左滑，next 在下层 30% 视差滑入
-                readView.nextPageView.translationX = snapTranslation((vw + ox) * PARALLAX_RATIO)
+                readView.nextPageView.translationX = snapTranslation((-turnSign * vw + ox) * PARALLAX_RATIO)
                 readView.curPageView.translationX = ox
-                readView.prevPageView.translationX = -vw
+                readView.prevPageView.translationX = idleTranslationX(Direction.PREV, vw)
                 // 🔥 确保页面可见（setPageTransition 可能把 alpha 设为 0）
                 readView.curPageView.alpha = 1f
                 readView.nextPageView.alpha = 1f
@@ -70,6 +71,7 @@ class SlidePageAnim(readView: PageAnimationSurface) : PageAnimationController(re
                 readView.prevPageView.translationZ = 0f
             }
             direction == Direction.PREV -> {
+                val turnSign = horizontalTurnSign(direction)
                 if (readView.animatePageViewsDirectly) {
                     readView.curPageView.visibility = View.VISIBLE
                     readView.prevPageView.visibility = View.VISIBLE
@@ -77,8 +79,8 @@ class SlidePageAnim(readView: PageAnimationSurface) : PageAnimationController(re
                 }
                 // prev 在上层全速滑入，cur 在下层 30% 视差右移
                 readView.curPageView.translationX = snapTranslation(ox * PARALLAX_RATIO)
-                readView.prevPageView.translationX = snapTranslation(-vw + ox)
-                readView.nextPageView.translationX = vw
+                readView.prevPageView.translationX = snapTranslation(-turnSign * vw + ox)
+                readView.nextPageView.translationX = idleTranslationX(Direction.NEXT, vw)
                 // 🔥 确保页面可见
                 readView.curPageView.alpha = 1f
                 readView.prevPageView.alpha = 1f
@@ -95,8 +97,8 @@ class SlidePageAnim(readView: PageAnimationSurface) : PageAnimationController(re
                     readView.nextPageView.visibility = View.INVISIBLE
                 }
                 readView.curPageView.translationX = 0f
-                readView.prevPageView.translationX = -vw
-                readView.nextPageView.translationX = vw
+                readView.prevPageView.translationX = idleTranslationX(Direction.PREV, vw)
+                readView.nextPageView.translationX = idleTranslationX(Direction.NEXT, vw)
                 // 🔥 空闲状态：只显示当前页
                 readView.curPageView.alpha = 1f
                 readView.prevPageView.alpha = 0f
@@ -116,16 +118,18 @@ class SlidePageAnim(readView: PageAnimationSurface) : PageAnimationController(re
         canvas.drawColor(readView.bgColor)
         when (direction) {
             Direction.NEXT -> {
+                val turnSign = horizontalTurnSign(direction)
                 drawPageBitmap(
                     canvas,
                     readView.nextPageView,
-                    snapTranslation((width + offset) * PARALLAX_RATIO)
+                    snapTranslation((-turnSign * width + offset) * PARALLAX_RATIO)
                 )
                 drawPageBitmap(canvas, readView.curPageView, offset)
             }
             Direction.PREV -> {
+                val turnSign = horizontalTurnSign(direction)
                 drawPageBitmap(canvas, readView.curPageView, snapTranslation(offset * PARALLAX_RATIO))
-                drawPageBitmap(canvas, readView.prevPageView, snapTranslation(-width + offset))
+                drawPageBitmap(canvas, readView.prevPageView, snapTranslation(-turnSign * width + offset))
             }
             Direction.NONE -> drawPageBitmap(canvas, readView.curPageView, 0f)
         }
@@ -159,13 +163,31 @@ class SlidePageAnim(readView: PageAnimationSurface) : PageAnimationController(re
         when {
             direction == Direction.NEXT -> {
                 // 阴影随翻页进度渐隐：翻完时刚好消失，消除闪烁
-                val progress = (-ox / vw).coerceIn(0f, 1f)
-                drawShadow(canvas, ox + vw, vw, vh, shadowAlpha = 1f - progress)
+                val turnSign = horizontalTurnSign(direction)
+                val progress = (kotlin.math.abs(ox) / vw).coerceIn(0f, 1f)
+                val edgeX = if (turnSign < 0f) ox + vw else ox
+                drawShadow(
+                    canvas = canvas,
+                    edgeX = edgeX,
+                    vw = vw,
+                    vh = vh,
+                    extendsRight = turnSign < 0f,
+                    shadowAlpha = 1f - progress
+                )
             }
             direction == Direction.PREV -> {
                 // 阴影随拖动进度渐显：不会突然出现
-                val progress = (ox / vw).coerceIn(0f, 1f)
-                drawShadow(canvas, ox, vw, vh, shadowAlpha = progress)
+                val turnSign = horizontalTurnSign(direction)
+                val progress = (kotlin.math.abs(ox) / vw).coerceIn(0f, 1f)
+                val edgeX = if (turnSign > 0f) ox else vw + ox
+                drawShadow(
+                    canvas = canvas,
+                    edgeX = edgeX,
+                    vw = vw,
+                    vh = vh,
+                    extendsRight = turnSign > 0f,
+                    shadowAlpha = progress
+                )
             }
             else -> {
                 // 翻页完成后阴影已随进度自然消失，无需额外渐隐
@@ -174,21 +196,31 @@ class SlidePageAnim(readView: PageAnimationSurface) : PageAnimationController(re
     }
 
     /** 翻页时的阴影。shadowAlpha: 0f=不可见, 1f=满强度 */
-    private fun drawShadow(canvas: Canvas, edgeX: Float, vw: Float, vh: Float, shadowAlpha: Float = 1f) {
-        val shStart = edgeX.coerceIn(0f, vw)
-        val shEnd = (edgeX + shadowWidth).coerceAtMost(vw)
+    private fun drawShadow(
+        canvas: Canvas,
+        edgeX: Float,
+        vw: Float,
+        vh: Float,
+        extendsRight: Boolean,
+        shadowAlpha: Float = 1f
+    ) {
+        val shStart = if (extendsRight) edgeX.coerceIn(0f, vw)
+            else (edgeX - shadowWidth).coerceAtLeast(0f)
+        val shEnd = if (extendsRight) (edgeX + shadowWidth).coerceAtMost(vw)
+            else edgeX.coerceIn(0f, vw)
         if (shEnd <= shStart + 2f) return
 
         canvas.save()
         canvas.clipRect(shStart, 0f, shEnd, vh)
         val a = shadowAlpha.coerceIn(0f, 1f)
-        val colors = intArrayOf(
+        val baseColors = intArrayOf(
             ((0x26 * a).toInt() shl 24),
             ((0x18 * a).toInt() shl 24),
             ((0x08 * a).toInt() shl 24),
             ((0x02 * a).toInt() shl 24),
             0x00000000
         )
+        val colors = if (extendsRight) baseColors else baseColors.reversedArray()
         val stops = floatArrayOf(0.0f, 0.2f, 0.5f, 0.75f, 1.0f)
         // 🔥 复用成员 shadowPaint，仅更新 shader，避免每帧 new Paint() + new LinearGradient()
         shadowPaint.shader = LinearGradient(shStart, 0f, shEnd, 0f, colors, stops, Shader.TileMode.CLAMP)
@@ -221,8 +253,10 @@ class SlidePageAnim(readView: PageAnimationSurface) : PageAnimationController(re
         val vw = readView.width.toFloat()
         val fromX: Float; val toX: Float
         when {
-            direction == Direction.NEXT -> { fromX = if (fromDrag) touchX else startX; toX = startX - vw }
-            direction == Direction.PREV -> { fromX = if (fromDrag) touchX else startX; toX = startX + vw }
+            direction == Direction.NEXT || direction == Direction.PREV -> {
+                fromX = if (fromDrag) touchX else startX
+                toX = startX + horizontalTurnSign(direction) * vw
+            }
             else -> return
         }
         val dx = (toX - fromX).toInt()

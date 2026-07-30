@@ -21,7 +21,6 @@ import com.huangder.lumibooks.domain.repository.TagRepository
 import com.huangder.lumibooks.util.FileUtils
 import com.huangder.lumibooks.util.TimeUtils
 import com.huangder.lumibooks.util.parser.BookParserFactory
-import com.huangder.lumibooks.pdfconversion.PdfConversionContract
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -470,6 +469,8 @@ class HomeViewModel @Inject constructor(
                 skipped++
                 return@forEach
             }
+            var importedLocation: String? = null
+            var extractedCoverPath: String? = null
             runCatching {
                 val location = if (copyIntoApp) {
                     FileUtils.copyFileToInternal(context, document.uri, document.name)?.absolutePath
@@ -477,6 +478,7 @@ class HomeViewModel @Inject constructor(
                 } else {
                     document.uri.toString()
                 }
+                importedLocation = location
                 val format = extension.toBookFormat()
                 val parser = BookParserFactory.createParser(format, context)
                 val coverPath = try {
@@ -484,8 +486,9 @@ class HomeViewModel @Inject constructor(
                 } catch (_: Exception) {
                     null
                 } finally {
-                    parser.close()
+                    runCatching { parser.close() }
                 }
+                extractedCoverPath = coverPath
                 val now = System.currentTimeMillis()
                 bookRepository.insertBook(
                     Book(
@@ -500,7 +503,15 @@ class HomeViewModel @Inject constructor(
                         createdAt = now
                     )
                 )
-            }.onSuccess { imported++ }.onFailure { failed++ }
+            }.onSuccess {
+                imported++
+            }.onFailure {
+                failed++
+                if (copyIntoApp) {
+                    importedLocation?.let { FileUtils.deleteAppManagedBookFile(context, it) }
+                }
+                FileUtils.deleteAppOwnedFile(context, extractedCoverPath)
+            }
         }
         return ImportResult(imported = imported, skipped = skipped, failed = failed)
     }
@@ -609,49 +620,137 @@ class HomeViewModel @Inject constructor(
      * 重新提取原始封面（用于移除自定义封面后恢复）
      * 在 Dispatchers.IO 上执行 parse，不阻塞主线程
      */
+    fun updateCustomCover(book: Book, uri: Uri) {
+        viewModelScope.launch {
+            var newCoverPath: String? = null
+            try {
+                newCoverPath = withContext(Dispatchers.IO) {
+                    FileUtils.copyCoverImage(application, uri, book.id)
+                } ?: error("Unable to copy the selected cover image")
+
+                bookRepository.updateBook(book.copy(coverPath = newCoverPath))
+                withContext(Dispatchers.IO) {
+                    FileUtils.deleteOtherCustomCovers(application, book.id, newCoverPath)
+                }
+            } catch (error: Exception) {
+                newCoverPath?.let { failedCover ->
+                    withContext(Dispatchers.IO) {
+                        FileUtils.deleteAppOwnedFile(application, failedCover)
+                    }
+                }
+                _uiState.value = _uiState.value.copy(error = error.message)
+            }
+        }
+    }
+
+    fun removeCustomCover(book: Book) {
+        viewModelScope.launch {
+            try {
+                val originalCover = extractOriginalCover(application, book)
+                bookRepository.updateBook(book.copy(coverPath = originalCover))
+                withContext(Dispatchers.IO) {
+                    FileUtils.deleteCustomCover(application, book.id)
+                }
+            } catch (error: Exception) {
+                _uiState.value = _uiState.value.copy(error = error.message)
+            }
+        }
+    }
+
     fun reExtractCover(context: Context, book: Book) {
         viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                try {
-                    val parser = BookParserFactory.createParser(book.format, context)
-                    val originalCover = parser.extractCoverPath(book.filePath)
-                    bookRepository.updateBook(book.copy(coverPath = originalCover))
-                } catch (_: Exception) { }
+            try {
+                val originalCover = extractOriginalCover(context.applicationContext, book)
+                bookRepository.updateBook(book.copy(coverPath = originalCover))
+            } catch (error: Exception) {
+                _uiState.value = _uiState.value.copy(error = error.message)
+            }
+        }
+    }
+
+    private suspend fun extractOriginalCover(context: Context, book: Book): String? {
+        return withContext(Dispatchers.IO) {
+            val parser = BookParserFactory.createParser(book.format, context)
+            try {
+                parser.extractCoverPath(book.filePath)
+            } finally {
+                runCatching { parser.close() }
             }
         }
     }
 
     fun deleteBook(book: Book) {
-        viewModelScope.launch {
-            try {
-                deleteBookAndManagedData(book)
-            } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(error = e.message)
-            }
-        }
+        deleteBooks(listOf(book))
     }
 
     fun deleteBooks(books: List<Book>) {
-        if (books.isEmpty()) return
+        val booksToDelete = books.distinctBy { it.id }
+        if (booksToDelete.isEmpty()) return
         viewModelScope.launch {
-            try {
-                books.forEach { deleteBookAndManagedData(it) }
-            } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(error = e.message)
+            val failures = deleteBooksAndManagedData(booksToDelete)
+            if (failures.isNotEmpty()) {
+                _uiState.value = _uiState.value.copy(
+                    error = failures.joinToString(separator = "\n")
+                )
             }
         }
     }
 
-    private suspend fun deleteBookAndManagedData(book: Book) {
-        val isConvertedPdfBook = PdfConversionContract.isConvertedBook(application, book)
-        bookRepository.deleteBook(book)
-        if (isConvertedPdfBook) {
-            runCatching { readingRepository.deleteAllBookmarksByBookId(book.id) }
-            runCatching { readingRepository.deleteAllNotesByBookId(book.id) }
-            withContext(Dispatchers.IO) {
-                FileUtils.deleteFile(java.io.File(book.filePath))
+    private suspend fun deleteBooksAndManagedData(books: List<Book>): List<String> {
+        val librarySnapshot = _uiState.value.books
+        val requestedIds = books.mapTo(mutableSetOf()) { it.id }
+        val pathsUsedByRemainingBooks = librarySnapshot.asSequence()
+            .filterNot { it.id in requestedIds }
+            .map { it.filePath }
+            .toSet()
+        val deletedIds = mutableSetOf<String>()
+        val failures = mutableListOf<String>()
+
+        books.forEach { book ->
+            try {
+                val shouldDeletePhysicalFile = book.filePath !in pathsUsedByRemainingBooks
+                if (shouldDeletePhysicalFile) {
+                    val fileDeleted = withContext(Dispatchers.IO) {
+                        FileUtils.deleteAppManagedBookFile(application, book.filePath)
+                    }
+                    check(fileDeleted) { "?????${book.title}????????" }
+                }
+
+                // Room transaction removes the book and all database rows that reference it.
+                // Authorized-directory content:// documents are intentionally not touched.
+                bookRepository.deleteBook(book)
+                deletedIds += book.id
+            } catch (error: Exception) {
+                failures += error.message ?: "???${book.title}???"
             }
         }
+
+        if (deletedIds.isNotEmpty()) {
+            withContext(Dispatchers.IO) {
+                books.filter { it.id in deletedIds }.forEach { book ->
+                    FileUtils.deleteCustomCover(application, book.id)
+                    FileUtils.deleteTxtIndexCache(application, book.filePath)
+                }
+
+                books.asSequence()
+                    .filter { it.id in deletedIds }
+                    .mapNotNull { it.coverPath }
+                    .distinct()
+                    .filter { coverPath ->
+                        librarySnapshot.none { it.id !in deletedIds && it.coverPath == coverPath }
+                    }
+                    .forEach { coverPath ->
+                        FileUtils.deleteAppOwnedFile(application, coverPath)
+                    }
+            }
+
+            runCatching {
+                val syncedIds = dataStoreManager.webdavSyncedBookIds.first()
+                dataStoreManager.saveWebdavSyncedBookIds(syncedIds - deletedIds)
+            }
+        }
+
+        return failures
     }
 
     fun updateBook(book: Book) {

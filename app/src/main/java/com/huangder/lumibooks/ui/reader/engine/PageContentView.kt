@@ -22,6 +22,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
 import coil.load
+import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import java.io.File
 import kotlin.math.abs
 
@@ -80,7 +81,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
             // Keep the visible page on the same line-height model so its last line fits.
             setFallbackLineSpacing(false)
         }
-        breakStrategy = android.text.Layout.BREAK_STRATEGY_HIGH_QUALITY
+        breakStrategy = android.text.Layout.BREAK_STRATEGY_SIMPLE
         hyphenationFrequency = android.text.Layout.HYPHENATION_FREQUENCY_NONE
         setTextColor(0xFF333333.toInt())
         setTextSize(TypedValue.COMPLEX_UNIT_PX, 56f)
@@ -93,6 +94,10 @@ class PageContentView(context: Context) : FrameLayout(context) {
         visibility = View.INVISIBLE
     }
 
+    private val verticalTextView = VerticalTextView(context).apply {
+        visibility = View.GONE
+    }
+
     init {
         isClickable = false
         isFocusable = false
@@ -102,6 +107,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
         addView(textView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         // 再添加可见的 JustifiedTextView（顶层，渲染文字）
         addView(justifiedView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        addView(verticalTextView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     }
 
     private var readerBackgroundImagePath: String? = null
@@ -187,19 +193,24 @@ class PageContentView(context: Context) : FrameLayout(context) {
     /** 原始 spannable（含真实 BitmapDrawable ImageSpan），供 syncText/moveSlot 使用 */
     private var originalSpannable: Spannable? = null
     private var justifyLastLine: Boolean = false
+    private var writingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL
+    private var verticalGeometry: VerticalPageGeometry? = null
 
     fun setPageContent(
         fullText: CharSequence,
         startChar: Int,
         endChar: Int,
-        highlights: List<Triple<Int, Int, Int>> = emptyList()
+        highlights: List<Triple<Int, Int, Int>> = emptyList(),
+        verticalGeometry: VerticalPageGeometry? = null
     ) {
+        this.verticalGeometry = verticalGeometry
         if (startChar < 0 || endChar > fullText.length || startChar >= endChar) {
             chapterStartOffset = startChar
             textView.text = ""
             justifyLastLine = false
             justifiedView.justifyLastLine = false
             justifiedView.text = null
+            verticalTextView.clearPage()
             return
         }
 
@@ -219,6 +230,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
             justifyLastLine = false
             justifiedView.justifyLastLine = false
             justifiedView.text = null
+            verticalTextView.clearPage()
             return
         }
 
@@ -341,20 +353,8 @@ class PageContentView(context: Context) : FrameLayout(context) {
         // setTextIsSelectable(true) 时 Android 内部通过 Editable.Factory.newEditable() 创建副本
         // 必须从 textView.text 取实际存储的 Spannable，否则 SpanWatcher 注册在死对象上
         val actualSpannable = textView.text as? Spannable ?: spannable
+        verticalTextView.setPage(actualSpannable, verticalGeometry, actualStart)
         onTextSet?.invoke(actualSpannable)
-        textView.post {
-            val contentHeight = textView.layout?.height ?: 0
-            val viewportHeight = (textView.height - textView.paddingTop - textView.paddingBottom)
-                .coerceAtLeast(0)
-            Log.e(
-                "ReaderPaginationDebug",
-                "pageStart=$chapterStartOffset textLength=${textView.text.length} " +
-                    "lineCount=${textView.layout?.lineCount ?: 0} " +
-                    "contentHeight=$contentHeight viewportHeight=$viewportHeight " +
-                    "overflow=${(contentHeight - viewportHeight).coerceAtLeast(0)}"
-            )
-            textView.scrollTo(0, 0)
-        }
     }
 
     fun setSearchHighlightAlpha(alpha: Int) {
@@ -363,6 +363,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
             ?.forEach { it.alpha = alpha.coerceIn(0, 255) }
         textView.invalidate()
         justifiedView.invalidate()
+        verticalTextView.invalidate()
     }
 
     /**
@@ -381,8 +382,10 @@ class PageContentView(context: Context) : FrameLayout(context) {
         marginRightPx: Float = 48f,
         marginBottomPx: Float = 32f,
         highlightColor: Int = 0x40007AFF.toInt(),
-        accentColor: Int = 0xFF007AFF.toInt()
+        accentColor: Int = 0xFF007AFF.toInt(),
+        writingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL
     ) {
+        this.writingMode = writingMode
         val spacingRatio = if (fontSizePx > 0) letterSpacingPx / fontSizePx else 0f
 
         // Native TextView is the visible renderer as well as the selection owner.
@@ -394,8 +397,8 @@ class PageContentView(context: Context) : FrameLayout(context) {
         // 🔥 守卫：仅在值变更时才设置，避免无条件触发 nullLayouts() + requestLayout()
         // Android 的 setBreakStrategy/setHyphenationFrequency 不检查相等性，即使值相同
         // 也会无效化已存在的 Layout，导致多余的 layout pass → 内容位移
-        if (textView.breakStrategy != Layout.BREAK_STRATEGY_HIGH_QUALITY) {
-            textView.breakStrategy = Layout.BREAK_STRATEGY_HIGH_QUALITY
+        if (textView.breakStrategy != Layout.BREAK_STRATEGY_SIMPLE) {
+            textView.breakStrategy = Layout.BREAK_STRATEGY_SIMPLE
         }
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
             if (textView.hyphenationFrequency != Layout.HYPHENATION_FREQUENCY_NONE) {
@@ -434,6 +437,14 @@ class PageContentView(context: Context) : FrameLayout(context) {
             justifiedView.paddingRight != mr || justifiedView.paddingBottom != mb) {
             justifiedView.setPadding(ml, mt, mr, mb)
         }
+        verticalTextView.configure(fontSizePx, textColor, typeface, accentColor)
+        if (verticalTextView.paddingLeft != ml || verticalTextView.paddingTop != mt ||
+            verticalTextView.paddingRight != mr || verticalTextView.paddingBottom != mb) {
+            verticalTextView.setPadding(ml, mt, mr, mb)
+        }
+        val vertical = writingMode.isVertical
+        textView.visibility = if (vertical) View.INVISIBLE else View.VISIBLE
+        verticalTextView.visibility = if (vertical) View.VISIBLE else View.GONE
     }
 
     /** 获取当前 TextView 的 Spannable（用于读取选区等） */
@@ -442,7 +453,11 @@ class PageContentView(context: Context) : FrameLayout(context) {
     fun getVisualLineInfo(offset: Int): Pair<Int, Int>? = justifiedView.getLineInfoForOffset(offset)
 
     /** 返回指定页面坐标处的 EPUB 链接；未命中链接时返回 null。 */
-    fun getLinkAt(x: Float, y: Float): String? = justifiedView.getLinkAtPosition(x, y)
+    fun getLinkAt(x: Float, y: Float): String? = if (writingMode.isVertical) {
+        verticalTextView.getLinkAt(x, y)
+    } else {
+        justifiedView.getLinkAtPosition(x, y)
+    }
 
     /**
      * Returns the EPUB image at the supplied page coordinate.
@@ -452,6 +467,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
      * invisible justified renderer, whose line metrics can differ for large images.
      */
     fun getImageAt(x: Float, y: Float): ReaderImageHit? {
+        if (writingMode.isVertical) return verticalTextView.getImageAt(x, y)
         val spannable = textView.text as? Spannable ?: return null
         val textLayout = textView.layout ?: return null
         val localX = x - textView.totalPaddingLeft + textView.scrollX
@@ -575,6 +591,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
         val spannable = textView.text as? Spannable
         if (spannable != null && Selection.getSelectionEnd(spannable) > Selection.getSelectionStart(spannable)) {
             Selection.removeSelection(spannable)
+            verticalTextView.invalidate()
         }
     }
 
@@ -593,11 +610,15 @@ class PageContentView(context: Context) : FrameLayout(context) {
         justifyLastLine = false
         justifiedView.justifyLastLine = false
         justifiedView.text = null
+        verticalTextView.clearPage()
         originalSpannable = null
+        verticalGeometry = null
     }
 
     /** 获取原始 spannable（含真实 ImageSpan），供 moveSlot 使用 */
     fun getJustifiedText(): Spannable? = originalSpannable
+
+    fun getVerticalGeometry(): VerticalPageGeometry? = verticalGeometry
 
     fun shouldJustifyLastLine(): Boolean = justifyLastLine
 
@@ -612,10 +633,12 @@ class PageContentView(context: Context) : FrameLayout(context) {
         textViewText: CharSequence?,
         justifiedText: Spannable? = null,
         justifyLastLine: Boolean = false,
-        chapterStartOffset: Int = 0
+        chapterStartOffset: Int = 0,
+        verticalGeometry: VerticalPageGeometry? = null
     ) {
         this.chapterStartOffset = chapterStartOffset
         this.justifyLastLine = justifyLastLine
+        this.verticalGeometry = verticalGeometry
         justifiedView.justifyLastLine = justifyLastLine
         // 🔥 先设置 justifiedView（只 invalidate，不触发父布局），再设置 textView（可能触发父布局）
         // 确保 textView 触发的 layout pass 中，justifiedView 已有正确内容供 onSizeChanged → rebuildLayout 使用
@@ -629,6 +652,12 @@ class PageContentView(context: Context) : FrameLayout(context) {
         }
         // Slot rotation replaces TextView's internal Editable. Re-register the selection
         // watcher on that new instance or selections stop producing menus after a page turn.
-        (textView.text as? Spannable)?.let { onTextSet?.invoke(it) }
+        (textView.text as? Spannable)?.let {
+            verticalTextView.setPage(it, verticalGeometry, chapterStartOffset)
+            onTextSet?.invoke(it)
+        }
     }
+
+    fun getVerticalSelectionBounds(): Pair<VerticalRect, VerticalRect>? =
+        verticalTextView.selectionScreenBounds()
 }

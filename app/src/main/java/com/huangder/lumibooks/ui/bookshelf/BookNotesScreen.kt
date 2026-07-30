@@ -71,6 +71,7 @@ import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
+import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.Dispatchers
@@ -165,7 +166,7 @@ fun BookNotesScreen(
                     text = stringResource(R.string.notes_title),
                     fontSize = AppType.Section,
                     fontWeight = FontWeight.Bold,
-                    fontFamily = KaiTi,
+                    fontFamily = resolveAppFontFamily(KaiTi),
                     color = AppColors.TextPrimary
                 )
             }
@@ -211,7 +212,16 @@ fun BookNotesScreen(
                     viewModel.prepareExport { result ->
                         result.onSuccess { document ->
                             pendingExportText = document.text
-                            createDocumentLauncher.launch(document.fileName)
+                            runCatching {
+                                createDocumentLauncher.launch(document.fileName)
+                            }.onFailure {
+                                pendingExportText = null
+                                Toast.makeText(
+                                    context,
+                                    R.string.export_bookmarks_failed,
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
                         }.onFailure {
                             Toast.makeText(
                                 context,

@@ -2,6 +2,7 @@ package com.huangder.lumibooks.ui.settings
 
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -69,9 +70,12 @@ import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.FangSong
+import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.ui.components.LiquidGlassDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 // ─── 设置主页（分类列表）────────────────────────────────────────
@@ -93,15 +97,41 @@ fun SettingsScreen(
     val photoPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
-        uri?.let {
+        uri?.let { selectedUri ->
             scope.launch {
-                val avatarDir = File(context.filesDir, "avatars")
-                if (!avatarDir.exists()) avatarDir.mkdirs()
-                val avatarFile = File(avatarDir, "avatar.jpg")
-                context.contentResolver.openInputStream(it)?.use { input ->
-                    avatarFile.outputStream().use { output -> input.copyTo(output) }
+                val avatarPath = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val avatarDir = File(context.filesDir, "avatars").apply { mkdirs() }
+                        val avatarFile = File(avatarDir, "avatar.jpg")
+                        val temporaryFile = File(avatarDir, "avatar.jpg.tmp")
+                        try {
+                            val input = context.contentResolver.openInputStream(selectedUri)
+                                ?: error("Unable to open selected image")
+                            input.use { source ->
+                                temporaryFile.outputStream().use { output -> source.copyTo(output) }
+                            }
+                            if (!temporaryFile.exists() || temporaryFile.length() <= 0L) {
+                                error("Selected image is empty")
+                            }
+                            if (avatarFile.exists() && !avatarFile.delete()) {
+                                error("Unable to replace avatar")
+                            }
+                            if (!temporaryFile.renameTo(avatarFile)) {
+                                temporaryFile.copyTo(avatarFile, overwrite = true)
+                                temporaryFile.delete()
+                            }
+                            avatarFile.absolutePath
+                        } catch (error: Throwable) {
+                            temporaryFile.delete()
+                            throw error
+                        }
+                    }.getOrNull()
                 }
-                viewModel.saveAvatar(avatarFile.absolutePath)
+                if (avatarPath != null) {
+                    viewModel.saveAvatar(avatarPath)
+                } else {
+                    Toast.makeText(context, R.string.epub_image_save_failed, Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }
@@ -130,7 +160,7 @@ fun SettingsScreen(
                     settingsBackButton = true
                 )
                 Spacer(Modifier.weight(1f))
-                Text(stringResource(R.string.settings_title), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = FangSong, color = AppColors.TextPrimary)
+                Text(stringResource(R.string.settings_title), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = resolveAppFontFamily(FangSong), color = AppColors.TextPrimary)
                 Spacer(Modifier.weight(1f))
                 Spacer(Modifier.size(48.dp))
             }
@@ -162,7 +192,13 @@ fun SettingsScreen(
                         .background(AppColors.BgGray)
                         .border(1.dp, AppColors.Divider, CircleShape)
                         .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                            photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                            runCatching {
+                                photoPicker.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                )
+                            }.onFailure {
+                                Toast.makeText(context, R.string.epub_image_load_failed, Toast.LENGTH_SHORT).show()
+                            }
                         },
                     contentAlignment = Alignment.Center
                 ) {

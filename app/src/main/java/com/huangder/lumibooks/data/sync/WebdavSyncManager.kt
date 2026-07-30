@@ -581,17 +581,25 @@ class WebdavSyncManager @Inject constructor(
         // Extract cover and metadata from EPUB
         val coverPath = try {
             val parser = BookParserFactory.createParser(format, context)
-            parser.extractCoverPath(file.absolutePath)
+            try {
+                parser.extractCoverPath(file.absolutePath)
+            } finally {
+                runCatching { parser.close() }
+            }
         } catch (_: Exception) { null }
 
         val (title, author) = if (format == com.huangder.lumibooks.domain.model.BookFormat.EPUB) {
             try {
                 val epubParser = com.huangder.lumibooks.util.parser.EpubParser(context)
-                val content = epubParser.parse(file.absolutePath)
-                val t = content.title.takeIf { it.isNotBlank() && it != file.nameWithoutExtension }
-                    ?: file.nameWithoutExtension
-                val a = content.author.takeIf { it.isNotBlank() && it != "未知作者" } ?: "未知作者"
-                t to a
+                try {
+                    val content = epubParser.parse(file.absolutePath)
+                    val t = content.title.takeIf { it.isNotBlank() && it != file.nameWithoutExtension }
+                        ?: file.nameWithoutExtension
+                    val a = content.author.takeIf { it.isNotBlank() && it != "未知作者" } ?: "未知作者"
+                    t to a
+                } finally {
+                    runCatching { epubParser.close() }
+                }
             } catch (_: Exception) {
                 file.nameWithoutExtension to "未知作者"
             }

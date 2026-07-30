@@ -4,6 +4,9 @@
     <string name="label_entrance_animations">動效 Pro (Beta)</string>
     <string name="entrance_animations_description">為部分頁面加入元素\n動效，這可能會影響效能</string>
     <string name="label_app_theme">主題</string>
+    <string name="label_global_font">全域字型</string>
+    <string name="global_font_default">預設字型</string>
+    <string name="global_font_system">系統字型</string>
     <string name="app_theme_lumi">Lumi 粉</string>
     <string name="app_theme_material3">Material 3</string>
     <string name="app_theme_liquid_glass">液態玻璃</string>
@@ -298,6 +301,7 @@
     <string name="reader_bookmark">書籤</string>
     <string name="reader_notes">筆記</string>
     <string name="reader_search">搜尋</string>
+    <string name="epub_book_layout_search_unsupported">原排版模式下暫不支援</string>
     <string name="reader_theme">主題</string>
     <string name="reader_edit">編輯</string>
     <string name="txt_editor_discard_title">放棄修改？</string>
@@ -680,8 +684,8 @@
     <string name="epub_render_mode">EPUB 排版模式</string>
     <string name="epub_book_layout">書籍原排版</string>
     <string name="epub_reader_layout">閱讀器排版</string>
-    <string name="epub_book_layout_hint">保留書籍內建的 HTML、CSS、字型與圖文結構</string>
-    <string name="epub_reader_layout_hint">使用閱讀器統一的字型、段落間距與頁面邊距設定</string>
+    <string name="epub_book_layout_hint">保留書籍內建的 HTML、CSS、字型與圖文結構，可能會增加效能開銷</string>
+    <string name="epub_reader_layout_hint">使用閱讀器統一的字型、段落間距與頁面邊距設定，更流暢，載入更快</string>
     <string name="reader_external_link_title">開啟外部連結？</string>
     <string name="reader_external_link_message">這本 EPUB 想要開啟外部應用程式或網站：\n%1$s</string>
     <string name="reader_external_link_open">開啟</string>
@@ -723,4 +727,27 @@
     <string name="txt_encoding_euc_kr">EUC-KR（韓文）</string>
     <string name="txt_encoding_windows_1252">Windows-1252（西文）</string>
 
+    <string name="reader_writing_mode">排版方向</string>
+    <string name="reader_writing_horizontal">橫排</string>
+    <string name="reader_writing_vertical">豎排</string>
+    <string name="txt_editor_loading">載入中...</string>
+    <string name="txt_editor_placeholder">輸入文字內容...</string>
+    <string name="txt_editor_previous_chapter">上一章</string>
+    <string name="txt_editor_next_chapter">下一章</string>
+    <string name="txt_editor_search">搜尋</string>
+    <string name="txt_editor_replace">取代</string>
+    <string name="txt_editor_search_placeholder">輸入搜尋內容</string>
+    <string name="txt_editor_replace_placeholder">輸入取代內容</string>
+    <string name="txt_editor_match_case">區分大小寫</string>
+    <string name="txt_editor_scope_chapter">目前章節</string>
+    <string name="txt_editor_scope_book">全書</string>
+    <string name="txt_editor_no_matches">找不到相符項目</string>
+    <string name="txt_editor_match_count">%1$d / %2$d</string>
+    <string name="txt_editor_previous_match">上一個</string>
+    <string name="txt_editor_next_match">下一個</string>
+    <string name="txt_editor_replace_current">取代目前項目</string>
+    <string name="txt_editor_replace_all">全部取代</string>
+    <string name="txt_editor_replace_all_title">取代全書內容</string>
+    <string name="txt_editor_replace_all_message">將取代全書中的 %1$d 個相符項目，變更會在儲存後寫入檔案。</string>
+    <string name="txt_editor_replaced_count">已取代 %1$d 個項目</string>
 </resources>

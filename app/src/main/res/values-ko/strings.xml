@@ -4,6 +4,9 @@
     <string name="label_entrance_animations">모션 Pro (Beta)</string>
     <string name="entrance_animations_description">일부 페이지에 요소 애니메이션을 추가하며\n성능에 영향을 줄 수 있습니다</string>
     <string name="label_app_theme">테마</string>
+    <string name="label_global_font">전역 글꼴</string>
+    <string name="global_font_default">기본 글꼴</string>
+    <string name="global_font_system">시스템 글꼴</string>
     <string name="app_theme_lumi">Lumi 핑크</string>
     <string name="app_theme_material3">Material 3</string>
     <string name="app_theme_liquid_glass">리퀴드 글래스</string>
@@ -298,6 +301,7 @@
     <string name="reader_bookmark">북마크</string>
     <string name="reader_notes">메모</string>
     <string name="reader_search">검색</string>
+    <string name="epub_book_layout_search_unsupported">책 원본 레이아웃에서는 아직 지원되지 않습니다</string>
     <string name="reader_theme">테마</string>
     <string name="reader_edit">편집</string>
     <string name="txt_editor_discard_title">변경 사항을 버리겠습니까?</string>
@@ -680,8 +684,8 @@
     <string name="epub_render_mode">EPUB 레이아웃</string>
     <string name="epub_book_layout">책 원본 레이아웃</string>
     <string name="epub_reader_layout">리더 레이아웃</string>
-    <string name="epub_book_layout_hint">출판사가 지정한 HTML, CSS, 글꼴 및 문서 구조를 유지합니다</string>
-    <string name="epub_reader_layout_hint">리더의 통일된 글꼴, 문단 간격 및 여백 설정을 사용합니다</string>
+    <string name="epub_book_layout_hint">출판사가 지정한 HTML, CSS, 글꼴 및 문서 구조를 유지합니다. 성능 부담이 커질 수 있습니다</string>
+    <string name="epub_reader_layout_hint">리더의 통일된 글꼴, 문단 간격 및 여백 설정을 사용합니다. 더 부드럽고 빠르게 불러옵니다</string>
     <string name="reader_external_link_title">외부 링크를 열까요?</string>
     <string name="reader_external_link_message">이 EPUB이 외부 앱 또는 웹사이트를 열려고 합니다:\n%1$s</string>
     <string name="reader_external_link_open">열기</string>
@@ -723,4 +727,27 @@
     <string name="txt_encoding_euc_kr">EUC-KR (한국어)</string>
     <string name="txt_encoding_windows_1252">Windows-1252 (서유럽어)</string>
 
+    <string name="reader_writing_mode">텍스트 방향</string>
+    <string name="reader_writing_horizontal">가로쓰기</string>
+    <string name="reader_writing_vertical">세로쓰기</string>
+    <string name="txt_editor_loading">불러오는 중...</string>
+    <string name="txt_editor_placeholder">텍스트 입력...</string>
+    <string name="txt_editor_previous_chapter">이전 장</string>
+    <string name="txt_editor_next_chapter">다음 장</string>
+    <string name="txt_editor_search">검색</string>
+    <string name="txt_editor_replace">바꾸기</string>
+    <string name="txt_editor_search_placeholder">찾을 내용</string>
+    <string name="txt_editor_replace_placeholder">바꿀 내용</string>
+    <string name="txt_editor_match_case">대/소문자 구분</string>
+    <string name="txt_editor_scope_chapter">현재 장</string>
+    <string name="txt_editor_scope_book">전체 책</string>
+    <string name="txt_editor_no_matches">일치 항목 없음</string>
+    <string name="txt_editor_match_count">%1$d / %2$d</string>
+    <string name="txt_editor_previous_match">이전 항목</string>
+    <string name="txt_editor_next_match">다음 항목</string>
+    <string name="txt_editor_replace_current">현재 바꾸기</string>
+    <string name="txt_editor_replace_all">모두 바꾸기</string>
+    <string name="txt_editor_replace_all_title">전체 책 바꾸기</string>
+    <string name="txt_editor_replace_all_message">책 전체에서 %1$d개 항목을 바꿉니다. 저장할 때 파일에 기록됩니다.</string>
+    <string name="txt_editor_replaced_count">%1$d개를 바꿨습니다</string>
 </resources>

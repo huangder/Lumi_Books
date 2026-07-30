@@ -23,6 +23,7 @@ import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
 import com.huangder.lumibooks.domain.model.ReaderPageCorner
+import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.domain.model.defaultReaderCornerContent
 import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.domain.repository.ReadingRepository
@@ -153,6 +154,7 @@ data class ReaderUiState(
     val eInkModeEnabled: Boolean = false,
     val screenSleepTimeoutSeconds: Int = DataStoreManager.DEFAULT_SCREEN_SLEEP_TIMEOUT_SECONDS,
     val readerEdgeTapMode: ReaderEdgeTapMode = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT,
+    val readerWritingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL,
     val readerTopLeftContent: ReaderCornerContent = defaultReaderCornerContent(ReaderPageCorner.TOP_LEFT),
     val readerTopRightContent: ReaderCornerContent = defaultReaderCornerContent(ReaderPageCorner.TOP_RIGHT),
     val readerBottomLeftContent: ReaderCornerContent = defaultReaderCornerContent(ReaderPageCorner.BOTTOM_LEFT),
@@ -877,9 +879,18 @@ class ReaderViewModel @Inject constructor(
             epubLocatorJson = null
         )
         viewModelScope.launch {
-            dataStoreManager.saveEpubRenderMode(bookId, mode)
-            if (mode == EpubRenderMode.BOOK_LAYOUT && epubRenderSession == null) {
-                withContext(Dispatchers.IO) { getEpubRenderSession() }
+            runCatching {
+                dataStoreManager.saveEpubRenderMode(bookId, mode)
+                if (mode == EpubRenderMode.BOOK_LAYOUT && epubRenderSession == null) {
+                    withContext(Dispatchers.IO) { getEpubRenderSession() }
+                }
+            }.onFailure { error ->
+                android.util.Log.e("ReaderViewModel", "Failed to change EPUB render mode", error)
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    pageReady = true,
+                    error = error.localizedMessage ?: "EPUB ????????"
+                )
             }
         }
     }
@@ -1002,6 +1013,14 @@ class ReaderViewModel @Inject constructor(
         }
         viewModelScope.launch {
             dataStoreManager.savePageTransition(mode)
+        }
+    }
+
+    fun saveReaderWritingMode(mode: ReaderWritingMode) {
+        if (!_uiState.value.useNewEngine) return
+        _uiState.value = _uiState.value.copy(readerWritingMode = mode)
+        viewModelScope.launch {
+            dataStoreManager.saveReaderWritingMode(bookId, mode)
         }
     }
 
@@ -1169,7 +1188,8 @@ class ReaderViewModel @Inject constructor(
             try {
                 val book = bookRepository.getBookById(bookId)
                 if (book != null) {
-                    parser = BookParserFactory.createParser(book.format, context)
+                    val activeParser = BookParserFactory.createParser(book.format, context)
+                    parser = activeParser
 
                     val isEpub = book.format.name == "EPUB"
                     val isTxt = book.format.name == "TXT"
@@ -1191,6 +1211,7 @@ class ReaderViewModel @Inject constructor(
                     // 读取设置
                     val optimize = dataStoreManager.optimizeLayout(bookId).first()
                     val useEpubCss = dataStoreManager.useEpubCss(bookId).first()
+                    val readerWritingMode = dataStoreManager.readerWritingMode(bookId).first()
                     val chineseMode = dataStoreManager.chineseMode().first()
                     val eInkModeEnabled = dataStoreManager.eInkModeEnabled.first()
                     val pageTransition = if (eInkModeEnabled) "none" else dataStoreManager.pageTransition().first()
@@ -1199,13 +1220,13 @@ class ReaderViewModel @Inject constructor(
                     val pdfPageMode = if (eInkModeEnabled) "horizontal" else dataStoreManager.pdfPageMode.first()
 
                     // 应用段间距和首行缩进到 parser
-                    parser!!.paragraphSpacingDp = paragraphSpacing
-                    parser!!.firstLineIndentChars = firstLineIndent
-                    parser!!.useEpubCss = useEpubCss
-                    (parser as? TxtParser)?.selectedEncoding = txtEncoding
+                    activeParser.paragraphSpacingDp = paragraphSpacing
+                    activeParser.firstLineIndentChars = firstLineIndent
+                    activeParser.useEpubCss = useEpubCss
+                    (activeParser as? TxtParser)?.selectedEncoding = txtEncoding
 
                     val content = withContext(Dispatchers.IO) {
-                        parser!!.parse(book.filePath)
+                        activeParser.parse(book.filePath)
                     }
 
                     // 解析出更准确的作者时，静默回填数据库并用新值更新 UI
@@ -1251,10 +1272,11 @@ class ReaderViewModel @Inject constructor(
                         useNewEngine = !isPdf,  // TXT/EPUB 用新 Canvas 引擎，PDF 保留 WebView
                         optimizeLayout = optimize,
                         useEpubCss = useEpubCss,
+                        readerWritingMode = readerWritingMode,
                         epubRenderMode = epubRenderMode,
                         showEpubLayoutHint = showEpubLayoutHint,
                         txtEncoding = txtEncoding,
-                        txtActiveCharsetName = (parser as? TxtParser)?.activeCharsetName ?: "UTF-8",
+                        txtActiveCharsetName = (activeParser as? TxtParser)?.activeCharsetName ?: "UTF-8",
                         showTxtEncodingHint = showTxtEncodingHint,
                         epubLocatorJson = book.locatorJson.takeIf { epubRenderMode == EpubRenderMode.BOOK_LAYOUT },
                         chineseMode = chineseMode,
@@ -1401,6 +1423,10 @@ class ReaderViewModel @Inject constructor(
 
     /** Saves chapter-local scroll progress for continuous-scroll mode. */
     fun onContinuousScrollPosition(chapterIndex: Int, chapterFraction: Float) {
+        val currentState = _uiState.value
+        // Ignore a final viewport callback from the outgoing continuous reader after switching back
+        // to a paged mode. Otherwise it can overwrite the destination reader's restore counters.
+        if (currentState.pageTransition != "continuous" || currentState.eInkModeEnabled) return
         val progressScale = CONTINUOUS_PROGRESS_SCALE
         _uiState.value = _uiState.value.copy(
             currentChapterIndex = chapterIndex,
@@ -1448,7 +1474,11 @@ class ReaderViewModel @Inject constructor(
         pageInChapter: Int,
         chapterTotalPages: Int
     ) {
-        _uiState.value = _uiState.value.copy(
+        val currentState = _uiState.value
+        // The old paged view may emit one last callback while Compose swaps in continuous scroll.
+        // Do not let it mark the page ready or replace the pending normalized restore fraction.
+        if (currentState.pageTransition == "continuous" && !currentState.eInkModeEnabled) return
+        _uiState.value = currentState.copy(
             globalPageIndex = globalPage,
             currentChapterIndex = chapterIndex,
             currentPageIndex = pageInChapter,

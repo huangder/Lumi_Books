@@ -129,6 +129,7 @@ import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
+import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.util.BookFileAccess
 import androidx.compose.ui.res.stringResource
@@ -263,7 +264,9 @@ fun PdfViewerScreen(
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
         ) {
-            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            runCatching {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
         }
         viewModel.startPdfConversion(replaceExisting, engine, selectedMineruMode)
     }
@@ -585,7 +588,9 @@ fun PdfViewerScreen(
                             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
                             PackageManager.PERMISSION_GRANTED
                         ) {
-                            ttsNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            runCatching {
+                                ttsNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            }
                         }
                         viewModel.startPdfTts(filePath, currentPage, pageCount)
                     }
@@ -732,30 +737,46 @@ fun PdfViewerScreen(
                 },
                 onOpenMineruSettings = { replaceExisting ->
                     pendingReplaceAfterMineruSettings = replaceExisting
-                    mineruSettingsLauncher.launch(
-                        android.content.Intent(context, DetailActivity::class.java)
-                            .putExtra("category", "mineru")
-                    )
+                    runCatching {
+                        mineruSettingsLauncher.launch(
+                            android.content.Intent(context, DetailActivity::class.java)
+                                .putExtra("category", "mineru")
+                        )
+                    }.onFailure {
+                        Toast.makeText(
+                            context,
+                            R.string.pdf_convert_error_mineru_not_configured,
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
                 },
                 onOpenMineruWebsite = {
-                    context.startActivity(
-                        android.content.Intent(
-                            android.content.Intent.ACTION_VIEW,
-                            android.net.Uri.parse(com.huangder.lumibooks.mineru.MineruConfig.MANUAL_WEB_URL)
+                    runCatching {
+                        context.startActivity(
+                            android.content.Intent(
+                                android.content.Intent.ACTION_VIEW,
+                                android.net.Uri.parse(com.huangder.lumibooks.mineru.MineruConfig.MANUAL_WEB_URL)
+                            )
                         )
-                    )
+                    }.onFailure {
+                        Toast.makeText(context, R.string.network_error, Toast.LENGTH_LONG).show()
+                    }
                 },
                 onPickManualResult = { replaceExisting ->
                     pendingManualReplace = replaceExisting
-                    manualResultPicker.launch(
-                        arrayOf(
-                            "application/zip",
-                            "application/x-zip-compressed",
-                            "text/markdown",
-                            "text/plain",
-                            "application/octet-stream"
+                    runCatching {
+                        manualResultPicker.launch(
+                            arrayOf(
+                                "application/zip",
+                                "application/x-zip-compressed",
+                                "text/markdown",
+                                "text/plain",
+                                "application/octet-stream"
+                            )
                         )
-                    )
+                    }.onFailure {
+                        Toast.makeText(context, R.string.mineru_manual_import_failed, Toast.LENGTH_LONG).show()
+                    }
                 },
                 onOpenExisting = openBookFromReader,
                 onCancelConversion = viewModel::cancelPdfConversion,
@@ -1369,7 +1390,7 @@ private fun PdfSheetText(title: String, message: String) {
         text = title,
         fontSize = 20.sp,
         fontWeight = FontWeight.Bold,
-        fontFamily = KaiTi,
+        fontFamily = resolveAppFontFamily(KaiTi),
         color = AppColors.TextPrimary
     )
     Text(
@@ -1396,7 +1417,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.PdfConversionProgress
         ),
         fontSize = 20.sp,
         fontWeight = FontWeight.Bold,
-        fontFamily = KaiTi,
+        fontFamily = resolveAppFontFamily(KaiTi),
         color = AppColors.TextPrimary
     )
     Box(
@@ -1602,9 +1623,10 @@ private fun PdfPageItem(filePath: String, pageIndex: Int, fitToViewport: Boolean
         }
     }
 
-    if (bitmap != null) {
+    val renderedPage = bitmap
+    if (renderedPage != null) {
         Image(
-            bitmap = bitmap!!.asImageBitmap(),
+            bitmap = renderedPage.asImageBitmap(),
             contentDescription = stringResource(R.string.pdf_page_desc, pageIndex + 1),
             modifier = if (fitToViewport) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
             contentScale = if (fitToViewport) ContentScale.Fit else ContentScale.FillWidth
@@ -1746,7 +1768,7 @@ private fun PdfTocSheet(
                     stringResource(R.string.pdf_toc),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    fontFamily = KaiTi,
+                    fontFamily = resolveAppFontFamily(KaiTi),
                     color = AppColors.TextPrimary
                 )
                 Spacer(Modifier.weight(1f))
@@ -1827,9 +1849,10 @@ private fun PdfThumbnailItem(
                 },
             contentAlignment = Alignment.Center
         ) {
-            if (thumbnail != null) {
+            val renderedThumbnail = thumbnail
+            if (renderedThumbnail != null) {
                 Image(
-                    bitmap = thumbnail!!.asImageBitmap(),
+                    bitmap = renderedThumbnail.asImageBitmap(),
                     contentDescription = stringResource(R.string.pdf_page_desc, pageIndex + 1),
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.FillBounds

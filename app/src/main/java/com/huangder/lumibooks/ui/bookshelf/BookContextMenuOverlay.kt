@@ -59,6 +59,7 @@ import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 
 /**
@@ -132,20 +133,15 @@ fun BookContextMenuOverlay(
                 actionsAlpha = actionsAlpha,
                 coverBounds = coverBounds,
                 onAction = { action ->
+                    state.dismiss()
                     when (action) {
+                        is ContextMenuAction.Delete -> onDelete(book)
+                        is ContextMenuAction.Favorite -> onFavorite(book)
+                        is ContextMenuAction.CustomCover -> onCustomCover(book)
+                        is ContextMenuAction.RemoveCustomCover -> onRemoveCustomCover(book)
+                        is ContextMenuAction.BookmarksNotes -> onBookmarksNotes(book)
                         is ContextMenuAction.Tags -> onTags(book)
-                        else -> {
-                            state.dismiss()
-                            when (action) {
-                                is ContextMenuAction.Delete -> onDelete(book)
-                                is ContextMenuAction.Favorite -> onFavorite(book)
-                                is ContextMenuAction.CustomCover -> onCustomCover(book)
-                                is ContextMenuAction.RemoveCustomCover -> onRemoveCustomCover(book)
-                                is ContextMenuAction.BookmarksNotes -> onBookmarksNotes(book)
-                                is ContextMenuAction.EditInfo -> onEditInfo(book)
-                                is ContextMenuAction.Tags -> Unit
-                            }
-                        }
+                        is ContextMenuAction.EditInfo -> onEditInfo(book)
                     }
                 },
                 onEditInfo = {
@@ -358,7 +354,7 @@ private fun BookInfoPanel(
             text = book.title,
             fontSize = AppType.Section,
             fontWeight = FontWeight.Bold,
-            fontFamily = KaiTi,
+            fontFamily = resolveAppFontFamily(KaiTi),
             color = AppColors.TextPrimary,
             maxLines = 3,
             lineHeight = 26.sp

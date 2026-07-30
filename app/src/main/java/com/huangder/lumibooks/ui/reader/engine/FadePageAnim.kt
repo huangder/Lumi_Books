@@ -44,7 +44,10 @@ class FadePageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
 
                 outgoing.translationX = 0f; outgoing.translationY = 0f
                 incoming.translationX = 0f; incoming.translationY = 0f
-                hidden.translationX   = if (direction == Direction.NEXT) -vw else vw
+                hidden.translationX   = idleTranslationX(
+                    if (direction == Direction.NEXT) Direction.PREV else Direction.NEXT,
+                    vw
+                )
                 hidden.translationY   = 0f
 
                 // z-order：新页始终在旧页之上（旧页淡出后新页淡入时不被遮挡）
@@ -58,8 +61,8 @@ class FadePageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
                 readView.prevPageView.alpha = 0f
                 readView.nextPageView.alpha = 0f
                 readView.curPageView.translationX  = 0f;  readView.curPageView.translationY  = 0f
-                readView.prevPageView.translationX = -vw; readView.prevPageView.translationY = 0f
-                readView.nextPageView.translationX = vw;  readView.nextPageView.translationY = 0f
+                readView.prevPageView.translationX = idleTranslationX(Direction.PREV, vw); readView.prevPageView.translationY = 0f
+                readView.nextPageView.translationX = idleTranslationX(Direction.NEXT, vw);  readView.nextPageView.translationY = 0f
                 readView.curPageView.translationZ  = 2f
                 readView.prevPageView.translationZ = 0f
                 readView.nextPageView.translationZ = 0f
@@ -103,11 +106,7 @@ class FadePageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
                     return true
                 }
                 if (hasMoved) {
-                    direction = when {
-                        dx > 20f  -> Direction.PREV
-                        dx < -20f -> Direction.NEXT
-                        else      -> Direction.NONE
-                    }
+                    direction = directionForHorizontalDelta(dx, 20f)
                     if (direction != Direction.NONE && onCanFlip?.invoke(direction) == true) {
                         isFlipAnim = true
                         startAnim(fromDrag = false)

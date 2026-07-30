@@ -7,7 +7,7 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 object ErrorHandler {
     private const val TAG = "ErrorHandler"
 
-    fun handleException(context: Context, exception: Exception) {
+    fun handleException(context: Context, exception: Throwable) {
         val message = when (exception) {
             is java.io.FileNotFoundException -> "文件未找到"
             is java.io.IOException -> "文件读取错误"
@@ -20,7 +20,7 @@ object ErrorHandler {
 
     fun createExceptionHandler(context: Context): CoroutineExceptionHandler {
         return CoroutineExceptionHandler { _, exception ->
-            handleException(context, exception as Exception)
+            handleException(context, exception)
         }
     }
 

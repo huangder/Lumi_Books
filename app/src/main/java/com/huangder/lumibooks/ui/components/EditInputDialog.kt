@@ -37,6 +37,7 @@ import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 
 /**
  * 贝塞尔 G2 连续曲线圆角——曲率在连接处平滑过渡，比普通圆角更圆润有机
@@ -125,7 +126,7 @@ fun EditInputDialog(
                 text = title,
                 fontSize = AppType.Section,
                 fontWeight = FontWeight.Bold,
-                fontFamily = KaiTi,
+                fontFamily = resolveAppFontFamily(KaiTi),
                 color = AppColors.TextPrimary,
                 modifier = Modifier.align(Alignment.Center)
             )

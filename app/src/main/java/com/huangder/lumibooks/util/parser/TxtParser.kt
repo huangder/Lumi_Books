@@ -9,9 +9,12 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStreamReader
 import java.io.RandomAccessFile
+import java.nio.CharBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.Charset
 import java.nio.charset.CodingErrorAction
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.LinkedHashMap
 
 class TxtParser(private val context: Context? = null) : BookParser {
@@ -287,7 +290,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
                 }
             }
         }
-        // 返回优先级最高（索引最小）且匹配数 >= 2 的模式结果
+        // 数字加顿号/空格更常见于正文清单，不能作为通用章节规则。
         return matchesByPattern.firstOrNull { it.size >= 2 } ?: emptyList()
     }
 
@@ -670,87 +673,115 @@ class TxtParser(private val context: Context? = null) : BookParser {
         return entry.startByte to entry.endByte
     }
 
-    /**
-     * 流式替换指定章节的内容，写回源文件并重新解析。
-     *
-     * 使用临时文件+8KB流式拷贝，无论原文件多大（15MB/50MB），内存占用恒定为
-     * buffer + 当前章节文本大小，不会 OOM。
-     *
-     * @return true 表示替换并重新解析成功，false 表示发生异常（临时文件会被清理）
-     */
     override fun replaceChapterContent(chapterIndex: Int, newText: String): Boolean {
+        return rewriteWithOperations(listOf(TxtSetChapterText(chapterIndex, newText))).success
+    }
+
+    /** Applies editor operations in one streaming rewrite and reparses the updated source. */
+    fun rewriteWithOperations(operations: List<TxtEditOperation>): TxtRewriteResult {
+        if (operations.isEmpty()) return TxtRewriteResult(success = true)
+        val file = sourceFile ?: return TxtRewriteResult(false, errorMessage = "TXT source is unavailable")
+        val charset = encodingInfo.charset
+        val buffer = ByteArray(STREAM_BUFFER_SIZE)
+        val temporary = File(file.parentFile, file.name + ".editor.tmp")
+        var changedChapterCount = 0
+
         return try {
-            val file = sourceFile ?: return false
-            val entry = entries.getOrNull(chapterIndex) ?: return false
-            val charset = encodingInfo.charset
-            val bufSize = STREAM_BUFFER_SIZE
-            val buf = ByteArray(bufSize)
+            if (temporary.exists() && !temporary.delete()) {
+                return TxtRewriteResult(false, errorMessage = "Unable to prepare temporary file")
+            }
+
+            RandomAccessFile(file, "r").use { input ->
+                FileOutputStream(temporary).use { output ->
+                    var copiedUntil = 0L
+                    entries.forEach { entry ->
+                        copyRange(input, output, copiedUntil, entry.startByte, buffer)
+
+                        val rawLength = entry.endByte - entry.startByte
+                        require(rawLength <= Int.MAX_VALUE) { "TXT chapter is too large" }
+                        val rawBytes = readBytes(input, entry.startByte, rawLength.toInt())
+                        val rawText = String(rawBytes, charset)
+                        val visibleStart = rawText.indexOfFirst { it != '\uFEFF' && it != '\r' && it != '\n' }
+                            .let { if (it < 0) rawText.length else it }
+                        val visibleEnd = rawText.indexOfLast { it != '\uFEFF' && it != '\r' && it != '\n' } + 1
+                        val originalText = rawText.substring(visibleStart, visibleEnd.coerceAtLeast(visibleStart))
+                        val editedText = applyTxtEditOperations(entry.index, originalText, operations)
+
+                        if (editedText == originalText) {
+                            output.write(rawBytes)
+                        } else {
+                            val prefixBytes = strictEncode(rawText.substring(0, visibleStart), charset)
+                            val suffixBytes = strictEncode(rawText.substring(visibleEnd.coerceAtLeast(visibleStart)), charset)
+                            output.write(prefixBytes)
+                            output.write(strictEncode(editedText, charset))
+                            output.write(suffixBytes)
+                            changedChapterCount++
+                        }
+                        copiedUntil = entry.endByte
+                    }
+                    copyRange(input, output, copiedUntil, input.length(), buffer)
+                    output.flush()
+                    output.fd.sync()
+                }
+            }
+
+            try {
+                Files.move(
+                    temporary.toPath(),
+                    file.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING,
+                    StandardCopyOption.ATOMIC_MOVE
+                )
+            } catch (_: Exception) {
+                Files.move(
+                    temporary.toPath(),
+                    file.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING
+                )
+            }
 
             if (BookFileAccess.isContentUri(sourceLocation)) {
-                replaceDocumentRangeInPlace(file, entry, newText.toByteArray(charset), buf)
                 sourceLease?.writeBack()
-                synchronized(contentCache) { contentCache.clear() }
-                synchronized(htmlCache) { htmlCache.clear() }
-                parse(sourceLocation)
-                return true
             }
-
-            val tmpFile = File(file.parent, file.name + ".tmp")
-            try {
-                RandomAccessFile(file, "r").use { raf ->
-                    FileOutputStream(tmpFile).use { out ->
-                        // 1. 流式拷贝前缀 [0, chapter.startByte)
-                        var remaining = entry.startByte
-                        raf.seek(0)
-                        while (remaining > 0) {
-                            val toRead = minOf(remaining, bufSize.toLong()).toInt()
-                            val read = raf.read(buf, 0, toRead)
-                            if (read <= 0) break
-                            out.write(buf, 0, read)
-                            remaining -= read
-                        }
-
-                        // 2. 写入新章节文本（以检测到的编码）
-                        val newBytes = newText.toByteArray(charset)
-                        out.write(newBytes)
-
-                        // 3. 流式拷贝后缀 [chapter.endByte, EOF)
-                        val fileLen = file.length()
-                        raf.seek(entry.endByte)
-                        remaining = fileLen - entry.endByte
-                        while (remaining > 0) {
-                            val toRead = minOf(remaining, bufSize.toLong()).toInt()
-                            val read = raf.read(buf, 0, toRead)
-                            if (read <= 0) break
-                            out.write(buf, 0, read)
-                            remaining -= read
-                        }
-                        out.flush()
-                    }
-                }
-
-                // 4. 原子替换原文件
-                val originalBackup = File(file.parent, file.name + ".bak")
-                if (originalBackup.exists()) originalBackup.delete()
-                if (!tmpFile.renameTo(file)) {
-                    // renameTo 在某些设备上可能失败，使用 copy+delete 兜底
-                    file.delete()
-                    if (!tmpFile.renameTo(file)) return false
-                }
-            } catch (e: Exception) {
-                if (tmpFile.exists()) tmpFile.delete()
-                throw e
-            }
-
-            // 5. 清除缓存并重新解析
             synchronized(contentCache) { contentCache.clear() }
             synchronized(htmlCache) { htmlCache.clear() }
-            parse(file.absolutePath)
-
-            true
-        } catch (_: Exception) {
-            false
+            parse(sourceLocation.ifBlank { file.absolutePath })
+            TxtRewriteResult(success = true, changedChapterCount = changedChapterCount)
+        } catch (error: Exception) {
+            temporary.delete()
+            TxtRewriteResult(
+                success = false,
+                changedChapterCount = changedChapterCount,
+                errorMessage = error.message ?: error.javaClass.simpleName
+            )
         }
+    }
+
+    private fun copyRange(
+        input: RandomAccessFile,
+        output: FileOutputStream,
+        startByte: Long,
+        endByte: Long,
+        buffer: ByteArray
+    ) {
+        if (endByte <= startByte) return
+        input.seek(startByte)
+        var remaining = endByte - startByte
+        while (remaining > 0L) {
+            val read = input.read(buffer, 0, minOf(remaining, buffer.size.toLong()).toInt())
+            if (read <= 0) error("Unexpected end of TXT source")
+            output.write(buffer, 0, read)
+            remaining -= read
+        }
+    }
+
+    private fun strictEncode(text: String, charset: Charset): ByteArray {
+        if (text.isEmpty()) return ByteArray(0)
+        val encoded = charset.newEncoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+            .encode(CharBuffer.wrap(text))
+        return ByteArray(encoded.remaining()).also(encoded::get)
     }
 
     private fun replaceDocumentRangeInPlace(
@@ -804,7 +835,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
     }
 
     private companion object {
-        const val CACHE_VERSION = "TXT_INDEX_V3"  // V3: cache is scoped to the selected encoding mode
+        const val CACHE_VERSION = "TXT_INDEX_V4"  // V4: reject late numeric lists as false chapter indexes
         const val STREAM_BUFFER_SIZE = 64 * 1024
         const val HEADING_PREFIX_BYTES = 512
         const val TITLE_PREFIX_BYTES = 512
@@ -818,7 +849,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
             Regex("^第[一二三四五六七八九十百千零\\d]+[章节回卷]"),
             Regex("^[卷篇][一二三四五六七八九十百千零\\d]+[章回]?"),
             Regex("^Chapter\\s+\\d+", RegexOption.IGNORE_CASE),
-            Regex("^\\d{1,3}[.、\\s]"),
+            Regex("^[一二三四五六七八九十百千零〇两]+$"),
             Regex("^第\\d+章")
         )
     }

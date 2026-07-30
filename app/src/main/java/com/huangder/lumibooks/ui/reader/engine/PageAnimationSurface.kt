@@ -11,6 +11,11 @@ interface PageBitmapSource {
     val pageBitmap: Bitmap?
 }
 
+enum class CurlBackTextureMode {
+    PAPER,
+    FADED_MIRROR
+}
+
 /**
  * The three page-sized views consumed by the native page animation engines.
  *
@@ -24,8 +29,10 @@ class PageAnimationSurface(
     val curPageView: View,
     val nextPageView: View,
     private val backgroundColorProvider: () -> Int,
+    private val reversePageProgressProvider: () -> Boolean = { false },
     val snapTranslationsToPixels: Boolean = false,
     val animatePageViewsDirectly: Boolean = false,
+    val curlBackTextureMode: CurlBackTextureMode = CurlBackTextureMode.PAPER,
     private val directPageRenderer: ((Canvas, View) -> Boolean)? = null
 ) {
     val context: Context get() = root.context
@@ -33,6 +40,7 @@ class PageAnimationSurface(
     val width: Int get() = root.width
     val height: Int get() = root.height
     val bgColor: Int get() = backgroundColorProvider()
+    val isPageProgressReversed: Boolean get() = reversePageProgressProvider()
     val hasDirectPageRenderer: Boolean get() = directPageRenderer != null
 
     fun drawPageDirectly(canvas: Canvas, pageView: View): Boolean =
@@ -41,4 +49,6 @@ class PageAnimationSurface(
     fun invalidate() = root.invalidate()
 
     fun postInvalidateOnAnimation() = root.postInvalidateOnAnimation()
+
+    fun post(action: () -> Unit) = root.post(action)
 }

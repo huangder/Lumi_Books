@@ -9,7 +9,27 @@ enum class ReaderPageCorner {
 
 enum class ReaderEdgeTapAction {
     PREVIOUS_PAGE,
-    NEXT_PAGE
+    NEXT_PAGE;
+
+    fun reversed(): ReaderEdgeTapAction = when (this) {
+        PREVIOUS_PAGE -> NEXT_PAGE
+        NEXT_PAGE -> PREVIOUS_PAGE
+    }
+}
+
+enum class ReaderWritingMode(val key: String) {
+    HORIZONTAL("horizontal"),
+    VERTICAL_RL("vertical_rl");
+
+    val isVertical: Boolean get() = this == VERTICAL_RL
+
+    fun effectivePageTransition(preferredTransition: String): String =
+        if (isVertical && preferredTransition == "continuous") "slide" else preferredTransition
+
+    companion object {
+        fun fromKey(key: String?): ReaderWritingMode =
+            entries.firstOrNull { it.key == key } ?: HORIZONTAL
+    }
 }
 
 enum class ReaderEdgeTapMode(
