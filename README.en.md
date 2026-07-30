@@ -91,7 +91,7 @@
 - Optional splash screen
 - Predictive back gesture support
 - UI element transition animations
-- **Multi-language support**: 7 locales (zh-CN, zh-TW, zh-HK, zh-MO, English, 日本語, 한국어)
+- **Multi-language support**: 7 locales — Simplified Chinese, Traditional Chinese (Taiwan, China), Traditional Chinese (Hong Kong, China), Traditional Chinese (Macau, China), English, 日本語, 한국어
 
 ### ⚙️ Smart PDF Processing
 - **Local extraction**: On-device PDF text layer extraction (no scanned PDF support)
