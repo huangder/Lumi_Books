@@ -9,6 +9,7 @@ import com.huangder.lumibooks.data.local.WebdavTokenStore
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.model.Bookmark
 import com.huangder.lumibooks.domain.model.Note
+import com.huangder.lumibooks.domain.model.WebdavConfig
 import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.domain.repository.ReadingRepository
 import com.huangder.lumibooks.util.FileUtils
@@ -74,14 +75,21 @@ class WebdavSyncManager @Inject constructor(
         if (password.isNullOrBlank()) return SyncResult("\u672a\u914d\u7f6e\u5bc6\u7801", false)
 
         val normalized = config.normalized()
+        if (!normalized.hasSelectedContent) {
+            return SyncResult("\u8bf7\u81f3\u5c11\u9009\u62e9\u4e00\u9879\u540c\u6b65\u5185\u5bb9", false)
+        }
         val serverUrl = normalized.serverUrl
         val username = normalized.username
         val syncPath = normalized.syncPath
 
         return try {
             webdavClient.ensureDirectory(serverUrl, username, password, syncPath)
-            webdavClient.ensureDirectory(serverUrl, username, password, "$syncPath/books")
-            webdavClient.ensureDirectory(serverUrl, username, password, "$syncPath/data")
+            if (normalized.syncBookFiles) {
+                webdavClient.ensureDirectory(serverUrl, username, password, "$syncPath/books")
+            }
+            if (normalized.syncsBookData) {
+                webdavClient.ensureDirectory(serverUrl, username, password, "$syncPath/data")
+            }
 
             // Never delete the manifest or blindly re-upload every book. Re-uploading unchanged
             // books is slow and repeatedly consumes the WebDAV provider's upload allowance.
@@ -89,70 +97,78 @@ class WebdavSyncManager @Inject constructor(
 
             val books = bookRepository.getAllBooks().first()
             val confirmedBooks = remoteManifest?.books?.toMutableMap() ?: mutableMapOf()
-            val confirmedBookIds = mutableSetOf<String>()
+            val confirmedBookIds = if (normalized.syncBookFiles) {
+                mutableSetOf()
+            } else {
+                dataStoreManager.webdavSyncedBookIds.first().toMutableSet()
+            }
             var booksUploaded = 0
             var booksAlreadyPresent = 0
             var booksFailed = 0
             val failedBookTitles = mutableListOf<String>()
             var quotaError: WebdavException? = null
 
-            for (book in books) {
-                val remoteFileName = remoteBookFileName(book)
-                val localSize = BookFileAccess.size(context, book.filePath)
-                val manifestEntry = remoteManifest?.books?.get(book.id)
-                val manifestConfirmsFile = manifestEntry != null &&
-                    manifestEntry.fileName == remoteFileName &&
-                    (localSize <= 0L || manifestEntry.sizeBytes <= 0L || manifestEntry.sizeBytes == localSize)
+            if (normalized.syncBookFiles) {
+                for (book in books) {
+                    val remoteFileName = remoteBookFileName(book)
+                    val localSize = BookFileAccess.size(context, book.filePath)
+                    val manifestEntry = remoteManifest?.books?.get(book.id)
+                    val manifestConfirmsFile = manifestEntry != null &&
+                        manifestEntry.fileName == remoteFileName &&
+                        (localSize <= 0L || manifestEntry.sizeBytes <= 0L || manifestEntry.sizeBytes == localSize)
 
-                if (manifestConfirmsFile) {
-                    confirmedBooks[book.id] = manifestEntry
-                    confirmedBookIds.add(book.id)
-                    booksAlreadyPresent++
-                    continue
-                }
-
-                val availableBytes = quotaError?.availableBytes
-                if (availableBytes != null && localSize > availableBytes) {
-                    booksFailed++
-                    failedBookTitles.add(book.title)
-                    Log.w(
-                        "WebDAV",
-                        "Skipping book=${book.id}: size=$localSize exceeds remaining upload quota=$availableBytes"
-                    )
-                    continue
-                }
-
-                try {
-                    val entry = uploadBookFile(book, serverUrl, username, password, syncPath)
-                    if (entry != null) {
-                        confirmedBooks[book.id] = entry
+                    if (manifestConfirmsFile) {
+                        confirmedBooks[book.id] = manifestEntry
                         confirmedBookIds.add(book.id)
-                        booksUploaded++
-                    } else {
+                        booksAlreadyPresent++
+                        continue
+                    }
+
+                    val availableBytes = quotaError?.availableBytes
+                    if (availableBytes != null && localSize > availableBytes) {
+                        booksFailed++
+                        failedBookTitles.add(book.title)
+                        Log.w(
+                            "WebDAV",
+                            "Skipping book=${book.id}: size=$localSize exceeds remaining upload quota=$availableBytes"
+                        )
+                        continue
+                    }
+
+                    try {
+                        val entry = uploadBookFile(book, serverUrl, username, password, syncPath)
+                        if (entry != null) {
+                            confirmedBooks[book.id] = entry
+                            confirmedBookIds.add(book.id)
+                            booksUploaded++
+                        } else {
+                            booksFailed++
+                            failedBookTitles.add(book.title)
+                        }
+                    } catch (error: Exception) {
+                        Log.e("WebDAV", "Upload failed book=${book.id} file=${book.filePath}: ${error.message}", error)
+                        if (error is WebdavException && error.serverCode == "TrafficRateExhausted") {
+                            quotaError = error
+                        }
                         booksFailed++
                         failedBookTitles.add(book.title)
                     }
-                } catch (error: Exception) {
-                    Log.e("WebDAV", "Upload failed book=${book.id} file=${book.filePath}: ${error.message}", error)
-                    if (error is WebdavException && error.serverCode == "TrafficRateExhausted") {
-                        quotaError = error
-                    }
-                    booksFailed++
-                    failedBookTitles.add(book.title)
                 }
             }
 
             var dataSynced = 0
             var dataFailed = 0
             val dataEntries = remoteManifest?.data?.toMutableMap() ?: mutableMapOf()
-            for (book in books) {
-                try {
-                    uploadBookData(book.id, serverUrl, username, password, syncPath)
-                    dataEntries[book.id] = buildBookDataManifestEntry(book)
-                    dataSynced++
-                } catch (error: Exception) {
-                    dataFailed++
-                    Log.e("WebDAV", "Reading data upload failed book=${book.id}: ${error.message}", error)
+            if (normalized.syncsBookData) {
+                for (book in books) {
+                    try {
+                        uploadBookData(book.id, serverUrl, username, password, syncPath, normalized)
+                        dataEntries[book.id] = buildBookDataManifestEntry(book)
+                        dataSynced++
+                    } catch (error: Exception) {
+                        dataFailed++
+                        Log.e("WebDAV", "Reading data upload failed book=${book.id}: ${error.message}", error)
+                    }
                 }
             }
 
@@ -166,24 +182,34 @@ class WebdavSyncManager @Inject constructor(
 
             val now = System.currentTimeMillis()
             dataStoreManager.updateWebdavLastSyncTime(now)
-            dataStoreManager.saveWebdavSyncedBookIds(confirmedBookIds)
+            if (normalized.syncBookFiles) {
+                dataStoreManager.saveWebdavSyncedBookIds(confirmedBookIds)
+            }
             dataStoreManager.saveWebdavConfig(normalized.copy(lastSyncTime = now))
 
             val failedNames = failedBookTitles.take(2).joinToString("\u3001")
-            val failureHint = if (booksFailed > 0) {
-                "\uff0c\u5931\u8d25 $booksFailed \u672c" +
-                    if (failedNames.isNotBlank()) "\uff1a$failedNames" else ""
-            } else ""
-            val dataFailureHint = if (dataFailed > 0) {
-                "\uff0c\u9605\u8bfb\u6570\u636e\u5931\u8d25 $dataFailed \u6761"
-            } else ""
+            val summaries = mutableListOf<String>()
+            if (normalized.syncBookFiles) {
+                val failureHint = if (booksFailed > 0) {
+                    "\uff0c\u5931\u8d25 $booksFailed \u672c" +
+                        if (failedNames.isNotBlank()) "\uff1a$failedNames" else ""
+                } else ""
+                summaries += "\u4e66\u672c\u539f\u6587\u4ef6\uff1a\u5df2\u540c\u6b65 ${confirmedBookIds.size} \u672c" +
+                    "\uff08\u65b0\u4e0a\u4f20 $booksUploaded \u672c\uff0c\u4e91\u7aef\u5df2\u6709 $booksAlreadyPresent \u672c\uff09" +
+                    failureHint
+            }
+            if (normalized.syncsBookData) {
+                val selectedData = buildList {
+                    if (normalized.syncReadingRecords) add("\u9605\u8bfb\u8bb0\u5f55")
+                    if (normalized.syncBookmarks) add("\u4e66\u7b7e")
+                    if (normalized.syncNotes) add("\u7b14\u8bb0")
+                }.joinToString("\u3001")
+                val dataFailureHint = if (dataFailed > 0) "\uff0c\u5931\u8d25 $dataFailed \u672c" else ""
+                summaries += "$selectedData\uff1a\u5df2\u540c\u6b65 $dataSynced \u672c$dataFailureHint"
+            }
             val quotaHint = quotaError?.let { "\n" + userFacingWebdavError(it) }.orEmpty()
             SyncResult(
-                message = "\u5df2\u540c\u6b65 ${confirmedBookIds.size} \u672c\u4e66" +
-                    "\uff08\u65b0\u4e0a\u4f20 $booksUploaded \u672c\uff0c\u4e91\u7aef\u5df2\u6709 $booksAlreadyPresent \u672c\uff09" +
-                    failureHint +
-                    "\uff0c\u540c\u6b65 $dataSynced \u6761\u9605\u8bfb\u6570\u636e" +
-                    dataFailureHint + quotaHint,
+                message = summaries.joinToString("\n") + quotaHint,
                 success = booksFailed == 0 && dataFailed == 0
             )
         } catch (error: WebdavException) {
@@ -201,11 +227,11 @@ class WebdavSyncManager @Inject constructor(
         progressSyncJob = scope.launch {
             delay(5_000) // 5 second debounce
             val config = dataStoreManager.webdavConfig.first()
-            if (!config.enabled || config.syncMode != "auto") return@launch
+            if (!config.enabled || config.syncMode != "auto" || !config.syncsBookData) return@launch
             val password = tokenStore.read() ?: return@launch
             val n = config.normalized()
             try {
-                uploadBookData(bookId, n.serverUrl, n.username, password, n.syncPath)
+                uploadBookData(bookId, n.serverUrl, n.username, password, n.syncPath, n)
                 // Update only the reading-data entry in the remote manifest.
                 // Do not rebuild the local book manifest here because that hashes every book file
                 // and makes background progress sync feel stuck on large SAF libraries.
@@ -437,9 +463,26 @@ class WebdavSyncManager @Inject constructor(
         serverUrl: String,
         username: String,
         password: String,
-        syncPath: String
+        syncPath: String,
+        config: WebdavConfig
     ) {
-        val json = buildBookDataJson(bookId)
+        val existingJson = if (
+            config.syncReadingRecords && config.syncBookmarks && config.syncNotes
+        ) {
+            null
+        } else {
+            try {
+                val remoteData = webdavClient.download(
+                    "$serverUrl/$syncPath/data/$bookId.json",
+                    username,
+                    password
+                )
+                JSONObject(remoteData.toString(Charsets.UTF_8))
+            } catch (error: WebdavException) {
+                if (error.statusCode == 404) null else throw error
+            }
+        }
+        val json = buildBookDataJson(bookId, config, existingJson)
         val data = json.toByteArray(Charsets.UTF_8)
         webdavClient.upload(
             "$serverUrl/$syncPath/data/$bookId.json",
@@ -465,46 +508,62 @@ class WebdavSyncManager @Inject constructor(
         } catch (_: WebdavException) { }
     }
 
-    private suspend fun buildBookDataJson(bookId: String): String {
-        val book = bookRepository.getBookById(bookId)
-        val bookmarks = readingRepository.getBookmarksByBookId(bookId).first()
-        val notes = readingRepository.getNotesByBookId(bookId).first()
+    private suspend fun buildBookDataJson(
+        bookId: String,
+        config: WebdavConfig,
+        existingJson: JSONObject? = null
+    ): String {
+        val book = if (config.syncReadingRecords) bookRepository.getBookById(bookId) else null
+        val bookmarks = if (config.syncBookmarks) {
+            readingRepository.getBookmarksByBookId(bookId).first()
+        } else {
+            emptyList()
+        }
+        val notes = if (config.syncNotes) {
+            readingRepository.getNotesByBookId(bookId).first()
+        } else {
+            emptyList()
+        }
 
-        return JSONObject().apply {
+        return (existingJson ?: JSONObject()).apply {
             put("bookId", bookId)
-            if (book != null) {
+            if (config.syncReadingRecords && book != null) {
                 put("readingProgress", book.readingProgress.toDouble())
-                book.locatorJson?.let { put("locatorJson", it) }
+                if (book.locatorJson != null) put("locatorJson", book.locatorJson) else remove("locatorJson")
                 put("lastReadTime", book.lastReadTime)
             }
-            put("bookmarks", JSONArray().apply {
-                for (b in bookmarks) {
-                    put(JSONObject().apply {
-                        put("id", b.id)
-                        put("chapterIndex", b.chapterIndex)
-                        put("position", b.position.toDouble())
-                        b.locatorJson?.let { put("locatorJson", it) }
-                        put("title", b.title)
-                        put("createdAt", b.createdAt)
-                    })
-                }
-            })
-            put("notes", JSONArray().apply {
-                for (n in notes) {
-                    put(JSONObject().apply {
-                        put("id", n.id)
-                        put("chapterIndex", n.chapterIndex)
-                        put("startPosition", n.startPosition)
-                        put("endPosition", n.endPosition)
-                        n.startLocatorJson?.let { put("startLocatorJson", it) }
-                        n.endLocatorJson?.let { put("endLocatorJson", it) }
-                        put("selectedText", n.selectedText)
-                        put("note", n.note)
-                        put("color", n.color)
-                        put("createdAt", n.createdAt)
-                    })
-                }
-            })
+            if (config.syncBookmarks) {
+                put("bookmarks", JSONArray().apply {
+                    for (b in bookmarks) {
+                        put(JSONObject().apply {
+                            put("id", b.id)
+                            put("chapterIndex", b.chapterIndex)
+                            put("position", b.position.toDouble())
+                            b.locatorJson?.let { put("locatorJson", it) }
+                            put("title", b.title)
+                            put("createdAt", b.createdAt)
+                        })
+                    }
+                })
+            }
+            if (config.syncNotes) {
+                put("notes", JSONArray().apply {
+                    for (n in notes) {
+                        put(JSONObject().apply {
+                            put("id", n.id)
+                            put("chapterIndex", n.chapterIndex)
+                            put("startPosition", n.startPosition)
+                            put("endPosition", n.endPosition)
+                            n.startLocatorJson?.let { put("startLocatorJson", it) }
+                            n.endLocatorJson?.let { put("endLocatorJson", it) }
+                            put("selectedText", n.selectedText)
+                            put("note", n.note)
+                            put("color", n.color)
+                            put("createdAt", n.createdAt)
+                        })
+                    }
+                })
+            }
         }.toString(2)
     }
 

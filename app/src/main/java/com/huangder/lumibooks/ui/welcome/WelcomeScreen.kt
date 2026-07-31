@@ -44,6 +44,7 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -176,7 +177,8 @@ fun WelcomeScreen(
     onOpenSponsor: () -> Unit,
     onLanguageSetupComplete: (language: String, eInkEnabled: Boolean) -> Unit,
     onEnableLiquidGlass: () -> Unit,
-    startOnIntroduction: Boolean = false
+    startOnIntroduction: Boolean = false,
+    startOnSupport: Boolean = false
 ) {
     val pages = remember(shouldShowLanguageSetup, isNewInstallation, isEInkMode) {
         buildList {
@@ -188,10 +190,10 @@ fun WelcomeScreen(
     }
     var currentPage by rememberSaveable {
         mutableStateOf(
-            if (startOnIntroduction && WelcomePage.INTRODUCTION in pages) {
-                WelcomePage.INTRODUCTION
-            } else {
-                pages.first()
+            when {
+                startOnSupport && WelcomePage.SUPPORT in pages -> WelcomePage.SUPPORT
+                startOnIntroduction && WelcomePage.INTRODUCTION in pages -> WelcomePage.INTRODUCTION
+                else -> pages.first()
             }
         )
     }
@@ -1262,14 +1264,20 @@ private fun SupportProjectPage(
                 LiquidGlassSurface(
                     shape = RoundedCornerShape(28.dp),
                     fallbackColor = supportBackground,
-                    contentScrimColor = supportBackground.copy(alpha = if (isDark) 0.48f else 0.30f),
+                    contentScrimColor = if (isDark) {
+                        Color(0xFFD67588).copy(alpha = 0.36f)
+                    } else {
+                        Color(0xFFFF9FAF).copy(alpha = 0.34f)
+                    },
+                    transparencyOverride = 0.65f,
                     outlineWidth = 0.dp,
+                    highlightAlpha = 0f,
                     decorationModifier = Modifier.shadow(
                         elevation = 20.dp,
                         shape = RoundedCornerShape(28.dp),
                         clip = false,
-                        ambientColor = Color.Black.copy(alpha = if (isDark) 0.16f else 0.11f),
-                        spotColor = Color.Black.copy(alpha = if (isDark) 0.10f else 0.06f)
+                        ambientColor = Color(0xFFFF9FAF).copy(alpha = if (isDark) 0.12f else 0.24f),
+                        spotColor = Color(0xFFE85D5D).copy(alpha = if (isDark) 0.10f else 0.14f)
                     ),
                     modifier = Modifier.fillMaxSize()
                 ) {}
@@ -1297,12 +1305,9 @@ private fun SupportProjectPage(
                         .offset(x = 7.dp, y = (-1).dp)
                         .zIndex(3f)
                 )
-                AnimatedEmoji(
-                    emoji = "📖",
+                AnimatedBookIcon(
                     progress = panelAlpha,
                     rotation = -4f,
-                    fontSize = 50,
-                    containerSize = 66,
                     modifier = Modifier
                         .align(Alignment.Center)
                         .offset(y = 4.dp)
@@ -1381,24 +1386,23 @@ private fun SupportProjectPage(
                 },
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            WelcomeActionButton(
+            SupportWelcomeButton(
                 text = stringResource(R.string.welcome_open_sponsor),
                 onClick = onOpenSponsor,
                 primary = false,
-                forceLiquidGlass = isLiquidGlass,
-                textPrimary = if (isDark) Color.White else Color.Black,
-                secondaryContainerColor = if (isDark) DarkBgGray else LightBgGray,
+                isLiquidGlass = isLiquidGlass,
+                isDark = isDark,
                 enabled = entranceStage >= 5,
                 modifier = Modifier
                     .weight(1f)
                     .height(52.dp)
             )
-            WelcomeActionButton(
+            SupportWelcomeButton(
                 text = stringResource(R.string.welcome_start_using),
                 onClick = onFinished,
                 primary = true,
-                forceLiquidGlass = isLiquidGlass,
-                textPrimary = if (isDark) Color.White else Color.Black,
+                isLiquidGlass = isLiquidGlass,
+                isDark = isDark,
                 enabled = entranceStage >= 5,
                 modifier = Modifier
                     .weight(1f)
@@ -1410,6 +1414,100 @@ private fun SupportProjectPage(
     }
 }
 
+@Composable
+private fun SupportWelcomeButton(
+    text: String,
+    onClick: () -> Unit,
+    primary: Boolean,
+    isLiquidGlass: Boolean,
+    isDark: Boolean,
+    enabled: Boolean,
+    modifier: Modifier = Modifier
+) {
+    if (!isLiquidGlass) {
+        WelcomeActionButton(
+            text = text,
+            onClick = onClick,
+            primary = primary,
+            forceLiquidGlass = false,
+            textPrimary = if (isDark) Color.White else Color.Black,
+            secondaryContainerColor = if (isDark) DarkBgGray else LightBgGray,
+            enabled = enabled,
+            modifier = modifier
+        )
+        return
+    }
+
+    val shape = RoundedCornerShape(28.dp)
+    val glassColor = when {
+        primary -> Color(0xFFFF5E78)
+        isDark -> Color(0xFF2D2D31)
+        else -> Color(0xFFFFFFFF)
+    }
+    val scrimColor = if (primary) {
+        glassColor.copy(alpha = 0.84f)
+    } else {
+        glassColor.copy(alpha = if (isDark) 0.28f else 0.48f)
+    }
+    val shadowColor = if (primary) Color(0xFFFF7188) else Color.Black
+
+    CompositionLocalProvider(
+        LocalAppTheme provides "liquid_glass",
+        LocalLiquidGlassTransparency provides 0.65f
+    ) {
+        LiquidGlassSurface(
+            shape = shape,
+            fallbackColor = glassColor,
+            contentScrimColor = scrimColor,
+            transparencyOverride = 0.65f,
+            outlineWidth = 0.dp,
+            highlightAlpha = 0f,
+            enabled = enabled,
+            onClick = onClick,
+            decorationModifier = Modifier.shadow(
+                elevation = if (primary) 22.dp else 18.dp,
+                shape = shape,
+                clip = false,
+                ambientColor = shadowColor.copy(alpha = if (primary) 0.22f else 0.10f),
+                spotColor = shadowColor.copy(alpha = if (primary) 0.16f else 0.07f)
+            ),
+            modifier = modifier.graphicsLayer { alpha = if (enabled) 1f else 0.48f }
+        ) {
+            Text(
+                text = text,
+                color = if (primary || isDark) Color.White else Color.Black,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    }
+}
+
+@Composable
+private fun AnimatedBookIcon(
+    progress: Float,
+    rotation: Float,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier.size(66.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.MenuBook,
+            contentDescription = null,
+            modifier = Modifier
+                .size(52.dp)
+                .graphicsLayer {
+                    alpha = progress.coerceIn(0f, 1f)
+                    scaleX = 0.6f + progress * 0.4f
+                    scaleY = 0.6f + progress * 0.4f
+                    rotationZ = (1f - progress) * rotation
+                },
+            tint = AccentColor
+        )
+    }
+}
 @Composable
 private fun AnimatedEmoji(
     emoji: String,

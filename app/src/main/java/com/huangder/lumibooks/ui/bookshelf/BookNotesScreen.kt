@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -38,11 +39,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -85,6 +88,8 @@ import java.util.Locale
 @Composable
 fun BookNotesScreen(
     onNavigateBack: () -> Unit,
+    initialTab: Int = BookNotesActivity.TAB_HIGHLIGHTS,
+    targetNoteId: Long? = null,
     viewModel: BookNotesViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -92,7 +97,9 @@ fun BookNotesScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val glassBackdrop = rememberLayerBackdrop()
-    var selectedTab by remember { mutableIntStateOf(0) }
+    var selectedTab by rememberSaveable(initialTab) {
+        mutableIntStateOf(initialTab.coerceIn(0, 2))
+    }
     var pendingExportText by remember { mutableStateOf<String?>(null) }
 
     val createDocumentLauncher = rememberLauncherForActivityResult(
@@ -187,10 +194,12 @@ fun BookNotesScreen(
             when (selectedTab) {
                 0 -> NoteList(
                     notes = uiState.highlights,
+                    targetNoteId = targetNoteId,
                     onDelete = { viewModel.deleteNote(it) }
                 )
                 1 -> NoteList(
                     notes = uiState.noteItems,
+                    targetNoteId = targetNoteId,
                     onDelete = { viewModel.deleteNote(it) }
                 )
                 2 -> BookmarkList(
@@ -311,6 +320,7 @@ private fun SegmentedTabBar(
 @Composable
 private fun NoteList(
     notes: List<Note>,
+    targetNoteId: Long? = null,
     onDelete: (Note) -> Unit
 ) {
     if (notes.isEmpty()) {
@@ -325,7 +335,19 @@ private fun NoteList(
             )
         }
     } else {
+        val listState = rememberLazyListState()
+        var targetHandled by rememberSaveable(targetNoteId) { mutableStateOf(false) }
+        LaunchedEffect(notes, targetNoteId, targetHandled) {
+            if (!targetHandled && targetNoteId != null) {
+                val targetIndex = notes.indexOfFirst { it.id == targetNoteId }
+                if (targetIndex >= 0) {
+                    listState.scrollToItem(targetIndex)
+                    targetHandled = true
+                }
+            }
+        }
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 start = AppSpace.lg,
@@ -335,7 +357,10 @@ private fun NoteList(
             ),
             verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
         ) {
-            items(notes) { note ->
+            items(
+                items = notes,
+                key = { note -> note.id }
+            ) { note ->
                 HighlightNoteItem(
                     note = note,
                     onDelete = { onDelete(note) }

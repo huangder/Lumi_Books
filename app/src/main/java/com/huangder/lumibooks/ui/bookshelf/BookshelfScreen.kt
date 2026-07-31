@@ -30,8 +30,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed as lazyListItemsIndexed
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -44,6 +43,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.FormatListBulleted
+import androidx.compose.material.icons.outlined.Label
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material3.CircularProgressIndicator
@@ -155,6 +156,14 @@ fun BookshelfScreen(
     var expandedSearchBookId by remember { mutableStateOf<String?>(null) }
     var expandedListBookId by remember { mutableStateOf<String?>(null) }
     var searchLauncherBounds by remember { mutableStateOf(Rect.Zero) }
+    var showBatchTagSheet by remember { mutableStateOf(false) }
+    val liquidCollectionTopPadding = if (bookshelfHeaderHeightPx > 0) {
+        with(density) { bookshelfHeaderHeightPx.toDp() } + 12.dp
+    } else if (isEditing) {
+        116.dp
+    } else {
+        240.dp
+    }
 
     val filterTabs = buildList {
         add(BookshelfFilterTab(BookshelfFilter.All, stringResource(R.string.filter_all)))
@@ -328,7 +337,6 @@ fun BookshelfScreen(
         }
     }
 
-
     LaunchedEffect(uiState.bookshelfLayoutMode, selectedFilter) {
         expandedListBookId = null
         if (contextMenuState.phase != ContextMenuPhase.Idle) contextMenuState.dismiss()
@@ -426,7 +434,7 @@ fun BookshelfScreen(
                         contextMenuState = contextMenuState,
                         syncedBookIds = uiState.syncedBookIds,
                         expandedListBookId = expandedListBookId,
-                        topPadding = 240.dp,
+                        topPadding = liquidCollectionTopPadding,
                         bottomPadding = 120.dp,
                         onHaptic = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
                         onSelectionToggle = toggleBookSelection,
@@ -444,72 +452,40 @@ fun BookshelfScreen(
                     )
                 }
             } else {
-            OverscrollBounce(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+            OverscrollBounce(modifier = Modifier.fillMaxSize()) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                 ) {
-                    Spacer(modifier = Modifier.height(AppSpace.md))
-                    PageEntranceItem(
-                        play = playEntranceAnimation,
-                        index = 0,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = AppSpace.lg, vertical = AppSpace.md)
-                        ) {
-                            BookshelfTitle()
-                            Spacer(Modifier.width(8.dp))
-                            BookshelfHeaderActions(
-                                layoutMode = uiState.bookshelfLayoutMode,
-                                isSyncing = uiState.isWebdavSyncing,
-                                onSyncClick = { viewModel.syncWebdavNow() },
-                                onLayoutModeChange = viewModel::setBookshelfLayoutMode
+                    BookshelfCapsuleHeader(
+                        filterTabs = filterTabs,
+                        selectedFilter = selectedFilter,
+                        isEditing = isEditing,
+                        selectedCount = selectedBookIds.size,
+                        onFilterSelected = { selectedFilter = it },
+                        onEditToggle = {
+                            isEditing = !isEditing
+                            if (!isEditing) selectedBookIds = emptySet()
+                        },
+                        onDeleteSelected = { showBatchDeleteConfirm = true },
+                        onTagSelected = { showBatchTagSheet = true },
+                        onBrowseFilters = {
+                            context.startActivity(
+                                android.content.Intent(context, BookshelfCategoriesActivity::class.java)
                             )
-                            Spacer(Modifier.weight(1f))
-                            BookshelfSyncProgressIndicator(isSyncing = uiState.isWebdavSyncing)
-                        }
-                    }
-
-                    BookshelfSearchLauncher(
-                        onClick = {
+                        },
+                        onSearchClick = {
+                            isEditing = false
+                            selectedBookIds = emptySet()
                             expandedSearchBookId = null
                             isSearchActive = true
                         },
-                        onBoundsChanged = { searchLauncherBounds = it },
-                        modifier = Modifier.padding(horizontal = AppSpace.lg)
+                        onSyncClick = { viewModel.syncWebdavNow() },
+                        layoutMode = uiState.bookshelfLayoutMode,
+                        isWebdavSyncing = uiState.isWebdavSyncing,
+                        onLayoutModeChange = viewModel::setBookshelfLayoutMode,
+                        onSearchBoundsChanged = { searchLauncherBounds = it }
                     )
-
-                    // ── 筛选标签（可横向滚动） ──
-                    PageEntranceItem(
-                        play = playEntranceAnimation,
-                        index = 1,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
-                                .padding(horizontal = AppSpace.lg, vertical = AppSpace.sm),
-                            horizontalArrangement = Arrangement.spacedBy(AppSpace.lg)
-                        ) {
-                            filterTabs.forEach { tab ->
-                                val isSelected = tab.filter == selectedFilter
-                                Text(
-                                    text = tab.label,
-                                    fontSize = AppType.Body,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (isSelected) AppColors.TextPrimary else AppColors.TextSecondary,
-                                    modifier = Modifier.clickable { selectedFilter = tab.filter }
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(Modifier.height(AppSpace.md))
 
                     // ── 书架网格 ──
                     BookshelfCollection(
@@ -519,15 +495,15 @@ fun BookshelfScreen(
                         isLoading = uiState.isLoading,
                         playEntranceAnimation = playEntranceAnimation,
                         deletingBookIds = deletingBookIds,
-                        isEditing = false,
-                        selectedBookIds = emptySet(),
+                        isEditing = isEditing,
+                        selectedBookIds = selectedBookIds,
                         contextMenuState = contextMenuState,
                         syncedBookIds = uiState.syncedBookIds,
                         expandedListBookId = expandedListBookId,
-                        topPadding = 0.dp,
+                        topPadding = if (isEditing) 12.dp else 0.dp,
                         bottomPadding = 24.dp,
                         onHaptic = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
-                        onSelectionToggle = {},
+                        onSelectionToggle = toggleBookSelection,
                         onExpandedBookChange = { expandedListBookId = it },
                         onBookClick = { book -> onNavigateToReader(book.id, book.coverPath, book.title) },
                         onAddBook = onAddBook,
@@ -561,7 +537,7 @@ fun BookshelfScreen(
                 solidFraction = 0.68f
             )
             ProvideLiquidGlassBackdrop(bookshelfTopBlurBackdrop) {
-                LiquidBookshelfHeader(
+                BookshelfCapsuleHeader(
                     filterTabs = filterTabs,
                     selectedFilter = selectedFilter,
                     isEditing = isEditing,
@@ -572,6 +548,12 @@ fun BookshelfScreen(
                         if (!isEditing) selectedBookIds = emptySet()
                     },
                     onDeleteSelected = { showBatchDeleteConfirm = true },
+                    onTagSelected = { showBatchTagSheet = true },
+                    onBrowseFilters = {
+                        context.startActivity(
+                            android.content.Intent(context, BookshelfCategoriesActivity::class.java)
+                        )
+                    },
                     onSearchClick = {
                         isEditing = false
                         selectedBookIds = emptySet()
@@ -746,6 +728,23 @@ fun BookshelfScreen(
             )
         }
 
+        if (showBatchTagSheet) {
+            BatchBookTagSheet(
+                tags = uiState.tags,
+                selectedBookCount = selectedBookIds.size,
+                onDismiss = { showBatchTagSheet = false },
+                onCreateTag = { name ->
+                    viewModel.createAndAssignTagToBooks(selectedBookIds, name)
+                },
+                onApply = { tagIds ->
+                    tagIds.forEach { tagId ->
+                        viewModel.addTagToBooks(selectedBookIds, tagId)
+                    }
+                    showBatchTagSheet = false
+                }
+            )
+        }
+
         if (showBatchDeleteConfirm) {
             LiquidGlassAlertDialog(
                 onDismissRequest = { showBatchDeleteConfirm = false },
@@ -790,7 +789,7 @@ fun BookshelfScreen(
 }
 
 @Composable
-private fun BookshelfCollection(
+internal fun BookshelfCollection(
     layoutMode: Int,
     books: List<Book>,
     tagNamesByBook: Map<String, List<String>>,
@@ -816,6 +815,7 @@ private fun BookshelfCollection(
     onRemoveCustomCover: (Book) -> Unit,
     onTags: (Book) -> Unit,
     onBookmarksNotes: (Book) -> Unit,
+    showAddBook: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val targetMode = layoutMode.coerceIn(1, 3)
@@ -930,7 +930,7 @@ private fun BookshelfCollection(
                             onSelectionToggle = { onSelectionToggle(book) }
                         )
                     }
-                    if (!isLoading && !isEditing) {
+                    if (showAddBook && !isLoading && !isEditing) {
                         item(key = "add_book_list") {
                             AddBookListItem(onClick = onAddBook)
                         }
@@ -965,7 +965,7 @@ private fun BookshelfCollection(
                         )
                     }
                 }
-                if (!isLoading && !isEditing) {
+                if (showAddBook && !isLoading && !isEditing) {
                     item(key = "add_book_grid_$renderedMode") {
                         PageEntranceItem(
                             play = playEntranceAnimation,
@@ -1053,7 +1053,7 @@ private fun BookshelfHeaderActions(
 }
 
 @Composable
-private fun LiquidBookshelfHeader(
+private fun BookshelfCapsuleHeader(
     filterTabs: List<BookshelfFilterTab>,
     selectedFilter: BookshelfFilter,
     isEditing: Boolean,
@@ -1061,6 +1061,8 @@ private fun LiquidBookshelfHeader(
     onFilterSelected: (BookshelfFilter) -> Unit,
     onEditToggle: () -> Unit,
     onDeleteSelected: () -> Unit,
+    onTagSelected: () -> Unit,
+    onBrowseFilters: () -> Unit,
     onSearchClick: () -> Unit,
     onSyncClick: () -> Unit,
     layoutMode: Int,
@@ -1069,6 +1071,7 @@ private fun LiquidBookshelfHeader(
     onSearchBoundsChanged: (Rect) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val menuHost = LocalLiquidGlassMenuHost.current
     var filterAnchorBounds by remember { mutableStateOf(Rect.Zero) }
     var filterExpanded by remember { mutableStateOf(false) }
@@ -1089,6 +1092,9 @@ private fun LiquidBookshelfHeader(
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .then(
+                if (isLiquidGlass) Modifier else Modifier.background(AppColors.WindowBg)
+            )
             .statusBarsPadding()
             .padding(top = 12.dp)
     ) {
@@ -1100,6 +1106,8 @@ private fun LiquidBookshelfHeader(
         ) {
             LiquidGlassButton(
                 onClick = onEditToggle,
+                tintedColor = AppColors.CardBg.takeUnless { isLiquidGlass },
+                contentColor = AppColors.TextPrimary,
                 prominentShadow = true,
                 modifier = Modifier
                     .width(88.dp)
@@ -1114,7 +1122,7 @@ private fun LiquidBookshelfHeader(
             }
 
             AnimatedVisibility(
-                visible = selectedCount > 0,
+                visible = isEditing,
                 enter = fadeIn(tween(120)) + scaleIn(
                     initialScale = 0.78f,
                     animationSpec = spring(dampingRatio = 0.68f, stiffness = 360f)
@@ -1127,99 +1135,166 @@ private fun LiquidBookshelfHeader(
                         imageVector = Icons.Outlined.Delete,
                         contentDescription = stringResource(R.string.delete),
                         onClick = onDeleteSelected,
+                        enabled = selectedCount > 0,
                         size = 46.dp,
                         iconSize = 21.dp,
                         contentColor = Color.White,
+                        normalContainerColor = Color(0xFFD92D3A),
                         liquidContainerColor = Color(0xFFD92D3A),
                         liquidScrimColor = Color(0xB8D92D3A)
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    LiquidGlassIconButton(
+                        imageVector = Icons.Outlined.Label,
+                        contentDescription = stringResource(R.string.tag_sheet_title),
+                        onClick = onTagSelected,
+                        enabled = selectedCount > 0,
+                        size = 46.dp,
+                        iconSize = 21.dp,
+                        contentColor = AppColors.TextPrimary,
+                        normalContainerColor = AppColors.CardBg,
+                        liquidContainerColor = AppColors.CardBg,
+                        liquidScrimColor = AppColors.CardBg.copy(alpha = 0.58f)
                     )
                 }
             }
 
             Spacer(Modifier.weight(1f))
 
-            LiquidGlassButton(
-                onClick = {
-                    if (filterExpanded) {
-                        menuHost?.dismiss()
-                    } else if (menuHost != null && filterAnchorBounds != Rect.Zero) {
-                        filterExpanded = true
-                        menuHost.show(
-                            LiquidGlassMenuSpec(
-                                anchorBounds = filterAnchorBounds,
-                                width = 176.dp,
-                                maxVisibleItems = 8,
-                                onDismiss = { filterExpanded = false },
-                                items = filterTabs.map { tab ->
-                                    LiquidGlassMenuItem(
-                                        label = tab.label,
-                                        selected = tab.filter == selectedFilter,
-                                        onClick = { onFilterSelected(tab.filter) }
-                                    )
-                                }
-                            )
-                        )
-                    }
-                },
-                prominentShadow = true,
-                modifier = Modifier
-                    .width(136.dp)
-                    .height(46.dp)
-                    .onGloballyPositioned { filterAnchorBounds = it.boundsInRoot() }
-            ) {
-                Text(
-                    text = selectedLabel,
-                    color = AppColors.TextPrimary,
-                    fontSize = AppType.BodySmall,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false)
-                )
-                Spacer(Modifier.width(4.dp))
-                Icon(
-                    imageVector = Icons.Outlined.KeyboardArrowDown,
-                    contentDescription = null,
-                    tint = AppColors.TextPrimary,
+            if (!isEditing) {
+                LiquidGlassSurface(
+                    shape = CircleShape,
+                    fallbackColor = AppColors.CardBg,
+                    contentScrimColor = AppColors.CardBg.copy(alpha = 0.58f),
+                    effectPadding = if (isLiquidGlass) 2.dp else 0.dp,
+                    decorationModifier = Modifier.shadow(
+                        elevation = 16.dp,
+                        shape = CircleShape,
+                        clip = false,
+                        ambientColor = Color.Black.copy(alpha = 0.10f),
+                        spotColor = Color.Black.copy(alpha = 0.12f)
+                    ),
                     modifier = Modifier
-                        .size(19.dp)
-                        .graphicsLayer { rotationZ = arrowRotation }
-                )
+                        .width(154.dp)
+                        .height(46.dp)
+                ) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        Row(
+                            modifier = Modifier
+                                .align(Alignment.Center),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = selectedLabel,
+                                color = AppColors.TextPrimary,
+                                fontSize = AppType.BodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.widthIn(max = 68.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Icon(
+                                imageVector = Icons.Outlined.KeyboardArrowDown,
+                                contentDescription = null,
+                                tint = AppColors.TextPrimary,
+                                modifier = Modifier
+                                    .size(19.dp)
+                                    .graphicsLayer { rotationZ = arrowRotation }
+                            )
+                            Spacer(Modifier.width(18.dp))
+                            Icon(
+                                imageVector = Icons.Outlined.FormatListBulleted,
+                                contentDescription = null,
+                                tint = AppColors.TextPrimary,
+                                modifier = Modifier.size(25.dp)
+                            )
+                        }
+
+                        Row(modifier = Modifier.fillMaxSize()) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxSize()
+                                    .onGloballyPositioned { filterAnchorBounds = it.boundsInRoot() }
+                                    .clickable(
+                                        indication = null,
+                                        interactionSource = remember { MutableInteractionSource() }
+                                    ) {
+                                        if (filterExpanded) {
+                                            menuHost?.dismiss()
+                                        } else if (menuHost != null && filterAnchorBounds != Rect.Zero) {
+                                            filterExpanded = true
+                                            menuHost.show(
+                                                LiquidGlassMenuSpec(
+                                                    anchorBounds = filterAnchorBounds,
+                                                    width = 176.dp,
+                                                    maxVisibleItems = 8,
+                                                    onDismiss = { filterExpanded = false },
+                                                    items = filterTabs.map { tab ->
+                                                        LiquidGlassMenuItem(
+                                                            label = tab.label,
+                                                            selected = tab.filter == selectedFilter,
+                                                            onClick = { onFilterSelected(tab.filter) }
+                                                        )
+                                                    }
+                                                )
+                                            )
+                                        }
+                                    }
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .width(52.dp)
+                                    .fillMaxSize()
+                                    .clickable(
+                                        indication = null,
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        onClick = onBrowseFilters
+                                    )
+                            )
+                        }
+                    }
+                }
             }
         }
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    start = AppSpace.lg,
-                    end = AppSpace.lg,
-                    top = 14.dp,
-                    bottom = 10.dp
-                ),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            BookshelfTitle()
-            Spacer(Modifier.width(8.dp))
-            BookshelfHeaderActions(
-                layoutMode = layoutMode,
-                isSyncing = isWebdavSyncing,
-                onSyncClick = onSyncClick,
-                onLayoutModeChange = onLayoutModeChange
-            )
-            Spacer(Modifier.weight(1f))
-            BookshelfSyncProgressIndicator(isSyncing = isWebdavSyncing)
-        }
+        AnimatedVisibility(visible = !isEditing) {
+            Column {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            start = AppSpace.lg,
+                            end = AppSpace.lg,
+                            top = 14.dp,
+                            bottom = 10.dp
+                        ),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    BookshelfTitle()
+                    Spacer(Modifier.width(8.dp))
+                    BookshelfHeaderActions(
+                        layoutMode = layoutMode,
+                        isSyncing = isWebdavSyncing,
+                        onSyncClick = onSyncClick,
+                        onLayoutModeChange = onLayoutModeChange
+                    )
+                    Spacer(Modifier.weight(1f))
+                    BookshelfSyncProgressIndicator(isSyncing = isWebdavSyncing)
+                }
 
-        BookshelfSearchLauncher(
-            onClick = onSearchClick,
-            onBoundsChanged = onSearchBoundsChanged,
-            modifier = Modifier.padding(
-                start = AppSpace.lg,
-                end = AppSpace.lg,
-                bottom = 14.dp
-            )
-        )
+                BookshelfSearchLauncher(
+                    onClick = onSearchClick,
+                    onBoundsChanged = onSearchBoundsChanged,
+                    modifier = Modifier.padding(
+                        start = AppSpace.lg,
+                        end = AppSpace.lg,
+                        bottom = 14.dp
+                    )
+                )
+            }
+        }
     }
 }
 

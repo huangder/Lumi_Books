@@ -2,19 +2,15 @@ package com.huangder.lumibooks.util.epub
 
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
+import org.jsoup.nodes.TextNode
 import org.jsoup.parser.Parser
+import org.jsoup.select.NodeTraversor
+import org.jsoup.select.NodeVisitor
 import java.io.ByteArrayInputStream
 
 object EpubDocumentTransformer {
     fun transform(resource: EpubResource, layout: EpubRenditionLayout): ByteArray {
-        val document = Jsoup.parse(
-            ByteArrayInputStream(resource.bytes),
-            null,
-            resource.path,
-            Parser.xmlParser()
-        )
-        document.outputSettings().syntax(Document.OutputSettings.Syntax.xml).charset(Charsets.UTF_8)
-        sanitize(document)
+        val document = parseAndSanitize(resource)
         val head = document.head().takeIf { it.tagName().isNotBlank() }
             ?: document.prependElement("head")
         if (head.selectFirst("meta[name=viewport]") == null) {
@@ -26,6 +22,43 @@ object EpubDocumentTransformer {
         document.body().attr("data-lumi-layout", layout.name.lowercase())
         document.body().appendElement("script").attr("id", "lumi-reader-script").appendText(READER_SCRIPT)
         return document.outerHtml().toByteArray(Charsets.UTF_8)
+    }
+
+    internal fun extractSearchText(resource: EpubResource): String {
+        val body = parseAndSanitize(resource).body()
+        val text = StringBuilder()
+        NodeTraversor.traverse(
+            object : NodeVisitor {
+                override fun head(node: org.jsoup.nodes.Node, depth: Int) {
+                    if (node !is TextNode) return
+                    var ancestor = node.parent()
+                    while (ancestor != null && ancestor !== body) {
+                        if (ancestor.nodeName().equals("style", true) ||
+                            ancestor.nodeName().equals("noscript", true) ||
+                            ancestor.nodeName().equals("script", true)
+                        ) return
+                        ancestor = ancestor.parent()
+                    }
+                    text.append(node.wholeText)
+                }
+
+                override fun tail(node: org.jsoup.nodes.Node, depth: Int) = Unit
+            },
+            body
+        )
+        return text.toString()
+    }
+
+    private fun parseAndSanitize(resource: EpubResource): Document {
+        val document = Jsoup.parse(
+            ByteArrayInputStream(resource.bytes),
+            null,
+            resource.path,
+            Parser.xmlParser()
+        )
+        document.outputSettings().syntax(Document.OutputSettings.Syntax.xml).charset(Charsets.UTF_8)
+        sanitize(document)
+        return document
     }
 
     private fun sanitize(document: Document) {
@@ -196,6 +229,20 @@ html.lumi-green body { color: #1b5e20 !important; }
   border-radius: 50%;
   animation: lumi-footnote-spin 0.8s linear infinite;
 }
+#lumi-highlight-layer {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  z-index: -1;
+}
+.lumi-highlight-block {
+  position: absolute;
+  pointer-events: none;
+  box-sizing: border-box;
+}
 html.lumi-sepia #lumi-footnote-popover { background: #fff8ee; color: #3e2723; }
 html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
 @keyframes lumi-footnote-enter {
@@ -284,6 +331,7 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     transition: 'slide', nativePaging: false, animationTimer: 0, suppressClickUntil: 0, preservePublisherBackground: true,
     edgeTapLeft: -1, edgeTapRight: 1,
     bionicReading: false, chineseMode: 'original', chineseMap: null, pendingPreparedPage: null, prepareSerial: 0,
+    highlightItems: [], searchHighlight: null,
     insets: { top: 0, right: 0, bottom: 0, left: 0 }
   };
   var resizeTimer = 0;
@@ -297,6 +345,9 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
   var touchVelocityX = 0;
   var touchBaseX = 0;
   var touchPaging = false;
+  var imageLongPressTimer = 0;
+  var imageLongPressTarget = null;
+  var imageLongPressTriggered = false;
   var pageStage = null;
   var pageStageCurrent = null;
   var pageStageTarget = null;
@@ -337,29 +388,82 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     return node;
   }
 
-  function locator(node, offset) {
+  function textOffsetForBoundary(index, node, offset) {
+    for (var i = 0; i < index.nodes.length; i++) {
+      var info = index.nodes[i];
+      if (info.node === node) {
+        return info.start + Math.max(0, Math.min(Number(offset) || 0, info.node.nodeValue.length));
+      }
+    }
+    try {
+      var prefixRange = document.createRange();
+      prefixRange.selectNodeContents(document.body);
+      prefixRange.setEnd(node, Math.max(0, Number(offset) || 0));
+      return Math.max(0, Math.min(index.text.length, prefixRange.toString().length));
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  function locator(node, offset, quote) {
     var text = node && node.nodeValue ? node.nodeValue : '';
     var safeOffset = Math.max(0, Math.min(offset || 0, text.length));
+    var index = quote && quote.index ? quote.index : textIndex();
+    var textPosition = quote && typeof quote.textPosition === 'number'
+      ? quote.textPosition : textOffsetForBoundary(index, node, safeOffset);
+    var quoteStart = quote && typeof quote.quoteStart === 'number' ? quote.quoteStart : textPosition;
+    var quoteEnd = quote && typeof quote.quoteEnd === 'number'
+      ? quote.quoteEnd : Math.min(index.text.length, quoteStart + 96);
+    var exact = quote && typeof quote.exact === 'string'
+      ? quote.exact : index.text.substring(quoteStart, quoteEnd);
     return {
-      version: 1,
+      version: 2,
       domPath: nodePath(node),
       textOffset: safeOffset,
-      exact: text.substring(safeOffset, Math.min(text.length, safeOffset + 96)),
-      prefix: text.substring(Math.max(0, safeOffset - 32), safeOffset),
-      suffix: text.substring(safeOffset, Math.min(text.length, safeOffset + 32)),
-      progression: state.total > 1 ? state.page / (state.total - 1) : 0
+      textPosition: Math.max(0, Math.min(index.text.length, textPosition)),
+      textLength: index.text.length,
+      exact: exact,
+      prefix: index.text.substring(Math.max(0, quoteStart - 32), quoteStart),
+      suffix: index.text.substring(quoteEnd, Math.min(index.text.length, quoteEnd + 32)),
+      progression: state.total > 1 ? state.page / (state.total - 1) :
+        (quoteStart / Math.max(1, index.text.length))
     };
   }
 
   function currentLocator() {
-    var range = null;
-    if (document.caretRangeFromPoint) range = document.caretRangeFromPoint(2, 2);
-    if (!range && document.createRange) {
-      range = document.createRange();
-      range.selectNodeContents(document.body);
-      range.collapse(true);
+    var index = textIndex();
+    for (var i = 0; i < index.nodes.length; i++) {
+      var info = index.nodes[i];
+      if (!info.node.nodeValue || !info.node.nodeValue.trim()) continue;
+      var nodeRange = document.createRange();
+      nodeRange.selectNodeContents(info.node);
+      var rects = nodeRange.getClientRects();
+      for (var r = 0; r < rects.length; r++) {
+        var rect = rects[r];
+        var physicalPage = physicalPageForRect(rect);
+        var logicalPage = state.flow === 'scrolled'
+          ? physicalPage : logicalPageForPhysical(physicalPage);
+        if (logicalPage !== state.page) continue;
+        var x = Math.max(1, Math.min(viewportWidth() - 2, rect.left + Math.min(4, rect.width / 2)));
+        var y = Math.max(1, Math.min(viewportHeight() - 2, rect.top + Math.min(4, rect.height / 2)));
+        var range = document.caretRangeFromPoint ? document.caretRangeFromPoint(x, y) : null;
+        if (range && document.body.contains(range.startContainer) && pageForRange(range) === state.page) {
+          return locator(range.startContainer, range.startOffset, { index: index });
+        }
+        var startRange = document.createRange();
+        startRange.setStart(info.node, 0);
+        startRange.collapse(true);
+        if (pageForRange(startRange) === state.page) {
+          return locator(info.node, 0, { index: index, textPosition: info.start });
+        }
+      }
     }
-    return range ? locator(range.startContainer, range.startOffset) : null;
+    return {
+      version: 2,
+      textPosition: 0,
+      textLength: index.text.length,
+      progression: state.total > 1 ? state.page / (state.total - 1) : 0
+    };
   }
 
   function textIndex() {
@@ -369,11 +473,45 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     var node;
     while ((node = walker.nextNode())) {
       var parent = node.parentElement;
-      if (!parent || /^(script|style|noscript)$/i.test(parent.tagName)) continue;
+      if (!parent || parent.closest('script,style,noscript')) continue;
       nodes.push({ node: node, start: text.length, end: text.length + node.nodeValue.length });
       text += node.nodeValue;
     }
     return { nodes: nodes, text: text };
+  }
+
+  function normalizedQuoteIndex(index) {
+    var value = '';
+    var sourceOffsets = [];
+    var converted = convertChineseText(index.text, state.chineseMap);
+    for (var i = 0; i < converted.length; i++) {
+      var character = converted.charAt(i);
+      if (/\s/.test(character) || character === '\u00a0' || character === '\u200b' ||
+          character === '\u200c' || character === '\u200d' || character === '\u2060' ||
+          character === '\ufeff') continue;
+      value += character;
+      sourceOffsets.push(i);
+    }
+    return { value: value, sourceOffsets: sourceOffsets };
+  }
+
+  function normalizeQuoteText(value) {
+    return convertChineseText(String(value || ''), state.chineseMap)
+      .replace(/[\s\u00a0\u200b-\u200d\u2060\ufeff]/g, '');
+  }
+
+  function commonPrefixLength(source, expected) {
+    var count = 0;
+    while (count < source.length && count < expected.length &&
+           source.charAt(count) === expected.charAt(count)) count++;
+    return count;
+  }
+
+  function commonSuffixLength(source, expected) {
+    var count = 0;
+    while (count < source.length && count < expected.length &&
+           source.charAt(source.length - 1 - count) === expected.charAt(expected.length - 1 - count)) count++;
+    return count;
   }
 
   function rangeAtOffsets(index, start, end) {
@@ -395,24 +533,51 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     var exact = target && target.exact ? String(target.exact) : '';
     if (!exact) return null;
     var index = textIndex();
+    var normalized = normalizedQuoteIndex(index);
+    var normalizedExact = normalizeQuoteText(exact);
+    if (!normalizedExact) return null;
+    var prefix = normalizeQuoteText(target && target.prefix).slice(-32);
+    var suffix = target && Number(target.version || 1) >= 2
+      ? normalizeQuoteText(target.suffix).slice(0, 32) : '';
+    var expected = 0;
+    if (target && typeof target.textPosition === 'number' && Number(target.textLength) > 0) {
+      expected = Math.max(0, target.textPosition) / Math.max(1, target.textLength) * normalized.value.length;
+    } else if (target && typeof target.progression === 'number') {
+      expected = Math.max(0, Math.min(1, target.progression)) * normalized.value.length;
+    }
     var from = 0;
     var best = -1;
     var bestScore = -1;
-    while (from <= index.text.length) {
-      var at = index.text.indexOf(exact, from);
+    var bestDistance = Number.MAX_VALUE;
+    while (from <= normalized.value.length) {
+      var at = normalized.value.indexOf(normalizedExact, from);
       if (at < 0) break;
-      var score = 0;
-      var prefix = target.prefix ? String(target.prefix) : '';
-      var suffix = target.suffix ? String(target.suffix) : '';
-      if (prefix && index.text.substring(Math.max(0, at - prefix.length), at) === prefix) score += 2;
-      if (suffix && index.text.substring(at + exact.length, at + exact.length + suffix.length) === suffix) score += 2;
-      if (score > bestScore) { best = at; bestScore = score; }
-      from = at + Math.max(1, exact.length);
+      var score = commonSuffixLength(normalized.value.substring(0, at), prefix) +
+        commonPrefixLength(normalized.value.substring(at + normalizedExact.length), suffix);
+      var distance = Math.abs(at - expected);
+      if (score > bestScore || (score === bestScore && distance < bestDistance)) {
+        best = at;
+        bestScore = score;
+        bestDistance = distance;
+      }
+      from = at + 1;
     }
-    return best >= 0 ? rangeAtOffsets(index, best, best + exact.length) : null;
+    if (best < 0) return null;
+    var sourceStart = normalized.sourceOffsets[best];
+    var sourceEnd = normalized.sourceOffsets[best + normalizedExact.length - 1] + 1;
+    return rangeAtOffsets(index, sourceStart, sourceEnd);
   }
 
-  function rangeFromLocators(start, end) {
+  function rangeMatchesExact(range, exact) {
+    return !exact || normalizeQuoteText(range && range.toString()) === normalizeQuoteText(exact);
+  }
+
+  function rangeFromLocators(start, end, exact) {
+    var index = textIndex();
+    if (start && end && typeof start.textPosition === 'number' && typeof end.textPosition === 'number') {
+      var positioned = rangeAtOffsets(index, start.textPosition, end.textPosition);
+      if (positioned && rangeMatchesExact(positioned, exact || start.exact)) return positioned;
+    }
     var startNode = nodeAtPath((start && start.domPath) || []);
     var endNode = nodeAtPath((end && end.domPath) || []);
     if (startNode && endNode && startNode.nodeType === Node.TEXT_NODE && endNode.nodeType === Node.TEXT_NODE) {
@@ -420,10 +585,13 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
         var direct = document.createRange();
         direct.setStart(startNode, Math.min(start.textOffset || 0, startNode.nodeValue.length));
         direct.setEnd(endNode, Math.min(end.textOffset || 0, endNode.nodeValue.length));
-        return direct;
+        if (rangeMatchesExact(direct, exact || start.exact)) return direct;
       } catch (_) {}
     }
-    return quoteRange(start);
+    if (!start) return null;
+    var quote = Object.assign({}, start);
+    if (exact) quote.exact = exact;
+    return quoteRange(quote);
   }
 
   function physicalPageForRect(rect) {
@@ -785,6 +953,8 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     var targetPage = Math.max(0, Math.min(page, state.total - 1));
     var body = document.body;
     clearTimeout(state.animationTimer);
+    cancelImageLongPress();
+    imageLongPressTriggered = false;
     touchPaging = false;
     clearPageStage();
     state.page = targetPage;
@@ -1165,7 +1335,8 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
       var scrollExtent = Math.max(body.scrollHeight, document.documentElement.scrollHeight, state.viewportHeight);
       state.pageOffsets = [0];
       state.total = Math.max(1, Math.ceil(scrollExtent / state.viewportHeight));
-      moveToPage(typeof restoreProgression === 'number' ? Math.round(restoreProgression * Math.max(0, state.total - 1)) : state.page, false);
+      moveToPage(typeof restoreProgression === 'number'
+        ? Math.floor(restoreProgression * state.total + 0.000001) : state.page, false);
     } else {
       document.documentElement.style.overflow = 'hidden';
       applyPaginatedPublisherBackground();
@@ -1175,13 +1346,14 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
       state.pageOffsets = collectOccupiedPages(physicalTotal - 1);
       state.total = Math.max(1, state.pageOffsets.length);
       var target = typeof restoreProgression === 'number'
-        ? Math.round(restoreProgression * Math.max(0, state.total - 1))
+        ? Math.floor(restoreProgression * state.total + 0.000001)
         : state.page;
       moveToPage(target, false);
     }
     body.style.visibility = 'visible';
     state.ready = true;
     state.paginating = false;
+    rebuildHighlightLayer();
     fulfillPreparedPageRequest();
     post('ready', { pageIndex: state.page, pageCount: state.total, reverseAxis: state.reverseAxis, locator: currentLocator() });
     if (location.hash && !state.initialFragmentApplied) {
@@ -1457,8 +1629,9 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
   function restore(target) {
     if (!target) return false;
     var range = null;
-    var node = nodeAtPath(target.domPath || []);
-    if (node && node.nodeType === Node.TEXT_NODE) {
+    if (Number(target.version || 1) >= 2 && target.exact) range = quoteRange(target);
+    var node = !range ? nodeAtPath(target.domPath || []) : null;
+    if (!range && node && node.nodeType === Node.TEXT_NODE) {
       try {
         range = document.createRange();
         range.setStart(node, Math.min(target.textOffset || 0, node.nodeValue.length));
@@ -1503,59 +1676,174 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     };
   }
 
-  function findText(exact, progression) {
-    exact = exact ? convertChineseText(String(exact), state.chineseMap) : '';
-    if (!exact) return false;
-    var index = textIndex();
-    var haystack = index.text.toLocaleLowerCase();
-    var needle = exact.toLocaleLowerCase();
-    var expected = Math.max(0, Math.min(1, Number(progression) || 0)) * index.text.length;
-    var cursor = 0;
-    var best = -1;
-    var distance = Number.MAX_VALUE;
-    while (cursor <= haystack.length) {
-      var found = haystack.indexOf(needle, cursor);
-      if (found < 0) break;
-      var candidateDistance = Math.abs(found - expected);
-      if (candidateDistance < distance) { best = found; distance = candidateDistance; }
-      cursor = found + Math.max(1, needle.length);
+  function clearSearchHighlight() {
+    if (!state.searchHighlight) return;
+    state.searchHighlight = null;
+    rebuildHighlightLayer();
+  }
+
+  function findText(target, requestToken) {
+    clearSearchHighlight();
+    var range = target && target.exact ? quoteRange(target) : null;
+    if (!range) {
+      post('searchResult', { requestToken: Number(requestToken), found: false });
+      return false;
     }
-    if (best < 0) return false;
-    var range = rangeAtOffsets(index, best, best + exact.length);
-    if (!range) return false;
-    moveToPage(Math.max(0, Math.min(state.total - 1, pageForRange(range))), true);
-    if (window.CSS && CSS.highlights && typeof Highlight !== 'undefined') {
-      CSS.highlights.delete('lumi-search');
-      CSS.highlights.set('lumi-search', new Highlight(range));
-      var style = document.getElementById('lumi-search-color');
-      if (!style) {
-        style = document.createElement('style');
-        style.id = 'lumi-search-color';
-        style.textContent = '::highlight(lumi-search){background-color:rgba(255,193,7,.62);color:inherit;}';
-        document.head.appendChild(style);
+    var page = Math.max(0, Math.min(state.total - 1, pageForRange(range)));
+    moveToPage(page, true);
+    state.searchHighlight = Object.assign({}, target);
+    rebuildHighlightLayer();
+    post('searchResult', {
+      requestToken: Number(requestToken), found: true, pageIndex: page,
+      pageCount: state.total, reverseAxis: state.reverseAxis, locator: currentLocator()
+    });
+    return true;
+  }
+
+  function highlightLayer() {
+    var existing = document.getElementById('lumi-highlight-layer');
+    if (existing) existing.remove();
+    var layer = document.createElement('div');
+    layer.id = 'lumi-highlight-layer';
+    layer.setAttribute('aria-hidden', 'true');
+    layer.style.width = Math.max(document.body.offsetWidth, document.body.scrollWidth, 1) + 'px';
+    layer.style.height = Math.max(document.body.offsetHeight, document.body.scrollHeight, 1) + 'px';
+    document.body.style.isolation = 'isolate';
+    document.body.insertBefore(layer, document.body.firstChild);
+    return layer;
+  }
+
+  function mergeHighlightRects(rects, vertical) {
+    rects.sort(function (a, b) {
+      return vertical ? (a.left - b.left || a.top - b.top) : (a.top - b.top || a.left - b.left);
+    });
+    var merged = [];
+    rects.forEach(function (rect) {
+      var previous = merged.length ? merged[merged.length - 1] : null;
+      var sameTrack = previous && (vertical
+        ? Math.abs(previous.left - rect.left) <= 2 && Math.abs(previous.right - rect.right) <= 2
+        : Math.abs(previous.top - rect.top) <= 2 && Math.abs(previous.bottom - rect.bottom) <= 2);
+      var touches = previous && (vertical ? rect.top <= previous.bottom + 2 : rect.left <= previous.right + 2);
+      if (sameTrack && touches) {
+        previous.left = Math.min(previous.left, rect.left);
+        previous.top = Math.min(previous.top, rect.top);
+        previous.right = Math.max(previous.right, rect.right);
+        previous.bottom = Math.max(previous.bottom, rect.bottom);
+      } else {
+        merged.push({ left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom });
       }
+    });
+    return merged;
+  }
+
+  function shapeHighlightRects(rects, vertical) {
+    var inlinePadding = 3;
+    var blockInset = 1.5;
+    var minimumBlockGap = blockInset * 2;
+    var tracks = [];
+    rects.forEach(function (rect) {
+      var previous = tracks.length ? tracks[tracks.length - 1] : null;
+      var sameTrack = previous && (vertical
+        ? Math.abs(previous.start - rect.left) <= 2 && Math.abs(previous.end - rect.right) <= 2
+        : Math.abs(previous.start - rect.top) <= 2 && Math.abs(previous.end - rect.bottom) <= 2);
+      if (sameTrack) {
+        previous.rects.push(rect);
+        previous.start = Math.min(previous.start, vertical ? rect.left : rect.top);
+        previous.end = Math.max(previous.end, vertical ? rect.right : rect.bottom);
+      } else {
+        tracks.push({
+          start: vertical ? rect.left : rect.top,
+          end: vertical ? rect.right : rect.bottom,
+          rects: [rect]
+        });
+      }
+    });
+    tracks.forEach(function (track) {
+      track.center = (track.start + track.end) / 2;
+    });
+    tracks.forEach(function (track, index) {
+      var previous = index > 0 ? tracks[index - 1] : null;
+      var next = index + 1 < tracks.length ? tracks[index + 1] : null;
+      var minimumStart = previous
+        ? (previous.center + track.center + minimumBlockGap) / 2
+        : -Infinity;
+      var maximumEnd = next
+        ? (track.center + next.center - minimumBlockGap) / 2
+        : Infinity;
+      track.rects.forEach(function (rect) {
+        if (vertical) {
+          rect.top -= inlinePadding;
+          rect.bottom += inlinePadding;
+          rect.left = Math.max(rect.left + blockInset, minimumStart);
+          rect.right = Math.min(rect.right - blockInset, maximumEnd);
+        } else {
+          rect.left -= inlinePadding;
+          rect.right += inlinePadding;
+          rect.top = Math.max(rect.top + blockInset, minimumStart);
+          rect.bottom = Math.min(rect.bottom - blockInset, maximumEnd);
+        }
+      });
+    });
+    return rects;
+  }
+
+  function appendHighlightRange(layer, range, color) {
+    if (!range) return 0;
+    var layerRect = layer.getBoundingClientRect();
+    var scaleX = layer.offsetWidth > 0 ? layerRect.width / layer.offsetWidth : 1;
+    var scaleY = layer.offsetHeight > 0 ? layerRect.height / layer.offsetHeight : scaleX;
+    if (!isFinite(scaleX) || scaleX <= 0) scaleX = 1;
+    if (!isFinite(scaleY) || scaleY <= 0) scaleY = scaleX;
+    var rects = Array.prototype.slice.call(range.getClientRects()).filter(function (rect) {
+      return rect.width > 0 && rect.height > 0;
+    }).map(function (rect) {
+      return {
+        left: (rect.left - layerRect.left) / scaleX,
+        top: (rect.top - layerRect.top) / scaleY,
+        right: (rect.right - layerRect.left) / scaleX,
+        bottom: (rect.bottom - layerRect.top) / scaleY
+      };
+    });
+    var vertical = state.writingMode.indexOf('vertical') === 0 || state.writingMode.indexOf('sideways') === 0;
+    var merged = shapeHighlightRects(mergeHighlightRects(rects, vertical), vertical);
+    merged.forEach(function (rect) {
+      if (rect.right <= rect.left || rect.bottom <= rect.top) return;
+      var block = document.createElement('span');
+      block.className = 'lumi-highlight-block';
+      block.style.left = rect.left + 'px';
+      block.style.top = rect.top + 'px';
+      block.style.width = (rect.right - rect.left) + 'px';
+      block.style.height = (rect.bottom - rect.top) + 'px';
+      block.style.backgroundColor = color;
+      block.style.borderRadius = Math.min(6, (rect.right - rect.left) / 2, (rect.bottom - rect.top) / 2) + 'px';
+      layer.appendChild(block);
+    });
+    return merged.length;
+  }
+
+  function rebuildHighlightLayer() {
+    if (!document.body) return false;
+    var layer = highlightLayer();
+    (state.highlightItems || []).forEach(function (item) {
+      var range = rangeFromLocators(item.start, item.end, item.exact);
+      if (!range && item.exact) {
+        var quote = Object.assign({}, item.start || {}, { exact: item.exact });
+        range = quoteRange(quote);
+      }
+      if (!range) return;
+      var color = /^#[0-9a-f]{6,8}$/i.test(item.color || '') ? item.color : '#66ffeb3b';
+      appendHighlightRange(layer, range, color);
+    });
+    if (state.searchHighlight && state.searchHighlight.exact) {
+      var searchRange = quoteRange(state.searchHighlight);
+      if (searchRange) appendHighlightRange(layer, searchRange, 'rgba(255,193,7,.62)');
     }
     return true;
   }
 
   function setHighlights(items) {
-    if (!window.CSS || !CSS.highlights || typeof Highlight === 'undefined') return false;
-    CSS.highlights.clear();
-    var style = document.getElementById('lumi-highlight-colors');
-    if (style) style.remove();
-    style = document.createElement('style');
-    style.id = 'lumi-highlight-colors';
-    (items || []).forEach(function (item, index) {
-      var range = rangeFromLocators(item.start, item.end);
-      if (!range && item.exact) range = quoteRange({ exact: item.exact });
-      if (!range) return;
-      var name = 'lumi-note-' + index;
-      CSS.highlights.set(name, new Highlight(range));
-      var color = /^#[0-9a-f]{6,8}$/i.test(item.color || '') ? item.color : '#66ffeb3b';
-      style.appendChild(document.createTextNode('::highlight(' + name + '){background-color:' + color + ';}'));
-    });
-    document.head.appendChild(style);
-    return true;
+    state.highlightItems = Array.isArray(items) ? items : [];
+    return rebuildHighlightLayer();
   }
 
   function clearDocumentSelection() {
@@ -1609,6 +1897,28 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
       pixelRatio: Math.max(1, window.devicePixelRatio || 1)
     });
     return true;
+  }
+
+  function cancelImageLongPress() {
+    clearTimeout(imageLongPressTimer);
+    imageLongPressTimer = 0;
+    imageLongPressTarget = null;
+  }
+
+  function beginImageLongPress(image) {
+    cancelImageLongPress();
+    if (!image) return;
+    imageLongPressTarget = image;
+    imageLongPressTimer = setTimeout(function () {
+      var target = imageLongPressTarget;
+      imageLongPressTimer = 0;
+      imageLongPressTarget = null;
+      if (target && postImagePreview(target)) {
+        imageLongPressTriggered = true;
+        clearDocumentSelection();
+        state.suppressClickUntil = Date.now() + 700;
+      }
+    }, 520);
   }
 
   function semanticTokens(element) {
@@ -1787,6 +2097,8 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
   }
 
   document.addEventListener('touchstart', function (event) {
+    cancelImageLongPress();
+    imageLongPressTriggered = false;
     touchPaging = false;
     pageStageDurationOverride = 0;
     if (event.target && event.target.closest && event.target.closest('#lumi-footnote-popover')) return;
@@ -1798,6 +2110,7 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     touchLastX = touch.clientX;
     touchStartTime = Date.now();
     touchLastTime = touchStartTime;
+    beginImageLongPress(imageFromTarget(event.target));
     if (pageStageActive) {
       settleActivePageStageForInput(true);
       pageStageDurationOverride = state.transition === 'curl' ? 210 : 170;
@@ -1807,10 +2120,12 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
 
   document.addEventListener('touchmove', function (event) {
     if (event.target && event.target.closest && event.target.closest('#lumi-footnote-popover')) return;
-    if (state.nativePaging || state.flow !== 'paginated' || state.fixed || event.touches.length !== 1) return;
+    if (event.touches.length !== 1) { cancelImageLongPress(); return; }
     var touch = event.touches[0];
     var dx = touch.clientX - touchStartX;
     var dy = touch.clientY - touchStartY;
+    if (Math.abs(dx) >= 12 || Math.abs(dy) >= 12) cancelImageLongPress();
+    if (state.nativePaging || state.flow !== 'paginated' || state.fixed) return;
     if (!touchPaging && (Math.abs(dx) < 6 || Math.abs(dx) <= Math.abs(dy))) return;
     touchPaging = true;
     event.preventDefault();
@@ -1835,6 +2150,15 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
   }, { passive: false });
 
   document.addEventListener('touchend', function (event) {
+    var completedImageLongPress = imageLongPressTriggered;
+    cancelImageLongPress();
+    imageLongPressTriggered = false;
+    if (completedImageLongPress) {
+      event.preventDefault();
+      touchPaging = false;
+      state.suppressClickUntil = Date.now() + 700;
+      return;
+    }
     var activePopover = document.getElementById('lumi-footnote-popover');
     var insidePopover = event.target && event.target.closest && event.target.closest('#lumi-footnote-popover');
     if (insidePopover) { touchPaging = false; return; }
@@ -1898,12 +2222,10 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
       return;
     }
     if (wasPaging && state.transition !== 'fade' && state.transition !== 'none') snapBackPage();
-    if (imageTap && (!window.getSelection || window.getSelection().isCollapsed)) {
-      if (postImagePreview(tappedImage)) {
-        pageStageDurationOverride = 0;
-        state.suppressClickUntil = Date.now() + 450;
-        return;
-      }
+    if (imageTap) {
+      pageStageDurationOverride = 0;
+      state.suppressClickUntil = Date.now() + 450;
+      return;
     }
     if (isTap && (!window.getSelection || window.getSelection().isCollapsed)) {
       var ratio = touch.clientX / viewportWidth();
@@ -1925,12 +2247,27 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
   }, { passive: false });
 
   document.addEventListener('touchcancel', function () {
+    cancelImageLongPress();
+    imageLongPressTriggered = false;
     if (touchPaging && state.flow === 'paginated' && state.transition !== 'fade' && state.transition !== 'none') snapBackPage();
     else pageStageDurationOverride = 0;
     touchPaging = false;
   }, { passive: true });
 
   document.addEventListener('submit', function (event) { event.preventDefault(); }, true);
+
+  document.addEventListener('contextmenu', function (event) {
+    var image = imageFromTarget(event.target);
+    if (!image) return;
+    event.preventDefault();
+    event.stopPropagation();
+    cancelImageLongPress();
+    if (!imageLongPressTriggered && postImagePreview(image)) {
+      imageLongPressTriggered = true;
+      clearDocumentSelection();
+      state.suppressClickUntil = Date.now() + 700;
+    }
+  }, true);
 
   document.addEventListener('click', function (event) {
     if (Date.now() < state.suppressClickUntil) { event.preventDefault(); return; }
@@ -1944,7 +2281,7 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
       return;
     }
     var tappedImage = imageFromTarget(event.target);
-    if (tappedImage && postImagePreview(tappedImage)) {
+    if (tappedImage) {
       event.preventDefault();
       event.stopPropagation();
       return;
@@ -1991,6 +2328,16 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
         return;
       }
       var range = selection.getRangeAt(0);
+      var selectedText = selection.toString();
+      var selectionIndex = textIndex();
+      var selectionStart = textOffsetForBoundary(selectionIndex, range.startContainer, range.startOffset);
+      var selectionEnd = textOffsetForBoundary(selectionIndex, range.endContainer, range.endOffset);
+      var selectionQuote = {
+        index: selectionIndex,
+        quoteStart: selectionStart,
+        quoteEnd: selectionEnd,
+        exact: selectedText
+      };
       var width = viewportWidth();
       var height = viewportHeight();
       var rects = Array.prototype.slice.call(range.getClientRects()).filter(function (item) {
@@ -2011,9 +2358,13 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
       var top = Math.max(0, Math.min(height, bounds.top));
       var bottom = Math.max(top, Math.min(height, bounds.bottom));
       post('selection', {
-        text: selection.toString(),
-        start: locator(range.startContainer, range.startOffset),
-        end: locator(range.endContainer, range.endOffset),
+        text: selectedText,
+        start: locator(range.startContainer, range.startOffset, Object.assign({}, selectionQuote, {
+          textPosition: selectionStart
+        })),
+        end: locator(range.endContainer, range.endOffset, Object.assign({}, selectionQuote, {
+          textPosition: selectionEnd
+        })),
         x: (left + right) / 2,
         y: (top + bottom) / 2,
         left: left,
@@ -2100,6 +2451,7 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     currentLocator: currentLocator,
     setHighlights: setHighlights,
     findText: findText,
+    clearSearchHighlight: clearSearchHighlight,
     pageText: pageText,
     visibleText: function () { return document.body ? document.body.innerText : ''; },
     setTransition: function (transition) {

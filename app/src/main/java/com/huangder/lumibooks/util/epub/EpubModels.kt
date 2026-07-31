@@ -56,10 +56,20 @@ data class EpubLocator(
     val href: String,
     val domPath: List<Int> = emptyList(),
     val textOffset: Int = 0,
+    val textPosition: Int = 0,
+    val textLength: Int = 0,
     val exact: String = "",
     val prefix: String = "",
     val suffix: String = "",
     val progression: Float = 0f
+)
+
+data class EpubSearchMatch(
+    val chapterIndex: Int,
+    val charOffset: Int,
+    val matchLength: Int,
+    val context: String,
+    val locator: EpubLocator
 )
 
 data class EpubPageState(
@@ -86,4 +96,11 @@ data class EpubResource(val path: String, val mediaType: String, val bytes: Byte
 
 interface EpubRenderSource {
     fun openRenderSession(): EpubRenderSession
+}
+
+interface EpubSearchSource {
+    suspend fun searchEpub(
+        query: String,
+        maxResults: Int = 200
+    ): List<EpubSearchMatch>
 }

@@ -63,29 +63,25 @@ fun LiquidGlassButton(
             color.copy(alpha = 0.72f)
         }
     } ?: AppColors.CardBg.copy(alpha = 0.24f)
-    val diffuseShadow = if (tintedColor == null) {
-        Modifier.shadow(
-            elevation = if (prominentShadow) 20.dp else 16.dp,
-            shape = shape,
-            clip = false,
-            ambientColor = Color.Black.copy(
-                alpha = if (isDark) {
-                    if (prominentShadow) 0.24f else 0.18f
-                } else {
-                    if (prominentShadow) 0.15f else 0.10f
-                }
-            ),
-            spotColor = Color.Black.copy(
-                alpha = if (isDark) {
-                    if (prominentShadow) 0.21f else 0.16f
-                } else {
-                    if (prominentShadow) 0.12f else 0.08f
-                }
-            )
+    val diffuseShadow = Modifier.shadow(
+        elevation = if (prominentShadow) 28.dp else 22.dp,
+        shape = shape,
+        clip = false,
+        ambientColor = Color.Black.copy(
+            alpha = if (isDark) {
+                if (prominentShadow) 0.16f else 0.12f
+            } else {
+                if (prominentShadow) 0.10f else 0.07f
+            }
+        ),
+        spotColor = Color.Black.copy(
+            alpha = if (isDark) {
+                if (prominentShadow) 0.14f else 0.10f
+            } else {
+                if (prominentShadow) 0.09f else 0.06f
+            }
         )
-    } else {
-        Modifier
-    }
+    )
     LiquidGlassSurface(
         shape = shape,
         fallbackColor = tintedColor ?: AppColors.CardBg,

@@ -319,7 +319,10 @@ class JustifiedTextView @JvmOverloads constructor(
                 )
                 val backgroundColor = s.getSpans(idx, idx + 1, ReaderSearchHighlightSpan::class.java)
                     .lastOrNull()
-                    ?.let { span -> (span.alpha shl 24) or 0x00FFE082 }
+                    ?.color
+                    ?: s.getSpans(idx, idx + 1, ReaderHighlightSpan::class.java)
+                        .lastOrNull()
+                        ?.color
                     ?: s.getSpans(idx, idx + 1, BackgroundColorSpan::class.java)
                         .lastOrNull()
                         ?.backgroundColor

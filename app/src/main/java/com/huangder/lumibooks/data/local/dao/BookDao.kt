@@ -8,6 +8,7 @@ import androidx.room.Transaction
 import androidx.room.Upsert
 import androidx.room.Update
 import com.huangder.lumibooks.data.local.entity.BookEntity
+import com.huangder.lumibooks.data.local.model.ContinueReadingWidgetData
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -17,6 +18,18 @@ interface BookDao {
 
     @Query("SELECT * FROM books WHERE id = :bookId")
     suspend fun getBookById(bookId: String): BookEntity?
+
+    @Query(
+        "SELECT id AS bookId, title, author, coverPath, readingProgress " +
+            "FROM books ORDER BY lastReadTime DESC LIMIT 1"
+    )
+    suspend fun getContinueReadingWidgetData(): ContinueReadingWidgetData?
+
+    @Query(
+        "SELECT id AS bookId, title, author, coverPath, readingProgress " +
+            "FROM books ORDER BY lastReadTime DESC LIMIT 1"
+    )
+    fun observeContinueReadingWidgetData(): Flow<ContinueReadingWidgetData?>
 
     @Query("SELECT * FROM books WHERE title LIKE '%' || :query || '%' OR author LIKE '%' || :query || '%'")
     fun searchBooks(query: String): Flow<List<BookEntity>>

@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.ui.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -13,6 +14,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CheckCircle
@@ -22,6 +25,7 @@ import androidx.compose.material.icons.outlined.NetworkCheck
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -40,12 +44,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.WebdavConfig
+import com.huangder.lumibooks.domain.model.WebdavSyncContent
 import com.huangder.lumibooks.ui.components.LiquidGlassButton
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
@@ -99,6 +105,11 @@ fun WebdavSettingsDetail(
             WebdavSyncModeSelector(
                 selectedMode = config.syncMode,
                 onModeChange = { viewModel.saveWebdavSyncMode(it) }
+            )
+
+            WebdavSyncContentSelector(
+                config = config,
+                onContentChange = viewModel::setWebdavSyncContent
             )
 
             WebdavSecondaryButton(
@@ -156,7 +167,13 @@ fun WebdavConfigurationDetail(
             enabled = true,
             serverUrl = draftServerUrl.trim(),
             username = draftUsername.trim(),
-            syncPath = draftSyncPath.trim().ifEmpty { "LumiBooks" }
+            syncPath = draftSyncPath.trim().ifEmpty { "LumiBooks" },
+            lastSyncTime = currentConfig.lastSyncTime,
+            syncMode = currentConfig.syncMode,
+            syncBookFiles = currentConfig.syncBookFiles,
+            syncReadingRecords = currentConfig.syncReadingRecords,
+            syncBookmarks = currentConfig.syncBookmarks,
+            syncNotes = currentConfig.syncNotes
         )
         viewModel.enableWebdav(config, password)
         onSaved()
@@ -447,6 +464,126 @@ private fun WebdavSyncModeSelector(
                 selected = selectedMode == "manual",
                 onClick = { onModeChange("manual") },
                 modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun WebdavSyncContentSelector(
+    config: WebdavConfig,
+    onContentChange: (WebdavSyncContent, Boolean) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(AppRadius.md))
+            .background(AppColors.CardBg)
+            .padding(vertical = AppSpace.sm)
+    ) {
+        Text(
+            text = stringResource(R.string.webdav_sync_content_title),
+            fontSize = AppType.BodySmall,
+            fontWeight = FontWeight.SemiBold,
+            color = AppColors.TextPrimary,
+            modifier = Modifier.padding(horizontal = AppSpace.md, vertical = AppSpace.xs)
+        )
+        Text(
+            text = stringResource(R.string.webdav_sync_content_description),
+            fontSize = AppType.Caption,
+            color = AppColors.TextSecondary,
+            modifier = Modifier.padding(
+                start = AppSpace.md,
+                end = AppSpace.md,
+                bottom = AppSpace.sm
+            )
+        )
+        WebdavSyncContentRow(
+            title = stringResource(R.string.webdav_sync_content_books),
+            description = stringResource(R.string.webdav_sync_content_books_description),
+            checked = config.syncBookFiles,
+            onCheckedChange = { onContentChange(WebdavSyncContent.BOOK_FILES, it) }
+        )
+        WebdavSyncContentRow(
+            title = stringResource(R.string.webdav_sync_content_reading_records),
+            description = stringResource(R.string.webdav_sync_content_reading_records_description),
+            checked = config.syncReadingRecords,
+            onCheckedChange = { onContentChange(WebdavSyncContent.READING_RECORDS, it) }
+        )
+        WebdavSyncContentRow(
+            title = stringResource(R.string.webdav_sync_content_bookmarks),
+            description = stringResource(R.string.webdav_sync_content_bookmarks_description),
+            checked = config.syncBookmarks,
+            onCheckedChange = { onContentChange(WebdavSyncContent.BOOKMARKS, it) }
+        )
+        WebdavSyncContentRow(
+            title = stringResource(R.string.webdav_sync_content_notes),
+            description = stringResource(R.string.webdav_sync_content_notes_description),
+            checked = config.syncNotes,
+            onCheckedChange = { onContentChange(WebdavSyncContent.NOTES, it) }
+        )
+    }
+}
+
+@Composable
+private fun WebdavSyncContentRow(
+    title: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .toggleable(
+                value = checked,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                role = Role.Checkbox,
+                onValueChange = onCheckedChange
+            )
+            .padding(
+                start = AppSpace.md,
+                end = AppSpace.sm,
+                top = AppSpace.xs,
+                bottom = AppSpace.xs
+            ),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(24.dp)
+                .clip(CircleShape)
+                .background(if (checked) AppColors.Accent else Color.Transparent)
+                .then(
+                    if (checked) Modifier else Modifier.border(
+                        width = 1.5.dp,
+                        color = AppColors.TextSecondary,
+                        shape = CircleShape
+                    )
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            if (checked) {
+                Icon(
+                    imageVector = Icons.Rounded.Check,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+        Spacer(Modifier.width(AppSpace.lg))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                fontSize = AppType.Body,
+                color = AppColors.TextPrimary
+            )
+            Text(
+                text = description,
+                fontSize = AppType.Caption,
+                color = AppColors.TextSecondary
             )
         }
     }

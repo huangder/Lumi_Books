@@ -11,12 +11,29 @@ data class WebdavConfig(
     val username: String = "",
     val syncPath: String = "LumiBooks", // root directory on WebDAV server
     val lastSyncTime: Long = 0,         // epoch millis
-    val syncMode: String = "auto"       // "auto" | "manual"
+    val syncMode: String = "auto",      // "auto" | "manual"
+    val syncBookFiles: Boolean = true,
+    val syncReadingRecords: Boolean = true,
+    val syncBookmarks: Boolean = true,
+    val syncNotes: Boolean = true
 ) {
+    val syncsBookData: Boolean
+        get() = syncReadingRecords || syncBookmarks || syncNotes
+
+    val hasSelectedContent: Boolean
+        get() = syncBookFiles || syncsBookData
+
     /** Remove leading/trailing whitespace and trailing slashes from serverUrl. */
     fun normalized(): WebdavConfig = copy(
         serverUrl = serverUrl.trim().trimEnd('/'),
         username = username.trim(),
         syncPath = syncPath.trim().trimEnd('/').ifEmpty { "LumiBooks" }
     )
+}
+
+enum class WebdavSyncContent {
+    BOOK_FILES,
+    READING_RECORDS,
+    BOOKMARKS,
+    NOTES
 }

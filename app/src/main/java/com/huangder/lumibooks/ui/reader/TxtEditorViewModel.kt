@@ -21,6 +21,7 @@ import com.huangder.lumibooks.util.parser.applyTxtEditOperations
 import com.huangder.lumibooks.util.parser.findTxtLiteralMatches
 import com.huangder.lumibooks.util.parser.replaceTxtLiteral
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
@@ -35,6 +36,125 @@ import javax.inject.Inject
 enum class TxtEditorSheetMode { SEARCH, REPLACE }
 
 enum class TxtSearchScope { CHAPTER, BOOK }
+
+private val TXT_ENTRY_SENTENCE_ENDINGS = setOf(
+    '.', '!', '?',
+    '\u3002', '\uff01', '\uff1f', '\u2026'
+)
+
+private val TXT_ENTRY_SENTENCE_CLOSERS = setOf(
+    '"', '\'',
+    '\u201d', '\u2019', '\u300d', '\u300f', '\u300b', '\uff09', '\u3011', ')', ']'
+)
+
+internal fun findTxtEntrySentenceRange(text: String, charOffset: Int): IntRange? {
+    if (text.isEmpty()) return null
+    var start = charOffset.coerceIn(0, text.length)
+    while (start < text.length && text[start].isWhitespace()) start++
+    if (start >= text.length) return null
+
+    var endExclusive = start
+    while (endExclusive < text.length) {
+        val character = text[endExclusive]
+        if (character == '\n' || character == '\r') break
+        endExclusive++
+
+        val decimalPoint = character == '.' &&
+            endExclusive - 2 >= start && text[endExclusive - 2].isDigit() &&
+            endExclusive < text.length && text[endExclusive].isDigit()
+        if (character in TXT_ENTRY_SENTENCE_ENDINGS && !decimalPoint) {
+            while (endExclusive < text.length && text[endExclusive] == character) {
+                endExclusive++
+            }
+            while (endExclusive < text.length && text[endExclusive] in TXT_ENTRY_SENTENCE_CLOSERS) {
+                endExclusive++
+            }
+            break
+        }
+    }
+    while (endExclusive > start && text[endExclusive - 1].isWhitespace()) endExclusive--
+    return if (endExclusive > start) start until endExclusive else null
+}
+
+internal enum class TxtEditorSearchDirection { NEXT, PREVIOUS }
+
+internal data class TxtEditorSearchScanResult(
+    val match: TxtEditorMatch?,
+    val ordinal: Int,
+    val total: Int
+)
+
+internal suspend fun scanTxtEditorMatches(
+    chapterCount: Int,
+    activeChapter: Int,
+    scope: TxtSearchScope,
+    query: String,
+    ignoreCase: Boolean,
+    direction: TxtEditorSearchDirection,
+    anchorChapter: Int,
+    anchorOffset: Int,
+    readChapter: suspend (Int) -> String,
+    onProgress: suspend (Float) -> Unit = {}
+): TxtEditorSearchScanResult {
+    if (query.isEmpty() || chapterCount <= 0) {
+        return TxtEditorSearchScanResult(null, 0, 0)
+    }
+    val chapterIndices = if (scope == TxtSearchScope.CHAPTER) {
+        listOf(activeChapter.coerceIn(0, chapterCount - 1))
+    } else {
+        (0 until chapterCount).toList()
+    }
+    var total = 0
+    var first: TxtEditorMatch? = null
+    var firstOrdinal = 0
+    var last: TxtEditorMatch? = null
+    var lastOrdinal = 0
+    var forward: TxtEditorMatch? = null
+    var forwardOrdinal = 0
+    var backward: TxtEditorMatch? = null
+    var backwardOrdinal = 0
+
+    chapterIndices.forEachIndexed { position, chapterIndex ->
+        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+        val text = readChapter(chapterIndex)
+        findTxtLiteralMatches(text, query, ignoreCase).forEach { match ->
+            total++
+            val editorMatch = TxtEditorMatch(chapterIndex, match.start, match.endExclusive)
+            if (first == null) {
+                first = editorMatch
+                firstOrdinal = total
+            }
+            last = editorMatch
+            lastOrdinal = total
+            val isAtOrAfterAnchor = chapterIndex > anchorChapter ||
+                (chapterIndex == anchorChapter && match.start >= anchorOffset)
+            if (isAtOrAfterAnchor && forward == null) {
+                forward = editorMatch
+                forwardOrdinal = total
+            }
+            val isBeforeAnchor = chapterIndex < anchorChapter ||
+                (chapterIndex == anchorChapter && match.start < anchorOffset)
+            if (isBeforeAnchor) {
+                backward = editorMatch
+                backwardOrdinal = total
+            }
+        }
+        onProgress((position + 1).toFloat() / chapterIndices.size.coerceAtLeast(1))
+    }
+
+    val selected = when (direction) {
+        TxtEditorSearchDirection.NEXT -> forward ?: first
+        TxtEditorSearchDirection.PREVIOUS -> backward ?: last
+    }
+    val ordinal = when {
+        selected == null -> 0
+        selected == forward -> forwardOrdinal
+        selected == backward -> backwardOrdinal
+        selected == last -> lastOrdinal
+        else -> firstOrdinal
+    }
+    return TxtEditorSearchScanResult(selected, ordinal, total)
+}
 
 data class TxtEditorMatch(
     val chapterIndex: Int,
@@ -53,6 +173,7 @@ data class TxtEditorUiState(
     val chapterRevision: Int = 0,
     val targetSelectionStart: Int = 0,
     val targetSelectionEnd: Int = 0,
+    val initialRevealRange: IntRange? = null,
     val restoreScrollPosition: Int = 0,
     val sheetMode: TxtEditorSheetMode? = null,
     val searchQuery: String = "",
@@ -61,6 +182,7 @@ data class TxtEditorUiState(
     val matchCase: Boolean = false,
     val isSearching: Boolean = false,
     val searchProgress: Float = 0f,
+    val searchFailed: Boolean = false,
     val currentMatch: TxtEditorMatch? = null,
     val currentMatchOrdinal: Int = 0,
     val totalMatches: Int = 0,
@@ -81,6 +203,8 @@ class TxtEditorViewModel @Inject constructor(
     private val bookId: String = savedStateHandle.get<String>("bookId") ?: ""
     private val initialChapterIndex: Int = savedStateHandle.get<Int>("chapterIndex") ?: 0
     private val initialCharOffset: Int = savedStateHandle.get<Int>("charOffset") ?: 0
+    private val revealReadingPosition: Boolean =
+        savedStateHandle.get<Boolean>("revealReadingPosition") ?: false
 
     private val _uiState = MutableStateFlow(TxtEditorUiState())
     val uiState: StateFlow<TxtEditorUiState> = _uiState.asStateFlow()
@@ -118,6 +242,11 @@ class TxtEditorViewModel @Inject constructor(
                     txtParser.getChapterContent(chapterIndex).toString()
                 }
                 val cursor = initialCharOffset.coerceIn(0, text.length)
+                val initialRevealRange = if (revealReadingPosition) {
+                    findTxtEntrySentenceRange(text, cursor)
+                } else {
+                    null
+                }
                 cursorPositions[chapterIndex] = cursor
                 _uiState.value = TxtEditorUiState(
                     isLoading = false,
@@ -128,7 +257,8 @@ class TxtEditorViewModel @Inject constructor(
                     chapterText = text,
                     chapterRevision = 1,
                     targetSelectionStart = cursor,
-                    targetSelectionEnd = cursor
+                    targetSelectionEnd = cursor,
+                    initialRevealRange = initialRevealRange
                 )
             } catch (error: Exception) {
                 _uiState.value = _uiState.value.copy(
@@ -157,7 +287,8 @@ class TxtEditorViewModel @Inject constructor(
             currentMatchOrdinal = 0,
             totalMatches = 0,
             isSearching = false,
-            searchProgress = 0f
+            searchProgress = 0f,
+            searchFailed = false
         )
     }
 
@@ -177,12 +308,26 @@ class TxtEditorViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(matchCase = enabled)
     }
 
+    fun markSearchPending() {
+        if (_uiState.value.searchQuery.isBlank()) return
+        _uiState.value = _uiState.value.copy(
+            isSearching = true,
+            searchProgress = 0f,
+            searchFailed = false
+        )
+    }
+
     fun consumeReplaceCount() {
         _uiState.value = _uiState.value.copy(lastReplaceCount = null)
     }
 
     fun clearError() {
         _uiState.value = _uiState.value.copy(errorMessage = null)
+    }
+
+    fun consumeInitialReveal() {
+        if (_uiState.value.initialRevealRange == null) return
+        _uiState.value = _uiState.value.copy(initialRevealRange = null)
     }
 
     fun invalidateSearchResult() {
@@ -210,14 +355,14 @@ class TxtEditorViewModel @Inject constructor(
 
     fun search(currentText: String, cursor: Int) {
         commitCurrent(currentText, cursor, scrollPositions[_uiState.value.chapterIndex] ?: 0)
-        startSearch(SearchDirection.NEXT, _uiState.value.chapterIndex, cursor)
+        startSearch(TxtEditorSearchDirection.NEXT, _uiState.value.chapterIndex, cursor)
     }
 
     fun findNext(currentText: String, cursor: Int) {
         commitCurrent(currentText, cursor, scrollPositions[_uiState.value.chapterIndex] ?: 0)
         val match = _uiState.value.currentMatch
         startSearch(
-            direction = SearchDirection.NEXT,
+            direction = TxtEditorSearchDirection.NEXT,
             anchorChapter = match?.chapterIndex ?: _uiState.value.chapterIndex,
             anchorOffset = match?.endExclusive ?: cursor
         )
@@ -227,7 +372,7 @@ class TxtEditorViewModel @Inject constructor(
         commitCurrent(currentText, cursor, scrollPositions[_uiState.value.chapterIndex] ?: 0)
         val match = _uiState.value.currentMatch
         startSearch(
-            direction = SearchDirection.PREVIOUS,
+            direction = TxtEditorSearchDirection.PREVIOUS,
             anchorChapter = match?.chapterIndex ?: _uiState.value.chapterIndex,
             anchorOffset = match?.start ?: cursor
         )
@@ -254,7 +399,7 @@ class TxtEditorViewModel @Inject constructor(
             lastReplaceCount = 1
         )
         startSearch(
-            SearchDirection.NEXT,
+            TxtEditorSearchDirection.NEXT,
             state.chapterIndex,
             match.start + state.replacementText.length
         )
@@ -314,7 +459,7 @@ class TxtEditorViewModel @Inject constructor(
                 lastReplaceCount = count
             )
         }
-        startSearch(SearchDirection.NEXT, state.chapterIndex, cursor)
+        startSearch(TxtEditorSearchDirection.NEXT, state.chapterIndex, cursor)
     }
 
     fun updatePosition(cursor: Int, scrollPosition: Int) {
@@ -339,25 +484,50 @@ class TxtEditorViewModel @Inject constructor(
         searchJob?.cancel()
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isSaving = true, errorMessage = null)
-            val annotationMigration = withContext(Dispatchers.IO) {
-                prepareAnnotationMigration(txtParser, snapshot)
-            }
-            val result = withContext(Dispatchers.IO) {
-                txtParser.rewriteWithOperations(snapshot)
-            }
-            if (result.success) {
-                runCatching {
+            try {
+                val annotationMigration = try {
                     withContext(Dispatchers.IO) {
-                        applyAnnotationMigration(txtParser, annotationMigration)
+                        prepareAnnotationMigration(txtParser, snapshot)
                     }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    null
                 }
-                operations.clear()
-                _uiState.value = _uiState.value.copy(isSaving = false)
-                onSuccess()
-            } else {
+
+                val result = withContext(Dispatchers.IO) {
+                    // The reader reparses after this Activity closes. Rebuilding the whole index
+                    // here makes large TXT saves unnecessarily slow and can misreport a completed
+                    // file write as failed when only the follow-up parse fails.
+                    txtParser.rewriteWithOperations(snapshot, reparseAfterWrite = false)
+                }
+                if (result.success) {
+                    if (annotationMigration != null) {
+                        try {
+                            withContext(Dispatchers.IO) {
+                                applyAnnotationMigration(annotationMigration)
+                            }
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            // Annotation migration is best effort and must not invalidate a saved file.
+                        }
+                    }
+                    operations.clear()
+                    _uiState.value = _uiState.value.copy(isSaving = false)
+                    onSuccess()
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        isSaving = false,
+                        errorMessage = "保存失败：${result.errorMessage.orEmpty()}"
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isSaving = false,
-                    errorMessage = "保存失败：${result.errorMessage.orEmpty()}"
+                    errorMessage = "保存失败：${error.message ?: error.javaClass.simpleName}"
                 )
             }
         }
@@ -400,13 +570,14 @@ class TxtEditorViewModel @Inject constructor(
                 targetSelectionStart = start.coerceIn(0, text.length),
                 targetSelectionEnd = end.coerceIn(0, text.length),
                 restoreScrollPosition = scrollPositions[chapterIndex] ?: 0,
-                currentMatch = revealMatch
+                currentMatch = revealMatch,
+                initialRevealRange = null
             )
         }
     }
 
     private fun startSearch(
-        direction: SearchDirection,
+        direction: TxtEditorSearchDirection,
         anchorChapter: Int,
         anchorOffset: Int
     ) {
@@ -424,144 +595,92 @@ class TxtEditorViewModel @Inject constructor(
         val ignoreCase = !state.matchCase
         val activeChapter = state.chapterIndex
         searchJob = viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isSearching = true, searchProgress = 0f)
-            val result = withContext(Dispatchers.IO) {
-                scanMatches(
-                    txtParser = txtParser,
-                    operations = operationSnapshot,
-                    query = query,
-                    ignoreCase = ignoreCase,
-                    scope = scope,
-                    activeChapter = activeChapter,
-                    direction = direction,
-                    anchorChapter = anchorChapter,
-                    anchorOffset = anchorOffset,
-                    onProgress = { progress ->
-                        if (generation == searchGeneration) {
-                            _uiState.value = _uiState.value.copy(searchProgress = progress)
+            _uiState.value = _uiState.value.copy(
+                isSearching = true,
+                searchProgress = 0f,
+                searchFailed = false
+            )
+            try {
+                var lastReportedProgress = -1f
+                val result = withContext(Dispatchers.IO) {
+                    scanTxtEditorMatches(
+                        chapterCount = txtParser.getChapterCount(),
+                        activeChapter = activeChapter,
+                        query = query,
+                        ignoreCase = ignoreCase,
+                        scope = scope,
+                        direction = direction,
+                        anchorChapter = anchorChapter,
+                        anchorOffset = anchorOffset,
+                        readChapter = { chapterIndex ->
+                            applyTxtEditOperations(
+                                chapterIndex,
+                                txtParser.getChapterContent(chapterIndex).toString(),
+                                operationSnapshot
+                            )
+                        },
+                        onProgress = { progress ->
+                            if (generation == searchGeneration &&
+                                (progress >= 1f || progress - lastReportedProgress >= 0.01f)
+                            ) {
+                                lastReportedProgress = progress
+                                _uiState.value = _uiState.value.copy(searchProgress = progress)
+                            }
                         }
-                    }
-                )
-            }
-            if (generation != searchGeneration) return@launch
-            val match = result.match
-            if (match == null) {
+                    )
+                }
+                if (generation != searchGeneration) return@launch
+                val match = result.match
+                if (match == null) {
+                    _uiState.value = _uiState.value.copy(
+                        isSearching = false,
+                        searchProgress = 1f,
+                        searchFailed = false,
+                        currentMatch = null,
+                        currentMatchOrdinal = 0,
+                        totalMatches = 0
+                    )
+                    return@launch
+                }
+
+                val text = withContext(Dispatchers.IO) {
+                    applyTxtEditOperations(
+                        match.chapterIndex,
+                        txtParser.getChapterContent(match.chapterIndex).toString(),
+                        operationSnapshot
+                    )
+                }
+                if (generation != searchGeneration) return@launch
                 _uiState.value = _uiState.value.copy(
                     isSearching = false,
                     searchProgress = 1f,
-                    currentMatch = null,
-                    currentMatchOrdinal = 0,
-                    totalMatches = 0
+                    searchFailed = false,
+                    chapterIndex = match.chapterIndex,
+                    chapterTitle = chapterTitles.getOrElse(match.chapterIndex) { "" },
+                    chapterText = text,
+                    chapterRevision = _uiState.value.chapterRevision + 1,
+                    targetSelectionStart = match.start,
+                    targetSelectionEnd = match.endExclusive,
+                    restoreScrollPosition = scrollPositions[match.chapterIndex] ?: 0,
+                    currentMatch = match,
+                    currentMatchOrdinal = result.ordinal,
+                    totalMatches = result.total
                 )
-                return@launch
-            }
-
-            val text = withContext(Dispatchers.IO) {
-                applyTxtEditOperations(
-                    match.chapterIndex,
-                    txtParser.getChapterContent(match.chapterIndex).toString(),
-                    operationSnapshot
-                )
-            }
-            _uiState.value = _uiState.value.copy(
-                isSearching = false,
-                searchProgress = 1f,
-                chapterIndex = match.chapterIndex,
-                chapterTitle = chapterTitles.getOrElse(match.chapterIndex) { "" },
-                chapterText = text,
-                chapterRevision = _uiState.value.chapterRevision + 1,
-                targetSelectionStart = match.start,
-                targetSelectionEnd = match.endExclusive,
-                restoreScrollPosition = scrollPositions[match.chapterIndex] ?: 0,
-                currentMatch = match,
-                currentMatchOrdinal = result.ordinal,
-                totalMatches = result.total
-            )
-        }
-    }
-
-    private suspend fun scanMatches(
-        txtParser: TxtParser,
-        operations: List<TxtEditOperation>,
-        query: String,
-        ignoreCase: Boolean,
-        scope: TxtSearchScope,
-        activeChapter: Int,
-        direction: SearchDirection,
-        anchorChapter: Int,
-        anchorOffset: Int,
-        onProgress: (Float) -> Unit
-    ): SearchScanResult {
-        val chapterIndices = if (scope == TxtSearchScope.CHAPTER) {
-            listOf(activeChapter)
-        } else {
-            (0 until txtParser.getChapterCount()).toList()
-        }
-        var total = 0
-        var first: TxtEditorMatch? = null
-        var firstOrdinal = 0
-        var forward: TxtEditorMatch? = null
-        var forwardOrdinal = 0
-        var backward: TxtEditorMatch? = null
-        var backwardOrdinal = 0
-
-        chapterIndices.forEachIndexed { position, chapterIndex ->
-            kotlinx.coroutines.currentCoroutineContext().ensureActive()
-            val text = applyTxtEditOperations(
-                chapterIndex,
-                txtParser.getChapterContent(chapterIndex).toString(),
-                operations
-            )
-            findTxtLiteralMatches(text, query, ignoreCase).forEach { match ->
-                total++
-                val editorMatch = TxtEditorMatch(chapterIndex, match.start, match.endExclusive)
-                if (first == null) {
-                    first = editorMatch
-                    firstOrdinal = total
-                }
-                val isAtOrAfterAnchor = chapterIndex > anchorChapter ||
-                    (chapterIndex == anchorChapter && match.start >= anchorOffset)
-                if (isAtOrAfterAnchor && forward == null) {
-                    forward = editorMatch
-                    forwardOrdinal = total
-                }
-                val isBeforeAnchor = chapterIndex < anchorChapter ||
-                    (chapterIndex == anchorChapter && match.start < anchorOffset)
-                if (isBeforeAnchor) {
-                    backward = editorMatch
-                    backwardOrdinal = total
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (generation == searchGeneration) {
+                    _uiState.value = _uiState.value.copy(
+                        isSearching = false,
+                        searchProgress = 0f,
+                        searchFailed = true,
+                        currentMatch = null,
+                        currentMatchOrdinal = 0,
+                        totalMatches = 0
+                    )
                 }
             }
-            onProgress((position + 1).toFloat() / chapterIndices.size.coerceAtLeast(1))
         }
-
-        val selected = when (direction) {
-            SearchDirection.NEXT -> forward ?: first
-            SearchDirection.PREVIOUS -> backward ?: if (total > 0) {
-                var last: TxtEditorMatch? = null
-                chapterIndices.asReversed().forEach { chapterIndex ->
-                    if (last == null) {
-                        val text = applyTxtEditOperations(
-                            chapterIndex,
-                            txtParser.getChapterContent(chapterIndex).toString(),
-                            operations
-                        )
-                        findTxtLiteralMatches(text, query, ignoreCase).lastOrNull()?.let {
-                            last = TxtEditorMatch(chapterIndex, it.start, it.endExclusive)
-                        }
-                    }
-                }
-                last
-            } else null
-        }
-        val ordinal = when {
-            selected == null -> 0
-            selected == forward -> forwardOrdinal
-            selected == backward -> backwardOrdinal
-            direction == SearchDirection.PREVIOUS -> total
-            else -> firstOrdinal
-        }
-        return SearchScanResult(selected, ordinal, total)
     }
 
     private fun cancelSearch(clearResult: Boolean) {
@@ -571,6 +690,7 @@ class TxtEditorViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(
             isSearching = false,
             searchProgress = 0f,
+            searchFailed = false,
             currentMatch = if (clearResult) null else _uiState.value.currentMatch,
             currentMatchOrdinal = if (clearResult) 0 else _uiState.value.currentMatchOrdinal,
             totalMatches = if (clearResult) 0 else _uiState.value.totalMatches
@@ -592,6 +712,7 @@ class TxtEditorViewModel @Inject constructor(
         val unreliableChapters = operationSnapshot.filterIsInstance<TxtSetChapterText>()
             .mapTo(mutableSetOf()) { it.chapterIndex }
         val stepsByChapter = mutableMapOf<Int, List<OffsetMigrationStep>>()
+        val updatedTextsByChapter = mutableMapOf<Int, String>()
         annotatedChapters.forEach { chapterIndex ->
             if (chapterIndex !in 0 until txtParser.getChapterCount() ||
                 chapterIndex in unreliableChapters
@@ -637,28 +758,25 @@ class TxtEditorViewModel @Inject constructor(
                     }
                 }
             }
-            if (steps.isNotEmpty()) stepsByChapter[chapterIndex] = steps
+            if (steps.isNotEmpty()) {
+                stepsByChapter[chapterIndex] = steps
+                updatedTextsByChapter[chapterIndex] = text
+            }
         }
         return AnnotationMigration(
-            originalChapterCount = txtParser.getChapterCount(),
             notes = notes,
             bookmarks = bookmarks,
-            stepsByChapter = stepsByChapter
+            stepsByChapter = stepsByChapter,
+            updatedTextsByChapter = updatedTextsByChapter
         )
     }
 
-    private suspend fun applyAnnotationMigration(
-        txtParser: TxtParser,
-        migration: AnnotationMigration?
-    ) {
-        migration ?: return
-        if (txtParser.getChapterCount() != migration.originalChapterCount) return
-
+    private suspend fun applyAnnotationMigration(migration: AnnotationMigration) {
         migration.notes.forEach { note ->
             val steps = migration.stepsByChapter[note.chapterIndex] ?: return@forEach
             val start = mapOffset(note.startPosition, steps, endBias = false)
             val end = mapOffset(note.endPosition, steps, endBias = true).coerceAtLeast(start)
-            val updatedText = txtParser.getChapterContent(note.chapterIndex).toString()
+            val updatedText = migration.updatedTextsByChapter[note.chapterIndex] ?: return@forEach
             val safeStart = start.coerceIn(0, updatedText.length)
             val safeEnd = end.coerceIn(safeStart, updatedText.length)
             readingRepository.updateNote(
@@ -712,23 +830,15 @@ class TxtEditorViewModel @Inject constructor(
         super.onCleared()
     }
 
-    private enum class SearchDirection { NEXT, PREVIOUS }
-
-    private data class SearchScanResult(
-        val match: TxtEditorMatch?,
-        val ordinal: Int,
-        val total: Int
-    )
-
     private data class OffsetMigrationStep(
         val matches: List<TxtTextMatch>,
         val replacementLength: Int
     )
 
     private data class AnnotationMigration(
-        val originalChapterCount: Int,
         val notes: List<Note>,
         val bookmarks: List<Bookmark>,
-        val stepsByChapter: Map<Int, List<OffsetMigrationStep>>
+        val stepsByChapter: Map<Int, List<OffsetMigrationStep>>,
+        val updatedTextsByChapter: Map<Int, String>
     )
 }

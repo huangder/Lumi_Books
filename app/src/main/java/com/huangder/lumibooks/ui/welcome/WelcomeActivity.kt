@@ -40,6 +40,7 @@ class WelcomeActivity : ComponentActivity() {
     companion object {
         const val EXTRA_DEBUG_PREVIEW_LANGUAGE_SETUP = "debug_preview_language_setup"
         const val EXTRA_DEBUG_PREVIEW_POLICY_DOCUMENT = "debug_preview_policy_document"
+        const val EXTRA_DEBUG_PREVIEW_SUPPORT_WELCOME = "debug_preview_support_welcome"
     }
 
     override fun attachBaseContext(newBase: android.content.Context) {
@@ -61,7 +62,11 @@ class WelcomeActivity : ComponentActivity() {
             EXTRA_DEBUG_PREVIEW_POLICY_DOCUMENT,
             false
         )
-        val isDebugWelcomePreview = isDebugLanguagePreview || isDebugPolicyPreview
+        val isDebugSupportPreview = BuildConfig.DEBUG && intent.getBooleanExtra(
+            EXTRA_DEBUG_PREVIEW_SUPPORT_WELCOME,
+            false
+        )
+        val isDebugWelcomePreview = isDebugLanguagePreview || isDebugPolicyPreview || isDebugSupportPreview
         val installState = readInstallState()
         val (completedInstallTime, splashEnabled, hasCompletedLanguageSetup) = runBlocking {
             Triple(
@@ -164,6 +169,7 @@ class WelcomeActivity : ComponentActivity() {
                                     }
                                 },
                                 startOnIntroduction = isDebugPolicyPreview,
+                                startOnSupport = isDebugSupportPreview,
                                 onEnableLiquidGlass = {
                                     lifecycleScope.launch {
                                         dataStoreManager.enableLiquidGlassTheme()

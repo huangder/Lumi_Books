@@ -169,8 +169,10 @@ fun MainNavGraph(
     entranceAnimationsEnabled: Boolean = true,
     predictiveBackEnabled: Boolean = true,
     requestedOpenBookId: String? = null,
+    requestedOpenBookshelf: Boolean = false,
     onBeforeOpenDifferentBook: () -> Unit = {},
-    onOpenBookRequestConsumed: () -> Unit = {}
+    onOpenBookRequestConsumed: () -> Unit = {},
+    onOpenBookshelfRequestConsumed: () -> Unit = {}
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     var showTransition by remember { mutableStateOf(false) }
@@ -260,6 +262,18 @@ fun MainNavGraph(
             navController.navigate(Screen.Reader.createRoute(requestedId))
         }
         onOpenBookRequestConsumed()
+    }
+
+    LaunchedEffect(requestedOpenBookshelf) {
+        if (!requestedOpenBookshelf) return@LaunchedEffect
+        onBeforeOpenDifferentBook()
+        if (navController.currentDestination?.route != Screen.Bookshelf.route) {
+            navController.navigate(Screen.Bookshelf.route) {
+                popUpTo(Screen.Home.route)
+                launchSingleTop = true
+            }
+        }
+        onOpenBookshelfRequestConsumed()
     }
 
     // 监听路由变化，从阅读页/设置页返回时延迟显示 TabBar
@@ -684,6 +698,10 @@ fun MainNavGraph(
                     } else {
                         selectedImportBookUris + uriKey
                     }
+                },
+                onSelectAll = {
+                    selectedImportBookUris = selectedImportBooks
+                        .mapTo(linkedSetOf()) { it.uri.toString() }
                 },
                 onDismiss = {
                     importPreparationGeneration++

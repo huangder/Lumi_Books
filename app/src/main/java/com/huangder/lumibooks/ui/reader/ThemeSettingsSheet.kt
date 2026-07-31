@@ -11,6 +11,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,6 +28,9 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -55,6 +60,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.TextRange
@@ -66,7 +72,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -76,16 +86,23 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import androidx.core.graphics.ColorUtils
 import com.huangder.lumibooks.ui.theme.FangSong
@@ -104,10 +121,16 @@ import com.huangder.lumibooks.domain.model.ReaderCornerContent
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.domain.model.ReaderPageCorner
+import com.huangder.lumibooks.domain.model.CustomFontPreset
+import com.huangder.lumibooks.domain.model.ReaderThemeSuite
+import com.huangder.lumibooks.domain.model.ReaderThemeSuites
+import com.huangder.lumibooks.domain.model.normalizeReaderThemeSuiteName
+import com.huangder.lumibooks.domain.model.readerThemeSuiteNameCodePointCount
 import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.components.LiquidGlassButton
 import com.huangder.lumibooks.ui.components.LiquidGlassDialog
+import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
 import com.huangder.lumibooks.ui.components.LiquidGlassSwitch
@@ -124,8 +147,6 @@ import com.huangder.lumibooks.ui.components.materialBottomSheetMotion
 import androidx.compose.ui.res.stringResource
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
 import java.io.File
 
 // 设计规范颜色
@@ -156,6 +177,9 @@ fun ThemeSettingsSheet(
     currentTheme: String,
     currentBackgroundSelection: String = currentTheme,
     customBackgrounds: List<ReaderBackgroundPreset> = emptyList(),
+    readerThemeSuites: List<ReaderThemeSuite> = ReaderThemeSuites.defaults(),
+    activeReaderThemeSuiteId: String = ReaderThemeSuites.DAY_ID,
+    customFonts: List<CustomFontPreset> = emptyList(),
     currentPreserveEpubBackground: Boolean = true,
     currentBrightness: Float = -1f,
     currentOptimizeLayout: Boolean = true,
@@ -173,6 +197,10 @@ fun ThemeSettingsSheet(
     onAddBackgroundColor: (Int) -> Unit = {},
     onAddBackgroundImage: (Uri) -> Unit = {},
     onDeleteBackground: (String) -> Unit = {},
+    onThemeSuiteSelect: (String) -> Unit = {},
+    onThemeSuiteCreate: (String) -> Unit = {},
+    onThemeSuiteDelete: (String) -> Unit = {},
+    onThemeSuitesReorder: (List<String>) -> Unit = {},
     onPreserveEpubBackgroundChange: (Boolean) -> Unit = {},
     onBrightnessChange: (Float) -> Unit = {},
     onOptimizeLayoutChange: (Boolean) -> Unit = {},
@@ -236,7 +264,7 @@ fun ThemeSettingsSheet(
         Box(
             Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .fillMaxHeight(if (isLiquidGlass) 0.58f else 0.54f)
+                .fillMaxHeight(if (isLiquidGlass) 0.64f else 0.60f)
                 .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress)
         ) {
             Box(
@@ -500,9 +528,9 @@ fun ThemeSettingsSheet(
                 Spacer(Modifier.height(16.dp))
             }
 
-            // 阅读背景区域
+            // 主题套装区域
             Text(
-                stringResource(R.string.reading_background),
+                stringResource(R.string.reader_theme_suites),
                 fontSize = 14.sp,
                 color = LightTextSecondary,
                 modifier = Modifier.padding(horizontal = 24.dp)
@@ -517,40 +545,16 @@ fun ThemeSettingsSheet(
                     modifier = Modifier.padding(horizontal = 24.dp)
                 )
             } else {
-                ReaderBackgroundSelector(
-                    currentSelection = currentBackgroundSelection,
+                ReaderThemeSuiteSelector(
+                    suites = readerThemeSuites,
+                    activeSuiteId = activeReaderThemeSuiteId,
                     customBackgrounds = customBackgrounds,
-                    onSelect = onBackgroundSelect,
-                    onAddColor = onAddBackgroundColor,
-                    onAddImage = onAddBackgroundImage,
-                    onDelete = onDeleteBackground
+                    customFonts = customFonts,
+                    onSelect = onThemeSuiteSelect,
+                    onCreate = onThemeSuiteCreate,
+                    onDelete = onThemeSuiteDelete,
+                    onReorder = onThemeSuitesReorder
                 )
-            }
-
-            if (!eInkModeEnabled && isEpub && currentEpubRenderMode == EpubRenderMode.BOOK_LAYOUT) {
-                Spacer(Modifier.height(12.dp))
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            stringResource(R.string.preserve_epub_background),
-                            fontSize = 14.sp,
-                            color = AppColors.TextPrimary
-                        )
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            stringResource(R.string.preserve_epub_background_hint),
-                            fontSize = 12.sp,
-                            color = LightTextSecondary
-                        )
-                    }
-                    LiquidGlassSwitch(
-                        checked = currentPreserveEpubBackground,
-                        onCheckedChange = onPreserveEpubBackgroundChange
-                    )
-                }
             }
 
 
@@ -667,13 +671,584 @@ fun ThemeSettingsSheet(
 }
 
 @Composable
+private fun ReaderThemeSuiteSelector(
+    suites: List<ReaderThemeSuite>,
+    activeSuiteId: String,
+    customBackgrounds: List<ReaderBackgroundPreset>,
+    customFonts: List<CustomFontPreset>,
+    onSelect: (String) -> Unit,
+    onCreate: (String) -> Unit,
+    onDelete: (String) -> Unit,
+    onReorder: (List<String>) -> Unit
+) {
+    var displayedSuites by remember(suites) { mutableStateOf(suites) }
+    var armedId by remember { mutableStateOf<String?>(null) }
+    var draggingId by remember { mutableStateOf<String?>(null) }
+    var draggedInitialOffset by remember { mutableFloatStateOf(0f) }
+    var totalDragDistance by remember { mutableFloatStateOf(0f) }
+    var autoScrollSpeed by remember { mutableFloatStateOf(0f) }
+    var didDrag by remember { mutableStateOf(false) }
+    var showNameDialog by remember { mutableStateOf(false) }
+    var pendingDeleteId by remember { mutableStateOf<String?>(null) }
+    val haptics = LocalHapticFeedback.current
+    val edgeScrollZonePx = with(LocalDensity.current) { 52.dp.toPx() }
+    val maxAutoScrollPx = with(LocalDensity.current) { 14.dp.toPx() }
+    val listState = rememberLazyListState()
+    val draggedItemInfo = listState.layoutInfo.visibleItemsInfo.firstOrNull {
+        it.key == draggingId
+    }
+    val draggedTranslationX = if (draggingId != null && draggedItemInfo != null) {
+        draggedInitialOffset + totalDragDistance - draggedItemInfo.offset
+    } else {
+        0f
+    }
+
+    fun reorderDraggedSuiteToPointer() {
+        val draggedId = draggingId ?: return
+        val currentInfo = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == draggedId }
+            ?: return
+        val currentIndex = displayedSuites.indexOfFirst { it.id == draggedId }
+        if (currentIndex < 0) return
+        // LazyRow can expose the previous key/index mapping for a frame after a move.
+        if (currentInfo.index != currentIndex) return
+        val pointerCenter = draggedInitialOffset + currentInfo.size / 2f + totalDragDistance
+        val visibleItems = listState.layoutInfo.visibleItemsInfo
+
+        // Move by one insertion slot at a time. This prevents a missing/stale
+        // candidate from turning a neighboring move into a jump to the tail.
+        val nextIndex = currentIndex + 1
+        val nextInfo = displayedSuites.getOrNull(nextIndex)?.let { nextSuite ->
+            visibleItems.firstOrNull { it.index == nextIndex && it.key == nextSuite.id }
+        }
+        val previousIndex = currentIndex - 1
+        val previousInfo = displayedSuites.getOrNull(previousIndex)?.let { previousSuite ->
+            visibleItems.firstOrNull { it.index == previousIndex && it.key == previousSuite.id }
+        }
+        val targetIndex = when {
+            nextInfo != null && pointerCenter > nextInfo.offset + nextInfo.size / 2f -> nextIndex
+            previousInfo != null && pointerCenter < previousInfo.offset + previousInfo.size / 2f -> previousIndex
+            else -> return
+        }
+
+        val mutable = displayedSuites.toMutableList()
+        val moved = mutable.removeAt(currentIndex)
+        mutable.add(targetIndex, moved)
+        // Keep the viewport at the same numeric slot. Without this override,
+        // LazyRow follows the old first-visible key when that key moves right,
+        // shifting every following card under the stationary pointer.
+        listState.requestScrollToItem(
+            index = listState.firstVisibleItemIndex,
+            scrollOffset = listState.firstVisibleItemScrollOffset
+        )
+        displayedSuites = mutable
+        didDrag = true
+    }
+
+    LaunchedEffect(draggingId) {
+        while (draggingId != null) {
+            if (autoScrollSpeed != 0f) listState.scrollBy(autoScrollSpeed)
+            // Re-evaluate every frame so a move rejected during LazyRow's stale
+            // layout frame is applied as soon as the new key/index map is ready.
+            reorderDraggedSuiteToPointer()
+            withFrameNanos { }
+        }
+    }
+
+    val dayName = stringResource(R.string.theme_day)
+    val nightName = stringResource(R.string.theme_night)
+    val sepiaName = stringResource(R.string.theme_sepia)
+    val greenName = stringResource(R.string.theme_green)
+    val usedNames = buildSet {
+        add(dayName.lowercase())
+        add(nightName.lowercase())
+        add(sepiaName.lowercase())
+        add(greenName.lowercase())
+        suites.mapNotNullTo(this) { it.customName?.trim()?.lowercase() }
+    }
+
+    LazyRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .pointerInput(Unit) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { offset ->
+                        val touchedInfo = listState.layoutInfo.visibleItemsInfo.firstOrNull {
+                            offset.x >= it.offset && offset.x < it.offset + it.size
+                        } ?: return@detectDragGesturesAfterLongPress
+                        val touchedSuite = displayedSuites.getOrNull(touchedInfo.index)
+                            ?.takeIf { it.id == touchedInfo.key }
+                            ?: return@detectDragGesturesAfterLongPress
+
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        armedId = touchedSuite.id.takeUnless { touchedSuite.isBuiltIn }
+                        draggingId = touchedSuite.id
+                        draggedInitialOffset = touchedInfo.offset.toFloat()
+                        totalDragDistance = 0f
+                        autoScrollSpeed = 0f
+                        didDrag = false
+                    },
+                    onDrag = { change, amount ->
+                        val draggedId = draggingId
+                        if (draggedId != null) {
+                            change.consume()
+                            totalDragDistance += amount.x
+                            reorderDraggedSuiteToPointer()
+
+                            val layoutInfo = listState.layoutInfo
+                            val draggedSize = layoutInfo.visibleItemsInfo
+                                .firstOrNull { it.key == draggedId }
+                                ?.size
+                                ?: 0
+                            val pointerCenter = draggedInitialOffset +
+                                draggedSize / 2f +
+                                totalDragDistance
+                            val startEdge = layoutInfo.viewportStartOffset + edgeScrollZonePx
+                            val endEdge = layoutInfo.viewportEndOffset - edgeScrollZonePx
+                            autoScrollSpeed = when {
+                                pointerCenter < startEdge -> -(
+                                    3f + (startEdge - pointerCenter) * 0.18f
+                                ).coerceAtMost(maxAutoScrollPx)
+                                pointerCenter > endEdge -> (
+                                    3f + (pointerCenter - endEdge) * 0.18f
+                                ).coerceAtMost(maxAutoScrollPx)
+                                else -> 0f
+                            }
+                        }
+                    },
+                    onDragEnd = {
+                        if (draggingId != null && didDrag) {
+                            onReorder(displayedSuites.map(ReaderThemeSuite::id))
+                        }
+                        draggingId = null
+                        totalDragDistance = 0f
+                        autoScrollSpeed = 0f
+                        if (didDrag) armedId = null
+                    },
+                    onDragCancel = {
+                        displayedSuites = suites
+                        draggingId = null
+                        totalDragDistance = 0f
+                        autoScrollSpeed = 0f
+                        armedId = null
+                    }
+                )
+            },
+        state = listState,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 24.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        items(displayedSuites, key = ReaderThemeSuite::id) { suite ->
+            val isDragging = draggingId == suite.id
+            ThemeSuiteCard(
+                suite = suite,
+                displayName = when (suite.id) {
+                    ReaderThemeSuites.DAY_ID -> dayName
+                    ReaderThemeSuites.NIGHT_ID -> nightName
+                    ReaderThemeSuites.SEPIA_ID -> sepiaName
+                    ReaderThemeSuites.GREEN_ID -> greenName
+                    else -> suite.customName.orEmpty()
+                },
+                isSelected = activeSuiteId == suite.id,
+                isArmed = armedId == suite.id,
+                isDragging = isDragging,
+                customBackgrounds = customBackgrounds,
+                customFonts = customFonts,
+                modifier = Modifier
+                    .then(
+                        if (!isDragging) {
+                            Modifier.animateItem(
+                                fadeInSpec = null,
+                                fadeOutSpec = null,
+                                placementSpec = tween(180, easing = FastOutSlowInEasing)
+                            )
+                        } else {
+                            Modifier
+                        }
+                    )
+                    .zIndex(if (isDragging) 2f else 0f)
+                    .graphicsLayer {
+                        translationX = if (isDragging) draggedTranslationX else 0f
+                        scaleX = if (isDragging) 1.035f else 1f
+                        scaleY = if (isDragging) 1.035f else 1f
+                        shadowElevation = if (isDragging) 12.dp.toPx() else 0f
+                    },
+                onClick = {
+                    if (armedId == suite.id) {
+                        armedId = null
+                    } else {
+                        armedId = null
+                        onSelect(suite.id)
+                    }
+                },
+                onDeleteClick = { pendingDeleteId = suite.id }
+            )
+        }
+        item(key = "add-theme-suite") {
+            AddThemeSuiteCard(
+                onClick = {
+                    armedId = null
+                    showNameDialog = true
+                }
+            )
+        }
+    }
+
+    if (showNameDialog) {
+        NewThemeSuiteDialog(
+            usedNames = usedNames,
+            onConfirm = {
+                onCreate(it)
+                showNameDialog = false
+            },
+            onDismiss = { showNameDialog = false }
+        )
+    }
+
+    pendingDeleteId?.let { suiteId ->
+        val suiteName = displayedSuites.firstOrNull { it.id == suiteId }?.customName.orEmpty()
+        LiquidGlassAlertDialog(
+            onDismissRequest = { pendingDeleteId = null },
+            title = {
+                Text(
+                    stringResource(R.string.delete_theme_suite_title),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = AppColors.TextPrimary
+                )
+            },
+            text = {
+                Text(
+                    stringResource(R.string.delete_theme_suite_message, suiteName),
+                    color = LightTextSecondary,
+                    fontSize = 14.sp
+                )
+            },
+            dismissButton = {
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.cancel),
+                    onClick = { pendingDeleteId = null }
+                )
+            },
+            confirmButton = {
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.delete),
+                    onClick = {
+                        onDelete(suiteId)
+                        armedId = null
+                        pendingDeleteId = null
+                    },
+                    tintedColor = Color(0xFFFF3B30)
+                )
+            }
+        )
+    }
+}
+
+@Composable
+private fun ThemeSuiteCard(
+    suite: ReaderThemeSuite,
+    displayName: String,
+    isSelected: Boolean,
+    isArmed: Boolean,
+    isDragging: Boolean,
+    customBackgrounds: List<ReaderBackgroundPreset>,
+    customFonts: List<CustomFontPreset>,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+    onDeleteClick: () -> Unit
+) {
+    val shape = RoundedCornerShape(14.dp)
+    val backgroundPreset = customBackgrounds.firstOrNull {
+        it.selectionKey == suite.settings.backgroundSelection
+    }
+    val fallbackBackground = suiteBackgroundColor(suite, backgroundPreset)
+    val textColor = suiteTextColor(suite, backgroundPreset, fallbackBackground)
+    val fontFamily = rememberSuiteFontFamily(suite, customFonts)
+
+    Box(
+        modifier = modifier
+            .size(width = 104.dp, height = 132.dp)
+            .semantics { selected = isSelected },
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(width = 104.dp, height = 132.dp)
+                .then(if (isSelected) Modifier.border(2.dp, AccentColor, RoundedCornerShape(18.dp)) else Modifier)
+                .padding(4.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(shape)
+                    .background(fallbackBackground)
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() },
+                        onClick = onClick
+                    )
+            ) {
+                if (backgroundPreset?.type == ReaderBackgroundType.IMAGE) {
+                    AsyncImage(
+                        model = File(backgroundPreset.value),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 13.dp, vertical = 12.dp)
+                ) {
+                    Text(
+                        text = "Aa",
+                        color = textColor,
+                        fontFamily = fontFamily,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = stringResource(R.string.theme_suite_preview_text),
+                        color = textColor,
+                        fontFamily = fontFamily,
+                        fontSize = 25.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        text = displayName,
+                        color = textColor,
+                        fontFamily = fontFamily,
+                        fontSize = if (displayName.codePointCount(0, displayName.length) > 10) 11.sp else 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (isArmed && !isDragging) {
+                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.28f)))
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(8.dp)
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.58f))
+                            .clickable(onClick = onDeleteClick),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Outlined.Delete,
+                            contentDescription = stringResource(R.string.delete_theme_suite),
+                            tint = Color.White,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddThemeSuiteCard(onClick: () -> Unit) {
+    val shape = RoundedCornerShape(14.dp)
+    val strokeColor = LightTextSecondary
+    Box(
+        modifier = Modifier
+            .size(width = 104.dp, height = 132.dp)
+            .padding(4.dp)
+            .drawBehind {
+                drawRoundRect(
+                    color = strokeColor,
+                    cornerRadius = CornerRadius(14.dp.toPx()),
+                    style = Stroke(
+                        width = 1.5.dp.toPx(),
+                        pathEffect = PathEffect.dashPathEffect(
+                            floatArrayOf(7.dp.toPx(), 6.dp.toPx())
+                        )
+                    )
+                )
+            }
+            .clip(shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 13.dp, vertical = 12.dp)
+    ) {
+        Column(Modifier.fillMaxSize()) {
+            Text("Aa", color = strokeColor, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                stringResource(R.string.theme_suite_preview_text),
+                color = strokeColor,
+                fontSize = 25.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Icon(
+                    Icons.Outlined.Add,
+                    contentDescription = stringResource(R.string.add_theme_suite),
+                    tint = strokeColor,
+                    modifier = Modifier.size(30.dp)
+                )
+            }
+            Text(
+                stringResource(R.string.background_add),
+                color = strokeColor,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    }
+}
+
+@Composable
+private fun NewThemeSuiteDialog(
+    usedNames: Set<String>,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val focusRequester = remember { FocusRequester() }
+    var name by remember { mutableStateOf("") }
+    val normalized = normalizeReaderThemeSuiteName(name)
+    val count = readerThemeSuiteNameCodePointCount(normalized)
+    val error = when {
+        normalized.isEmpty() -> R.string.theme_suite_name_required
+        count > 20 -> R.string.theme_suite_name_too_long
+        normalized.lowercase() in usedNames -> R.string.theme_suite_name_duplicate
+        else -> null
+    }
+    val confirm = { if (error == null) onConfirm(normalized) }
+
+    LiquidGlassDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
+        transparencyOverride = (LocalLiquidGlassTransparency.current - 0.10f).coerceIn(0f, 0.90f),
+        backgroundBlurRadius = 12.dp
+    ) {
+        Column(Modifier.padding(horizontal = 28.dp, vertical = 22.dp)) {
+            Text(
+                stringResource(R.string.new_theme_suite_title),
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = AppColors.TextPrimary
+            )
+            Spacer(Modifier.height(18.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(LightBgGray)
+                    .border(
+                        1.dp,
+                        if (name.isNotEmpty() && error != null) Color(0xFFFF3B30) else LightDivider,
+                        RoundedCornerShape(14.dp)
+                    )
+                    .padding(horizontal = 16.dp, vertical = 14.dp)
+            ) {
+                BasicTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+                    singleLine = true,
+                    textStyle = TextStyle(color = AppColors.TextPrimary, fontSize = 16.sp),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { confirm() }),
+                    decorationBox = { inner ->
+                        if (name.isEmpty()) {
+                            Text(
+                                stringResource(R.string.theme_suite_name_hint),
+                                color = LightTextSecondary,
+                                fontSize = 16.sp
+                            )
+                        }
+                        inner()
+                    }
+                )
+            }
+            if (name.isNotEmpty() && error != null) {
+                Spacer(Modifier.height(6.dp))
+                Text(stringResource(error), color = Color(0xFFFF3B30), fontSize = 12.sp)
+            }
+            Spacer(Modifier.height(18.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End)) {
+                LiquidGlassTextButton(text = stringResource(R.string.cancel), onClick = onDismiss)
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.confirm),
+                    onClick = { confirm() },
+                    enabled = error == null,
+                    tintedColor = AccentColor
+                )
+            }
+        }
+    }
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+}
+
+@Composable
+private fun rememberSuiteFontFamily(
+    suite: ReaderThemeSuite,
+    customFonts: List<CustomFontPreset>
+): FontFamily {
+    val fontType = suite.settings.fontType
+    val customPath = customFonts.firstOrNull { fontType == "custom:${it.id}" }?.path
+    return remember(fontType, customPath) {
+        when {
+            fontType == "serif" -> FontFamily.Serif
+            fontType == "fangsong" -> FangSong
+            fontType == "kaiti" -> KaiTi
+            customPath != null -> runCatching {
+                FontFamily(android.graphics.Typeface.createFromFile(File(customPath)))
+            }.getOrDefault(FontFamily.Default)
+            else -> FontFamily.Default
+        }
+    }
+}
+
+private fun suiteBackgroundColor(
+    suite: ReaderThemeSuite,
+    preset: ReaderBackgroundPreset?
+): Color = when {
+    preset?.type == ReaderBackgroundType.COLOR -> runCatching {
+        Color(android.graphics.Color.parseColor(preset.value))
+    }.getOrDefault(ReaderDayBg)
+    preset?.dominantColor != null -> Color(preset.dominantColor)
+    suite.settings.backgroundSelection == ReaderThemeSuites.NIGHT_ID -> ReaderNightBg
+    suite.settings.backgroundSelection == ReaderThemeSuites.SEPIA_ID -> ReaderSepiaBg
+    suite.settings.backgroundSelection == ReaderThemeSuites.GREEN_ID -> ReaderGreenBg
+    else -> ReaderDayBg
+}
+
+private fun suiteTextColor(
+    suite: ReaderThemeSuite,
+    preset: ReaderBackgroundPreset?,
+    backgroundColor: Color
+): Color {
+    suite.settings.textColor?.let { return Color(it) }
+    if (preset != null) {
+        return if (ColorUtils.calculateLuminance(backgroundColor.toArgb()) < 0.42) {
+            Color(0xFFE8E8EA)
+        } else {
+            Color(0xFF333333)
+        }
+    }
+    return when (suite.settings.backgroundSelection) {
+        ReaderThemeSuites.NIGHT_ID -> Color(0xFFCCCCCC)
+        ReaderThemeSuites.SEPIA_ID -> Color(0xFF4A3728)
+        ReaderThemeSuites.GREEN_ID -> Color(0xFF2E7D32)
+        else -> Color(0xFF333333)
+    }
+}
+
+@Composable
 private fun ReaderBackgroundSelector(
     currentSelection: String,
     customBackgrounds: List<ReaderBackgroundPreset>,
     onSelect: (String) -> Unit,
     onAddColor: (Int) -> Unit,
     onAddImage: (Uri) -> Unit,
-    onDelete: (String) -> Unit
+    onDelete: (String) -> Unit,
+    horizontalPadding: Dp = 24.dp
 ) {
     var showCustomizer by remember { mutableStateOf(false) }
     var deleteArmedId by remember { mutableStateOf<String?>(null) }
@@ -696,7 +1271,7 @@ private fun ReaderBackgroundSelector(
         modifier = Modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp),
+            .padding(horizontal = horizontalPadding),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         BackgroundPresetItem(
@@ -1068,6 +1643,10 @@ fun AdvancedSettingsSheet(
     currentFontType: String,
     customFontPath: String? = null,
     customFonts: List<com.huangder.lumibooks.domain.model.CustomFontPreset> = emptyList(),
+    currentBackgroundSelection: String,
+    customBackgrounds: List<ReaderBackgroundPreset>,
+    currentPreserveEpubBackground: Boolean = true,
+    showPreserveEpubBackground: Boolean = false,
     currentMarginLeft: Float,
     currentMarginRight: Float,
     currentMarginTop: Float,
@@ -1085,6 +1664,11 @@ fun AdvancedSettingsSheet(
     onFontTypeChange: (String) -> Unit,
     onImportFont: (android.net.Uri) -> Unit = {},
     onDeleteCustomFont: (String) -> Unit = {},
+    onBackgroundSelect: (String) -> Unit,
+    onAddBackgroundColor: (Int) -> Unit,
+    onAddBackgroundImage: (Uri) -> Unit,
+    onDeleteBackground: (String) -> Unit,
+    onPreserveEpubBackgroundChange: (Boolean) -> Unit = {},
     onMarginLeftChange: (Float) -> Unit,
     onMarginRightChange: (Float) -> Unit,
     onMarginTopChange: (Float) -> Unit,
@@ -1320,6 +1904,47 @@ fun AdvancedSettingsSheet(
             ) {
                 if (!eInkModeEnabled) {
                     AdvancedSettingsGroup(eInkModeEnabled) {
+                        Text(
+                            stringResource(R.string.reading_background),
+                            fontSize = 14.sp,
+                            color = LightTextSecondary
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        ReaderBackgroundSelector(
+                            currentSelection = currentBackgroundSelection,
+                            customBackgrounds = customBackgrounds,
+                            onSelect = onBackgroundSelect,
+                            onAddColor = onAddBackgroundColor,
+                            onAddImage = onAddBackgroundImage,
+                            onDelete = onDeleteBackground,
+                            horizontalPadding = 0.dp
+                        )
+                        if (showPreserveEpubBackground) {
+                            Spacer(Modifier.height(16.dp))
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        stringResource(R.string.preserve_epub_background),
+                                        fontSize = 14.sp,
+                                        color = AppColors.TextPrimary
+                                    )
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(
+                                        stringResource(R.string.preserve_epub_background_hint),
+                                        fontSize = 12.sp,
+                                        color = LightTextSecondary
+                                    )
+                                }
+                                LiquidGlassSwitch(
+                                    checked = currentPreserveEpubBackground,
+                                    onCheckedChange = onPreserveEpubBackgroundChange
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(18.dp))
                         TextColorSetting(
                             currentOverride = currentTextColorOverride,
                             effectiveTextColor = currentTextColor,
@@ -2363,7 +2988,7 @@ private fun SliderValueInputDialog(
                     contentColor = LightTextSecondary
                 )
                 LiquidGlassTextButton(
-                    text = stringResource(R.string.apply_text_color), // 重用"应用"字串
+                    text = stringResource(R.string.confirm),
                     onClick = confirm,
                     enabled = isValid,
                     modifier = Modifier.weight(1f).height(44.dp),

@@ -57,6 +57,12 @@ internal data class VerticalPageSlice(
 )
 
 internal fun verticalPresentationText(text: String): String = when (text) {
+    "\u2014" -> "\uFE31"
+    "\u2013" -> "\uFE32"
+    "\u201C" -> "\uFE43"
+    "\u201D" -> "\uFE44"
+    "\u2018" -> "\uFE41"
+    "\u2019" -> "\uFE42"
     "，" -> "︐"
     "、" -> "︑"
     "。" -> "︒"
@@ -289,6 +295,8 @@ internal object VerticalTextLayouter {
         (text as? Spanned)?.getSpans(start, end, ImageSpan::class.java)?.firstOrNull()
 
     private fun paragraphIndent(text: CharSequence, offset: Int): Float {
+        if (offset !in 0 until text.length) return 0f
+        if (offset > 0 && text[offset - 1] != '\n' && text[offset - 1] != '\r') return 0f
         val spanned = text as? Spanned ?: return 0f
         return spanned.getSpans(offset, (offset + 1).coerceAtMost(text.length), LeadingMarginSpan::class.java)
             .sumOf { it.getLeadingMargin(true).toDouble() }

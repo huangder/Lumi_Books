@@ -55,7 +55,11 @@ class TxtParser(private val context: Context? = null) : BookParser {
         }
     }
 
-    override fun parse(filePath: String): BookContent {
+    override fun parse(filePath: String): BookContent = synchronized(parseLock(filePath)) {
+        parseLocked(filePath)
+    }
+
+    private fun parseLocked(filePath: String): BookContent {
         sourceLease?.close()
         val lease = if (BookFileAccess.isContentUri(filePath)) {
             BookFileAccess.openSeekable(
@@ -161,6 +165,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
      */
     private fun saveChapterCache(file: File, encoding: EncodingInfo, chapters: List<TxtChapterEntry>) {
         val cacheFile = getCacheFile(file) ?: return
+        val temporary = File(cacheFile.parentFile, cacheFile.name + ".tmp")
         try {
             cacheFile.parentFile?.mkdirs()
             val sb = StringBuilder()
@@ -175,8 +180,23 @@ class TxtParser(private val context: Context? = null) : BookParser {
                 val safeTitle = entry.title.replace("|", "｜")
                 sb.appendLine("${entry.index}|$safeTitle|${entry.startByte}|${entry.endByte}")
             }
-            cacheFile.writeText(sb.toString(), Charsets.UTF_8)
+            temporary.writeText(sb.toString(), Charsets.UTF_8)
+            try {
+                Files.move(
+                    temporary.toPath(),
+                    cacheFile.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING,
+                    StandardCopyOption.ATOMIC_MOVE
+                )
+            } catch (_: Exception) {
+                Files.move(
+                    temporary.toPath(),
+                    cacheFile.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING
+                )
+            }
         } catch (_: Exception) {
+            temporary.delete()
             // 缓存写入失败不影响功能，静默忽略
         }
     }
@@ -677,14 +697,40 @@ class TxtParser(private val context: Context? = null) : BookParser {
         return rewriteWithOperations(listOf(TxtSetChapterText(chapterIndex, newText))).success
     }
 
-    /** Applies editor operations in one streaming rewrite and reparses the updated source. */
-    fun rewriteWithOperations(operations: List<TxtEditOperation>): TxtRewriteResult {
+    /** Applies editor operations in one streaming rewrite. */
+    fun rewriteWithOperations(
+        operations: List<TxtEditOperation>,
+        reparseAfterWrite: Boolean = true
+    ): TxtRewriteResult = synchronized(
+        parseLock(sourceLocation.ifBlank { sourceFile?.absolutePath.orEmpty() })
+    ) {
+        rewriteWithOperationsLocked(operations, reparseAfterWrite)
+    }
+
+    private fun rewriteWithOperationsLocked(
+        operations: List<TxtEditOperation>,
+        reparseAfterWrite: Boolean
+    ): TxtRewriteResult {
         if (operations.isEmpty()) return TxtRewriteResult(success = true)
         val file = sourceFile ?: return TxtRewriteResult(false, errorMessage = "TXT source is unavailable")
         val charset = encodingInfo.charset
         val buffer = ByteArray(STREAM_BUFFER_SIZE)
         val temporary = File(file.parentFile, file.name + ".editor.tmp")
         var changedChapterCount = 0
+        val affectsEveryChapter = operations.any {
+            it is TxtReplaceText && it.chapterIndex == null
+        }
+        val affectedChapterIndexes = if (affectsEveryChapter) {
+            emptySet()
+        } else {
+            operations.mapNotNullTo(mutableSetOf()) { operation ->
+                when (operation) {
+                    is TxtSetChapterText -> operation.chapterIndex
+                    is TxtReplaceRange -> operation.chapterIndex
+                    is TxtReplaceText -> operation.chapterIndex
+                }
+            }
+        }
 
         return try {
             if (temporary.exists() && !temporary.delete()) {
@@ -696,6 +742,11 @@ class TxtParser(private val context: Context? = null) : BookParser {
                     var copiedUntil = 0L
                     entries.forEach { entry ->
                         copyRange(input, output, copiedUntil, entry.startByte, buffer)
+                        if (!affectsEveryChapter && entry.index !in affectedChapterIndexes) {
+                            copyRange(input, output, entry.startByte, entry.endByte, buffer)
+                            copiedUntil = entry.endByte
+                            return@forEach
+                        }
 
                         val rawLength = entry.endByte - entry.startByte
                         require(rawLength <= Int.MAX_VALUE) { "TXT chapter is too large" }
@@ -743,10 +794,26 @@ class TxtParser(private val context: Context? = null) : BookParser {
             if (BookFileAccess.isContentUri(sourceLocation)) {
                 sourceLease?.writeBack()
             }
+            // Size and timestamp can both remain unchanged after a quick same-length edit on
+            // some Android filesystems. Never let the next parser reuse that stale index.
+            getCacheFile(file)?.let { cacheFile -> runCatching { cacheFile.delete() } }
             synchronized(contentCache) { contentCache.clear() }
             synchronized(htmlCache) { htmlCache.clear() }
-            parse(sourceLocation.ifBlank { file.absolutePath })
-            TxtRewriteResult(success = true, changedChapterCount = changedChapterCount)
+            val reparseError = if (reparseAfterWrite) {
+                runCatching {
+                    parse(sourceLocation.ifBlank { file.absolutePath })
+                }.exceptionOrNull()
+            } else {
+                null
+            }
+            TxtRewriteResult(
+                success = true,
+                changedChapterCount = changedChapterCount,
+                errorMessage = reparseError?.let {
+                    "TXT was saved, but its index could not be refreshed: " +
+                        (it.message ?: it.javaClass.simpleName)
+                }
+            )
         } catch (error: Exception) {
             temporary.delete()
             TxtRewriteResult(
@@ -844,6 +911,13 @@ class TxtParser(private val context: Context? = null) : BookParser {
         const val MAX_RAW_CHUNK_BYTES = 32_000L
         const val CONTENT_CACHE_SIZE = 5
         const val HTML_CACHE_SIZE = 3
+
+        val PARSE_LOCKS = Array(16) { Any() }
+
+        fun parseLock(location: String): Any {
+            val index = (location.hashCode() and Int.MAX_VALUE) % PARSE_LOCKS.size
+            return PARSE_LOCKS[index]
+        }
 
         val CHAPTER_PATTERNS = listOf(
             Regex("^第[一二三四五六七八九十百千零\\d]+[章节回卷]"),

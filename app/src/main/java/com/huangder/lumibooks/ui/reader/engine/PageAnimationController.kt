@@ -286,6 +286,23 @@ abstract class PageAnimationController(
         readView.invalidate()
     }
 
+    /**
+     * Holds a committed flip on its real terminal frame without completing the
+     * page handoff. The host draws that frame once, then rotates its page roles.
+     */
+    open fun holdRunningFlipAtEnd(): Boolean {
+        if (!isFlipAnim || !isRunning || direction == Direction.NONE) return false
+        if (!scroller.isFinished) scroller.abortAnimation()
+        touchX = startX + horizontalTurnSign(direction) * readView.width.toFloat()
+        touchY = startY
+        isRunning = false
+        isDragging = false
+        isShadowFading = false
+        shadowFadeAlpha = 0f
+        readView.postInvalidateOnAnimation()
+        return true
+    }
+
     /** Commit a settling page only after a new page-turn intent is confirmed. */
     open fun completeRunningFlipForNewInput(): Boolean {
         val committedDirection = if (isFlipAnim && isRunning) direction else Direction.NONE

@@ -21,11 +21,11 @@ class TagRepositoryImpl @Inject constructor(
     override fun getAllBookTagLinks(): Flow<List<BookTagLink>> =
         tagDao.getAllBookTagLinks().map { links -> links.map { it.toDomain() } }
 
-    override suspend fun createAndAssignTag(bookId: String, rawName: String) {
-        if (!TagNameValidator.isValid(rawName)) return
+    override suspend fun createAndAssignTag(bookId: String, rawName: String): LibraryTag {
+        require(TagNameValidator.isValid(rawName))
 
         val name = TagNameValidator.clean(rawName)
-        tagDao.createAndAssignTag(
+        return tagDao.createAndAssignTag(
             bookId = bookId,
             tag = TagEntity(
                 id = UUID.randomUUID().toString(),
@@ -33,7 +33,7 @@ class TagRepositoryImpl @Inject constructor(
                 normalizedName = TagNameValidator.normalized(name),
                 createdAt = System.currentTimeMillis()
             )
-        )
+        ).toDomain()
     }
 
     override suspend fun assignTag(bookId: String, tagId: String) {

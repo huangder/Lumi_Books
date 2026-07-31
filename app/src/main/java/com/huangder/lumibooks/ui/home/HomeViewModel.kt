@@ -579,6 +579,28 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    fun addTagToBooks(bookIds: Set<String>, tagId: String) {
+        if (bookIds.isEmpty()) return
+        viewModelScope.launch {
+            runCatching {
+                bookIds.forEach { bookId -> tagRepository.assignTag(bookId, tagId) }
+            }.onFailure { showTagMessage(it.message ?: application.getString(R.string.error)) }
+        }
+    }
+
+    fun createAndAssignTagToBooks(bookIds: Set<String>, rawName: String) {
+        if (bookIds.isEmpty() || !validateTagName(rawName)) return
+        viewModelScope.launch {
+            runCatching {
+                val firstBookId = bookIds.first()
+                val tag = tagRepository.createAndAssignTag(firstBookId, rawName)
+                bookIds.asSequence()
+                    .filterNot { it == firstBookId }
+                    .forEach { bookId -> tagRepository.assignTag(bookId, tag.id) }
+            }.onFailure { showTagMessage(it.message ?: application.getString(R.string.error)) }
+        }
+    }
+
     fun renameTag(tagId: String, rawName: String) {
         if (!validateTagName(rawName)) return
         viewModelScope.launch {

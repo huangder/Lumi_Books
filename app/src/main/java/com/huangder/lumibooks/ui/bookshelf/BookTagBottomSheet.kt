@@ -57,6 +57,7 @@ import com.huangder.lumibooks.domain.model.LibraryTag
 import com.huangder.lumibooks.domain.model.TagNameValidator
 import com.huangder.lumibooks.ui.components.LiquidGlassDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
+import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
@@ -249,6 +250,240 @@ fun BookTagBottomSheet(
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
         ) {
             sheetContent()
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+fun BatchBookTagSheet(
+    tags: List<LibraryTag>,
+    selectedBookCount: Int,
+    onDismiss: () -> Unit,
+    onCreateTag: (String) -> Unit,
+    onApply: (Set<String>) -> Unit
+) {
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    var selectedTagIds by remember { mutableStateOf(emptySet<String>()) }
+    var newTagName by remember { mutableStateOf("") }
+    var nameError by remember { mutableStateOf<String?>(null) }
+    var pendingCreatedName by remember { mutableStateOf<String?>(null) }
+    val nameRequired = stringResource(R.string.tag_name_required)
+    val nameTooLong = stringResource(R.string.tag_name_too_long, TagNameValidator.MAX_LENGTH)
+
+    LaunchedEffect(tags, pendingCreatedName) {
+        val normalizedName = pendingCreatedName ?: return@LaunchedEffect
+        tags.firstOrNull { TagNameValidator.normalized(it.name) == normalizedName }?.let { tag ->
+            selectedTagIds = selectedTagIds + tag.id
+            pendingCreatedName = null
+        }
+    }
+
+    val createTag = {
+        when {
+            TagNameValidator.clean(newTagName).isEmpty() -> nameError = nameRequired
+            !TagNameValidator.isValid(newTagName) -> nameError = nameTooLong
+            else -> {
+                pendingCreatedName = TagNameValidator.normalized(newTagName)
+                onCreateTag(newTagName)
+                newTagName = ""
+                nameError = null
+            }
+        }
+    }
+
+    val content: @Composable () -> Unit = {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .imePadding()
+                .navigationBarsPadding()
+                .padding(horizontal = AppSpace.lg, vertical = AppSpace.md)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.batch_add_tags),
+                        fontSize = AppType.Section,
+                        fontWeight = FontWeight.Bold,
+                        color = AppColors.TextPrimary
+                    )
+                    Text(
+                        text = stringResource(R.string.selected_books_count, selectedBookCount),
+                        fontSize = AppType.Caption,
+                        color = AppColors.TextSecondary
+                    )
+                }
+                LiquidGlassIconButton(
+                    imageVector = Icons.Outlined.Close,
+                    contentDescription = stringResource(R.string.close),
+                    onClick = onDismiss,
+                    size = 40.dp,
+                    iconSize = 20.dp,
+                    normalContainerColor = AppColors.BgGray
+                )
+            }
+
+            Spacer(Modifier.height(AppSpace.md))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                        .clip(RoundedCornerShape(AppRadius.md))
+                        .background(AppColors.BgGray)
+                        .padding(horizontal = AppSpace.md),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    if (newTagName.isEmpty()) {
+                        Text(
+                            text = stringResource(R.string.tag_name_hint),
+                            fontSize = AppType.Body,
+                            color = AppColors.TextSecondary
+                        )
+                    }
+                    BasicTextField(
+                        value = newTagName,
+                        onValueChange = {
+                            newTagName = it
+                            nameError = null
+                        },
+                        singleLine = true,
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            fontSize = AppType.Body,
+                            color = AppColors.TextPrimary
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                Spacer(Modifier.size(AppSpace.sm))
+                LiquidGlassIconButton(
+                    imageVector = Icons.Outlined.Add,
+                    contentDescription = stringResource(R.string.add_tag),
+                    onClick = createTag,
+                    enabled = selectedBookCount > 0,
+                    size = 48.dp,
+                    iconSize = 24.dp,
+                    contentColor = AppColors.OnAccent,
+                    normalContainerColor = AppColors.Accent,
+                    liquidContainerColor = AppColors.Accent,
+                    liquidScrimColor = AppColors.Accent
+                )
+            }
+
+            nameError?.let { error ->
+                Text(
+                    text = error,
+                    fontSize = AppType.Caption,
+                    color = Color(0xFFC62828),
+                    modifier = Modifier.padding(top = AppSpace.xs)
+                )
+            }
+
+            Spacer(Modifier.height(AppSpace.lg))
+            Text(
+                text = stringResource(R.string.existing_tags),
+                fontSize = AppType.Caption,
+                fontWeight = FontWeight.SemiBold,
+                color = AppColors.TextSecondary
+            )
+            Spacer(Modifier.height(AppSpace.sm))
+            if (tags.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.no_tags),
+                    fontSize = AppType.BodySmall,
+                    color = AppColors.TextSecondary,
+                    modifier = Modifier.padding(vertical = AppSpace.lg)
+                )
+            } else {
+                FlowRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 240.dp)
+                        .verticalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    tags.forEach { tag ->
+                        val selected = tag.id in selectedTagIds
+                        LiquidGlassSurface(
+                            shape = RoundedCornerShape(50),
+                            fallbackColor = if (selected) {
+                                AppColors.Accent.copy(alpha = 0.18f)
+                            } else {
+                                AppColors.BgGray
+                            },
+                            contentScrimColor = if (selected) {
+                                AppColors.Accent.copy(alpha = 0.34f)
+                            } else {
+                                AppColors.CardBg.copy(alpha = 0.24f)
+                            },
+                            onClick = {
+                                selectedTagIds = if (selected) {
+                                    selectedTagIds - tag.id
+                                } else {
+                                    selectedTagIds + tag.id
+                                }
+                            },
+                            modifier = Modifier.height(38.dp)
+                        ) {
+                            Text(
+                                text = tag.name,
+                                fontSize = AppType.BodySmall,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                                color = if (selected) AppColors.Accent else AppColors.TextPrimary,
+                                modifier = Modifier.padding(horizontal = 15.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(AppSpace.lg))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.cancel),
+                    onClick = onDismiss,
+                    contentColor = AppColors.TextSecondary
+                )
+                Spacer(Modifier.size(AppSpace.sm))
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.confirm),
+                    onClick = { onApply(selectedTagIds) },
+                    enabled = selectedTagIds.isNotEmpty() && selectedBookCount > 0,
+                    tintedColor = AppColors.Accent
+                )
+            }
+        }
+    }
+
+    if (isLiquidGlass) {
+        LiquidGlassDialog(
+            onDismissRequest = onDismiss,
+            alignment = Alignment.BottomCenter,
+            shape = RoundedCornerShape(28.dp),
+            contentScrimColor = AppColors.CardBg.copy(alpha = 0.82f),
+            backgroundScrimColor = Color.Black.copy(alpha = 0.12f)
+        ) {
+            content()
+        }
+    } else {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = onDismiss,
+            sheetState = sheetState,
+            containerColor = AppColors.CardBg,
+            contentColor = AppColors.TextPrimary,
+            scrimColor = Color.Black.copy(alpha = 0.12f),
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+        ) {
+            content()
         }
     }
 }

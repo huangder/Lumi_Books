@@ -64,6 +64,11 @@ data class SelectionInfo(
     val selEndX: Float
 )
 
+data class ReaderTextAnchor(
+    val chapterIndex: Int,
+    val characterOffset: Int
+)
+
 class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null) : FrameLayout(context) {
 
     companion object {
@@ -122,6 +127,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var rvHasMoved = false
     private var rvIsEdgeTouch = false
     private var rvIsHandlingPageGesture = false
+    private var rvPendingImageLongPress: ReaderImageHit? = null
+    private var rvImageLongPressHandled = false
+    private val rvImageLongPressRunnable = Runnable { handlePendingImageLongPress() }
 
     // ── 配置状态 ──
     private var isConfigured = false
@@ -611,6 +619,14 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         return current.contentView.chapterStartOffset.takeIf { current.isLoaded && it >= 0 }
     }
 
+    /** Returns the first actually visible text glyph and its owning chapter. */
+    fun getCurrentPageTextAnchor(): ReaderTextAnchor? {
+        val current = slotManager.getCurSlot()
+        if (!current.isLoaded || current.chapterIndex < 0) return null
+        val characterOffset = current.contentView.firstVisibleCharacterOffset() ?: return null
+        return ReaderTextAnchor(current.chapterIndex, characterOffset)
+    }
+
     fun getCurrentPageBookmarkTitle(): String? {
         return curPageView.textView.text
             ?.toString()
@@ -811,13 +827,32 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
      * - 长按（>500ms 或无明显移动）→ 不拦截，TextView 原生触发选词
      */
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        // The vertical renderer owns its selection handles. Once a handle accepts DOWN,
+        // keep the complete stream away from page-swipe classification until UP/CANCEL.
+        if (ev.actionMasked != MotionEvent.ACTION_DOWN && isVerticalSelectionHandleDragActive()) {
+            return super.dispatchTouchEvent(ev)
+        }
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                removeCallbacks(rvImageLongPressRunnable)
                 rvTouchStartX = ev.x
                 rvTouchStartY = ev.y
                 rvTouchDownTime = System.currentTimeMillis()
                 rvHasMoved = false
                 rvIsHandlingPageGesture = false
+                rvImageLongPressHandled = false
+                rvPendingImageLongPress = curPageView.getImageAt(
+                    ev.x - curPageView.left,
+                    ev.y - curPageView.top
+                )?.takeIf { image ->
+                    image.link == null && !image.hasAction && image.source.isNotBlank()
+                }
+                if (rvPendingImageLongPress != null) {
+                    postDelayed(
+                        rvImageLongPressRunnable,
+                        android.view.ViewConfiguration.getLongPressTimeout().toLong()
+                    )
+                }
                 val w = width.toFloat()
                 rvIsEdgeTouch = w > 0 && (ev.x / w < 0.3f || ev.x / w > 0.7f)
                 return super.dispatchTouchEvent(ev)
@@ -833,12 +868,18 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 val dy = abs(ev.y - rvTouchStartY)
                 val dt = System.currentTimeMillis() - rvTouchDownTime
 
-                if (dx > 24f || dy > 24f) rvHasMoved = true
+                if (dx > 24f || dy > 24f) {
+                    rvHasMoved = true
+                    removeCallbacks(rvImageLongPressRunnable)
+                    rvPendingImageLongPress = null
+                }
 
                 // 仅在 500ms 窗口内拦截水平滑动（超过 500ms 视为选择扩展，不拦截）
                 // dx > dy * 0.3f：允许更自然的斜向拖拽（拇指弧线有垂直分量）
                 if (dt < 500L && dx > 8f && dx > dy * 0.3f) {
                     Log.d(TAG, "Handle page swipe at dx=$dx dy=$dy dt=$dt")
+                    removeCallbacks(rvImageLongPressRunnable)
+                    rvPendingImageLongPress = null
                     rvIsHandlingPageGesture = true
                     clearCurrentSelection()
 
@@ -868,6 +909,12 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                removeCallbacks(rvImageLongPressRunnable)
+                rvPendingImageLongPress = null
+                if (rvImageLongPressHandled) {
+                    rvImageLongPressHandled = false
+                    return true
+                }
                 if (rvIsHandlingPageGesture) {
                     rvIsHandlingPageGesture = false
                     animationController.onTouchEvent(ev)
@@ -879,6 +926,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     }
 
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+        if (isVerticalSelectionHandleDragActive()) return false
         when (ev.actionMasked) {
             MotionEvent.ACTION_UP -> {
                 if (!rvHasMoved && System.currentTimeMillis() - rvTouchDownTime < 300L) {
@@ -905,19 +953,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                                 // Keep action-bearing images out of the preview path.
                                 Log.d(TAG, "EPUB action image tap ignored by preview")
                             }
-                            image != null && image.source.isNotBlank() -> {
-                                clearCurrentSelection()
-                                val location = IntArray(2)
-                                curPageView.getLocationOnScreen(location)
-                                callbacks?.onImageClick(
-                                    getCurrentLocation()?.first ?: 0,
-                                    image.copy(
-                                        leftPx = image.leftPx + location[0],
-                                        topPx = image.topPx + location[1],
-                                        rightPx = image.rightPx + location[0],
-                                        bottomPx = image.bottomPx + location[1]
-                                    )
-                                )
+                            image != null -> {
+                                // Plain image taps are deliberately inert; preview is long-press only.
+                                Log.d(TAG, "Plain EPUB image tap ignored")
                             }
                             rvIsEdgeTouch -> {
                                 // Edge short tap: turn the page through the existing animation callback.
@@ -942,6 +980,38 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         return false
     }
 
+    private fun handlePendingImageLongPress() {
+        val image = rvPendingImageLongPress ?: return
+        if (rvHasMoved || rvIsHandlingPageGesture) return
+        rvPendingImageLongPress = null
+        rvImageLongPressHandled = true
+
+        val cancelEvent = MotionEvent.obtain(
+            rvTouchDownTime,
+            System.currentTimeMillis(),
+            MotionEvent.ACTION_CANCEL,
+            rvTouchStartX,
+            rvTouchStartY,
+            0
+        )
+        super.dispatchTouchEvent(cancelEvent)
+        cancelEvent.recycle()
+
+        clearCurrentSelection()
+        performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+        val location = IntArray(2)
+        curPageView.getLocationOnScreen(location)
+        callbacks?.onImageLongPress(
+            slotManager.getCurSlot().chapterIndex.coerceAtLeast(0),
+            image.copy(
+                leftPx = image.leftPx + location[0],
+                topPx = image.topPx + location[1],
+                rightPx = image.rightPx + location[0],
+                bottomPx = image.bottomPx + location[1]
+            )
+        )
+    }
+
     /**
      * 🔥 忽略触摸开始 500ms 内的 disallow 请求。
      *
@@ -951,6 +1021,10 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
      * 500ms 后（长按已触发），允许 disallow 以支持选择拖拽。
      */
     override fun requestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {
+        if (disallowIntercept && isVerticalSelectionHandleDragActive()) {
+            super.requestDisallowInterceptTouchEvent(true)
+            return
+        }
         if (disallowIntercept) {
             val dt = System.currentTimeMillis() - rvTouchDownTime
             if (dt < 500L) {
@@ -960,6 +1034,11 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         }
         super.requestDisallowInterceptTouchEvent(disallowIntercept)
     }
+
+    private fun isVerticalSelectionHandleDragActive(): Boolean =
+        prevPageView.isVerticalSelectionHandleDragActive() ||
+            curPageView.isVerticalSelectionHandleDragActive() ||
+            nextPageView.isVerticalSelectionHandleDragActive()
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         return animationController.onTouchEvent(event)

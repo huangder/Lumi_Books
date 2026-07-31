@@ -131,7 +131,7 @@ class WebdavClient @Inject constructor() {
         if (!response.isSuccessful) {
             val code = response.code
             response.close()
-            throw WebdavException("Download failed — HTTP $code")
+            throw WebdavException("Download failed — HTTP $code", statusCode = code)
         }
         val bytes = response.body?.bytes() ?: ByteArray(0)
         response.close()
@@ -155,7 +155,7 @@ class WebdavClient @Inject constructor() {
         if (!response.isSuccessful) {
             val code = response.code
             response.close()
-            throw WebdavException("Download failed — HTTP $code")
+            throw WebdavException("Download failed — HTTP $code", statusCode = code)
         }
         // Wrap in a closeable that also closes the response
         val bytes = response.body?.bytes() ?: ByteArray(0)

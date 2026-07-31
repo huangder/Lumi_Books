@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_continue_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_card_background"
+    android:clipToOutline="true"
+    android:padding="12dp">
+
+    <LinearLayout
+        android:id="@+id/widget_continue_content"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:id="@+id/widget_continue_cover"
+                android:layout_width="54dp"
+                android:layout_height="match_parent"
+                android:background="@drawable/widget_cover_background"
+                android:clipToOutline="true"
+                android:contentDescription="@string/widget_cover_content_description"
+                android:padding="10dp"
+                android:scaleType="centerCrop"
+                android:src="@drawable/ic_widget_book" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="10dp"
+                android:layout_weight="1"
+                android:gravity="center_vertical"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/widget_continue_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:fontFamily="sans"
+                    android:includeFontPadding="false"
+                    android:maxLines="2"
+                    android:textColor="@color/widget_text_primary"
+                    android:text="@string/widget_preview_book_title"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/widget_continue_author"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:ellipsize="end"
+                    android:fontFamily="sans"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:textColor="@color/widget_text_secondary"
+                    android:text="@string/widget_preview_author"
+                    android:textSize="11sp" />
+
+                <TextView
+                    android:id="@+id/widget_continue_progress"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:fontFamily="sans"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:textColor="@color/widget_text_primary"
+                    android:text="0%"
+                    android:textSize="23sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/widget_continue_button"
+            android:layout_width="match_parent"
+            android:layout_height="34dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/widget_button_background"
+            android:ellipsize="end"
+            android:fontFamily="sans"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:paddingHorizontal="8dp"
+            android:text="@string/continue_reading"
+            android:textColor="@color/widget_button_text"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/widget_continue_empty"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:ellipsize="end"
+        android:fontFamily="sans"
+        android:gravity="center"
+        android:includeFontPadding="false"
+        android:maxLines="3"
+        android:padding="12dp"
+        android:textColor="@color/widget_text_secondary"
+        android:textSize="14sp"
+        android:visibility="gone" />
+</FrameLayout>

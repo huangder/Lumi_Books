@@ -147,10 +147,24 @@
             android:name=".ui.reader.TxtEditorActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
             android:theme="@style/Theme.EBookReader"
-            android:windowSoftInputMode="adjustPan" />
+            android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ui.bookshelf.BookNotesActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+            android:theme="@style/Theme.EBookReader"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".ui.bookshelf.BookshelfCategoriesActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+            android:theme="@style/Theme.EBookReader"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".ui.bookshelf.BookshelfCategoryBooksActivity"
+            android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
             android:theme="@style/Theme.EBookReader"
             android:windowSoftInputMode="adjustResize" />
@@ -159,6 +173,30 @@
             android:name=".service.TtsForegroundService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
+
+        <receiver
+            android:name=".widget.ContinueReadingWidgetProvider"
+            android:exported="false"
+            android:label="@string/widget_continue_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/continue_reading_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.QuoteWidgetProvider"
+            android:exported="false"
+            android:label="@string/widget_quote_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/quote_widget_info" />
+        </receiver>
 
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"

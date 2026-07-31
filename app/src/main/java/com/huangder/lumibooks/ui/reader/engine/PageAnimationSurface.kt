@@ -25,9 +25,9 @@ enum class CurlBackTextureMode {
  */
 class PageAnimationSurface(
     private val root: ViewGroup,
-    val prevPageView: View,
-    val curPageView: View,
-    val nextPageView: View,
+    var prevPageView: View,
+    var curPageView: View,
+    var nextPageView: View,
     private val backgroundColorProvider: () -> Int,
     private val reversePageProgressProvider: () -> Boolean = { false },
     val snapTranslationsToPixels: Boolean = false,

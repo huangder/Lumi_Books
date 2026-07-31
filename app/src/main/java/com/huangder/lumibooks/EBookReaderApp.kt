@@ -8,6 +8,7 @@ import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import com.huangder.lumibooks.util.LaunchThemeController
 import com.huangder.lumibooks.util.LocaleHelper
+import com.huangder.lumibooks.widget.WidgetRefreshCoordinator
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
@@ -17,6 +18,9 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
 
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
+
+    @Inject
+    lateinit var widgetRefreshCoordinator: WidgetRefreshCoordinator
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -33,6 +37,7 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
         super.onCreate()
         PDFBoxResourceLoader.init(this)
         registerActivityLifecycleCallbacks(this)
+        widgetRefreshCoordinator.start()
     }
 
     override fun onActivityStarted(activity: Activity) {

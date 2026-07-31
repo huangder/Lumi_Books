@@ -705,6 +705,8 @@ fun StorageDetail(viewModel: SettingsViewModel) {
             }
         }
 
+        Spacer(Modifier.height(AppSpace.md))
+
         DetailCard {
             ActionRow(Icons.Outlined.DeleteSweep, stringResource(R.string.clear_cache)) { viewModel.clearCache() }
             SettingsDivider()
@@ -853,6 +855,37 @@ fun BackupRestoreDetail(viewModel: SettingsViewModel) {
                 Text(uiState.backupStatus, fontSize = AppType.BodySmall, color = if (uiState.backupStatus.contains("失败")) Color.Red else AppColors.TextSecondary)
             }
         }
+    }
+
+    Spacer(Modifier.height(AppSpace.lg))
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = AppSpace.lg),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = stringResource(R.string.backup_webdav_prompt),
+            fontSize = AppType.Caption,
+            color = AppColors.TextSecondary
+        )
+        Spacer(Modifier.width(AppSpace.xs))
+        Text(
+            text = stringResource(R.string.backup_webdav_link),
+            fontSize = AppType.Caption,
+            fontWeight = FontWeight.SemiBold,
+            color = AppColors.Accent,
+            modifier = Modifier.clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) {
+                context.startActivity(
+                    Intent(context, DetailActivity::class.java)
+                        .putExtra("category", "webdav")
+                )
+            }
+        )
     }
 }
 

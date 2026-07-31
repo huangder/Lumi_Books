@@ -6,13 +6,10 @@ import android.text.Layout
 import android.text.Selection
 import android.text.Spannable
 import android.text.SpannableStringBuilder
-import android.text.style.BackgroundColorSpan
-import android.text.style.CharacterStyle
 import android.text.style.ClickableSpan
 import android.text.style.DynamicDrawableSpan
 import android.text.style.ImageSpan
 import android.text.style.URLSpan
-import android.text.style.UpdateAppearance
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
@@ -30,20 +27,14 @@ internal fun pageStartsMidParagraph(text: CharSequence, start: Int): Boolean {
     return start > 0 && start <= text.length && text[start - 1] != '\n'
 }
 
-/** A non-persistent highlight whose opacity is animated after navigating to a search result. */
-internal class ReaderSearchHighlightSpan(var alpha: Int) : CharacterStyle(), UpdateAppearance {
-    override fun updateDrawState(textPaint: android.text.TextPaint) {
-        textPaint.bgColor = (alpha.coerceIn(0, 255) shl 24) or 0x00FFE082
-    }
-}
-
-private class PagedSelectableTextView(context: Context) : TextView(context) {
+private class PagedSelectableTextView(context: Context) : RoundedHighlightTextView(context) {
     override fun scrollTo(x: Int, y: Int) {
         // A page is a fixed viewport. Overflow belongs to the next page, never to inner scrolling.
         super.scrollTo(x, 0)
     }
 
     override fun canScrollVertically(direction: Int): Boolean = false
+
 }
 
 /**
@@ -319,7 +310,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
                     )
                 } else {
                     spannable.setSpan(
-                        BackgroundColorSpan(hColor),
+                        ReaderHighlightSpan(hColor),
                         localStart, localEnd,
                         Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
                     )
@@ -525,6 +516,20 @@ class PageContentView(context: Context) : FrameLayout(context) {
     var chapterStartOffset: Int = 0
         private set
 
+    fun firstVisibleCharacterOffset(): Int? {
+        val pageText = textView.text ?: return null
+        if (pageText.isEmpty()) return null
+        if (writingMode.isVertical) {
+            val firstGlyph = verticalGeometry?.glyphs?.firstOrNull { glyph ->
+                val localOffset = glyph.startOffset - chapterStartOffset
+                localOffset in pageText.indices && !pageText[localOffset].isWhitespace()
+            }
+            if (firstGlyph != null) return firstGlyph.startOffset
+        }
+        val localOffset = pageText.indexOfFirst { !it.isWhitespace() }
+        return if (localOffset >= 0) chapterStartOffset + localOffset else null
+    }
+
     /**
      * 在指定屏幕坐标处选词并高亮。
      * @return Triple(start, end, selectedText) 或 null
@@ -660,4 +665,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
 
     fun getVerticalSelectionBounds(): Pair<VerticalRect, VerticalRect>? =
         verticalTextView.selectionScreenBounds()
+
+    fun isVerticalSelectionHandleDragActive(): Boolean =
+        writingMode.isVertical && verticalTextView.isSelectionHandleDragActive()
 }

@@ -101,6 +101,7 @@ fun ImportBooksConfirmationSheet(
     selectedBooks: List<SelectedImportBook>,
     selectedBookUris: Set<String>,
     onBookSelectionToggle: (SelectedImportBook) -> Unit,
+    onSelectAll: () -> Unit,
     onDismiss: () -> Unit,
     onConfirmImport: () -> Unit
 ) {
@@ -114,6 +115,7 @@ fun ImportBooksConfirmationSheet(
             selectedBookUris = selectedBookUris,
             floatingContainer = floatingContainer,
             onBookSelectionToggle = onBookSelectionToggle,
+            onSelectAll = onSelectAll,
             onConfirmImport = onConfirmImport
         )
     }
@@ -332,6 +334,7 @@ private fun SelectedBooksStage(
     selectedBookUris: Set<String>,
     floatingContainer: Boolean,
     onBookSelectionToggle: (SelectedImportBook) -> Unit,
+    onSelectAll: () -> Unit,
     onConfirmImport: () -> Unit
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
@@ -339,13 +342,36 @@ private fun SelectedBooksStage(
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            Text(
-                text = stringResource(R.string.import_selected_count, selectedBookUris.size),
-                color = AppColors.TextPrimary,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(start = 28.dp, end = 28.dp, top = 32.dp, bottom = 22.dp)
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 28.dp, end = 28.dp, top = 26.dp, bottom = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.import_selected_count, selectedBookUris.size),
+                    color = AppColors.TextPrimary,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(16.dp))
+                LiquidGlassButton(
+                    onClick = onSelectAll,
+                    modifier = Modifier.height(44.dp),
+                    shape = RoundedCornerShape(50),
+                    tintedColor = AppColors.Accent,
+                    prominentShadow = false,
+                    contentColor = AppColors.OnAccent
+                ) {
+                    Text(
+                        text = stringResource(R.string.import_select_all),
+                        color = AppColors.OnAccent,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 modifier = Modifier

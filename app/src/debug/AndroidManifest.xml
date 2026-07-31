@@ -5,5 +5,11 @@
             android:name=".debug.DebugWebdavSyncReceiver"
             android:enabled="false"
             android:exported="false" />
+        <activity
+            android:name="com.huangder.lumibooks.util.epub.EpubHighlightTestActivity"
+            android:exported="false"
+            android:showWhenLocked="true"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar"
+            android:turnScreenOn="true" />
     </application>
 </manifest>

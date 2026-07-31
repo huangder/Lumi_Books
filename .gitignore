@@ -13,7 +13,9 @@ CLAUDE.md
 
 # Gradle and Android build outputs
 .gradle/
+/.gradle-*-gap/
 **/build/
+/app/build-codex*/
 /app/release/
 /app/build/
 /captures
@@ -22,14 +24,14 @@ CLAUDE.md
 local.properties
 
 # Design assets
-pagedesign/
-icon/
-font/
+/pagedesign/
+/icon/
+/font/
 
 # Dev logs
 devlog/
 devdocs/
-test/
+/test/
 
 # Window dumps
 window*.xml

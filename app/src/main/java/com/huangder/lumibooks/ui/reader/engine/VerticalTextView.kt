@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Rect
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.text.Selection
 import android.text.Spannable
@@ -35,6 +36,8 @@ internal class VerticalTextView(context: Context) : View(context) {
     private var chapterStartOffset: Int = 0
     private var draggingStartHandle = false
     private var draggingEndHandle = false
+
+    fun isSelectionHandleDragActive(): Boolean = draggingStartHandle || draggingEndHandle
 
     private val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e: MotionEvent): Boolean = true
@@ -74,6 +77,7 @@ internal class VerticalTextView(context: Context) : View(context) {
         val save = canvas.save()
         canvas.translate(paddingLeft.toFloat(), paddingTop.toFloat())
 
+        drawHighlightColumns(canvas, spannable, page)
         page.items.forEach { item ->
             when (item) {
                 is VerticalGlyphLayout -> drawGlyph(canvas, spannable, item)
@@ -90,18 +94,6 @@ internal class VerticalTextView(context: Context) : View(context) {
         if (localStart !in 0 until spannable.length || localEnd !in 1..spannable.length) return
         applyStyles(spannable, localStart)
         val bounds = glyph.bounds
-        val background = spannable.getSpans(localStart, localEnd, ReaderSearchHighlightSpan::class.java)
-            .lastOrNull()
-            ?.let { (it.alpha.coerceIn(0, 255) shl 24) or 0x00FFE082 }
-            ?: spannable.getSpans(localStart, localEnd, BackgroundColorSpan::class.java)
-                .lastOrNull()?.backgroundColor
-        if (background != null && background ushr 24 != 0) {
-            val oldColor = paint.color
-            paint.color = background
-            canvas.drawRect(bounds.left, bounds.top, bounds.right, bounds.bottom, paint)
-            paint.color = oldColor
-        }
-
         val source = spannable.subSequence(localStart, localEnd).toString()
         val display = verticalPresentationText(source)
         val centerX = bounds.centerX
@@ -117,6 +109,79 @@ internal class VerticalTextView(context: Context) : View(context) {
         }
         resetPaint()
     }
+
+    private fun drawHighlightColumns(
+        canvas: Canvas,
+        spannable: Spannable,
+        page: VerticalPageGeometry
+    ) {
+        data class Run(
+            val columnIndex: Int,
+            val color: Int,
+            var lastOffset: Int,
+            var left: Float,
+            var top: Float,
+            var right: Float,
+            var bottom: Float
+        )
+
+        val runs = mutableListOf<Run>()
+        page.glyphs.forEach { glyph ->
+            val localStart = glyph.startOffset - chapterStartOffset
+            val localEnd = glyph.endOffset - chapterStartOffset
+            if (localStart !in 0 until spannable.length || localEnd !in 1..spannable.length) return@forEach
+            val color = highlightColorAt(spannable, localStart, localEnd) ?: return@forEach
+            if (color ushr 24 == 0) return@forEach
+            val current = runs.lastOrNull()
+            if (
+                current != null && current.columnIndex == glyph.columnIndex &&
+                current.color == color && current.lastOffset == glyph.startOffset
+            ) {
+                current.lastOffset = glyph.endOffset
+                current.left = minOf(current.left, glyph.bounds.left)
+                current.top = minOf(current.top, glyph.bounds.top)
+                current.right = maxOf(current.right, glyph.bounds.right)
+                current.bottom = maxOf(current.bottom, glyph.bounds.bottom)
+            } else {
+                runs += Run(
+                    columnIndex = glyph.columnIndex,
+                    color = color,
+                    lastOffset = glyph.endOffset,
+                    left = glyph.bounds.left,
+                    top = glyph.bounds.top,
+                    right = glyph.bounds.right,
+                    bottom = glyph.bounds.bottom
+                )
+            }
+        }
+
+        val density = resources.displayMetrics.density
+        val columnGap = 1.5f * density
+        val inlinePadding = 3f * density
+        val maxRadius = 6f * density
+        val oldColor = paint.color
+        runs.forEach { run ->
+            val bounds = RectF(
+                run.left + columnGap,
+                (run.top - inlinePadding).coerceAtLeast(0f),
+                run.right - columnGap,
+                (run.bottom + inlinePadding).coerceAtMost(page.height)
+            )
+            if (bounds.width() <= 0f || bounds.height() <= 0f) return@forEach
+            paint.color = run.color
+            val radius = minOf(maxRadius, bounds.width() / 2f, bounds.height() / 2f)
+            canvas.drawRoundRect(bounds, radius, radius, paint)
+        }
+        paint.color = oldColor
+    }
+
+    private fun highlightColorAt(spannable: Spannable, start: Int, end: Int): Int? =
+        spannable.getSpans(start, end, ReaderSearchHighlightSpan::class.java)
+            .lastOrNull()?.color
+            ?: spannable.getSpans(start, end, ReaderHighlightSpan::class.java)
+                .lastOrNull()?.color
+            ?: spannable.getSpans(start, end, BackgroundColorSpan::class.java)
+                .lastOrNull()?.backgroundColor
 
     private fun drawImage(canvas: Canvas, spannable: Spannable, image: VerticalImageLayout) {
         val localStart = (image.startOffset - chapterStartOffset).coerceIn(0, spannable.length)
@@ -164,8 +229,20 @@ internal class VerticalTextView(context: Context) : View(context) {
             MotionEvent.ACTION_DOWN -> {
                 val slop = resources.displayMetrics.density * 28f
                 selectedBounds?.let { (first, last) ->
-                    draggingStartHandle = distance(event.x, event.y, first.centerX + paddingLeft, first.top + paddingTop) <= slop
-                    draggingEndHandle = distance(event.x, event.y, last.centerX + paddingLeft, last.bottom + paddingTop) <= slop
+                    val startDistance = distance(
+                        event.x,
+                        event.y,
+                        first.centerX + paddingLeft,
+                        first.top + paddingTop
+                    )
+                    val endDistance = distance(
+                        event.x,
+                        event.y,
+                        last.centerX + paddingLeft,
+                        last.bottom + paddingTop
+                    )
+                    draggingStartHandle = startDistance <= slop && startDistance <= endDistance
+                    draggingEndHandle = endDistance <= slop && endDistance < startDistance
                     if (draggingStartHandle || draggingEndHandle) parent?.requestDisallowInterceptTouchEvent(true)
                 }
             }

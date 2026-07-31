@@ -1013,6 +1013,15 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setWebdavSyncContent(
+        content: com.huangder.lumibooks.domain.model.WebdavSyncContent,
+        enabled: Boolean
+    ) {
+        viewModelScope.launch {
+            dataStoreManager.setWebdavSyncContent(content, enabled)
+        }
+    }
+
     fun syncWebdavNow() {
         viewModelScope.launch {
             val config = _uiState.value.webdavConfig

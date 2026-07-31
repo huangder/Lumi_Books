@@ -5,6 +5,7 @@ import android.hardware.display.DisplayManager
 import android.view.Display
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.floatPreferencesKey
@@ -16,12 +17,18 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.huangder.lumibooks.domain.model.CustomFontPreset
 import com.huangder.lumibooks.domain.model.CustomFontPresetCodec
 import com.huangder.lumibooks.domain.model.WebdavConfig
+import com.huangder.lumibooks.domain.model.WebdavSyncContent
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPresetCodec
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
 import com.huangder.lumibooks.domain.model.ReaderPageCorner
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
+import com.huangder.lumibooks.domain.model.ReaderThemeSettings
+import com.huangder.lumibooks.domain.model.ReaderThemeSuite
+import com.huangder.lumibooks.domain.model.ReaderThemeSuiteCodec
+import com.huangder.lumibooks.domain.model.ReaderThemeSuiteState
+import com.huangder.lumibooks.domain.model.ReaderThemeSuites
 import com.huangder.lumibooks.domain.model.defaultReaderCornerContent
 import com.huangder.lumibooks.util.LaunchThemeController
 import com.huangder.lumibooks.util.epub.EpubRenderMode
@@ -71,6 +78,9 @@ class DataStoreManager @Inject constructor(
         private val CUSTOM_READER_BACKGROUNDS = stringPreferencesKey("custom_reader_backgrounds")
         private val PRESERVE_EPUB_BACKGROUND = booleanPreferencesKey("preserve_epub_background")
         private val READER_TEXT_COLOR = intPreferencesKey("reader_text_color")
+        private val READER_THEME_SUITES = stringPreferencesKey("reader_theme_suites")
+        private val ACTIVE_READER_THEME_SUITE_ID = stringPreferencesKey("active_reader_theme_suite_id")
+        private val READER_THEME_SUITES_VERSION = intPreferencesKey("reader_theme_suites_version")
         private val PARAGRAPH_SPACING = floatPreferencesKey("paragraph_spacing")
         private val FIRST_LINE_INDENT = floatPreferencesKey("first_line_indent")
         private val ADVANCED_DEFAULTS_VERSION = intPreferencesKey("advanced_defaults_version")
@@ -132,6 +142,10 @@ class DataStoreManager @Inject constructor(
         private val WEBDAV_LAST_SYNC_TIME = longPreferencesKey("webdav_last_sync_time")
         private val WEBDAV_SYNC_MODE = stringPreferencesKey("webdav_sync_mode")
         private val WEBDAV_SYNCED_BOOK_IDS = stringPreferencesKey("webdav_synced_book_ids")
+        private val WEBDAV_SYNC_BOOK_FILES = booleanPreferencesKey("webdav_sync_book_files")
+        private val WEBDAV_SYNC_READING_RECORDS = booleanPreferencesKey("webdav_sync_reading_records")
+        private val WEBDAV_SYNC_BOOKMARKS = booleanPreferencesKey("webdav_sync_bookmarks")
+        private val WEBDAV_SYNC_NOTES = booleanPreferencesKey("webdav_sync_notes")
         // 应用语言
         private val APP_LANGUAGE = stringPreferencesKey("app_language")
 
@@ -227,6 +241,16 @@ class DataStoreManager @Inject constructor(
 
     val readerTextColor: Flow<Int?> = context.dataStore.data.map { preferences ->
         preferences[READER_TEXT_COLOR]
+    }
+
+    val readerThemeSuiteState: Flow<ReaderThemeSuiteState> = context.dataStore.data.map { preferences ->
+        val suites = readThemeSuites(preferences)
+        val requestedActiveId = preferences[ACTIVE_READER_THEME_SUITE_ID]
+        ReaderThemeSuiteState(
+            suites = suites,
+            activeSuiteId = requestedActiveId?.takeIf { id -> suites.any { it.id == id } }
+                ?: ReaderThemeSuites.DAY_ID
+        )
     }
 
     /** PDF 阅读方向："vertical" | "horizontal"，所有 PDF 共用。 */
@@ -389,7 +413,11 @@ class DataStoreManager @Inject constructor(
             username = preferences[WEBDAV_USERNAME] ?: "",
             syncPath = preferences[WEBDAV_SYNC_PATH] ?: "LumiBooks",
             lastSyncTime = preferences[WEBDAV_LAST_SYNC_TIME] ?: 0L,
-            syncMode = preferences[WEBDAV_SYNC_MODE] ?: "auto"
+            syncMode = preferences[WEBDAV_SYNC_MODE] ?: "auto",
+            syncBookFiles = preferences[WEBDAV_SYNC_BOOK_FILES] ?: true,
+            syncReadingRecords = preferences[WEBDAV_SYNC_READING_RECORDS] ?: true,
+            syncBookmarks = preferences[WEBDAV_SYNC_BOOKMARKS] ?: true,
+            syncNotes = preferences[WEBDAV_SYNC_NOTES] ?: true
         )
     }
 
@@ -439,24 +467,28 @@ class DataStoreManager @Inject constructor(
     suspend fun saveFontSize(fontSize: Float) {
         context.dataStore.edit { preferences ->
             preferences[FONT_SIZE] = fontSize
+            preferences.updateActiveReaderThemeSuite { copy(fontSize = fontSize) }
         }
     }
 
     suspend fun saveLineHeight(lineHeight: Float) {
         context.dataStore.edit { preferences ->
             preferences[LINE_HEIGHT] = lineHeight
+            preferences.updateActiveReaderThemeSuite { copy(lineHeight = lineHeight) }
         }
     }
 
     suspend fun saveLetterSpacing(letterSpacing: Float) {
         context.dataStore.edit { preferences ->
             preferences[LETTER_SPACING] = letterSpacing
+            preferences.updateActiveReaderThemeSuite { copy(letterSpacing = letterSpacing) }
         }
     }
 
     suspend fun saveFontType(fontType: String) {
         context.dataStore.edit { preferences ->
             preferences[FONT_TYPE] = fontType
+            preferences.updateActiveReaderThemeSuite { copy(fontType = fontType) }
         }
     }
 
@@ -465,6 +497,9 @@ class DataStoreManager @Inject constructor(
             preferences[MARGIN_HORIZ] = marginHoriz
             preferences[MARGIN_LEFT] = marginHoriz
             preferences[MARGIN_RIGHT] = marginHoriz
+            preferences.updateActiveReaderThemeSuite {
+                copy(marginLeft = marginHoriz, marginRight = marginHoriz)
+            }
         }
     }
 
@@ -473,6 +508,9 @@ class DataStoreManager @Inject constructor(
             preferences[MARGIN_VERT] = marginVert
             preferences[MARGIN_TOP] = marginVert
             preferences[MARGIN_BOTTOM] = marginVert
+            preferences.updateActiveReaderThemeSuite {
+                copy(marginTop = marginVert, marginBottom = marginVert)
+            }
         }
     }
 
@@ -481,6 +519,7 @@ class DataStoreManager @Inject constructor(
             preferences[MARGIN_LEFT] = marginLeft
             val right = preferences[MARGIN_RIGHT] ?: preferences[MARGIN_HORIZ] ?: 38f
             preferences[MARGIN_HORIZ] = (marginLeft + right) / 2f
+            preferences.updateActiveReaderThemeSuite { copy(marginLeft = marginLeft) }
         }
     }
 
@@ -489,6 +528,7 @@ class DataStoreManager @Inject constructor(
             preferences[MARGIN_RIGHT] = marginRight
             val left = preferences[MARGIN_LEFT] ?: preferences[MARGIN_HORIZ] ?: 38f
             preferences[MARGIN_HORIZ] = (left + marginRight) / 2f
+            preferences.updateActiveReaderThemeSuite { copy(marginRight = marginRight) }
         }
     }
 
@@ -497,6 +537,7 @@ class DataStoreManager @Inject constructor(
             preferences[MARGIN_TOP] = marginTop
             val bottom = preferences[MARGIN_BOTTOM] ?: preferences[MARGIN_VERT] ?: 64f
             preferences[MARGIN_VERT] = (marginTop + bottom) / 2f
+            preferences.updateActiveReaderThemeSuite { copy(marginTop = marginTop) }
         }
     }
 
@@ -505,12 +546,15 @@ class DataStoreManager @Inject constructor(
             preferences[MARGIN_BOTTOM] = marginBottom
             val top = preferences[MARGIN_TOP] ?: preferences[MARGIN_VERT] ?: 64f
             preferences[MARGIN_VERT] = (top + marginBottom) / 2f
+            preferences.updateActiveReaderThemeSuite { copy(marginBottom = marginBottom) }
         }
     }
 
     suspend fun saveReaderTheme(theme: String) {
         context.dataStore.edit { preferences ->
             preferences[READER_THEME] = theme
+            preferences[READER_BACKGROUND_SELECTION] = theme
+            preferences.updateActiveReaderThemeSuite { copy(backgroundSelection = theme) }
         }
     }
 
@@ -536,6 +580,7 @@ class DataStoreManager @Inject constructor(
     suspend fun saveReaderBackgroundSelection(selection: String) {
         context.dataStore.edit { preferences ->
             preferences[READER_BACKGROUND_SELECTION] = selection
+            preferences.updateActiveReaderThemeSuite { copy(backgroundSelection = selection) }
         }
     }
 
@@ -549,6 +594,7 @@ class DataStoreManager @Inject constructor(
         context.dataStore.edit { preferences ->
             if (color == null) preferences.remove(READER_TEXT_COLOR)
             else preferences[READER_TEXT_COLOR] = color
+            preferences.updateActiveReaderThemeSuite { copy(textColor = color) }
         }
     }
 
@@ -657,6 +703,20 @@ class DataStoreManager @Inject constructor(
                 preferences[readerCornerKey(corner)] = defaultReaderCornerContent(corner).key
             }
             preferences.remove(READER_TEXT_COLOR)
+            preferences.updateActiveReaderThemeSuite {
+                copy(
+                    textColor = null,
+                    fontType = "system",
+                    lineHeight = 1.5f,
+                    letterSpacing = 0f,
+                    paragraphSpacing = 2f,
+                    firstLineIndent = 2f,
+                    marginLeft = 38f,
+                    marginRight = 38f,
+                    marginTop = 64f,
+                    marginBottom = 64f
+                )
+            }
         }
     }
 
@@ -693,6 +753,51 @@ class DataStoreManager @Inject constructor(
             preferences[ADVANCED_DEFAULTS_VERSION] = 2
         }
     }
+
+    suspend fun migrateReaderThemeSuites() {
+        context.dataStore.edit { preferences ->
+            val currentVersion = preferences[READER_THEME_SUITES_VERSION] ?: 0
+            if (currentVersion >= 1 && preferences[READER_THEME_SUITES] != null) {
+                val normalized = readThemeSuites(preferences)
+                preferences[READER_THEME_SUITES] = ReaderThemeSuiteCodec.encode(normalized)
+                val activeId = preferences[ACTIVE_READER_THEME_SUITE_ID]
+                    ?.takeIf { id -> normalized.any { it.id == id } }
+                    ?: ReaderThemeSuites.DAY_ID
+                preferences[ACTIVE_READER_THEME_SUITE_ID] = activeId
+                return@edit
+            }
+
+            val backgroundSelection = preferences[READER_BACKGROUND_SELECTION]
+                ?: preferences[READER_THEME]
+                ?: ReaderThemeSuites.DAY_ID
+            val currentSettings = preferences.toReaderThemeSettings(backgroundSelection)
+            val migrated = ReaderThemeSuites.fromLegacy(currentSettings)
+            preferences[READER_THEME_SUITES] = ReaderThemeSuiteCodec.encode(migrated.suites)
+            preferences[ACTIVE_READER_THEME_SUITE_ID] = migrated.activeSuiteId
+            preferences[READER_THEME_SUITES_VERSION] = 1
+        }
+    }
+
+    suspend fun saveReaderThemeSuiteState(
+        suites: List<ReaderThemeSuite>,
+        activeSuiteId: String,
+        applyActiveSuite: Boolean
+    ) {
+        context.dataStore.edit { preferences ->
+            val normalized = ReaderThemeSuites.normalized(suites)
+            val resolvedActiveId = activeSuiteId.takeIf { id -> normalized.any { it.id == id } }
+                ?: ReaderThemeSuites.DAY_ID
+            preferences[READER_THEME_SUITES] = ReaderThemeSuiteCodec.encode(normalized)
+            preferences[ACTIVE_READER_THEME_SUITE_ID] = resolvedActiveId
+            preferences[READER_THEME_SUITES_VERSION] = 1
+            if (applyActiveSuite) {
+                normalized.firstOrNull { it.id == resolvedActiveId }
+                    ?.settings
+                    ?.let { settings -> preferences.applyReaderThemeSettings(settings) }
+            }
+        }
+    }
+
     suspend fun savePreserveEpubBackground(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PRESERVE_EPUB_BACKGROUND] = enabled
@@ -708,6 +813,7 @@ class DataStoreManager @Inject constructor(
         context.dataStore.edit { preferences ->
             preferences[READER_THEME] = theme
             preferences[READER_BACKGROUND_SELECTION] = selection
+            preferences.updateActiveReaderThemeSuite { copy(backgroundSelection = selection) }
             if (presets != null) {
                 preferences[CUSTOM_READER_BACKGROUNDS] = ReaderBackgroundPresetCodec.encode(presets)
             }
@@ -844,7 +950,10 @@ class DataStoreManager @Inject constructor(
     }
 
     suspend fun saveParagraphSpacing(value: Float) {
-        context.dataStore.edit { it[PARAGRAPH_SPACING] = value }
+        context.dataStore.edit { preferences ->
+            preferences[PARAGRAPH_SPACING] = value
+            preferences.updateActiveReaderThemeSuite { copy(paragraphSpacing = value) }
+        }
     }
 
     /** 首行缩进字符数，默认 2 */
@@ -853,7 +962,10 @@ class DataStoreManager @Inject constructor(
     }
 
     suspend fun saveFirstLineIndent(value: Float) {
-        context.dataStore.edit { it[FIRST_LINE_INDENT] = value }
+        context.dataStore.edit { preferences ->
+            preferences[FIRST_LINE_INDENT] = value
+            preferences.updateActiveReaderThemeSuite { copy(firstLineIndent = value) }
+        }
     }
 
     suspend fun saveDailyGoal(goal: Int) {
@@ -1005,6 +1117,22 @@ class DataStoreManager @Inject constructor(
             preferences[WEBDAV_SYNC_PATH] = normalized.syncPath
             preferences[WEBDAV_LAST_SYNC_TIME] = normalized.lastSyncTime
             preferences[WEBDAV_SYNC_MODE] = normalized.syncMode
+            preferences[WEBDAV_SYNC_BOOK_FILES] = normalized.syncBookFiles
+            preferences[WEBDAV_SYNC_READING_RECORDS] = normalized.syncReadingRecords
+            preferences[WEBDAV_SYNC_BOOKMARKS] = normalized.syncBookmarks
+            preferences[WEBDAV_SYNC_NOTES] = normalized.syncNotes
+        }
+    }
+
+    suspend fun setWebdavSyncContent(content: WebdavSyncContent, enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            val key = when (content) {
+                WebdavSyncContent.BOOK_FILES -> WEBDAV_SYNC_BOOK_FILES
+                WebdavSyncContent.READING_RECORDS -> WEBDAV_SYNC_READING_RECORDS
+                WebdavSyncContent.BOOKMARKS -> WEBDAV_SYNC_BOOKMARKS
+                WebdavSyncContent.NOTES -> WEBDAV_SYNC_NOTES
+            }
+            preferences[key] = enabled
         }
     }
 
@@ -1188,6 +1316,75 @@ class DataStoreManager @Inject constructor(
         if (versionCode <= 0L) return
         context.dataStore.edit { preferences ->
             preferences[IGNORED_APP_UPDATE_VERSION_CODE] = versionCode
+        }
+    }
+
+    private fun readThemeSuites(preferences: Preferences): List<ReaderThemeSuite> {
+        val decoded = ReaderThemeSuiteCodec.decode(preferences[READER_THEME_SUITES])
+        return ReaderThemeSuites.normalized(
+            decoded.ifEmpty { ReaderThemeSuites.defaults() }
+        )
+    }
+
+    private fun Preferences.toReaderThemeSettings(
+        backgroundSelection: String = this[READER_BACKGROUND_SELECTION]
+            ?: this[READER_THEME]
+            ?: ReaderThemeSuites.DAY_ID
+    ) = ReaderThemeSettings(
+        backgroundSelection = backgroundSelection,
+        textColor = this[READER_TEXT_COLOR],
+        fontSize = this[FONT_SIZE] ?: 16f,
+        fontType = this[FONT_TYPE] ?: "system",
+        lineHeight = this[LINE_HEIGHT] ?: 1.5f,
+        letterSpacing = this[LETTER_SPACING] ?: 0f,
+        paragraphSpacing = this[PARAGRAPH_SPACING] ?: 2f,
+        firstLineIndent = this[FIRST_LINE_INDENT] ?: 2f,
+        marginLeft = this[MARGIN_LEFT] ?: this[MARGIN_HORIZ] ?: 38f,
+        marginRight = this[MARGIN_RIGHT] ?: this[MARGIN_HORIZ] ?: 38f,
+        marginTop = this[MARGIN_TOP] ?: this[MARGIN_VERT] ?: 64f,
+        marginBottom = this[MARGIN_BOTTOM] ?: this[MARGIN_VERT] ?: 64f
+    )
+
+    private fun MutablePreferences.updateActiveReaderThemeSuite(
+        transform: ReaderThemeSettings.() -> ReaderThemeSettings
+    ) {
+        if (this[READER_THEME_SUITES] == null) return
+        val suites = readThemeSuites(this)
+        val activeId = this[ACTIVE_READER_THEME_SUITE_ID]
+            ?.takeIf { id -> suites.any { it.id == id } }
+            ?: ReaderThemeSuites.DAY_ID
+        val updated = suites.map { suite ->
+            if (suite.id == activeId) suite.copy(settings = suite.settings.transform()) else suite
+        }
+        this[READER_THEME_SUITES] = ReaderThemeSuiteCodec.encode(updated)
+    }
+
+    private fun MutablePreferences.applyReaderThemeSettings(settings: ReaderThemeSettings) {
+        this[FONT_SIZE] = settings.fontSize
+        this[LINE_HEIGHT] = settings.lineHeight
+        this[LETTER_SPACING] = settings.letterSpacing
+        this[FONT_TYPE] = settings.fontType
+        this[MARGIN_LEFT] = settings.marginLeft
+        this[MARGIN_RIGHT] = settings.marginRight
+        this[MARGIN_TOP] = settings.marginTop
+        this[MARGIN_BOTTOM] = settings.marginBottom
+        this[MARGIN_HORIZ] = (settings.marginLeft + settings.marginRight) / 2f
+        this[MARGIN_VERT] = (settings.marginTop + settings.marginBottom) / 2f
+        this[PARAGRAPH_SPACING] = settings.paragraphSpacing
+        this[FIRST_LINE_INDENT] = settings.firstLineIndent
+        this[READER_BACKGROUND_SELECTION] = settings.backgroundSelection
+        this[READER_THEME] = settings.backgroundSelection
+            .takeIf { it in ReaderThemeSuites.BUILT_IN_IDS }
+            ?: ReaderThemeSuites.DAY_ID
+        settings.textColor?.let { this[READER_TEXT_COLOR] = it }
+            ?: remove(READER_TEXT_COLOR)
+
+        if (settings.fontType.startsWith("custom:")) {
+            val fontId = settings.fontType.removePrefix("custom:")
+            CustomFontPresetCodec.decode(this[CUSTOM_FONTS])
+                .firstOrNull { it.id == fontId }
+                ?.path
+                ?.let { this[CUSTOM_FONT_PATH] = it }
         }
     }
 

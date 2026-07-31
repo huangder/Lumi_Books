@@ -6,6 +6,8 @@ import android.text.Spanned
 import android.text.style.LeadingMarginSpan
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.huangder.lumibooks.domain.model.Note
+import com.huangder.lumibooks.ui.reader.resolveReaderNote
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -113,6 +115,37 @@ class ReaderParagraphFormatterTest {
                 com.huangder.lumibooks.util.parser.EpubParser.ParagraphLineHeightSpan::class.java
             ).isEmpty()
         )
+    }
+
+    @Test
+    fun highlightCoordinatesFollowFormattedReaderTextAfterIndentRemoval() {
+        val selected = "我看，不但有一席之地，还有大讲一下的必要。"
+        val rawText = "      题的一席之地呢？$selected 地方贫困，观念不能"
+        val readerText = ReaderParagraphFormatter.applyFirstLineIndent(
+            text = rawText,
+            indentCharacters = 2f,
+            textSizePx = 32f,
+            paragraphSpacingPx = 0f,
+            skipFirstNonEmptyParagraph = false
+        )
+        val readerStart = readerText.indexOf(selected)
+        val note = Note(
+            id = 1,
+            bookId = "book",
+            chapterIndex = 0,
+            startPosition = readerStart,
+            endPosition = readerStart + selected.length,
+            selectedText = selected,
+            note = "",
+            color = "#40FF5F57",
+            createdAt = 1
+        )
+
+        val resolved = resolveReaderNote(note, readerText)
+
+        assertEquals(readerStart, resolved?.startPosition)
+        assertEquals(readerStart + selected.length, resolved?.endPosition)
+        assertEquals(selected, readerText.subSequence(resolved!!.startPosition, resolved.endPosition).toString())
     }
 
     @Test

@@ -97,10 +97,13 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_OPEN_BOOK_ID = "open_book_id"
+        const val EXTRA_OPEN_DESTINATION = "open_destination"
+        const val DESTINATION_BOOKSHELF = "bookshelf"
     }
 
     private var systemDarkMode by mutableStateOf(false)
     private var requestedOpenBookId by mutableStateOf<String?>(null)
+    private var requestedOpenBookshelf by mutableStateOf(false)
 
     override fun attachBaseContext(newBase: android.content.Context) {
         super.attachBaseContext(com.huangder.lumibooks.util.LocaleHelper.applyLanguage(newBase))
@@ -153,12 +156,17 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleOpenBookIntent(intent)
+        handleNavigationIntent(intent)
         handleImportIntent(intent)
     }
 
-    private fun handleOpenBookIntent(intent: Intent?) {
-        requestedOpenBookId = intent?.getStringExtra(EXTRA_OPEN_BOOK_ID)?.takeIf { it.isNotBlank() }
+    private fun handleNavigationIntent(intent: Intent?) {
+        val requestedBookId = intent
+            ?.getStringExtra(EXTRA_OPEN_BOOK_ID)
+            ?.takeIf { it.isNotBlank() }
+        requestedOpenBookId = requestedBookId
+        requestedOpenBookshelf = requestedBookId == null &&
+            intent?.getStringExtra(EXTRA_OPEN_DESTINATION) == DESTINATION_BOOKSHELF
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -270,11 +278,16 @@ class MainActivity : ComponentActivity() {
             WelcomeActivity.EXTRA_DEBUG_PREVIEW_POLICY_DOCUMENT,
             false
         )
-        if (BuildConfig.DEBUG && (debugPreviewLanguage || debugPreviewPolicy)) {
+        val debugPreviewSupport = intent.getBooleanExtra(
+            WelcomeActivity.EXTRA_DEBUG_PREVIEW_SUPPORT_WELCOME,
+            false
+        )
+        if (BuildConfig.DEBUG && (debugPreviewLanguage || debugPreviewPolicy || debugPreviewSupport)) {
             startActivity(
                 Intent(this, WelcomeActivity::class.java)
                     .putExtra(WelcomeActivity.EXTRA_DEBUG_PREVIEW_LANGUAGE_SETUP, debugPreviewLanguage)
                     .putExtra(WelcomeActivity.EXTRA_DEBUG_PREVIEW_POLICY_DOCUMENT, debugPreviewPolicy)
+                    .putExtra(WelcomeActivity.EXTRA_DEBUG_PREVIEW_SUPPORT_WELCOME, debugPreviewSupport)
             )
             finish()
             return
@@ -283,7 +296,7 @@ class MainActivity : ComponentActivity() {
         systemDarkMode = resources.configuration.isNightModeEnabled()
 
         // 处理外部文件打开（冷启动）
-        handleOpenBookIntent(intent)
+        handleNavigationIntent(intent)
         handleImportIntent(intent)
 
         // 启动时自动检查更新（静默执行，有变更时弹窗）
@@ -390,8 +403,10 @@ class MainActivity : ComponentActivity() {
                                 entranceAnimationsEnabled = entranceAnimationsEnabled && !showSplash && !eInkModeEnabled,
                                 predictiveBackEnabled = predictiveBackEnabled && !eInkModeEnabled,
                                 requestedOpenBookId = requestedOpenBookId,
+                                requestedOpenBookshelf = requestedOpenBookshelf,
                                 onBeforeOpenDifferentBook = ttsController::stop,
-                                onOpenBookRequestConsumed = { requestedOpenBookId = null }
+                                onOpenBookRequestConsumed = { requestedOpenBookId = null },
+                                onOpenBookshelfRequestConsumed = { requestedOpenBookshelf = false }
                             )
                         }
 

@@ -24,6 +24,11 @@ import com.huangder.lumibooks.domain.model.ReaderCornerContent
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
 import com.huangder.lumibooks.domain.model.ReaderPageCorner
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
+import com.huangder.lumibooks.domain.model.ReaderThemeSettings
+import com.huangder.lumibooks.domain.model.ReaderThemeSuite
+import com.huangder.lumibooks.domain.model.ReaderThemeSuites
+import com.huangder.lumibooks.domain.model.normalizeReaderThemeSuiteName
+import com.huangder.lumibooks.domain.model.readerThemeSuiteNameCodePointCount
 import com.huangder.lumibooks.domain.model.defaultReaderCornerContent
 import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.domain.repository.ReadingRepository
@@ -47,6 +52,8 @@ import com.huangder.lumibooks.util.parser.TxtParser
 import com.huangder.lumibooks.util.epub.EpubRenderMode
 import com.huangder.lumibooks.util.epub.EpubRenderSession
 import com.huangder.lumibooks.util.epub.EpubRenderSource
+import com.huangder.lumibooks.util.epub.EpubLocator
+import com.huangder.lumibooks.util.epub.EpubSearchSource
 import com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatter
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.service.TtsForegroundService
@@ -61,6 +68,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -85,6 +93,33 @@ internal fun shouldStyleTxtChapterTitle(firstLine: String, chapterTitle: String)
     return normalizedFirstLine.isNotEmpty() &&
         normalizedFirstLine.length <= 80 &&
         normalizedFirstLine == normalizedChapterTitle
+}
+
+internal fun mapReaderTxtOffsetToSource(
+    sourceText: CharSequence,
+    readerText: CharSequence,
+    readerOffset: Int
+): Int {
+    if (sourceText.isEmpty() || readerText.isEmpty()) return 0
+    var target = readerOffset.coerceIn(0, readerText.length)
+    while (target < readerText.length && readerText[target].isWhitespace()) target++
+    if (target >= readerText.length) return sourceText.length
+
+    var targetNonWhitespaceOrdinal = 0
+    for (index in 0 until target) {
+        if (!readerText[index].isWhitespace()) targetNonWhitespaceOrdinal++
+    }
+
+    var sourceNonWhitespaceOrdinal = 0
+    var lastContentOffset = 0
+    sourceText.forEachIndexed { index, character ->
+        if (!character.isWhitespace()) {
+            lastContentOffset = index
+            if (sourceNonWhitespaceOrdinal == targetNonWhitespaceOrdinal) return index
+            sourceNonWhitespaceOrdinal++
+        }
+    }
+    return lastContentOffset.coerceIn(0, sourceText.length)
 }
 
 data class ReaderUiState(
@@ -120,6 +155,8 @@ data class ReaderUiState(
     val customReaderBackgrounds: List<ReaderBackgroundPreset> = emptyList(),
     val preserveEpubBackground: Boolean = true,
     val readerTextColor: Int? = null,
+    val readerThemeSuites: List<ReaderThemeSuite> = ReaderThemeSuites.defaults(),
+    val activeReaderThemeSuiteId: String = ReaderThemeSuites.DAY_ID,
     val error: String? = null,
     /** 全局页码（跨所有章节），新引擎用 */
     val globalPageIndex: Int = 0,
@@ -230,12 +267,16 @@ class ReaderViewModel @Inject constructor(
     private val _notes = MutableStateFlow<List<Note>>(emptyList())
     val notes: StateFlow<List<Note>> = _notes.asStateFlow()
 
+    private val _readerNotes = MutableStateFlow<List<Note>>(emptyList())
+    val readerNotes: StateFlow<List<Note>> = _readerNotes.asStateFlow()
+
     private val _pdfConversionState = MutableStateFlow<PdfConversionState>(PdfConversionState.Idle)
     val pdfConversionState: StateFlow<PdfConversionState> = _pdfConversionState.asStateFlow()
     private val _mineruMode = MutableStateFlow(MineruMode.DISABLED)
     val mineruMode: StateFlow<MineruMode> = _mineruMode.asStateFlow()
     private var manualImportJob: Job? = null
     private var continuousProgressJob: Job? = null
+    private var readerNotesJob: Job? = null
     private val progressWriteMutex = Mutex()
     private var progressWriteVersion = 0L
 
@@ -273,6 +314,7 @@ class ReaderViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             dataStoreManager.migrateAdvancedReaderDefaults()
+            dataStoreManager.migrateReaderThemeSuites()
             loadBook()
             loadReaderSettings()
         }
@@ -470,6 +512,14 @@ class ReaderViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            dataStoreManager.readerThemeSuiteState.collectLatest { state ->
+                _uiState.value = _uiState.value.copy(
+                    readerThemeSuites = state.suites,
+                    activeReaderThemeSuiteId = state.activeSuiteId
+                )
+            }
+        }
+        viewModelScope.launch {
             dataStoreManager.customReaderBackgrounds.collectLatest { presets ->
                 _uiState.value = _uiState.value.copy(customReaderBackgrounds = presets)
                 val hydrated = withContext(Dispatchers.IO) {
@@ -560,22 +610,30 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun saveFontSize(size: Float) {
-        _uiState.value = _uiState.value.copy(fontSize = size)
+        _uiState.value = _uiState.value
+            .withUpdatedActiveThemeSettings { copy(fontSize = size) }
+            .copy(fontSize = size)
         viewModelScope.launch { dataStoreManager.saveFontSize(size) }
     }
 
     fun saveLineHeight(lh: Float) {
-        _uiState.value = _uiState.value.copy(lineHeight = lh)
+        _uiState.value = _uiState.value
+            .withUpdatedActiveThemeSettings { copy(lineHeight = lh) }
+            .copy(lineHeight = lh)
         viewModelScope.launch { dataStoreManager.saveLineHeight(lh) }
     }
 
     fun saveLetterSpacing(ls: Float) {
-        _uiState.value = _uiState.value.copy(letterSpacing = ls)
+        _uiState.value = _uiState.value
+            .withUpdatedActiveThemeSettings { copy(letterSpacing = ls) }
+            .copy(letterSpacing = ls)
         viewModelScope.launch { dataStoreManager.saveLetterSpacing(ls) }
     }
 
     fun saveFontType(ft: String) {
-        var newState = _uiState.value.copy(fontType = ft)
+        var newState = _uiState.value
+            .withUpdatedActiveThemeSettings { copy(fontType = ft) }
+            .copy(fontType = ft)
         // 🔥 选自定义字体时同步更新 customFontPath，让 ReadView 立即生效
         if (ft.startsWith("custom:")) {
             val id = ft.removePrefix("custom:")
@@ -594,22 +652,30 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun saveMarginLeft(value: Float) {
-        _uiState.value = _uiState.value.copy(marginLeftDp = value)
+        _uiState.value = _uiState.value
+            .withUpdatedActiveThemeSettings { copy(marginLeft = value) }
+            .copy(marginLeftDp = value)
         viewModelScope.launch { dataStoreManager.saveMarginLeft(value) }
     }
 
     fun saveMarginRight(value: Float) {
-        _uiState.value = _uiState.value.copy(marginRightDp = value)
+        _uiState.value = _uiState.value
+            .withUpdatedActiveThemeSettings { copy(marginRight = value) }
+            .copy(marginRightDp = value)
         viewModelScope.launch { dataStoreManager.saveMarginRight(value) }
     }
 
     fun saveMarginTop(value: Float) {
-        _uiState.value = _uiState.value.copy(marginTopDp = value)
+        _uiState.value = _uiState.value
+            .withUpdatedActiveThemeSettings { copy(marginTop = value) }
+            .copy(marginTopDp = value)
         viewModelScope.launch { dataStoreManager.saveMarginTop(value) }
     }
 
     fun saveMarginBottom(value: Float) {
-        _uiState.value = _uiState.value.copy(marginBottomDp = value)
+        _uiState.value = _uiState.value
+            .withUpdatedActiveThemeSettings { copy(marginBottom = value) }
+            .copy(marginBottomDp = value)
         viewModelScope.launch { dataStoreManager.saveMarginBottom(value) }
     }
 
@@ -623,9 +689,17 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun saveReaderTheme(theme: String) {
+        val updatedSuites = _uiState.value.readerThemeSuites.map { suite ->
+            if (suite.id == _uiState.value.activeReaderThemeSuiteId) {
+                suite.copy(settings = suite.settings.copy(backgroundSelection = theme))
+            } else {
+                suite
+            }
+        }
         _uiState.value = _uiState.value.copy(
             readerTheme = theme,
-            readerBackgroundSelection = theme
+            readerBackgroundSelection = theme,
+            readerThemeSuites = updatedSuites
         )
         viewModelScope.launch {
             dataStoreManager.saveReaderBackgroundState(theme, theme)
@@ -637,9 +711,160 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun saveReaderTextColor(color: Int?) {
-        _uiState.value = _uiState.value.copy(readerTextColor = color)
+        _uiState.value = _uiState.value
+            .withUpdatedActiveThemeSettings { copy(textColor = color) }
+            .copy(readerTextColor = color)
         viewModelScope.launch { dataStoreManager.saveReaderTextColor(color) }
     }
+
+    fun selectReaderThemeSuite(suiteId: String) {
+        val state = _uiState.value
+        val suite = state.readerThemeSuites.firstOrNull { it.id == suiteId } ?: return
+        if (state.activeReaderThemeSuiteId == suiteId) return
+
+        parser?.paragraphSpacingDp = suite.settings.paragraphSpacing
+        parser?.firstLineIndentChars = suite.settings.firstLineIndent
+        parser?.clearHtmlCache()
+        _uiState.value = state.withReaderThemeSettings(suite.settings).copy(
+            activeReaderThemeSuiteId = suiteId
+        )
+        refreshReaderNotes(_notes.value)
+        viewModelScope.launch {
+            dataStoreManager.saveReaderThemeSuiteState(
+                suites = state.readerThemeSuites,
+                activeSuiteId = suiteId,
+                applyActiveSuite = true
+            )
+            loadChapterContent()
+        }
+    }
+
+    fun createReaderThemeSuite(rawName: String) {
+        val name = normalizeReaderThemeSuiteName(rawName)
+        if (readerThemeSuiteNameCodePointCount(name) !in 1..20) return
+        val state = _uiState.value
+        val reservedNames = setOf(
+            context.getString(R.string.theme_day),
+            context.getString(R.string.theme_night),
+            context.getString(R.string.theme_sepia),
+            context.getString(R.string.theme_green)
+        )
+        if (reservedNames.any { it.equals(name, ignoreCase = true) }) return
+        if (state.readerThemeSuites.any {
+                it.customName?.equals(name, ignoreCase = true) == true
+            }
+        ) return
+
+        val suite = ReaderThemeSuites.newCustom(UUID.randomUUID().toString(), name)
+        val updated = state.readerThemeSuites + suite
+        parser?.paragraphSpacingDp = suite.settings.paragraphSpacing
+        parser?.firstLineIndentChars = suite.settings.firstLineIndent
+        parser?.clearHtmlCache()
+        _uiState.value = state.withReaderThemeSettings(suite.settings).copy(
+            readerThemeSuites = updated,
+            activeReaderThemeSuiteId = suite.id
+        )
+        refreshReaderNotes(_notes.value)
+        viewModelScope.launch {
+            dataStoreManager.saveReaderThemeSuiteState(updated, suite.id, applyActiveSuite = true)
+            loadChapterContent()
+        }
+    }
+
+    fun deleteReaderThemeSuite(suiteId: String) {
+        val state = _uiState.value
+        val removedIndex = state.readerThemeSuites.indexOfFirst { it.id == suiteId }
+        val removed = state.readerThemeSuites.getOrNull(removedIndex) ?: return
+        if (removed.isBuiltIn) return
+
+        val remaining = state.readerThemeSuites.filterNot { it.id == suiteId }
+        if (state.activeReaderThemeSuiteId != suiteId) {
+            _uiState.value = state.copy(readerThemeSuites = remaining)
+            viewModelScope.launch {
+                dataStoreManager.saveReaderThemeSuiteState(
+                    remaining,
+                    state.activeReaderThemeSuiteId,
+                    applyActiveSuite = false
+                )
+            }
+            return
+        }
+
+        val replacement = remaining.getOrNull(removedIndex)
+            ?: remaining.getOrNull(removedIndex - 1)
+            ?: remaining.first { it.id == ReaderThemeSuites.DAY_ID }
+        parser?.paragraphSpacingDp = replacement.settings.paragraphSpacing
+        parser?.firstLineIndentChars = replacement.settings.firstLineIndent
+        parser?.clearHtmlCache()
+        _uiState.value = state.withReaderThemeSettings(replacement.settings).copy(
+            readerThemeSuites = remaining,
+            activeReaderThemeSuiteId = replacement.id
+        )
+        refreshReaderNotes(_notes.value)
+        viewModelScope.launch {
+            dataStoreManager.saveReaderThemeSuiteState(remaining, replacement.id, applyActiveSuite = true)
+            loadChapterContent()
+        }
+    }
+
+    fun reorderReaderThemeSuites(orderedIds: List<String>) {
+        val state = _uiState.value
+        if (orderedIds.size != state.readerThemeSuites.size ||
+            orderedIds.toSet() != state.readerThemeSuites.map { it.id }.toSet()
+        ) return
+
+        val byId = state.readerThemeSuites.associateBy(ReaderThemeSuite::id)
+        val reordered = orderedIds.mapNotNull(byId::get)
+        _uiState.value = state.copy(readerThemeSuites = reordered)
+        viewModelScope.launch {
+            dataStoreManager.saveReaderThemeSuiteState(
+                reordered,
+                state.activeReaderThemeSuiteId,
+                applyActiveSuite = false
+            )
+        }
+    }
+
+    private fun ReaderUiState.withReaderThemeSettings(settings: ReaderThemeSettings): ReaderUiState {
+        val resolvedCustomFontPath = settings.fontType
+            .takeIf { it.startsWith("custom:") }
+            ?.removePrefix("custom:")
+            ?.let { id -> customFonts.firstOrNull { it.id == id }?.path }
+        return copy(
+            fontSize = settings.fontSize,
+            lineHeight = settings.lineHeight,
+            letterSpacing = settings.letterSpacing,
+            fontType = if (settings.fontType.startsWith("custom:") && resolvedCustomFontPath == null) {
+                "system"
+            } else {
+                settings.fontType
+            },
+            customFontPath = resolvedCustomFontPath ?: customFontPath,
+            marginLeftDp = settings.marginLeft,
+            marginRightDp = settings.marginRight,
+            marginTopDp = settings.marginTop,
+            marginBottomDp = settings.marginBottom,
+            paragraphSpacing = settings.paragraphSpacing,
+            firstLineIndent = settings.firstLineIndent,
+            readerTheme = settings.backgroundSelection
+                .takeIf { it in ReaderThemeSuites.BUILT_IN_IDS }
+                ?: ReaderThemeSuites.DAY_ID,
+            readerBackgroundSelection = settings.backgroundSelection,
+            readerTextColor = settings.textColor
+        )
+    }
+
+    private fun ReaderUiState.withUpdatedActiveThemeSettings(
+        transform: ReaderThemeSettings.() -> ReaderThemeSettings
+    ): ReaderUiState = copy(
+        readerThemeSuites = readerThemeSuites.map { suite ->
+            if (suite.id == activeReaderThemeSuiteId) {
+                suite.copy(settings = suite.settings.transform())
+            } else {
+                suite
+            }
+        }
+    )
 
     fun selectReaderBackground(selection: String) {
         if (selection in setOf("day", "night", "sepia", "green")) {
@@ -648,9 +873,17 @@ class ReaderViewModel @Inject constructor(
         }
         if (_uiState.value.customReaderBackgrounds.none { it.selectionKey == selection }) return
 
+        val updatedSuites = _uiState.value.readerThemeSuites.map { suite ->
+            if (suite.id == _uiState.value.activeReaderThemeSuiteId) {
+                suite.copy(settings = suite.settings.copy(backgroundSelection = selection))
+            } else {
+                suite
+            }
+        }
         _uiState.value = _uiState.value.copy(
             readerTheme = "day",
-            readerBackgroundSelection = selection
+            readerBackgroundSelection = selection,
+            readerThemeSuites = updatedSuites
         )
         viewModelScope.launch {
             dataStoreManager.saveReaderBackgroundState("day", selection)
@@ -697,8 +930,16 @@ class ReaderViewModel @Inject constructor(
         val removed = state.customReaderBackgrounds.firstOrNull { it.id == id } ?: return
         val remaining = state.customReaderBackgrounds.filterNot { it.id == id }
         val wasSelected = state.readerBackgroundSelection == removed.selectionKey
+        val repairedSuites = state.readerThemeSuites.map { suite ->
+            if (suite.settings.backgroundSelection == removed.selectionKey) {
+                suite.copy(settings = suite.settings.copy(backgroundSelection = ReaderThemeSuites.DAY_ID))
+            } else {
+                suite
+            }
+        }
         _uiState.value = state.copy(
             customReaderBackgrounds = remaining,
+            readerThemeSuites = repairedSuites,
             readerTheme = if (wasSelected) "day" else state.readerTheme,
             readerBackgroundSelection = if (wasSelected) "day" else state.readerBackgroundSelection
         )
@@ -706,6 +947,11 @@ class ReaderViewModel @Inject constructor(
             val nextTheme = if (wasSelected) "day" else state.readerTheme
             val nextSelection = if (wasSelected) "day" else state.readerBackgroundSelection
             dataStoreManager.saveReaderBackgroundState(nextTheme, nextSelection, remaining)
+            dataStoreManager.saveReaderThemeSuiteState(
+                repairedSuites,
+                state.activeReaderThemeSuiteId,
+                applyActiveSuite = false
+            )
             if (removed.type == ReaderBackgroundType.IMAGE) {
                 withContext(Dispatchers.IO) { runCatching { File(removed.value).delete() } }
             }
@@ -714,8 +960,16 @@ class ReaderViewModel @Inject constructor(
 
     private fun saveAddedReaderBackground(preset: ReaderBackgroundPreset) {
         val updated = _uiState.value.customReaderBackgrounds + preset
+        val updatedSuites = _uiState.value.readerThemeSuites.map { suite ->
+            if (suite.id == _uiState.value.activeReaderThemeSuiteId) {
+                suite.copy(settings = suite.settings.copy(backgroundSelection = preset.selectionKey))
+            } else {
+                suite
+            }
+        }
         _uiState.value = _uiState.value.copy(
             customReaderBackgrounds = updated,
+            readerThemeSuites = updatedSuites,
             readerTheme = "day",
             readerBackgroundSelection = preset.selectionKey
         )
@@ -763,14 +1017,30 @@ class ReaderViewModel @Inject constructor(
         val current = _uiState.value
         val updated = current.customFonts.filter { it.id != id }
         val deletedPath = current.customFonts.find { it.id == id }?.path
+        val deletedFontKey = "custom:$id"
+        val repairedSuites = current.readerThemeSuites.map { suite ->
+            if (suite.settings.fontType == deletedFontKey) {
+                suite.copy(settings = suite.settings.copy(fontType = "system"))
+            } else {
+                suite
+            }
+        }
         // 如果当前用的是被删字体，切回 system
-        if (current.fontType == "custom:$id") {
+        if (current.fontType == deletedFontKey) {
             saveFontType("system")
             saveCustomFontPath(updated.firstOrNull()?.path)
         }
-        _uiState.value = current.copy(customFonts = updated)
+        _uiState.value = _uiState.value.copy(
+            customFonts = updated,
+            readerThemeSuites = repairedSuites
+        )
         viewModelScope.launch {
             dataStoreManager.saveCustomFonts(updated)
+            dataStoreManager.saveReaderThemeSuiteState(
+                repairedSuites,
+                current.activeReaderThemeSuiteId,
+                applyActiveSuite = false
+            )
             if (deletedPath != null) {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     runCatching { java.io.File(deletedPath).delete() }
@@ -1075,7 +1345,10 @@ class ReaderViewModel @Inject constructor(
     fun saveParagraphSpacing(value: Float) {
         parser?.paragraphSpacingDp = value
         parser?.clearHtmlCache()  // 同步清缓存，确保 configure() 重新分页时拿到新内容
-        _uiState.value = _uiState.value.copy(paragraphSpacing = value)
+        _uiState.value = _uiState.value
+            .withUpdatedActiveThemeSettings { copy(paragraphSpacing = value) }
+            .copy(paragraphSpacing = value)
+        refreshReaderNotes(_notes.value)
         viewModelScope.launch {
             dataStoreManager.saveParagraphSpacing(value)
             loadChapterContent()
@@ -1085,7 +1358,10 @@ class ReaderViewModel @Inject constructor(
     fun saveFirstLineIndent(value: Float) {
         parser?.firstLineIndentChars = value
         parser?.clearHtmlCache()  // 同步清缓存
-        _uiState.value = _uiState.value.copy(firstLineIndent = value)
+        _uiState.value = _uiState.value
+            .withUpdatedActiveThemeSettings { copy(firstLineIndent = value) }
+            .copy(firstLineIndent = value)
+        refreshReaderNotes(_notes.value)
         viewModelScope.launch {
             dataStoreManager.saveFirstLineIndent(value)
             loadChapterContent()
@@ -1096,7 +1372,20 @@ class ReaderViewModel @Inject constructor(
         parser?.paragraphSpacingDp = 2f
         parser?.firstLineIndentChars = 2f
         parser?.clearHtmlCache()
-        _uiState.value = _uiState.value.copy(
+        _uiState.value = _uiState.value.withUpdatedActiveThemeSettings {
+            copy(
+                textColor = null,
+                fontType = "system",
+                lineHeight = 1.5f,
+                letterSpacing = 0f,
+                paragraphSpacing = 2f,
+                firstLineIndent = 2f,
+                marginLeft = 38f,
+                marginRight = 38f,
+                marginTop = 64f,
+                marginBottom = 64f
+            )
+        }.copy(
             lineHeight = 1.5f,
             letterSpacing = 0f,
             fontType = "system",
@@ -1118,6 +1407,7 @@ class ReaderViewModel @Inject constructor(
             readerBottomLeftContent = defaultReaderCornerContent(ReaderPageCorner.BOTTOM_LEFT),
             readerBottomRightContent = defaultReaderCornerContent(ReaderPageCorner.BOTTOM_RIGHT)
         )
+        refreshReaderNotes(_notes.value)
         viewModelScope.launch {
             dataStoreManager.resetAdvancedReaderSettings()
             loadChapterContent()
@@ -1798,6 +2088,16 @@ class ReaderViewModel @Inject constructor(
         )
     }
 
+    internal fun resolveTxtEditorCharOffset(chapterIndex: Int, readerOffset: Int): Int {
+        val sourceText = try {
+            parser?.getChapterContent(chapterIndex)
+        } catch (_: Exception) {
+            null
+        } ?: return readerOffset.coerceAtLeast(0)
+        val readerText = getChapterText(chapterIndex) ?: sourceText
+        return mapReaderTxtOffsetToSource(sourceText, readerText, readerOffset)
+    }
+
     /** 在 IO 线程解析 EPUB 相对路径/锚点，返回原生阅读引擎可跳转的位置。 */
     suspend fun resolveBookLink(sourceChapterIndex: Int, href: String): BookLinkTarget? {
         return withContext(Dispatchers.IO) {
@@ -1926,15 +2226,16 @@ class ReaderViewModel @Inject constructor(
         chapterIndex: Int = -1,
         startPosition: Int = 0,
         endPosition: Int = 0,
-        color: String = "#FFEB3B",
+        color: String = DefaultReaderHighlightColor,
         startLocatorJson: String? = null,
         endLocatorJson: String? = null
     ) {
         val state = _uiState.value
         val book = state.book ?: return
+        val resolvedChapterIndex = if (chapterIndex >= 0) chapterIndex else state.currentChapterIndex
         val note = Note(
             bookId = book.id,
-            chapterIndex = if (chapterIndex >= 0) chapterIndex else state.currentChapterIndex,
+            chapterIndex = resolvedChapterIndex,
             startPosition = if (startPosition > 0 || chapterIndex >= 0) startPosition else 0,
             endPosition = if (endPosition > 0 || chapterIndex >= 0) endPosition else selectedText.length,
             startLocatorJson = startLocatorJson,
@@ -1947,11 +2248,49 @@ class ReaderViewModel @Inject constructor(
         // Render immediately instead of waiting for Room's Flow to emit the inserted record.
         // The database observer replaces this temporary id=0 record with the persisted one.
         _notes.value = _notes.value + note
+        refreshReaderNotes(_notes.value)
         viewModelScope.launch {
             try {
-                readingRepository.insertNote(note)
+                val noteToSave = if (
+                    book.format.name == "EPUB" &&
+                    note.startLocatorJson == null && note.endLocatorJson == null
+                ) {
+                    withContext(Dispatchers.IO) {
+                        val chapterText = runCatching {
+                            getChapterText(resolvedChapterIndex)
+                        }.getOrNull()
+                        chapterText?.let { text ->
+                            val locators = createHighlightLocatorPair(
+                                chapterText = text,
+                                startPosition = note.startPosition,
+                                endPosition = note.endPosition,
+                                selectedText = note.selectedText
+                            )
+                            note.copy(
+                                startLocatorJson = locators.first,
+                                endLocatorJson = locators.second
+                            )
+                        } ?: note
+                    }
+                } else {
+                    note
+                }
+                if (noteToSave != note) {
+                    _notes.value = _notes.value.map { existing ->
+                        if (existing === note) noteToSave else existing
+                    }
+                    refreshReaderNotes(_notes.value)
+                }
+                readingRepository.insertNote(noteToSave)
             } catch (_: Exception) {
-                _notes.value = _notes.value.filterNot { it === note }
+                _notes.value = _notes.value.filterNot { existing ->
+                    existing === note || (
+                        existing.id == 0L && existing.createdAt == note.createdAt &&
+                            existing.chapterIndex == note.chapterIndex &&
+                            existing.selectedText == note.selectedText
+                        )
+                }
+                refreshReaderNotes(_notes.value)
             }
         }
     }
@@ -1974,9 +2313,63 @@ class ReaderViewModel @Inject constructor(
 
     private fun loadNotes() {
         viewModelScope.launch {
-            readingRepository.getNotesByBookId(bookId).collect { list ->
+            readingRepository.getNotesByBookId(bookId).collectLatest { list ->
                 _notes.value = list
+                _readerNotes.value = withContext(Dispatchers.IO) {
+                    resolveReaderNotes(list)
+                }
             }
+        }
+    }
+
+    fun resolvedReaderNote(note: Note): Note? = _readerNotes.value.firstOrNull { candidate ->
+        if (note.id != 0L) {
+            candidate.id == note.id
+        } else {
+            candidate.createdAt == note.createdAt &&
+                candidate.chapterIndex == note.chapterIndex &&
+                candidate.selectedText == note.selectedText
+        }
+    }
+
+    fun findOverlappingReaderNote(
+        chapterIndex: Int,
+        startPosition: Int,
+        endPosition: Int,
+        selectedText: String,
+        startLocatorJson: String?,
+        endLocatorJson: String?
+    ): Note? {
+        val chapterText = runCatching { getChapterText(chapterIndex) }.getOrNull()
+            ?: return null
+        return findOverlappingResolvedNote(
+            chapterText = chapterText,
+            notes = _readerNotes.value,
+            chapterIndex = chapterIndex,
+            storedStart = startPosition,
+            storedEnd = endPosition,
+            selectedText = selectedText,
+            startLocatorJson = startLocatorJson,
+            endLocatorJson = endLocatorJson
+        )
+    }
+
+    private fun refreshReaderNotes(notes: List<Note>) {
+        readerNotesJob?.cancel()
+        readerNotesJob = viewModelScope.launch {
+            val resolved = withContext(Dispatchers.IO) { resolveReaderNotes(notes) }
+            if (_notes.value == notes) _readerNotes.value = resolved
+        }
+    }
+
+    private fun resolveReaderNotes(notes: List<Note>): List<Note> {
+        if (notes.isEmpty()) return emptyList()
+        val chapterCache = mutableMapOf<Int, CharSequence?>()
+        return notes.mapNotNull { note ->
+            val readerChapterText = chapterCache.getOrPut(note.chapterIndex) {
+                runCatching { getChapterText(note.chapterIndex) }.getOrNull()
+            } ?: return@mapNotNull null
+            resolveReaderNote(note, readerChapterText)
         }
     }
 
@@ -2026,54 +2419,76 @@ class ReaderViewModel @Inject constructor(
         val chapterTitle: String,
         val charOffset: Int,
         val context: String,       // 匹配位置前后文本片段
-        val matchLength: Int       // 匹配文本长度
+        val matchLength: Int,      // 匹配文本长度
+        val epubLocator: EpubLocator? = null
     )
 
     /**
      * 全书搜索关键词，返回匹配列表（章节索引 + 字符偏移 + 上下文）。
-     * 搜索范围限制在前 [maxChapters] 章内（默认200章），防止大书超时。
+     * CSS 原排版 EPUB 使用按次流式扫描和 locator；所有模式最多返回 [maxResults] 条。
      */
-    fun searchAllChapters(query: String, maxChapters: Int = 200): List<SearchResult> {
-        if (query.isEmpty()) return emptyList()
+    suspend fun searchAllChapters(query: String, maxResults: Int = 200): List<SearchResult> =
+        withContext(Dispatchers.IO) {
+            if (query.isEmpty() || maxResults <= 0) return@withContext emptyList()
+            val resultLimit = maxResults.coerceAtMost(200)
 
-        if (parser == null) return emptyList()
-        val totalChapters = _uiState.value.chapterCount.coerceAtMost(maxChapters)
-        val titles = _uiState.value.chapterTitles
-        val results = mutableListOf<SearchResult>()
-
-        for (chIdx in 0 until totalChapters) {
-            // Search the exact CharSequence the reader lays out. Searching parser output directly
-            // makes offsets drift when the reader adds a title break or paragraph formatting.
-            val text = getChapterText(chIdx)?.toString() ?: continue
-
-            var searchStart = 0
-            while (true) {
-                val foundIdx = text.indexOf(query, searchStart, ignoreCase = true)
-                if (foundIdx == -1) break
-
-                val ctxStart = (foundIdx - 12).coerceAtLeast(0)
-                val ctxEnd = (foundIdx + query.length + 20).coerceAtMost(text.length)
-                val context = text.substring(ctxStart, ctxEnd)
-                    .replace('\n', ' ')
-                    .replace('\r', ' ')
-
-                val title = titles.getOrElse(chIdx) { "第${chIdx + 1}章" }.ifBlank { "第${chIdx + 1}章" }
-                results.add(
+            val activeParser = parser ?: return@withContext emptyList()
+            val state = _uiState.value
+            val titles = state.chapterTitles
+            if (state.book?.format?.name == "EPUB" &&
+                state.epubRenderMode == EpubRenderMode.BOOK_LAYOUT &&
+                activeParser is EpubSearchSource
+            ) {
+                return@withContext activeParser.searchEpub(query, resultLimit).map { match ->
                     SearchResult(
-                        chapterIndex = chIdx,
-                        chapterTitle = title,
-                        charOffset = foundIdx,
-                        context = context,
-                        matchLength = query.length
+                        chapterIndex = match.chapterIndex,
+                        chapterTitle = titles.getOrElse(match.chapterIndex) {
+                            "第${match.chapterIndex + 1}章"
+                        }.ifBlank { "第${match.chapterIndex + 1}章" },
+                        charOffset = match.charOffset,
+                        context = match.context,
+                        matchLength = match.matchLength,
+                        epubLocator = match.locator
                     )
-                )
-                searchStart = foundIdx + query.length
-                if (results.size >= 200) break  // 最多200条结果
+                }
             }
-            if (results.size >= 200) break
+
+            val results = mutableListOf<SearchResult>()
+            for (chIdx in 0 until state.chapterCount) {
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                // Search the exact CharSequence the reader lays out. Searching parser output directly
+                // makes offsets drift when the reader adds a title break or paragraph formatting.
+                val text = getChapterText(chIdx)?.toString() ?: continue
+
+                var searchStart = 0
+                while (true) {
+                    val foundIdx = text.indexOf(query, searchStart, ignoreCase = true)
+                    if (foundIdx == -1) break
+
+                    val ctxStart = (foundIdx - 12).coerceAtLeast(0)
+                    val ctxEnd = (foundIdx + query.length + 20).coerceAtMost(text.length)
+                    val context = text.substring(ctxStart, ctxEnd)
+                        .replace('\n', ' ')
+                        .replace('\r', ' ')
+
+                    val title = titles.getOrElse(chIdx) { "第${chIdx + 1}章" }
+                        .ifBlank { "第${chIdx + 1}章" }
+                    results.add(
+                        SearchResult(
+                            chapterIndex = chIdx,
+                            chapterTitle = title,
+                            charOffset = foundIdx,
+                            context = context,
+                            matchLength = query.length
+                        )
+                    )
+                    searchStart = foundIdx + query.length
+                    if (results.size >= resultLimit) break
+                }
+                if (results.size >= resultLimit) break
+            }
+            results
         }
-        return results
-    }
 
     /**
      * 获取章节文本长度（用于估算搜索结果的页码位置）。

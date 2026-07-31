@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_quote_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_card_background"
+    android:clipToOutline="true"
+    android:padding="18dp">
+
+    <LinearLayout
+        android:id="@+id/widget_quote_content"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <TextView
+                android:id="@+id/widget_quote_text"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:ellipsize="end"
+                android:fontFamily="@font/gen_ryu_min2_light"
+                android:includeFontPadding="true"
+                android:letterSpacing="0"
+                android:lineSpacingMultiplier="1.24"
+                android:maxLines="5"
+                android:text="@string/widget_quote_preview_text"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="18sp" />
+
+            <ImageView
+                android:id="@+id/widget_quote_bitmap"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="@string/widget_quote_preview_text"
+                android:scaleType="fitStart"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/widget_quote_attribution"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:ellipsize="end"
+            android:fontFamily="sans"
+            android:gravity="end"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:text="@string/widget_quote_preview_attribution"
+            android:textColor="@color/widget_text_primary"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/widget_quote_empty"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:ellipsize="end"
+        android:fontFamily="sans"
+        android:gravity="center"
+        android:includeFontPadding="false"
+        android:maxLines="3"
+        android:padding="8dp"
+        android:textColor="@color/widget_text_secondary"
+        android:textSize="14sp"
+        android:visibility="gone" />
+</FrameLayout>

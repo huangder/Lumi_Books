@@ -2,4 +2,10 @@
 <resources>
     <color name="launch_background">#FF130F10</color>
     <color name="app_window_background">#FF000000</color>
+    <color name="widget_card_background">#FF1C1C1E</color>
+    <color name="widget_text_primary">#FFF5F5F7</color>
+    <color name="widget_text_secondary">#FFAEAEB2</color>
+    <color name="widget_cover_background">#FF3A3A3C</color>
+    <color name="widget_button_background">#FFF5F5F7</color>
+    <color name="widget_button_text">#FF111111</color>
 </resources>

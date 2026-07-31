@@ -21,6 +21,33 @@ import org.junit.runner.RunWith
 class VerticalTextLayouterInstrumentedTest {
 
     @Test
+    fun dashesUseVerticalPresentationFormsWithoutChangingSourceRanges() {
+        val text = "\u2014\u2014\u2013"
+        val pages = layout(text, width = 20, height = 60)
+        val glyphs = pages.flatMap { it.geometry.glyphs }
+
+        assertEquals(listOf(0 to 1, 1 to 2, 2 to 3), glyphs.map { it.startOffset to it.endOffset })
+        assertEquals("\uFE31", verticalPresentationText(text.substring(0, 1)))
+        assertEquals("\uFE31", verticalPresentationText(text.substring(1, 2)))
+        assertEquals("\uFE32", verticalPresentationText(text.substring(2, 3)))
+        assertTrue(glyphs.none { it.rotateClockwise })
+    }
+
+    @Test
+    fun curlyQuotesUseVerticalCornerFormsWithoutChangingSourceRanges() {
+        val text = "\u201C甲\u2018乙\u2019丙\u201D"
+        val pages = layout(text, width = 40, height = 80)
+        val glyphs = pages.flatMap { it.geometry.glyphs }
+
+        assertEquals(text.indices.map { it to it + 1 }, glyphs.map { it.startOffset to it.endOffset })
+        assertEquals("\uFE43", verticalPresentationText("\u201C"))
+        assertEquals("\uFE44", verticalPresentationText("\u201D"))
+        assertEquals("\uFE41", verticalPresentationText("\u2018"))
+        assertEquals("\uFE42", verticalPresentationText("\u2019"))
+        assertTrue(glyphs.none { it.rotateClockwise })
+    }
+
+    @Test
     fun pagesHaveContinuousSourceRangesAndRightToLeftColumns() {
         val text = "一二三四五六七八九十"
         val pages = layout(text, width = 50, height = 60)
@@ -86,6 +113,52 @@ class VerticalTextLayouterInstrumentedTest {
     }
 
     @Test
+    fun paragraphIndentIsNotRepeatedWhenParagraphContinuesOnNextPage() {
+        val text = SpannableStringBuilder("甲乙丙丁戊己庚辛壬癸")
+        text.setSpan(
+            LeadingMarginSpan.Standard(40, 0),
+            0,
+            text.length,
+            Spannable.SPAN_INCLUSIVE_INCLUSIVE
+        )
+
+        val pages = layout(text, width = 20, height = 60)
+
+        assertTrue(pages.size > 1)
+        assertEquals(40f, pages.first().geometry.glyphs.first().bounds.top, 0.01f)
+        pages.drop(1).forEach { continuationPage ->
+            assertEquals(0f, continuationPage.geometry.glyphs.first().bounds.top, 0.01f)
+        }
+    }
+
+    @Test
+    fun paragraphStartingOnLaterPageKeepsItsIndent() {
+        val firstParagraph = "甲乙丙丁戊"
+        val secondParagraph = "己庚辛"
+        val text = SpannableStringBuilder("$firstParagraph\n$secondParagraph")
+        val secondStart = firstParagraph.length + 1
+        text.setSpan(
+            LeadingMarginSpan.Standard(40, 0),
+            0,
+            firstParagraph.length,
+            Spannable.SPAN_INCLUSIVE_INCLUSIVE
+        )
+        text.setSpan(
+            LeadingMarginSpan.Standard(40, 0),
+            secondStart,
+            text.length,
+            Spannable.SPAN_INCLUSIVE_INCLUSIVE
+        )
+
+        val pages = layout(text, width = 20, height = 60)
+        val secondParagraphFirstGlyph = pages
+            .flatMap { it.geometry.glyphs }
+            .first { it.startOffset == secondStart }
+
+        assertEquals(40f, secondParagraphFirstGlyph.bounds.top, 0.01f)
+    }
+
+    @Test
     fun adjacentImagesEachOccupyOnePageAndRetainLinkHitGeometry() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val text = SpannableStringBuilder("前￼￼后")
@@ -106,22 +179,24 @@ class VerticalTextLayouterInstrumentedTest {
         assertEquals(2, pages[2].startOffset)
         assertEquals(3, pages[2].endOffset)
 
-        val pageView = PageContentView(context)
-        pageView.configure(
-            fontSizePx = 20f,
-            textColor = Color.BLACK,
-            marginLeftPx = 0f,
-            marginTopPx = 0f,
-            marginRightPx = 0f,
-            marginBottomPx = 0f,
-            writingMode = ReaderWritingMode.VERTICAL_RL
-        )
-        pageView.setPageContent(text, 1, 2, verticalGeometry = pages[1].geometry)
-        val imageBounds = pages[1].geometry.image!!.bounds
-        val hit = pageView.getImageAt(imageBounds.centerX, imageBounds.centerY)
-        assertNotNull(hit)
-        assertEquals("first", hit?.source)
-        assertEquals("https://example.test/image", hit?.link)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val pageView = PageContentView(context)
+            pageView.configure(
+                fontSizePx = 20f,
+                textColor = Color.BLACK,
+                marginLeftPx = 0f,
+                marginTopPx = 0f,
+                marginRightPx = 0f,
+                marginBottomPx = 0f,
+                writingMode = ReaderWritingMode.VERTICAL_RL
+            )
+            pageView.setPageContent(text, 1, 2, verticalGeometry = pages[1].geometry)
+            val imageBounds = pages[1].geometry.image!!.bounds
+            val hit = pageView.getImageAt(imageBounds.centerX, imageBounds.centerY)
+            assertNotNull(hit)
+            assertEquals("first", hit?.source)
+            assertEquals("https://example.test/image", hit?.link)
+        }
     }
 
     @Test

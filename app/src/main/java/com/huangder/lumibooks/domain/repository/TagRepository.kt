@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.Flow
 interface TagRepository {
     fun getAllTags(): Flow<List<LibraryTag>>
     fun getAllBookTagLinks(): Flow<List<BookTagLink>>
-    suspend fun createAndAssignTag(bookId: String, rawName: String)
+    suspend fun createAndAssignTag(bookId: String, rawName: String): LibraryTag
     suspend fun assignTag(bookId: String, tagId: String)
     suspend fun removeTagFromBook(bookId: String, tagId: String)
     suspend fun renameTag(tagId: String, rawName: String): Boolean

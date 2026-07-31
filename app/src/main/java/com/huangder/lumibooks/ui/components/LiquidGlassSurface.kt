@@ -48,6 +48,8 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
@@ -84,6 +86,16 @@ private val ExtendedSrgbColorSpace: AndroidColorSpace by lazy {
     AndroidColorSpace.get(AndroidColorSpace.Named.EXTENDED_SRGB)
 }
 
+private fun tonalGlassHighlight(baseColor: Color): Color {
+    val opaqueBase = baseColor.copy(alpha = 1f)
+    val lightenFraction = when {
+        opaqueBase.luminance() >= 0.92f -> 0f
+        opaqueBase.luminance() <= 0.08f -> 0.28f
+        else -> 0.40f
+    }
+    return lerp(opaqueBase, Color.White, lightenFraction)
+}
+
 @Composable
 fun ProvideLiquidGlassBackdrop(
     backdrop: Backdrop?,
@@ -101,8 +113,13 @@ fun Modifier.liquidGlassBackdrop(
     pressProgress: Float = 0f,
     scaleOnPress: Boolean = true,
     outlineWidth: Dp = 0.8.dp,
-    highlightAlpha: Float = 0.18f
+    highlightAlpha: Float = 0.18f,
+    highlightColor: Color = Color.White,
+    shadowRadius: Dp = 24.dp,
+    shadowAlpha: Float = 0.16f,
+    pressedShadowAlpha: Float = 0.08f
 ): Modifier {
+    val tonalHighlight = tonalGlassHighlight(highlightColor)
     val surfaceColor = if (isDark) {
         Color(0xFF101012).copy(alpha = 0.34f - transparency * 0.24f)
     } else {
@@ -111,15 +128,15 @@ fun Modifier.liquidGlassBackdrop(
     val borderBrush = if (isDark) {
         Brush.verticalGradient(
             colors = listOf(
-                Color.White.copy(alpha = 0.34f + pressProgress * 0.14f),
-                Color.White.copy(alpha = 0.10f + pressProgress * 0.08f)
+                tonalHighlight.copy(alpha = 0.46f + pressProgress * 0.14f),
+                tonalHighlight.copy(alpha = 0.14f + pressProgress * 0.08f)
             )
         )
     } else {
         Brush.verticalGradient(
             colors = listOf(
-                Color.White.copy(alpha = 0.82f + pressProgress * 0.14f),
-                Color.White.copy(alpha = 0.22f + pressProgress * 0.12f)
+                tonalHighlight.copy(alpha = 0.82f + pressProgress * 0.14f),
+                tonalHighlight.copy(alpha = 0.22f + pressProgress * 0.12f)
             )
         )
     }
@@ -148,14 +165,14 @@ fun Modifier.liquidGlassBackdrop(
         },
         shadow = {
             Shadow(
-                radius = 14.dp + 4.dp * pressProgress,
-                alpha = 0.24f + pressProgress * 0.10f
+                radius = shadowRadius + 4.dp * pressProgress,
+                alpha = shadowAlpha + pressProgress * pressedShadowAlpha
             )
         },
         innerShadow = {
             InnerShadow(
-                radius = 5.dp + 3.dp * pressProgress,
-                alpha = 0.14f + pressProgress * 0.32f
+                radius = 4.dp + 2.dp * pressProgress,
+                alpha = 0.04f + pressProgress * 0.08f
             )
         },
         onDrawSurface = {
@@ -326,6 +343,8 @@ fun LiquidGlassSurface(
     interactive: Boolean = onClick != null,
     effectPadding: Dp = 0.dp,
     outlineWidth: Dp = 0.8.dp,
+    highlightColor: Color = fallbackColor,
+    highlightAlpha: Float = 0.18f,
     decorationModifier: Modifier = Modifier,
     contentAlignment: Alignment = Alignment.Center,
     content: @Composable BoxScope.() -> Unit
@@ -349,7 +368,7 @@ fun LiquidGlassSurface(
         animationSpec = spring(dampingRatio = 0.72f, stiffness = 420f),
         label = "liquidGlassSurfacePress"
     )
-    val highlightAlpha by animateFloatAsState(
+    val touchHighlightAlpha by animateFloatAsState(
         targetValue = if (gestureActive && enabled) 1f else 0f,
         animationSpec = tween(if (gestureActive) 90 else 220),
         label = "liquidGlassTouchHighlightAlpha"
@@ -454,7 +473,12 @@ fun LiquidGlassSurface(
             contentScrimColor = contentScrimColor,
             pressProgress = pressProgress,
             scaleOnPress = false,
-            outlineWidth = outlineWidth
+            outlineWidth = outlineWidth,
+            highlightColor = highlightColor,
+            highlightAlpha = highlightAlpha,
+            shadowRadius = 24.dp,
+            shadowAlpha = 0f,
+            pressedShadowAlpha = 0.02f
         )
     } else if (isLiquidGlass) {
         val fallbackScrim = if (contentScrimColor.alpha > 0f) {
@@ -478,9 +502,9 @@ fun LiquidGlassSurface(
                         outlineWidth,
                         Brush.verticalGradient(
                             listOf(
-                                Color.White.copy(alpha = 0.58f),
-                                Color.White.copy(alpha = 0.12f),
-                                Color.Black.copy(alpha = 0.18f)
+                                tonalGlassHighlight(fallbackColor).copy(alpha = 0.68f),
+                                tonalGlassHighlight(fallbackColor).copy(alpha = 0.26f),
+                                tonalGlassHighlight(fallbackColor).copy(alpha = 0.08f)
                             )
                         ),
                         shape
@@ -503,13 +527,13 @@ fun LiquidGlassSurface(
     val transformOriginX = (0.5f - dragDirection.x * 0.5f * originStrength).coerceIn(0f, 1f)
     val transformOriginY = (0.5f - dragDirection.y * 0.5f * originStrength).coerceIn(0f, 1f)
 
-    val fallbackDecorationModifier = if (isLiquidGlass && activeBackdrop == null) {
+    val glassShadowModifier = if (isLiquidGlass && interactive) {
         Modifier.shadow(
-            elevation = 10.dp,
+            elevation = 22.dp,
             shape = shape,
             clip = false,
-            ambientColor = Color.Black.copy(alpha = 0.10f),
-            spotColor = Color.Black.copy(alpha = 0.12f)
+            ambientColor = Color.Black.copy(alpha = if (isDark) 0.12f else 0.07f),
+            spotColor = Color.Black.copy(alpha = if (isDark) 0.10f else 0.06f)
         )
     } else {
         Modifier
@@ -524,7 +548,7 @@ fun LiquidGlassSurface(
                 translationY = edgeDrag.y * 5f * densityScale
                 transformOrigin = TransformOrigin(transformOriginX, transformOriginY)
             }
-            .then(fallbackDecorationModifier)
+            .then(glassShadowModifier)
             .then(decorationModifier)
             .clip(shape)
             .then(semanticsModifier)
@@ -538,7 +562,7 @@ fun LiquidGlassSurface(
                 .then(surfaceModifier)
                 .clip(shape)
                 .drawWithContent {
-                if (highlightAlpha > 0.001f && highlightSpread.value > 0.001f) {
+                if (touchHighlightAlpha > 0.001f && highlightSpread.value > 0.001f) {
                     val radius = max(size.width, size.height) *
                         (0.10f + 1.05f * highlightSpread.value)
                     if (hdrHighlightEnabled &&
@@ -550,17 +574,17 @@ fun LiquidGlassSurface(
                             radius,
                             longArrayOf(
                                 AndroidColor.valueOf(
-                                    1.35f,
-                                    1.35f,
-                                    1.35f,
-                                    0.42f * highlightAlpha,
+                                    tonalGlassHighlight(fallbackColor).red * 1.22f,
+                                    tonalGlassHighlight(fallbackColor).green * 1.22f,
+                                    tonalGlassHighlight(fallbackColor).blue * 1.22f,
+                                    0.42f * touchHighlightAlpha,
                                     ExtendedSrgbColorSpace
                                 ).pack(),
                                 AndroidColor.valueOf(
-                                    1.12f,
-                                    1.12f,
-                                    1.12f,
-                                    0.16f * highlightAlpha,
+                                    tonalGlassHighlight(fallbackColor).red * 1.08f,
+                                    tonalGlassHighlight(fallbackColor).green * 1.08f,
+                                    tonalGlassHighlight(fallbackColor).blue * 1.08f,
+                                    0.16f * touchHighlightAlpha,
                                     ExtendedSrgbColorSpace
                                 ).pack(),
                                 AndroidColor.valueOf(
@@ -586,8 +610,12 @@ fun LiquidGlassSurface(
                         drawCircle(
                             brush = Brush.radialGradient(
                                 colors = listOf(
-                                    Color.White.copy(alpha = 0.38f * highlightAlpha),
-                                    Color.White.copy(alpha = 0.14f * highlightAlpha),
+                                    tonalGlassHighlight(fallbackColor).copy(
+                                        alpha = 0.38f * touchHighlightAlpha
+                                    ),
+                                    tonalGlassHighlight(fallbackColor).copy(
+                                        alpha = 0.14f * touchHighlightAlpha
+                                    ),
                                     Color.Transparent
                                 ),
                                 center = highlightCenter,

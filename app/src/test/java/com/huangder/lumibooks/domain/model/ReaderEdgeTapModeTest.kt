@@ -92,3 +92,84 @@ class ReaderEdgeTapModeTest {
         assertEquals(right, mode.rightAction)
     }
 }
+
+class ReaderThemeSuiteTest {
+    @Test
+    fun `defaults include four built-ins with serif eye care`() {
+        val defaults = ReaderThemeSuites.defaults()
+
+        assertEquals(ReaderThemeSuites.BUILT_IN_IDS, defaults.map { it.id })
+        assertTrue(defaults.all(ReaderThemeSuite::isBuiltIn))
+        assertEquals("serif", defaults.first { it.id == ReaderThemeSuites.SEPIA_ID }.settings.fontType)
+    }
+
+    @Test
+    fun `normalization preserves custom position and repairs built-ins`() {
+        val custom = ReaderThemeSuites.newCustom("custom-id", "  Focus  ")
+        val normalized = ReaderThemeSuites.normalized(
+            listOf(custom, ReaderThemeSuites.defaults().first())
+        )
+
+        assertEquals("custom-id", normalized.first().id)
+        assertEquals("Focus", normalized.first().customName)
+        assertEquals(
+            ReaderThemeSuites.BUILT_IN_IDS.toSet(),
+            normalized.filter(ReaderThemeSuite::isBuiltIn).map { it.id }.toSet()
+        )
+    }
+
+    @Test
+    fun `normalization preserves reordered built-in suites`() {
+        val reordered = ReaderThemeSuites.defaults().reversed()
+
+        assertEquals(reordered, ReaderThemeSuites.normalized(reordered))
+    }
+
+    @Test
+    fun `normalization drops invalid and duplicate custom suites`() {
+        val valid = ReaderThemeSuites.newCustom("same-id", "Valid")
+        val duplicate = ReaderThemeSuites.newCustom("same-id", "Duplicate")
+        val blank = ReaderThemeSuite("blank-name", "  ", ReaderThemeSettings())
+
+        val normalized = ReaderThemeSuites.normalized(listOf(valid, duplicate, blank))
+
+        assertEquals(1, normalized.count { !it.isBuiltIn })
+        assertEquals("Valid", normalized.first { !it.isBuiltIn }.customName)
+        assertFalse(normalized.any { it.id == "blank-name" })
+    }
+
+    @Test
+    fun `legacy migration keeps current settings in matching suite`() {
+        val legacy = ReaderThemeSettings(
+            backgroundSelection = ReaderThemeSuites.NIGHT_ID,
+            fontSize = 21f,
+            letterSpacing = 3.5f
+        )
+
+        val migrated = ReaderThemeSuites.fromLegacy(legacy)
+
+        assertEquals(ReaderThemeSuites.NIGHT_ID, migrated.activeSuiteId)
+        assertEquals(legacy, migrated.suites.first { it.id == ReaderThemeSuites.NIGHT_ID }.settings)
+        assertEquals(16f, migrated.suites.first { it.id == ReaderThemeSuites.DAY_ID }.settings.fontSize)
+    }
+
+    @Test
+    fun `legacy custom background uses day suite without losing selection`() {
+        val migrated = ReaderThemeSuites.fromLegacy(
+            ReaderThemeSettings(backgroundSelection = "custom:paper")
+        )
+
+        assertEquals(ReaderThemeSuites.DAY_ID, migrated.activeSuiteId)
+        assertEquals(
+            "custom:paper",
+            migrated.suites.first { it.id == ReaderThemeSuites.DAY_ID }.settings.backgroundSelection
+        )
+    }
+
+    @Test
+    fun `name length counts Unicode code points`() {
+        assertEquals("主题", normalizeReaderThemeSuiteName("  主题  "))
+        assertEquals(2, readerThemeSuiteNameCodePointCount("主题"))
+        assertEquals(1, readerThemeSuiteNameCodePointCount("\uD83D\uDCD6"))
+    }
+}

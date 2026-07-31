@@ -314,6 +314,27 @@ class TxtParserTest {
     }
 
     @Test
+    fun editorRewriteCanCommitWithoutSynchronouslyReparsing() {
+        val file = writeText(
+            "editor-fast-save.txt",
+            "第1章 开始\n正文甲\n第2章 继续\n正文乙",
+            Charsets.UTF_8
+        )
+        val parser = TxtParser()
+        parser.parse(file.absolutePath)
+
+        val result = parser.rewriteWithOperations(
+            operations = listOf(TxtSetChapterText(0, "第1章 开始\n已经保存")),
+            reparseAfterWrite = false
+        )
+
+        assertTrue(result.success)
+        assertTrue(file.readText(Charsets.UTF_8).contains("已经保存"))
+        val reopened = TxtParser().apply { parse(file.absolutePath) }
+        assertTrue(reopened.getChapterContent(0).contains("已经保存"))
+    }
+
+    @Test
     fun abortsRewriteWhenSelectedEncodingCannotRepresentDraft() {
         val file = writeText(
             "windows-1252.txt",

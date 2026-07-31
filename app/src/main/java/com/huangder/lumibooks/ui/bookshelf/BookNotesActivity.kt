@@ -23,6 +23,15 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class BookNotesActivity : ComponentActivity() {
 
+    companion object {
+        const val EXTRA_BOOK_ID = "bookId"
+        const val EXTRA_INITIAL_TAB = "initial_tab"
+        const val EXTRA_TARGET_NOTE_ID = "target_note_id"
+
+        const val TAB_HIGHLIGHTS = 0
+        const val TAB_NOTES = 1
+    }
+
     override fun attachBaseContext(newBase: android.content.Context) {
         super.attachBaseContext(com.huangder.lumibooks.util.LocaleHelper.applyLanguage(newBase))
     }
@@ -33,6 +42,11 @@ class BookNotesActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+
+        val initialTab = intent.getIntExtra(EXTRA_INITIAL_TAB, TAB_HIGHLIGHTS)
+            .coerceIn(TAB_HIGHLIGHTS, TAB_NOTES)
+        val targetNoteId = intent.getLongExtra(EXTRA_TARGET_NOTE_ID, -1L)
+            .takeIf { it > 0L }
 
         setContent {
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = "lumi")
@@ -64,7 +78,9 @@ class BookNotesActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxSize()
                     ) {
                         BookNotesScreen(
-                            onNavigateBack = { finish() }
+                            onNavigateBack = { finish() },
+                            initialTab = initialTab,
+                            targetNoteId = targetNoteId
                         )
                     }
                 }

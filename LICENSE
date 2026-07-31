@@ -41,3 +41,16 @@ The complete Apache License 2.0 text distributed with Lumi is available at:
 
 Files adapted from AndroidLiquidGlass carry their own source notices. Those
 files have been modified for integration with Lumi.
+
+Lumi bundles the GenRyuMin2 font collection, derived from Adobe's Source font
+software:
+
+    Font: GenRyuMin2 / Source
+    Copyright: Copyright 2014-2019 Adobe
+    Reserved Font Name: Source
+    License: SIL Open Font License 1.1
+
+The complete SIL Open Font License 1.1 text distributed with Lumi is available
+at:
+
+    app/src/main/assets/licenses/genryumin2-ofl-1.1.txt
