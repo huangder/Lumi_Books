@@ -17,6 +17,7 @@ import com.huangder.lumibooks.domain.model.Note
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
 import com.huangder.lumibooks.domain.model.ReaderPageCorner
 import com.huangder.lumibooks.pdfconversion.PdfTextExtractor
+import com.huangder.lumibooks.util.DownloadedFonts
 import com.huangder.lumibooks.ui.reader.engine.PageLayoutEngine
 import com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatter
 import com.huangder.lumibooks.ui.reader.engine.calculateReaderVerticalBalanceOffset
@@ -255,8 +256,7 @@ class BookNotesExportBuilder @Inject constructor(
     private fun resolveTypeface(fontType: String, customFontPath: String?): Typeface {
         return when (fontType) {
             "serif" -> Typeface.SERIF
-            "fangsong" -> runCatching { ResourcesCompat.getFont(context, R.font.fandol_fang) }
-                .getOrNull()
+            "fangsong" -> DownloadedFonts.typeface(context, "fangsong")
                 ?: Typeface.DEFAULT
             "kaiti" -> runCatching { ResourcesCompat.getFont(context, R.font.lxgw_wenkai) }
                 .getOrNull()

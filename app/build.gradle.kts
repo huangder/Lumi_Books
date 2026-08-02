@@ -54,6 +54,8 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            // pdfbox-android 捆绑的 BouncyCastle PQC 参数文件为死资源（全项目无 import），省 ~4MB
+            excludes += "org/bouncycastle/**"
         }
     }
 }

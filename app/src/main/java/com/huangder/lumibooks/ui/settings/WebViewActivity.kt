@@ -33,7 +33,7 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
-import com.huangder.lumibooks.ui.theme.FangSong
+import com.huangder.lumibooks.ui.theme.fangSongFamily
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import dagger.hilt.android.AndroidEntryPoint
@@ -138,7 +138,7 @@ private fun WebViewPage(title: String, assetFile: String, isDark: Boolean, onBac
                     settingsBackButton = true
                 )
                 Spacer(Modifier.weight(1f))
-                Text(title, fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = resolveAppFontFamily(FangSong), color = AppColors.TextPrimary)
+                Text(title, fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = resolveAppFontFamily(fangSongFamily()), color = AppColors.TextPrimary)
                 Spacer(Modifier.weight(1f))
                 Spacer(Modifier.size(48.dp))
             }

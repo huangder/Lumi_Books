@@ -435,6 +435,8 @@
     <string name="font_kaiti">楷体</string>
     <string name="font_custom">自定义</string>
     <string name="font_import">导入</string>
+    <string name="font_downloading">下载中…</string>
+    <string name="font_download_failed">下载失败</string>
 
     <!-- 简繁转换 -->
     <string name="chinese_convert_label">简繁转换</string>

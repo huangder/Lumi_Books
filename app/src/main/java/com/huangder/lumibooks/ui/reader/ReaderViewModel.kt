@@ -42,6 +42,7 @@ import com.huangder.lumibooks.mineru.MineruManualImportManager
 import com.huangder.lumibooks.mineru.MineruMode
 import com.huangder.lumibooks.mineru.MineruTokenStore
 import com.huangder.lumibooks.pdfconversion.PdfConversionState
+import com.huangder.lumibooks.util.DownloadedFonts
 import com.huangder.lumibooks.util.TimeUtils
 import com.huangder.lumibooks.util.parser.BookParser
 import com.huangder.lumibooks.util.parser.BookParserFactory
@@ -151,6 +152,10 @@ data class ReaderUiState(
     val customFontPath: String? = null,
     /** 所有已导入的自定义字体列表 */
     val customFonts: List<com.huangder.lumibooks.domain.model.CustomFontPreset> = emptyList(),
+    /** 正在下载的远程字体 key（非空时字体按钮显示下载中） */
+    val fontDownloadKey: String? = null,
+    /** 上次远程字体下载失败（按钮显示失败文案，点击重试） */
+    val fontDownloadFailed: Boolean = false,
     val readerBackgroundSelection: String = "day",
     val customReaderBackgrounds: List<ReaderBackgroundPreset> = emptyList(),
     val preserveEpubBackground: Boolean = true,
@@ -243,7 +248,8 @@ class ReaderViewModel @Inject constructor(
     private val pdfTextExtractor: PdfTextExtractor,
     private val mineruManualImportManager: MineruManualImportManager,
     private val mineruTokenStore: MineruTokenStore,
-    private val webdavSyncManager: com.huangder.lumibooks.data.sync.WebdavSyncManager
+    private val webdavSyncManager: com.huangder.lumibooks.data.sync.WebdavSyncManager,
+    private val fontDownloadManager: com.huangder.lumibooks.util.FontDownloadManager
 ) : ViewModel() {
 
     private companion object {
@@ -459,6 +465,10 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.fontType.collectLatest { ft ->
                 _uiState.value = _uiState.value.copy(fontType = ft)
+                // 旧版本已选仿宋的用户升级后无本地字体：后台自动补下（失败则保持系统字体降级）
+                if (ft == "fangsong" && DownloadedFonts.file(context, "fangsong") == null) {
+                    fontDownloadManager.ensure("fangsong")
+                }
             }
         }
         viewModelScope.launch {
@@ -631,6 +641,20 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun saveFontType(ft: String) {
+        // 仿宋为按需下载字体：本地无文件时先下载，成功后再切换
+        if (ft == "fangsong" && DownloadedFonts.file(context, "fangsong") == null) {
+            _uiState.value = _uiState.value.copy(fontDownloadKey = "fangsong", fontDownloadFailed = false)
+            viewModelScope.launch {
+                val ok = fontDownloadManager.ensure("fangsong") != null
+                _uiState.value = _uiState.value.copy(fontDownloadKey = null, fontDownloadFailed = !ok)
+                if (ok) applyFontType(ft)
+            }
+            return
+        }
+        applyFontType(ft)
+    }
+
+    private fun applyFontType(ft: String) {
         var newState = _uiState.value
             .withUpdatedActiveThemeSettings { copy(fontType = ft) }
             .copy(fontType = ft)

@@ -105,7 +105,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import androidx.core.graphics.ColorUtils
-import com.huangder.lumibooks.ui.theme.FangSong
+import com.huangder.lumibooks.ui.theme.fangSongFamily
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
@@ -115,6 +115,7 @@ import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
+import com.huangder.lumibooks.util.DownloadedFonts
 import com.huangder.lumibooks.util.epub.EpubRenderMode
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
@@ -1192,10 +1193,11 @@ private fun rememberSuiteFontFamily(
 ): FontFamily {
     val fontType = suite.settings.fontType
     val customPath = customFonts.firstOrNull { fontType == "custom:${it.id}" }?.path
-    return remember(fontType, customPath) {
+    val fangSongFamilyValue = fangSongFamily()
+    return remember(fontType, customPath, fangSongFamilyValue) {
         when {
             fontType == "serif" -> FontFamily.Serif
-            fontType == "fangsong" -> FangSong
+            fontType == "fangsong" -> fangSongFamilyValue
             fontType == "kaiti" -> KaiTi
             customPath != null -> runCatching {
                 FontFamily(android.graphics.Typeface.createFromFile(File(customPath)))
@@ -1659,6 +1661,8 @@ fun AdvancedSettingsSheet(
     preservePublisherLayout: Boolean = false,
     currentWritingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL,
     eInkModeEnabled: Boolean = false,
+    fontDownloadKey: String? = null,
+    fontDownloadFailed: Boolean = false,
     onLineHeightChange: (Float) -> Unit,
     onLetterSpacingChange: (Float) -> Unit,
     onFontTypeChange: (String) -> Unit,
@@ -1736,7 +1740,7 @@ fun AdvancedSettingsSheet(
     }
     val previewFont = when {
         currentFontType == "serif" -> androidx.compose.ui.text.font.FontFamily.Serif
-        currentFontType == "fangsong" -> FangSong
+        currentFontType == "fangsong" -> fangSongFamily()
         currentFontType == "kaiti" -> KaiTi
         currentFontType.startsWith("custom") -> customPreviewFontFamily
         else -> androidx.compose.ui.text.font.FontFamily.Default
@@ -1757,10 +1761,8 @@ fun AdvancedSettingsSheet(
     val verticalPreviewTypeface = remember(previewContext, currentFontType, customFontPath) {
         when {
             currentFontType == "serif" -> android.graphics.Typeface.SERIF
-            currentFontType == "fangsong" -> androidx.core.content.res.ResourcesCompat.getFont(
-                previewContext,
-                R.font.fandol_fang
-            ) ?: android.graphics.Typeface.DEFAULT
+            currentFontType == "fangsong" -> DownloadedFonts.typeface(previewContext, "fangsong")
+                ?: android.graphics.Typeface.DEFAULT
             currentFontType == "kaiti" -> androidx.core.content.res.ResourcesCompat.getFont(
                 previewContext,
                 R.font.lxgw_wenkai
@@ -2043,7 +2045,9 @@ fun AdvancedSettingsSheet(
                         onFontChange = onFontTypeChange,
                         onImportFont = onImportFont,
                         onDeleteCustomFont = onDeleteCustomFont,
-                        usePublisherFontLabel = preservePublisherLayout
+                        usePublisherFontLabel = preservePublisherLayout,
+                        downloadingKey = fontDownloadKey,
+                        fontDownloadFailed = fontDownloadFailed
                     )
                 }
                 Spacer(Modifier.height(16.dp))
@@ -3075,7 +3079,9 @@ private fun FontSelector(
     onFontChange: (String) -> Unit,
     onImportFont: (android.net.Uri) -> Unit = {},
     onDeleteCustomFont: (String) -> Unit = {},
-    usePublisherFontLabel: Boolean = false
+    usePublisherFontLabel: Boolean = false,
+    downloadingKey: String? = null,
+    fontDownloadFailed: Boolean = false
 ) {
     val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
@@ -3088,12 +3094,15 @@ private fun FontSelector(
     val fangLabel = stringResource(R.string.font_fangsong)
     val kaiLabel  = stringResource(R.string.font_kaiti)
     val addLabel  = stringResource(R.string.font_import)
+    val downloadingLabel = stringResource(R.string.font_downloading)
+    val failedLabel = stringResource(R.string.font_download_failed)
+    val fangSongFamilyValue = fangSongFamily()
 
-    val items = remember(customFonts, sysLabel, fangLabel, kaiLabel) {
+    val items = remember(customFonts, sysLabel, fangLabel, kaiLabel, fangSongFamilyValue) {
         buildList<FontSelectorItem> {
             add(FontSelectorItem.Fixed("system",   sysLabel,  FontFamily.Default))
             add(FontSelectorItem.Fixed("serif",    "Serif",   FontFamily.Serif))
-            add(FontSelectorItem.Fixed("fangsong", fangLabel, FangSong))
+            add(FontSelectorItem.Fixed("fangsong", fangLabel, fangSongFamilyValue))
             add(FontSelectorItem.Fixed("kaiti",    kaiLabel,  KaiTi))
             customFonts.forEachIndexed { i, p -> add(FontSelectorItem.Custom(p, i)) }
             add(FontSelectorItem.AddButton)
@@ -3108,13 +3117,22 @@ private fun FontSelector(
             ) {
                 rowItems.forEach { item ->
                     when (item) {
-                        is FontSelectorItem.Fixed -> FontButton(
-                            label = item.staticLabel,
-                            isSelected = currentFont == item.key,
-                            onClick = { onFontChange(item.key) },
-                            fontFamily = item.family,
-                            modifier = Modifier.weight(1f)
-                        )
+                        is FontSelectorItem.Fixed -> {
+                            val isFangSong = item.key == "fangsong"
+                            val label = when {
+                                isFangSong && downloadingKey == "fangsong" -> downloadingLabel
+                                isFangSong && fontDownloadFailed -> failedLabel
+                                else -> item.staticLabel
+                            }
+                            FontButton(
+                                label = label,
+                                isSelected = currentFont == item.key,
+                                onClick = { onFontChange(item.key) },
+                                fontFamily = item.family,
+                                enabled = !(isFangSong && downloadingKey == "fangsong"),
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
                         is FontSelectorItem.Custom -> {
                             val preset = item.preset
                             val fontFamily = remember(preset.path) {
@@ -3192,7 +3210,8 @@ private fun FontButton(
     isSelected: Boolean,
     onClick: () -> Unit,
     fontFamily: FontFamily = FontFamily.Default,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
 ) {
     Box(
         modifier = modifier
@@ -3206,7 +3225,11 @@ private fun FontButton(
                 }
             )
             .background(LightBgGray)
-            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() },
+            .clickable(
+                enabled = enabled,
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() }
+            ) { onClick() },
         contentAlignment = Alignment.Center
     ) {
         Text(

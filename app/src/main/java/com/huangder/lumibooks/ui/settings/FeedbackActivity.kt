@@ -52,7 +52,7 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
-import com.huangder.lumibooks.ui.theme.FangSong
+import com.huangder.lumibooks.ui.theme.fangSongFamily
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
@@ -137,7 +137,7 @@ private fun FeedbackPage(onBack: () -> Unit) {
                     settingsBackButton = true
                 )
                 Spacer(Modifier.weight(1f))
-                Text(stringResource(R.string.feedback_title), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = resolveAppFontFamily(FangSong), color = AppColors.TextPrimary)
+                Text(stringResource(R.string.feedback_title), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = resolveAppFontFamily(fangSongFamily()), color = AppColors.TextPrimary)
                 Spacer(Modifier.weight(1f))
                 Spacer(Modifier.size(48.dp))
             }

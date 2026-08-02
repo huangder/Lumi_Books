@@ -217,6 +217,7 @@ import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
+import com.huangder.lumibooks.util.DownloadedFonts
 import com.huangder.lumibooks.util.epub.EpubRenderMode
 import com.huangder.lumibooks.util.parser.TxtEncoding
 import com.huangder.lumibooks.tts.TtsPageContent
@@ -1254,9 +1255,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     val continuousTypeface = remember(uiState.fontType, uiState.customFontPath) {
         when {
             uiState.fontType == "serif" -> android.graphics.Typeface.SERIF
-            uiState.fontType == "fangsong" -> runCatching {
-                androidx.core.content.res.ResourcesCompat.getFont(context, R.font.fandol_fang)
-            }.getOrNull()
+            uiState.fontType == "fangsong" -> DownloadedFonts.typeface(context, "fangsong")
             uiState.fontType == "kaiti" -> runCatching {
                 androidx.core.content.res.ResourcesCompat.getFont(context, R.font.lxgw_wenkai)
             }.getOrNull()
@@ -2346,6 +2345,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 currentFontSizeSp = uiState.fontSize,
                 preservePublisherLayout = isBookLayout,
                 currentWritingMode = uiState.readerWritingMode,
+                fontDownloadKey = uiState.fontDownloadKey,
+                fontDownloadFailed = uiState.fontDownloadFailed,
                 onLineHeightChange = { viewModel.saveLineHeight(it) },
                 onLetterSpacingChange = { viewModel.saveLetterSpacing(it) },
                 onFontTypeChange = { viewModel.saveFontType(it) },

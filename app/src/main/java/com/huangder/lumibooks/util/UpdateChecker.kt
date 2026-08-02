@@ -51,7 +51,17 @@ object UpdateChecker {
         val forceUpdateBelowVersionCode: Long,
         val termsVersion: Int,
         val privacyVersion: Int,
-        val notice: NoticeConfig?
+        val notice: NoticeConfig?,
+        val remoteFonts: List<RemoteFontConfig> = emptyList()
+    )
+
+    /** Remote downloadable font config (docs/app-config.json "fonts" section). */
+    data class RemoteFontConfig(
+        val key: String,
+        val version: Int,
+        val fileName: String,
+        val sizeBytes: Long,
+        val urls: List<String>
     )
 
     /** Evaluated remote check result. */
@@ -121,7 +131,8 @@ object UpdateChecker {
                 ),
                 termsVersion = json.optInt("terms_version", 0),
                 privacyVersion = json.optInt("privacy_version", 0),
-                notice = parseNotice(noticeJson)
+                notice = parseNotice(noticeJson),
+                remoteFonts = parseRemoteFonts(json.optJSONArray("fonts"))
             )
         } catch (e: Exception) {
             Log.w(TAG, "Failed to fetch update config: ${e.message}")
@@ -143,6 +154,25 @@ object UpdateChecker {
             title = title,
             message = message
         )
+    }
+
+    private fun parseRemoteFonts(array: JSONArray?): List<RemoteFontConfig> {
+        if (array == null) return emptyList()
+        return (0 until array.length()).mapNotNull { index ->
+            val item = array.optJSONObject(index) ?: return@mapNotNull null
+            val urls = item.optJSONArray("urls")?.let { urlArray ->
+                (0 until urlArray.length()).mapNotNull { urlArray.optString(it).trim().takeIf(String::isNotBlank) }
+            }.orEmpty()
+            val key = item.optString("key", "").trim()
+            if (key.isBlank() || urls.isEmpty()) return@mapNotNull null
+            RemoteFontConfig(
+                key = key,
+                version = item.optInt("version", 0),
+                fileName = item.optString("fileName", ""),
+                sizeBytes = item.optLong("sizeBytes", 0L),
+                urls = urls
+            )
+        }
     }
 
     private fun openJsonConnection(urlString: String): String {
