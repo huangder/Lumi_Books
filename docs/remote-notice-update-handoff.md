@@ -215,3 +215,39 @@ app/src/main/java/com/huangder/lumibooks/ui/settings/SettingsViewModel.kt
 3. 判断更新以 `versionCode` 为准，`versionName` 只用于展示。
 4. 紧急强更时，应先发布 GitHub Release，再更新 `docs/app-config.json`。
 5. `docs/app-config.json` 走 GitHub Raw 地址；提交到 `main` 后，客户端下一次启动即可拉取。
+## 10. 远程字体托管（按需下载字体）
+
+仿宋字体已从 APK 移除，改为应用内按需下载。客户端读取 `docs/app-config.json` 的 `fonts` 段（数组，可扩展更多字体），按 `key` 匹配下载。
+
+### 首次上线操作步骤
+
+1. 将 `fandol_fang.ttf`（8.8MB，低于 GitHub raw 100MB 限制）放入仓库 `docs/fonts/` 目录（与现有 MiSans 字体同目录），提交推送到 main。
+2. 确认 `docs/app-config.json` 的 `fonts` 段已包含 fangsong 条目（对应 PR 已写好，见下）。提交推送后客户端下一次启动/打开字体设置即可生效，**无需发版**。
+
+```json
+"fonts": [{
+  "key": "fangsong",
+  "version": 1,
+  "fileName": "fandol_fang.ttf",
+  "sizeBytes": 8824084,
+  "urls": [
+    "https://raw.githubusercontent.com/huangder/Lumi_Books/main/docs/fonts/fandol_fang.ttf",
+    "https://cdn.jsdelivr.net/gh/huangder/Lumi_Books@main/docs/fonts/fandol_fang.ttf"
+  ]
+}]
+```
+
+### 更新字体（换版本）
+
+1. 新文件覆盖 `docs/fonts/fandol_fang.ttf`（或新增 URL）。
+2. `fonts` 条目中 `version` 加 1，并按新文件更新 `sizeBytes`（必须是字节数，客户端会做大小校验）。
+3. 推送 main 即生效；客户端检测到 version 不一致会重新下载。
+
+### 新增字体
+
+在 `fonts` 数组追加条目：`key` 为 App 内字体标识（与 `ThemeSettingsSheet` 中 FontSelector 的 key 对应），`urls` 至少一个 https 地址（目前白名单：raw.githubusercontent.com / cdn.jsdelivr.net）。App 内还需在字体选择 UI 增加对应条目并复用 `FontDownloadManager` 的下载流程。
+
+### 降级行为
+
+- 字体未下载/下载失败时，阅读器自动回退系统字体（所有渲染路径均有 `Typeface.DEFAULT` 兜底）。
+- 用户选择仿宋时若本地无文件，按钮显示"下载中…"；失败显示"下载失败"，点击可重试。
