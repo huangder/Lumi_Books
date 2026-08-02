@@ -169,7 +169,7 @@ class PdfConversionWorker @AssistedInject constructor(
     ): ForegroundInfo {
         createNotificationChannel()
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(applicationContext.getString(R.string.pdf_convert_notification_title))
             .setContentText(
                 if (totalPages > 0) {
@@ -219,7 +219,7 @@ class PdfConversionWorker @AssistedInject constructor(
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(bookTitle)
             .setContentText(
                 applicationContext.getString(
@@ -239,7 +239,7 @@ class PdfConversionWorker @AssistedInject constructor(
     private fun failAndNotify(sourceBookId: String, errorCode: String): Result {
         createNotificationChannel()
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(applicationContext.getString(R.string.pdf_convert_failed_title))
             .setContentText(applicationContext.getString(errorMessageResource(errorCode)))
             .setAutoCancel(true)

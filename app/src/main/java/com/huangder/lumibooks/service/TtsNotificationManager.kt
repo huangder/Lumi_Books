@@ -66,7 +66,7 @@ class TtsNotificationManager @Inject constructor(
         }
 
         return builder
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(bookTitle.ifBlank { context.getString(R.string.app_name) })
             .setContentText(context.getString(R.string.tts_notification_chapter, chapterIndex + 1))
             .setContentIntent(contentIntent)

@@ -213,7 +213,7 @@ class MineruPdfConversionWorker @AssistedInject constructor(
     private fun createForegroundInfo(sourceBookId: String, progress: Int): ForegroundInfo {
         createNotificationChannel()
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(applicationContext.getString(R.string.pdf_convert_mineru_notification_title))
             .setContentText(applicationContext.getString(R.string.pdf_convert_mineru_notification_progress, progress))
             .setProgress(100, progress.coerceIn(0, 100), progress <= 0)
@@ -252,7 +252,7 @@ class MineruPdfConversionWorker @AssistedInject constructor(
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(bookTitle)
             .setContentText(applicationContext.getString(R.string.pdf_convert_mineru_notification_complete, pageCount))
             .setContentIntent(contentIntent)
@@ -266,7 +266,7 @@ class MineruPdfConversionWorker @AssistedInject constructor(
     private fun failAndNotify(sourceBookId: String, errorCode: String): Result {
         createNotificationChannel()
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(applicationContext.getString(R.string.pdf_convert_failed_title))
             .setContentText(applicationContext.getString(errorMessageResource(errorCode)))
             .setAutoCancel(true)
