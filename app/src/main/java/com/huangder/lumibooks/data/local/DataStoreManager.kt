@@ -32,6 +32,7 @@ import com.huangder.lumibooks.tts.ExternalTtsConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -67,6 +68,7 @@ class DataStoreManager @Inject constructor(
         private val BRIGHTNESS = floatPreferencesKey("brightness")
         private val CUSTOM_FONT_PATH = stringPreferencesKey("custom_font_path")
         private val CUSTOM_FONTS = stringPreferencesKey("custom_fonts")
+        private val REMOTE_FONT_VERSIONS = stringPreferencesKey("remote_font_versions")
         private val READER_BACKGROUND_SELECTION = stringPreferencesKey("reader_background_selection")
         private val CUSTOM_READER_BACKGROUNDS = stringPreferencesKey("custom_reader_backgrounds")
         private val PRESERVE_EPUB_BACKGROUND = booleanPreferencesKey("preserve_epub_background")
@@ -457,6 +459,25 @@ class DataStoreManager @Inject constructor(
     suspend fun saveFontType(fontType: String) {
         context.dataStore.edit { preferences ->
             preferences[FONT_TYPE] = fontType
+        }
+    }
+
+    /** 已下载远程字体的版本号（key -> version，JSON 存储，沿用 CustomFontPresetCodec 先例）。 */
+    val remoteFontVersions: Flow<Map<String, Int>> = context.dataStore.data.map { preferences ->
+        preferences[REMOTE_FONT_VERSIONS]?.let { raw ->
+            runCatching {
+                val obj = JSONObject(raw)
+                obj.keys().asSequence().associateWith { obj.optInt(it, 0) }
+            }.getOrDefault(emptyMap())
+        } ?: emptyMap()
+    }
+
+    suspend fun saveRemoteFontVersion(key: String, version: Int) {
+        context.dataStore.edit { preferences ->
+            val obj = runCatching { JSONObject(preferences[REMOTE_FONT_VERSIONS] ?: "{}") }
+                .getOrDefault(JSONObject())
+            obj.put(key, version)
+            preferences[REMOTE_FONT_VERSIONS] = obj.toString()
         }
     }
 

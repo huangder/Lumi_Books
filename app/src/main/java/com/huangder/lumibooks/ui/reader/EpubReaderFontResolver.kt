@@ -2,6 +2,7 @@ package com.huangder.lumibooks.ui.reader
 
 import android.content.Context
 import com.huangder.lumibooks.R
+import com.huangder.lumibooks.util.DownloadedFonts
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -16,7 +17,8 @@ internal suspend fun prepareEpubReaderFontPath(
             ?.let(::File)
             ?.takeIf { it.isFile && it.length() > 0L }
             ?.canonicalPath
-        fontType == "fangsong" -> copyBundledReaderFont(context, R.font.fandol_fang, "fandol_fang_v1.ttf")
+        fontType == "fangsong" -> DownloadedFonts.file(context, "fangsong")
+            ?.let { copyReaderFontFile(context, it, "fandol_fang_v1.ttf") }
         fontType == "kaiti" -> copyBundledReaderFont(context, R.font.lxgw_wenkai, "lxgw_wenkai_v1.ttf")
         else -> null
     }
@@ -30,6 +32,28 @@ private fun copyBundledReaderFont(context: Context, resourceId: Int, fileName: S
     val temporary = File(directory, "$fileName.tmp")
     return runCatching {
         context.resources.openRawResource(resourceId).use { input ->
+            temporary.outputStream().buffered().use { output -> input.copyTo(output) }
+        }
+        if (target.exists()) target.delete()
+        if (!temporary.renameTo(target)) {
+            temporary.copyTo(target, overwrite = true)
+            temporary.delete()
+        }
+        target.takeIf { it.isFile && it.length() > 0L }?.canonicalPath
+    }.getOrNull().also {
+        if (temporary.exists()) temporary.delete()
+    }
+}
+
+/** 将已下载的字体源文件原子写入 EPUB 渲染缓存目录（.tmp + rename）。 */
+private fun copyReaderFontFile(context: Context, source: File, fileName: String): String? {
+    val directory = File(context.cacheDir, "epub_reader_fonts").apply { mkdirs() }
+    val target = File(directory, fileName)
+    if (target.isFile && target.length() > 0L) return target.canonicalPath
+
+    val temporary = File(directory, "$fileName.tmp")
+    return runCatching {
+        source.inputStream().use { input ->
             temporary.outputStream().buffered().use { output -> input.copyTo(output) }
         }
         if (target.exists()) target.delete()
