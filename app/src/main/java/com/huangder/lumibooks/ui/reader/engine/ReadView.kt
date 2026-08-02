@@ -10,6 +10,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
 import com.huangder.lumibooks.domain.model.Note
+import com.huangder.lumibooks.util.DownloadedFonts
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapAction
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
@@ -292,8 +293,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
         val customTypeface = when {
             currentFontType == "serif" -> android.graphics.Typeface.SERIF
-            currentFontType == "fangsong" -> try { androidx.core.content.res.ResourcesCompat.getFont(context, com.huangder.lumibooks.R.font.fandol_fang) }
-                catch (_: Exception) { null } ?: android.graphics.Typeface.DEFAULT
+            currentFontType == "fangsong" -> DownloadedFonts.typeface(context, "fangsong")
+                ?: android.graphics.Typeface.DEFAULT
             currentFontType == "kaiti" -> try { androidx.core.content.res.ResourcesCompat.getFont(context, com.huangder.lumibooks.R.font.lxgw_wenkai) }
                 catch (_: Exception) { null } ?: android.graphics.Typeface.DEFAULT
             currentFontType.startsWith("custom") -> {
@@ -475,8 +476,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
         val customTypeface = when {
             fontType == "serif" -> android.graphics.Typeface.SERIF
-            fontType == "fangsong" -> try { androidx.core.content.res.ResourcesCompat.getFont(context, com.huangder.lumibooks.R.font.fandol_fang) }
-                catch (_: Exception) { null }
+            fontType == "fangsong" -> DownloadedFonts.typeface(context, "fangsong")
             fontType == "kaiti" -> try { androidx.core.content.res.ResourcesCompat.getFont(context, com.huangder.lumibooks.R.font.lxgw_wenkai) }
                 catch (_: Exception) { null }
             fontType.startsWith("custom") -> {

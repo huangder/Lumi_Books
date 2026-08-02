@@ -11,6 +11,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.R
+import com.huangder.lumibooks.util.DownloadedFonts
 
 /** 全局深色模式状态，由 MainActivity 根据 DataStore 设置注入 */
 val LocalIsDarkTheme = staticCompositionLocalOf { false }
@@ -31,7 +32,10 @@ object GlobalFontMode {
 val LocalGlobalFontMode = staticCompositionLocalOf { GlobalFontMode.DEFAULT }
 
 // ─── 字体 ───
-val FangSong = FontFamily(Font(R.font.fandol_fang, FontWeight.Normal))
+// 仿宋为按需下载字体（远程配置驱动，见 FontDownloadManager）；未下载时回退系统字体
+@Composable
+fun fangSongFamily(): FontFamily = DownloadedFonts.familyOrDefault("fangsong")
+
 val KaiTi = FontFamily(Font(R.font.lxgw_wenkai, FontWeight.Normal))
 val SansSerif = FontFamily.Default
 

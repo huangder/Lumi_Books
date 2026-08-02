@@ -102,7 +102,7 @@ import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.tts.ExternalTtsConfig
-import com.huangder.lumibooks.ui.theme.FangSong
+import com.huangder.lumibooks.ui.theme.fangSongFamily
 import com.huangder.lumibooks.ui.components.LiquidGlassSwitch
 import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
@@ -163,7 +163,7 @@ fun DetailPage(title: String, onBack: () -> Unit, content: @Composable () -> Uni
                     settingsBackButton = true
                 )
                 Spacer(Modifier.weight(1f))
-                Text(title, fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = resolveAppFontFamily(FangSong), color = AppColors.TextPrimary)
+                Text(title, fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = resolveAppFontFamily(fangSongFamily()), color = AppColors.TextPrimary)
                 Spacer(Modifier.weight(1f))
                 Spacer(Modifier.size(48.dp))
             }
