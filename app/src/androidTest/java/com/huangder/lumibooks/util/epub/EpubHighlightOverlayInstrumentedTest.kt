@@ -34,7 +34,9 @@ class EpubHighlightOverlayInstrumentedTest {
         ).toString(Charsets.UTF_8)
         val loaded = CountDownLatch(1)
         val resultReady = CountDownLatch(1)
+        val expiredResultReady = CountDownLatch(1)
         var result: JSONObject? = null
+        var expiredResult: JSONObject? = null
         var encodedResult: String? = null
         lateinit var webView: WebView
         EpubHighlightTestActivity.current = null
@@ -96,6 +98,7 @@ class EpubHighlightOverlayInstrumentedTest {
                             "targetRect=target?target.getBoundingClientRect():null,layerRect=layer?layer.getBoundingClientRect():null;" +
                             "return JSON.stringify({count:document.querySelectorAll('.lumi-highlight-block').length," +
                             "searchCount:search.length,searchTop:search.length?parseFloat(search[0].style.top):-1," +
+                            "searchAnimation:search.length?getComputedStyle(search[0]).animationName:''," +
                             "targetTop:targetRect&&layerRect?targetRect.top-layerRect.top:-1," +
                             "radius:document.querySelector('.lumi-highlight-block')?" +
                             "getComputedStyle(document.querySelector('.lumi-highlight-block')).borderTopLeftRadius:''," +
@@ -112,6 +115,20 @@ class EpubHighlightOverlayInstrumentedTest {
                         val decoded = runCatching { JSONArray("[$encoded]").optString(0) }.getOrNull()
                         result = decoded?.let { runCatching { JSONObject(it) }.getOrNull() }
                         resultReady.countDown()
+                        webView.postDelayed({
+                            webView.evaluateJavascript(
+                                "JSON.stringify({searchCount:document.querySelectorAll('.lumi-search-highlight-block').length," +
+                                    "persistentCount:document.querySelectorAll('.lumi-highlight-block:not(.lumi-search-highlight-block)').length})"
+                            ) { expiredEncoded ->
+                                val expiredDecoded = runCatching {
+                                    JSONArray("[$expiredEncoded]").optString(0)
+                                }.getOrNull()
+                                expiredResult = expiredDecoded?.let {
+                                    runCatching { JSONObject(it) }.getOrNull()
+                                }
+                                expiredResultReady.countDown()
+                            }
+                        }, 1800L)
                     }
                 }, 500L)
                 }
@@ -124,6 +141,7 @@ class EpubHighlightOverlayInstrumentedTest {
         )
         assertEquals("6px", result?.optString("radius"))
         assertTrue("the second locator search must replace the first temporary highlight: result=$result", result?.optInt("searchCount", 0) ?: 0 > 0)
+        assertEquals("lumi-search-highlight-pulse", result?.optString("searchAnimation"))
         assertTrue(
             "temporary highlight must resolve to the second paragraph: result=$result",
             kotlin.math.abs(
@@ -134,6 +152,15 @@ class EpubHighlightOverlayInstrumentedTest {
         assertTrue(
             "persistent note highlights must survive search and reconfiguration: result=$result",
             (result?.optInt("count", 0) ?: 0) > (result?.optInt("searchCount", 0) ?: 0)
+        )
+        assertTrue(
+            "temporary search highlight must expire after two pulses: result=$expiredResult",
+            expiredResultReady.await(5, TimeUnit.SECONDS)
+        )
+        assertEquals(0, expiredResult?.optInt("searchCount", -1))
+        assertTrue(
+            "persistent note highlights must remain after the search pulse expires: result=$expiredResult",
+            expiredResult?.optInt("persistentCount", 0) ?: 0 > 0
         )
         val gaps = result?.optJSONArray("gaps") ?: JSONArray()
         assertTrue("test content must wrap into multiple highlight rows: result=$result", gaps.length() > 0)

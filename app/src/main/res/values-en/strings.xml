@@ -87,6 +87,7 @@
     <string name="category_backup">Backup &amp; Restore</string>
     <string name="category_about">About</string>
     <string name="category_sponsor">Support Development</string>
+    <string name="settings_sponsor_note">Developing and maintaining LUMI takes significant time and effort. If you enjoy LUMI, you are welcome to support its development. Sponsorship is optional and does not affect any features; the choice is entirely yours~</string>
     <string name="category_feedback">Send Feedback</string>
     <string name="edit_nickname">Change Nickname</string>
     <string name="nickname_label">Nickname</string>
@@ -100,6 +101,8 @@
     <string name="title_backup">Backup &amp; Restore</string>
     <string name="title_changelog">Changelog</string>
     <string name="title_about">About</string>
+    <string name="join_community">Join Community</string>
+    <string name="github_repository">GitHub Repository</string>
 
     <!-- Reading Settings -->
     <string name="label_font_size">Font Size</string>
@@ -356,6 +359,7 @@
     <string name="reader_corner_content_book_progress">Book progress</string>
     <string name="reader_corner_content_page_number">Page number</string>
     <string name="reader_corner_content_battery">Battery</string>
+    <string name="reader_corner_content_time">Time</string>
     <string name="search_placeholder">Enter keywords</string>
     <string name="search_results_found">Found %d results</string>
     <string name="search_no_results">No matching results</string>

@@ -87,6 +87,7 @@
     <string name="category_backup">백업 및 복원</string>
     <string name="category_about">앱 정보</string>
     <string name="category_sponsor">개발 후원</string>
+    <string name="settings_sponsor_note">LUMI를 개발하고 유지하는 데에는 많은 시간과 노력이 필요합니다. LUMI가 마음에 드신다면 후원으로 응원해 주세요. 후원은 필수가 아니며 어떤 기능에도 영향을 주지 않습니다. 후원 여부는 전적으로 사용자가 결정할 수 있습니다~</string>
     <string name="category_feedback">문제 신고</string>
     <string name="edit_nickname">닉네임 변경</string>
     <string name="nickname_label">닉네임</string>
@@ -100,6 +101,8 @@
     <string name="title_backup">백업 및 복원</string>
     <string name="title_changelog">변경 내역</string>
     <string name="title_about">앱 정보</string>
+    <string name="join_community">커뮤니티 참여</string>
+    <string name="github_repository">GitHub 저장소</string>
 
     <!-- 읽기 설정 -->
     <string name="label_font_size">글꼴 크기</string>
@@ -343,6 +346,7 @@
     <string name="reader_corner_content_book_progress">전체 진행률</string>
     <string name="reader_corner_content_page_number">페이지 번호</string>
     <string name="reader_corner_content_battery">배터리</string>
+    <string name="reader_corner_content_time">시간</string>
     <string name="search_placeholder">키워드 입력</string>
     <string name="search_results_found">%d개 결과를 찾았습니다</string>
     <string name="search_no_results">일치하는 결과가 없습니다</string>

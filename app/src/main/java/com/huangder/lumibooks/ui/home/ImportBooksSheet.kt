@@ -433,7 +433,7 @@ private fun SelectedBookPreview(
         key2 = extension
     ) {
         val format = runCatching { BookFormat.valueOf(extension) }.getOrNull()
-        if (format == BookFormat.EPUB || format == BookFormat.PDF) {
+        if (format == BookFormat.EPUB || format == BookFormat.PDF || format == BookFormat.MOBI) {
             value = withContext(Dispatchers.IO) {
                 runCatching {
                     val parser = BookParserFactory.createParser(format, context)
@@ -449,6 +449,7 @@ private fun SelectedBookPreview(
     val coverBrush = when (extension) {
         "EPUB" -> Brush.linearGradient(listOf(Color(0xFF9BB7D4), Color(0xFF657D9A)))
         "PDF" -> Brush.linearGradient(listOf(Color(0xFFDFA19C), Color(0xFFB95E5B)))
+        "MOBI" -> Brush.linearGradient(listOf(Color(0xFFA8C3A0), Color(0xFF5F8A5C)))
         else -> Brush.linearGradient(listOf(Color(0xFFB8B0D6), Color(0xFF8179A8)))
     }
 

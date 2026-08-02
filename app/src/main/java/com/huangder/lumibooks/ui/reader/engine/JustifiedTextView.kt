@@ -191,6 +191,14 @@ class JustifiedTextView @JvmOverloads constructor(
         rebuildLayout()
     }
 
+    override fun setPadding(left: Int, top: Int, right: Int, bottom: Int) {
+        if (left == paddingLeft && top == paddingTop && right == paddingRight && bottom == paddingBottom) {
+            return
+        }
+        super.setPadding(left, top, right, bottom)
+        rebuildLayout()
+    }
+
     // ── 绘制 ──
 
     override fun onDraw(canvas: Canvas) {
@@ -217,13 +225,20 @@ class JustifiedTextView @JvmOverloads constructor(
             // 计算 LeadingMarginSpan 缩进
             var indentPx = 0f
             run {
-                val spans = s.getSpans(lineStart, lineStart + 1, LeadingMarginSpan::class.java)
-                val isFirstLineOfParagraph = i == 0 ||
-                    (lineStart > 0 && textStr[lineStart - 1] == '\n')
-                for (span in spans) {
-                    indentPx += span.getLeadingMargin(isFirstLineOfParagraph).toFloat()
-                }
+            val spans = s.getSpans(lineStart, lineStart + 1, LeadingMarginSpan::class.java)
+            val isFirstLineOfParagraph = i == 0 ||
+                (lineStart > 0 && textStr[lineStart - 1] == '\n')
+            for (span in spans) {
+                indentPx += span.getLeadingMargin(isFirstLineOfParagraph).toFloat()
             }
+            if (spans.isNotEmpty() || isFirstLineOfParagraph) {
+                android.util.Log.d(
+                    "JustifiedDebug",
+                    "line=$i start=$lineStart end=$lineEnd indent=$indentPx first=$isFirstLineOfParagraph " +
+                        "spans=${spans.size} viewW=${width - paddingLeft - paddingRight} slW=${sl.getLineWidth(i)}"
+                )
+            }
+        }
 
             val endsWithParagraphBreak = lineEnd > lineStart && textStr[lineEnd - 1] == '\n'
             // 换行点前的空格只参与语义，不参与可见字符的两端对齐。
@@ -281,7 +296,9 @@ class JustifiedTextView @JvmOverloads constructor(
             // 计算有效字符数（排除 U+FFFC 对象替换字符，这些是加载失败的图片占位符）
             val effectiveCharCount = (lineStart until effectiveEnd).count { textStr[it] != '￼' }
             val gapCount = if (effectiveCharCount > 1) effectiveCharCount - 1 else 0
-            val availableWidth = viewWidth - indentPx
+            // StaticLayout.getLineWidth() already includes the leading margin of the first line,
+            // so subtracting indentPx again would under-fill the line tail by twice the indent.
+            val availableWidth = viewWidth
             val extraSpace = availableWidth - lineWidth
             val shouldJustify = shouldJustifyReaderLine(
                 lineIndex = i,

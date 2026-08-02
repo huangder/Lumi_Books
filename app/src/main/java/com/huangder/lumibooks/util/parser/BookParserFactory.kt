@@ -9,6 +9,7 @@ object BookParserFactory {
             BookFormat.EPUB -> EpubParser(context)
             BookFormat.PDF -> PdfParser(context)
             BookFormat.TXT -> TxtParser(context)
+            BookFormat.MOBI -> MobiParser(context)
         }
     }
 }

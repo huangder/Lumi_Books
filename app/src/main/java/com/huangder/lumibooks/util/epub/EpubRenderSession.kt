@@ -13,8 +13,10 @@ import java.util.zip.ZipFile
 class EpubRenderSession private constructor(
     override val epubPackage: EpubPackage,
     private val zipFile: ZipFile
-) : EpubResourceProvider {
+) : EpubResourceProvider, BookRenderSession {
     val sessionToken: String = UUID.randomUUID().toString()
+    override val chapterCount: Int
+        get() = epubPackage.spine.size
     private val entriesByLowercase: Map<String, ZipEntry> =
         zipFile.entries().asSequence().associateBy { it.name.lowercase() }
     private val spineByPath = epubPackage.spine.mapIndexed { index, item ->
@@ -23,7 +25,7 @@ class EpubRenderSession private constructor(
     private val readerFontFiles = mutableMapOf<String, File>()
     private val readerFontKeysByPath = mutableMapOf<String, String>()
 
-    val assetLoader: WebViewAssetLoader = WebViewAssetLoader.Builder()
+    override val assetLoader: WebViewAssetLoader = WebViewAssetLoader.Builder()
         .setDomain(ASSET_DOMAIN)
         .addPathHandler("/epub/$sessionToken/", WebViewAssetLoader.PathHandler { requestedPath ->
             val resource = read(requestedPath) ?: return@PathHandler null
@@ -47,7 +49,7 @@ class EpubRenderSession private constructor(
         .build()
 
     @Synchronized
-    fun readerFontUrl(filePath: String?): String? {
+    override fun readerFontUrl(filePath: String?): String? {
         val file = filePath?.takeIf(String::isNotBlank)?.let(::File) ?: return null
         val canonical = runCatching { file.canonicalFile }.getOrNull() ?: return null
         if (!canonical.isFile || canonical.length() <= 0L || canonical.length() > MAX_READER_FONT_BYTES) return null
@@ -79,7 +81,7 @@ class EpubRenderSession private constructor(
         }
     }
 
-    fun chapterUrl(chapterIndex: Int, fragment: String? = null): String {
+    override fun chapterUrl(chapterIndex: Int, fragment: String?): String {
         val path = epubPackage.spine.getOrNull(chapterIndex)?.manifestItem?.fullPath
             ?: error("Invalid EPUB chapter index: $chapterIndex")
         val encodedPath = path.split('/').joinToString("/") { Uri.encode(it) }
@@ -87,7 +89,23 @@ class EpubRenderSession private constructor(
             fragment?.takeIf(String::isNotBlank)?.let { "#${Uri.encode(it)}" }.orEmpty()
     }
 
-    fun chapterIndexForUrl(url: String): Int? {
+    override fun chapterHref(chapterIndex: Int): String =
+        epubPackage.spine.getOrNull(chapterIndex)?.manifestItem?.fullPath.orEmpty()
+
+    override fun renditionLayout(chapterIndex: Int): EpubRenditionLayout =
+        epubPackage.spine.getOrNull(chapterIndex)?.renditionLayout
+            ?: EpubRenditionLayout.REFLOWABLE
+
+    override fun pageProgressionDirection(chapterIndex: Int): EpubPageProgressionDirection =
+        epubPackage.pageProgressionDirection
+
+    override fun searchText(chapterIndex: Int): String {
+        val path = epubPackage.spine.getOrNull(chapterIndex)?.manifestItem?.fullPath ?: return ""
+        val resource = read(path) ?: return ""
+        return EpubDocumentTransformer.extractSearchText(resource)
+    }
+
+    override fun chapterIndexForUrl(url: String): Int? {
         val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return null
         if (uri.host != ASSET_DOMAIN) return null
         val prefix = "/epub/$sessionToken/"
@@ -97,7 +115,7 @@ class EpubRenderSession private constructor(
     }
 
     /** Converts an image source from a chapter's original HTML into this session's safe asset URL. */
-    fun imageUrl(sourceChapterIndex: Int, source: String): String? {
+    override fun imageUrl(sourceChapterIndex: Int, source: String): String? {
         if (source.startsWith("data:", ignoreCase = true)) return source
         val uri = runCatching { Uri.parse(source) }.getOrNull() ?: return null
         if (uri.scheme == "https" && uri.host == ASSET_DOMAIN && uri.port == -1) return source
@@ -113,7 +131,7 @@ class EpubRenderSession private constructor(
 
     /** Resolves a WebView image URL back to the original EPUB resource for preview/export. */
     @Synchronized
-    fun readImageUrl(url: String): EpubResource? {
+    override fun readImageUrl(url: String): EpubResource? {
         if (url.startsWith("data:", ignoreCase = true)) {
             val comma = url.indexOf(',')
             if (comma <= 5) return null
@@ -144,7 +162,7 @@ class EpubRenderSession private constructor(
         return resource.takeIf { it.mediaType.startsWith("image/", ignoreCase = true) }
     }
 
-    fun resolveInternalLink(sourceChapterIndex: Int, href: String): Pair<Int, String?>? {
+    override fun resolveInternalLink(sourceChapterIndex: Int, href: String): Pair<Int, String?>? {
         val uri = runCatching { Uri.parse(href) }.getOrNull()
         if (uri != null && uri.host == ASSET_DOMAIN) {
             val index = chapterIndexForUrl(href) ?: return null
@@ -181,7 +199,7 @@ class EpubRenderSession private constructor(
     }
 
     companion object {
-        const val ASSET_DOMAIN = "appassets.androidplatform.net"
+        const val ASSET_DOMAIN = BookRenderSession.ASSET_DOMAIN
         private const val MAX_RESOURCE_BYTES = 64 * 1024 * 1024
         private const val MAX_READER_FONT_BYTES = 64L * 1024L * 1024L
         private val READER_FONT_EXTENSIONS = setOf("ttf", "otf", "woff", "woff2")

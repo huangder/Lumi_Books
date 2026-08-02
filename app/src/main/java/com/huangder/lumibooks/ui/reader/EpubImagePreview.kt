@@ -53,7 +53,7 @@ import coil.compose.AsyncImage
 import coil.decode.SvgDecoder
 import coil.request.ImageRequest
 import com.huangder.lumibooks.R
-import com.huangder.lumibooks.util.epub.EpubRenderSession
+import com.huangder.lumibooks.util.epub.BookRenderSession
 import com.huangder.lumibooks.util.epub.EpubResource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -73,7 +73,7 @@ internal data class EpubImagePreviewRequest(
 
 @Composable
 internal fun EpubImagePreviewOverlay(
-    session: EpubRenderSession,
+    session: BookRenderSession,
     request: EpubImagePreviewRequest,
     progress: Float,
     onDismissRequest: () -> Unit

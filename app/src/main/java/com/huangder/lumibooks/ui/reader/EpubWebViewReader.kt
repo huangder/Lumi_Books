@@ -38,9 +38,9 @@ import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.huangder.lumibooks.util.ChineseConverter
+import com.huangder.lumibooks.util.epub.BookRenderSession
 import com.huangder.lumibooks.util.epub.EpubPageProgressionDirection
 import com.huangder.lumibooks.util.epub.EpubLocator
-import com.huangder.lumibooks.util.epub.EpubRenderSession
 import com.huangder.lumibooks.util.epub.EpubRenditionLayout
 import org.json.JSONArray
 import org.json.JSONObject
@@ -220,7 +220,7 @@ internal data class EpubPageText(
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 internal fun EpubWebViewReader(
-    session: EpubRenderSession,
+    session: BookRenderSession,
     chapterIndex: Int,
     fontSizeSp: Float,
     fontType: String,
@@ -349,9 +349,7 @@ internal fun EpubWebViewReader(
 
                 fun chapterForView(view: EpubContentWebView): Int {
                     val documentUrl = view.url.orEmpty().substringBefore('#')
-                    val matched = session.epubPackage.spine.indices.firstOrNull { index ->
-                        session.chapterUrl(index).substringBefore('#') == documentUrl
-                    }
+                    val matched = session.chapterIndexForUrl(documentUrl)
                     if (matched != null) loadedChapterByView[view] = matched
                     return matched ?: loadedChapterByView[view] ?: latestChapterIndex.value
                 }
@@ -400,8 +398,8 @@ internal fun EpubWebViewReader(
                         )
                         return
                     }
-                    val isFixedLayout = session.epubPackage.spine.getOrNull(target.chapterIndex)
-                        ?.renditionLayout == EpubRenditionLayout.PRE_PAGINATED
+                    val isFixedLayout = session.renditionLayout(target.chapterIndex) ==
+                        EpubRenditionLayout.PRE_PAGINATED
                     view.settings.textZoom = if (isFixedLayout) {
                         100
                     } else {
@@ -489,7 +487,7 @@ internal fun EpubWebViewReader(
                     }
                     val next = when {
                         currentPage + 1 < pageCount -> EpubPageTarget(currentChapter, currentPage + 1)
-                        currentChapter + 1 < session.epubPackage.spine.size ->
+                        currentChapter + 1 < session.chapterCount ->
                             EpubPageTarget(currentChapter + 1, 0)
                         else -> null
                     }
@@ -512,10 +510,9 @@ internal fun EpubWebViewReader(
                     val actualCount = payload.optInt("pageCount", 1).coerceAtLeast(1)
                     val actualTarget = EpubPageTarget(target.chapterIndex, actualPage)
                     val locator = payload.optJSONObject("locator")?.withChapterHref(
-                        session.epubPackage.spine.getOrNull(target.chapterIndex)
-                            ?.manifestItem?.fullPath.orEmpty()
+                        session.chapterHref(target.chapterIndex)
                     )?.toString()
-                    val packageRtl = session.epubPackage.pageProgressionDirection ==
+                    val packageRtl = session.pageProgressionDirection(target.chapterIndex) ==
                         EpubPageProgressionDirection.RTL
                     val reverseAxis = payload.optBoolean("reverseAxis", packageRtl)
                     val targetReached = if (target.pageIndex == Int.MAX_VALUE) {
@@ -584,10 +581,9 @@ internal fun EpubWebViewReader(
                             val pageCount = payload.optInt("pageCount", 1).coerceAtLeast(1)
                             activePageCount.value = pageCount
                             val locator = payload.optJSONObject("locator")?.withChapterHref(
-                                session.epubPackage.spine.getOrNull(messageChapterIndex)
-                                    ?.manifestItem?.fullPath.orEmpty()
+                                session.chapterHref(messageChapterIndex)
                             )?.toString()
-                            val packageRtl = session.epubPackage.pageProgressionDirection ==
+                            val packageRtl = session.pageProgressionDirection(messageChapterIndex) ==
                                 EpubPageProgressionDirection.RTL
                             pageTurnHost.setReverseAxis(
                                 payload.optBoolean("reverseAxis", packageRtl)
@@ -712,8 +708,7 @@ internal fun EpubWebViewReader(
                             val selectedText = payload.optString("text")
                             val start = payload.optJSONObject("start") ?: return
                             val end = payload.optJSONObject("end") ?: return
-                            val href = session.epubPackage.spine.getOrNull(messageChapterIndex)
-                                ?.manifestItem?.fullPath.orEmpty()
+                            val href = session.chapterHref(messageChapterIndex)
                             val location = IntArray(2)
                             view.getLocationInWindow(location)
                             val pixelRatio = payload.optDouble(
@@ -790,7 +785,7 @@ internal fun EpubWebViewReader(
                                     replyProxy: JavaScriptReplyProxy
                                 ) {
                                     if (!isMainFrame || sourceOrigin.scheme != "https" ||
-                                        sourceOrigin.host != EpubRenderSession.ASSET_DOMAIN ||
+                                        sourceOrigin.host != BookRenderSession.ASSET_DOMAIN ||
                                         sourceOrigin.port != -1
                                     ) return
                                     val contentView = sourceView as? EpubContentWebView ?: return
@@ -1043,7 +1038,7 @@ internal fun EpubWebViewReader(
         update = { pageTurnHost ->
             val webView = pageTurnHost.activeWebView
             webViewState.value = webView
-            val isFixedLayout = session.epubPackage.spine.getOrNull(chapterIndex)?.renditionLayout ==
+            val isFixedLayout = session.renditionLayout(chapterIndex) ==
                 EpubRenditionLayout.PRE_PAGINATED
             val nativePageTurn = usesNativeEpubPageTurn(
                 session = session,
@@ -1169,8 +1164,7 @@ internal fun EpubWebViewReader(
             readyChapter.value != chapterIndex ||
             dispatchedSearchToken.value == request.token
         ) return@LaunchedEffect
-        val expectedHref = session.epubPackage.spine.getOrNull(chapterIndex)
-            ?.manifestItem?.fullPath
+        val expectedHref = session.chapterHref(chapterIndex)
         if (request.locator.href != expectedHref) {
             dispatchedSearchToken.value = request.token
             latestSearchResolved.value(request.token, false)
@@ -1243,13 +1237,13 @@ internal fun EpubWebViewReader(
 }
 
 private fun usesNativeEpubPageTurn(
-    session: EpubRenderSession,
+    session: BookRenderSession,
     chapterIndex: Int,
     continuousScroll: Boolean,
     transition: String
 ): Boolean = !continuousScroll &&
     transition in setOf("slide", "curl") &&
-    session.epubPackage.spine.getOrNull(chapterIndex)?.renditionLayout != EpubRenditionLayout.PRE_PAGINATED
+    session.renditionLayout(chapterIndex) != EpubRenditionLayout.PRE_PAGINATED
 
 private fun configKey(
     chapterIndex: Int,
@@ -1295,7 +1289,7 @@ private fun configKey(
 
 private fun configureReader(
     view: WebView,
-    session: EpubRenderSession,
+    session: BookRenderSession,
     chapterIndex: Int,
     fontType: String,
     fontFilePath: String?,
@@ -1320,7 +1314,7 @@ private fun configureReader(
     pageRequest: EpubPageRequest?,
     preparePageRequest: Boolean = false
 ) {
-    val progression = when (session.epubPackage.pageProgressionDirection) {
+    val progression = when (session.pageProgressionDirection(chapterIndex)) {
         EpubPageProgressionDirection.RTL -> "rtl"
         else -> "ltr"
     }
@@ -1361,7 +1355,7 @@ private fun configureReader(
                 .put("bottom", marginBottomDp)
                 .put("left", marginLeftDp)
         )
-    val chapterPath = session.epubPackage.spine.getOrNull(chapterIndex)?.manifestItem?.fullPath
+    val chapterPath = session.chapterHref(chapterIndex)
     val locatorJson = locatorRequest
         ?.takeIf { it.chapterIndex == chapterIndex }
         ?.locatorJson

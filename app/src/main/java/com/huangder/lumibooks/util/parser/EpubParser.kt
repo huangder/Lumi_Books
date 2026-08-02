@@ -19,9 +19,9 @@ import com.huangder.lumibooks.util.epub.EpubPackage
 import com.huangder.lumibooks.util.epub.EpubPackageReader
 import com.huangder.lumibooks.util.epub.EpubPathResolver
 import com.huangder.lumibooks.util.epub.EpubRenderSession
-import com.huangder.lumibooks.util.epub.EpubRenderSource
+import com.huangder.lumibooks.util.epub.BookRenderSource
+import com.huangder.lumibooks.util.epub.BookSearchSource
 import com.huangder.lumibooks.util.epub.EpubSearchMatch
-import com.huangder.lumibooks.util.epub.EpubSearchSource
 import com.huangder.lumibooks.util.epub.EpubTextSearch
 
 /**
@@ -30,7 +30,7 @@ import com.huangder.lumibooks.util.epub.EpubTextSearch
  * parse() 只提取元数据（标题、作者、章节列表、封面），不处理图片。
  * getChapterHtml() / getChapterContent() 按需读取并处理单个章节。
  */
-class EpubParser(private val context: Context? = null) : BookParser, EpubRenderSource, EpubSearchSource {
+class EpubParser(private val context: Context? = null) : BookParser, BookRenderSource, BookSearchSource {
     companion object {
         private const val ANCHOR_MARKER_PREFIX = "\uE000LUMIBOOKS_ANCHOR:"
         private const val ANCHOR_MARKER_SUFFIX = "\uE001"
@@ -134,7 +134,7 @@ class EpubParser(private val context: Context? = null) : BookParser, EpubRenderS
     override fun openRenderSession(): EpubRenderSession =
         EpubRenderSession.open(epubFilePath, parsedPackage ?: EpubPackageReader.read(epubFilePath))
 
-    override suspend fun searchEpub(query: String, maxResults: Int): List<EpubSearchMatch> {
+    override suspend fun searchBook(query: String, maxResults: Int): List<EpubSearchMatch> {
         val epubPackage = parsedPackage ?: EpubPackageReader.read(epubFilePath)
         return EpubTextSearch.search(epubFilePath, epubPackage, query, maxResults)
     }

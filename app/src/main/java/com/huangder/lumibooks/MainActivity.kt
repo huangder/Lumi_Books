@@ -199,12 +199,13 @@ class MainActivity : ComponentActivity() {
     private suspend fun importBookFromUri(uri: Uri) {
         val fileName = FileUtils.getFileNameFromUri(this, uri) ?: return
         val extension = FileUtils.getFileExtension(fileName)
-        if (extension !in listOf("epub", "pdf", "txt")) return
+        if (extension !in listOf("epub", "pdf", "txt", "mobi")) return
 
         val file = FileUtils.copyFileToInternal(this, uri, fileName) ?: return
         val format = when (extension) {
             "epub" -> BookFormat.EPUB
             "pdf" -> BookFormat.PDF
+            "mobi" -> BookFormat.MOBI
             else -> BookFormat.TXT
         }
         val coverPath = runCatching {
@@ -217,9 +218,9 @@ class MainActivity : ComponentActivity() {
         }.getOrNull()
 
         // 导入时从文件解析真实标题和作者，而不是写死"未知作者"
-        val (parsedTitle, parsedAuthor) = if (format == BookFormat.EPUB) {
+        val (parsedTitle, parsedAuthor) = if (format == BookFormat.EPUB || format == BookFormat.MOBI) {
             try {
-                val parser = com.huangder.lumibooks.util.parser.EpubParser(this)
+                val parser = com.huangder.lumibooks.util.parser.BookParserFactory.createParser(format, this)
                 try {
                     val content = parser.parse(file.absolutePath)
                     val t = content.title.takeIf { it.isNotBlank() && it != file.nameWithoutExtension }

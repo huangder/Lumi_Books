@@ -111,6 +111,15 @@
                 <data android:scheme="file" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
+
+            <!-- MOBI 文件关联 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="application/x-mobipocket-ebook" />
+            </intent-filter>
         </activity>
 
         <activity

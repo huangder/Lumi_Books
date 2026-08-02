@@ -821,7 +821,7 @@ class DataStoreManager @Inject constructor(
     }
 
     /** 每本书的"优化排版"开关（per-book），默认 true */
-    fun epubRenderMode(bookId: String): Flow<EpubRenderMode> {
+    fun renderMode(bookId: String): Flow<EpubRenderMode> {
         val modeKey = stringPreferencesKey("epub_render_mode_$bookId")
         val optimizeKey = booleanPreferencesKey("optimize_layout_$bookId")
         val cssKey = booleanPreferencesKey("use_epub_css_$bookId")
@@ -834,7 +834,7 @@ class DataStoreManager @Inject constructor(
         }
     }
 
-    suspend fun migrateEpubRenderMode(bookId: String): EpubRenderMode {
+    suspend fun migrateRenderMode(bookId: String): EpubRenderMode {
         val modeKey = stringPreferencesKey("epub_render_mode_$bookId")
         val optimizeKey = booleanPreferencesKey("optimize_layout_$bookId")
         val cssKey = booleanPreferencesKey("use_epub_css_$bookId")
@@ -850,7 +850,7 @@ class DataStoreManager @Inject constructor(
         return resolved
     }
 
-    suspend fun saveEpubRenderMode(bookId: String, mode: EpubRenderMode) {
+    suspend fun saveRenderMode(bookId: String, mode: EpubRenderMode) {
         val key = stringPreferencesKey("epub_render_mode_$bookId")
         context.dataStore.edit { preferences -> preferences[key] = mode.storageValue }
     }

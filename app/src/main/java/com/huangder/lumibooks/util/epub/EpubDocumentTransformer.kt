@@ -11,6 +11,15 @@ import java.io.ByteArrayInputStream
 object EpubDocumentTransformer {
     fun transform(resource: EpubResource, layout: EpubRenditionLayout): ByteArray {
         val document = parseAndSanitize(resource)
+        return transform(document, layout)
+    }
+
+    /**
+     * 将已解析（并 sanitize 过）的文档包装成阅读器文档：
+     * 注入 viewport、分页 CSS 与 LumiReader 脚本。
+     * MOBI 等非 EPUB 来源复用同一包装，保证分页/定位/高亮脚本行为一致。
+     */
+    fun transform(document: Document, layout: EpubRenditionLayout): ByteArray {
         val head = document.head().takeIf { it.tagName().isNotBlank() }
             ?: document.prependElement("head")
         if (head.selectFirst("meta[name=viewport]") == null) {
@@ -25,7 +34,11 @@ object EpubDocumentTransformer {
     }
 
     internal fun extractSearchText(resource: EpubResource): String {
-        val body = parseAndSanitize(resource).body()
+        return extractSearchText(parseAndSanitize(resource))
+    }
+
+    internal fun extractSearchText(document: Document): String {
+        val body = document.body()
         val text = StringBuilder()
         NodeTraversor.traverse(
             object : NodeVisitor {
@@ -49,16 +62,16 @@ object EpubDocumentTransformer {
         return text.toString()
     }
 
-    private fun parseAndSanitize(resource: EpubResource): Document {
-        val document = Jsoup.parse(
-            ByteArrayInputStream(resource.bytes),
-            null,
-            resource.path,
-            Parser.xmlParser()
-        )
+    internal fun parseAndSanitize(bytes: ByteArray, path: String, useXmlParser: Boolean = true): Document {
+        val parser = if (useXmlParser) Parser.xmlParser() else Parser.htmlParser()
+        val document = Jsoup.parse(ByteArrayInputStream(bytes), null, path, parser)
         document.outputSettings().syntax(Document.OutputSettings.Syntax.xml).charset(Charsets.UTF_8)
         sanitize(document)
         return document
+    }
+
+    private fun parseAndSanitize(resource: EpubResource): Document {
+        return parseAndSanitize(resource.bytes, resource.path, useXmlParser = true)
     }
 
     private fun sanitize(document: Document) {
@@ -243,8 +256,15 @@ html.lumi-green body { color: #1b5e20 !important; }
   pointer-events: none;
   box-sizing: border-box;
 }
+.lumi-search-highlight-block {
+  animation: lumi-search-highlight-pulse 2000ms linear forwards;
+}
 html.lumi-sepia #lumi-footnote-popover { background: #fff8ee; color: #3e2723; }
 html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
+@keyframes lumi-search-highlight-pulse {
+  0%, 50%, 100% { opacity: 0; }
+  25%, 75% { opacity: 1; }
+}
 @keyframes lumi-footnote-enter {
   from { opacity: 0; transform: translateY(var(--lumi-footnote-motion-y, -8px)) scale(0.965); }
   to { opacity: 1; transform: translateY(0) scale(1); }
@@ -337,6 +357,7 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
   var resizeTimer = 0;
   var selectionDispatchTimer = 0;
   var scrollNotifyTimer = 0;
+  var searchHighlightTimer = 0;
   var touchStartX = 0;
   var touchStartY = 0;
   var touchStartTime = 0;
@@ -1301,6 +1322,11 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     window.scrollTo(0, 0);
     state.viewportWidth = viewportWidth();
     state.viewportHeight = viewportHeight();
+    if (state.viewportWidth < 2) {
+      state.paginating = false;
+      requestAnimationFrame(function () { paginate(restoreProgression); });
+      return;
+    }
     updateReadingAxis();
     state.fixed = body.getAttribute('data-lumi-layout') === 'pre_paginated';
     document.documentElement.classList.toggle('lumi-paginated', !state.fixed && state.flow === 'paginated');
@@ -1677,6 +1703,8 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
   }
 
   function clearSearchHighlight() {
+    clearTimeout(searchHighlightTimer);
+    searchHighlightTimer = 0;
     if (!state.searchHighlight) return;
     state.searchHighlight = null;
     rebuildHighlightLayer();
@@ -1693,6 +1721,12 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     moveToPage(page, true);
     state.searchHighlight = Object.assign({}, target);
     rebuildHighlightLayer();
+    searchHighlightTimer = setTimeout(function () {
+      searchHighlightTimer = 0;
+      if (!state.searchHighlight) return;
+      state.searchHighlight = null;
+      rebuildHighlightLayer();
+    }, 2000);
     post('searchResult', {
       requestToken: Number(requestToken), found: true, pageIndex: page,
       pageCount: state.total, reverseAxis: state.reverseAxis, locator: currentLocator()
@@ -1787,7 +1821,7 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     return rects;
   }
 
-  function appendHighlightRange(layer, range, color) {
+  function appendHighlightRange(layer, range, color, extraClass) {
     if (!range) return 0;
     var layerRect = layer.getBoundingClientRect();
     var scaleX = layer.offsetWidth > 0 ? layerRect.width / layer.offsetWidth : 1;
@@ -1809,7 +1843,7 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     merged.forEach(function (rect) {
       if (rect.right <= rect.left || rect.bottom <= rect.top) return;
       var block = document.createElement('span');
-      block.className = 'lumi-highlight-block';
+      block.className = 'lumi-highlight-block' + (extraClass ? ' ' + extraClass : '');
       block.style.left = rect.left + 'px';
       block.style.top = rect.top + 'px';
       block.style.width = (rect.right - rect.left) + 'px';
@@ -1836,7 +1870,9 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     });
     if (state.searchHighlight && state.searchHighlight.exact) {
       var searchRange = quoteRange(state.searchHighlight);
-      if (searchRange) appendHighlightRange(layer, searchRange, 'rgba(255,193,7,.62)');
+      if (searchRange) appendHighlightRange(
+        layer, searchRange, 'rgba(255,193,7,.62)', 'lumi-search-highlight-block'
+      );
     }
     return true;
   }
@@ -2454,6 +2490,11 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     clearSearchHighlight: clearSearchHighlight,
     pageText: pageText,
     visibleText: function () { return document.body ? document.body.innerText : ''; },
+    repaginate: function () {
+      if (state.ready && !state.paginating && !pageStageActive) {
+        paginate(state.total > 1 ? state.page / (state.total - 1) : 0);
+      }
+    },
     setTransition: function (transition) {
       state.transition = transition === 'curl' || transition === 'fade' || transition === 'none' ? transition : 'slide';
       return state.transition;

@@ -206,7 +206,7 @@ fun MainNavGraph(
         if (showImportActions) {
             val candidates = uris.mapNotNull { uri ->
                 val name = FileUtils.getFileNameFromUri(context, uri) ?: return@mapNotNull null
-                if (FileUtils.getFileExtension(name) !in setOf("epub", "pdf", "txt")) {
+                if (FileUtils.getFileExtension(name) !in setOf("epub", "pdf", "txt", "mobi")) {
                     return@mapNotNull null
                 }
                 SelectedImportBook(uri = uri, name = name)

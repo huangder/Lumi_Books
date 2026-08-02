@@ -28,10 +28,21 @@ internal fun pageStartsMidParagraph(text: CharSequence, start: Int): Boolean {
 }
 
 private class PagedSelectableTextView(context: Context) : RoundedHighlightTextView(context) {
-    override fun scrollTo(x: Int, y: Int) {
-        // A page is a fixed viewport. Overflow belongs to the next page, never to inner scrolling.
-        super.scrollTo(x, 0)
+    init {
+        justificationMode = if (android.os.Build.VERSION.SDK_INT >= 35) {
+            Layout.JUSTIFICATION_MODE_INTER_CHARACTER
+        } else {
+            Layout.JUSTIFICATION_MODE_INTER_WORD
+        }
     }
+
+    override fun scrollTo(x: Int, y: Int) {
+        // A page is a fixed viewport. TextView may otherwise scroll horizontally
+        // to reveal its selection after slot rotation, clipping the page until the next tap.
+        super.scrollTo(0, 0)
+    }
+
+    override fun canScrollHorizontally(direction: Int): Boolean = false
 
     override fun canScrollVertically(direction: Int): Boolean = false
 
@@ -232,6 +243,9 @@ class PageContentView(context: Context) : FrameLayout(context) {
         justifiedView.justifyLastLine = justifyLastLine
 
         val subText = fullText.subSequence(actualStart, endChar)
+        val preview = subText.take(120).toString().replace("\n", "\\n")
+        val newlineCount = (actualStart until endChar).count { fullText[it] == '\n' }
+        Log.d("ContentDebug", "page start=$actualStart end=$endChar newlines=$newlineCount preview=$preview")
         Log.d(TAG, "setPageContent: subText type=${subText.javaClass.simpleName} isSpanned=${subText is android.text.Spanned}")
 
         // 简繁转换（在切片后、应用高亮前）

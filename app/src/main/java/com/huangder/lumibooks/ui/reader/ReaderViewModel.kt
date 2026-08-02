@@ -50,10 +50,10 @@ import com.huangder.lumibooks.util.parser.PdfParser
 import com.huangder.lumibooks.util.parser.TxtEncoding
 import com.huangder.lumibooks.util.parser.TxtParser
 import com.huangder.lumibooks.util.epub.EpubRenderMode
-import com.huangder.lumibooks.util.epub.EpubRenderSession
-import com.huangder.lumibooks.util.epub.EpubRenderSource
+import com.huangder.lumibooks.util.epub.BookRenderSession
+import com.huangder.lumibooks.util.epub.BookRenderSource
 import com.huangder.lumibooks.util.epub.EpubLocator
-import com.huangder.lumibooks.util.epub.EpubSearchSource
+import com.huangder.lumibooks.util.epub.BookSearchSource
 import com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatter
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.service.TtsForegroundService
@@ -166,7 +166,7 @@ data class ReaderUiState(
     val optimizeLayout: Boolean = true,
     /** 是否加载 EPUB 自带 CSS 样式（per-book） */
     val useEpubCss: Boolean = false,
-    val epubRenderMode: EpubRenderMode = EpubRenderMode.READER_LAYOUT,
+    val renderMode: EpubRenderMode = EpubRenderMode.READER_LAYOUT,
     val showEpubLayoutHint: Boolean = false,
     val txtEncoding: TxtEncoding = TxtEncoding.AUTO,
     val txtActiveCharsetName: String = "UTF-8",
@@ -283,7 +283,7 @@ class ReaderViewModel @Inject constructor(
     val ttsPageTurnRequests = ttsController.pageTurnRequests
 
     private var parser: BookParser? = null
-    private var epubRenderSession: EpubRenderSession? = null
+    private var renderSession: BookRenderSession? = null
     private var sessionStartTime: Long = System.currentTimeMillis()
     private var pausedTime: Long = 0L  // 进入后台的时间戳
     private var isPaused: Boolean = false
@@ -1050,10 +1050,10 @@ class ReaderViewModel @Inject constructor(
     }
 
     @Synchronized
-    fun getEpubRenderSession(): EpubRenderSession? {
-        epubRenderSession?.let { return it }
-        val source = parser as? EpubRenderSource ?: return null
-        return source.openRenderSession().also { epubRenderSession = it }
+    fun getRenderSession(): BookRenderSession? {
+        renderSession?.let { return it }
+        val source = parser as? BookRenderSource ?: return null
+        return source.openRenderSession().also { renderSession = it }
     }
 
     fun dismissEpubLayoutHint() {
@@ -1129,9 +1129,11 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    fun saveEpubRenderMode(mode: EpubRenderMode) {
+    fun saveRenderMode(mode: EpubRenderMode) {
         val state = _uiState.value
-        if (state.book?.format?.name != "EPUB" || state.epubRenderMode == mode) return
+        val format = state.book?.format?.name
+        if (format != "EPUB" && format != "MOBI") return
+        if (state.renderMode == mode) return
         val chapterProgression = if (state.totalPages > 0) {
             state.currentPageIndex.toFloat() / state.totalPages
         } else {
@@ -1139,7 +1141,7 @@ class ReaderViewModel @Inject constructor(
         }.coerceIn(0f, 1f)
         saveProgress()
         _uiState.value = state.copy(
-            epubRenderMode = mode,
+            renderMode = mode,
             currentPageIndex = 0,
             totalPages = 0,
             pageReady = false,
@@ -1150,12 +1152,12 @@ class ReaderViewModel @Inject constructor(
         )
         viewModelScope.launch {
             runCatching {
-                dataStoreManager.saveEpubRenderMode(bookId, mode)
-                if (mode == EpubRenderMode.BOOK_LAYOUT && epubRenderSession == null) {
-                    withContext(Dispatchers.IO) { getEpubRenderSession() }
+                dataStoreManager.saveRenderMode(bookId, mode)
+                if (mode == EpubRenderMode.BOOK_LAYOUT && renderSession == null) {
+                    withContext(Dispatchers.IO) { getRenderSession() }
                 }
             }.onFailure { error ->
-                android.util.Log.e("ReaderViewModel", "Failed to change EPUB render mode", error)
+                android.util.Log.e("ReaderViewModel", "Failed to change render mode", error)
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     pageReady = true,
@@ -1167,14 +1169,15 @@ class ReaderViewModel @Inject constructor(
 
     fun fallbackFromUnsupportedEpubWebView() {
         val state = _uiState.value
-        if (state.book?.format?.name != "EPUB" || state.epubRenderMode != EpubRenderMode.BOOK_LAYOUT) return
+        val format = state.book?.format?.name
+        if ((format != "EPUB" && format != "MOBI") || state.renderMode != EpubRenderMode.BOOK_LAYOUT) return
         val chapterProgression = if (state.totalPages > 0) {
             state.currentPageIndex.toFloat() / state.totalPages
         } else {
             state.pendingPageFraction
         }.coerceIn(0f, 1f)
         _uiState.value = state.copy(
-            epubRenderMode = EpubRenderMode.READER_LAYOUT,
+            renderMode = EpubRenderMode.READER_LAYOUT,
             currentPageIndex = 0,
             totalPages = 0,
             pageReady = false,
@@ -1482,9 +1485,10 @@ class ReaderViewModel @Inject constructor(
                     parser = activeParser
 
                     val isEpub = book.format.name == "EPUB"
+                    val supportsBookLayout = isEpub || book.format.name == "MOBI"
                     val isTxt = book.format.name == "TXT"
-                    val epubRenderMode = if (isEpub) {
-                        dataStoreManager.migrateEpubRenderMode(bookId)
+                    val renderMode = if (supportsBookLayout) {
+                        dataStoreManager.migrateRenderMode(bookId)
                     } else {
                         EpubRenderMode.READER_LAYOUT
                     }
@@ -1563,12 +1567,12 @@ class ReaderViewModel @Inject constructor(
                         optimizeLayout = optimize,
                         useEpubCss = useEpubCss,
                         readerWritingMode = readerWritingMode,
-                        epubRenderMode = epubRenderMode,
+                        renderMode = renderMode,
                         showEpubLayoutHint = showEpubLayoutHint,
                         txtEncoding = txtEncoding,
                         txtActiveCharsetName = (activeParser as? TxtParser)?.activeCharsetName ?: "UTF-8",
                         showTxtEncodingHint = showTxtEncodingHint,
-                        epubLocatorJson = book.locatorJson.takeIf { epubRenderMode == EpubRenderMode.BOOK_LAYOUT },
+                        epubLocatorJson = book.locatorJson.takeIf { renderMode == EpubRenderMode.BOOK_LAYOUT },
                         chineseMode = chineseMode,
                         pageTransition = pageTransition,
                         paragraphSpacing = paragraphSpacing,
@@ -1578,8 +1582,8 @@ class ReaderViewModel @Inject constructor(
                         error = null
                     )
 
-                    if (isEpub && epubRenderMode == EpubRenderMode.BOOK_LAYOUT) {
-                        withContext(Dispatchers.IO) { getEpubRenderSession() }
+                    if (supportsBookLayout && renderMode == EpubRenderMode.BOOK_LAYOUT) {
+                        withContext(Dispatchers.IO) { getRenderSession() }
                     }
 
                     if (isPdf) {
@@ -1683,20 +1687,21 @@ class ReaderViewModel @Inject constructor(
     fun setChapter(chapterIndex: Int) {
         val state = _uiState.value
         if (chapterIndex == state.currentChapterIndex) return
-        val isBookLayoutEpub = state.book?.format?.name == "EPUB" &&
-            state.epubRenderMode == EpubRenderMode.BOOK_LAYOUT
+        val format = state.book?.format?.name
+        val isBookLayout = (format == "EPUB" || format == "MOBI") &&
+            state.renderMode == EpubRenderMode.BOOK_LAYOUT
         _uiState.value = state.copy(
             currentChapterIndex = chapterIndex,
-            currentPageIndex = if (isBookLayoutEpub) 0 else state.currentPageIndex,
-            totalPages = if (isBookLayoutEpub) 0 else state.totalPages,
-            pageReady = if (isBookLayoutEpub) false else state.pageReady,
+            currentPageIndex = if (isBookLayout) 0 else state.currentPageIndex,
+            totalPages = if (isBookLayout) 0 else state.totalPages,
+            pageReady = if (isBookLayout) false else state.pageReady,
             isEpubChapterHandoffInProgress = false,
-            isLoading = if (isBookLayoutEpub) true else state.isLoading,
-            epubLocatorJson = if (isBookLayoutEpub) null else state.epubLocatorJson,
-            pendingPageFraction = if (isBookLayoutEpub) 0f else state.pendingPageFraction
+            isLoading = if (isBookLayout) true else state.isLoading,
+            epubLocatorJson = if (isBookLayout) null else state.epubLocatorJson,
+            pendingPageFraction = if (isBookLayout) 0f else state.pendingPageFraction
         )
         if (!state.useNewEngine) loadChapterContent()
-        if (!isBookLayoutEpub) saveProgress()
+        if (!isBookLayout) saveProgress()
     }
 
     /**
@@ -2194,7 +2199,7 @@ class ReaderViewModel @Inject constructor(
             chapterIndex = state.currentChapterIndex,
             position = characterOffset?.let(::bookmarkPositionForCharacterOffset)
                 ?: state.currentPageIndex.toFloat(),
-            locatorJson = state.epubLocatorJson.takeIf { state.epubRenderMode == EpubRenderMode.BOOK_LAYOUT },
+            locatorJson = state.epubLocatorJson.takeIf { state.renderMode == EpubRenderMode.BOOK_LAYOUT },
             title = title?.takeIf { it.isNotBlank() }
                 ?: "第${state.currentChapterIndex + 1}章 第${state.currentPageIndex + 1}页",
             createdAt = System.currentTimeMillis()
@@ -2401,7 +2406,7 @@ class ReaderViewModel @Inject constructor(
         bookRepository.updateReadingProgress(
             book.id,
             progress,
-            state.epubLocatorJson.takeIf { state.epubRenderMode == EpubRenderMode.BOOK_LAYOUT }
+            state.epubLocatorJson.takeIf { state.renderMode == EpubRenderMode.BOOK_LAYOUT }
         )
         bookRepository.updateLastReadTime(book.id, System.currentTimeMillis())
         // Trigger debounced WebDAV sync for reading progress
@@ -2435,11 +2440,12 @@ class ReaderViewModel @Inject constructor(
             val activeParser = parser ?: return@withContext emptyList()
             val state = _uiState.value
             val titles = state.chapterTitles
-            if (state.book?.format?.name == "EPUB" &&
-                state.epubRenderMode == EpubRenderMode.BOOK_LAYOUT &&
-                activeParser is EpubSearchSource
+            val formatName = state.book?.format?.name
+            if ((formatName == "EPUB" || formatName == "MOBI") &&
+                state.renderMode == EpubRenderMode.BOOK_LAYOUT &&
+                activeParser is BookSearchSource
             ) {
-                return@withContext activeParser.searchEpub(query, resultLimit).map { match ->
+                return@withContext activeParser.searchBook(query, resultLimit).map { match ->
                     SearchResult(
                         chapterIndex = match.chapterIndex,
                         chapterTitle = titles.getOrElse(match.chapterIndex) {
@@ -2549,8 +2555,8 @@ class ReaderViewModel @Inject constructor(
 
     override fun onCleared() {
         parser?.close()
-        runCatching { epubRenderSession?.close() }
-        epubRenderSession = null
+        runCatching { renderSession?.close() }
+        renderSession = null
         preloadCache.clear()
         super.onCleared()
     }

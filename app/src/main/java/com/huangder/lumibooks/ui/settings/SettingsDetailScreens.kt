@@ -47,6 +47,7 @@ import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.FontDownload
 import androidx.compose.material.icons.outlined.FormatSize
+import androidx.compose.material.icons.outlined.GroupAdd
 import androidx.compose.material.icons.outlined.HdrOn
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Landscape
@@ -57,6 +58,7 @@ import androidx.compose.material.icons.outlined.Opacity
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.Speed
+import androidx.compose.material.icons.outlined.Source
 import androidx.compose.material.icons.outlined.SwipeRightAlt
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.outlined.Title
@@ -1011,6 +1013,36 @@ fun AboutDetail(viewModel: SettingsViewModel) {
     DetailCard {
         ActionRow(Icons.Outlined.SystemUpdateAlt, stringResource(R.string.title_changelog)) {
             context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "changelog"))
+        }
+    }
+
+    Spacer(Modifier.height(AppSpace.md))
+
+    DetailCard {
+        ActionRow(Icons.Outlined.GroupAdd, stringResource(R.string.join_community)) {
+            val opened = runCatching {
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse("https://qm.qq.com/q/pq77woweNG"))
+                )
+            }.isSuccess
+            if (!opened) {
+                Toast.makeText(context, R.string.network_error, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    Spacer(Modifier.height(AppSpace.md))
+
+    DetailCard {
+        ActionRow(Icons.Outlined.Source, stringResource(R.string.github_repository)) {
+            val opened = runCatching {
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/huangder/Lumi_Books"))
+                )
+            }.isSuccess
+            if (!opened) {
+                Toast.makeText(context, R.string.network_error, Toast.LENGTH_LONG).show()
+            }
         }
     }
 

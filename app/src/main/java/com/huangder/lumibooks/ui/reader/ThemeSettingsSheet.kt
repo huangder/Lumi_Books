@@ -184,8 +184,8 @@ fun ThemeSettingsSheet(
     currentBrightness: Float = -1f,
     currentOptimizeLayout: Boolean = true,
     currentUseEpubCss: Boolean = false,
-    isEpub: Boolean = false,
-    currentEpubRenderMode: EpubRenderMode = EpubRenderMode.READER_LAYOUT,
+    supportsBookLayout: Boolean = false,
+    currentRenderMode: EpubRenderMode = EpubRenderMode.READER_LAYOUT,
     currentWritingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL,
     supportsWritingMode: Boolean = true,
     currentChineseMode: String = "original",
@@ -205,7 +205,7 @@ fun ThemeSettingsSheet(
     onBrightnessChange: (Float) -> Unit = {},
     onOptimizeLayoutChange: (Boolean) -> Unit = {},
     onUseEpubCssChange: (Boolean) -> Unit = {},
-    onEpubRenderModeChange: (EpubRenderMode) -> Unit = {},
+    onRenderModeChange: (EpubRenderMode) -> Unit = {},
     onWritingModeChange: (ReaderWritingMode) -> Unit = {},
     onChineseModeChange: (String) -> Unit = {},
     onPageTransitionChange: (String) -> Unit = {},
@@ -460,7 +460,7 @@ fun ThemeSettingsSheet(
 
             Spacer(Modifier.height(16.dp))
 
-            if (isEpub) {
+            if (supportsBookLayout) {
                 Text(
                     text = stringResource(R.string.epub_render_mode),
                     modifier = Modifier.padding(horizontal = 24.dp),
@@ -475,21 +475,21 @@ fun ThemeSettingsSheet(
                 ) {
                     ModeButton(
                         label = stringResource(R.string.epub_book_layout),
-                        isSelected = currentEpubRenderMode == EpubRenderMode.BOOK_LAYOUT,
-                        onClick = { onEpubRenderModeChange(EpubRenderMode.BOOK_LAYOUT) },
+                        isSelected = currentRenderMode == EpubRenderMode.BOOK_LAYOUT,
+                        onClick = { onRenderModeChange(EpubRenderMode.BOOK_LAYOUT) },
                         modifier = Modifier.weight(1f)
                     )
                     ModeButton(
                         label = stringResource(R.string.epub_reader_layout),
-                        isSelected = currentEpubRenderMode == EpubRenderMode.READER_LAYOUT,
-                        onClick = { onEpubRenderModeChange(EpubRenderMode.READER_LAYOUT) },
+                        isSelected = currentRenderMode == EpubRenderMode.READER_LAYOUT,
+                        onClick = { onRenderModeChange(EpubRenderMode.READER_LAYOUT) },
                         modifier = Modifier.weight(1f)
                     )
                 }
                 Spacer(Modifier.height(4.dp))
                 Text(
                     text = stringResource(
-                        if (currentEpubRenderMode == EpubRenderMode.BOOK_LAYOUT) R.string.epub_book_layout_hint
+                        if (currentRenderMode == EpubRenderMode.BOOK_LAYOUT) R.string.epub_book_layout_hint
                         else R.string.epub_reader_layout_hint
                     ),
                     modifier = Modifier.padding(horizontal = 24.dp),
@@ -633,7 +633,7 @@ fun ThemeSettingsSheet(
                         modifier = Modifier.weight(1f)
                     )
                 }
-                if ((!isEpub || currentEpubRenderMode != EpubRenderMode.BOOK_LAYOUT) &&
+                if ((!supportsBookLayout || currentRenderMode != EpubRenderMode.BOOK_LAYOUT) &&
                     currentWritingMode != ReaderWritingMode.VERTICAL_RL) {
                     Spacer(Modifier.height(12.dp))
                     ModeButton(
@@ -647,7 +647,7 @@ fun ThemeSettingsSheet(
 
             Spacer(Modifier.height(16.dp))
 
-            if (!isEpub) {
+            if (!supportsBookLayout) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -2543,6 +2543,7 @@ private fun readerCornerContentLabel(content: ReaderCornerContent): String = str
         ReaderCornerContent.BOOK_PROGRESS -> R.string.reader_corner_content_book_progress
         ReaderCornerContent.PAGE_NUMBER -> R.string.reader_corner_content_page_number
         ReaderCornerContent.BATTERY -> R.string.reader_corner_content_battery
+        ReaderCornerContent.TIME -> R.string.reader_corner_content_time
     }
 )
 

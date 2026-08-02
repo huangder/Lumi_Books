@@ -163,6 +163,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableSharedFlow
 import org.json.JSONObject
@@ -502,17 +503,18 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     val continuousScrollRequests = remember { MutableSharedFlow<Int>(extraBufferCapacity = 1) }
     val continuousSelectionController = remember { ContinuousSelectionController() }
     val isEpub = uiState.book?.format?.name == "EPUB"
-    val isBookLayoutEpub = isEpub && uiState.epubRenderMode == EpubRenderMode.BOOK_LAYOUT
+    val supportsBookLayout = isEpub || uiState.book?.format?.name == "MOBI"
+    val isBookLayout = supportsBookLayout && uiState.renderMode == EpubRenderMode.BOOK_LAYOUT
     val isVerticalWriting = uiState.readerWritingMode == ReaderWritingMode.VERTICAL_RL &&
-        uiState.useNewEngine && !isBookLayoutEpub
-    val effectivePageTransition = if (isBookLayoutEpub && basePageTransition == "continuous") {
+        uiState.useNewEngine && !isBookLayout
+    val effectivePageTransition = if (isBookLayout && basePageTransition == "continuous") {
         "slide"
     } else if (isVerticalWriting) {
         uiState.readerWritingMode.effectivePageTransition(basePageTransition)
     } else {
         basePageTransition
     }
-    val isContinuousScrollMode = !eInkMode && !isBookLayoutEpub &&
+    val isContinuousScrollMode = !eInkMode && !isBookLayout &&
         uiState.useNewEngine && effectivePageTransition == "continuous"
     var renderedContinuousScrollMode by remember(bookId) {
         mutableStateOf(isContinuousScrollMode)
@@ -524,7 +526,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         mutableStateOf(effectivePageTransition.takeUnless { it == "continuous" } ?: "slide")
     }
     SideEffect {
-        if (uiState.useNewEngine && !isBookLayoutEpub && !isContinuousScrollMode) {
+        if (uiState.useNewEngine && !isBookLayout && !isContinuousScrollMode) {
             lastPagedChapter = uiState.currentChapterIndex
             lastPagedPage = uiState.currentPageIndex
             if (effectivePageTransition != "continuous") {
@@ -532,12 +534,12 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             }
         }
     }
-    LaunchedEffect(isContinuousScrollMode, eInkMode, uiState.useNewEngine, isBookLayoutEpub) {
+    LaunchedEffect(isContinuousScrollMode, eInkMode, uiState.useNewEngine, isBookLayout) {
         if (renderedContinuousScrollMode == isContinuousScrollMode) {
             readerModeTransitionProgress.snapTo(1f)
             return@LaunchedEffect
         }
-        if (eInkMode || !uiState.useNewEngine || isBookLayoutEpub) {
+        if (eInkMode || !uiState.useNewEngine || isBookLayout) {
             renderedContinuousScrollMode = isContinuousScrollMode
             readerModeTransitionProgress.snapTo(1f)
             return@LaunchedEffect
@@ -604,7 +606,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     }
     val clearActiveTextSelection = {
         when {
-            isBookLayoutEpub -> epubSelectionClearToken++
+            isBookLayout -> epubSelectionClearToken++
             isContinuousScrollMode -> continuousSelectionController.clear()
             else -> readViewRef.value?.curPageView?.clearSelection()
         }
@@ -623,7 +625,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     }
 
     val startTtsFromCurrentPage: () -> Unit = {
-        if (isBookLayoutEpub) {
+        if (isBookLayout) {
             val webProvider = epubPageTextProvider
             if (webProvider == null) {
                 Toast.makeText(context, R.string.tts_page_not_ready, Toast.LENGTH_SHORT).show()
@@ -700,7 +702,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 uiState.ttsActiveBookId != bookId ||
                 uiState.ttsPlaybackState == TtsPlaybackState.IDLE
             ) return@collect
-            if (isBookLayoutEpub) {
+            if (isBookLayout) {
                 epubLocatorRequest = null
                 epubPageRequestToken++
                 epubPageRequest = EpubPageRequest(
@@ -1034,7 +1036,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     DisposableEffect(
         activity,
         shouldHandleVolumePageTurn,
-        isBookLayoutEpub,
+        isBookLayout,
         epubPageTurnHandler
     ) {
         if (!shouldHandleVolumePageTurn || activity == null) {
@@ -1042,7 +1044,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         }
 
         val handler: (ReaderPageDirection) -> Unit = { direction ->
-            if (isBookLayoutEpub) {
+            if (isBookLayout) {
                 val delta = if (direction == ReaderPageDirection.NEXT) 1 else -1
                 epubPageTurnHandler?.invoke(delta)
             } else {
@@ -1225,13 +1227,13 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
 
     // 主题背景色
     val composeBgColor = Color(customBackgroundThemeColorInt)
-    val epubSessionState = produceState<com.huangder.lumibooks.util.epub.EpubRenderSession?>(
+    val epubSessionState = produceState<com.huangder.lumibooks.util.epub.BookRenderSession?>(
         initialValue = null,
         bookId,
-        isEpub
+        supportsBookLayout
     ) {
-        value = if (isEpub) {
-            withContext(Dispatchers.IO) { viewModel.getEpubRenderSession() }
+        value = if (supportsBookLayout) {
+            withContext(Dispatchers.IO) { viewModel.getRenderSession() }
         } else {
             null
         }
@@ -1239,11 +1241,11 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     val epubSession = epubSessionState.value
     val epubFontFilePath by produceState<String?>(
         initialValue = null,
-        isBookLayoutEpub,
+        isBookLayout,
         uiState.fontType,
         uiState.customFontPath
     ) {
-        value = if (isBookLayoutEpub) {
+        value = if (isBookLayout) {
             prepareEpubReaderFontPath(context.applicationContext, uiState.fontType, uiState.customFontPath)
         } else {
             null
@@ -1264,7 +1266,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         }
     } ?: android.graphics.Typeface.DEFAULT
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !eInkMode
-    val readerGlassContentScrim = if (isBookLayoutEpub) {
+    val readerGlassContentScrim = if (isBookLayout) {
         // Compose cannot reliably sample a WebView into the liquid-glass backdrop. Use a
         // restrained contrast tint so the complete capsule remains visible over book CSS.
         if (ColorUtils.calculateLuminance(menuBgColorInt) < 0.4) {
@@ -1276,7 +1278,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         menuBgColor.copy(alpha = 0.18f)
     }
     val readerGlassBackdrop = rememberLayerBackdrop()
-    val activeReaderGlassBackdrop = readerGlassBackdrop.takeIf { isLiquidGlass && !isBookLayoutEpub }
+    val activeReaderGlassBackdrop = readerGlassBackdrop.takeIf { isLiquidGlass && !isBookLayout }
     ReaderSystemBarStyle(
         backgroundColor = composeBgColor,
         useDarkIcons = ColorUtils.calculateLuminance(customBackgroundThemeColorInt) >= 0.42
@@ -1300,7 +1302,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         ) {
             // ── 新 Canvas 引擎（TXT/EPUB） ──
             val activeEpubSession = epubSession
-            if (isBookLayoutEpub && activeEpubSession != null) {
+            if (isBookLayout && activeEpubSession != null) {
                 EpubWebViewReader(
                     session = activeEpubSession,
                     chapterIndex = uiState.currentChapterIndex,
@@ -1823,7 +1825,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 }
             }
             val displayedMenuSnapshot = if (
-                isBookLayoutEpub && uiState.isEpubChapterHandoffInProgress
+                isBookLayout && uiState.isEpubChapterHandoffInProgress
             ) {
                 lastReadyMenuSnapshot ?: liveMenuSnapshot
             } else {
@@ -1872,7 +1874,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     bgColor = menuBgColor,
                     contentColor = menuContentColor,
                     glassContentScrimColor = readerGlassContentScrim,
-                    forceSolidButtons = isBookLayoutEpub,
+                    forceSolidButtons = isBookLayout,
                     isTtsActive = uiState.ttsActiveBookId == uiState.book?.id &&
                         uiState.ttsPlaybackState != TtsPlaybackState.IDLE,
                     onTtsClick = {
@@ -1993,11 +1995,11 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         currentPage = displayedMenuSnapshot.pageIndex + 1,
                         chapterPageCount = displayedMenuSnapshot.pageCount,
                         capsuleBgColor = capsuleBgColor,
-                        capsuleContentColor = if (isLiquidGlass && !isBookLayoutEpub) menuContentColor else capsuleContentColor,
+                        capsuleContentColor = if (isLiquidGlass && !isBookLayout) menuContentColor else capsuleContentColor,
                         readerContentColor = menuContentColor,
                         catalogProgressColor = catalogProgressColor,
                         glassContentScrimColor = readerGlassContentScrim,
-                        forceSolidCapsules = isBookLayoutEpub,
+                        forceSolidCapsules = isBookLayout,
                         canGoToPreviousChapter = uiState.currentChapterIndex > 0,
                         canGoToNextChapter = uiState.currentChapterIndex < uiState.chapterCount - 1,
                         onCatalogClick = {
@@ -2009,7 +2011,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                             when {
                                 targetChapter < 0 -> Unit
                                 isContinuousScrollMode -> jumpToContinuousChapter(targetChapter)
-                                !isBookLayoutEpub && uiState.useNewEngine -> {
+                                !isBookLayout && uiState.useNewEngine -> {
                                     val readView = readViewRef.value
                                     if (readView != null) {
                                         readView.jumpToChapter(targetChapter)
@@ -2025,7 +2027,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                             when {
                                 targetChapter >= uiState.chapterCount -> Unit
                                 isContinuousScrollMode -> jumpToContinuousChapter(targetChapter)
-                                !isBookLayoutEpub && uiState.useNewEngine -> {
+                                !isBookLayout && uiState.useNewEngine -> {
                                     val readView = readViewRef.value
                                     if (readView != null) {
                                         readView.jumpToChapter(targetChapter)
@@ -2148,7 +2150,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     onCancelSleepTimer = viewModel::cancelSleepTimer,
                     readerBackgroundColor = composeBgColor,
                     readerContentColor = Color(readerTextColorInt),
-                    forceSolidSurface = isBookLayoutEpub
+                    forceSolidSurface = isBookLayout
                 )
             }
 
@@ -2167,7 +2169,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         val readView = readViewRef.value
                         if (isContinuousScrollMode) {
                             jumpToContinuousChapter(target.chapterIndex)
-                        } else if (!isBookLayoutEpub && uiState.useNewEngine && readView != null) {
+                        } else if (!isBookLayout && uiState.useNewEngine && readView != null) {
                             // Reload even when state already reports the selected chapter.
                             if (entry.anchor.isNullOrBlank()) {
                                 readView.jumpToChapter(target.chapterIndex)
@@ -2202,10 +2204,10 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 currentBrightness = uiState.brightness,
                 currentOptimizeLayout = uiState.optimizeLayout,
                 currentUseEpubCss = uiState.useEpubCss,
-                isEpub = uiState.book?.format?.name == "EPUB",
-                currentEpubRenderMode = uiState.epubRenderMode,
+                supportsBookLayout = supportsBookLayout,
+                currentRenderMode = uiState.renderMode,
                 currentWritingMode = uiState.readerWritingMode,
-                supportsWritingMode = uiState.useNewEngine && !isBookLayoutEpub,
+                supportsWritingMode = uiState.useNewEngine && !isBookLayout,
                 currentChineseMode = uiState.chineseMode,
                 currentPageTransition = effectivePageTransition,
                 onFontSizeChange = { viewModel.saveFontSize(it) },
@@ -2222,7 +2224,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 onBrightnessChange = { viewModel.saveBrightness(it) },
                 onOptimizeLayoutChange = { viewModel.saveOptimizeLayout(it) },
                 onUseEpubCssChange = { viewModel.saveUseEpubCss(it) },
-                onEpubRenderModeChange = viewModel::saveEpubRenderMode,
+                onRenderModeChange = viewModel::saveRenderMode,
                 onWritingModeChange = viewModel::saveReaderWritingMode,
                 onChineseModeChange = { viewModel.saveChineseMode(it) },
                 onPageTransitionChange = { viewModel.savePageTransition(it) },
@@ -2257,7 +2259,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 },
                 onResultClick = resultClick@{ result ->
                     if (searchResultQuery != searchQuery) return@resultClick
-                    if (isBookLayoutEpub) {
+                    if (isBookLayout) {
                         val locator = result.epubLocator
                         if (locator == null) {
                             Toast.makeText(
@@ -2332,7 +2334,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 customBackgrounds = uiState.customReaderBackgrounds,
                 currentPreserveEpubBackground = effectivePreserveEpubBackground,
                 showPreserveEpubBackground = uiState.book?.format?.name == "EPUB" &&
-                    uiState.epubRenderMode == EpubRenderMode.BOOK_LAYOUT,
+                    uiState.renderMode == EpubRenderMode.BOOK_LAYOUT,
                 currentMarginLeft = uiState.marginLeftDp,
                 currentMarginRight = uiState.marginRightDp,
                 currentMarginTop = uiState.marginTopDp,
@@ -2342,7 +2344,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 currentTextColor = Color(readerTextColorInt),
                 currentTextColorOverride = effectiveReaderTextColor,
                 currentFontSizeSp = uiState.fontSize,
-                preservePublisherLayout = isBookLayoutEpub,
+                preservePublisherLayout = isBookLayout,
                 currentWritingMode = uiState.readerWritingMode,
                 onLineHeightChange = { viewModel.saveLineHeight(it) },
                 onLetterSpacingChange = { viewModel.saveLetterSpacing(it) },
@@ -2392,7 +2394,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 onReaderEdgeTapModeChange = viewModel::saveReaderEdgeTapMode,
                 onTextColorChange = { viewModel.saveReaderTextColor(it) },
                 onResetSettings = {
-                    if (isBookLayoutEpub) viewModel.resetBookLayoutReaderSettings()
+                    if (isBookLayout) viewModel.resetBookLayoutReaderSettings()
                     else viewModel.resetAdvancedReaderSettings()
                 },
                 eInkModeEnabled = eInkMode,
@@ -2410,10 +2412,9 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         notes = viewModel.notes.collectAsState().value,
         bookmarks = bookmarks,
         onNoteClick = noteClick@ { note ->
-            if (isBookLayoutEpub) {
+            if (isBookLayout) {
                 val chapterTextLength = viewModel.getChapterTextLength(note.chapterIndex).coerceAtLeast(1)
-                val chapterHref = epubSession?.epubPackage?.spine?.getOrNull(note.chapterIndex)
-                    ?.manifestItem?.fullPath.orEmpty()
+                val chapterHref = epubSession?.chapterHref(note.chapterIndex).orEmpty()
                 val locatorJson = note.startLocatorJson
                     ?.takeIf { isEpubLocatorForChapter(it, chapterHref) }
                     ?: createEpubFallbackLocator(
@@ -2449,9 +2450,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         },
         onDeleteNote = { note -> viewModel.deleteNote(note) },
         onBookmarkClick = { bm ->
-            if (isBookLayoutEpub) {
-                val chapterHref = epubSession?.epubPackage?.spine?.getOrNull(bm.chapterIndex)
-                    ?.manifestItem?.fullPath.orEmpty()
+            if (isBookLayout) {
+                val chapterHref = epubSession?.chapterHref(bm.chapterIndex).orEmpty()
                 val locatorJson = bm.locatorJson
                     ?.takeIf { isEpubLocatorForChapter(it, chapterHref) }
                     ?: bm.characterOffset?.let { characterOffset ->
@@ -2501,7 +2501,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         state = selectionState,
         readerTheme = effectiveReaderTheme,
         glassBackdrop = activeReaderGlassBackdrop,
-        forceSolidSurface = isBookLayoutEpub,
+        forceSolidSurface = isBookLayout,
         isDragging = isSelectionDragging,
         dismissOnBackgroundTap = !isVerticalWriting,
         reappearKey = menuReappearKey,
@@ -2514,7 +2514,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             clearActiveTextSelection()
         },
         onColorPicked = { hexColor ->
-            val fresh = if (isBookLayoutEpub) null else readViewRef.value?.getSelectionInfo()
+            val fresh = if (isBookLayout) null else readViewRef.value?.getSelectionInfo()
             if (fresh != null) {
                 viewModel.addNote(
                     selectedText = fresh.selectedText,
@@ -2547,7 +2547,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             showHighlightColorPicker = true
         },
         onNote = {
-            val fresh = if (isBookLayoutEpub) null else readViewRef.value?.getSelectionInfo()
+            val fresh = if (isBookLayout) null else readViewRef.value?.getSelectionInfo()
             if (fresh != null) {
                 pendingSelection = PendingSelection(
                     fresh.selectedText, fresh.chapterIndex,
@@ -2573,7 +2573,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             clearActiveTextSelection()
         },
         onSearch = {
-            val query = if (isBookLayoutEpub) {
+            val query = if (isBookLayout) {
                 selectionState?.selectedText
             } else {
                 readViewRef.value?.getSelectionInfo()?.selectedText ?: selectionState?.selectedText
@@ -2589,7 +2589,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         },
         onDictionary = {
             try {
-                val fresh = if (isBookLayoutEpub) null else readViewRef.value?.getSelectionInfo()
+                val fresh = if (isBookLayout) null else readViewRef.value?.getSelectionInfo()
                 val text = fresh?.selectedText ?: selectionState?.selectedText
                 val request = text?.let { prepareDictionaryLookup(context, it) }
                 if (request == null || request.apps.isEmpty()) {
@@ -2613,7 +2613,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             }
         },
         onCopy = {
-            val fresh = if (isBookLayoutEpub) null else readViewRef.value?.getSelectionInfo()
+            val fresh = if (isBookLayout) null else readViewRef.value?.getSelectionInfo()
             val text = fresh?.selectedText ?: selectionState?.selectedText ?: return@SelectionMenuOverlay
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
             clipboard.setPrimaryClip(android.content.ClipData.newPlainText("selected", text))
@@ -2749,7 +2749,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         }
     )
 
-    if (!isBookLayoutEpub) {
+    if (!isBookLayout) {
         val preview = readerImagePreview
         val session = epubSession
         if (preview != null && session != null) {
@@ -2880,6 +2880,7 @@ private fun ReaderCornerContentValue(
     when (content) {
         ReaderCornerContent.NONE -> Unit
         ReaderCornerContent.BATTERY -> ReaderBatteryStatus(contentColor)
+        ReaderCornerContent.TIME -> ReaderTimeStatus(contentColor)
         else -> Text(
             text = when (content) {
                 ReaderCornerContent.CHAPTER_INFO -> chapterTitle
@@ -2895,6 +2896,33 @@ private fun ReaderCornerContentValue(
             modifier = Modifier.fillMaxWidth()
         )
     }
+}
+
+@Composable
+private fun ReaderTimeStatus(contentColor: Color, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    var timeText by remember { mutableStateOf(formatReaderClock(context, System.currentTimeMillis())) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val now = System.currentTimeMillis()
+            timeText = formatReaderClock(context, now)
+            delay(60_000L - now % 60_000L)
+        }
+    }
+    Text(
+        text = timeText,
+        color = contentColor,
+        fontSize = AppType.Caption,
+        lineHeight = AppType.Caption,
+        maxLines = 1,
+        modifier = modifier
+    )
+}
+
+private fun formatReaderClock(context: Context, timestampMillis: Long): String {
+    val pattern = if (android.text.format.DateFormat.is24HourFormat(context)) "HH:mm" else "hh:mm a"
+    return java.text.SimpleDateFormat(pattern, java.util.Locale.getDefault())
+        .format(java.util.Date(timestampMillis))
 }
 
 @Composable

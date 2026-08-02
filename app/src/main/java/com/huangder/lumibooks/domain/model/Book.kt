@@ -15,5 +15,5 @@ data class Book(
 )
 
 enum class BookFormat {
-    EPUB, PDF, TXT
+    EPUB, PDF, TXT, MOBI
 }

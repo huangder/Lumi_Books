@@ -94,12 +94,12 @@ interface EpubResourceProvider : AutoCloseable {
 
 data class EpubResource(val path: String, val mediaType: String, val bytes: ByteArray)
 
-interface EpubRenderSource {
-    fun openRenderSession(): EpubRenderSession
+interface BookRenderSource {
+    fun openRenderSession(): BookRenderSession
 }
 
-interface EpubSearchSource {
-    suspend fun searchEpub(
+interface BookSearchSource {
+    suspend fun searchBook(
         query: String,
         maxResults: Int = 200
     ): List<EpubSearchMatch>

@@ -136,7 +136,7 @@ class EpubTextSearchTest {
         val parser = EpubParser()
         parser.parse(file.absolutePath)
 
-        val matches = parser.searchEpub("a & b cache free needle")
+        val matches = parser.searchBook("a & b cache free needle")
 
         assertEquals(1, matches.size)
         assertTrue(privateMap(parser, "htmlCache").isEmpty())

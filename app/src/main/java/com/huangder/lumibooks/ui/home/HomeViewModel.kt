@@ -82,7 +82,7 @@ class HomeViewModel @Inject constructor(
 ) : ViewModel() {
 
     private companion object {
-        val SUPPORTED_BOOK_EXTENSIONS = setOf("epub", "pdf", "txt")
+        val SUPPORTED_BOOK_EXTENSIONS = setOf("epub", "pdf", "txt", "mobi")
         const val READING_HISTORY_START_DATE = "1970-01-01"
     }
 
@@ -552,6 +552,7 @@ class HomeViewModel @Inject constructor(
     private fun String.toBookFormat(): BookFormat = when (this) {
         "epub" -> BookFormat.EPUB
         "pdf" -> BookFormat.PDF
+        "mobi" -> BookFormat.MOBI
         else -> BookFormat.TXT
     }
 

@@ -338,6 +338,7 @@ class WebdavSyncManager @Inject constructor(
         return book.title + when (book.format) {
             com.huangder.lumibooks.domain.model.BookFormat.EPUB -> ".epub"
             com.huangder.lumibooks.domain.model.BookFormat.PDF -> ".pdf"
+            com.huangder.lumibooks.domain.model.BookFormat.MOBI -> ".mobi"
             else -> ".txt"
         }
     }
@@ -353,6 +354,7 @@ class WebdavSyncManager @Inject constructor(
         return when (book.format) {
             com.huangder.lumibooks.domain.model.BookFormat.EPUB -> "epub"
             com.huangder.lumibooks.domain.model.BookFormat.PDF -> "pdf"
+            com.huangder.lumibooks.domain.model.BookFormat.MOBI -> "mobi"
             else -> "txt"
         }
     }
@@ -634,6 +636,7 @@ class WebdavSyncManager @Inject constructor(
         val format = when (extension) {
             "epub" -> com.huangder.lumibooks.domain.model.BookFormat.EPUB
             "pdf" -> com.huangder.lumibooks.domain.model.BookFormat.PDF
+            "mobi" -> com.huangder.lumibooks.domain.model.BookFormat.MOBI
             else -> com.huangder.lumibooks.domain.model.BookFormat.TXT
         }
 
@@ -647,17 +650,19 @@ class WebdavSyncManager @Inject constructor(
             }
         } catch (_: Exception) { null }
 
-        val (title, author) = if (format == com.huangder.lumibooks.domain.model.BookFormat.EPUB) {
+        val (title, author) = if (format == com.huangder.lumibooks.domain.model.BookFormat.EPUB ||
+            format == com.huangder.lumibooks.domain.model.BookFormat.MOBI
+        ) {
             try {
-                val epubParser = com.huangder.lumibooks.util.parser.EpubParser(context)
+                val metadataParser = com.huangder.lumibooks.util.parser.BookParserFactory.createParser(format, context)
                 try {
-                    val content = epubParser.parse(file.absolutePath)
+                    val content = metadataParser.parse(file.absolutePath)
                     val t = content.title.takeIf { it.isNotBlank() && it != file.nameWithoutExtension }
                         ?: file.nameWithoutExtension
                     val a = content.author.takeIf { it.isNotBlank() && it != "未知作者" } ?: "未知作者"
                     t to a
                 } finally {
-                    runCatching { epubParser.close() }
+                    runCatching { metadataParser.close() }
                 }
             } catch (_: Exception) {
                 file.nameWithoutExtension to "未知作者"

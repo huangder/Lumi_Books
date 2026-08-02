@@ -87,6 +87,7 @@
     <string name="category_backup">備份與還原</string>
     <string name="category_about">關於應用程式</string>
     <string name="category_sponsor">贊助開發</string>
+    <string name="settings_sponsor_note">LUMI 的開發與維護投入了大量時間和精力。如果你喜歡 LUMI，歡迎贊助支持。贊助並非強制，也不會影響任何功能，是否支持完全由你決定~</string>
     <string name="category_feedback">問題反映</string>
     <string name="edit_nickname">修改暱稱</string>
     <string name="nickname_label">暱稱</string>
@@ -100,6 +101,8 @@
     <string name="title_backup">備份與還原</string>
     <string name="title_changelog">更新紀錄</string>
     <string name="title_about">關於應用程式</string>
+    <string name="join_community">加入社群</string>
+    <string name="github_repository">GitHub 儲存庫</string>
 
     <!-- 閱讀設定 -->
     <string name="label_font_size">字級</string>
@@ -343,6 +346,7 @@
     <string name="reader_corner_content_book_progress">全書進度</string>
     <string name="reader_corner_content_page_number">頁碼</string>
     <string name="reader_corner_content_battery">電量</string>
+    <string name="reader_corner_content_time">時間</string>
     <string name="search_placeholder">輸入關鍵詞</string>
     <string name="search_results_found">搵到 %d 條結果</string>
     <string name="search_no_results">未搵到匹配結果</string>

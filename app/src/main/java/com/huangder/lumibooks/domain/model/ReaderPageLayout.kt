@@ -69,7 +69,8 @@ enum class ReaderCornerContent(val key: String) {
     CHAPTER_INFO("chapter_info"),
     BOOK_PROGRESS("book_progress"),
     PAGE_NUMBER("page_number"),
-    BATTERY("battery");
+    BATTERY("battery"),
+    TIME("time");
 
     companion object {
         fun fromKey(key: String?): ReaderCornerContent =

@@ -87,6 +87,7 @@
     <string name="category_backup">バックアップと復元</string>
     <string name="category_about">アプリについて</string>
     <string name="category_sponsor">スポンサー</string>
+    <string name="settings_sponsor_note">LUMI の開発とメンテナンスには、多くの時間と労力がかかっています。LUMI を気に入っていただけたら、開発をご支援ください。支援は任意であり、機能には一切影響しません。支援するかどうかは、あなたの自由です~</string>
     <string name="category_feedback">フィードバック</string>
     <string name="edit_nickname">ニックネーム変更</string>
     <string name="nickname_label">ニックネーム</string>
@@ -100,6 +101,8 @@
     <string name="title_backup">バックアップと復元</string>
     <string name="title_changelog">更新履歴</string>
     <string name="title_about">アプリについて</string>
+    <string name="join_community">コミュニティに参加</string>
+    <string name="github_repository">GitHub リポジトリ</string>
 
     <!-- 読書設定 -->
     <string name="label_font_size">フォントサイズ</string>
@@ -343,6 +346,7 @@
     <string name="reader_corner_content_book_progress">全体の進捗</string>
     <string name="reader_corner_content_page_number">ページ番号</string>
     <string name="reader_corner_content_battery">バッテリー</string>
+    <string name="reader_corner_content_time">時刻</string>
     <string name="search_placeholder">キーワードを入力</string>
     <string name="search_results_found">%d件見つかりました</string>
     <string name="search_no_results">一致する結果が見つかりません</string>
