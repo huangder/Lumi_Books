@@ -906,6 +906,16 @@ class DataStoreManager @Inject constructor(
         context.dataStore.edit { preferences -> preferences[key] = true }
     }
 
+    fun mobiLayoutHintShown(bookId: String): Flow<Boolean> {
+        val key = booleanPreferencesKey("mobi_layout_hint_shown_$bookId")
+        return context.dataStore.data.map { preferences -> preferences[key] ?: false }
+    }
+
+    suspend fun markMobiLayoutHintShown(bookId: String) {
+        val key = booleanPreferencesKey("mobi_layout_hint_shown_$bookId")
+        context.dataStore.edit { preferences -> preferences[key] = true }
+    }
+
     fun optimizeLayout(bookId: String): Flow<Boolean> {
         val key = booleanPreferencesKey("optimize_layout_$bookId")
         return context.dataStore.data.map { preferences ->

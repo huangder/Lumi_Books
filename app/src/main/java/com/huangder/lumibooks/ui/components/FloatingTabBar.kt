@@ -5,7 +5,8 @@ package com.huangder.lumibooks.ui.components
  * from AndroidLiquidGlass' LiquidBottomTabs sample.
  * Copyright 2025 Kyant. Licensed under Apache-2.0.
  * Lumi changes include layout, colors, sizing, navigation integration,
- * click motion, drag settling, backdrop composition, and accessibility.
+ * click motion, drag settling, backdrop composition, finger-tracking
+ * highlight, whole-bar press scaling, and accessibility.
  * Source: https://github.com/Kyant0/AndroidLiquidGlass
  */
 
@@ -51,6 +52,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
@@ -298,7 +300,11 @@ fun FloatingTabBar(
                         val target = targetValue.roundToInt().coerceIn(0, tabs.lastIndex)
                         currentIndex = target
                         animateToValue(target.toFloat())
-                        currentOnTabSelected(target)
+                        // Plain taps are handled by the tab's own clickable; only
+                        // fire navigation for real drags so they don't double-trigger.
+                        if (hasDragged) {
+                            currentOnTabSelected(target)
+                        }
                     },
                     onDrag = { _, dragAmount ->
                         val direction = if (isLtr) 1f else -1f
@@ -320,6 +326,19 @@ fun FloatingTabBar(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .graphicsLayer {
+                        if (isLiquidGlass) {
+                            val scale = dragState.barScale
+                            scaleX = scale
+                            scaleY = scale
+                        }
+                    }
+                    .then(if (isLiquidGlass) dragState.modifier else Modifier)
+            ) {
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
                     .then(
                         if (isLiquidGlass && liquidGlassBackdrop != null) Modifier
                         else Modifier.clip(glassShape)
@@ -327,6 +346,37 @@ fun FloatingTabBar(
                     .then(outerGlassModifier)
                     .border(width = if (isLiquidGlass) 1.dp else 0.8.dp, brush = borderBrush, shape = glassShape)
             )
+
+            if (isLiquidGlass) {
+                // Soft light that radiates from under the finger and is clipped to
+                // the bar's pill outline; it follows the finger while dragging.
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(glassShape)
+                        .drawBehind {
+                            val progress = dragState.pressProgress
+                            if (progress > 0f) {
+                                val center = dragState.pressPosition
+                                val radius = size.minDimension * 1.8f
+                                drawCircle(
+                                    brush = Brush.radialGradient(
+                                        colors = listOf(
+                                            Color.White.copy(alpha = 0.28f * progress),
+                                            Color.White.copy(alpha = 0.09f * progress),
+                                            Color.Transparent
+                                        ),
+                                        center = center,
+                                        radius = radius
+                                    ),
+                                    radius = radius,
+                                    center = center,
+                                    blendMode = BlendMode.Plus
+                                )
+                            }
+                        }
+                )
+            }
 
             Row(
                 modifier = Modifier
@@ -416,7 +466,6 @@ fun FloatingTabBar(
                             scaleX /= 1f - (velocity * 0.75f).coerceIn(-0.2f, 0.2f)
                             scaleY *= 1f - (velocity * 0.25f).coerceIn(-0.2f, 0.2f)
                         }
-                        .then(dragState.modifier)
                         .padding(3.dp)
                         .then(
                             if (selectedBackdrop != null) {
@@ -464,6 +513,7 @@ fun FloatingTabBar(
                             }
                         )
                 )
+            }
             }
         }
     }

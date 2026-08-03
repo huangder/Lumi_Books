@@ -173,6 +173,7 @@ data class ReaderUiState(
     val useEpubCss: Boolean = false,
     val renderMode: EpubRenderMode = EpubRenderMode.READER_LAYOUT,
     val showEpubLayoutHint: Boolean = false,
+    val showMobiLayoutHint: Boolean = false,
     val txtEncoding: TxtEncoding = TxtEncoding.AUTO,
     val txtActiveCharsetName: String = "UTF-8",
     val showTxtEncodingHint: Boolean = false,
@@ -1088,6 +1089,14 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
+    fun dismissMobiLayoutHint() {
+        if (!_uiState.value.showMobiLayoutHint) return
+        _uiState.value = _uiState.value.copy(showMobiLayoutHint = false)
+        viewModelScope.launch {
+            dataStoreManager.markMobiLayoutHintShown(bookId)
+        }
+    }
+
     fun dismissTxtEncodingHint() {
         if (!_uiState.value.showTxtEncodingHint) return
         _uiState.value = _uiState.value.copy(showTxtEncodingHint = false)
@@ -1518,6 +1527,8 @@ class ReaderViewModel @Inject constructor(
                     }
                     val showEpubLayoutHint = isEpub &&
                         !dataStoreManager.epubLayoutHintShown(bookId).first()
+                    val showMobiLayoutHint = book.format.name == "MOBI" &&
+                        !dataStoreManager.mobiLayoutHintShown(bookId).first()
                     val txtEncoding = if (isTxt) {
                         TxtEncoding.fromStorage(dataStoreManager.txtEncoding(bookId).first())
                     } else {
@@ -1593,6 +1604,7 @@ class ReaderViewModel @Inject constructor(
                         readerWritingMode = readerWritingMode,
                         renderMode = renderMode,
                         showEpubLayoutHint = showEpubLayoutHint,
+                        showMobiLayoutHint = showMobiLayoutHint,
                         txtEncoding = txtEncoding,
                         txtActiveCharsetName = (activeParser as? TxtParser)?.activeCharsetName ?: "UTF-8",
                         showTxtEncodingHint = showTxtEncodingHint,

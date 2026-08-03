@@ -700,7 +700,9 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         val dx = abs(event.x - touchStartX)
         val dy = abs(event.y - touchStartY)
         val elapsed = event.eventTime - touchDownTime
-        if (elapsed >= 500L || dx <= 4f || dx <= dy * 0.3f) {
+        // 4px 阈值会把轻点链接时的正常手指抖动误判为翻页手势并取消 WebView 点击。
+        // 放宽到与 BUSY_TAP_MOVE_LIMIT_PX 一致的 12px，同时保留方向判定与时间窗口。
+        if (elapsed >= 500L || dx <= 12f || dx <= dy * 0.3f) {
             return capturedSlideTouchStream
         }
         val physicalNext = event.x < touchStartX

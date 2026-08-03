@@ -217,6 +217,22 @@ private fun FeedbackPage(onBack: () -> Unit) {
                 }
             )
 
+            Spacer(Modifier.height(AppSpace.md))
+
+            FeedbackLinkSection(
+                label = stringResource(R.string.feedback_qq_channel),
+                title = stringResource(R.string.feedback_qq_channel_desc),
+                onClick = {
+                    runCatching {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse("https://pd.qq.com/s/29t6pms4a?b=9"))
+                        )
+                    }.onFailure {
+                        Toast.makeText(context, R.string.network_error, Toast.LENGTH_LONG).show()
+                    }
+                }
+            )
+
             Spacer(Modifier.height(120.dp))
         }
     }

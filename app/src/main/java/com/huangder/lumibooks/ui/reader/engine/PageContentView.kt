@@ -28,13 +28,13 @@ internal fun pageStartsMidParagraph(text: CharSequence, start: Int): Boolean {
 }
 
 private class PagedSelectableTextView(context: Context) : RoundedHighlightTextView(context) {
-    init {
-        justificationMode = if (android.os.Build.VERSION.SDK_INT >= 35) {
-            Layout.JUSTIFICATION_MODE_INTER_CHARACTER
-        } else {
-            Layout.JUSTIFICATION_MODE_INTER_WORD
-        }
-    }
+    // NOTE: justification must stay NONE (the default).
+    // PageLayoutEngine paginates with a plain ALIGN_NORMAL StaticLayout. When
+    // justification is enabled, Android's line breaker reserves extra trailing
+    // space per line (≈ letterSpacing), so the visible page wraps one character
+    // earlier than the pagination. The page-final line then contains the extra
+    // character and pokes out past the right margin (and the right margin
+    // renders far wider than the setting when letterSpacing > 0).
 
     override fun scrollTo(x: Int, y: Int) {
         // A page is a fixed viewport. TextView may otherwise scroll horizontally

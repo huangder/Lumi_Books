@@ -1066,7 +1066,20 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     val returnToLinkedSource = {
         linkReturnLocation?.let { source ->
             linkReturnLocation = null
-            readViewRef.value?.jumpToChapter(source.chapterIndex, source.pageIndex)
+            if (isBookLayout) {
+                epubLocatorRequest = null
+                epubPageRequestToken++
+                epubPageRequest = EpubPageRequest(
+                    token = epubPageRequestToken,
+                    chapterIndex = source.chapterIndex,
+                    pageIndex = source.pageIndex
+                )
+                if (source.chapterIndex != uiState.currentChapterIndex) {
+                    viewModel.setChapter(source.chapterIndex)
+                }
+            } else {
+                readViewRef.value?.jumpToChapter(source.chapterIndex, source.pageIndex)
+            }
         }
         Unit
     }
@@ -1350,11 +1363,24 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         viewModel.onEpubChapterTurn(direction)
                     },
                     onInternalLink = { targetChapter, fragment ->
-                        epubSearchRequest = null
-                        epubLocatorRequest = null
-                        epubPageRequest = null
-                        epubPendingFragment = fragment
-                        viewModel.setChapter(targetChapter)
+                        // 书内链接跳转前捕获来源位置，用于左上角“返回到刚才页”按钮
+                        val source = ReaderLinkLocation(
+                            uiState.currentChapterIndex,
+                            uiState.currentPageIndex
+                        )
+                        if (targetChapter != uiState.currentChapterIndex) {
+                            epubSearchRequest = null
+                            epubLocatorRequest = null
+                            epubPageRequest = null
+                            linkReturnLocation = source
+                            linkReturnToken += 1
+                            epubPendingFragment = fragment
+                            viewModel.setChapter(targetChapter)
+                        } else {
+                            // 同章节片段跳转由 WebView 直接完成，这里只记录返回位置
+                            linkReturnLocation = source
+                            linkReturnToken += 1
+                        }
                     },
                     onExternalLink = { href ->
                         if (isExternalBookLink(href)) pendingExternalLink = href
@@ -2665,6 +2691,16 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             confirmText = stringResource(R.string.epub_layout_first_open_confirm),
             backdrop = activeReaderGlassBackdrop,
             onDismiss = viewModel::dismissEpubLayoutHint
+        )
+    }
+
+    if (uiState.showMobiLayoutHint) {
+        ReaderFirstOpenHintDialog(
+            title = stringResource(R.string.mobi_layout_first_open_title),
+            message = stringResource(R.string.mobi_layout_first_open_message),
+            confirmText = stringResource(R.string.mobi_layout_first_open_confirm),
+            backdrop = activeReaderGlassBackdrop,
+            onDismiss = viewModel::dismissMobiLayoutHint
         )
     }
 

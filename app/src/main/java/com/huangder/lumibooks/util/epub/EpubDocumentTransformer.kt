@@ -2479,7 +2479,8 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
       if (!target) return false;
       var range = document.createRange();
       range.selectNodeContents(target);
-      range.collapse(true);
+      // 不能 collapse：折叠后的空 range 没有 client rect，getBoundingClientRect()
+      // 返回全零矩形，导致 pageForRange 算出的是当前页，跳转静默失效。
       moveToPage(Math.max(0, Math.min(state.total - 1, pageForRange(range))), true);
       return true;
     },

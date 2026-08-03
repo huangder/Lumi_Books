@@ -2,6 +2,8 @@ package com.huangder.lumibooks.ui.components
 
 import android.os.SystemClock
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.MutatorMutex
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -45,14 +47,24 @@ internal class LiquidGlassTabDragState(
     private val pressAnimationSpec = spring(1f, 1000f, 0.001f)
     private val scaleXAnimationSpec = spring(0.6f, 250f, 0.001f)
     private val scaleYAnimationSpec = spring(0.7f, 250f, 0.001f)
+    private val positionAnimationSpec = spring(0.5f, 300f, Offset.VisibilityThreshold)
+    private val barScaleAnimationSpec = spring(0.6f, 250f, 0.001f)
 
     private val valueAnimation = Animatable(initialValue, 0.001f)
     private val velocityAnimation = Animatable(0f, 0.01f)
     private val pressProgressAnimation = Animatable(0f, 0.001f)
     private val scaleXAnimation = Animatable(1f, 0.001f)
     private val scaleYAnimation = Animatable(1f, 0.001f)
+    private val positionAnimation =
+        Animatable(Offset.Zero, Offset.VectorConverter, Offset.VisibilityThreshold)
+    private val barScaleAnimation = Animatable(1f, 0.001f)
     private val mutatorMutex = MutatorMutex()
     private val velocityTracker = VelocityTracker()
+    private var startPosition = Offset.Zero
+    private var dragMoved = false
+
+    /** How much the whole bar grows while a finger is down, e.g. 1.03f = +3%. */
+    private val barPressedScale = 1.03f
 
     val value: Float get() = valueAnimation.value
     val targetValue: Float get() = valueAnimation.targetValue
@@ -60,26 +72,46 @@ internal class LiquidGlassTabDragState(
     val scaleX: Float get() = scaleXAnimation.value
     val scaleY: Float get() = scaleYAnimation.value
     val velocity: Float get() = velocityAnimation.value
+    /** Current finger position in the bar's local coordinates. */
+    val pressPosition: Offset get() = positionAnimation.value
+    /** Scale to apply to the whole bar while a finger is down. */
+    val barScale: Float get() = barScaleAnimation.value
+    /** True when the current gesture actually moved (as opposed to a plain tap). */
+    val hasDragged: Boolean get() = dragMoved
 
     val modifier: Modifier = Modifier.pointerInput(this) {
         inspectLiquidTabDragGestures(
             onDragStart = {
-                press()
+                press(it.position)
                 onDrag(size, Offset.Zero)
             },
             onDragEnd = { onDragStopped() },
             onDragCancel = { onDragStopped() },
-            onDrag = { _, dragAmount -> onDrag(size, dragAmount) }
+            onDrag = { change, dragAmount ->
+                if (dragAmount != Offset.Zero) dragMoved = true
+                trackPosition(change.position)
+                onDrag(size, dragAmount)
+            }
         )
     }
 
-    fun press() {
+    fun press(position: Offset? = null) {
+        if (position != null) {
+            startPosition = position
+            animationScope.launch { positionAnimation.snapTo(position) }
+        }
+        dragMoved = false
         velocityTracker.resetTracking()
         animationScope.launch {
             launch { pressProgressAnimation.animateTo(1f, pressAnimationSpec) }
             launch { scaleXAnimation.animateTo(78f / 56f, scaleXAnimationSpec) }
             launch { scaleYAnimation.animateTo(78f / 56f, scaleYAnimationSpec) }
+            launch { barScaleAnimation.animateTo(barPressedScale, barScaleAnimationSpec) }
         }
+    }
+
+    private fun trackPosition(position: Offset) {
+        animationScope.launch { positionAnimation.snapTo(position) }
     }
 
     fun updateValue(value: Float) {
@@ -118,6 +150,8 @@ internal class LiquidGlassTabDragState(
             launch { pressProgressAnimation.animateTo(0f, pressAnimationSpec) }
             launch { scaleXAnimation.animateTo(1f, scaleXAnimationSpec) }
             launch { scaleYAnimation.animateTo(1f, scaleYAnimationSpec) }
+            launch { barScaleAnimation.animateTo(1f, barScaleAnimationSpec) }
+            launch { positionAnimation.animateTo(startPosition, positionAnimationSpec) }
         }
     }
 

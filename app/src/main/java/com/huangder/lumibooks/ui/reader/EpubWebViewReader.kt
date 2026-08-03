@@ -675,8 +675,20 @@ internal fun EpubWebViewReader(
                             if (href.isEmpty()) return
                             val target = session.resolveInternalLink(messageChapterIndex, href)
                             if (target != null) {
-                                latestInternalLink.value(target.first, target.second)
+                                if (target.first == messageChapterIndex &&
+                                    !target.second.isNullOrBlank()
+                                ) {
+                                    // 先让 ReaderScreen 捕获来源位置（用于左上角“返回刚才页”），
+                                    // 再在当前 WebView 内直接跳转。
+                                    latestInternalLink.value(target.first, target.second)
+                                    view.jumpToInternalFragment(target.second)
+                                } else if (target.first != messageChapterIndex) {
+                                    latestInternalLink.value(target.first, target.second)
+                                }
                             } else {
+                                if (href.startsWith("https://" + BookRenderSession.ASSET_DOMAIN)) {
+                                    view.showMissingLinkTarget()
+                                }
                                 latestExternalLink.value(href)
                             }
                         }
@@ -825,8 +837,18 @@ internal fun EpubWebViewReader(
                             val url = request.url.toString()
                             val internal = session.resolveInternalLink(sourceChapter, url)
                             if (internal != null) {
-                                latestInternalLink.value(internal.first, internal.second)
+                                if (internal.first == sourceChapter &&
+                                    !internal.second.isNullOrBlank()
+                                ) {
+                                    latestInternalLink.value(internal.first, internal.second)
+                                    contentView.jumpToInternalFragment(internal.second)
+                                } else if (internal.first != sourceChapter) {
+                                    latestInternalLink.value(internal.first, internal.second)
+                                }
                             } else {
+                                if (url.startsWith("https://" + BookRenderSession.ASSET_DOMAIN)) {
+                                    contentView.showMissingLinkTarget()
+                                }
                                 latestExternalLink.value(url)
                             }
                             return true
@@ -1408,6 +1430,32 @@ private fun WebView.turnEpubPage(action: ReaderEdgeTapAction) {
         ReaderEdgeTapAction.NEXT_PAGE -> "next"
     }
     evaluateJavascript("window.LumiReader&&window.LumiReader.$command();", null)
+}
+
+/**
+ * 同章节内部锚点直接在当前 WebView 内跳转，避免经过 ReaderScreen -> setChapter
+ * 的同章节 early-return 而静默失效。目标不存在时给用户一个可见反馈。
+ */
+private fun EpubContentWebView.jumpToInternalFragment(fragment: String?) {
+    if (fragment.isNullOrBlank()) return
+    evaluateJavascript(
+        "window.LumiReader?window.LumiReader.goToFragment(" +
+            JSONObject.quote(fragment) + "):false"
+    ) { result ->
+        if (result?.trim() == "false" && isAttachedToWindow) {
+            post {
+                if (isAttachedToWindow) showMissingLinkTarget()
+            }
+        }
+    }
+}
+
+private fun EpubContentWebView.showMissingLinkTarget() {
+    android.widget.Toast.makeText(
+        context,
+        context.getString(com.huangder.lumibooks.R.string.epub_link_target_missing),
+        android.widget.Toast.LENGTH_SHORT
+    ).show()
 }
 
 private suspend fun requestPageText(

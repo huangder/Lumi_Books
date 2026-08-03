@@ -55,12 +55,11 @@ class ReaderPagingLayoutInstrumentedTest {
 
         assertEquals(0, page?.textView?.scrollX)
         assertEquals(0, page?.textView?.scrollY)
-        if (android.os.Build.VERSION.SDK_INT >= 35) {
-            assertEquals(
-                Layout.JUSTIFICATION_MODE_INTER_CHARACTER,
-                page?.textView?.justificationMode
-            )
-        }
+        // The visible renderer must stay left-aligned (NONE) so its line breaks
+        // exactly match PageLayoutEngine's ALIGN_NORMAL StaticLayout. Justified
+        // breaks would add a trailing-space reserve and shift the last line by
+        // one character when letterSpacing > 0.
+        assertEquals(Layout.JUSTIFICATION_MODE_NONE, page?.textView?.justificationMode)
     }
 
     @Test

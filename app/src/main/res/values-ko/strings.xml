@@ -190,6 +190,8 @@
     <string name="feedback_website">공식 웹사이트</string>
     <string name="feedback_github_issues">GitHub Issues</string>
     <string name="feedback_github_issues_desc">문제 또는 제안 제출</string>
+    <string name="feedback_qq_channel">QQ 채널</string>
+    <string name="feedback_qq_channel_desc">QQ 채널에서 문제 또는 제안 제출</string>
 
     <!-- 홈 -->
     <string name="section_previously_read">이전에 읽은 책</string>
@@ -306,6 +308,7 @@
     <string name="reader_search">검색</string>
     <string name="reader_search_failed">검색에 실패했습니다</string>
     <string name="epub_search_location_failed">검색 결과의 위치를 찾을 수 없습니다</string>
+    <string name="epub_link_target_missing">링크 대상을 찾을 수 없습니다</string>
     <string name="epub_book_layout_search_unsupported">책 원본 레이아웃에서는 아직 지원되지 않습니다</string>
     <string name="reader_theme">테마</string>
     <string name="reader_edit">편집</string>
@@ -715,6 +718,9 @@
     <string name="epub_layout_first_open_title">EPUB 레이아웃 안내</string>
     <string name="epub_layout_first_open_message">이 책에 자체 레이아웃이 포함되어 있다면 화면 중앙을 탭한 뒤 ‘테마’에서 ‘책 원본 레이아웃’을 선택할 수 있습니다.</string>
     <string name="epub_layout_first_open_confirm">확인</string>
+    <string name="mobi_layout_first_open_title">MOBI 레이아웃 안내</string>
+    <string name="mobi_layout_first_open_message">이 책에 자체 레이아웃이 포함되어 있다면 화면 중앙을 탭한 뒤 ‘테마’에서 ‘책 원본 레이아웃’을 선택할 수 있습니다.</string>
+    <string name="mobi_layout_first_open_confirm">확인</string>
     <string name="screen_sleep_timeout">화면 절전 시간</string>
     <string name="screen_sleep_timeout_follow_system">시스템 설정 따르기</string>
     <string name="screen_sleep_timeout_permission_required">사용자 지정 화면 절전 시간을 사용하려면 시스템 설정 변경을 허용하세요</string>
