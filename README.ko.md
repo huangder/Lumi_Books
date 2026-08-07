@@ -14,7 +14,7 @@
 
 > 깔끔하고 우아한 Android 로컬 전자책 리더. EPUB, PDF, TXT 지원. 개인정보 보호 최우선, 완전 오프라인.
 
-[![Version](https://img.shields.io/badge/version-1.6.00-coral)](https://github.com/huangder/Lumi_Books/releases)
+[![Version](https://img.shields.io/badge/version-1.7.8-coral)](https://github.com/huangder/Lumi_Books/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-blue)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3.10-purple)](https://kotlinlang.org)
