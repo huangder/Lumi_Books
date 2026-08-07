@@ -14,7 +14,7 @@
 
 > A clean, elegant Android local ebook reader. Supports EPUB, PDF, TXT. Privacy-first, local-first.
 
-[![Version](https://img.shields.io/badge/version-1.6.00-coral)](https://github.com/huangder/Lumi_Books/releases)
+[![Version](https://img.shields.io/badge/version-1.7.8-coral)](https://github.com/huangder/Lumi_Books/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-blue)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3.10-purple)](https://kotlinlang.org)
