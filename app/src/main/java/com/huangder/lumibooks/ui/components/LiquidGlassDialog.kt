@@ -287,9 +287,9 @@ fun LiquidGlassDialogHost(
                                         transparencyOverride = targetSpec.transparencyOverride,
                                         interactive = true,
                                         modifier = Modifier
-                                            .fillMaxWidth()
                                             .widthIn(max = 560.dp)
                                             .then(targetSpec.modifier)
+                                            .fillMaxWidth()
                                             .clickable(
                                                 indication = null,
                                                 interactionSource = remember { MutableInteractionSource() }

@@ -46,7 +46,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.R
@@ -163,7 +162,7 @@ private fun ImportBooksContainer(
             contentColor = AppColors.TextPrimary,
             tonalElevation = 0.dp,
             scrimColor = Color.Black.copy(alpha = 0.16f),
-            sheetMaxWidth = Dp.Unspecified,
+            sheetMaxWidth = 480.dp,
             dragHandle = null
         ) {
             Box(modifier = sizeModifier) {

@@ -12,7 +12,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import com.huangder.lumibooks.R
 
-private val LightSplashBackground = Color(0xFFFFF6F5)
+// 开屏图为竖图（853x1844）：横屏时按原比例居中显示，
+// 两侧空白用图片边缘主题色填充（浅色/暗色各自取图边缘均值）。
+private val LightSplashBackground = Color(0xFFFCE3E2)
 private val DarkSplashBackground = Color(0xFF5B5252)
 
 @Composable
@@ -27,7 +29,7 @@ fun SplashScreen(isDark: Boolean) {
             painter = painterResource(if (isDark) R.drawable.splash_dark else R.drawable.splash_light),
             contentDescription = null,
             modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.FillBounds
+            contentScale = ContentScale.Fit
         )
     }
 }
