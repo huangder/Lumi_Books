@@ -350,6 +350,13 @@ fun BookshelfScreen(
             selectedBookIds + book.id
         }
     }
+    val toggleSelectAll: () -> Unit = {
+        selectedBookIds = if (filteredBooks.all { it.id in selectedBookIds }) {
+            emptySet()
+        } else {
+            filteredBooks.mapTo(linkedSetOf()) { it.id }
+        }
+    }
     val editBookFromList: (Book) -> Unit = { book ->
         expandedListBookId = null
         editingBook = book
@@ -489,6 +496,7 @@ fun BookshelfScreen(
                         onSyncClick = { viewModel.syncWebdavNow() },
                         layoutMode = uiState.bookshelfLayoutMode,
                         isWebdavSyncing = uiState.isWebdavSyncing,
+                        onSelectAll = toggleSelectAll,
                         onLayoutModeChange = viewModel::setBookshelfLayoutMode,
                         onSearchBoundsChanged = { searchLauncherBounds = it }
                     )
@@ -569,6 +577,7 @@ fun BookshelfScreen(
                     onSyncClick = { viewModel.syncWebdavNow() },
                     layoutMode = uiState.bookshelfLayoutMode,
                     isWebdavSyncing = uiState.isWebdavSyncing,
+                    onSelectAll = toggleSelectAll,
                     onLayoutModeChange = viewModel::setBookshelfLayoutMode,
                     onSearchBoundsChanged = { searchLauncherBounds = it },
                     modifier = Modifier
@@ -1096,6 +1105,7 @@ private fun BookshelfCapsuleHeader(
     onBrowseFilters: () -> Unit,
     onSearchClick: () -> Unit,
     onSyncClick: () -> Unit,
+    onSelectAll: () -> Unit,
     layoutMode: Int,
     isWebdavSyncing: Boolean,
     onLayoutModeChange: (Int) -> Unit,
@@ -1191,6 +1201,30 @@ private fun BookshelfCapsuleHeader(
             }
 
             Spacer(Modifier.weight(1f))
+
+            AnimatedVisibility(
+                visible = isEditing,
+                enter = fadeIn(tween(120)) + scaleIn(
+                    initialScale = 0.78f,
+                    animationSpec = spring(dampingRatio = 0.68f, stiffness = 360f)
+                ),
+                exit = fadeOut(tween(110)) + scaleOut(targetScale = 0.82f)
+            ) {
+                LiquidGlassButton(
+                    onClick = onSelectAll,
+                    tintedColor = AppColors.Accent,
+                    contentColor = AppColors.OnAccent,
+                    prominentShadow = false,
+                    modifier = Modifier.height(46.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.select_all),
+                        color = AppColors.OnAccent,
+                        fontSize = AppType.BodySmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
 
             if (!isEditing) {
                 LiquidGlassSurface(

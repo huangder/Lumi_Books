@@ -55,6 +55,7 @@
     <string name="save">저장</string>
     <string name="delete">삭제</string>
     <string name="edit">편집</string>
+    <string name="select_all">전체 선택</string>
     <string name="done">완료</string>
     <string name="settings">설정</string>
     <string name="loading">불러오는 중...</string>
