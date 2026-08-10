@@ -85,6 +85,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     lateinit var animationController: PageAnimationController
         private set
 
+    /** 当前实际生效的双页对开状态（供 Compose 层上报内容宽度等） */
+    val isTwoPageSpreadActive: Boolean get() = currentTwoPageSpread
+
     // ── 3 个整屏跨页容器（动画控制器操作对象） ──
     private val prevSpreadView = FrameLayout(context).apply { clipChildren = false }
     private val curSpreadView = FrameLayout(context).apply { clipChildren = false }
@@ -168,6 +171,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var currentPageTransition: String = "slide"
     private var currentEdgeTapMode: ReaderEdgeTapMode = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT
     private var currentWritingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL
+    /** 双页开关（不含方向）：设备/设置允许时 true，是否启用由实测宽高决定 */
+    private var currentTwoPageSpreadEnabled: Boolean = false
+    /** 当前实际生效的双页模式（= 开关 && 横屏） */
     private var currentTwoPageSpread: Boolean = false
     private var currentReaderBackgroundColor: Int? = null
     private var currentReaderBackgroundImagePath: String? = null
@@ -485,7 +491,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             currentBionicReadingEnabled = bionicReadingEnabled
             currentUseDisplayDensityForSpans = useDisplayDensityForSpans
             currentWritingMode = writingMode
-            currentTwoPageSpread = twoPageSpread
+            currentTwoPageSpreadEnabled = twoPageSpread
+            currentTwoPageSpread = twoPageSpread && width > height
             return
         }
 
@@ -507,7 +514,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val paginationLayoutChanged =
             currentUseDisplayDensityForSpans != useDisplayDensityForSpans
         val writingModeChanged = currentWritingMode != writingMode
-        val spreadModeChanged = currentTwoPageSpread != twoPageSpread
+        val resolvedSpread = twoPageSpread && width > height
+        val spreadModeChanged = currentTwoPageSpread != resolvedSpread
         val writingModeAnchor = if (writingModeChanged) {
             slotManager.getCurSlot().takeIf { it.isLoaded }?.contentView?.chapterStartOffset
         } else {
@@ -561,7 +569,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         currentBionicReadingEnabled = bionicReadingEnabled
         currentUseDisplayDensityForSpans = useDisplayDensityForSpans
         currentWritingMode = writingMode
-        currentTwoPageSpread = twoPageSpread
+        currentTwoPageSpreadEnabled = twoPageSpread
+        currentTwoPageSpread = resolvedSpread
         pendingStartChapter = effectiveStartChapter
         pendingStartPage = effectiveStartPage
         if (writingModeChanged || spreadModeChanged) resetPageViewPositions()
@@ -573,13 +582,13 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val density = resources.displayMetrics.density
         val marginLeft = marginLeftDp * density
         val marginRight = marginRightDp * density
-        val gutterMargin = if (twoPageSpread) {
+        val gutterMargin = if (resolvedSpread) {
             (marginLeftDp.coerceAtMost(marginRightDp) / 2f).coerceAtLeast(12f) * density
         } else {
             marginLeft
         }
-        val gutterPx = if (twoPageSpread) (16f * density).toInt() else 0
-        val pageWidth = if (twoPageSpread) {
+        val gutterPx = if (resolvedSpread) (16f * density).toInt() else 0
+        val pageWidth = if (resolvedSpread) {
             ((width - gutterPx) / 2).coerceAtLeast(1)
         } else {
             width
@@ -613,7 +622,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             fontType = fontType,
             customTypeface = customTypeface,
             marginLeftPx = marginLeft,
-            marginRightPx = if (twoPageSpread) gutterMargin else marginRight,
+            marginRightPx = if (resolvedSpread) gutterMargin else marginRight,
             marginTopPx = baseMarginTop,
             marginBottomPx = baseMarginBottom,
             textColor = textColor,
@@ -1352,7 +1361,12 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val layoutWidth = right - left
         val layoutHeight = bottom - top
         if (changed && currentChapterCount > 0 &&
-            (!isConfigured || configuredWidth != layoutWidth || configuredHeight != layoutHeight)
+            (
+                !isConfigured ||
+                    configuredWidth != layoutWidth ||
+                    configuredHeight != layoutHeight ||
+                    (currentTwoPageSpreadEnabled && (layoutWidth > layoutHeight)) != currentTwoPageSpread
+                )
         ) {
             configure(
                 fontSizePx = currentFontSizePx,
@@ -1374,7 +1388,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 bionicReadingEnabled = currentBionicReadingEnabled,
                 useDisplayDensityForSpans = currentUseDisplayDensityForSpans,
                 writingMode = currentWritingMode,
-                twoPageSpread = currentTwoPageSpread,
+                twoPageSpread = currentTwoPageSpreadEnabled,
                 width = layoutWidth,
                 height = layoutHeight
             )

@@ -540,7 +540,6 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     val configuration = LocalConfiguration.current
     val isPhone = configuration.smallestScreenWidthDp < 600
     val isTablet = !isPhone
-    val isLandscape = configuration.screenWidthDp > configuration.screenHeightDp
     val density = LocalDensity.current
     val readerScreenWidthPx = with(density) {
         configuration.screenWidthDp.dp.toPx().toInt()
@@ -555,7 +554,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     val isBookLayout = supportsBookLayout && uiState.renderMode == EpubRenderMode.BOOK_LAYOUT
     val isVerticalWriting = uiState.readerWritingMode == ReaderWritingMode.VERTICAL_RL &&
         uiState.useNewEngine && !isBookLayout
-    val twoPageSpreadActive = uiState.twoPageSpreadEnabled && isTablet && isLandscape &&
+    // 只判断“是否允许双页”（设备/设置/模式），实际是否启用由 ReadView 按自身宽高（横屏）决定
+    val twoPageSpreadEligible = uiState.twoPageSpreadEnabled && isTablet &&
         uiState.useNewEngine && !isBookLayout && !eInkMode &&
         uiState.readerWritingMode == ReaderWritingMode.HORIZONTAL &&
         basePageTransition != "continuous"
@@ -1827,7 +1827,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 update = { readView ->
                     val fontSizePx = uiState.fontSize * density.density
                     val measuredWidth = readView.width.takeIf { it > 0 } ?: readerScreenWidthPx
-                    val contentWidthPx = if (twoPageSpreadActive) {
+                    val contentWidthPx = if (readView.isTwoPageSpreadActive) {
                         val gutterPx = (16f * density.density).toInt()
                         val halfWidth = ((measuredWidth - gutterPx) / 2).coerceAtLeast(1)
                         val gutterMargin = (uiState.marginLeftDp.coerceAtMost(uiState.marginRightDp) / 2f)
@@ -1862,7 +1862,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         bionicReadingEnabled = effectiveBionicReadingEnabled,
                         useDisplayDensityForSpans = uiState.book?.format?.name == "TXT",
                         writingMode = uiState.readerWritingMode,
-                        twoPageSpread = twoPageSpreadActive
+                        twoPageSpread = twoPageSpreadEligible
                     )
                     readView.setReaderBackground(
                         backgroundColor = readerBackgroundColorInt,
@@ -1942,7 +1942,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 liveMenuSnapshot
             }
             // 书籍原排版双页对开：页码按物理页显示（跨页 k → 2k–2k+1，章首单独右页显示 1）
-            val spreadDisplay = isBookLayout && twoPageSpreadActive
+            val spreadDisplay = isBookLayout && twoPageSpreadEligible
             val displayCurrentPage = if (spreadDisplay) {
                 if (uiState.currentPageIndex <= 0) 1 else uiState.currentPageIndex * 2
             } else {
