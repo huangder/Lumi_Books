@@ -392,6 +392,11 @@
     <string name="brightness_auto">Auto</string>
     <string name="reading_background">Reading Background</string>
     <string name="reader_theme_suites">Theme Sets</string>
+    <string name="page_turn_module_label">Page turn</string>
+    <string name="display_module_label">Display</string>
+    <string name="display_mode_day">Day mode</string>
+    <string name="display_mode_night">Night mode</string>
+    <string name="display_mode_auto">Auto</string>
     <string name="theme_suite_preview_text">Text</string>
     <string name="add_theme_suite">Add theme set</string>
     <string name="new_theme_suite_title">New Theme Set</string>

@@ -454,6 +454,11 @@
     <string name="transition_fade">渐变切换</string>
     <string name="transition_curl">仿真卷曲</string>
     <string name="transition_none">无动画</string>
+    <string name="page_turn_module_label">翻页</string>
+    <string name="display_module_label">显示</string>
+    <string name="display_mode_day">日间模式</string>
+    <string name="display_mode_night">夜间模式</string>
+    <string name="display_mode_auto">自动模式</string>
 
     <!-- 欢迎页 -->
     <string name="welcome_title">欢迎使用</string>

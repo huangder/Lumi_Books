@@ -377,6 +377,11 @@
     <string name="brightness_auto">自动</string>
     <string name="reading_background">阅读背景</string>
     <string name="reader_theme_suites">主题套装</string>
+    <string name="page_turn_module_label">翻页</string>
+    <string name="display_module_label">显示</string>
+    <string name="display_mode_day">日间模式</string>
+    <string name="display_mode_night">夜间模式</string>
+    <string name="display_mode_auto">自动模式</string>
     <string name="theme_suite_preview_text">文字</string>
     <string name="add_theme_suite">新增主题套装</string>
     <string name="new_theme_suite_title">新增主题套装</string>

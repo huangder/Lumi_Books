@@ -208,6 +208,7 @@ import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
+import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.MainActivity
 import com.huangder.lumibooks.ReaderPageDirection
@@ -490,6 +491,17 @@ private class ContinuousSelectableTextView(context: Context) : RoundedHighlightT
     }
 }
 
+/**
+ * 深色化自定义纯色背景：保留色相/饱和度，把亮度压到 ≤ 0.22，
+ * 使自定义纯色主题在深色模式下有统一的深色观感。
+ */
+private fun darkenReaderSolidColor(color: Int): Int {
+    val hsl = FloatArray(3)
+    ColorUtils.colorToHSL(color, hsl)
+    hsl[2] = minOf(hsl[2], 0.22f)
+    return ColorUtils.HSLToColor(hsl)
+}
+
 @OptIn(kotlinx.coroutines.FlowPreview::class)
 @Composable
 fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> Unit = {}, onLoadingComplete: () -> Unit = {}, viewModel: ReaderViewModel = hiltViewModel()) {
@@ -501,6 +513,25 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     val effectivePreserveEpubBackground = if (eInkMode) false else uiState.preserveEpubBackground
     val effectiveBionicReadingEnabled = if (eInkMode) false else uiState.bionicReadingEnabled
     val effectiveReaderTextColor = if (eInkMode) 0xFF111111.toInt() else uiState.readerTextColor
+    val selectedReaderBackgroundForTheme = uiState.customReaderBackgrounds.firstOrNull {
+        it.selectionKey == effectiveReaderBackgroundSelection
+    }
+    val appIsDark = LocalIsDarkTheme.current
+    val nightDisplay = if (eInkMode) false else when (uiState.readerDisplayMode) {
+        "day" -> false
+        "night" -> true
+        else -> appIsDark
+    }
+    val renderingTheme = if (nightDisplay && selectedReaderBackgroundForTheme?.type != ReaderBackgroundType.IMAGE) {
+        when (effectiveReaderTheme) {
+            "day" -> "night"
+            "sepia" -> "sepia_dark"
+            "green" -> "green_dark"
+            else -> effectiveReaderTheme
+        }
+    } else {
+        effectiveReaderTheme
+    }
     val notes by viewModel.notes.collectAsState()
     val readerNotes by viewModel.readerNotes.collectAsState()
     val bookmarks by viewModel.bookmarks.collectAsState()
@@ -1162,27 +1193,30 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         }
     }
 
-    val selectedCustomBackground = if (eInkMode) {
-        null
-    } else {
-        uiState.customReaderBackgrounds.firstOrNull {
-            it.selectionKey == effectiveReaderBackgroundSelection
-        }
-    }
+    val selectedCustomBackground = if (eInkMode) null else selectedReaderBackgroundForTheme
     val readerBackgroundColorInt = when {
-        selectedCustomBackground?.type == ReaderBackgroundType.COLOR ->
-            runCatching { android.graphics.Color.parseColor(selectedCustomBackground.value) }
+        selectedCustomBackground?.type == ReaderBackgroundType.COLOR -> {
+            val base = runCatching { android.graphics.Color.parseColor(selectedCustomBackground.value) }
                 .getOrDefault(0xFFFBFBFC.toInt())
+            if (nightDisplay) darkenReaderSolidColor(base) else base
+        }
         effectiveReaderBackgroundSelection == "night" -> 0xFF1a1a1a.toInt()
-        effectiveReaderBackgroundSelection == "sepia" -> 0xFFf5e6d3.toInt()
-        effectiveReaderBackgroundSelection == "green" -> 0xFFe8f5e9.toInt()
+        effectiveReaderBackgroundSelection == "sepia" ->
+            if (nightDisplay) 0xFF2b2118.toInt() else 0xFFf5e6d3.toInt()
+        effectiveReaderBackgroundSelection == "green" ->
+            if (nightDisplay) 0xFF142a1a.toInt() else 0xFFe8f5e9.toInt()
+        effectiveReaderBackgroundSelection == "day" ->
+            if (nightDisplay) 0xFF1a1a1a.toInt() else 0xFFFBFBFC.toInt()
         else -> 0xFFFBFBFC.toInt()
     }
     val readerBackgroundImagePath = selectedCustomBackground
         ?.takeIf { it.type == ReaderBackgroundType.IMAGE }
         ?.value
-    val customBackgroundThemeColorInt = selectedCustomBackground?.dominantColor
-        ?: readerBackgroundColorInt
+    val customBackgroundThemeColorInt = when {
+        nightDisplay && selectedCustomBackground?.type == ReaderBackgroundType.COLOR -> readerBackgroundColorInt
+        selectedCustomBackground != null -> selectedCustomBackground.dominantColor ?: readerBackgroundColorInt
+        else -> readerBackgroundColorInt
+    }
     val automaticReaderTextColorInt = when {
         selectedCustomBackground != null -> {
             if (ColorUtils.calculateLuminance(customBackgroundThemeColorInt) < 0.42) {
@@ -1192,23 +1226,29 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             }
         }
         effectiveReaderBackgroundSelection == "night" -> 0xFFCCCCCC.toInt()
-        effectiveReaderBackgroundSelection == "sepia" -> 0xFF4a3728.toInt()
-        effectiveReaderBackgroundSelection == "green" -> 0xFF2e7d32.toInt()
+        effectiveReaderBackgroundSelection == "sepia" ->
+            if (nightDisplay) 0xFFE8D5BC.toInt() else 0xFF4a3728.toInt()
+        effectiveReaderBackgroundSelection == "green" ->
+            if (nightDisplay) 0xFFC8E6C9.toInt() else 0xFF2e7d32.toInt()
+        effectiveReaderBackgroundSelection == "day" ->
+            if (nightDisplay) 0xFFCCCCCC.toInt() else 0xFF333333.toInt()
         else -> 0xFF333333.toInt()
     }
     val readerTextColorInt = effectiveReaderTextColor ?: automaticReaderTextColorInt
     val hasTopReaderStatus = uiState.readerTopLeftContent != ReaderCornerContent.NONE ||
         uiState.readerTopRightContent != ReaderCornerContent.NONE
-    val menuBgColorInt = selectedCustomBackground?.dominantColor ?: readerBackgroundColorInt
+    val menuBgColorInt = customBackgroundThemeColorInt
     val menuBgColor = Color(menuBgColorInt)
     val menuContentColor = if (ColorUtils.calculateLuminance(menuBgColorInt) < 0.4) {
         Color.White
     } else {
         Color(0xFF1C1C1E)
     }
-    // 胶囊按钮背景色：基于阅读主题而非系统深色模式
-    val capsuleBgColor = when (effectiveReaderTheme) {
+    // 胶囊按钮背景色：基于阅读主题渲染效果而非系统深色模式
+    val capsuleBgColor = when (renderingTheme) {
         "night" -> Color(0xFF3A3A3C)
+        "sepia_dark" -> Color(0xFF3A312A)
+        "green_dark" -> Color(0xFF1E3527)
         "sepia" -> Color(0xFFE8D5C4)
         "green" -> Color(0xFFC8E6C9)
         else -> Color(0xFFEEEEEE)
@@ -1218,9 +1258,11 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     } else {
         Color(0xFF1C1C1E)
     }
-    // 目录进度条颜色：比文字深，跟随阅读主题
-    val catalogProgressColor = when (effectiveReaderTheme) {
+    // 目录进度条颜色：比文字深，跟随阅读主题渲染效果
+    val catalogProgressColor = when (renderingTheme) {
         "night" -> Color(0xFF555555)
+        "sepia_dark" -> Color(0xFF8A6F55)
+        "green_dark" -> Color(0xFF5E8F63)
         "sepia" -> Color(0xFFC4A88C)
         "green" -> Color(0xFFA5D6A7)
         else -> Color(0xFFD0D0D0)
@@ -1342,7 +1384,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     fontType = uiState.fontType,
                     fontFilePath = epubFontFilePath,
                     textColorOverride = effectiveReaderTextColor,
-                    theme = effectiveReaderTheme,
+                    theme = renderingTheme,
                     preservePublisherBackground = effectivePreserveEpubBackground,
                     bionicReadingEnabled = effectiveBionicReadingEnabled,
                     chineseMode = uiState.chineseMode,
@@ -1802,7 +1844,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     viewModel.updateReaderContentWidth(contentWidthPx)
                     readView.configure(
                         fontSizePx = fontSizePx,
-                        theme = effectiveReaderTheme,
+                        theme = renderingTheme,
                         chapterCount = uiState.chapterCount,
                         startChapter = if (isContinuousScrollMode) lastPagedChapter else uiState.currentChapterIndex,
                         startPage = if (isContinuousScrollMode) lastPagedPage else uiState.currentPageIndex,
@@ -2297,6 +2339,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 supportsWritingMode = uiState.useNewEngine && !isBookLayout,
                 currentChineseMode = uiState.chineseMode,
                 currentPageTransition = effectivePageTransition,
+                currentDisplayMode = uiState.readerDisplayMode,
                 onFontSizeChange = { viewModel.saveFontSize(it) },
                 onThemeChange = { viewModel.saveReaderTheme(it) },
                 onBackgroundSelect = { viewModel.selectReaderBackground(it) },
@@ -2315,6 +2358,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 onWritingModeChange = viewModel::saveReaderWritingMode,
                 onChineseModeChange = { viewModel.saveChineseMode(it) },
                 onPageTransitionChange = { viewModel.savePageTransition(it) },
+                onDisplayModeChange = viewModel::saveReaderDisplayMode,
                 onOpenAdvanced = {
                     showThemeSheet = false
                     requestCloseTheme = false
@@ -2588,7 +2632,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     // ── 文字选择自定义菜单 ──
     SelectionMenuOverlay(
         state = selectionState,
-        readerTheme = effectiveReaderTheme,
+        readerTheme = renderingTheme,
         glassBackdrop = activeReaderGlassBackdrop,
         forceSolidSurface = isBookLayout,
         isDragging = isSelectionDragging,
@@ -5014,12 +5058,12 @@ private fun SelectionMenuOverlay(
 
     // Match menu colors to the reader background.
     val menuBg = when (readerTheme) {
-        "night"  -> Color.Black
-        else     -> Color.White
+        "night", "sepia_dark", "green_dark" -> Color.Black
+        else -> Color.White
     }
     val menuText = when (readerTheme) {
-        "night"  -> Color.White
-        else     -> Color.Black
+        "night", "sepia_dark", "green_dark" -> Color.White
+        else -> Color.Black
     }
     val dividerColor = menuText.copy(alpha = 0.15f)
 

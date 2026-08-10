@@ -183,6 +183,8 @@ data class ReaderUiState(
     val chineseMode: String = "original",
     /** 翻页效果："slide" | "scroll" | "fade" */
     val pageTransition: String = "slide",
+    /** 阅读页显示效果："auto" | "day" | "night" */
+    val readerDisplayMode: String = "auto",
     /** 段间距（dp），默认 8 */
     val paragraphSpacing: Float = 2f,
     /** 首行缩进字符数，默认 2 */
@@ -1331,6 +1333,14 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
+    fun saveReaderDisplayMode(mode: String) {
+        if (_uiState.value.eInkModeEnabled) return
+        _uiState.value = _uiState.value.copy(readerDisplayMode = mode)
+        viewModelScope.launch {
+            dataStoreManager.saveDisplayMode(mode)
+        }
+    }
+
     fun saveReaderWritingMode(mode: ReaderWritingMode) {
         if (!_uiState.value.useNewEngine) return
         _uiState.value = _uiState.value.copy(readerWritingMode = mode)
@@ -1554,6 +1564,7 @@ class ReaderViewModel @Inject constructor(
                     val eInkModeEnabled = dataStoreManager.eInkModeEnabled.first()
                     val twoPageSpreadEnabled = dataStoreManager.twoPageSpreadEnabled.first()
                     val pageTransition = if (eInkModeEnabled) "none" else dataStoreManager.pageTransition().first()
+                    val readerDisplayMode = dataStoreManager.displayMode().first()
                     val paragraphSpacing = dataStoreManager.paragraphSpacing().first()
                     val firstLineIndent = dataStoreManager.firstLineIndent().first()
                     val pdfPageMode = if (eInkModeEnabled) "horizontal" else dataStoreManager.pdfPageMode.first()
@@ -1621,6 +1632,7 @@ class ReaderViewModel @Inject constructor(
                         epubLocatorJson = book.locatorJson.takeIf { renderMode == EpubRenderMode.BOOK_LAYOUT },
                         chineseMode = chineseMode,
                         pageTransition = pageTransition,
+                        readerDisplayMode = readerDisplayMode,
                         paragraphSpacing = paragraphSpacing,
                         firstLineIndent = firstLineIndent,
                         pdfPageMode = pdfPageMode,

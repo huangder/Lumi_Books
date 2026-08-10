@@ -1073,6 +1073,8 @@ internal fun EpubWebViewReader(
             if (nativePageTurn) pageTurnHost.setTransition(pageTransition)
             val fallbackBackground = when (theme) {
                 "night" -> Color.rgb(0x11, 0x11, 0x11)
+                "sepia_dark" -> Color.rgb(0x2B, 0x21, 0x18)
+                "green_dark" -> Color.rgb(0x14, 0x2A, 0x1A)
                 "sepia" -> Color.rgb(0xF5, 0xE6, 0xD3)
                 "green" -> Color.rgb(0xE8, 0xF5, 0xE9)
                 else -> Color.WHITE

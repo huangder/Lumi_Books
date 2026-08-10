@@ -6,6 +6,9 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -25,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -56,6 +60,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -76,12 +81,14 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -191,6 +198,7 @@ fun ThemeSettingsSheet(
     supportsWritingMode: Boolean = true,
     currentChineseMode: String = "original",
     currentPageTransition: String = "slide",
+    currentDisplayMode: String = "auto",
     eInkModeEnabled: Boolean = false,
     onFontSizeChange: (Float) -> Unit,
     onThemeChange: (String) -> Unit,
@@ -210,6 +218,7 @@ fun ThemeSettingsSheet(
     onWritingModeChange: (ReaderWritingMode) -> Unit = {},
     onChineseModeChange: (String) -> Unit = {},
     onPageTransitionChange: (String) -> Unit = {},
+    onDisplayModeChange: (String) -> Unit = {},
     onOpenAdvanced: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -595,55 +604,94 @@ fun ThemeSettingsSheet(
 
             Spacer(Modifier.height(16.dp))
 
-            // 翻页效果
-            Text(
-                stringResource(R.string.page_transition_label),
-                fontSize = 14.sp,
-                color = LightTextSecondary,
-                modifier = Modifier.padding(horizontal = 24.dp)
-            )
-            Spacer(Modifier.height(12.dp))
-            if (eInkModeEnabled) {
-                ModeButton(
-                    label = stringResource(R.string.transition_none),
-                    isSelected = true,
-                    onClick = {},
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)
+            // 翻页效果 + 显示效果（并排图标模块）
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                if (eInkModeEnabled) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            stringResource(R.string.page_turn_module_label),
+                            fontSize = 14.sp,
+                            color = LightTextSecondary
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        ModeButton(
+                            label = stringResource(R.string.transition_none),
+                            isSelected = true,
+                            onClick = {},
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                } else {
+                    ReaderModeModule(
+                        title = stringResource(R.string.page_turn_module_label),
+                        modifier = Modifier.weight(1f),
+                        items = buildList {
+                            add(
+                                ReaderModeOption(
+                                    key = "slide",
+                                    label = stringResource(R.string.transition_slide),
+                                    icon = ReaderIconPageSlide
+                                )
+                            )
+                            if ((!supportsBookLayout || currentRenderMode != EpubRenderMode.BOOK_LAYOUT) &&
+                                currentWritingMode != ReaderWritingMode.VERTICAL_RL
+                            ) {
+                                add(
+                                    ReaderModeOption(
+                                        key = "continuous",
+                                        label = stringResource(R.string.transition_scroll),
+                                        icon = ReaderIconPageScroll
+                                    )
+                                )
+                            }
+                            add(
+                                ReaderModeOption(
+                                    key = "fade",
+                                    label = stringResource(R.string.transition_fade),
+                                    icon = ReaderIconPageFade
+                                )
+                            )
+                            add(
+                                ReaderModeOption(
+                                    key = "curl",
+                                    label = stringResource(R.string.transition_curl),
+                                    icon = ReaderIconPageCurl
+                                )
+                            )
+                        },
+                        selectedKey = currentPageTransition,
+                        onSelect = onPageTransitionChange,
+                        glass = isLiquidGlass
+                    )
+                }
+                ReaderModeModule(
+                    title = stringResource(R.string.display_module_label),
+                    modifier = Modifier.weight(1f),
+                    enabled = !eInkModeEnabled,
+                    glass = isLiquidGlass,
+                    items = listOf(
+                        ReaderModeOption(
+                            key = "day",
+                            label = stringResource(R.string.display_mode_day),
+                            icon = ReaderIconDisplayDay
+                        ),
+                        ReaderModeOption(
+                            key = "night",
+                            label = stringResource(R.string.display_mode_night),
+                            icon = ReaderIconDisplayNight
+                        ),
+                        ReaderModeOption(
+                            key = "auto",
+                            label = stringResource(R.string.display_mode_auto),
+                            icon = ReaderIconDisplayAuto
+                        )
+                    ),
+                    selectedKey = if (eInkModeEnabled) "auto" else currentDisplayMode,
+                    onSelect = onDisplayModeChange
                 )
-            } else {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    ModeButton(
-                        label = stringResource(R.string.transition_slide),
-                        isSelected = currentPageTransition == "slide",
-                        onClick = { onPageTransitionChange("slide") },
-                        modifier = Modifier.weight(1f)
-                    )
-                    ModeButton(
-                        label = stringResource(R.string.transition_fade),
-                        isSelected = currentPageTransition == "fade",
-                        onClick = { onPageTransitionChange("fade") },
-                        modifier = Modifier.weight(1f)
-                    )
-                    ModeButton(
-                        label = stringResource(R.string.transition_curl),
-                        isSelected = currentPageTransition == "curl",
-                        onClick = { onPageTransitionChange("curl") },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                if ((!supportsBookLayout || currentRenderMode != EpubRenderMode.BOOK_LAYOUT) &&
-                    currentWritingMode != ReaderWritingMode.VERTICAL_RL) {
-                    Spacer(Modifier.height(12.dp))
-                    ModeButton(
-                        label = stringResource(R.string.transition_scroll),
-                        isSelected = currentPageTransition == "continuous",
-                        onClick = { onPageTransitionChange("continuous") },
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)
-                    )
-                }
             }
 
             Spacer(Modifier.height(16.dp))
@@ -1627,6 +1675,169 @@ private fun ModeButton(
             fontSize = 14.sp,
             fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
             color = AppColors.TextPrimary
+        )
+    }
+}
+
+/** 阅读模式图标选项（翻页效果 / 显示效果共用） */
+private data class ReaderModeOption(
+    val key: String,
+    val label: String,
+    val icon: ImageVector
+)
+
+/**
+ * 并排图标选择模块：标题在上，图标置于圆角浅灰容器内，
+ * 选中项为白底圆角块（截图「翻页 / 显示」样式）。
+ */
+@Composable
+private fun ReaderModeModule(
+    title: String,
+    items: List<ReaderModeOption>,
+    selectedKey: String,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    glass: Boolean = false
+) {
+    Column(modifier) {
+        Text(
+            title,
+            fontSize = 14.sp,
+            color = LightTextSecondary
+        )
+        Spacer(Modifier.height(8.dp))
+        val shape = RoundedCornerShape(12.dp)
+        val containerModifier = if (glass) {
+            val isDark = LocalIsDarkTheme.current
+            val transparency = LocalLiquidGlassTransparency.current
+            val surfaceAlpha = if (isDark) {
+                0.43f - transparency * 0.12f
+            } else {
+                0.59f - transparency * 0.18f
+            }
+            Modifier
+                .clip(shape)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            LightCardBg.copy(alpha = (surfaceAlpha + 0.06f).coerceAtMost(0.62f)),
+                            LightCardBg.copy(alpha = surfaceAlpha)
+                        )
+                    )
+                )
+                .border(
+                    width = 0.7.dp,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = if (isDark) 0.24f else 0.72f),
+                            Color.White.copy(alpha = if (isDark) 0.08f else 0.20f)
+                        )
+                    ),
+                    shape = shape
+                )
+                .padding(4.dp)
+        } else {
+            Modifier
+                .clip(shape)
+                .background(AppColors.BgGray)
+                .padding(4.dp)
+        }
+        val itemSpacing = 4.dp
+        val containerPadding = 4.dp
+        val density = LocalDensity.current
+        var containerWidthPx by remember { mutableIntStateOf(0) }
+        val itemCount = items.size
+        val paddingPx = with(density) { containerPadding.toPx() }
+        val spacingPx = with(density) { itemSpacing.toPx() }
+        val contentWidthPx = (containerWidthPx - paddingPx * 2f).coerceAtLeast(0f)
+        val cellWidthPx = if (itemCount > 0) {
+            ((contentWidthPx - spacingPx * (itemCount - 1)) / itemCount).coerceAtLeast(0f)
+        } else {
+            0f
+        }
+        val selectedIndex = items.indexOfFirst { it.key == selectedKey }.coerceAtLeast(0)
+        val indicatorTargetX = if (itemCount > 0) {
+            selectedIndex * (cellWidthPx + spacingPx)
+        } else {
+            0f
+        }
+        val indicatorX by animateDpAsState(
+            targetValue = with(density) { indicatorTargetX.toDp() },
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMediumLow
+            ),
+            label = "readerModeIndicatorX"
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .onSizeChanged { containerWidthPx = it.width }
+                .then(containerModifier)
+        ) {
+            if (itemCount > 0 && containerWidthPx > 0) {
+                // 选中底色滑块：随点击连贯滑动到新位置
+                Box(
+                    modifier = Modifier
+                        .offset(x = indicatorX)
+                        .width(with(density) { cellWidthPx.toDp() })
+                        .height(40.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(AppColors.CardBg)
+                )
+            }
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(itemSpacing)
+            ) {
+                items.forEach { item ->
+                    ReaderModeIconButton(
+                        icon = item.icon,
+                        contentDescription = item.label,
+                        isSelected = item.key == selectedKey,
+                        enabled = enabled,
+                        onClick = { onSelect(item.key) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReaderModeIconButton(
+    icon: ImageVector,
+    contentDescription: String,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
+) {
+    Box(
+        modifier = modifier
+            .height(40.dp)
+            .clickable(
+                enabled = enabled,
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() }
+            ) { onClick() }
+            .semantics {
+                this.contentDescription = contentDescription
+                this.selected = isSelected
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = when {
+                !enabled -> LightTextSecondary.copy(alpha = 0.35f)
+                isSelected -> AppColors.TextPrimary
+                else -> LightTextSecondary
+            },
+            modifier = Modifier.size(22.dp)
         )
     }
 }

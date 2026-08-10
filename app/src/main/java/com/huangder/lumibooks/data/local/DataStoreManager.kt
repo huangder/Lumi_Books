@@ -980,6 +980,17 @@ class DataStoreManager @Inject constructor(
         context.dataStore.edit { it[key] = mode }
     }
 
+    /** 阅读页显示效果："auto" | "day" | "night" */
+    fun displayMode(): Flow<String> {
+        val key = stringPreferencesKey("reader_display_mode")
+        return context.dataStore.data.map { it[key] ?: "auto" }
+    }
+
+    suspend fun saveDisplayMode(mode: String) {
+        val key = stringPreferencesKey("reader_display_mode")
+        context.dataStore.edit { it[key] = mode }
+    }
+
     /** 段间距（dp），默认 2dp */
     fun paragraphSpacing(): Flow<Float> {
         return context.dataStore.data.map { it[PARAGRAPH_SPACING] ?: 2f }
