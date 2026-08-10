@@ -28,6 +28,9 @@ local.properties
 /icon/
 /font/
 
+# Local test screenshots / artifacts
+/artifacts/
+
 # Dev logs
 devlog/
 devdocs/
