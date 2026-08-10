@@ -52,6 +52,7 @@ data class HomeUiState(
     val sortBy: SortBy = SortBy.LAST_READ,
     val isLoading: Boolean = true,
     val bookshelfLayoutMode: Int = 2,
+    val importBooksLayoutMode: Int = 2,
     val importMessage: String? = null,
     val authorizedBookDirectories: List<String> = emptyList(),
     val tagMessage: String? = null,
@@ -108,6 +109,7 @@ class HomeViewModel @Inject constructor(
         loadWeeklyData()
         loadWebdavSyncStatus()
         loadBookshelfLayoutMode()
+        loadImportBooksLayoutMode()
         loadAuthorizedBookDirectories()
     }
 
@@ -225,6 +227,22 @@ class HomeViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(bookshelfLayoutMode = normalizedMode)
         viewModelScope.launch {
             dataStoreManager.saveBookshelfLayoutMode(normalizedMode)
+        }
+    }
+
+    private fun loadImportBooksLayoutMode() {
+        viewModelScope.launch {
+            dataStoreManager.importBooksLayoutMode.collectLatest { mode ->
+                _uiState.value = _uiState.value.copy(importBooksLayoutMode = mode)
+            }
+        }
+    }
+
+    fun setImportBooksLayoutMode(mode: Int) {
+        val normalizedMode = mode.coerceIn(1, 3)
+        _uiState.value = _uiState.value.copy(importBooksLayoutMode = normalizedMode)
+        viewModelScope.launch {
+            dataStoreManager.saveImportBooksLayoutMode(normalizedMode)
         }
     }
 

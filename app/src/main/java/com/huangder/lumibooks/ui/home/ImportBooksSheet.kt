@@ -2,8 +2,14 @@ package com.huangder.lumibooks.ui.home
 
 import android.net.Uri
 import android.provider.DocumentsContract
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,33 +30,63 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items as lazyListItems
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Sort
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.R
+import com.huangder.lumibooks.ui.components.LiquidGlassMenuItem
+import com.huangder.lumibooks.ui.components.LiquidGlassMenuSpec
 import com.huangder.lumibooks.ui.components.LiquidGlassButton
 import com.huangder.lumibooks.ui.components.LiquidGlassDialog
+import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
+import com.huangder.lumibooks.ui.components.LiquidGlassSurface
+import com.huangder.lumibooks.ui.components.LocalLiquidGlassMenuHost
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
@@ -100,6 +136,8 @@ fun ImportBooksActionSheet(
 fun ImportBooksConfirmationSheet(
     selectedBooks: List<SelectedImportBook>,
     selectedBookUris: Set<String>,
+    layoutMode: Int,
+    onLayoutModeChange: (Int) -> Unit,
     onBookSelectionToggle: (SelectedImportBook) -> Unit,
     onSelectAll: () -> Unit,
     onDismiss: () -> Unit,
@@ -114,6 +152,8 @@ fun ImportBooksConfirmationSheet(
             selectedBooks = selectedBooks,
             selectedBookUris = selectedBookUris,
             floatingContainer = floatingContainer,
+            layoutMode = layoutMode,
+            onLayoutModeChange = onLayoutModeChange,
             onBookSelectionToggle = onBookSelectionToggle,
             onSelectAll = onSelectAll,
             onConfirmImport = onConfirmImport
@@ -334,19 +374,37 @@ private fun SelectedBooksStage(
     selectedBooks: List<SelectedImportBook>,
     selectedBookUris: Set<String>,
     floatingContainer: Boolean,
+    layoutMode: Int,
+    onLayoutModeChange: (Int) -> Unit,
     onBookSelectionToggle: (SelectedImportBook) -> Unit,
     onSelectAll: () -> Unit,
     onConfirmImport: () -> Unit
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val coverBackdrop = rememberLayerBackdrop()
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var sortBy by rememberSaveable { mutableStateOf(ImportBookSort.DEFAULT) }
+    val normalizedLayoutMode = layoutMode.coerceIn(1, 3)
+
+    val visibleBooks = remember(selectedBooks, searchQuery, sortBy) {
+        val sorted = when (sortBy) {
+            ImportBookSort.DEFAULT -> selectedBooks
+            ImportBookSort.NAME -> selectedBooks.sortedBy { it.name.lowercase() }
+            ImportBookSort.FORMAT -> selectedBooks.sortedBy {
+                it.name.substringAfterLast('.', missingDelimiterValue = "").lowercase()
+            }
+        }
+        val query = searchQuery.trim()
+        if (query.isEmpty()) sorted
+        else sorted.filter { it.name.contains(query, ignoreCase = true) }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 28.dp, end = 28.dp, top = 26.dp, bottom = 16.dp),
+                    .padding(start = 28.dp, end = 28.dp, top = 26.dp, bottom = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
@@ -357,6 +415,11 @@ private fun SelectedBooksStage(
                     modifier = Modifier.weight(1f)
                 )
                 Spacer(Modifier.width(16.dp))
+                ImportLayoutSwitchButton(
+                    layoutMode = normalizedLayoutMode,
+                    onLayoutModeChange = onLayoutModeChange
+                )
+                Spacer(Modifier.width(10.dp))
                 LiquidGlassButton(
                     onClick = onSelectAll,
                     modifier = Modifier.height(44.dp),
@@ -373,24 +436,110 @@ private fun SelectedBooksStage(
                     )
                 }
             }
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
+            Row(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
+                    .padding(start = 28.dp, end = 28.dp, bottom = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                ImportSearchField(
+                    query = searchQuery,
+                    onQueryChange = { searchQuery = it },
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(10.dp))
+                ImportSortButton(
+                    sortBy = sortBy,
+                    onSortChange = { sortBy = it }
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
                     .then(
                         if (isLiquidGlass) Modifier.layerBackdrop(coverBackdrop)
                         else Modifier
-                    ),
-                contentPadding = PaddingValues(start = 28.dp, end = 28.dp, bottom = 118.dp),
-                horizontalArrangement = Arrangement.spacedBy(18.dp),
-                verticalArrangement = Arrangement.spacedBy(26.dp)
-            ) {
-                items(selectedBooks, key = { it.uri.toString() }) { book ->
-                    SelectedBookPreview(
-                        book = book,
-                        isSelected = book.uri.toString() in selectedBookUris,
-                        onSelectionToggle = { onBookSelectionToggle(book) }
                     )
+            ) {
+                AnimatedContent(
+                    targetState = normalizedLayoutMode,
+                    modifier = Modifier.fillMaxSize(),
+                    transitionSpec = {
+                        // 当前排列缩小淡出，下一个排列放大淡入
+                        val enter = fadeIn(tween(200, delayMillis = 60)) +
+                            scaleIn(
+                                initialScale = 0.94f,
+                                animationSpec = tween(240, delayMillis = 60)
+                            )
+                        val exit = fadeOut(tween(140)) +
+                            scaleOut(
+                                targetScale = 0.92f,
+                                animationSpec = tween(180)
+                            )
+                        enter togetherWith exit
+                    },
+                    label = "importLayoutModeTransition"
+                ) { mode ->
+                    when (mode) {
+                        1 -> LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(
+                                start = 28.dp,
+                                end = 28.dp,
+                                bottom = 118.dp
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            lazyListItems(visibleBooks, key = { it.uri.toString() }) { book ->
+                                SelectedBookListRow(
+                                    book = book,
+                                    isSelected = book.uri.toString() in selectedBookUris,
+                                    onSelectionToggle = { onBookSelectionToggle(book) }
+                                )
+                            }
+                        }
+                        else -> LazyVerticalGrid(
+                            columns = GridCells.Fixed(mode),
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(
+                                start = 28.dp,
+                                end = 28.dp,
+                                bottom = 118.dp
+                            ),
+                            horizontalArrangement = Arrangement.spacedBy(
+                                if (mode == 3) 12.dp else 18.dp
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(
+                                if (mode == 3) 18.dp else 26.dp
+                            )
+                        ) {
+                            items(visibleBooks, key = { it.uri.toString() }) { book ->
+                                SelectedBookPreview(
+                                    book = book,
+                                    isSelected = book.uri.toString() in selectedBookUris,
+                                    compact = mode == 3,
+                                    onSelectionToggle = { onBookSelectionToggle(book) }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (visibleBooks.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 64.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = stringResource(R.string.search_no_results),
+                            color = AppColors.TextSecondary,
+                            fontSize = 14.sp
+                        )
+                    }
                 }
             }
         }
@@ -423,7 +572,328 @@ private fun SelectedBooksStage(
 private fun SelectedBookPreview(
     book: SelectedImportBook,
     isSelected: Boolean,
+    compact: Boolean = false,
     onSelectionToggle: () -> Unit
+) {
+    val extension = book.name.substringAfterLast('.', missingDelimiterValue = "").uppercase()
+    val displayTitle = book.name.substringBeforeLast('.', missingDelimiterValue = book.name)
+
+    val selectionAlpha by animateFloatAsState(
+        targetValue = if (isSelected) 1f else 0f,
+        animationSpec = tween(160),
+        label = "importBookSelectionOutline"
+    )
+    val selectionShape = RoundedCornerShape(if (compact) 20.dp else 24.dp)
+    val contentPadding = if (compact) 6.dp else 8.dp
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 2.dp,
+                color = AppColors.Accent.copy(alpha = selectionAlpha),
+                shape = selectionShape
+            )
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = onSelectionToggle
+            )
+            .padding(contentPadding)
+    ) {
+        ImportBookCoverArt(
+            book = book,
+            shape = RoundedCornerShape(if (compact) 16.dp else 20.dp),
+            placeholderFontSize = if (compact) 12.sp else 15.sp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(0.72f)
+        )
+        Spacer(Modifier.height(if (compact) 6.dp else 10.dp))
+        Text(
+            text = displayTitle,
+            color = AppColors.TextPrimary,
+            fontSize = if (compact) 13.sp else 16.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(Modifier.height(if (compact) 1.dp else 2.dp))
+        Text(
+            text = extension.ifEmpty { stringResource(R.string.import_supported_formats) },
+            color = AppColors.TextSecondary,
+            fontSize = if (compact) 10.sp else 12.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+private enum class ImportBookSort {
+    DEFAULT,
+    NAME,
+    FORMAT
+}
+
+@Composable
+private fun ImportLayoutSwitchButton(
+    layoutMode: Int,
+    onLayoutModeChange: (Int) -> Unit
+) {
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val layoutModeDescription = stringResource(R.string.import_layout_mode)
+    LiquidGlassSurface(
+        shape = CircleShape,
+        fallbackColor = if (isLiquidGlass) AppColors.CardBg else AppColors.Accent,
+        contentScrimColor = AppColors.CardBg.copy(alpha = 0.58f),
+        onClick = { onLayoutModeChange(layoutMode % 3 + 1) },
+        effectPadding = 1.dp,
+        modifier = Modifier
+            .size(44.dp)
+            .semantics {
+                contentDescription = layoutModeDescription
+            }
+    ) {
+        Text(
+            text = layoutMode.toString(),
+            color = if (isLiquidGlass) AppColors.TextPrimary else AppColors.OnAccent,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+private fun ImportSearchField(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val keyboardController = LocalSoftwareKeyboardController.current
+    LiquidGlassSurface(
+        shape = CircleShape,
+        fallbackColor = AppColors.CardBg,
+        contentScrimColor = AppColors.CardBg.copy(alpha = 0.72f),
+        effectPadding = 1.dp,
+        modifier = modifier.height(44.dp),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        BasicTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 4.dp),
+            singleLine = true,
+            textStyle = TextStyle(
+                color = AppColors.TextPrimary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium
+            ),
+            cursorBrush = SolidColor(AppColors.Accent),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { keyboardController?.hide() }),
+            decorationBox = { innerTextField ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        if (query.isEmpty()) {
+                            Text(
+                                text = stringResource(R.string.import_search_placeholder),
+                                color = AppColors.TextSecondary,
+                                fontSize = 13.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        innerTextField()
+                    }
+                    Icon(
+                        imageVector = Icons.Outlined.Search,
+                        contentDescription = stringResource(R.string.search),
+                        tint = AppColors.TextSecondary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    if (query.isNotEmpty()) {
+                        Spacer(Modifier.width(4.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .clickable(
+                                    indication = null,
+                                    interactionSource = remember { MutableInteractionSource() }
+                                ) { onQueryChange("") },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = stringResource(R.string.import_search_clear),
+                                tint = AppColors.TextSecondary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun ImportSortButton(
+    sortBy: ImportBookSort,
+    onSortChange: (ImportBookSort) -> Unit
+) {
+    val menuHost = LocalLiquidGlassMenuHost.current
+    var sortAnchorBounds by remember { mutableStateOf(Rect.Zero) }
+    var sortExpanded by remember { mutableStateOf(false) }
+    val defaultLabel = stringResource(R.string.import_sort_default)
+    val nameLabel = stringResource(R.string.import_sort_name)
+    val formatLabel = stringResource(R.string.import_sort_format)
+
+    DisposableEffect(menuHost) {
+        onDispose {
+            if (sortExpanded) menuHost?.dismiss()
+        }
+    }
+
+    LiquidGlassIconButton(
+        imageVector = Icons.Outlined.Sort,
+        contentDescription = stringResource(R.string.import_sort),
+        onClick = {
+            if (sortExpanded) {
+                menuHost?.dismiss()
+            } else if (menuHost != null && sortAnchorBounds != Rect.Zero) {
+                sortExpanded = true
+                menuHost.show(
+                    LiquidGlassMenuSpec(
+                        anchorBounds = sortAnchorBounds,
+                        width = 176.dp,
+                        maxVisibleItems = 8,
+                        onDismiss = { sortExpanded = false },
+                        items = ImportBookSort.entries.map { option ->
+                            LiquidGlassMenuItem(
+                                label = when (option) {
+                                    ImportBookSort.DEFAULT -> defaultLabel
+                                    ImportBookSort.NAME -> nameLabel
+                                    ImportBookSort.FORMAT -> formatLabel
+                                },
+                                selected = option == sortBy,
+                                onClick = { onSortChange(option) }
+                            )
+                        }
+                    )
+                )
+            }
+        },
+        size = 44.dp,
+        iconSize = 20.dp,
+        normalContainerColor = AppColors.BgGray,
+        liquidContainerColor = AppColors.CardBg,
+        liquidScrimColor = AppColors.CardBg.copy(alpha = 0.58f),
+        modifier = Modifier.onGloballyPositioned { sortAnchorBounds = it.boundsInRoot() }
+    )
+}
+
+@Composable
+private fun SelectedBookListRow(
+    book: SelectedImportBook,
+    isSelected: Boolean,
+    onSelectionToggle: () -> Unit
+) {
+    val extension = book.name.substringAfterLast('.', missingDelimiterValue = "").uppercase()
+    val displayTitle = book.name.substringBeforeLast('.', missingDelimiterValue = book.name)
+    val selectionAlpha by animateFloatAsState(
+        targetValue = if (isSelected) 1f else 0f,
+        animationSpec = tween(160),
+        label = "importBookListSelection"
+    )
+    val shape = RoundedCornerShape(20.dp)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 2.dp,
+                color = AppColors.Accent.copy(alpha = selectionAlpha),
+                shape = shape
+            )
+            .clip(shape)
+            .background(AppColors.CardBg)
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = onSelectionToggle
+            )
+            .padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        ImportBookCoverArt(
+            book = book,
+            shape = RoundedCornerShape(14.dp),
+            placeholderFontSize = 11.sp,
+            modifier = Modifier
+                .width(46.dp)
+                .height(64.dp)
+        )
+        Spacer(Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = displayTitle,
+                color = AppColors.TextPrimary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.height(3.dp))
+            Text(
+                text = extension.ifEmpty { stringResource(R.string.import_supported_formats) },
+                color = AppColors.TextSecondary,
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Box(
+            modifier = Modifier
+                .size(26.dp)
+                .clip(CircleShape)
+                .then(
+                    if (isSelected) {
+                        Modifier.background(AppColors.Accent)
+                    } else {
+                        Modifier.border(
+                            width = 1.5.dp,
+                            color = AppColors.TextSecondary.copy(alpha = 0.6f),
+                            shape = CircleShape
+                        )
+                    }
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            if (isSelected) {
+                Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = null,
+                    tint = AppColors.OnAccent,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImportBookCoverArt(
+    book: SelectedImportBook,
+    shape: RoundedCornerShape,
+    placeholderFontSize: androidx.compose.ui.unit.TextUnit,
+    modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val extension = book.name.substringAfterLast('.', missingDelimiterValue = "").uppercase()
@@ -454,69 +924,27 @@ private fun SelectedBookPreview(
         else -> Brush.linearGradient(listOf(Color(0xFFB8B0D6), Color(0xFF8179A8)))
     }
 
-    val selectionAlpha by animateFloatAsState(
-        targetValue = if (isSelected) 1f else 0f,
-        animationSpec = tween(160),
-        label = "importBookSelectionOutline"
-    )
-    val selectionShape = RoundedCornerShape(24.dp)
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(
-                width = 2.dp,
-                color = AppColors.Accent.copy(alpha = selectionAlpha),
-                shape = selectionShape
-            )
-            .clickable(
-                indication = null,
-                interactionSource = remember { MutableInteractionSource() },
-                onClick = onSelectionToggle
-            )
-            .padding(8.dp)
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .background(coverBrush),
+        contentAlignment = Alignment.Center
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(0.72f)
-                .clip(RoundedCornerShape(20.dp))
-                .background(coverBrush),
-            contentAlignment = Alignment.Center
-        ) {
-            if (coverPath != null) {
-                AsyncImage(
-                    model = coverPath,
-                    contentDescription = displayTitle,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                Text(
-                    text = extension.ifEmpty { "BOOK" },
-                    color = Color.White.copy(alpha = 0.88f),
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+        if (coverPath != null) {
+            AsyncImage(
+                model = coverPath,
+                contentDescription = displayTitle,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            Text(
+                text = extension.ifEmpty { "BOOK" },
+                color = Color.White.copy(alpha = 0.88f),
+                fontSize = placeholderFontSize,
+                fontWeight = FontWeight.Bold
+            )
         }
-        Spacer(Modifier.height(10.dp))
-        Text(
-            text = displayTitle,
-            color = AppColors.TextPrimary,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
-        Spacer(Modifier.height(2.dp))
-        Text(
-            text = extension.ifEmpty { stringResource(R.string.import_supported_formats) },
-            color = AppColors.TextSecondary,
-            fontSize = 12.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
     }
 }
 

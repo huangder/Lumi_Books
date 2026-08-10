@@ -117,6 +117,7 @@ class DataStoreManager @Inject constructor(
         private val SPLASH_ENABLED = booleanPreferencesKey("splash_enabled")
         private val LAST_READ_BOOK = stringPreferencesKey("last_read_book")
         private val BOOKSHELF_LAYOUT_MODE = intPreferencesKey("bookshelf_layout_mode")
+        private val IMPORT_BOOKS_LAYOUT_MODE = intPreferencesKey("import_books_layout_mode")
         private val HAS_SEEN_WELCOME = booleanPreferencesKey("has_seen_welcome")
         private val COMPLETED_WELCOME_INSTALL_TIME = longPreferencesKey("completed_welcome_install_time")
         private val HAS_COMPLETED_WELCOME_LANGUAGE_SETUP = booleanPreferencesKey("has_completed_welcome_language_setup")
@@ -348,6 +349,16 @@ class DataStoreManager @Inject constructor(
         (preferences[BOOKSHELF_LAYOUT_MODE] ?: 2).coerceIn(1, 3)
     }
 
+    /**
+     * Layout mode for the import-book picker. Falls back to the bookshelf mode on
+     * first use so the two stay consistent, then remembers the picker's own choice.
+     */
+    val importBooksLayoutMode: Flow<Int> = context.dataStore.data.map { preferences ->
+        (preferences[IMPORT_BOOKS_LAYOUT_MODE]
+            ?: preferences[BOOKSHELF_LAYOUT_MODE]
+            ?: 2).coerceIn(1, 3)
+    }
+
     val predictiveBackEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[PREDICTIVE_BACK_ENABLED] ?: true
     }
@@ -468,6 +479,12 @@ class DataStoreManager @Inject constructor(
     suspend fun saveBookshelfLayoutMode(mode: Int) {
         context.dataStore.edit { preferences ->
             preferences[BOOKSHELF_LAYOUT_MODE] = mode.coerceIn(1, 3)
+        }
+    }
+
+    suspend fun saveImportBooksLayoutMode(mode: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[IMPORT_BOOKS_LAYOUT_MODE] = mode.coerceIn(1, 3)
         }
     }
 

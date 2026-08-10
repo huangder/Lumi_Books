@@ -701,6 +701,8 @@ fun MainNavGraph(
             ImportBooksConfirmationSheet(
                 selectedBooks = selectedImportBooks,
                 selectedBookUris = selectedImportBookUris,
+                layoutMode = homeUiState.importBooksLayoutMode,
+                onLayoutModeChange = homeViewModel::setImportBooksLayoutMode,
                 onBookSelectionToggle = { book ->
                     val uriKey = book.uri.toString()
                     selectedImportBookUris = if (uriKey in selectedImportBookUris) {
@@ -710,8 +712,13 @@ fun MainNavGraph(
                     }
                 },
                 onSelectAll = {
-                    selectedImportBookUris = selectedImportBooks
+                    val allUris = selectedImportBooks
                         .mapTo(linkedSetOf()) { it.uri.toString() }
+                    selectedImportBookUris = if (selectedImportBookUris.containsAll(allUris)) {
+                        emptySet()
+                    } else {
+                        allUris
+                    }
                 },
                 onDismiss = {
                     importPreparationGeneration++

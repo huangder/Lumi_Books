@@ -767,6 +767,13 @@
     <string name="import_no_authorized_directory">No book folder has been authorized</string>
     <string name="import_directory_permission_lost">Folder access expired. Please authorize it again.</string>
     <string name="import_supported_formats">Supports EPUB, PDF, and TXT</string>
+    <string name="import_layout_mode">Switch layout</string>
+    <string name="import_sort">Sort</string>
+    <string name="import_sort_default">Default order</string>
+    <string name="import_sort_name">By name</string>
+    <string name="import_sort_format">By format</string>
+    <string name="import_search_placeholder">Search file names</string>
+    <string name="import_search_clear">Clear search</string>
     <!-- E-ink mode -->
     <string name="transition_none">No animation</string>
     <string name="label_e_ink_mode">E-ink mode</string>
