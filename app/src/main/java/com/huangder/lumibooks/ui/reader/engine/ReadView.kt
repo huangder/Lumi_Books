@@ -519,6 +519,21 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 letterSpacingChanged || fontTypeChanged || customFontPathChanged || marginChanged ||
                 overlayInsetChanged || paragraphSpacingChanged || bionicReadingChanged ||
                 paginationLayoutChanged || writingModeChanged || spreadModeChanged || sizeChanged
+        // 旋转/进出双页时，重新分页必须基于“当前真实槽位”的章与页，
+        // 而不是 onLayout 传进来的过期 pendingStartChapter/pendingStartPage，
+        // 否则整本书会跳回第 1 页（锚点只修正章内页码，不修正章节）。
+        val relayoutToCurrent = sizeChanged || spreadModeChanged
+        val curSlotForRelayout = slotManager.getCurSlot()
+        val effectiveStartChapter = if (relayoutToCurrent && curSlotForRelayout.isLoaded) {
+            curSlotForRelayout.chapterIndex
+        } else {
+            startChapter
+        }
+        val effectiveStartPage = if (relayoutToCurrent && curSlotForRelayout.isLoaded) {
+            curSlotForRelayout.pageIndex
+        } else {
+            startPage
+        }
 
         // 🔥 无变化时提前返回，避免菜单切换等 recomposition 触发不必要的重配置
         if (isConfigured && !needsRelayout) {
@@ -547,6 +562,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         currentUseDisplayDensityForSpans = useDisplayDensityForSpans
         currentWritingMode = writingMode
         currentTwoPageSpread = twoPageSpread
+        pendingStartChapter = effectiveStartChapter
+        pendingStartPage = effectiveStartPage
         if (writingModeChanged || spreadModeChanged) resetPageViewPositions()
         if (spreadModeChanged || sizeChanged) applyPageViewLayout()
         configuredWidth = width
@@ -630,7 +647,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
         if (!isConfigured || needsRelayout) {
             slotManager.setChapterCount(chapterCount)
-            slotManager.initialize(startChapter, startPage)
+            slotManager.initialize(effectiveStartChapter, effectiveStartPage)
             isConfigured = true
         }
     }
@@ -1322,6 +1339,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private fun getThemeColors(theme: String): Triple<Int, Int, Int> {
         return when (theme) {
             "night" -> Triple(0xFF1a1a1a.toInt(), 0xFFCCCCCC.toInt(), 0xFF4A90D9.toInt())
+            "sepia_dark" -> Triple(0xFF2b2118.toInt(), 0xFFE8D5BC.toInt(), 0xFFC77826.toInt())
+            "green_dark" -> Triple(0xFF142a1a.toInt(), 0xFFC8E6C9.toInt(), 0xFF2E7D32.toInt())
             "sepia" -> Triple(0xFFf5e6d3.toInt(), 0xFF4a3728.toInt(), 0xFFC77826.toInt())
             "green" -> Triple(0xFFe8f5e9.toInt(), 0xFF2e7d32.toInt(), 0xFF2E7D32.toInt())
             else   -> Triple(0xFFFBFBFC.toInt(), 0xFF333333.toInt(), 0xFF007AFF.toInt())

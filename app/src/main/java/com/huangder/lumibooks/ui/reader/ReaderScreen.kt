@@ -526,10 +526,9 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         uiState.useNewEngine && !isBookLayout
     val twoPageSpreadActive = uiState.twoPageSpreadEnabled && isTablet && isLandscape &&
         uiState.useNewEngine && !isBookLayout && !eInkMode &&
-        uiState.readerWritingMode == ReaderWritingMode.HORIZONTAL
+        uiState.readerWritingMode == ReaderWritingMode.HORIZONTAL &&
+        basePageTransition != "continuous"
     val effectivePageTransition = if (isBookLayout && basePageTransition == "continuous") {
-        "slide"
-    } else if (twoPageSpreadActive && basePageTransition == "continuous") {
         "slide"
     } else if (isVerticalWriting) {
         uiState.readerWritingMode.effectivePageTransition(basePageTransition)
@@ -4118,9 +4117,14 @@ private fun ContinuousScrollReader(
 ) {
     if (chapterCount <= 0) return
 
+    val uiState by viewModel.uiState.collectAsState()
     val listState = rememberLazyListState(currentChapter.coerceIn(0, chapterCount - 1))
     val searchHighlightAlpha = remember { Animatable(0f) }
     val loadedChapters = remember(chapterCount, contentRevision) { mutableStateMapOf<Int, Boolean>() }
+    // 原始章节文本缓存：相邻章节提前拉取，衔接处不再出现“只有标题/空白、松手后突然加载”
+    val rawChapterTextCache = remember(chapterCount, contentRevision) {
+        mutableStateMapOf<Int, CharSequence>()
+    }
     val restoreTarget = remember(chapterCount, contentRevision) {
         currentChapter.coerceIn(0, chapterCount - 1)
     }
@@ -4190,6 +4194,16 @@ private fun ContinuousScrollReader(
         withFrameNanos { }
         isRestoringPosition = false
     }
+    LaunchedEffect(restoreTarget, chapterCount, contentRevision) {
+        // 进入连续滚动时立即预加载恢复章节附近的章节
+        listOf(restoreTarget - 1, restoreTarget, restoreTarget + 1, restoreTarget + 2)
+            .filter { it in 0 until chapterCount && it !in rawChapterTextCache }
+            .forEach { neighbor ->
+                kotlinx.coroutines.withContext(Dispatchers.IO) {
+                    viewModel.getChapterText(neighbor)?.let { rawChapterTextCache[neighbor] = it }
+                }
+            }
+    }
     LaunchedEffect(scrollRequests) {
         scrollRequests.collect { target ->
             val safeTarget = target.coerceIn(0, chapterCount - 1)
@@ -4232,6 +4246,14 @@ private fun ContinuousScrollReader(
                 )
                 onChapterVisible(index, fraction)
             }
+            // 预加载当前可见章节之后的两章，保证章节衔接处内容已就绪
+            listOf(index + 1, index + 2).forEach { neighbor ->
+                if (neighbor in 0 until chapterCount && neighbor !in rawChapterTextCache) {
+                    kotlinx.coroutines.withContext(Dispatchers.IO) {
+                        viewModel.getChapterText(neighbor)?.let { rawChapterTextCache[neighbor] = it }
+                    }
+                }
+            }
         }
     }
     LaunchedEffect(searchHighlight) {
@@ -4272,7 +4294,9 @@ private fun ContinuousScrollReader(
         ) {
         items(chapterCount, key = { it }) { chapterIndex ->
             val chapterText by produceState<CharSequence?>(
-                initialValue = null,
+                initialValue = rawChapterTextCache[chapterIndex]?.let {
+                    com.huangder.lumibooks.util.ChineseConverter.convertPreservingSpans(it, chineseMode)
+                },
                 chapterIndex,
                 chineseMode,
                 contentRevision,
@@ -4280,7 +4304,14 @@ private fun ContinuousScrollReader(
                 paragraphSpacing,
                 firstLineIndent
             ) {
-                val rawText = withContext(Dispatchers.IO) { viewModel.getChapterText(chapterIndex) }
+                val cached = rawChapterTextCache[chapterIndex]
+                val rawText = if (cached != null) {
+                    cached
+                } else {
+                    withContext(Dispatchers.IO) { viewModel.getChapterText(chapterIndex) }.also { loaded ->
+                        if (loaded != null) rawChapterTextCache[chapterIndex] = loaded
+                    }
+                }
                 value = rawText?.let {
                     // LeadingMarginSpan (first-line indent), image spans, and paragraph spacing must
                     // survive simplified/traditional conversion in the continuous reader.
@@ -4303,41 +4334,54 @@ private fun ContinuousScrollReader(
                     searchHighlightAlpha = searchHighlightAlpha.value
                 )
             }
-            AndroidView(
-                factory = { context ->
-                    ContinuousSelectableTextView(context).apply {
-                        breakStrategy = android.text.Layout.BREAK_STRATEGY_HIGH_QUALITY
-                        hyphenationFrequency = android.text.Layout.HYPHENATION_FREQUENCY_NONE
-                    }
-                },
-                update = { textView ->
-                    textView.onReaderTap = onMenuToggle
-                    textView.onLinkTap = { href -> onLinkClick(chapterIndex, href) }
-                    textView.onImageLongPress = { image -> onImageLongPress(chapterIndex, image) }
-                    textView.onSelectionChanging = onSelectionChanging
-                    textView.onReaderSelection = { selection ->
-                        selectionController.activeView = textView
-                        onSelection(chapterIndex, selection)
-                    }
-                    textView.setTextColor(textColor)
-                    textView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, fontSize)
-                    textView.setLineSpacing(0f, lineHeight)
-                    textView.typeface = typeface
-                    val fontSizePx = android.util.TypedValue.applyDimension(
-                        android.util.TypedValue.COMPLEX_UNIT_SP,
-                        fontSize,
-                        textView.resources.displayMetrics
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // 章节内容尚未加载时，先显示章节标题占位，避免衔接处空白/突然跳变
+                val chapterTitle = uiState.chapterTitles.getOrNull(chapterIndex).orEmpty()
+                if (chapterText == null && chapterTitle.isNotBlank()) {
+                    androidx.compose.material3.Text(
+                        text = chapterTitle,
+                        color = Color(textColor),
+                        fontSize = 18.sp,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 10.dp)
                     )
-                    textView.letterSpacing = if (fontSizePx > 0f) {
-                        (letterSpacingDp * textView.resources.displayMetrics.density / fontSizePx)
-                            .coerceIn(-0.5f, 0.5f)
-                    } else {
-                        0f
-                    }
-                    textView.setReaderText(selectableText)
-                },
-                modifier = Modifier.fillMaxWidth()
-            )
+                }
+                AndroidView(
+                    factory = { context ->
+                        ContinuousSelectableTextView(context).apply {
+                            breakStrategy = android.text.Layout.BREAK_STRATEGY_HIGH_QUALITY
+                            hyphenationFrequency = android.text.Layout.HYPHENATION_FREQUENCY_NONE
+                        }
+                    },
+                    update = { textView ->
+                        textView.onReaderTap = onMenuToggle
+                        textView.onLinkTap = { href -> onLinkClick(chapterIndex, href) }
+                        textView.onImageLongPress = { image -> onImageLongPress(chapterIndex, image) }
+                        textView.onSelectionChanging = onSelectionChanging
+                        textView.onReaderSelection = { selection ->
+                            selectionController.activeView = textView
+                            onSelection(chapterIndex, selection)
+                        }
+                        textView.setTextColor(textColor)
+                        textView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, fontSize)
+                        textView.setLineSpacing(0f, lineHeight)
+                        textView.typeface = typeface
+                        val fontSizePx = android.util.TypedValue.applyDimension(
+                            android.util.TypedValue.COMPLEX_UNIT_SP,
+                            fontSize,
+                            textView.resources.displayMetrics
+                        )
+                        textView.letterSpacing = if (fontSizePx > 0f) {
+                            (letterSpacingDp * textView.resources.displayMetrics.density / fontSizePx)
+                                .coerceIn(-0.5f, 0.5f)
+                        } else {
+                            0f
+                        }
+                        textView.setReaderText(selectableText)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
     }
     }

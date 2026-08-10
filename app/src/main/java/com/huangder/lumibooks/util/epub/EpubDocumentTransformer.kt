@@ -149,7 +149,7 @@ body[data-lumi-layout="reflowable"] pre {
   max-width: 100%;
   overflow-x: auto;
 }
-html.lumi-ignore-publisher-background:not(.lumi-night):not(.lumi-sepia):not(.lumi-green) {
+html.lumi-ignore-publisher-background:not(.lumi-night):not(.lumi-sepia):not(.lumi-green):not(.lumi-sepia-dark):not(.lumi-green-dark) {
   background-color: transparent !important;
   background-image: none !important;
 }
@@ -163,6 +163,10 @@ html.lumi-sepia { background: #f5e6d3 !important; }
 html.lumi-sepia body { color: #3e2723 !important; }
 html.lumi-green { background: #e8f5e9 !important; }
 html.lumi-green body { color: #1b5e20 !important; }
+html.lumi-sepia-dark { background: #2b2118 !important; }
+html.lumi-sepia-dark body { color: #e8d5bc !important; }
+html.lumi-green-dark { background: #142a1a !important; }
+html.lumi-green-dark body { color: #c8e6c9 !important; }
 ::selection { background: rgba(255, 193, 7, 0.42); }
 #lumi-footnote-popover {
   position: fixed;
@@ -263,6 +267,8 @@ html.lumi-green body { color: #1b5e20 !important; }
 }
 html.lumi-sepia #lumi-footnote-popover { background: #fff8ee; color: #3e2723; }
 html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
+html.lumi-sepia-dark #lumi-footnote-popover { background: #3a312a; color: #e8d5bc; }
+html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c9; }
 @keyframes lumi-search-highlight-pulse {
   0%, 50%, 100% { opacity: 0; }
   25%, 75% { opacity: 1; }
@@ -742,6 +748,8 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     });
     if (!color) {
       if (root.classList.contains('lumi-night')) color = '#111111';
+      else if (root.classList.contains('lumi-sepia-dark')) color = '#2b2118';
+      else if (root.classList.contains('lumi-green-dark')) color = '#142a1a';
       else if (root.classList.contains('lumi-sepia')) color = '#f5e6d3';
       else if (root.classList.contains('lumi-green')) color = '#e8f5e9';
       else color = '#ffffff';
@@ -1648,10 +1656,12 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     applyChineseConversion(config);
     applyBionicReading(config.bionicReading === true);
     document.documentElement.classList.toggle('lumi-ignore-publisher-background', !state.preservePublisherBackground);
-    document.documentElement.classList.remove('lumi-night', 'lumi-sepia', 'lumi-green');
+    document.documentElement.classList.remove('lumi-night', 'lumi-sepia', 'lumi-green', 'lumi-sepia-dark', 'lumi-green-dark');
     if (config.theme === 'night') document.documentElement.classList.add('lumi-night');
     if (config.theme === 'sepia') document.documentElement.classList.add('lumi-sepia');
     if (config.theme === 'green') document.documentElement.classList.add('lumi-green');
+    if (config.theme === 'sepia_dark') document.documentElement.classList.add('lumi-sepia-dark');
+    if (config.theme === 'green_dark') document.documentElement.classList.add('lumi-green-dark');
     if (state.ready || state.mediaSettled) {
       paginate(state.pendingProgression);
       if (liveLocator) restore(liveLocator);
