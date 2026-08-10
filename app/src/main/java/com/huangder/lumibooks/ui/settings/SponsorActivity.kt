@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -33,9 +34,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,7 +52,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.huangder.lumibooks.R
+import com.huangder.lumibooks.data.github.Contributor
+import com.huangder.lumibooks.data.github.GitHubContributorsClient
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
@@ -70,6 +77,9 @@ class SponsorActivity : ComponentActivity() {
 
     @Inject
     lateinit var dataStoreManager: DataStoreManager
+
+    @Inject
+    lateinit var githubContributorsClient: GitHubContributorsClient
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -103,7 +113,10 @@ class SponsorActivity : ComponentActivity() {
                 com.huangder.lumibooks.ui.components.LiquidGlassDialogHost(
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    SponsorPage(onBack = { finish() })
+                    SponsorPage(
+                        githubContributorsClient = githubContributorsClient,
+                        onBack = { finish() }
+                    )
                 }
             }
         }
@@ -111,8 +124,19 @@ class SponsorActivity : ComponentActivity() {
 }
 
 @Composable
-private fun SponsorPage(onBack: () -> Unit) {
+private fun SponsorPage(
+    githubContributorsClient: GitHubContributorsClient,
+    onBack: () -> Unit
+) {
     val context = LocalContext.current
+    var contributors by remember { mutableStateOf(fallbackContributors) }
+
+    LaunchedEffect(Unit) {
+        val fetched = runCatching { githubContributorsClient.fetchContributors() }.getOrNull()
+        if (!fetched.isNullOrEmpty()) {
+            contributors = fetched
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -230,23 +254,14 @@ private fun SponsorPage(onBack: () -> Unit) {
 
             // 开发人员
             DeveloperSection(
-                onHuangderClick = {
-                    runCatching {
-                        context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse("https://xhslink.com/m/5AbhNhfh7hE"))
-                        )
-                    }.onFailure {
-                        Toast.makeText(context, R.string.network_error, Toast.LENGTH_LONG).show()
+                contributors = contributors,
+                onContributorClick = { contributor ->
+                    val url = if (contributor.login.equals("huangder", ignoreCase = true)) {
+                        "https://xhslink.com/m/5AbhNhfh7hE"
+                    } else {
+                        contributor.htmlUrl.ifBlank { "https://github.com/${contributor.login}" }
                     }
-                },
-                onCorundumLingClick = {
-                    runCatching {
-                        context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Corundum-Ling"))
-                        )
-                    }.onFailure {
-                        Toast.makeText(context, R.string.network_error, Toast.LENGTH_LONG).show()
-                    }
+                    openExternalLink(context, url)
                 }
             )
 
@@ -257,8 +272,8 @@ private fun SponsorPage(onBack: () -> Unit) {
 
 @Composable
 private fun DeveloperSection(
-    onHuangderClick: () -> Unit,
-    onCorundumLingClick: () -> Unit
+    contributors: List<Contributor>,
+    onContributorClick: (Contributor) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -271,41 +286,89 @@ private fun DeveloperSection(
             color = AppColors.TextSecondary,
             modifier = Modifier.padding(bottom = AppSpace.xs)
         )
-        DeveloperCard(name = "huangder", onClick = onHuangderClick)
-        Spacer(Modifier.height(AppSpace.sm))
-        DeveloperCard(name = "Corundum-Ling", onClick = onCorundumLingClick)
+        contributors.forEachIndexed { index, contributor ->
+            if (index > 0) Spacer(Modifier.height(AppSpace.sm))
+            DeveloperCard(
+                contributor = contributor,
+                onClick = { onContributorClick(contributor) }
+            )
+        }
     }
 }
 
 @Composable
-private fun DeveloperCard(name: String, onClick: (() -> Unit)? = null) {
+private fun DeveloperCard(contributor: Contributor, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .shadow(6.dp, RoundedCornerShape(AppRadius.md), ambientColor = Color(0x04000000), spotColor = Color(0x04000000))
             .clip(RoundedCornerShape(AppRadius.md))
             .background(AppColors.CardBg)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .clickable(onClick = onClick)
             .padding(AppSpace.md),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(AppColors.TextSecondary.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center
+        ) {
+            AsyncImage(
+                model = contributor.avatarUrl.withAvatarSize(),
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(CircleShape),
+                contentScale = ContentScale.Crop
+            )
+        }
+        Spacer(Modifier.width(AppSpace.sm))
         Text(
-            text = name,
+            text = contributor.login,
             fontSize = AppType.Body,
             color = AppColors.TextPrimary,
             modifier = Modifier.weight(1f)
         )
-        if (onClick != null) {
-            Spacer(Modifier.width(AppSpace.sm))
-            Icon(
-                imageVector = Icons.Outlined.ChevronRight,
-                contentDescription = null,
-                tint = AppColors.TextSecondary,
-                modifier = Modifier.size(20.dp)
-            )
-        }
+        Spacer(Modifier.width(AppSpace.sm))
+        Icon(
+            imageVector = Icons.Outlined.ChevronRight,
+            contentDescription = null,
+            tint = AppColors.TextSecondary,
+            modifier = Modifier.size(20.dp)
+        )
     }
 }
+
+private fun openExternalLink(context: android.content.Context, url: String) {
+    runCatching {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    }.onFailure {
+        Toast.makeText(context, R.string.network_error, Toast.LENGTH_LONG).show()
+    }
+}
+
+private fun String.withAvatarSize(size: Int = 96): String {
+    val separator = if (contains("?")) "&" else "?"
+    return "$this${separator}s=$size"
+}
+
+// 首次打开或网络失败时的回退数据（内容从 GitHub API 获取后会用最新数据替换）
+private val fallbackContributors = listOf(
+    Contributor(
+        login = "huangder",
+        avatarUrl = "https://avatars.githubusercontent.com/u/69392191?v=4",
+        htmlUrl = "https://github.com/huangder",
+        contributions = 0
+    ),
+    Contributor(
+        login = "Corundum-Ling",
+        avatarUrl = "https://avatars.githubusercontent.com/u/64763642?v=4",
+        htmlUrl = "https://github.com/Corundum-Ling",
+        contributions = 0
+    )
+)
 
 @Composable
 private fun CreditSection(title: String, names: List<String>) {
