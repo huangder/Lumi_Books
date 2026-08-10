@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -64,6 +66,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import com.huangder.lumibooks.R
 import androidx.compose.ui.text.font.FontWeight
@@ -111,6 +114,7 @@ fun HomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val isTablet = LocalConfiguration.current.smallestScreenWidthDp >= 600
     val topBlurBackdrop = rememberLayerBackdrop()
     val statusBarTopPadding = WindowInsets.statusBars
         .asPaddingValues()
@@ -130,7 +134,7 @@ fun HomeScreen(
     }
     val lastReadBook = booksByLastRead.firstOrNull()
     val otherBooks = booksByLastRead.drop(1)
-    val booksThisYear = booksByLastRead.take(3)
+    val booksThisYear = if (isTablet) booksByLastRead.take(6) else booksByLastRead.take(3)
 
     LaunchedEffect(uiState.importMessage) {
         uiState.importMessage?.let {
@@ -154,7 +158,12 @@ fun HomeScreen(
                     if (isLiquidGlass) Modifier.layerBackdrop(topBlurBackdrop) else Modifier
                 )
         ) {
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                modifier = Modifier
+                    .then(if (isTablet) Modifier.widthIn(max = 840.dp) else Modifier)
+                    .fillMaxWidth()
+                    .then(if (isTablet) Modifier.align(Alignment.TopCenter) else Modifier)
+            ) {
                 item(key = "header") {
                     Spacer(Modifier.height(statusBarTopPadding + AppSpace.md))
                     PageEntranceItem(play = playEntranceAnimation, index = 0) {
@@ -180,18 +189,56 @@ fun HomeScreen(
                 if (lastReadBook != null) {
                     item(key = "continue_reading") {
                         PageEntranceItem(play = playEntranceAnimation, index = 2) {
-                            ContinueReadingCard(
-                                book = lastReadBook,
-                                onClick = { onNavigateToReader(lastReadBook.id, lastReadBook.coverPath, lastReadBook.title) },
-                                onToggleFavorite = { viewModel.updateBook(lastReadBook.copy(isFavorite = !lastReadBook.isFavorite)) },
-                                onDelete = { viewModel.deleteBook(lastReadBook) }
-                            )
+                            if (isTablet && otherBooks.isNotEmpty()) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = AppSpace.lg),
+                                    horizontalArrangement = Arrangement.spacedBy(AppSpace.md),
+                                    verticalAlignment = Alignment.Top
+                                ) {
+                                    ContinueReadingCard(
+                                        book = lastReadBook,
+                                        onClick = { onNavigateToReader(lastReadBook.id, lastReadBook.coverPath, lastReadBook.title) },
+                                        onToggleFavorite = { viewModel.updateBook(lastReadBook.copy(isFavorite = !lastReadBook.isFavorite)) },
+                                        onDelete = { viewModel.deleteBook(lastReadBook) },
+                                        modifier = Modifier.weight(1.35f)
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = stringResource(R.string.section_recently_read),
+                                            fontSize = AppType.Section,
+                                            fontWeight = FontWeight.Bold,
+                                            fontFamily = resolveAppFontFamily(KaiTi),
+                                            color = AppColors.TextPrimary
+                                        )
+                                        Spacer(Modifier.height(AppSpace.sm))
+                                        otherBooks.take(2).forEach { book ->
+                                            RecentBookCard(
+                                                book = book,
+                                                onClick = { onNavigateToReader(book.id, book.coverPath, book.title) },
+                                                modifier = Modifier.fillMaxWidth(),
+                                                fixedWidth = false
+                                            )
+                                            Spacer(Modifier.height(AppSpace.sm))
+                                        }
+                                    }
+                                }
+                            } else {
+                                ContinueReadingCard(
+                                    book = lastReadBook,
+                                    onClick = { onNavigateToReader(lastReadBook.id, lastReadBook.coverPath, lastReadBook.title) },
+                                    onToggleFavorite = { viewModel.updateBook(lastReadBook.copy(isFavorite = !lastReadBook.isFavorite)) },
+                                    onDelete = { viewModel.deleteBook(lastReadBook) },
+                                    modifier = Modifier.padding(horizontal = AppSpace.lg)
+                                )
+                            }
                         }
                         Spacer(Modifier.height(AppSpace.lg))
                     }
                 }
 
-                if (otherBooks.isNotEmpty()) {
+                if (otherBooks.isNotEmpty() && !(isTablet && lastReadBook != null)) {
                     item(key = "previously_read") {
                         PageEntranceItem(play = playEntranceAnimation, index = 3) {
                             Column {
@@ -204,7 +251,9 @@ fun HomeScreen(
                                     items(otherBooks, key = { it.id }) { book ->
                                         RecentBookCard(
                                             book = book,
-                                            onClick = { onNavigateToReader(book.id, book.coverPath, book.title) }
+                                            onClick = { onNavigateToReader(book.id, book.coverPath, book.title) },
+                                            modifier = if (isTablet) Modifier.width(320.dp) else Modifier,
+                                            fixedWidth = !isTablet
                                         )
                                     }
                                 }
@@ -237,7 +286,8 @@ fun HomeScreen(
                                 Spacer(Modifier.height(AppSpace.md))
                                 BooksReadGrid(
                                     books = booksThisYear,
-                                    modifier = Modifier.padding(horizontal = AppSpace.lg)
+                                    modifier = Modifier.padding(horizontal = AppSpace.lg),
+                                    isTablet = isTablet
                                 )
                             }
                         }
@@ -376,7 +426,13 @@ private fun ImportHint() {
 // ─── 继续阅读卡片 ──────────────────────────────────────────────
 
 @Composable
-private fun ContinueReadingCard(book: Book, onClick: () -> Unit, onToggleFavorite: () -> Unit, onDelete: () -> Unit) {
+private fun ContinueReadingCard(
+    book: Book,
+    onClick: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     var menuExpanded by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var menuAnchorBounds by remember { mutableStateOf(Rect.Zero) }
@@ -390,9 +446,8 @@ private fun ContinueReadingCard(book: Book, onClick: () -> Unit, onToggleFavorit
     val deleteMenuLabel = stringResource(R.string.delete_book)
 
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = AppSpace.lg)
             .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
             .clip(RoundedCornerShape(AppRadius.lg))
             .background(AppColors.CardBg)
@@ -563,10 +618,15 @@ private fun SectionHeader(title: String) {
 // ─── 最近阅读卡片 ──────────────────────────────────────────────
 
 @Composable
-private fun RecentBookCard(book: Book, onClick: () -> Unit) {
+private fun RecentBookCard(
+    book: Book,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    fixedWidth: Boolean = true
+) {
     Row(
-        modifier = Modifier
-            .width(260.dp)
+        modifier = modifier
+            .then(if (fixedWidth) Modifier.width(260.dp) else Modifier)
             .shadow(10.dp, RoundedCornerShape(AppRadius.md), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
             .clip(RoundedCornerShape(AppRadius.md))
             .background(AppColors.CardBg)
@@ -812,37 +872,66 @@ private fun WeeklyCheckIn(weeklyData: List<DailyReading> = emptyList(), dailyGoa
 
 // ─── 今年读过的图书网格 ────────────────────────────────────────
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun BooksReadGrid(books: List<Book>, modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpace.md)
-    ) {
-        // 3列占位网格
-        repeat(3) { index ->
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .aspectRatio(0.75f)
-                    .clip(RoundedCornerShape(AppRadius.sm))
-                    .background(AppColors.BgGray)
-                    .border(1.dp, AppColors.Divider, RoundedCornerShape(AppRadius.sm)),
-                contentAlignment = Alignment.Center
-            ) {
-                if (index < books.size) {
+private fun BooksReadGrid(books: List<Book>, modifier: Modifier = Modifier, isTablet: Boolean = false) {
+    if (isTablet) {
+        FlowRow(
+            modifier = modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpace.md),
+            verticalArrangement = Arrangement.spacedBy(AppSpace.md),
+            maxItemsInEachRow = 6
+        ) {
+            books.forEach { book ->
+                Box(
+                    modifier = Modifier
+                        .width(120.dp)
+                        .aspectRatio(0.75f)
+                        .clip(RoundedCornerShape(AppRadius.sm))
+                        .background(AppColors.BgGray)
+                        .border(1.dp, AppColors.Divider, RoundedCornerShape(AppRadius.sm)),
+                    contentAlignment = Alignment.Center
+                ) {
                     AsyncImage(
-                        model = books[index].coverPath,
-                        contentDescription = books[index].title,
+                        model = book.coverPath,
+                        contentDescription = book.title,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
                     )
-                } else {
-                    Text(
-                        text = "${index + 1}",
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Light,
-                        color = AppColors.Divider
-                    )
+                }
+            }
+        }
+    } else {
+        Row(
+            modifier = modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpace.md)
+        ) {
+            // 3列占位网格
+            repeat(3) { index ->
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .aspectRatio(0.75f)
+                        .clip(RoundedCornerShape(AppRadius.sm))
+                        .background(AppColors.BgGray)
+                        .border(1.dp, AppColors.Divider, RoundedCornerShape(AppRadius.sm)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (index < books.size) {
+                        AsyncImage(
+                            model = books[index].coverPath,
+                            contentDescription = books[index].title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Text(
+                            text = "${index + 1}",
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.Light,
+                            color = AppColors.Divider
+                        )
+                    }
                 }
             }
         }

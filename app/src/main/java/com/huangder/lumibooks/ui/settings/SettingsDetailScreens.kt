@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -149,7 +150,8 @@ fun DetailPage(title: String, onBack: () -> Unit, content: @Composable () -> Uni
             modifier = Modifier
                 .fillMaxSize()
                 .background(AppColors.WindowBg)
-                .statusBarsPadding()
+                .statusBarsPadding(),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // 顶栏
             Row(
@@ -171,6 +173,7 @@ fun DetailPage(title: String, onBack: () -> Unit, content: @Composable () -> Uni
             }
             Column(
                 modifier = Modifier
+                    .widthIn(max = 840.dp)
                     .fillMaxWidth()
                     .weight(1f)
                     .imePadding()
@@ -296,6 +299,43 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
             LiquidGlassSwitch(
                 checked = uiState.eInkModeEnabled,
                 onCheckedChange = viewModel::saveEInkModeEnabled
+            )
+        }
+    }
+
+    Spacer(Modifier.height(12.dp))
+
+    DetailCard {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Outlined.Landscape,
+                contentDescription = null,
+                tint = AppColors.TextSecondary,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(Modifier.width(AppSpace.md))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.label_two_page_spread),
+                    fontSize = AppType.Body,
+                    color = AppColors.TextPrimary
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    stringResource(R.string.two_page_spread_description),
+                    fontSize = AppType.Caption,
+                    color = AppColors.TextSecondary
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            LiquidGlassSwitch(
+                checked = uiState.twoPageSpreadEnabled,
+                onCheckedChange = viewModel::saveTwoPageSpreadEnabled
             )
         }
     }

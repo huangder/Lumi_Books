@@ -139,7 +139,9 @@ body[data-lumi-layout="reflowable"] svg,
 body[data-lumi-layout="reflowable"] video,
 body[data-lumi-layout="reflowable"] canvas {
   max-width: 100%;
-  max-height: 100%;
+  /* 竖版大图按整页宽度放大后会超出页面高度、下半截被裁掉；
+     限制高度不超过当前分页的内容区高度，保持比例缩放到整页可见。 */
+  max-height: var(--lumi-content-height, calc(var(--lumi-page-height, 100vh) - 32px));
   object-fit: contain;
 }
 body[data-lumi-layout="reflowable"] table,
@@ -1263,6 +1265,10 @@ html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
     var horizontalInset = Math.min(state.viewportWidth - 1, Math.max(0, inset.left + inset.right));
     clearPublisherRootHorizontalInset();
     body.style.setProperty('--lumi-page-height', state.viewportHeight + 'px');
+    body.style.setProperty(
+      '--lumi-content-height',
+      Math.max(1, Math.round(state.viewportHeight - inset.top - inset.bottom)) + 'px'
+    );
     body.style.setProperty('--lumi-column-gap', horizontalInset + 'px');
     body.style.boxSizing = 'border-box';
     body.style.margin = '0px';

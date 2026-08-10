@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
@@ -85,7 +86,12 @@ fun StatisticsScreen(
                     if (isLiquidGlass) Modifier.layerBackdrop(topBlurBackdrop) else Modifier
                 )
         ) {
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                modifier = Modifier
+                    .widthIn(max = 840.dp)
+                    .fillMaxWidth()
+                    .align(Alignment.TopCenter)
+            ) {
                 item(key = "header") {
                     Spacer(Modifier.height(statusBarTopPadding + AppSpace.md))
                     PageEntranceItem(play = playEntranceAnimation, index = 0) {

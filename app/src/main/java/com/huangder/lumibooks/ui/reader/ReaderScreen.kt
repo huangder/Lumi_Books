@@ -241,8 +241,22 @@ private data class ReaderMenuSnapshot(
     val chapterTitle: String,
     val pageIndex: Int,
     val pageCount: Int,
-    val bookProgressPercent: Float
+    val bookProgressPercent: Float,
+    val rightPageIndex: Int? = null
 )
+
+private fun formatReaderPageLabel(
+    currentPage: Int,
+    rightPageIndex: Int?,
+    chapterPageCount: Int
+): String {
+    val total = chapterPageCount.coerceAtLeast(1)
+    return if (rightPageIndex != null && rightPageIndex >= 0) {
+        "$currentPage–${rightPageIndex + 1} / $total"
+    } else {
+        "$currentPage / $total"
+    }
+}
 
 private data class ContinuousSearchHighlight(
     val chapterIndex: Int,
@@ -494,6 +508,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val isPhone = configuration.smallestScreenWidthDp < 600
+    val isTablet = !isPhone
+    val isLandscape = configuration.screenWidthDp > configuration.screenHeightDp
     val density = LocalDensity.current
     val readerScreenWidthPx = with(density) {
         configuration.screenWidthDp.dp.toPx().toInt()
@@ -508,7 +524,12 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     val isBookLayout = supportsBookLayout && uiState.renderMode == EpubRenderMode.BOOK_LAYOUT
     val isVerticalWriting = uiState.readerWritingMode == ReaderWritingMode.VERTICAL_RL &&
         uiState.useNewEngine && !isBookLayout
+    val twoPageSpreadActive = uiState.twoPageSpreadEnabled && isTablet && isLandscape &&
+        uiState.useNewEngine && !isBookLayout && !eInkMode &&
+        uiState.readerWritingMode == ReaderWritingMode.HORIZONTAL
     val effectivePageTransition = if (isBookLayout && basePageTransition == "continuous") {
+        "slide"
+    } else if (twoPageSpreadActive && basePageTransition == "continuous") {
         "slide"
     } else if (isVerticalWriting) {
         uiState.readerWritingMode.effectivePageTransition(basePageTransition)
@@ -1567,6 +1588,18 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                 )
                             }
 
+                            override fun onSpreadPageChanged(
+                                rightGlobalPage: Int,
+                                rightChapterIndex: Int,
+                                rightPageInChapter: Int
+                            ) {
+                                viewModel.onSpreadPageChanged(
+                                    rightGlobalPage,
+                                    rightChapterIndex,
+                                    rightPageInChapter
+                                )
+                            }
+
                             override fun onMenuToggle() {
                                 // 用户点击屏幕中心区域，关闭选择菜单
                                 selectionState = null
@@ -1753,11 +1786,20 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 update = { readView ->
                     val fontSizePx = uiState.fontSize * density.density
                     val measuredWidth = readView.width.takeIf { it > 0 } ?: readerScreenWidthPx
-                    val contentWidthPx = (
-                        measuredWidth - (
-                            (uiState.marginLeftDp + uiState.marginRightDp) * density.density
-                        ).toInt()
-                    ).coerceAtLeast(1)
+                    val contentWidthPx = if (twoPageSpreadActive) {
+                        val gutterPx = (16f * density.density).toInt()
+                        val halfWidth = ((measuredWidth - gutterPx) / 2).coerceAtLeast(1)
+                        val gutterMargin = (uiState.marginLeftDp.coerceAtMost(uiState.marginRightDp) / 2f)
+                            .coerceAtLeast(12f) * density.density
+                        (halfWidth - ((uiState.marginLeftDp + gutterMargin) * density.density).toInt())
+                            .coerceAtLeast(1)
+                    } else {
+                        (
+                            measuredWidth - (
+                                (uiState.marginLeftDp + uiState.marginRightDp) * density.density
+                            ).toInt()
+                        ).coerceAtLeast(1)
+                    }
                     viewModel.updateReaderContentWidth(contentWidthPx)
                     readView.configure(
                         fontSizePx = fontSizePx,
@@ -1778,7 +1820,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         paragraphSpacingDp = uiState.paragraphSpacing,
                         bionicReadingEnabled = effectiveBionicReadingEnabled,
                         useDisplayDensityForSpans = uiState.book?.format?.name == "TXT",
-                        writingMode = uiState.readerWritingMode
+                        writingMode = uiState.readerWritingMode,
+                        twoPageSpread = twoPageSpreadActive
                     )
                     readView.setReaderBackground(
                         backgroundColor = readerBackgroundColorInt,
@@ -1839,7 +1882,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     chapterCount = uiState.chapterCount,
                     pageIndex = uiState.currentPageIndex,
                     chapterPageCount = uiState.totalPages
-                )
+                ),
+                rightPageIndex = uiState.rightPageIndex
             )
             var lastReadyMenuSnapshot by remember(bookId) {
                 mutableStateOf<ReaderMenuSnapshot?>(null)
@@ -1855,6 +1899,23 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 lastReadyMenuSnapshot ?: liveMenuSnapshot
             } else {
                 liveMenuSnapshot
+            }
+            // 书籍原排版双页对开：页码按物理页显示（跨页 k → 2k–2k+1，章首单独右页显示 1）
+            val spreadDisplay = isBookLayout && twoPageSpreadActive
+            val displayCurrentPage = if (spreadDisplay) {
+                if (uiState.currentPageIndex <= 0) 1 else uiState.currentPageIndex * 2
+            } else {
+                displayedMenuSnapshot.pageIndex + 1
+            }
+            val displayRightPageIndex = if (spreadDisplay) {
+                if (uiState.currentPageIndex <= 0) null else uiState.currentPageIndex * 2
+            } else {
+                displayedMenuSnapshot.rightPageIndex
+            }
+            val displayPageCount = if (spreadDisplay) {
+                (displayedMenuSnapshot.pageCount * 2 - 1).coerceAtLeast(1)
+            } else {
+                displayedMenuSnapshot.pageCount
             }
 
             AnimatedVisibility(
@@ -2017,8 +2078,9 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         visible = uiState.isMenuVisible,
                         chapterTitle = chapterTitle,
                         bookProgressPercent = bookProgressPercent,
-                        currentPage = displayedMenuSnapshot.pageIndex + 1,
-                        chapterPageCount = displayedMenuSnapshot.pageCount,
+                        currentPage = displayCurrentPage,
+                        chapterPageCount = displayPageCount,
+                        rightPageIndex = displayRightPageIndex,
                         capsuleBgColor = capsuleBgColor,
                         capsuleContentColor = if (isLiquidGlass && !isBookLayout) menuContentColor else capsuleContentColor,
                         readerContentColor = menuContentColor,
@@ -2127,8 +2189,9 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     ReaderPageCornerOverlay(
                         chapterTitle = chapterTitle,
                         bookProgressPercent = bookProgressPercent,
-                        currentPage = displayedMenuSnapshot.pageIndex + 1,
-                        chapterPageCount = displayedMenuSnapshot.pageCount,
+                        currentPage = displayCurrentPage,
+                        chapterPageCount = displayPageCount,
+                        rightPageIndex = displayRightPageIndex,
                         leftMarginDp = uiState.marginLeftDp,
                         rightMarginDp = uiState.marginRightDp,
                         topLeft = if (linkReturnLocation == null) {
@@ -2806,6 +2869,7 @@ private fun ReaderPageCornerOverlay(
     bookProgressPercent: Float,
     currentPage: Int,
     chapterPageCount: Int,
+    rightPageIndex: Int? = null,
     leftMarginDp: Float,
     rightMarginDp: Float,
     topLeft: ReaderCornerContent,
@@ -2824,6 +2888,7 @@ private fun ReaderPageCornerOverlay(
                 bookProgressPercent = bookProgressPercent,
                 currentPage = currentPage,
                 chapterPageCount = chapterPageCount,
+                rightPageIndex = rightPageIndex,
                 contentColor = contentColor,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -2842,6 +2907,7 @@ private fun ReaderPageCornerOverlay(
                 bookProgressPercent = bookProgressPercent,
                 currentPage = currentPage,
                 chapterPageCount = chapterPageCount,
+                rightPageIndex = rightPageIndex,
                 contentColor = contentColor,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -2864,6 +2930,7 @@ private fun ReaderCornerStatusRow(
     bookProgressPercent: Float,
     currentPage: Int,
     chapterPageCount: Int,
+    rightPageIndex: Int? = null,
     contentColor: Color,
     modifier: Modifier = Modifier
 ) {
@@ -2883,6 +2950,7 @@ private fun ReaderCornerStatusRow(
                 bookProgressPercent = bookProgressPercent,
                 currentPage = currentPage,
                 chapterPageCount = chapterPageCount,
+                rightPageIndex = rightPageIndex,
                 contentColor = contentColor,
                 alignEnd = false
             )
@@ -2897,6 +2965,7 @@ private fun ReaderCornerStatusRow(
                 bookProgressPercent = bookProgressPercent,
                 currentPage = currentPage,
                 chapterPageCount = chapterPageCount,
+                rightPageIndex = rightPageIndex,
                 contentColor = contentColor,
                 alignEnd = true
             )
@@ -2911,6 +2980,7 @@ private fun ReaderCornerContentValue(
     bookProgressPercent: Float,
     currentPage: Int,
     chapterPageCount: Int,
+    rightPageIndex: Int? = null,
     contentColor: Color,
     alignEnd: Boolean
 ) {
@@ -2922,7 +2992,9 @@ private fun ReaderCornerContentValue(
             text = when (content) {
                 ReaderCornerContent.CHAPTER_INFO -> chapterTitle
                 ReaderCornerContent.BOOK_PROGRESS -> formatReadingProgressPercent(bookProgressPercent)
-                ReaderCornerContent.PAGE_NUMBER -> "$currentPage / ${chapterPageCount.coerceAtLeast(1)}"
+                ReaderCornerContent.PAGE_NUMBER -> formatReaderPageLabel(
+                    currentPage, rightPageIndex, chapterPageCount
+                )
                 else -> ""
             },
             color = contentColor,
@@ -3592,6 +3664,7 @@ private fun FloatingReaderMenu(
     bookProgressPercent: Float,
     currentPage: Int,
     chapterPageCount: Int,
+    rightPageIndex: Int? = null,
     capsuleBgColor: Color,
     capsuleContentColor: Color,
     readerContentColor: Color,
@@ -3684,6 +3757,7 @@ private fun FloatingReaderMenu(
             bookProgressPercent = bookProgressPercent,
             currentPage = currentPage,
             chapterPageCount = chapterPageCount,
+            rightPageIndex = rightPageIndex,
             contentColor = readerContentColor
         )
         Row(
@@ -3715,6 +3789,7 @@ private fun ReaderMenuStatus(
     bookProgressPercent: Float,
     currentPage: Int,
     chapterPageCount: Int,
+    rightPageIndex: Int? = null,
     contentColor: Color
 ) {
     Row(
@@ -3740,7 +3815,7 @@ private fun ReaderMenuStatus(
         )
         Spacer(Modifier.width(12.dp))
         Text(
-            text = "$currentPage / ${chapterPageCount.coerceAtLeast(1)}",
+            text = formatReaderPageLabel(currentPage, rightPageIndex, chapterPageCount),
             color = contentColor.copy(alpha = 0.68f),
             fontSize = 11.sp,
             maxLines = 1

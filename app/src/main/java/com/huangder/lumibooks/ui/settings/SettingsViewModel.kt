@@ -157,6 +157,11 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            dataStoreManager.twoPageSpreadEnabled.collectLatest { enabled ->
+                _uiState.value = _uiState.value.copy(twoPageSpreadEnabled = enabled)
+            }
+        }
+        viewModelScope.launch {
             dataStoreManager.predictiveBackEnabled.collectLatest { enabled ->
                 _uiState.value = _uiState.value.copy(
                     predictiveBackEnabled = predictiveBackVisualOverride ?: enabled
@@ -359,6 +364,14 @@ class SettingsViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(eInkModeEnabled = enabled)
         viewModelScope.launch {
             dataStoreManager.saveEInkModeEnabled(enabled)
+        }
+    }
+
+    fun saveTwoPageSpreadEnabled(enabled: Boolean) {
+        if (_uiState.value.twoPageSpreadEnabled == enabled) return
+        _uiState.value = _uiState.value.copy(twoPageSpreadEnabled = enabled)
+        viewModelScope.launch {
+            dataStoreManager.saveTwoPageSpreadEnabled(enabled)
         }
     }
 

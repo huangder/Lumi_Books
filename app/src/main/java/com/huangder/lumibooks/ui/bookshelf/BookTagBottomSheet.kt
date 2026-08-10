@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -101,6 +102,7 @@ fun BookTagBottomSheet(
     val sheetContent: @Composable () -> Unit = {
         Column(
             modifier = Modifier
+                .widthIn(max = 480.dp)
                 .fillMaxWidth()
                 .imePadding()
                 .navigationBarsPadding()
@@ -295,6 +297,7 @@ fun BatchBookTagSheet(
     val content: @Composable () -> Unit = {
         Column(
             modifier = Modifier
+                .widthIn(max = 480.dp)
                 .fillMaxWidth()
                 .imePadding()
                 .navigationBarsPadding()

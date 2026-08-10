@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -136,6 +137,7 @@ private fun ImportBooksContainer(
         bottomEnd = if (isLiquidGlass) 28.dp else 0.dp
     )
     val sizeModifier = Modifier
+        .widthIn(max = 480.dp)
         .fillMaxWidth()
         .then(if (expanded) Modifier.fillMaxHeight(0.82f) else Modifier)
 

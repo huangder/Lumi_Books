@@ -85,17 +85,30 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     lateinit var animationController: PageAnimationController
         private set
 
-    // ── 3 个页槽 ──
+    // ── 3 个整屏跨页容器（动画控制器操作对象） ──
+    private val prevSpreadView = FrameLayout(context).apply { clipChildren = false }
+    private val curSpreadView = FrameLayout(context).apply { clipChildren = false }
+    private val nextSpreadView = FrameLayout(context).apply { clipChildren = false }
+
+    // ── 页槽：左半页 + 右半页（单页模式只用左半页） ──
     val prevPageView = PageContentView(context)
     val curPageView = PageContentView(context)
     val nextPageView = PageContentView(context)
+    private val prevPageRightView = PageContentView(context)
+    private val curPageRightView = PageContentView(context)
+    private val nextPageRightView = PageContentView(context)
+
+    // ── 中缝遮挡条：翻页动画时下层页面从缝隙透出，用阅读背景色盖住 ──
+    private val prevGutterView = View(context)
+    private val curGutterView = View(context)
+    private val nextGutterView = View(context)
 
     private val animationSurface by lazy {
         PageAnimationSurface(
             root = this,
-            prevPageView = prevPageView,
-            curPageView = curPageView,
-            nextPageView = nextPageView,
+            prevPageView = prevSpreadView,
+            curPageView = curSpreadView,
+            nextPageView = nextSpreadView,
             backgroundColorProvider = { bgColor },
             reversePageProgressProvider = { currentWritingMode.isVertical }
         )
@@ -129,6 +142,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var rvIsEdgeTouch = false
     private var rvIsHandlingPageGesture = false
     private var rvPendingImageLongPress: ReaderImageHit? = null
+    private var rvPendingImageView: PageContentView? = null
     private var rvImageLongPressHandled = false
     private val rvImageLongPressRunnable = Runnable { handlePendingImageLongPress() }
 
@@ -154,6 +168,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var currentPageTransition: String = "slide"
     private var currentEdgeTapMode: ReaderEdgeTapMode = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT
     private var currentWritingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL
+    private var currentTwoPageSpread: Boolean = false
     private var currentReaderBackgroundColor: Int? = null
     private var currentReaderBackgroundImagePath: String? = null
     private var currentReaderTextColor: Int? = null
@@ -173,13 +188,37 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         clipChildren = false
         clipToPadding = false
 
-        // 添加三个 PageContentView 到布局（分页模式）
-        addView(prevPageView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-        addView(curPageView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-        addView(nextPageView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        // 每个跨页容器内放左/右半页；单页模式下右半页隐藏
+        fun addHalfPages(
+            container: FrameLayout,
+            gutter: View,
+            left: PageContentView,
+            right: PageContentView
+        ) {
+            container.addView(gutter, LayoutParams(0, LayoutParams.MATCH_PARENT))
+            gutter.visibility = View.GONE
+            container.addView(left, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+            container.addView(right, LayoutParams(0, LayoutParams.MATCH_PARENT))
+            right.visibility = View.GONE
+        }
+        addHalfPages(prevSpreadView, prevGutterView, prevPageView, prevPageRightView)
+        addHalfPages(curSpreadView, curGutterView, curPageView, curPageRightView)
+        addHalfPages(nextSpreadView, nextGutterView, nextPageView, nextPageRightView)
+        addView(prevSpreadView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        addView(curSpreadView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        addView(nextSpreadView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
 
         // 初始化管理器
-        slotManager = PageSlotManager(layoutEngine, prevPageView, curPageView, nextPageView)
+        slotManager = PageSlotManager(
+            layoutEngine,
+            prevPageView,
+            curPageView,
+            nextPageView,
+            prevPageRightView,
+            curPageRightView,
+            nextPageRightView,
+            spreadEnabled = { currentTwoPageSpread }
+        )
         slotManager.contentProvider = { chapterIndex ->
             contentProvider?.invoke(chapterIndex)
         }
@@ -230,7 +269,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         // 🔥 长按回调保留（边缘长按时触发），执行程序化选词
         animationController.onLongPress = { x, y ->
             Log.d(TAG, "onLongPress triggered at x=$x y=$y")
-            val result = curPageView.selectWordAt(x, y)
+            val hitView = pageViewAt(x, y) ?: curPageView
+            val result = hitView.selectWordAt(x - hitView.left, y - hitView.top)
             if (result != null) {
                 val (pageStart, pageEnd, text) = result
                 Log.d(TAG, "selected text=\"$text\" pageOffsets=($pageStart, $pageEnd)")
@@ -239,9 +279,12 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             }
         }
 
-        // 🔥 为三个页面槽位设置选区检测 + 压制系统浮动工具栏
+        // 🔥 为全部页面槽位设置选区检测 + 压制系统浮动工具栏
         // SpanWatcher 在每次文本设置后注册（因为 setPageContent 创建新 Spannable）
-        for (pageView in listOf(prevPageView, curPageView, nextPageView)) {
+        for (pageView in listOf(
+            prevPageView, curPageView, nextPageView,
+            prevPageRightView, curPageRightView, nextPageRightView
+        )) {
             setupSelectionWatcher(pageView)
             pageView.suppressSystemToolbar()
         }
@@ -260,6 +303,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             }
             configureCurrentPageView()
             invalidate()
+        }
+        slotManager.onSpreadPageChangedCallback = { rightGlobalPage, rightChapterIdx, rightPage ->
+            callbacks?.onSpreadPageChanged(rightGlobalPage, rightChapterIdx, rightPage)
         }
 
         setWillNotDraw(false)
@@ -291,6 +337,11 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val density = resources.displayMetrics.density
         val marginLeft = currentMarginLeftDp * density
         val marginRight = currentMarginRightDp * density
+        val gutterMargin = if (currentTwoPageSpread) {
+            (currentMarginLeftDp.coerceAtMost(currentMarginRightDp) / 2f).coerceAtLeast(12f) * density
+        } else {
+            marginLeft
+        }
         val baseMarginTop = (currentMarginTopDp + currentTopOverlayInsetDp) * density
         val baseMarginBottom = (currentMarginBottomDp + currentBottomOverlayInsetDp) * density
         val lineSpacingExtra = 2.5f * density
@@ -313,9 +364,13 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             }
             else -> android.graphics.Typeface.DEFAULT
         }
-        // 三个槽位都配置，确保翻页时样式一致
-        for (view in listOf(prevPageView, curPageView, nextPageView)) {
-            view.configure(
+        // 全部槽位都配置，确保翻页时样式一致；双页时左/右半页镜像边距
+        for ((left, right) in listOf(
+            prevPageView to prevPageRightView,
+            curPageView to curPageRightView,
+            nextPageView to nextPageRightView
+        )) {
+            left.configure(
                 fontSizePx = currentFontSizePx,
                 textColor = textColor,
                 lineHeightMult = currentLineHeightMult,
@@ -324,15 +379,34 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 typeface = customTypeface,
                 marginLeftPx = marginLeft,
                 marginTopPx = baseMarginTop,
+                marginRightPx = if (currentTwoPageSpread) gutterMargin else marginRight,
+                marginBottomPx = baseMarginBottom,
+                highlightColor = highlightColor,
+                accentColor = accentColor,
+                writingMode = currentWritingMode
+            )
+            right.configure(
+                fontSizePx = currentFontSizePx,
+                textColor = textColor,
+                lineHeightMult = currentLineHeightMult,
+                lineSpacingExtraPx = lineSpacingExtra,
+                letterSpacingPx = currentLetterSpacingDp * density,
+                typeface = customTypeface,
+                marginLeftPx = if (currentTwoPageSpread) gutterMargin else marginLeft,
+                marginTopPx = baseMarginTop,
                 marginRightPx = marginRight,
                 marginBottomPx = baseMarginBottom,
                 highlightColor = highlightColor,
                 accentColor = accentColor,
                 writingMode = currentWritingMode
             )
-            view.setReaderBackground(bgColor, currentReaderBackgroundImagePath)
+            left.setReaderBackground(bgColor, currentReaderBackgroundImagePath)
+            right.setReaderBackground(bgColor, currentReaderBackgroundImagePath)
         }
         setBackgroundColor(bgColor)
+        prevGutterView.setBackgroundColor(bgColor)
+        curGutterView.setBackgroundColor(bgColor)
+        nextGutterView.setBackgroundColor(bgColor)
         this.bgColor = bgColor
     }
 
@@ -387,6 +461,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         bionicReadingEnabled: Boolean = false,
         useDisplayDensityForSpans: Boolean = false,
         writingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL,
+        twoPageSpread: Boolean = false,
         width: Int = this.width,
         height: Int = this.height
     ) {
@@ -410,6 +485,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             currentBionicReadingEnabled = bionicReadingEnabled
             currentUseDisplayDensityForSpans = useDisplayDensityForSpans
             currentWritingMode = writingMode
+            currentTwoPageSpread = twoPageSpread
             return
         }
 
@@ -431,6 +507,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val paginationLayoutChanged =
             currentUseDisplayDensityForSpans != useDisplayDensityForSpans
         val writingModeChanged = currentWritingMode != writingMode
+        val spreadModeChanged = currentTwoPageSpread != twoPageSpread
         val writingModeAnchor = if (writingModeChanged) {
             slotManager.getCurSlot().takeIf { it.isLoaded }?.contentView?.chapterStartOffset
         } else {
@@ -441,7 +518,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val needsRelayout = themeChanged || chapterCountChanged || fontSizeChanged || lineHeightChanged ||
                 letterSpacingChanged || fontTypeChanged || customFontPathChanged || marginChanged ||
                 overlayInsetChanged || paragraphSpacingChanged || bionicReadingChanged ||
-                paginationLayoutChanged || writingModeChanged || sizeChanged
+                paginationLayoutChanged || writingModeChanged || spreadModeChanged || sizeChanged
 
         // 🔥 无变化时提前返回，避免菜单切换等 recomposition 触发不必要的重配置
         if (isConfigured && !needsRelayout) {
@@ -469,7 +546,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         currentBionicReadingEnabled = bionicReadingEnabled
         currentUseDisplayDensityForSpans = useDisplayDensityForSpans
         currentWritingMode = writingMode
-        if (writingModeChanged) resetPageViewPositions()
+        currentTwoPageSpread = twoPageSpread
+        if (writingModeChanged || spreadModeChanged) resetPageViewPositions()
+        if (spreadModeChanged || sizeChanged) applyPageViewLayout()
         configuredWidth = width
         configuredHeight = height
 
@@ -477,6 +556,17 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val density = resources.displayMetrics.density
         val marginLeft = marginLeftDp * density
         val marginRight = marginRightDp * density
+        val gutterMargin = if (twoPageSpread) {
+            (marginLeftDp.coerceAtMost(marginRightDp) / 2f).coerceAtLeast(12f) * density
+        } else {
+            marginLeft
+        }
+        val gutterPx = if (twoPageSpread) (16f * density).toInt() else 0
+        val pageWidth = if (twoPageSpread) {
+            ((width - gutterPx) / 2).coerceAtLeast(1)
+        } else {
+            width
+        }
         val baseMarginTop = (marginTopDp + topOverlayInsetDp) * density
         val baseMarginBottom = (marginBottomDp + bottomOverlayInsetDp) * density
         val lineSpacing = 2.5f * density
@@ -497,7 +587,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         }
 
         layoutEngine.configure(
-            width = width,
+            width = pageWidth,
             height = height,
             fontSizePx = fontSizePx,
             lineSpacingPx = lineSpacing,
@@ -506,7 +596,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             fontType = fontType,
             customTypeface = customTypeface,
             marginLeftPx = marginLeft,
-            marginRightPx = marginRight,
+            marginRightPx = if (twoPageSpread) gutterMargin else marginRight,
             marginTopPx = baseMarginTop,
             marginBottomPx = baseMarginBottom,
             textColor = textColor,
@@ -526,11 +616,13 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             if (writingModeChanged) {
                 slotManager.pendingStartCharOffset = writingModeAnchor ?: -1
             }
-            // 字号变化前捕获当前内容位置，以便重新分页后修正页码
-            if (fontSizeChanged || bionicReadingChanged) {
+            // 字号/旋转/模式变化前捕获当前内容位置，以便重新分页后修正页码
+            if (fontSizeChanged || bionicReadingChanged || sizeChanged || spreadModeChanged) {
                 val curSlot = slotManager.getCurSlot()
                 if (curSlot.isLoaded) {
-                    slotManager.pendingStartCharOffset = curSlot.contentView.chapterStartOffset
+                    val primaryOffset = slotManager.getPrimaryContentView().chapterStartOffset
+                    slotManager.pendingStartCharOffset =
+                        primaryOffset.takeIf { it >= 0 } ?: curSlot.contentView.chapterStartOffset
                 }
             }
             layoutEngine.invalidateAll()
@@ -616,19 +708,20 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     /** Returns the first visible character of the current page for a layout-independent bookmark. */
     fun getCurrentPageStartCharacterOffset(): Int? {
         val current = slotManager.getCurSlot()
-        return current.contentView.chapterStartOffset.takeIf { current.isLoaded && it >= 0 }
+        val primary = slotManager.getPrimaryContentView()
+        return primary.chapterStartOffset.takeIf { current.isLoaded && it >= 0 }
     }
 
     /** Returns the first actually visible text glyph and its owning chapter. */
     fun getCurrentPageTextAnchor(): ReaderTextAnchor? {
         val current = slotManager.getCurSlot()
         if (!current.isLoaded || current.chapterIndex < 0) return null
-        val characterOffset = current.contentView.firstVisibleCharacterOffset() ?: return null
+        val characterOffset = slotManager.getPrimaryContentView().firstVisibleCharacterOffset() ?: return null
         return ReaderTextAnchor(current.chapterIndex, characterOffset)
     }
 
     fun getCurrentPageBookmarkTitle(): String? {
-        return curPageView.textView.text
+        return slotManager.getPrimaryContentView().textView.text
             ?.toString()
             ?.lineSequence()
             ?.firstOrNull { it.isNotBlank() }
@@ -719,9 +812,12 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     fun setChineseMode(mode: String) {
         if (currentChineseMode == mode) return
         currentChineseMode = mode
-        prevPageView.chineseMode = mode
-        curPageView.chineseMode = mode
-        nextPageView.chineseMode = mode
+        for (pageView in listOf(
+            prevPageView, curPageView, nextPageView,
+            prevPageRightView, curPageRightView, nextPageRightView
+        )) {
+            pageView.chineseMode = mode
+        }
         slotManager.refreshCurrentPage()
     }
 
@@ -757,15 +853,51 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
     private fun resetPageViewPositions() {
         val pageWidth = width.toFloat()
-        prevPageView.translationX = if (currentWritingMode.isVertical) pageWidth else -pageWidth
-        prevPageView.translationY = 0f
-        prevPageView.alpha = 0f
-        curPageView.translationX = 0f
-        curPageView.translationY = 0f
-        curPageView.alpha = 1f
-        nextPageView.translationX = if (currentWritingMode.isVertical) -pageWidth else pageWidth
-        nextPageView.translationY = 0f
-        nextPageView.alpha = 0f
+        prevSpreadView.translationX = if (currentWritingMode.isVertical) pageWidth else -pageWidth
+        prevSpreadView.translationY = 0f
+        prevSpreadView.alpha = 0f
+        curSpreadView.translationX = 0f
+        curSpreadView.translationY = 0f
+        curSpreadView.alpha = 1f
+        nextSpreadView.translationX = if (currentWritingMode.isVertical) -pageWidth else pageWidth
+        nextSpreadView.translationY = 0f
+        nextSpreadView.alpha = 0f
+    }
+
+    /**
+     * 单页模式下所有页槽全宽显示、右半页隐藏；
+     * 双页对开模式下每页槽拆成左/右半页（中缝 16dp）。
+     */
+    private fun applyPageViewLayout() {
+        if (width <= 0 || height <= 0) return
+        val density = resources.displayMetrics.density
+        val gutterPx = (16f * density).toInt()
+        val halfWidth = ((width - gutterPx) / 2).coerceAtLeast(1)
+        for ((gutter, left, right) in listOf(
+            Triple(prevGutterView, prevPageView, prevPageRightView),
+            Triple(curGutterView, curPageView, curPageRightView),
+            Triple(nextGutterView, nextPageView, nextPageRightView)
+        )) {
+            if (currentTwoPageSpread) {
+                gutter.layoutParams = LayoutParams(gutterPx, LayoutParams.MATCH_PARENT).apply {
+                    leftMargin = halfWidth
+                }
+                gutter.visibility = View.VISIBLE
+                left.layoutParams = LayoutParams(halfWidth, LayoutParams.MATCH_PARENT).apply {
+                    leftMargin = 0
+                }
+                right.layoutParams = LayoutParams(halfWidth, LayoutParams.MATCH_PARENT).apply {
+                    leftMargin = halfWidth + gutterPx
+                }
+                right.visibility = View.VISIBLE
+            } else {
+                gutter.layoutParams = LayoutParams(0, LayoutParams.MATCH_PARENT)
+                gutter.visibility = View.GONE
+                left.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+                right.layoutParams = LayoutParams(0, LayoutParams.MATCH_PARENT)
+                right.visibility = View.GONE
+            }
+        }
     }
 
     /** 设置左右边缘短按的翻页方向；滑动手势方向保持不变。 */
@@ -841,9 +973,11 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 rvHasMoved = false
                 rvIsHandlingPageGesture = false
                 rvImageLongPressHandled = false
-                rvPendingImageLongPress = curPageView.getImageAt(
-                    ev.x - curPageView.left,
-                    ev.y - curPageView.top
+                val hitView = pageViewAt(ev.x, ev.y)
+                rvPendingImageView = hitView
+                rvPendingImageLongPress = hitView?.getImageAt(
+                    ev.x - hitView.left,
+                    ev.y - hitView.top
                 )?.takeIf { image ->
                     image.link == null && !image.hasAction && image.source.isNotBlank()
                 }
@@ -930,18 +1064,19 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         when (ev.actionMasked) {
             MotionEvent.ACTION_UP -> {
                 if (!rvHasMoved && System.currentTimeMillis() - rvTouchDownTime < 300L) {
-                    val link = curPageView.getLinkAt(
-                        rvTouchStartX - curPageView.left,
-                        rvTouchStartY - curPageView.top
+                    val hitView = pageViewAt(rvTouchStartX, rvTouchStartY) ?: curPageView
+                    val link = hitView.getLinkAt(
+                        rvTouchStartX - hitView.left,
+                        rvTouchStartY - hitView.top
                     )
                     if (link != null) {
                         Log.d(TAG, "EPUB link tap: $link")
                         clearCurrentSelection()
                         callbacks?.onLinkClick(link)
                     } else {
-                        val image = curPageView.getImageAt(
-                            rvTouchStartX - curPageView.left,
-                            rvTouchStartY - curPageView.top
+                        val image = hitView.getImageAt(
+                            rvTouchStartX - hitView.left,
+                            rvTouchStartY - hitView.top
                         )
                         when {
                             image?.link != null -> {
@@ -1000,7 +1135,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         clearCurrentSelection()
         performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
         val location = IntArray(2)
-        curPageView.getLocationOnScreen(location)
+        val imageView = rvPendingImageView ?: curPageView
+        imageView.getLocationOnScreen(location)
         callbacks?.onImageLongPress(
             slotManager.getCurSlot().chapterIndex.coerceAtLeast(0),
             image.copy(
@@ -1038,7 +1174,20 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private fun isVerticalSelectionHandleDragActive(): Boolean =
         prevPageView.isVerticalSelectionHandleDragActive() ||
             curPageView.isVerticalSelectionHandleDragActive() ||
-            nextPageView.isVerticalSelectionHandleDragActive()
+            nextPageView.isVerticalSelectionHandleDragActive() ||
+            prevPageRightView.isVerticalSelectionHandleDragActive() ||
+            curPageRightView.isVerticalSelectionHandleDragActive() ||
+            nextPageRightView.isVerticalSelectionHandleDragActive()
+
+    /** 返回触摸位置所在的当前页半页视图（双页模式按 x 命中左/右半页）。 */
+    private fun pageViewAt(x: Float, y: Float): PageContentView? {
+        if (!currentTwoPageSpread) return curPageView
+        val cur = slotManager.getCurSlot()
+        val left = cur.contentView
+        val right = cur.rightContentView
+        val midX = left.left + left.width.toFloat()
+        return if (x < midX) left else right ?: left
+    }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         return animationController.onTouchEvent(event)
@@ -1129,7 +1278,10 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             duration = 2_000L
             addUpdateListener { animator ->
                 val alpha = animator.animatedValue as Int
-                listOf(prevPageView, curPageView, nextPageView).forEach {
+                listOf(
+                    prevPageView, curPageView, nextPageView,
+                    prevPageRightView, curPageRightView, nextPageRightView
+                ).forEach {
                     it.setSearchHighlightAlpha(alpha)
                 }
             }
@@ -1203,6 +1355,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 bionicReadingEnabled = currentBionicReadingEnabled,
                 useDisplayDensityForSpans = currentUseDisplayDensityForSpans,
                 writingMode = currentWritingMode,
+                twoPageSpread = currentTwoPageSpread,
                 width = layoutWidth,
                 height = layoutHeight
             )
@@ -1216,7 +1369,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
      * @return null 表示当前无选区
      */
     fun getSelectionInfo(sourceView: PageContentView? = null): SelectionInfo? {
-        val pageView = sourceView ?: curPageView
+        val pageView = sourceView ?: slotManager.getPrimaryContentView()
         val tv = pageView.textView
         val spannable = tv.text as? android.text.Spannable ?: return null
         val selStart = android.text.Selection.getSelectionStart(spannable)
@@ -1261,8 +1414,11 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val endLine = layout.getLineForOffset(selEnd.coerceAtMost(spannable.length - 1))
         val topY = (tv.top + tv.paddingTop + layout.getLineTop(startLine)).toFloat()
         val bottomY = (tv.top + tv.paddingTop + layout.getLineBottom(endLine)).toFloat()
-        val startX = tv.left + tv.paddingLeft + layout.getPrimaryHorizontal(selStart)
-        val endX = tv.left + tv.paddingLeft + layout.getPrimaryHorizontal(selEnd)
+        // 双页模式下右半页视图位于父容器右半区，需要加上半页偏移，
+        // 选区菜单/手柄坐标才能对齐屏幕。
+        val viewOffsetX = pageView.left.toFloat()
+        val startX = tv.left + tv.paddingLeft + layout.getPrimaryHorizontal(selStart) + viewOffsetX
+        val endX = tv.left + tv.paddingLeft + layout.getPrimaryHorizontal(selEnd) + viewOffsetX
 
         return SelectionInfo(
             selectedText = text,
@@ -1280,6 +1436,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     /** 清除当前页的选区 */
     private fun clearCurrentSelection() {
         curPageView.clearSelection()
+        curPageRightView.clearSelection()
     }
 
     /**

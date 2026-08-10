@@ -794,6 +794,8 @@
     <string name="e_ink_mode_description">使用高对比浅色界面，关闭动效、模糊和 Liquid Glass，翻页改为即时切换。</string>
     <!-- E-ink mode -->
     <string name="e_ink_reader_fixed_theme_hint">电子墨水屏模式下固定使用浅色纸面、深色文字和即时翻页。</string>
+    <string name="label_two_page_spread">平板横屏双页对开</string>
+    <string name="two_page_spread_description">平板横屏时一次显示两页（奇数页居右）；关闭后回退单页。</string>
 
     <!-- TXT encoding -->
     <string name="reader_switch_encoding">切换编码</string>

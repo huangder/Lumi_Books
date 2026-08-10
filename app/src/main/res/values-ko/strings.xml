@@ -737,6 +737,8 @@
     <string name="label_e_ink_mode">전자잉크 모드</string>
     <string name="e_ink_mode_description">전자잉크 화면에 맞게 고대비 밝은 UI를 사용하고 애니메이션, 블러, Liquid Glass를 끄는다.</string>
     <string name="e_ink_reader_fixed_theme_hint">전자잉크 모드에서는 밝은 종이 배경, 어두운 글자, 즉시 페이지 넘김을 사용합니다.</string>
+    <string name="label_two_page_spread">태블릿 가로 화면 양면 보기</string>
+    <string name="two_page_spread_description">태블릿 가로 화면에서 두 페이지를 나란히 표시합니다(홀수 페이지는 오른쪽). 끄면 단일 페이지로 돌아갑니다.</string>
 
     <string name="reader_switch_encoding">인코딩 전환</string>
     <string name="txt_encoding_first_open_title">TXT 인코딩 안내</string>

@@ -112,6 +112,7 @@ class DataStoreManager @Inject constructor(
         private val DARK_MODE = stringPreferencesKey("dark_mode")
         private val ENTRANCE_ANIMATIONS_ENABLED = booleanPreferencesKey("entrance_animations_enabled")
         private val E_INK_MODE_ENABLED = booleanPreferencesKey("e_ink_mode_enabled")
+        private val TWO_PAGE_SPREAD_ENABLED = booleanPreferencesKey("two_page_spread_enabled")
         private val PREDICTIVE_BACK_ENABLED = booleanPreferencesKey("predictive_back_enabled")
         private val SPLASH_ENABLED = booleanPreferencesKey("splash_enabled")
         private val LAST_READ_BOOK = stringPreferencesKey("last_read_book")
@@ -337,6 +338,10 @@ class DataStoreManager @Inject constructor(
 
     val eInkModeEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[E_INK_MODE_ENABLED] ?: false
+    }
+
+    val twoPageSpreadEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[TWO_PAGE_SPREAD_ENABLED] ?: true
     }
 
     val bookshelfLayoutMode: Flow<Int> = context.dataStore.data.map { preferences ->
@@ -1051,6 +1056,12 @@ class DataStoreManager @Inject constructor(
     suspend fun saveEInkModeEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[E_INK_MODE_ENABLED] = enabled
+        }
+    }
+
+    suspend fun saveTwoPageSpreadEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[TWO_PAGE_SPREAD_ENABLED] = enabled
         }
     }
 

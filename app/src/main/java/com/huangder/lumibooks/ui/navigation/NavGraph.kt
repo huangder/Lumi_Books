@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -587,44 +588,53 @@ fun MainNavGraph(
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             val showLiquidImport = isLiquidGlass
-            Box(modifier = Modifier.fillMaxWidth()) {
-                FloatingTabBar(
-                    selectedIndex = selectedTab,
-                    hazeState = hazeState,
-                    liquidGlassBackdrop = liquidGlassBackdrop,
-                    reserveImportButtonSpace = showLiquidImport,
-                    onTabSelected = { index ->
-                        selectedTab = index
-                        val r = when (index) {
-                            0 -> Screen.Home.route
-                            1 -> Screen.Bookshelf.route
-                            2 -> Screen.Statistics.route
-                            else -> Screen.Home.route
-                        }
-                        navController.navigate(r) {
-                            popUpTo(Screen.Home.route) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    }
-                )
-                if (showLiquidImport) {
-                    LiquidGlassImportButton(
-                        onClick = {
-                            selectedImportBooks = emptyList()
-                            selectedImportBookUris = emptySet()
-                            importCopiesIntoApp = true
-                            isPreparingImport = false
-                            importPreparationGeneration++
-                            showImportActions = true
-                            showImportConfirmation = false
-                        },
-                        liquidGlassBackdrop = liquidGlassBackdrop,
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .navigationBarsPadding()
-                            .padding(end = 24.dp, top = 10.dp, bottom = 10.dp)
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier.widthIn(
+                        max = if (isLiquidGlass) 480.dp else 430.dp
                     )
+                ) {
+                    FloatingTabBar(
+                        selectedIndex = selectedTab,
+                        hazeState = hazeState,
+                        liquidGlassBackdrop = liquidGlassBackdrop,
+                        reserveImportButtonSpace = showLiquidImport,
+                        onTabSelected = { index ->
+                            selectedTab = index
+                            val r = when (index) {
+                                0 -> Screen.Home.route
+                                1 -> Screen.Bookshelf.route
+                                2 -> Screen.Statistics.route
+                                else -> Screen.Home.route
+                            }
+                            navController.navigate(r) {
+                                popUpTo(Screen.Home.route) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    )
+                    if (showLiquidImport) {
+                        LiquidGlassImportButton(
+                            onClick = {
+                                selectedImportBooks = emptyList()
+                                selectedImportBookUris = emptySet()
+                                importCopiesIntoApp = true
+                                isPreparingImport = false
+                                importPreparationGeneration++
+                                showImportActions = true
+                                showImportConfirmation = false
+                            },
+                            liquidGlassBackdrop = liquidGlassBackdrop,
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .navigationBarsPadding()
+                                .padding(end = 24.dp, top = 10.dp, bottom = 10.dp)
+                        )
+                    }
                 }
             }
         }

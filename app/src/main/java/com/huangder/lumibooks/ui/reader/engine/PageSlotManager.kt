@@ -14,14 +14,21 @@ import java.util.LinkedHashMap
 /**
  * 3 槽位页级 conveyor belt 管理器。
  *
- * 三个槽位：PREV(0)、CUR(1)、NEXT(2)
- * 槽位粒度是*页*，不是章。跨章翻页只是下一页刚好在下一章。
+ * 三个槽位：PREV(0)、CUR(1)、NEXT(2)。
+ * 槽位粒度是「页」；双页对开模式下是「跨页单元」：
+ * 每个槽位包含主页面（左页，或章首单独右页）+ 可选右半页。
+ * 章内配对规则：章首第 1 页单独居右；后续按 (2,3)、(4,5)… 成对，
+ * 即 0-based 奇数索引居左、偶数索引居右，跨页不跨章。
  */
 class PageSlotManager(
     private val layoutEngine: PageLayoutEngine,
     private val prevView: PageContentView,
     private val curView: PageContentView,
-    private val nextView: PageContentView
+    private val nextView: PageContentView,
+    private val prevRightView: PageContentView,
+    private val curRightView: PageContentView,
+    private val nextRightView: PageContentView,
+    private val spreadEnabled: () -> Boolean = { false }
 ) {
     companion object {
         const val SLOT_PREV = 0
@@ -31,9 +38,9 @@ class PageSlotManager(
     }
 
     private val slots = arrayOf(
-        SlotState(-1, -1, -1, false, prevView),
-        SlotState(-1, -1, -1, false, curView),
-        SlotState(-1, -1, -1, false, nextView)
+        SlotState(-1, -1, -1, false, prevView, rightContentView = prevRightView),
+        SlotState(-1, -1, -1, false, curView, rightContentView = curRightView),
+        SlotState(-1, -1, -1, false, nextView, rightContentView = nextRightView)
     )
 
     private val supervisorJob = SupervisorJob()
@@ -46,7 +53,7 @@ class PageSlotManager(
             size > 4
     }
 
-    /** 字号变化时暂存当前页的字符起始偏移，供 loadSlot 搜索修正后的页码 */
+    /** 字号/尺寸/模式变化时暂存当前页的字符起始偏移，供 loadSlot 搜索修正后的页码 */
     var pendingStartCharOffset: Int = -1
 
     /** 文本内容提供者：根据章节索引返回文本 */
@@ -55,7 +62,7 @@ class PageSlotManager(
     /** 高亮数据提供者：根据章节索引返回 (start, end, color) 列表 */
     var highlightProvider: ((Int) -> List<Triple<Int, Int, Int>>)? = null
 
-    /** 当前全局页码 */
+    /** 当前全局页码（主页面，双页时取左页或单独右页） */
     var currentGlobalPage: Int = 0
         private set
 
@@ -63,8 +70,11 @@ class PageSlotManager(
     var currentChapterIndex: Int = 0
         private set
 
-    /** 用户翻页回调 */
+    /** 用户翻页回调（主页面） */
     var onPageChangedCallback: ((globalPage: Int, chapterIdx: Int, pageInChapter: Int, chapterTotal: Int) -> Unit)? = null
+
+    /** 双页模式右半页回调 */
+    var onSpreadPageChangedCallback: ((rightGlobalPage: Int, rightChapterIdx: Int, rightPageInChapter: Int) -> Unit)? = null
 
     fun setChapterCount(count: Int) {
         chapterCount = count
@@ -85,14 +95,16 @@ class PageSlotManager(
     }
 
     /**
-     * 加载一个槽位。
+     * 加载一个槽位（单页模式加载单页，双页模式按配对规则加载跨页单元）。
      */
     fun loadSlot(slotIdx: Int, chapterIndex: Int, pageInChapter: Int) {
         if (chapterIndex < 0 || chapterIndex >= chapterCount) return
         if (pageInChapter < 0) return
 
         val slot = slots[slotIdx]
-        if (slot.chapterIndex == chapterIndex && slot.pageIndex == pageInChapter && slot.isLoaded) {
+        if (!spreadEnabled() &&
+            slot.chapterIndex == chapterIndex && slot.pageIndex == pageInChapter && slot.isLoaded
+        ) {
             return
         }
 
@@ -102,7 +114,13 @@ class PageSlotManager(
         slot.chapterIndex = chapterIndex
         slot.pageIndex = pageInChapter
         slot.isLoaded = false
+        slot.rightChapterIndex = -1
+        slot.rightPageIndex = -1
+        slot.rightGlobalPageIndex = -1
+        slot.rightIsLoaded = false
+        slot.primaryIsRight = false
         slot.contentView.clear()
+        slot.rightContentView?.clear()
 
         val cachedText = chapterTextCache[chapterIndex]
         val cachedLayout = layoutEngine.getChapterLayout(chapterIndex)
@@ -171,7 +189,11 @@ class PageSlotManager(
             pendingStartCharOffset = -1
         }
         if (slotIdx == SLOT_PREV && actualPage == 0 && chapterIndex < currentChapterIndex) {
-            actualPage = chapterLayout.totalPages - 1
+            actualPage = if (spreadEnabled()) {
+                lastSpreadPrimary(chapterLayout.totalPages)
+            } else {
+                chapterLayout.totalPages - 1
+            }
             slot.pageIndex = actualPage
         }
         if (actualPage !in 0 until chapterLayout.totalPages) {
@@ -179,20 +201,67 @@ class PageSlotManager(
             slot.pageIndex = actualPage
         }
 
-        val pageLayout = chapterLayout.pages[actualPage]
         val highlights = highlightProvider?.invoke(chapterIndex) ?: emptyList()
-        slot.contentView.setPageContent(
-            text,
-            pageLayout.startCharOffset,
-            pageLayout.endCharOffset,
-            highlights,
-            pageLayout.verticalGeometry
-        )
+        if (!spreadEnabled()) {
+            val pageLayout = chapterLayout.pages[actualPage]
+            slot.contentView.setPageContent(
+                text,
+                pageLayout.startCharOffset,
+                pageLayout.endCharOffset,
+                highlights,
+                pageLayout.verticalGeometry
+            )
+            slot.rightContentView?.clear()
+            slot.rightChapterIndex = -1
+            slot.rightPageIndex = -1
+            slot.rightGlobalPageIndex = -1
+            slot.rightIsLoaded = false
+            slot.primaryIsRight = false
+        } else {
+            val (leftPage, rightPage) = spreadFor(actualPage, chapterLayout.totalPages)
+            val primary = (leftPage ?: rightPage) ?: 0
+            slot.pageIndex = primary
+            slot.primaryIsRight = leftPage == null
+            if (leftPage != null) {
+                val pageLayout = chapterLayout.pages[leftPage]
+                slot.contentView.setPageContent(
+                    text,
+                    pageLayout.startCharOffset,
+                    pageLayout.endCharOffset,
+                    highlights,
+                    pageLayout.verticalGeometry
+                )
+            } else {
+                slot.contentView.clear()
+            }
+            val rightView = slot.rightContentView
+            if (rightPage != null && rightView != null) {
+                val pageLayout = chapterLayout.pages[rightPage]
+                rightView.setPageContent(
+                    text,
+                    pageLayout.startCharOffset,
+                    pageLayout.endCharOffset,
+                    highlights,
+                    pageLayout.verticalGeometry
+                )
+                slot.rightChapterIndex = chapterIndex
+                slot.rightPageIndex = rightPage
+                slot.rightGlobalPageIndex = layoutEngine.localToGlobal(chapterIndex, rightPage)
+                slot.rightIsLoaded = true
+            } else {
+                slot.rightContentView?.clear()
+                slot.rightChapterIndex = -1
+                slot.rightPageIndex = -1
+                slot.rightGlobalPageIndex = -1
+                slot.rightIsLoaded = false
+            }
+        }
         if (!isCurrentRequest(slotIdx, requestToken) ||
-            slot.chapterIndex != chapterIndex || slot.pageIndex != actualPage
+            slot.chapterIndex != chapterIndex
         ) return
+        if (!spreadEnabled() && slot.pageIndex != actualPage) return
 
-        slot.globalPageIndex = layoutEngine.localToGlobal(chapterIndex, actualPage)
+        slot.globalPageIndex = layoutEngine.localToGlobal(chapterIndex, slot.pageIndex)
         slot.isLoaded = true
         if (slotIdx == SLOT_CUR) {
             notifyPageChanged()
@@ -205,6 +274,29 @@ class PageSlotManager(
     }
 
     /**
+     * 章内跨页配对：返回 (leftPage, rightPage)，均为章内 0-based 页码。
+     * - 第 0 页（章首）单独居右：left=null, right=0
+     * - 奇数 0-based（1-based 偶数，左页）：(t, t+1)，t+1 越界则为单独左页
+     * - 偶数 0-based >0（1-based 奇数，右页）：(t-1, t)
+     */
+    private fun spreadFor(target: Int, totalPages: Int): Pair<Int?, Int?> {
+        val t = target.coerceIn(0, (totalPages - 1).coerceAtLeast(0))
+        return when {
+            t == 0 -> null to 0
+            t % 2 == 1 -> t to (if (t + 1 < totalPages) t + 1 else null)
+            else -> (t - 1) to t
+        }
+    }
+
+    /** 章节最后一跨页的主页面（左页或单独右页） */
+    private fun lastSpreadPrimary(totalPages: Int): Int {
+        if (totalPages <= 0) return 0
+        if (totalPages == 1) return 0
+        val (left, right) = spreadFor(totalPages - 1, totalPages)
+        return left ?: right ?: 0
+    }
+
+    /**
      * 后台静默预加载当前章节之后的 2 章 layout，使翻章时几乎无等待。
      * 低优先级 fire-and-forget，不阻塞主流程，失败静默忽略。
      */
@@ -213,27 +305,24 @@ class PageSlotManager(
         for (ahead in 1..2) {
             val target = currentChapter + ahead
             if (target >= chapterCount) break
-            if (layoutEngine.getChapterLayout(target) != null) continue  // 已缓存，跳过
+            if (layoutEngine.getChapterLayout(target) != null) continue
             scope.launch {
                 try {
                     val text = withContext(Dispatchers.IO) { provider(target) }
                         ?.takeUnless { it.isEmpty() } ?: return@launch
                     chapterTextCache[target] = text
-                    layoutEngine.layout(target, text)  // 结果自动进入 layoutCache
+                    layoutEngine.layout(target, text)
                     Log.d(TAG, "EagerPreload: chapter $target layout cached")
                 } catch (_: Exception) { }
             }
         }
     }
 
-    /**
-     * 退出阅读时调用：预跑当前章节的 layout 存入 layoutCache。
-     * 若 layoutEngine 由 ViewModel 持有则缓存跨实例存活，下次重入直接命中。
-     */
+    /** 退出阅读时调用：预跑当前章节的 layout 存入 layoutCache。 */
     fun preloadCurrentChapter() {
         val curChapter = currentChapterIndex
         val provider = contentProvider ?: return
-        if (layoutEngine.getChapterLayout(curChapter) != null) return  // 已缓存
+        if (layoutEngine.getChapterLayout(curChapter) != null) return
         scope.launch {
             try {
                 val text = withContext(Dispatchers.IO) { provider(curChapter) }
@@ -244,49 +333,20 @@ class PageSlotManager(
         }
     }
 
-    /**
-     * 刷新当前页内容（简繁转换等设置变更后调用）。
-     */
+    /** 刷新当前页内容（简繁转换等设置变更后调用）。 */
     fun refreshCurrentPage() {
         val cur = slots[SLOT_CUR]
         if (!cur.isLoaded) return
         val cl = layoutEngine.getChapterLayout(cur.chapterIndex) ?: return
         val text = contentProvider?.let { kotlinx.coroutines.runBlocking(Dispatchers.IO) { it(cur.chapterIndex) } } ?: return
-        val pageLayout = cl.pages.getOrNull(cur.pageIndex) ?: return
         val highlights = highlightProvider?.invoke(cur.chapterIndex) ?: emptyList()
-        cur.contentView.setPageContent(
-            text,
-            pageLayout.startCharOffset,
-            pageLayout.endCharOffset,
-            highlights,
-            pageLayout.verticalGeometry
-        )
-    }
-
-    /**
-     * 刷新当前槽位的高亮（笔记/书签变化后调用）。
-     */
-    fun refreshCurrentHighlights() {
-        val cur = slots[SLOT_CUR]
-        if (!cur.isLoaded) return
-        val ci = cur.chapterIndex
-        val pi = cur.pageIndex
-        val cl = layoutEngine.getChapterLayout(ci) ?: return
-        val pageLayout = cl.pages.getOrNull(pi) ?: return
-        val requestToken = requestTokens[SLOT_CUR]
-
-        // 🔥 异步加载文本，避免 runBlocking 阻塞主线程
-        scope.launch {
-            val text = withContext(Dispatchers.IO) { contentProvider?.invoke(ci) } ?: return@launch
-            val highlights = highlightProvider?.invoke(ci) ?: emptyList()
-
-            withContext(Dispatchers.Main) {
-                // 双重检查：异步加载期间槽位可能已变化（翻页/跳转）
-                val currentCur = slots[SLOT_CUR]
-                if (isCurrentRequest(SLOT_CUR, requestToken) &&
-                    currentCur.chapterIndex == ci && currentCur.pageIndex == pi && currentCur.isLoaded
-                ) {
-                    currentCur.contentView.setPageContent(
+        if (spreadEnabled()) {
+            val leftPage = if (cur.primaryIsRight) null else cur.pageIndex
+            val rightPage = if (cur.rightIsLoaded) cur.rightPageIndex else null
+            if (leftPage != null) {
+                val pageLayout = cl.pages.getOrNull(leftPage)
+                if (pageLayout != null) {
+                    cur.contentView.setPageContent(
                         text,
                         pageLayout.startCharOffset,
                         pageLayout.endCharOffset,
@@ -294,17 +354,103 @@ class PageSlotManager(
                         pageLayout.verticalGeometry
                     )
                 }
+            } else {
+                cur.contentView.clear()
+            }
+            if (rightPage != null) {
+                val pageLayout = cl.pages.getOrNull(rightPage)
+                if (pageLayout != null) {
+                    cur.rightContentView?.setPageContent(
+                        text,
+                        pageLayout.startCharOffset,
+                        pageLayout.endCharOffset,
+                        highlights,
+                        pageLayout.verticalGeometry
+                    )
+                }
+            } else {
+                cur.rightContentView?.clear()
+            }
+        } else {
+            val pageLayout = cl.pages.getOrNull(cur.pageIndex) ?: return
+            cur.contentView.setPageContent(
+                text,
+                pageLayout.startCharOffset,
+                pageLayout.endCharOffset,
+                highlights,
+                pageLayout.verticalGeometry
+            )
+        }
+    }
+
+    /** 刷新当前槽位的高亮（笔记/书签变化后调用）。 */
+    fun refreshCurrentHighlights() {
+        val cur = slots[SLOT_CUR]
+        if (!cur.isLoaded) return
+        val ci = cur.chapterIndex
+        val pi = cur.pageIndex
+        val cl = layoutEngine.getChapterLayout(ci) ?: return
+        val requestToken = requestTokens[SLOT_CUR]
+
+        scope.launch {
+            val text = withContext(Dispatchers.IO) { contentProvider?.invoke(ci) } ?: return@launch
+            val highlights = highlightProvider?.invoke(ci) ?: emptyList()
+
+            withContext(Dispatchers.Main) {
+                val currentCur = slots[SLOT_CUR]
+                if (isCurrentRequest(SLOT_CUR, requestToken) &&
+                    currentCur.chapterIndex == ci && currentCur.pageIndex == pi && currentCur.isLoaded
+                ) {
+                    if (spreadEnabled()) {
+                        val leftPage = if (currentCur.primaryIsRight) null else pi
+                        val rightPage = if (currentCur.rightIsLoaded) currentCur.rightPageIndex else null
+                        if (leftPage != null) {
+                            val pageLayout = cl.pages.getOrNull(leftPage)
+                            if (pageLayout != null) {
+                                currentCur.contentView.setPageContent(
+                                    text,
+                                    pageLayout.startCharOffset,
+                                    pageLayout.endCharOffset,
+                                    highlights,
+                                    pageLayout.verticalGeometry
+                                )
+                            }
+                        } else {
+                            currentCur.contentView.clear()
+                        }
+                        if (rightPage != null) {
+                            val pageLayout = cl.pages.getOrNull(rightPage)
+                            if (pageLayout != null) {
+                                currentCur.rightContentView?.setPageContent(
+                                    text,
+                                    pageLayout.startCharOffset,
+                                    pageLayout.endCharOffset,
+                                    highlights,
+                                    pageLayout.verticalGeometry
+                                )
+                            }
+                        } else {
+                            currentCur.rightContentView?.clear()
+                        }
+                    } else {
+                        val pageLayout = cl.pages.getOrNull(pi) ?: return@withContext
+                        currentCur.contentView.setPageContent(
+                            text,
+                            pageLayout.startCharOffset,
+                            pageLayout.endCharOffset,
+                            highlights,
+                            pageLayout.verticalGeometry
+                        )
+                    }
+                }
             }
         }
     }
 
-    /**
-     * 前进翻页后，传送带前移。
-     */
+    /** 前进翻页后，传送带前移（双页模式整幅前进 2 页）。 */
     fun shiftForward() {
         val nextSlot = slots[SLOT_NEXT]
         if (!nextSlot.isLoaded) {
-            // 🔥 快速翻页：NEXT 还在加载中也推进传送带，不丢页
             Log.w(TAG, "shiftForward: NEXT not loaded, advancing anyway")
             val (nextCh, nextPg) = resolveNextPage()
             if (nextCh < 0 || nextPg < 0) {
@@ -313,13 +459,18 @@ class PageSlotManager(
             }
             recycleSlot(SLOT_PREV)
             moveSlot(SLOT_CUR, SLOT_PREV)
-            // 手动设置 CUR（用推算的下一页位置）
             val curSlot = slots[SLOT_CUR]
             curSlot.chapterIndex = nextCh
             curSlot.pageIndex = nextPg
             curSlot.globalPageIndex = layoutEngine.localToGlobal(nextCh, nextPg)
             curSlot.isLoaded = false
+            curSlot.rightChapterIndex = -1
+            curSlot.rightPageIndex = -1
+            curSlot.rightGlobalPageIndex = -1
+            curSlot.rightIsLoaded = false
+            curSlot.primaryIsRight = false
             curSlot.contentView.clear()
+            curSlot.rightContentView?.clear()
             currentChapterIndex = nextCh
             currentGlobalPage = curSlot.globalPageIndex
             loadSlot(SLOT_CUR, nextCh, nextPg)
@@ -343,13 +494,10 @@ class PageSlotManager(
         notifyPageChanged()
     }
 
-    /**
-     * 后退翻页后，传送带后移。
-     */
+    /** 后退翻页后，传送带后移（双页模式整幅后退 2 页）。 */
     fun shiftBackward() {
         val prevSlot = slots[SLOT_PREV]
         if (!prevSlot.isLoaded) {
-            // 🔥 快速翻页：PREV 还在加载中也推进传送带，不丢页
             Log.w(TAG, "shiftBackward: PREV not loaded, advancing anyway")
             val (prevCh, prevPg) = resolvePrevPage()
             if (prevCh < 0 || prevPg < 0) {
@@ -358,13 +506,18 @@ class PageSlotManager(
             }
             recycleSlot(SLOT_NEXT)
             moveSlot(SLOT_CUR, SLOT_NEXT)
-            // 手动设置 CUR（用推算的前一页位置）
             val curSlot = slots[SLOT_CUR]
             curSlot.chapterIndex = prevCh
             curSlot.pageIndex = prevPg
             curSlot.globalPageIndex = layoutEngine.localToGlobal(prevCh, prevPg)
             curSlot.isLoaded = false
+            curSlot.rightChapterIndex = -1
+            curSlot.rightPageIndex = -1
+            curSlot.rightGlobalPageIndex = -1
+            curSlot.rightIsLoaded = false
+            curSlot.primaryIsRight = false
             curSlot.contentView.clear()
+            curSlot.rightContentView?.clear()
             currentChapterIndex = prevCh
             currentGlobalPage = curSlot.globalPageIndex
             loadSlot(SLOT_CUR, prevCh, prevPg)
@@ -388,9 +541,7 @@ class PageSlotManager(
         notifyPageChanged()
     }
 
-    /**
-     * 跳转到指定章节的指定页。
-     */
+    /** 跳转到指定章节的指定页（双页模式自动配对）。 */
     fun jumpTo(chapterIndex: Int, pageInChapter: Int) {
         for (i in 0..2) recycleSlot(i)
 
@@ -408,6 +559,14 @@ class PageSlotManager(
         val chapterLayout = layoutEngine.getChapterLayout(chapterIndex)
         val chapterTotal = chapterLayout?.totalPages ?: 0
         onPageChangedCallback?.invoke(currentGlobalPage, chapterIndex, pageInChapter, chapterTotal)
+        val cur = slots[SLOT_CUR]
+        if (cur.rightIsLoaded && cur.rightPageIndex >= 0) {
+            onSpreadPageChangedCallback?.invoke(
+                cur.rightGlobalPageIndex,
+                cur.rightChapterIndex,
+                cur.rightPageIndex
+            )
+        }
     }
 
     // ── 内部方法 ──
@@ -419,15 +578,23 @@ class PageSlotManager(
         val ci = cur.chapterIndex
         val pi = cur.pageIndex
 
-        val cl = layoutEngine.getChapterLayout(ci)
-        if (cl != null && pi + 1 < cl.totalPages) {
-            return ci to pi + 1
+        val cl = layoutEngine.getChapterLayout(ci) ?: return -1 to -1
+        if (spreadEnabled()) {
+            val nextPrimary = if (pi == 0) 1 else pi + 2
+            if (nextPrimary < cl.totalPages) {
+                return ci to nextPrimary
+            }
+            val nextCh = ci + 1
+            if (nextCh < chapterCount) {
+                return nextCh to 0
+            }
+            return -1 to -1
         }
-        val nextCh = ci + 1
-        if (nextCh < chapterCount) {
-            return nextCh to 0
+        return when {
+            pi + 1 < cl.totalPages -> ci to pi + 1
+            ci + 1 < chapterCount -> ci + 1 to 0
+            else -> -1 to -1
         }
-        return -1 to -1
     }
 
     private fun resolvePrevPage(): Pair<Int, Int> {
@@ -437,6 +604,18 @@ class PageSlotManager(
         val ci = cur.chapterIndex
         val pi = cur.pageIndex
 
+        if (spreadEnabled()) {
+            if (pi > 0) {
+                return ci to (pi - 2).coerceAtLeast(0)
+            }
+            val prevCh = ci - 1
+            if (prevCh < 0) return -1 to -1
+            val cl = layoutEngine.getChapterLayout(prevCh)
+            if (cl != null && cl.totalPages > 0) {
+                return prevCh to lastSpreadPrimary(cl.totalPages)
+            }
+            return prevCh to 0
+        }
         if (pi - 1 >= 0) {
             return ci to pi - 1
         }
@@ -458,12 +637,17 @@ class PageSlotManager(
         val toSlot = slots[to]
 
         toSlot.contentView.clear()
+        toSlot.rightContentView?.clear()
 
         toSlot.chapterIndex = fromSlot.chapterIndex
         toSlot.pageIndex = fromSlot.pageIndex
         toSlot.globalPageIndex = fromSlot.globalPageIndex
         toSlot.isLoaded = fromSlot.isLoaded
-        // 复制文本内容：textView 用副本（透明 ImageSpan），justifiedView 用原始 spannable（真实 ImageSpan）
+        toSlot.rightChapterIndex = fromSlot.rightChapterIndex
+        toSlot.rightPageIndex = fromSlot.rightPageIndex
+        toSlot.rightGlobalPageIndex = fromSlot.rightGlobalPageIndex
+        toSlot.rightIsLoaded = fromSlot.rightIsLoaded
+        toSlot.primaryIsRight = fromSlot.primaryIsRight
         toSlot.contentView.syncText(
             textViewText = fromSlot.contentView.textView.text,
             justifiedText = fromSlot.contentView.getJustifiedText(),
@@ -471,17 +655,30 @@ class PageSlotManager(
             chapterStartOffset = fromSlot.contentView.chapterStartOffset,
             verticalGeometry = fromSlot.contentView.getVerticalGeometry()
         )
-        // 🔥 诊断：syncText 只 invalidate 了子 View（textView/justifiedView），
-        // 但父容器 PageContentView 的硬件 Display List 可能未失效。
-        // 显式 invalidate 确保 PageContentView 的 RenderNode 重建，消除闪烁。
+        fromSlot.rightContentView?.let { fromRight ->
+            toSlot.rightContentView?.syncText(
+                textViewText = fromRight.textView.text,
+                justifiedText = fromRight.getJustifiedText(),
+                justifyLastLine = fromRight.shouldJustifyLastLine(),
+                chapterStartOffset = fromRight.chapterStartOffset,
+                verticalGeometry = fromRight.getVerticalGeometry()
+            )
+        }
         Log.d(TAG, "moveSlot $from→$to: invalidating ${toSlot.contentView}")
         toSlot.contentView.invalidate()
+        toSlot.rightContentView?.invalidate()
 
         fromSlot.chapterIndex = -1
         fromSlot.pageIndex = -1
         fromSlot.globalPageIndex = -1
         fromSlot.isLoaded = false
+        fromSlot.rightChapterIndex = -1
+        fromSlot.rightPageIndex = -1
+        fromSlot.rightGlobalPageIndex = -1
+        fromSlot.rightIsLoaded = false
+        fromSlot.primaryIsRight = false
         fromSlot.contentView.clear()
+        fromSlot.rightContentView?.clear()
     }
 
     private fun recycleSlot(slotIdx: Int) {
@@ -491,7 +688,13 @@ class PageSlotManager(
         slot.pageIndex = -1
         slot.globalPageIndex = -1
         slot.isLoaded = false
+        slot.rightChapterIndex = -1
+        slot.rightPageIndex = -1
+        slot.rightGlobalPageIndex = -1
+        slot.rightIsLoaded = false
+        slot.primaryIsRight = false
         slot.contentView.clear()
+        slot.rightContentView?.clear()
     }
 
     private fun invalidateRequest(slotIdx: Int) {
@@ -509,12 +712,29 @@ class PageSlotManager(
         val chapterLayout = layoutEngine.getChapterLayout(cur.chapterIndex)
         val chapterTotal = chapterLayout?.totalPages ?: 0
         onPageChangedCallback?.invoke(cur.globalPageIndex, cur.chapterIndex, cur.pageIndex, chapterTotal)
+        if (cur.rightIsLoaded && cur.rightPageIndex >= 0) {
+            onSpreadPageChangedCallback?.invoke(
+                cur.rightGlobalPageIndex,
+                cur.rightChapterIndex,
+                cur.rightPageIndex
+            )
+        }
     }
 
     fun getCurSlot(): SlotState = slots[SLOT_CUR]
     fun getPrevSlot(): SlotState = slots[SLOT_PREV]
     fun getNextSlot(): SlotState = slots[SLOT_NEXT]
-    fun getSlotForView(view: PageContentView): SlotState? = slots.firstOrNull { it.contentView === view }
+
+    /** 当前主内容视图：双页单独右页时返回右半页，否则返回左半页。 */
+    fun getPrimaryContentView(): PageContentView =
+        if (slots[SLOT_CUR].primaryIsRight) {
+            slots[SLOT_CUR].rightContentView ?: slots[SLOT_CUR].contentView
+        } else {
+            slots[SLOT_CUR].contentView
+        }
+
+    fun getSlotForView(view: PageContentView): SlotState? =
+        slots.firstOrNull { it.contentView === view || it.rightContentView === view }
 
     fun clearContentCache() {
         chapterTextCache.clear()

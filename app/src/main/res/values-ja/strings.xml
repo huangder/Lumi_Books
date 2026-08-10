@@ -737,6 +737,8 @@
     <string name="label_e_ink_mode">電子ペーパーモード</string>
     <string name="e_ink_mode_description">電子ペーパー向けに高コントラストの明るい画面を使い、アニメーション、ぼかし、Liquid Glass を無効にします。</string>
     <string name="e_ink_reader_fixed_theme_hint">電子ペーパーモードでは、明るい紙面、濃い文字、即時ページ送りを使用します。</string>
+    <string name="label_two_page_spread">タブレット横画面の見開き表示</string>
+    <string name="two_page_spread_description">タブレット横画面で見開き2ページを表示します（奇数ページは右）。オフにすると1ページ表示に戻ります。</string>
 
     <string name="reader_switch_encoding">文字コードを切替</string>
     <string name="txt_encoding_first_open_title">TXT 文字コードのヒント</string>

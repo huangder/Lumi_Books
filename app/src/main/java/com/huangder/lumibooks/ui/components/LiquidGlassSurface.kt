@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -270,37 +271,42 @@ fun LiquidGlassSheetContainer(
     val containerBackdrop = rememberLayerBackdrop()
     val contentShape = if (isLiquidGlass) RoundedCornerShape(28.dp) else shape
 
-    Box(modifier = modifier) {
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .then(
-                    if (isLiquidGlass) Modifier.layerBackdrop(containerBackdrop) else Modifier
-                )
-                .liquidGlassSheetSurface(
-                    fallbackColor = fallbackColor,
-                    shape = shape,
-                    backdrop = parentBackdrop
-                )
-        )
-        ProvideLiquidGlassBackdrop(containerBackdrop.takeIf { isLiquidGlass }) {
+    // 弹层保持手机端宽度（平板不拉长，避免内容排版被拉伸）。
+    // widthIn 必须位于调用方 fillMaxWidth 之前（外层）才能生效，
+    // 因此用外层 Box 居中 + 内层限宽容器实现。
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier.widthIn(max = 480.dp)) {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .matchParentSize()
                     .then(
-                        if (isLiquidGlass) {
-                            Modifier.padding(start = 14.dp, end = 14.dp, bottom = 12.dp)
-                        } else {
-                            Modifier
-                        }
+                        if (isLiquidGlass) Modifier.layerBackdrop(containerBackdrop) else Modifier
                     )
-                    .then(contentModifier)
-                    // 圆角遮罩负责贴合弹层造型，矩形视口裁剪阻止滚动内容越过容器边界。
-                    .clip(contentShape)
-                    .clipToBounds(),
-                contentAlignment = contentAlignment,
-                content = content
+                    .liquidGlassSheetSurface(
+                        fallbackColor = fallbackColor,
+                        shape = shape,
+                        backdrop = parentBackdrop
+                    )
             )
+            ProvideLiquidGlassBackdrop(containerBackdrop.takeIf { isLiquidGlass }) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (isLiquidGlass) {
+                                Modifier.padding(start = 14.dp, end = 14.dp, bottom = 12.dp)
+                            } else {
+                                Modifier
+                            }
+                        )
+                        .then(contentModifier)
+                        // 圆角遮罩负责贴合弹层造型，矩形视口裁剪阻止滚动内容越过容器边界。
+                        .clip(contentShape)
+                        .clipToBounds(),
+                    contentAlignment = contentAlignment,
+                    content = content
+                )
+            }
         }
     }
 }

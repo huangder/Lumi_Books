@@ -767,6 +767,8 @@
     <string name="label_e_ink_mode">E-ink mode</string>
     <string name="e_ink_mode_description">Use a high-contrast light interface and disable animations, blur, and Liquid Glass for e-ink screens.</string>
     <string name="e_ink_reader_fixed_theme_hint">E-ink mode uses a light paper background, dark text, and instant page turns.</string>
+    <string name="label_two_page_spread">Two-page spread on tablets</string>
+    <string name="two_page_spread_description">Shows two pages side by side on tablet landscape (odd pages on the right); turn off to fall back to a single page.</string>
 
     <string name="reader_switch_encoding">Switch encoding</string>
     <string name="txt_encoding_first_open_title">TXT encoding tip</string>

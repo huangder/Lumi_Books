@@ -14,6 +14,16 @@ interface ReadViewCallbacks {
         chapterTotalPages: Int
     )
 
+    /**
+     * 双页对开模式下，当前跨页的右半页切换回调。
+     * 单页模式不会调用；实现方可用它显示「12–13 / N」样式的页码。
+     */
+    fun onSpreadPageChanged(
+        rightGlobalPage: Int,
+        rightChapterIndex: Int,
+        rightPageInChapter: Int
+    ) {}
+
     /** 点击中间区域，切换菜单 */
     fun onMenuToggle()
 

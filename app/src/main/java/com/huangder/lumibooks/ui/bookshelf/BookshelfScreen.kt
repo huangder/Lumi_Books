@@ -82,6 +82,7 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -448,14 +449,19 @@ fun BookshelfScreen(
                         onRemoveCustomCover = removeCoverFromList,
                         onTags = editTagsFromList,
                         onBookmarksNotes = openNotesFromList,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier
+                            .widthIn(max = 1000.dp)
+                            .fillMaxWidth()
+                            .align(Alignment.TopCenter)
                     )
                 }
             } else {
             OverscrollBounce(modifier = Modifier.fillMaxSize()) {
                 Column(
                     modifier = Modifier
+                        .widthIn(max = 1000.dp)
                         .fillMaxSize()
+                        .align(Alignment.TopCenter)
                 ) {
                     BookshelfCapsuleHeader(
                         filterTabs = filterTabs,
@@ -589,6 +595,8 @@ fun BookshelfScreen(
                                 null
                             }
                         }
+                        .align(Alignment.TopCenter)
+                        .widthIn(max = 1000.dp)
                 )
             }
         }
@@ -819,6 +827,9 @@ internal fun BookshelfCollection(
     modifier: Modifier = Modifier
 ) {
     val targetMode = layoutMode.coerceIn(1, 3)
+    val configuration = LocalConfiguration.current
+    val isTabletLandscape = configuration.smallestScreenWidthDp >= 600 &&
+        configuration.screenWidthDp > configuration.screenHeightDp
     var renderedMode by remember { mutableStateOf(targetMode) }
     var transitionInProgress by remember { mutableStateOf(false) }
     val transitionAlpha = remember { Animatable(1f) }
@@ -939,7 +950,11 @@ internal fun BookshelfCollection(
             } else {
                 val gridSpacing = if (renderedMode == 3) 12.dp else AppSpace.lg
             LazyVerticalGrid(
-                columns = GridCells.Fixed(renderedMode),
+                columns = if (isTabletLandscape && renderedMode >= 2) {
+                    GridCells.Adaptive(140.dp)
+                } else {
+                    GridCells.Fixed(renderedMode)
+                },
                 contentPadding = PaddingValues(
                     start = AppSpace.lg,
                     top = topPadding,
@@ -1017,6 +1032,10 @@ private fun BookshelfHeaderActions(
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val contentColor = if (isLiquidGlass) AppColors.TextPrimary else Color.White
+    // 平板横屏下 2/3 宫格都按自适应列渲染（效果一致），因此只在列表/宫格间切换
+    val configuration = LocalConfiguration.current
+    val isTabletLandscape = configuration.smallestScreenWidthDp >= 600 &&
+        configuration.screenWidthDp > configuration.screenHeightDp
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1038,12 +1057,24 @@ private fun BookshelfHeaderActions(
             shape = CircleShape,
             fallbackColor = if (isLiquidGlass) AppColors.CardBg else AppColors.Accent,
             contentScrimColor = AppColors.CardBg.copy(alpha = 0.58f),
-            onClick = { onLayoutModeChange(layoutMode % 3 + 1) },
+            onClick = {
+                onLayoutModeChange(
+                    if (isTabletLandscape) {
+                        if (layoutMode == 1) 2 else 1
+                    } else {
+                        layoutMode % 3 + 1
+                    }
+                )
+            },
             effectPadding = 1.dp,
             modifier = Modifier.size(32.dp)
         ) {
             Text(
-                text = layoutMode.coerceIn(1, 3).toString(),
+                text = if (isTabletLandscape) {
+                    (if (layoutMode == 1) 1 else 2).toString()
+                } else {
+                    layoutMode.coerceIn(1, 3).toString()
+                },
                 color = contentColor,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold

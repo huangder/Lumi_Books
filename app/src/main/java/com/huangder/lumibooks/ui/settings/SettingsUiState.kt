@@ -66,6 +66,7 @@ data class SettingsUiState(
     val darkMode: String = "system",       // "system" / "light" / "dark"
     val entranceAnimationsEnabled: Boolean = true,
     val eInkModeEnabled: Boolean = false,
+    val twoPageSpreadEnabled: Boolean = true,
     val predictiveBackEnabled: Boolean = true,
     val splashEnabled: Boolean = true,
     val readerTheme: String = "day",       // "day" / "night" / "sepia" / "green"

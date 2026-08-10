@@ -195,6 +195,9 @@ data class ReaderUiState(
     val volumeKeyPageTurnEnabled: Boolean = false,
     val bionicReadingEnabled: Boolean = false,
     val eInkModeEnabled: Boolean = false,
+    val twoPageSpreadEnabled: Boolean = true,
+    /** 双页对开模式当前跨页的右半页（无右页时为 null） */
+    val rightPageIndex: Int? = null,
     val screenSleepTimeoutSeconds: Int = DataStoreManager.DEFAULT_SCREEN_SLEEP_TIMEOUT_SECONDS,
     val readerEdgeTapMode: ReaderEdgeTapMode = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT,
     val readerWritingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL,
@@ -586,6 +589,11 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.eInkModeEnabled.collectLatest { enabled ->
                 _uiState.value = _uiState.value.copy(eInkModeEnabled = enabled)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.twoPageSpreadEnabled.collectLatest { enabled ->
+                _uiState.value = _uiState.value.copy(twoPageSpreadEnabled = enabled)
             }
         }
         viewModelScope.launch {
@@ -1229,7 +1237,8 @@ class ReaderViewModel @Inject constructor(
             isEpubChapterHandoffInProgress = false,
             isLoading = false,
             epubLocatorJson = locatorJson ?: _uiState.value.epubLocatorJson,
-            pendingPageFraction = 0f
+            pendingPageFraction = 0f,
+            rightPageIndex = null
         )
         ttsController.onPageVisible(bookId, _uiState.value.currentChapterIndex, pageIndex)
         saveProgress()
@@ -1543,6 +1552,7 @@ class ReaderViewModel @Inject constructor(
                     val readerWritingMode = dataStoreManager.readerWritingMode(bookId).first()
                     val chineseMode = dataStoreManager.chineseMode().first()
                     val eInkModeEnabled = dataStoreManager.eInkModeEnabled.first()
+                    val twoPageSpreadEnabled = dataStoreManager.twoPageSpreadEnabled.first()
                     val pageTransition = if (eInkModeEnabled) "none" else dataStoreManager.pageTransition().first()
                     val paragraphSpacing = dataStoreManager.paragraphSpacing().first()
                     val firstLineIndent = dataStoreManager.firstLineIndent().first()
@@ -1615,6 +1625,7 @@ class ReaderViewModel @Inject constructor(
                         firstLineIndent = firstLineIndent,
                         pdfPageMode = pdfPageMode,
                         eInkModeEnabled = eInkModeEnabled,
+                        twoPageSpreadEnabled = twoPageSpreadEnabled,
                         error = null
                     )
 
@@ -1814,6 +1825,7 @@ class ReaderViewModel @Inject constructor(
             currentChapterIndex = chapterIndex,
             currentPageIndex = pageInChapter,
             totalPages = chapterTotalPages,
+            rightPageIndex = null,
             pageReady = true
         )
         ttsController.onPageVisible(bookId, chapterIndex, pageInChapter)
@@ -1827,6 +1839,21 @@ class ReaderViewModel @Inject constructor(
             return
         }
         saveProgress()
+    }
+
+    /**
+     * 双页对开模式右半页切换回调。
+     */
+    fun onSpreadPageChanged(
+        rightGlobalPage: Int,
+        rightChapterIndex: Int,
+        rightPageInChapter: Int
+    ) {
+        val currentState = _uiState.value
+        if (currentState.pageTransition == "continuous" && !currentState.eInkModeEnabled) return
+        _uiState.value = currentState.copy(
+            rightPageIndex = rightPageInChapter.takeIf { it >= 0 }
+        )
     }
 
     fun startTts(
