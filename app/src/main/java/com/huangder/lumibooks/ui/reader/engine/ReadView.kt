@@ -472,8 +472,12 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         height: Int = this.height
     ) {
         if (width <= 0 || height <= 0 || chapterCount <= 0) {
-            pendingStartChapter = startChapter
-            pendingStartPage = startPage
+            // 仅在拿到真实起始位置时更新锚点；书籍尚未加载（chapterCount<=0）
+            // 或起始章节无效时保留上一次的有效锚点，避免用 0 覆盖真实进度。
+            if (chapterCount > 0 && startChapter >= 0) {
+                pendingStartChapter = startChapter
+                pendingStartPage = startPage
+            }
             currentFontSizePx = fontSizePx
             currentTheme = theme
             currentChapterCount = chapterCount
@@ -527,18 +531,22 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 letterSpacingChanged || fontTypeChanged || customFontPathChanged || marginChanged ||
                 overlayInsetChanged || paragraphSpacingChanged || bionicReadingChanged ||
                 paginationLayoutChanged || writingModeChanged || spreadModeChanged || sizeChanged
-        // 旋转/进出双页时，重新分页必须基于“当前真实槽位”的章与页，
+        // 旋转/进出双页/窗口 resize（含 ColorOS 小窗）时，重新分页必须基于“当前真实槽位”的章与页，
         // 而不是 onLayout 传进来的过期 pendingStartChapter/pendingStartPage，
         // 否则整本书会跳回第 1 页（锚点只修正章内页码，不修正章节）。
+        // 槽位在异步加载中（isLoaded=false）时 chapterIndex/pageIndex 仍是本次目标位置，
+        // 必须继续作为锚点；否则连续 resize 期间会回退到 startChapter/pendingStartChapter
+        // （初始化早期可能为 0），把阅读进度清零。
         val relayoutToCurrent = sizeChanged || spreadModeChanged
         val curSlotForRelayout = slotManager.getCurSlot()
-        val effectiveStartChapter = if (relayoutToCurrent && curSlotForRelayout.isLoaded) {
+        val hasCurrentAnchor = curSlotForRelayout.chapterIndex >= 0
+        val effectiveStartChapter = if (relayoutToCurrent && hasCurrentAnchor) {
             curSlotForRelayout.chapterIndex
         } else {
             startChapter
         }
-        val effectiveStartPage = if (relayoutToCurrent && curSlotForRelayout.isLoaded) {
-            curSlotForRelayout.pageIndex
+        val effectiveStartPage = if (relayoutToCurrent && hasCurrentAnchor) {
+            curSlotForRelayout.pageIndex.coerceAtLeast(0)
         } else {
             startPage
         }
@@ -546,7 +554,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         // 🔥 无变化时提前返回，避免菜单切换等 recomposition 触发不必要的重配置
         if (isConfigured && !needsRelayout) {
             val currentSlot = slotManager.getCurSlot()
-            if (currentSlot.chapterIndex != startChapter || currentSlot.pageIndex != startPage) {
+            if (startChapter >= 0 &&
+                (currentSlot.chapterIndex != startChapter || currentSlot.pageIndex != startPage)
+            ) {
                 jumpToChapter(startChapter, startPage)
             }
             return

@@ -260,6 +260,7 @@ class ReaderViewModel @Inject constructor(
 
     private companion object {
         const val CONTINUOUS_PROGRESS_SCALE = 10_000
+        const val PROGRESS_SAVE_DEBOUNCE_MS = 350L
     }
 
     private val bookId: String = savedStateHandle.get<String>("bookId") ?: ""
@@ -1850,7 +1851,7 @@ class ReaderViewModel @Inject constructor(
             }
             return
         }
-        saveProgress()
+        scheduleProgressSave()
     }
 
     /**
@@ -2457,6 +2458,24 @@ class ReaderViewModel @Inject constructor(
         val state = _uiState.value
         val writeVersion = ++progressWriteVersion
         viewModelScope.launch {
+            progressWriteMutex.withLock {
+                if (writeVersion == progressWriteVersion) saveProgressFor(state)
+            }
+        }
+    }
+
+    /**
+     * 分页引擎回调驱动的进度保存：短暂防抖后写入。
+     * 小窗/旋转等窗口 resize 会触发连续多次重排回调，中间可能夹带瞬态位置；
+     * 防抖 + 版本号保证最终只写入最后一次（锚点修正后）的真实位置，
+     * 避免瞬态 0 进度覆盖用户真实进度。退后台/离开阅读页走 saveProgress() 即时落库。
+     */
+    private fun scheduleProgressSave() {
+        val state = _uiState.value
+        val writeVersion = ++progressWriteVersion
+        continuousProgressJob?.cancel()
+        continuousProgressJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(PROGRESS_SAVE_DEBOUNCE_MS)
             progressWriteMutex.withLock {
                 if (writeVersion == progressWriteVersion) saveProgressFor(state)
             }
