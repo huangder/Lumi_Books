@@ -2,6 +2,7 @@ package com.huangder.lumibooks.util.epub
 
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
+import org.jsoup.nodes.DataNode
 import org.jsoup.nodes.TextNode
 import org.jsoup.parser.Parser
 import org.jsoup.select.NodeTraversor
@@ -27,9 +28,16 @@ object EpubDocumentTransformer {
                 .attr("name", "viewport")
                 .attr("content", "width=device-width, initial-scale=1, maximum-scale=5")
         }
-        head.appendElement("style").attr("id", "lumi-reader-style").appendText(READER_CSS)
+        // 同 script：样式中的 '>'（如后代选择器）若被转义成 &gt;，HTML 解析模式下
+        // 不会反转义，部分规则会失效，因此也用 DataNode 注入。
+        head.appendElement("style").attr("id", "lumi-reader-style")
+            .appendChild(DataNode(READER_CSS))
         document.body().attr("data-lumi-layout", layout.name.lowercase())
-        document.body().appendElement("script").attr("id", "lumi-reader-script").appendText(READER_SCRIPT)
+        // 必须以 DataNode 注入：文档以 XML 语法序列化，appendText 会把脚本里的
+        // '<'、'>'、'&' 转义成 &lt; &gt; &amp;，浏览器在 <script> 内不会反转义，
+        // 导致分页脚本语法错误、原排版空白卡死（text/html 章节尤其明显）。
+        document.body().appendElement("script").attr("id", "lumi-reader-script")
+            .appendChild(DataNode(READER_SCRIPT))
         return document.outerHtml().toByteArray(Charsets.UTF_8)
     }
 
@@ -138,6 +146,11 @@ body[data-lumi-layout="reflowable"] img,
 body[data-lumi-layout="reflowable"] svg,
 body[data-lumi-layout="reflowable"] video,
 body[data-lumi-layout="reflowable"] canvas {
+  /* 原书常见 p+p { text-indent } 会把整行图片向右推，造成插图偏右；
+     块级化并水平居中，让插图按内容列居中显示。 */
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
   max-width: 100%;
   /* 竖版大图按整页宽度放大后会超出页面高度、下半截被裁掉；
      限制高度不超过当前分页的内容区高度，保持比例缩放到整页可见。 */
