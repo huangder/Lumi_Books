@@ -2301,6 +2301,14 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch { readingRepository.deleteBookmark(bookmark) }
     }
 
+    fun updateBookmarkTitle(bookmark: Bookmark, newTitle: String) {
+        val title = newTitle.trim()
+        if (title.isEmpty() || title == bookmark.title) return
+        viewModelScope.launch {
+            readingRepository.updateBookmark(bookmark.copy(title = title))
+        }
+    }
+
     fun addNote(
         selectedText: String,
         noteText: String,

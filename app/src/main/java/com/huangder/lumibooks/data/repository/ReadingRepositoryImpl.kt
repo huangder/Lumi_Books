@@ -64,6 +64,10 @@ class ReadingRepositoryImpl @Inject constructor(
         bookmarkDao.insertBookmark(bookmark.toEntity())
     }
 
+    override suspend fun updateBookmark(bookmark: Bookmark) {
+        bookmarkDao.updateBookmark(bookmark.toEntity())
+    }
+
     override suspend fun deleteBookmark(bookmark: Bookmark) {
         bookmarkDao.deleteBookmark(bookmark.toEntity())
     }

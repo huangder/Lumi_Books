@@ -5,6 +5,7 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Update
 import com.huangder.lumibooks.data.local.entity.BookmarkEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -15,6 +16,9 @@ interface BookmarkDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertBookmark(bookmark: BookmarkEntity)
+
+    @Update
+    suspend fun updateBookmark(bookmark: BookmarkEntity)
 
     @Delete
     suspend fun deleteBookmark(bookmark: BookmarkEntity)

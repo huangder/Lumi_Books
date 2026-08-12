@@ -142,7 +142,9 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.Canvas
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -187,6 +189,8 @@ import com.huangder.lumibooks.ui.components.ConfigurableBackHandler
 import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
+import com.huangder.lumibooks.ui.components.LiquidGlassDialog
+import com.huangder.lumibooks.ui.components.EditInputDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
@@ -2289,6 +2293,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 requestClose = requestCloseToc,
                 tocEntries = uiState.tocEntries,
                 currentChapter = uiState.currentChapterIndex,
+                bookmarks = bookmarks,
+                chapterTitles = uiState.chapterTitles,
                 onChapterSelected = { entry ->
                     scope.launch {
                         val target = viewModel.resolveTocTarget(
@@ -2315,6 +2321,51 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     showToc = false
                     requestCloseToc = false
                 },
+                onBookmarkClick = { bm ->
+                    if (isBookLayout) {
+                        val chapterHref = epubSession?.chapterHref(bm.chapterIndex).orEmpty()
+                        val locatorJson = bm.locatorJson
+                            ?.takeIf { isEpubLocatorForChapter(it, chapterHref) }
+                            ?: bm.characterOffset?.let { characterOffset ->
+                                createEpubFallbackLocator(
+                                    href = chapterHref,
+                                    charOffset = characterOffset,
+                                    chapterTextLength = viewModel.getChapterTextLength(bm.chapterIndex).coerceAtLeast(1)
+                                )
+                            }
+                        epubPendingFragment = null
+                        epubSearchRequest = null
+                        if (locatorJson != null) {
+                            epubPageRequest = null
+                            epubLocatorRequestToken++
+                            epubLocatorRequest = EpubLocatorRequest(
+                                token = epubLocatorRequestToken,
+                                chapterIndex = bm.chapterIndex,
+                                locatorJson = locatorJson
+                            )
+                        } else {
+                            epubLocatorRequest = null
+                            epubPageRequestToken++
+                            epubPageRequest = EpubPageRequest(
+                                token = epubPageRequestToken,
+                                chapterIndex = bm.chapterIndex,
+                                pageIndex = bm.position.toInt().coerceAtLeast(0)
+                            )
+                        }
+                        if (bm.chapterIndex != uiState.currentChapterIndex) {
+                            viewModel.setChapter(bm.chapterIndex)
+                        }
+                    } else if (isContinuousScrollMode) {
+                        jumpToContinuousChapter(bm.chapterIndex)
+                    } else {
+                        bm.characterOffset?.let { readViewRef.value?.jumpToCharacter(bm.chapterIndex, it) }
+                            ?: readViewRef.value?.jumpToChapter(bm.chapterIndex, bm.position.toInt())
+                    }
+                    showToc = false
+                    requestCloseToc = false
+                },
+                onDeleteBookmark = { bm -> viewModel.deleteBookmark(bm) },
+                onEditBookmark = { bm, newTitle -> viewModel.updateBookmarkTitle(bm, newTitle) },
                 onDismiss = { showToc = false; requestCloseToc = false }
             )
 
@@ -2543,7 +2594,6 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         requestClose = requestCloseNotesList,
         glassBackdrop = activeReaderGlassBackdrop,
         notes = viewModel.notes.collectAsState().value,
-        bookmarks = bookmarks,
         onNoteClick = noteClick@ { note ->
             if (isBookLayout) {
                 val chapterTextLength = viewModel.getChapterTextLength(note.chapterIndex).coerceAtLeast(1)
@@ -2582,50 +2632,6 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             requestCloseNotesList = false
         },
         onDeleteNote = { note -> viewModel.deleteNote(note) },
-        onBookmarkClick = { bm ->
-            if (isBookLayout) {
-                val chapterHref = epubSession?.chapterHref(bm.chapterIndex).orEmpty()
-                val locatorJson = bm.locatorJson
-                    ?.takeIf { isEpubLocatorForChapter(it, chapterHref) }
-                    ?: bm.characterOffset?.let { characterOffset ->
-                        createEpubFallbackLocator(
-                            href = chapterHref,
-                            charOffset = characterOffset,
-                            chapterTextLength = viewModel.getChapterTextLength(bm.chapterIndex).coerceAtLeast(1)
-                        )
-                    }
-                epubPendingFragment = null
-                epubSearchRequest = null
-                if (locatorJson != null) {
-                    epubPageRequest = null
-                    epubLocatorRequestToken++
-                    epubLocatorRequest = EpubLocatorRequest(
-                        token = epubLocatorRequestToken,
-                        chapterIndex = bm.chapterIndex,
-                        locatorJson = locatorJson
-                    )
-                } else {
-                    epubLocatorRequest = null
-                    epubPageRequestToken++
-                    epubPageRequest = EpubPageRequest(
-                        token = epubPageRequestToken,
-                        chapterIndex = bm.chapterIndex,
-                        pageIndex = bm.position.toInt().coerceAtLeast(0)
-                    )
-                }
-                if (bm.chapterIndex != uiState.currentChapterIndex) {
-                    viewModel.setChapter(bm.chapterIndex)
-                }
-            } else if (isContinuousScrollMode) {
-                jumpToContinuousChapter(bm.chapterIndex)
-            } else {
-                bm.characterOffset?.let { readViewRef.value?.jumpToCharacter(bm.chapterIndex, it) }
-                    ?: readViewRef.value?.jumpToChapter(bm.chapterIndex, bm.position.toInt())
-            }
-            showNotesList = false
-            requestCloseNotesList = false
-        },
-        onDeleteBookmark = { bm -> viewModel.deleteBookmark(bm) },
         onDismiss = { showNotesList = false; requestCloseNotesList = false }
     )
 
@@ -4477,7 +4483,12 @@ private fun TocSheet(
     requestClose: Boolean = false,
     tocEntries: List<com.huangder.lumibooks.util.parser.TocEntry>,
     currentChapter: Int,
+    bookmarks: List<com.huangder.lumibooks.domain.model.Bookmark> = emptyList(),
+    chapterTitles: List<String> = emptyList(),
     onChapterSelected: (com.huangder.lumibooks.util.parser.TocEntry) -> Unit,
+    onBookmarkClick: (com.huangder.lumibooks.domain.model.Bookmark) -> Unit = {},
+    onDeleteBookmark: (com.huangder.lumibooks.domain.model.Bookmark) -> Unit = {},
+    onEditBookmark: (com.huangder.lumibooks.domain.model.Bookmark, String) -> Unit = { _, _ -> },
     onDismiss: () -> Unit
 ) {
     if (!visible) return
@@ -4490,6 +4501,17 @@ private fun TocSheet(
     val tocListState = rememberLazyListState(
         initialFirstVisibleItemIndex = currentEntryIndex.coerceAtLeast(0)
     )
+    val bookmarkListState = rememberLazyListState()
+    var activeSection by remember { mutableStateOf("toc") }
+    var editingBookmark by remember {
+        mutableStateOf<com.huangder.lumibooks.domain.model.Bookmark?>(null)
+    }
+    val sortedBookmarks = remember(bookmarks) {
+        bookmarks.sortedWith(
+            compareBy<com.huangder.lumibooks.domain.model.Bookmark> { it.chapterIndex }
+                .thenBy { it.position }
+        )
+    }
 
     LaunchedEffect(currentEntryIndex) {
         if (currentEntryIndex < 0) return@LaunchedEffect
@@ -4514,6 +4536,9 @@ private fun TocSheet(
 
     var isClosing by remember { mutableStateOf(false) }
     var pendingJumpEntry by remember { mutableStateOf<com.huangder.lumibooks.util.parser.TocEntry?>(null) }
+    var pendingJumpBookmark by remember {
+        mutableStateOf<com.huangder.lumibooks.domain.model.Bookmark?>(null)
+    }
     val predictiveBackProgress = ConfigurableBottomSheetBackHandler { isClosing = true }
 
     // 监听 requestClose 状态，触发动画关闭
@@ -4528,6 +4553,8 @@ private fun TocSheet(
             sheetOffset.animateBottomSheetOut()
             pendingJumpEntry?.let(onChapterSelected)
             pendingJumpEntry = null
+            pendingJumpBookmark?.let(onBookmarkClick)
+            pendingJumpBookmark = null
             onDismiss()
         }
     }
@@ -4560,41 +4587,72 @@ private fun TocSheet(
             // 标题栏
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    stringResource(R.string.reader_toc),
+                    text = stringResource(R.string.reader_toc),
                     fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.SemiBold,
                     fontFamily = resolveAppFontFamily(KaiTi),
-                    color = AppColors.TextPrimary
+                    color = if (activeSection == "toc") AppColors.TextPrimary else LightTextSecondary,
+                    modifier = Modifier
+                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                            activeSection = "toc"
+                        }
+                        .padding(vertical = 4.dp)
+                )
+                Text(
+                    text = "  ",
+                    fontSize = 20.sp,
+                    fontFamily = resolveAppFontFamily(KaiTi),
+                    color = LightTextSecondary
+                )
+                Text(
+                    text = stringResource(R.string.tab_bookmark),
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = resolveAppFontFamily(KaiTi),
+                    color = if (activeSection == "bookmark") AppColors.TextPrimary else LightTextSecondary,
+                    modifier = Modifier
+                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                            activeSection = "bookmark"
+                        }
+                        .padding(vertical = 4.dp)
                 )
                 Spacer(Modifier.weight(1f))
                 LiquidGlassIconButton(
                     imageVector = Icons.Default.VerticalAlignTop,
                     contentDescription = stringResource(R.string.reader_toc_scroll_to_top),
                     onClick = {
-                        if (tocEntries.isNotEmpty()) {
-                            scope.launch { tocListState.scrollToItem(0) }
+                        val target = if (activeSection == "toc") tocEntries else sortedBookmarks
+                        if (target.isNotEmpty()) {
+                            val state = if (activeSection == "toc") tocListState else bookmarkListState
+                            scope.launch { state.scrollToItem(0) }
                         }
                     },
                     size = 44.dp,
                     iconSize = 20.dp,
                     contentColor = AppColors.TextPrimary,
                     normalContainerColor = LightBgGray,
-                    enabled = tocEntries.isNotEmpty()
+                    enabled = if (activeSection == "toc") tocEntries.isNotEmpty() else sortedBookmarks.isNotEmpty()
                 )
                 Spacer(Modifier.width(8.dp))
                 LiquidGlassIconButton(
                     imageVector = Icons.Default.VerticalAlignBottom,
                     contentDescription = stringResource(R.string.reader_toc_scroll_to_bottom),
                     onClick = {
-                        if (tocEntries.isNotEmpty()) {
-                            scope.launch { tocListState.scrollToItem(tocEntries.lastIndex) }
+                        if (activeSection == "toc") {
+                            if (tocEntries.isNotEmpty()) {
+                                scope.launch { tocListState.scrollToItem(tocEntries.lastIndex) }
+                            }
+                        } else {
+                            if (sortedBookmarks.isNotEmpty()) {
+                                scope.launch { bookmarkListState.scrollToItem(sortedBookmarks.lastIndex) }
+                            }
                         }
                     },
                     size = 44.dp,
                     iconSize = 20.dp,
                     contentColor = AppColors.TextPrimary,
                     normalContainerColor = LightBgGray,
-                    enabled = tocEntries.isNotEmpty()
+                    enabled = if (activeSection == "toc") tocEntries.isNotEmpty() else sortedBookmarks.isNotEmpty()
                 )
                 Spacer(Modifier.width(8.dp))
                 // 关闭按钮
@@ -4611,60 +4669,378 @@ private fun TocSheet(
 
             Spacer(Modifier.height(16.dp))
 
-            // 目录列表（支持层级：分组标题 + 缩进章节）
-            LazyColumn(
-                state = tocListState,
-                modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(bottom = 24.dp)
-            ) {
-                items(tocEntries.size) { index ->
-                    val entry = tocEntries[index]
+            if (activeSection == "toc") {
+                Box(Modifier.weight(1f)) {
+                    // 目录列表（支持层级：分组标题 + 缩进章节）
+                    LazyColumn(
+                        state = tocListState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(end = 12.dp),
+                        contentPadding = PaddingValues(bottom = 24.dp)
+                    ) {
+                        items(tocEntries.size) { index ->
+                            val entry = tocEntries[index]
 
-                    if (entry.isGroup) {
-                        // 分组标题（如"第X卷"）：灰色、粗体、不可点击、无背景
-                        Text(
-                            text = entry.title,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.Gray,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(
-                                start = 16.dp,
-                                top = if (index > 0) 16.dp else 4.dp,
-                                bottom = 4.dp
-                            )
-                        )
-                    } else {
-                        // 实际章节：可点击，根据 level 缩进
-                        val isCurrent = entry.chapterIndex == currentChapter
-                        val indent = ((entry.level - 1) * 20).dp
+                            if (entry.isGroup) {
+                                // 分组标题（如"第X卷"）：灰色、粗体、不可点击、无背景
+                                Text(
+                                    text = entry.title,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.Gray,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(
+                                        start = 16.dp,
+                                        top = if (index > 0) 16.dp else 4.dp,
+                                        bottom = 4.dp
+                                    )
+                                )
+                            } else {
+                                // 实际章节：可点击，根据 level 缩进
+                                val isCurrent = entry.chapterIndex == currentChapter
+                                val indent = ((entry.level - 1) * 20).dp
 
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = indent, top = 2.dp, bottom = 2.dp, end = 4.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(if (isCurrent) AccentColor.copy(alpha = 0.1f) else LightBgGray)
-                                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                                    if (entry.chapterIndex >= 0) {
-                                        pendingJumpEntry = entry
-                                        isClosing = true
-                                    }
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = indent, top = 2.dp, bottom = 2.dp, end = 4.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(if (isCurrent) AccentColor.copy(alpha = 0.1f) else LightBgGray)
+                                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                            if (entry.chapterIndex >= 0) {
+                                                pendingJumpEntry = entry
+                                                isClosing = true
+                                            }
+                                        }
+                                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                                ) {
+                                    Text(
+                                        text = entry.title.ifBlank { stringResource(R.string.reader_chapter_fallback, entry.chapterIndex + 1) },
+                                        fontSize = 15.sp,
+                                        fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isCurrent) AccentColor else AppColors.TextPrimary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                 }
-                                .padding(horizontal = 16.dp, vertical = 12.dp)
-                        ) {
-                            Text(
-                                text = entry.title.ifBlank { stringResource(R.string.reader_chapter_fallback, entry.chapterIndex + 1) },
-                                fontSize = 15.sp,
-                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isCurrent) AccentColor else AppColors.TextPrimary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            }
                         }
                     }
+
+                    DraggableScrollbar(
+                        listState = tocListState,
+                        itemCount = tocEntries.size,
+                        hintText = { fraction ->
+                            if (tocEntries.isEmpty()) return@DraggableScrollbar null
+                            val idx = (fraction * (tocEntries.size - 1))
+                                .toInt()
+                                .coerceIn(0, tocEntries.lastIndex)
+                            val entry = tocEntries[idx]
+                            val title = entry.title.ifBlank {
+                                stringResource(R.string.reader_chapter_fallback, entry.chapterIndex + 1)
+                            }
+                            "$title · ${(fraction * 100).toInt()}%"
+                        },
+                        modifier = Modifier
+                            .fillMaxSize()
+                    )
                 }
+            } else {
+                Box(Modifier.weight(1f)) {
+                    if (sortedBookmarks.isEmpty()) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(
+                                text = stringResource(R.string.no_bookmarks_yet),
+                                fontSize = 14.sp,
+                                color = LightTextSecondary
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            state = bookmarkListState,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(end = 12.dp),
+                            contentPadding = PaddingValues(bottom = 24.dp)
+                        ) {
+                            items(sortedBookmarks.size, key = { sortedBookmarks[it].id }) { idx ->
+                                val bm = sortedBookmarks[idx]
+                                TocBookmarkItem(
+                                    bookmark = bm,
+                                    chapterTitle = chapterTitles.getOrNull(bm.chapterIndex).orEmpty(),
+                                    onClick = {
+                                        pendingJumpBookmark = bm
+                                        isClosing = true
+                                    },
+                                    onEdit = { editingBookmark = bm },
+                                    onDelete = { onDeleteBookmark(bm) }
+                                )
+                                if (idx < sortedBookmarks.size - 1) {
+                                    Spacer(Modifier.height(8.dp))
+                                }
+                            }
+                        }
+
+                        DraggableScrollbar(
+                            listState = bookmarkListState,
+                            itemCount = sortedBookmarks.size,
+                            hintText = { fraction ->
+                                if (sortedBookmarks.isEmpty()) return@DraggableScrollbar null
+                                val idx = (fraction * (sortedBookmarks.size - 1))
+                                    .toInt()
+                                    .coerceIn(0, sortedBookmarks.lastIndex)
+                                val bm = sortedBookmarks[idx]
+                                val chapterLabel = chapterTitles
+                                    .getOrNull(bm.chapterIndex)
+                                    ?.takeIf { it.isNotBlank() }
+                                    ?: stringResource(R.string.chapter_number, bm.chapterIndex + 1)
+                                "${bm.title} · $chapterLabel · ${(fraction * 100).toInt()}%"
+                            },
+                            modifier = Modifier
+                                .fillMaxSize()
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // 编辑书签名称
+    editingBookmark?.let { target ->
+        LiquidGlassDialog(
+            onDismissRequest = { editingBookmark = null },
+            modifier = Modifier.imePadding(),
+            backgroundScrimColor = Color.Transparent,
+            backgroundBlurRadius = 18.dp,
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            EditInputDialog(
+                title = stringResource(R.string.bookmark_edit_title),
+                fields = listOf(
+                    Triple(
+                        stringResource(R.string.bookmark_name_label),
+                        stringResource(R.string.bookmark_name_placeholder),
+                        target.title
+                    )
+                ),
+                onBack = { editingBookmark = null },
+                onConfirm = { values ->
+                    onEditBookmark(target, values.getOrElse(0) { target.title })
+                    editingBookmark = null
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun TocBookmarkItem(
+    bookmark: com.huangder.lumibooks.domain.model.Bookmark,
+    chapterTitle: String,
+    onClick: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val chapterNumber = stringResource(R.string.chapter_number, bookmark.chapterIndex + 1)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(LightBgGray)
+            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                onClick()
+            }
+            .padding(start = 16.dp, top = 10.dp, bottom = 10.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            Icons.Default.Bookmark,
+            contentDescription = stringResource(R.string.reader_bookmark),
+            tint = Color(0xFFFFB300),
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = bookmark.title,
+                fontSize = 14.sp,
+                color = AppColors.TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = if (chapterTitle.isBlank()) {
+                    chapterNumber
+                } else {
+                    "$chapterNumber · $chapterTitle"
+                },
+                fontSize = 12.sp,
+                color = LightTextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        LiquidGlassIconButton(
+            imageVector = Icons.Default.Edit,
+            contentDescription = stringResource(R.string.edit),
+            onClick = onEdit,
+            size = 36.dp,
+            iconSize = 18.dp,
+            contentColor = AppColors.TextSecondary,
+            normalContainerColor = Color.Transparent
+        )
+        LiquidGlassIconButton(
+            imageVector = Icons.Default.Delete,
+            contentDescription = stringResource(R.string.delete),
+            onClick = onDelete,
+            size = 36.dp,
+            iconSize = 18.dp,
+            contentColor = AppColors.TextSecondary,
+            normalContainerColor = Color.Transparent
+        )
+    }
+}
+
+/**
+ * 简约式右侧滚动条：圆柱形滑块 + 加粗触控区。
+ * 拖动时显示当前章节名/进度提示，松手后列表滚动到对应位置。
+ */
+@Composable
+private fun DraggableScrollbar(
+    listState: LazyListState,
+    itemCount: Int,
+    modifier: Modifier = Modifier,
+    hintText: @Composable (Float) -> String? = { null }
+) {
+    if (itemCount <= 0) return
+
+    val density = LocalDensity.current
+    var trackHeightPx by remember { mutableFloatStateOf(0f) }
+    var dragFraction by remember { mutableFloatStateOf(-1f) }
+    val scope = rememberCoroutineScope()
+    val minThumbPx = with(density) { 36.dp.toPx() }
+
+    val layoutInfo = listState.layoutInfo
+    val visible = layoutInfo.visibleItemsInfo
+    val avgItemHeightPx = if (visible.isEmpty()) {
+        with(density) { 52.dp.toPx() }
+    } else {
+        visible.sumOf { it.size.toLong() }.toFloat() / visible.size
+    }
+    val viewportHeightPx = layoutInfo.viewportSize.height.toFloat()
+    val contentHeightPx = avgItemHeightPx * itemCount
+    val visibleRatio = if (viewportHeightPx > 0f && contentHeightPx > 0f) {
+        (viewportHeightPx / contentHeightPx).coerceAtMost(1f)
+    } else {
+        1f
+    }
+    val thumbHeightPx = if (trackHeightPx > 0f) {
+        (trackHeightPx * visibleRatio).coerceIn(minThumbPx, trackHeightPx)
+    } else {
+        minThumbPx
+    }
+
+    val total = layoutInfo.totalItemsCount
+    val scrollFraction = if (total <= 1) {
+        0f
+    } else {
+        val first = visible.firstOrNull()?.index ?: 0
+        val offset = listState.firstVisibleItemScrollOffset
+        ((first + offset / avgItemHeightPx) / (total - 1)).coerceIn(0f, 1f)
+    }
+    val displayFraction = if (dragFraction >= 0f) dragFraction else scrollFraction
+    val currentTrackHeightPx by rememberUpdatedState(trackHeightPx)
+    val currentThumbHeightPx by rememberUpdatedState(thumbHeightPx)
+    val currentContentHeightPx by rememberUpdatedState(contentHeightPx)
+    val thumbColor = AppColors.TextSecondary.copy(alpha = 0.38f)
+
+    Box(modifier = modifier) {
+        // 右侧触控条：无轨道，只有圆柱滑块
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .width(28.dp)
+                .fillMaxHeight()
+                .offset(x = 20.dp)
+                .onSizeChanged { trackHeightPx = it.height.toFloat() }
+                .pointerInput(itemCount) {
+                    if (currentTrackHeightPx <= 0f || currentThumbHeightPx >= currentTrackHeightPx) {
+                        return@pointerInput
+                    }
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        var lastY = down.position.y
+                        fun fractionFor(y: Float): Float {
+                            val track = currentTrackHeightPx
+                            val thumb = currentThumbHeightPx
+                            val range = (track - thumb).coerceAtLeast(1f)
+                            return ((y - thumb / 2f) / range).coerceIn(0f, 1f)
+                        }
+                        dragFraction = fractionFor(down.position.y)
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull() ?: break
+                            if (change.changedToUpIgnoreConsumed()) break
+                            if (change.positionChange() != Offset.Zero) {
+                                change.consume()
+                                val y = change.position.y
+                                dragFraction = fractionFor(y)
+                                val deltaY = y - lastY
+                                lastY = y
+                                if (deltaY != 0f && currentTrackHeightPx > 0f) {
+                                    val scale = currentContentHeightPx / currentTrackHeightPx
+                                    scope.launch { listState.scrollBy(deltaY * scale) }
+                                }
+                            }
+                        }
+                        val fraction = dragFraction.coerceIn(0f, 1f)
+                        val targetIndex = (fraction * (itemCount - 1)).toInt()
+                        scope.launch { listState.scrollToItem(targetIndex.coerceIn(0, itemCount - 1)) }
+                        dragFraction = -1f
+                    }
+                }
+        ) {
+            if (thumbHeightPx < trackHeightPx) {
+                Canvas(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .width(5.dp)
+                        .fillMaxHeight()
+                ) {
+                    val radius = size.width / 2f
+                    val top = displayFraction.coerceIn(0f, 1f) * (size.height - thumbHeightPx)
+                    drawRoundRect(
+                        color = thumbColor,
+                        topLeft = Offset(0f, top),
+                        size = Size(size.width, thumbHeightPx),
+                        cornerRadius = CornerRadius(radius)
+                    )
+                }
+            }
+        }
+
+        // 拖动提示：列表区顶部居中的浅色胶囊，显示章节名/进度
+        val hint = if (dragFraction >= 0f) hintText(dragFraction.coerceIn(0f, 1f)) else null
+        if (hint != null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 10.dp)
+                    .shadow(4.dp, RoundedCornerShape(20.dp))
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(AppColors.CardBg.copy(alpha = 0.96f))
+                    .padding(horizontal = 14.dp, vertical = 6.dp)
+            ) {
+                Text(
+                    text = hint,
+                    fontSize = 12.sp,
+                    color = AppColors.TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }
@@ -5482,11 +5858,8 @@ private fun NotesListSheet(
     requestClose: Boolean = false,
     glassBackdrop: Backdrop? = null,
     notes: List<com.huangder.lumibooks.domain.model.Note>,
-    bookmarks: List<com.huangder.lumibooks.domain.model.Bookmark> = emptyList(),
     onNoteClick: (com.huangder.lumibooks.domain.model.Note) -> Unit,
     onDeleteNote: (com.huangder.lumibooks.domain.model.Note) -> Unit,
-    onBookmarkClick: (com.huangder.lumibooks.domain.model.Bookmark) -> Unit = {},
-    onDeleteBookmark: (com.huangder.lumibooks.domain.model.Bookmark) -> Unit = {},
     onDismiss: () -> Unit
 ) {
     if (!visible) return
@@ -5588,63 +5961,35 @@ private fun NotesListSheet(
             Spacer(Modifier.height(16.dp))
 
             // 列表
-            if (activeTag == "bookmark") {
-                // 书签列表
-                if (bookmarks.isEmpty()) {
-                    Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                        Text(stringResource(R.string.no_bookmarks_yet), fontSize = 14.sp, color = LightTextSecondary)
-                    }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(bottom = 24.dp)
-                    ) {
-                        items(bookmarks.size, key = { bookmarks[it].id }) { idx ->
-                            val bm = bookmarks[idx]
-                            BookmarkListItem(
-                                bookmark = bm,
-                                onClick = {
-                                    onBookmarkClick(bm)
-                                    isClosing = true
-                                },
-                                onDelete = { onDeleteBookmark(bm) },
-                                modifier = Modifier.animateItem()
-                            )
-                            if (idx < bookmarks.size - 1) Spacer(Modifier.height(8.dp))
-                        }
-                    }
+            val items = if (activeTag == "highlight") highlights else noteList
+            if (items.isEmpty()) {
+                Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    Text(
+                        stringResource(if (activeTag == "highlight") R.string.no_highlights else R.string.no_notes),
+                        fontSize = 14.sp,
+                        color = LightTextSecondary
+                    )
                 }
             } else {
-                val items = if (activeTag == "highlight") highlights else noteList
-                if (items.isEmpty()) {
-                    Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                        Text(
-                            stringResource(if (activeTag == "highlight") R.string.no_highlights else R.string.no_notes),
-                            fontSize = 14.sp,
-                            color = LightTextSecondary
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(bottom = 24.dp)
+                ) {
+                    items(items.size, key = { items[it].id }) { idx ->
+                        val item = items[idx]
+                        HighlightNoteItem(
+                            item = item,
+                            onClick = {
+                                pendingJumpNote = item
+                                isClosing = true
+                            },
+                            onDelete = { onDeleteNote(item) },
+                            resetRevealedKey = resetRevealedKey,
+                            onRevealedChanged = { revealed -> anyItemRevealed = revealed },
+                            modifier = Modifier.animateItem()
                         )
-                    }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(bottom = 24.dp)
-                    ) {
-                        items(items.size, key = { items[it].id }) { idx ->
-                            val item = items[idx]
-                            HighlightNoteItem(
-                                item = item,
-                                onClick = {
-                                    pendingJumpNote = item
-                                    isClosing = true
-                                },
-                                onDelete = { onDeleteNote(item) },
-                                resetRevealedKey = resetRevealedKey,
-                                onRevealedChanged = { revealed -> anyItemRevealed = revealed },
-                                modifier = Modifier.animateItem()
-                            )
-                            if (idx < items.size - 1) {
-                                Spacer(Modifier.height(8.dp))
-                            }
+                        if (idx < items.size - 1) {
+                            Spacer(Modifier.height(8.dp))
                         }
                     }
                 }
@@ -5658,11 +6003,10 @@ private fun HighlightNoteTabSwitcher(
     activeTag: String,
     onTagChange: (String) -> Unit
 ) {
-    // 动画：白色背景指示器的位置（0=高亮，1=笔记，2=书签）
+    // 动画：白色背景指示器的位置（0=高亮，1=笔记）
     val tabIndex = when (activeTag) {
         "highlight" -> 0f
-        "note" -> 1f
-        else -> 2f
+        else -> 1f
     }
     val indicatorProgress by animateFloatAsState(
         targetValue = tabIndex,
@@ -5678,7 +6022,7 @@ private fun HighlightNoteTabSwitcher(
             .background(LightBgGray)
             .padding(2.dp)
     ) {
-        val tabCount = 3
+        val tabCount = 2
         val tabWidth = maxWidth / tabCount
         val indicatorOffset = tabWidth * indicatorProgress
 
@@ -5721,137 +6065,6 @@ private fun HighlightNoteTabSwitcher(
                     fontSize = 14.sp,
                     fontWeight = if (activeTag == "note") FontWeight.SemiBold else FontWeight.Normal,
                     color = if (activeTag == "note") AppColors.TextPrimary else LightTextSecondary
-                )
-            }
-            // 书签
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onTagChange("bookmark") },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    stringResource(R.string.tab_bookmark),
-                    fontSize = 14.sp,
-                    fontWeight = if (activeTag == "bookmark") FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (activeTag == "bookmark") AppColors.TextPrimary else LightTextSecondary
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun BookmarkListItem(
-    bookmark: com.huangder.lumibooks.domain.model.Bookmark,
-    onClick: () -> Unit,
-    onDelete: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val density = LocalDensity.current
-    val revealPx = with(density) { 72.dp.toPx() }
-    val deletePx = with(density) { 500.dp.toPx() }
-
-    var isRevealed by remember { mutableStateOf(false) }
-    var isDeleting by remember { mutableStateOf(false) }
-    var rawOffset by remember { mutableFloatStateOf(0f) }
-    val animOffset = remember { Animatable(0f) }
-    val scope = rememberCoroutineScope()
-    var isDragging by remember { mutableStateOf(false) }
-    val displayOffset = if (isDragging) rawOffset else animOffset.value
-    val progress = remember(displayOffset) { (-displayOffset / revealPx).coerceAtLeast(0f) }
-    val deleteIconAlpha = remember(progress) { progress.coerceIn(0f, 1f) }
-    val deleteIconTranslationX = remember(progress) { (1f - progress.coerceAtMost(1f)) * 24f }
-
-    fun dampedOverScroll(excess: Float): Float {
-        if (excess == 0f) return 0f
-        val d = density.density
-        val sign = if (excess > 0f) 1f else -1f
-        return 40f * d * (1f - Math.exp((-kotlin.math.abs(excess) / (80f * d)).toDouble())).toFloat() * sign
-    }
-
-    Box(modifier = modifier.fillMaxWidth()) {
-        // 删除按钮
-        Box(Modifier.matchParentSize().padding(end = 16.dp), contentAlignment = Alignment.CenterEnd) {
-            Box(
-                modifier = Modifier
-                    .graphicsLayer { alpha = deleteIconAlpha; translationX = deleteIconTranslationX }
-                    .size(40.dp).clip(CircleShape).background(Color(0xFFE53935))
-                    .clickable(enabled = isRevealed && !isDeleting) {
-                        isDeleting = true
-                        scope.launch {
-                            animOffset.animateTo(-deletePx, tween(250, easing = FastOutSlowInEasing))
-                            onDelete()
-                        }
-                    },
-                contentAlignment = Alignment.Center
-            ) { Icon(Icons.Default.Delete, stringResource(R.string.delete), tint = Color.White, modifier = Modifier.size(20.dp)) }
-        }
-
-        // 书签卡片
-        Row(
-            modifier = Modifier
-                .offset { IntOffset(displayOffset.toInt(), 0) }
-                .graphicsLayer {
-                    if (isDeleting) alpha = 1f - (-displayOffset / deletePx).coerceIn(0f, 1f)
-                    if (progress > 1f) scaleX = 1f - (progress - 1f) * 0.01f
-                }
-                .background(AppColors.BgGray, RoundedCornerShape(12.dp))
-                .pointerInput(Unit) {
-                    detectHorizontalDragGestures(
-                        onDragStart = { rawOffset = animOffset.value; isDragging = true },
-                        onDragEnd = {
-                            isDragging = false
-                            scope.launch {
-                                val from = rawOffset; animOffset.snapTo(from)
-                                if (isRevealed) {
-                                    if (-from < revealPx * 0.3f) {
-                                        animOffset.animateTo(0f, spring(dampingRatio = 0.6f, stiffness = 300f)); isRevealed = false
-                                    } else {
-                                        animOffset.animateTo(-revealPx, spring(dampingRatio = 0.6f, stiffness = 300f))
-                                    }
-                                } else {
-                                    if (-from > revealPx * 0.4f) {
-                                        animOffset.animateTo(-revealPx, spring(dampingRatio = 0.6f, stiffness = 300f)); isRevealed = true
-                                    } else {
-                                        animOffset.animateTo(0f, spring(dampingRatio = 0.6f, stiffness = 300f))
-                                    }
-                                }
-                                rawOffset = 0f
-                            }
-                        },
-                        onDragCancel = {
-                            isDragging = false
-                            scope.launch {
-                                animOffset.snapTo(rawOffset)
-                                animOffset.animateTo(if (isRevealed) -revealPx else 0f, spring(dampingRatio = 0.6f, stiffness = 300f)); rawOffset = 0f
-                            }
-                        },
-                        onHorizontalDrag = { _, dragAmount ->
-                            val newRaw = rawOffset + dragAmount
-                            rawOffset = when {
-                                newRaw < -revealPx -> -revealPx - dampedOverScroll((-newRaw) - revealPx)
-                                newRaw > 0f -> dampedOverScroll(newRaw)
-                                else -> newRaw
-                            }
-                        }
-                    )
-                }
-                .clickable(enabled = !isRevealed, indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() }
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // 左侧书签图标
-            Icon(Icons.Default.Bookmark, stringResource(R.string.reader_bookmark), tint = Color(0xFFFFB300), modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(12.dp))
-            // 内容
-            Column(modifier = Modifier.weight(1f)) {
-                Text(bookmark.title, fontSize = 14.sp, color = AppColors.TextPrimary, maxLines = 1)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    java.text.SimpleDateFormat("MM/dd", java.util.Locale.getDefault()).format(java.util.Date(bookmark.createdAt)),
-                    fontSize = 12.sp, color = LightTextSecondary
                 )
             }
         }

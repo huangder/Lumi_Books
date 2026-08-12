@@ -17,6 +17,7 @@ interface ReadingRepository {
     suspend fun updateRecordDuration(recordId: Long, additionalDuration: Long, endTime: Long)
     fun getBookmarksByBookId(bookId: String): Flow<List<Bookmark>>
     suspend fun insertBookmark(bookmark: Bookmark)
+    suspend fun updateBookmark(bookmark: Bookmark)
     suspend fun deleteBookmark(bookmark: Bookmark)
     suspend fun deleteAllBookmarksByBookId(bookId: String)
     fun getNotesByBookId(bookId: String): Flow<List<Note>>

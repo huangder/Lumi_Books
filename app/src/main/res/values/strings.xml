@@ -390,6 +390,9 @@
     <string name="tab_note">笔记</string>
     <string name="tab_bookmark">书签</string>
     <string name="no_bookmarks_yet">暂无书签</string>
+    <string name="bookmark_edit_title">编辑书签</string>
+    <string name="bookmark_name_label">书签名称</string>
+    <string name="bookmark_name_placeholder">输入书签名称</string>
     <string name="no_highlights">暂无高亮</string>
     <string name="no_notes">暂无笔记</string>
     <string name="highlights_count">高亮 (%d)</string>

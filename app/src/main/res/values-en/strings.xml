@@ -382,6 +382,9 @@
     <string name="tab_note">Note</string>
     <string name="tab_bookmark">Bookmark</string>
     <string name="no_bookmarks_yet">No bookmarks yet</string>
+    <string name="bookmark_edit_title">Edit bookmark</string>
+    <string name="bookmark_name_label">Bookmark name</string>
+    <string name="bookmark_name_placeholder">Enter bookmark name</string>
     <string name="no_highlights">No highlights</string>
     <string name="no_notes">No notes</string>
     <string name="highlights_count">Highlights (%d)</string>
