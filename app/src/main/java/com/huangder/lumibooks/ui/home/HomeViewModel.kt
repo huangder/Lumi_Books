@@ -578,10 +578,10 @@ class HomeViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(importMessage = null)
     }
 
-    fun createAndAssignTag(bookId: String, rawName: String) {
+    fun createAndAssignTag(bookId: String, rawName: String, parentId: String? = null) {
         if (!validateTagName(rawName)) return
         viewModelScope.launch {
-            runCatching { tagRepository.createAndAssignTag(bookId, rawName) }
+            runCatching { tagRepository.createAndAssignTag(bookId, rawName, parentId) }
                 .onFailure { showTagMessage(it.message ?: application.getString(R.string.error)) }
         }
     }
@@ -631,9 +631,9 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun deleteTag(tagId: String) {
+    fun deleteTag(tagId: String, deleteChildren: Boolean = false) {
         viewModelScope.launch {
-            runCatching { tagRepository.deleteTag(tagId) }
+            runCatching { tagRepository.deleteTag(tagId, deleteChildren) }
                 .onFailure { showTagMessage(it.message ?: application.getString(R.string.error)) }
         }
     }

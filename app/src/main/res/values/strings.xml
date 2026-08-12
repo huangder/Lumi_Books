@@ -119,6 +119,20 @@
     <string name="label_paragraph_spacing">段间距</string>
     <string name="label_first_line_indent">首行缩进</string>
 
+    <!-- 高亮颜色色卡 -->
+    <string name="highlight_color_palette">高亮颜色色卡</string>
+    <string name="highlight_color_palette_desc">自定义高亮和划线的颜色</string>
+    <string name="highlight_color_palette_tip">色卡修改后，浮动菜单和已有标注将使用新颜色。</string>
+    <string name="highlight_current_colors">当前颜色</string>
+    <string name="highlight_using_default">使用默认颜色</string>
+    <string name="highlight_reset_default">恢复默认</string>
+    <string name="highlight_add_color">添加颜色</string>
+    <string name="highlight_edit_color">编辑颜色</string>
+    <string name="highlight_color_hex">颜色值 (#RRGGBB)</string>
+    <string name="highlight_pick_preset">选择预设颜色</string>
+    <string name="move_up">上移</string>
+    <string name="move_down">下移</string>
+
     <!-- 显示与外观 -->
     <string name="label_dark_mode">深色模式</string>
     <string name="dark_mode_system">跟随系统</string>
@@ -254,6 +268,13 @@
     <string name="tag_name_required">请输入标签名称</string>
     <string name="tag_name_too_long">标签名称最多 %1$d 个字符</string>
     <string name="tag_name_exists">已存在同名标签</string>
+    <string name="add_sub_tag">添加子标签</string>
+    <string name="sub_tag_name_hint">输入子标签名称</string>
+    <string name="delete_tag_primary">删除一级标签</string>
+    <string name="delete_tag_primary_desc">该标签下有 %1$d 个子标签，请选择处理方式：</string>
+    <string name="delete_tag_keep_children">保留子标签（升级为一级）</string>
+    <string name="delete_tag_cascade">一并删除所有子标签</string>
+    <string name="no_sub_tags">暂无子标签</string>
 
     <!-- 书签笔记 -->
     <string name="notes_title">书签、高亮与笔记</string>
@@ -324,6 +345,10 @@
     <string name="txt_editor_discard_title">放弃修改？</string>
     <string name="txt_editor_discard_message">你有未保存的修改，确定要离开吗？</string>
     <string name="reader_toc">目录</string>
+    <string name="reader_toc_tab">目录</string>
+    <string name="reader_toc_bookmark_tab">书签</string>
+    <string name="reader_toc_sort_by_chapter">按章节</string>
+    <string name="reader_toc_sort_by_time">按时间</string>
     <string name="reader_toc_scroll_to_top">翻到最顶</string>
     <string name="reader_toc_scroll_to_bottom">翻到最底</string>
     <string name="reader_previous_chapter">上一章</string>
@@ -354,6 +379,8 @@
     <string name="volume_key_page_turn_hint">音量加键上一页，音量减键下一页</string>
     <string name="bionic_reading">仿生阅读</string>
     <string name="bionic_reading_hint">加粗词语的前半部分，帮助视线快速定位并提升阅读专注度</string>
+    <string name="comic_mode">漫画模式</string>
+    <string name="comic_mode_hint">图片按屏宽等比缩放、整页无缝上下拼接滚动，适合漫画阅读</string>
     <string name="reader_edge_tap_page_turn">点击屏幕两侧翻页</string>
     <string name="reader_edge_tap_page_turn_hint">设置点击左、右两侧时的翻页方向</string>
     <string name="reader_edge_tap_left_previous_right_next">左上右下</string>
@@ -378,11 +405,20 @@
     <string name="highlight_delete">删除高亮</string>
     <string name="menu_search">搜索</string>
     <string name="menu_copy">复制</string>
+    <string name="highlight_label">高亮</string>
+    <string name="underline_label">划线</string>
     <string name="menu_highlight">高亮</string>
+    <string name="menu_underline">划线</string>
     <string name="menu_note">笔记</string>
     <string name="menu_view_note">查看笔记</string>
     <string name="menu_remove_highlight">移除高亮</string>
     <string name="menu_dictionary">字典</string>
+    <string name="menu_replace">替换</string>
+    <string name="menu_settings">菜单设置</string>
+    <string name="replace_input_hint">替换为</string>
+    <string name="replace_success">已替换</string>
+    <string name="replace_not_available">仅 TXT 文件支持替换</string>
+    <string name="selection_menu_settings">浮动菜单设置</string>
     <string name="dictionary_no_app">未找到支持查词的词典或翻译应用</string>
     <string name="note_input_placeholder">输入笔记...</string>
     <string name="highlights_notes_title">高亮与笔记</string>
@@ -812,6 +848,7 @@
 
     <!-- TXT encoding -->
     <string name="reader_switch_encoding">切换编码</string>
+    <string name="txt_encoding_setting_hint">在高级设置中调整TXT文件编码</string>
     <string name="txt_encoding_first_open_title">TXT 编码提示</string>
     <string name="txt_encoding_first_open_message">如果遇到乱码，可点击屏幕中央选择切换编码。</string>
     <string name="txt_encoding_first_open_confirm">知道了</string>
@@ -843,6 +880,25 @@
     <string name="txt_editor_scope_book">全书</string>
     <string name="txt_editor_no_matches">未找到匹配项</string>
     <string name="txt_editor_searching">正在搜索...</string>
+
+    <!-- 听书悬浮窗 -->
+    <string name="tts_floating_channel">听书悬浮窗</string>
+    <string name="tts_floating_channel_desc">听书悬浮窗字幕通知</string>
+    <string name="tts_floating_notification_title">听书字幕</string>
+    <string name="tts_floating_notification_text">悬浮窗正在显示字幕</string>
+    <string name="tts_floating_loading">正在朗读...</string>
+    <string name="tts_floating_toggle">听书悬浮窗字幕</string>
+    <string name="tts_floating_toggle_desc">朗读时在屏幕上方显示当前句子字幕</string>
+    <string name="tts_engine_selection">语音引擎</string>
+    <string name="tts_engine_system_default">系统默认</string>
+    <string name="tts_engine_select_dialog_title">选择语音引擎</string>
+    <string name="tts_floating_permission_required">需要\"悬浮窗\"权限才能显示字幕</string>
+    <string name="tts_floating_go_settings">前往设置</string>
+    <!-- 正文排版细化 -->
+    <string name="body_font_weight">正文字重</string>
+    <string name="body_font_weight_desc">开启后正文使用加粗字重</string>
+    <string name="apply_to_body_only">排版仅作用于正文</string>
+    <string name="apply_to_body_only_desc">开启时字重、间距等设置仅作用于正文，标题等保持原样</string>
     <string name="txt_editor_search_failed">搜索失败</string>
     <string name="txt_editor_match_count">%1$d / %2$d</string>
     <string name="txt_editor_previous_match">上一处</string>

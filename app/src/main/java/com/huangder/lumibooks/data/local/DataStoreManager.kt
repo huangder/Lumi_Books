@@ -83,6 +83,13 @@ class DataStoreManager @Inject constructor(
         private val READER_THEME_SUITES = stringPreferencesKey("reader_theme_suites")
         private val ACTIVE_READER_THEME_SUITE_ID = stringPreferencesKey("active_reader_theme_suite_id")
         private val READER_THEME_SUITES_VERSION = intPreferencesKey("reader_theme_suites_version")
+        private val CUSTOM_HIGHLIGHT_COLORS = stringPreferencesKey("custom_highlight_colors")
+        private val SELECTION_MENU_ITEMS = stringPreferencesKey("selection_menu_items")
+        private val TTS_FLOATING_WINDOW = booleanPreferencesKey("tts_floating_window")
+        private val PREFERRED_TTS_ENGINE = stringPreferencesKey("preferred_tts_engine")
+        private val BODY_FONT_WEIGHT = intPreferencesKey("body_font_weight")
+        private val APPLY_TO_BODY_ONLY = booleanPreferencesKey("apply_to_body_only")
+        private val COMIC_MODE = booleanPreferencesKey("comic_mode")
         private val PARAGRAPH_SPACING = floatPreferencesKey("paragraph_spacing")
         private val FIRST_LINE_INDENT = floatPreferencesKey("first_line_indent")
         private val ADVANCED_DEFAULTS_VERSION = intPreferencesKey("advanced_defaults_version")
@@ -238,6 +245,53 @@ class DataStoreManager @Inject constructor(
         context.dataStore.data.map { preferences ->
             ReaderBackgroundPresetCodec.decode(preferences[CUSTOM_READER_BACKGROUNDS])
         }
+
+    /** 自定义高亮颜色列表（JSON 数组字符串，如 "[\"#D6C58D\",\"#CFA09A\"]"），为空时使用默认色板 */
+    val customHighlightColors: Flow<List<String>> = context.dataStore.data.map { preferences ->
+        val raw = preferences[CUSTOM_HIGHLIGHT_COLORS] ?: ""
+        if (raw.isBlank()) emptyList()
+        else try {
+            val arr = org.json.JSONArray(raw)
+            (0 until arr.length()).map { arr.getString(it) }
+        } catch (_: Exception) { emptyList() }
+    }
+
+    /** 选择文本菜单项开关（JSON 对象，如 "{\"copy\":true,\"search\":true}"），为空时默认全部开启 */
+    val selectionMenuItems: Flow<Map<String, Boolean>> = context.dataStore.data.map { preferences ->
+        val raw = preferences[SELECTION_MENU_ITEMS] ?: ""
+        if (raw.isBlank()) emptyMap()
+        else try {
+            val obj = org.json.JSONObject(raw)
+            val map = mutableMapOf<String, Boolean>()
+            obj.keys().forEach { key -> map[key] = obj.getBoolean(key) }
+            map
+        } catch (_: Exception) { emptyMap() }
+    }
+
+    /** 听书悬浮窗字幕开关 */
+    val ttsFloatingWindow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[TTS_FLOATING_WINDOW] ?: true
+    }
+
+    /** 首选 TTS 引擎包名（null = 系统默认） */
+    val preferredTtsEngine: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PREFERRED_TTS_ENGINE]
+    }
+
+    /** 正文字重（400=normal, 700=bold） */
+    val bodyFontWeight: Flow<Int> = context.dataStore.data.map { preferences ->
+        preferences[BODY_FONT_WEIGHT] ?: 400
+    }
+
+    /** 排版是否只作用于正文 */
+    val applyToBodyOnly: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[APPLY_TO_BODY_ONLY] ?: false
+    }
+
+    /** 漫画模式：图片按屏宽等比缩放、整页无缝上下拼接滚动 */
+    val comicMode: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[COMIC_MODE] ?: false
+    }
 
     val preserveEpubBackground: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[PRESERVE_EPUB_BACKGROUND] ?: true
@@ -617,6 +671,62 @@ class DataStoreManager @Inject constructor(
     suspend fun saveCustomFonts(presets: List<CustomFontPreset>) {
         context.dataStore.edit { preferences ->
             preferences[CUSTOM_FONTS] = CustomFontPresetCodec.encode(presets)
+        }
+    }
+
+    suspend fun saveCustomHighlightColors(colors: List<String>) {
+        context.dataStore.edit { preferences ->
+            if (colors.isEmpty()) {
+                preferences.remove(CUSTOM_HIGHLIGHT_COLORS)
+            } else {
+                preferences[CUSTOM_HIGHLIGHT_COLORS] = JSONArray(colors).toString()
+            }
+        }
+    }
+
+    suspend fun saveSelectionMenuItems(items: Map<String, Boolean>) {
+        context.dataStore.edit { preferences ->
+            if (items.isEmpty()) {
+                preferences.remove(SELECTION_MENU_ITEMS)
+            } else {
+                val obj = JSONObject()
+                items.forEach { (k, v) -> obj.put(k, v) }
+                preferences[SELECTION_MENU_ITEMS] = obj.toString()
+            }
+        }
+    }
+
+    suspend fun saveTtsFloatingWindow(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[TTS_FLOATING_WINDOW] = enabled
+        }
+    }
+
+    suspend fun savePreferredTtsEngine(packageName: String?) {
+        context.dataStore.edit { preferences ->
+            if (packageName != null) {
+                preferences[PREFERRED_TTS_ENGINE] = packageName
+            } else {
+                preferences.remove(PREFERRED_TTS_ENGINE)
+            }
+        }
+    }
+
+    suspend fun saveBodyFontWeight(weight: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[BODY_FONT_WEIGHT] = weight
+        }
+    }
+
+    suspend fun saveApplyToBodyOnly(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[APPLY_TO_BODY_ONLY] = enabled
+        }
+    }
+
+    suspend fun saveComicMode(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[COMIC_MODE] = enabled
         }
     }
 

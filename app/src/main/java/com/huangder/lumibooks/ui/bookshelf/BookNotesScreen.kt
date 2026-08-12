@@ -414,14 +414,15 @@ private fun HighlightNoteItem(
     note: Note,
     onDelete: () -> Unit
 ) {
+    val isUnderline = note.type == "underline"
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFFFFFBF0))
+            .background(if (isUnderline) Color(0xFFF8F8FF) else Color(0xFFFFFBF0))
             .padding(16.dp)
     ) {
-        // 高亮色条 + 文字
+        // 高亮色条/划线色块 + 文字
         Row(verticalAlignment = Alignment.Top) {
             Box(
                 modifier = Modifier
@@ -431,14 +432,22 @@ private fun HighlightNoteItem(
                     .background(parseColor(note.color))
             )
             Spacer(Modifier.width(12.dp))
-            Text(
-                text = note.selectedText,
-                fontSize = 14.sp,
-                color = AppColors.TextPrimary,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = if (isUnderline) stringResource(R.string.underline_label) else stringResource(R.string.highlight_label),
+                    fontSize = 11.sp,
+                    color = AppColors.TextSecondary,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = note.selectedText,
+                    fontSize = 14.sp,
+                    color = AppColors.TextPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
 
         // 笔记内容（如果有）

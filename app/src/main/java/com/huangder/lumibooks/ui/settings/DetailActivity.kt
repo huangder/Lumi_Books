@@ -124,6 +124,7 @@ class DetailActivity : ComponentActivity() {
                             WebdavConfigurationDetail(viewModel, onSaved = onBack)
                         }
                         "changelog" -> DetailPage(stringResource(R.string.title_changelog), onBack) { ChangelogDetail() }
+                        "highlight_color" -> DetailPage(stringResource(R.string.highlight_color_palette), onBack) { HighlightColorDetail(viewModel) }
                         else -> DetailPage(stringResource(R.string.title_about), onBack) { AboutDetail(viewModel) }
                     }
                 }

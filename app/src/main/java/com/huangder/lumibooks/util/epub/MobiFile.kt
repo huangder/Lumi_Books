@@ -2,6 +2,7 @@ package com.huangder.lumibooks.util.epub
 
 import java.io.RandomAccessFile
 import java.nio.charset.Charset
+import java.util.LinkedHashMap
 
 /** PDB record table entry. */
 internal data class MobiRecord(
@@ -111,7 +112,32 @@ internal class MobiFile private constructor(
 ) : AutoCloseable {
 
     private var textCache: ByteArray? = null
-    private val imageCache = mutableMapOf<Int, ByteArray>()
+    /** 图片缓存当前总字节数 */
+    private var totalImageCacheBytes: Long = 0
+    /** LRU 图片缓存，最多保留 MAX_IMAGE_CACHE_ENTRIES 张且总大小不超过 MAX_IMAGE_CACHE_TOTAL_BYTES，避免大体积 Mobi 图片过多导致 OOM */
+    private val imageCache = object : LinkedHashMap<Int, ByteArray>(MAX_IMAGE_CACHE_ENTRIES, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, ByteArray>?): Boolean {
+            if (size > MAX_IMAGE_CACHE_ENTRIES) {
+                eldest?.let { totalImageCacheBytes -= it.value.size.toLong() }
+                return true
+            }
+            return false
+        }
+    }
+
+    /** 从缓存中移除条目并更新总大小计数 */
+    private fun evictImageCacheEntry(key: Int) {
+        val bytes = imageCache.remove(key) ?: return
+        totalImageCacheBytes -= bytes.size.toLong()
+    }
+
+    /** 逐出最旧的缓存条目，直到总大小在限制内 */
+    private fun evictImageCacheUntilFit() {
+        while (totalImageCacheBytes > MAX_IMAGE_CACHE_TOTAL_BYTES && imageCache.isNotEmpty()) {
+            val eldestKey = imageCache.keys.firstOrNull() ?: break
+            evictImageCacheEntry(eldestKey)
+        }
+    }
 
     @Synchronized
     fun readRecord(index: Int): ByteArray {
@@ -185,7 +211,14 @@ internal class MobiFile private constructor(
             }
             else -> bytes
         }
+        // 如果单张图片超过缓存总大小限制，不缓存直接返回
+        if (renderable.size.toLong() > MAX_IMAGE_CACHE_TOTAL_BYTES) {
+            return renderable
+        }
+        totalImageCacheBytes += renderable.size.toLong()
         imageCache[index] = renderable
+        // 逐出旧条目直到总大小在限制内
+        evictImageCacheUntilFit()
         return renderable
     }
 
@@ -201,6 +234,7 @@ internal class MobiFile private constructor(
     @Synchronized
     override fun close() {
         imageCache.clear()
+        totalImageCacheBytes = 0
         textCache = null
         runCatching { raf.close() }
     }
@@ -213,6 +247,8 @@ internal class MobiFile private constructor(
         const val TEXT_ENCODING_CP1252 = 1252
 
         private const val MAX_RECORD_BYTES = 256 * 1024 * 1024
+        private const val MAX_IMAGE_CACHE_ENTRIES = 32
+        private const val MAX_IMAGE_CACHE_TOTAL_BYTES = 128L * 1024 * 1024
         private const val GIF_SIGNATURE = "GIF89a"
 
         const val UNSUPPORTED_COMPRESSION_MESSAGE = "该 MOBI 使用新版压缩（KF8/HUFF-CDIC），暂不支持"
@@ -429,7 +465,9 @@ internal class MobiFile private constructor(
 
         private fun ByteArray.startsWithGifSignature(): Boolean =
             size >= 6 && this[0] == 'G'.code.toByte() && this[1] == 'I'.code.toByte() &&
-                this[2] == 'F'.code.toByte() && this[3] == '8'.code.toByte()
+                this[2] == 'F'.code.toByte() && this[3] == '8'.code.toByte() &&
+                (this[4] == '7'.code.toByte() || this[4] == '9'.code.toByte()) &&
+                this[5] == 'a'.code.toByte()
 
         internal fun ByteArray.asciiAt(offset: Int, length: Int): String {
             if (offset + length > size) return ""

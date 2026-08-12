@@ -357,7 +357,10 @@
     <string name="highlight_delete">刪除高亮</string>
     <string name="menu_search">搜尋</string>
     <string name="menu_copy">複製</string>
+    <string name="highlight_label">高亮</string>
+    <string name="underline_label">劃線</string>
     <string name="menu_highlight">高亮</string>
+    <string name="menu_underline">劃線</string>
     <string name="menu_note">筆記</string>
     <string name="menu_view_note">查看筆記</string>
     <string name="menu_remove_highlight">移除高亮</string>

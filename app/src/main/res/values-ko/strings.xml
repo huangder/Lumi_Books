@@ -357,7 +357,10 @@
     <string name="highlight_delete">하이라이트 삭제</string>
     <string name="menu_search">검색</string>
     <string name="menu_copy">복사</string>
+    <string name="highlight_label">하이라이트</string>
+    <string name="underline_label">밑줄</string>
     <string name="menu_highlight">하이라이트</string>
+    <string name="menu_underline">밑줄</string>
     <string name="menu_note">메모</string>
     <string name="menu_view_note">메모 보기</string>
     <string name="menu_remove_highlight">하이라이트 제거</string>

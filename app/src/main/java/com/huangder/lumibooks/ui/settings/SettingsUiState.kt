@@ -101,5 +101,16 @@ data class SettingsUiState(
     val isWebdavSyncing: Boolean = false,
 
     // 检查更新
-    val updateCheck: UpdateCheckDisplay = UpdateCheckDisplay()
+    val updateCheck: UpdateCheckDisplay = UpdateCheckDisplay(),
+
+    // 高亮颜色色卡
+    val customHighlightColors: List<String> = emptyList(),
+
+    // 听书悬浮窗
+    val ttsFloatingWindow: Boolean = true,
+    val preferredTtsEngine: String? = null,
+
+    // 正文排版细化
+    val bodyFontWeight: Int = 400,       // 400=normal, 600=semi-bold, 700=bold
+    val applyToBodyOnly: Boolean = false  // true=排版仅作用于正文
 )

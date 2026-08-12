@@ -5,7 +5,8 @@ import java.util.Locale
 data class LibraryTag(
     val id: String,
     val name: String,
-    val createdAt: Long
+    val createdAt: Long,
+    val parentId: String? = null  // null = 一级标签，非null = 二级标签
 )
 
 data class BookTagLink(

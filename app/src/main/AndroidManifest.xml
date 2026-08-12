@@ -20,6 +20,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- 听书悬浮窗字幕 -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
     <!-- Android 11+ 允许 TextToSpeech 发现并绑定系统语音引擎。 -->
     <queries>
         <intent>
@@ -182,6 +185,12 @@
             android:name=".service.TtsForegroundService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
+
+        <service
+            android:name=".service.TtsFloatingWindowService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback"
+            android:stopWithTask="false" />
 
         <receiver
             android:name=".widget.ContinueReadingWidgetProvider"

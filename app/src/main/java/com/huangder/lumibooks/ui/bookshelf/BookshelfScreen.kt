@@ -456,6 +456,13 @@ fun BookshelfScreen(
                         onRemoveCustomCover = removeCoverFromList,
                         onTags = editTagsFromList,
                         onBookmarksNotes = openNotesFromList,
+                        onLongPressToSelect = { book ->
+                            if (!isEditing) {
+                                isEditing = true
+                                selectedBookIds = selectedBookIds + book.id
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            }
+                        },
                         modifier = Modifier
                             .widthIn(max = 1000.dp)
                             .fillMaxWidth()
@@ -528,6 +535,13 @@ fun BookshelfScreen(
                         onRemoveCustomCover = removeCoverFromList,
                         onTags = editTagsFromList,
                         onBookmarksNotes = openNotesFromList,
+                        onLongPressToSelect = { book ->
+                            if (!isEditing) {
+                                isEditing = true
+                                selectedBookIds = selectedBookIds + book.id
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            }
+                        },
                         modifier = Modifier.weight(1f)
                     )
                 } // Column 结束
@@ -736,11 +750,11 @@ fun BookshelfScreen(
                 onTagCheckedChange = { tag, isChecked ->
                     viewModel.setBookTag(targetBook.id, tag.id, isChecked)
                 },
-                onCreateTag = { name ->
-                    viewModel.createAndAssignTag(targetBook.id, name)
+                onCreateTag = { name, parentId ->
+                    viewModel.createAndAssignTag(targetBook.id, name, parentId)
                 },
-                onDeleteTag = { tag ->
-                    viewModel.deleteTag(tag.id)
+                onDeleteTag = { tag, deleteChildren ->
+                    viewModel.deleteTag(tag.id, deleteChildren)
                 }
             )
         }
@@ -833,6 +847,7 @@ internal fun BookshelfCollection(
     onTags: (Book) -> Unit,
     onBookmarksNotes: (Book) -> Unit,
     showAddBook: Boolean = true,
+    onLongPressToSelect: ((Book) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val targetMode = layoutMode.coerceIn(1, 3)
@@ -985,7 +1000,8 @@ internal fun BookshelfCollection(
                             syncedBookIds = syncedBookIds,
                             onHaptic = onHaptic,
                             onSelectionToggle = { onSelectionToggle(book) },
-                            onClick = { onBookClick(book) }
+                            onClick = { onBookClick(book) },
+                            onLongPress = onLongPressToSelect?.let { { it(book) } }
                         )
                     }
                 }
@@ -1159,6 +1175,20 @@ private fun BookshelfCapsuleHeader(
                     color = AppColors.TextPrimary,
                     fontSize = AppType.BodySmall,
                     fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            AnimatedVisibility(
+                visible = isEditing && selectedCount > 0,
+                enter = fadeIn(tween(120)),
+                exit = fadeOut(tween(110))
+            ) {
+                Text(
+                    text = "已选 $selectedCount 本",
+                    color = AppColors.TextSecondary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(start = 12.dp)
                 )
             }
 
@@ -1403,7 +1433,8 @@ private fun AnimatedBookGridItem(
     syncedBookIds: Set<String>,
     onHaptic: () -> Unit,
     onSelectionToggle: () -> Unit,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongPress: (() -> Unit)? = null
 ) {
     val scale by animateFloatAsState(
         targetValue = when {
@@ -1442,7 +1473,8 @@ private fun AnimatedBookGridItem(
             syncedBookIds = syncedBookIds,
             onHaptic = onHaptic,
             onSelectionToggle = onSelectionToggle,
-            onClick = onClick
+            onClick = onClick,
+            onLongPress = onLongPress
         )
     }
 }
@@ -1459,7 +1491,8 @@ private fun BookGridItem(
     syncedBookIds: Set<String>,
     onHaptic: () -> Unit,
     onSelectionToggle: () -> Unit,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongPress: (() -> Unit)? = null
 ) {
     val coverCorner = if (LocalAppTheme.current == "liquid_glass") 16.dp else AppRadius.sm
     // 是否为当前操作的目标书本（在组合期间读取，确保触发重组）
@@ -1519,14 +1552,18 @@ private fun BookGridItem(
                 interactionSource = interactionSource,
                 onClick = if (isEditing) onSelectionToggle else onClick,
                 onLongClick = if (isEditing) null else {
-                    {
-                        onHaptic()
-                        contextMenuState.onLongPressConfirmed(
-                            book = book,
-                            bounds = coverCoordinates[0]?.boundsInRoot()
-                                ?: androidx.compose.ui.geometry.Rect.Zero,
-                            onHaptic = onHaptic
-                        )
+                    if (onLongPress != null) {
+                        { onLongPress() }
+                    } else {
+                        {
+                            onHaptic()
+                            contextMenuState.onLongPressConfirmed(
+                                book = book,
+                                bounds = coverCoordinates[0]?.boundsInRoot()
+                                    ?: androidx.compose.ui.geometry.Rect.Zero,
+                                onHaptic = onHaptic
+                            )
+                        }
                     }
                 }
             )

@@ -11,5 +11,9 @@ data class Note(
     val selectedText: String,
     val note: String,
     val color: String,
-    val createdAt: Long
-)
+    val createdAt: Long,
+    /** "highlight" = 高亮（背景色块）, "underline" = 划线 */
+    val type: String = "highlight"
+) {
+    val isUnderline: Boolean get() = type == "underline"
+}

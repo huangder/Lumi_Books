@@ -388,7 +388,9 @@ class PageContentView(context: Context) : FrameLayout(context) {
         marginBottomPx: Float = 32f,
         highlightColor: Int = 0x40007AFF.toInt(),
         accentColor: Int = 0xFF007AFF.toInt(),
-        writingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL
+        writingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL,
+        fontWeight: Int = 400,
+        applyToBodyOnly: Boolean = false
     ) {
         this.writingMode = writingMode
         val spacingRatio = if (fontSizePx > 0) letterSpacingPx / fontSizePx else 0f
@@ -399,6 +401,8 @@ class PageContentView(context: Context) : FrameLayout(context) {
         textView.typeface = typeface
         textView.setLineSpacing(lineSpacingExtraPx, lineHeightMult)
         textView.letterSpacing = spacingRatio
+        // 正文字重：>=600 时加粗
+        textView.setFakeBoldText(fontWeight >= 600)
         // 🔥 守卫：仅在值变更时才设置，避免无条件触发 nullLayouts() + requestLayout()
         // Android 的 setBreakStrategy/setHyphenationFrequency 不检查相等性，即使值相同
         // 也会无效化已存在的 Layout，导致多余的 layout pass → 内容位移

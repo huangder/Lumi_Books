@@ -2,6 +2,8 @@ package com.huangder.lumibooks.data.local.database
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.huangder.lumibooks.data.local.dao.BookDao
 import com.huangder.lumibooks.data.local.dao.BookmarkDao
 import com.huangder.lumibooks.data.local.dao.NoteDao
@@ -23,7 +25,7 @@ import com.huangder.lumibooks.data.local.entity.TagEntity
         BookmarkEntity::class,
         NoteEntity::class
     ],
-    version = 4,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -32,4 +34,12 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun bookmarkDao(): BookmarkDao
     abstract fun noteDao(): NoteDao
     abstract fun tagDao(): TagDao
+
+    companion object {
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE tags ADD COLUMN parentId TEXT DEFAULT NULL")
+            }
+        }
+    }
 }

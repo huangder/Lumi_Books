@@ -70,6 +70,28 @@ data class ReaderTextAnchor(
     val characterOffset: Int
 )
 
+/**
+ * 跨页选择起始信息：用户在第 A 页开始选择，翻页到第 B 页继续扩展选区时，
+ * 用此记录第 A 页的选区起止。
+ *
+ * @param startPageStart 第一页的页面内选区起始偏移
+ * @param startPageEnd   第一页的页面内选区结束偏移
+ * @param startText      第一页选中的文本
+ */
+data class CrossPageSelectionState(
+    val startChapterIndex: Int,
+    val startChapterOffset: Int,
+    val startPageStart: Int,
+    val startPageEnd: Int,
+    val startText: String,
+    val startSelTopY: Float,
+    val startSelBottomY: Float,
+    val startSelStartX: Float,
+    val startSelEndX: Float,
+    val startLocatorJson: String? = null,
+    val endLocatorJson: String? = null
+)
+
 class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null) : FrameLayout(context) {
 
     companion object {
@@ -166,6 +188,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var currentBottomOverlayInsetDp: Float = 0f
     private var currentParagraphSpacingDp: Float = 0f
     private var currentBionicReadingEnabled: Boolean = false
+    private var currentFontWeight: Int = 400
+    private var currentApplyToBodyOnly: Boolean = false
     private var currentUseDisplayDensityForSpans: Boolean = false
     private var currentChineseMode: String = "original"
     private var currentPageTransition: String = "slide"
@@ -182,6 +206,11 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var pendingStartPage: Int = 0
     private var configuredWidth: Int = 0
     private var configuredHeight: Int = 0
+
+    // ── 跨页选择 ──
+    /** 跨页选择状态：用户在第 A 页选择后翻页，在第 B 页继续选择时合并两页选区 */
+    var crossPageSelection: CrossPageSelectionState? = null
+        private set
 
     /** 当前阅读背景色（供 CurlPageAnim 背面绘制使用）。 */
     var bgColor: Int = 0xFFFBFBFC.toInt()
@@ -266,6 +295,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         }
         animationController.onTapCenter = {
             clearCurrentSelection()
+            clearCrossPageSelection()
             callbacks?.onMenuToggle()
         }
         animationController.onTapRight = {
@@ -389,7 +419,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 marginBottomPx = baseMarginBottom,
                 highlightColor = highlightColor,
                 accentColor = accentColor,
-                writingMode = currentWritingMode
+                writingMode = currentWritingMode,
+                fontWeight = currentFontWeight,
+                applyToBodyOnly = currentApplyToBodyOnly
             )
             right.configure(
                 fontSizePx = currentFontSizePx,
@@ -404,7 +436,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 marginBottomPx = baseMarginBottom,
                 highlightColor = highlightColor,
                 accentColor = accentColor,
-                writingMode = currentWritingMode
+                writingMode = currentWritingMode,
+                fontWeight = currentFontWeight,
+                applyToBodyOnly = currentApplyToBodyOnly
             )
             left.setReaderBackground(bgColor, currentReaderBackgroundImagePath)
             right.setReaderBackground(bgColor, currentReaderBackgroundImagePath)
@@ -465,6 +499,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         bottomOverlayInsetDp: Float = 0f,
         paragraphSpacingDp: Float = 2f,
         bionicReadingEnabled: Boolean = false,
+        fontWeight: Int = 400,
+        applyToBodyOnly: Boolean = false,
         useDisplayDensityForSpans: Boolean = false,
         writingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL,
         twoPageSpread: Boolean = false,
@@ -472,12 +508,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         height: Int = this.height
     ) {
         if (width <= 0 || height <= 0 || chapterCount <= 0) {
-            // 仅在拿到真实起始位置时更新锚点；书籍尚未加载（chapterCount<=0）
-            // 或起始章节无效时保留上一次的有效锚点，避免用 0 覆盖真实进度。
-            if (chapterCount > 0 && startChapter >= 0) {
-                pendingStartChapter = startChapter
-                pendingStartPage = startPage
-            }
+            pendingStartChapter = startChapter
+            pendingStartPage = startPage
             currentFontSizePx = fontSizePx
             currentTheme = theme
             currentChapterCount = chapterCount
@@ -515,6 +547,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             Math.abs(currentBottomOverlayInsetDp - bottomOverlayInsetDp) > 0.5f
         val paragraphSpacingChanged = Math.abs(currentParagraphSpacingDp - paragraphSpacingDp) > 0.01f
         val bionicReadingChanged = currentBionicReadingEnabled != bionicReadingEnabled
+        val fontWeightChanged = currentFontWeight != fontWeight
+        val applyToBodyOnlyChanged = currentApplyToBodyOnly != applyToBodyOnly
         val paginationLayoutChanged =
             currentUseDisplayDensityForSpans != useDisplayDensityForSpans
         val writingModeChanged = currentWritingMode != writingMode
@@ -530,23 +564,20 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val needsRelayout = themeChanged || chapterCountChanged || fontSizeChanged || lineHeightChanged ||
                 letterSpacingChanged || fontTypeChanged || customFontPathChanged || marginChanged ||
                 overlayInsetChanged || paragraphSpacingChanged || bionicReadingChanged ||
+                fontWeightChanged || applyToBodyOnlyChanged ||
                 paginationLayoutChanged || writingModeChanged || spreadModeChanged || sizeChanged
-        // 旋转/进出双页/窗口 resize（含 ColorOS 小窗）时，重新分页必须基于“当前真实槽位”的章与页，
+        // 旋转/进出双页时，重新分页必须基于“当前真实槽位”的章与页，
         // 而不是 onLayout 传进来的过期 pendingStartChapter/pendingStartPage，
         // 否则整本书会跳回第 1 页（锚点只修正章内页码，不修正章节）。
-        // 槽位在异步加载中（isLoaded=false）时 chapterIndex/pageIndex 仍是本次目标位置，
-        // 必须继续作为锚点；否则连续 resize 期间会回退到 startChapter/pendingStartChapter
-        // （初始化早期可能为 0），把阅读进度清零。
         val relayoutToCurrent = sizeChanged || spreadModeChanged
         val curSlotForRelayout = slotManager.getCurSlot()
-        val hasCurrentAnchor = curSlotForRelayout.chapterIndex >= 0
-        val effectiveStartChapter = if (relayoutToCurrent && hasCurrentAnchor) {
+        val effectiveStartChapter = if (relayoutToCurrent && curSlotForRelayout.isLoaded) {
             curSlotForRelayout.chapterIndex
         } else {
             startChapter
         }
-        val effectiveStartPage = if (relayoutToCurrent && hasCurrentAnchor) {
-            curSlotForRelayout.pageIndex.coerceAtLeast(0)
+        val effectiveStartPage = if (relayoutToCurrent && curSlotForRelayout.isLoaded) {
+            curSlotForRelayout.pageIndex
         } else {
             startPage
         }
@@ -554,9 +585,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         // 🔥 无变化时提前返回，避免菜单切换等 recomposition 触发不必要的重配置
         if (isConfigured && !needsRelayout) {
             val currentSlot = slotManager.getCurSlot()
-            if (startChapter >= 0 &&
-                (currentSlot.chapterIndex != startChapter || currentSlot.pageIndex != startPage)
-            ) {
+            if (currentSlot.chapterIndex != startChapter || currentSlot.pageIndex != startPage) {
                 jumpToChapter(startChapter, startPage)
             }
             return
@@ -577,6 +606,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         currentBottomOverlayInsetDp = bottomOverlayInsetDp
         currentParagraphSpacingDp = paragraphSpacingDp
         currentBionicReadingEnabled = bionicReadingEnabled
+        currentFontWeight = fontWeight
+        currentApplyToBodyOnly = applyToBodyOnly
         currentUseDisplayDensityForSpans = useDisplayDensityForSpans
         currentWritingMode = writingMode
         currentTwoPageSpreadEnabled = twoPageSpread
@@ -960,6 +991,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val isBookFirstPage = current.chapterIndex == 0 && current.pageIndex == 0
         val previous = slotManager.getPrevSlot()
         if (isBookFirstPage || !previous.isLoaded) return false
+        saveCrossPageSelectionIfNeeded()
         clearCurrentSelection()
         startTapAnimation(PageAnimationController.Direction.PREV)
         return true
@@ -973,6 +1005,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         finishRunningPageTurnForNewInput()
         val next = slotManager.getNextSlot()
         if (!next.isLoaded) return false
+        saveCrossPageSelectionIfNeeded()
         clearCurrentSelection()
         startTapAnimation(PageAnimationController.Direction.NEXT)
         return true
@@ -1051,6 +1084,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                     removeCallbacks(rvImageLongPressRunnable)
                     rvPendingImageLongPress = null
                     rvIsHandlingPageGesture = true
+                    saveCrossPageSelectionIfNeeded()
                     clearCurrentSelection()
 
                     // Let the old settle continue under the initial touch. Commit it
@@ -1141,6 +1175,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                                 // Center short tap: toggle the reader menu.
                                 Log.d(TAG, "Center tap detected -> toggle menu")
                                 clearCurrentSelection()
+                                clearCrossPageSelection()
                                 callbacks?.onMenuToggle()
                             }
                         }
@@ -1408,7 +1443,39 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     // ── 选区工具方法 ──
 
     /**
+     * 翻页前保存当前选区为跨页状态，供翻页后继续选择时合并。
+     * 在翻页前调用（clearCurrentSelection 之前）。
+     */
+    fun saveCrossPageSelectionIfNeeded() {
+        // 如果已有跨页选择状态，不再重复保存
+        if (crossPageSelection != null) return
+        val info = getSelectionInfo()
+        if (info != null) {
+            crossPageSelection = CrossPageSelectionState(
+                startChapterIndex = info.chapterIndex,
+                startChapterOffset = info.chapterStartOffset,
+                startPageStart = info.pageStart,
+                startPageEnd = info.pageEnd,
+                startText = info.selectedText,
+                startSelTopY = info.selTopY,
+                startSelBottomY = info.selBottomY,
+                startSelStartX = info.selStartX,
+                startSelEndX = info.selEndX
+            )
+            Log.d(TAG, "Cross-page selection saved: ch=${info.chapterIndex} " +
+                "abs=[${info.chapterStartOffset + info.pageStart},${info.chapterStartOffset + info.pageEnd}) " +
+                "text=\"${info.selectedText.take(40)}\"")
+        }
+    }
+
+    /** 清除跨页选择状态 */
+    fun clearCrossPageSelection() {
+        crossPageSelection = null
+    }
+
+    /**
      * 获取当前页选区的完整信息（供 Compose 层自定义菜单使用）。
+     * 如果有跨页选择状态且当前页有选区，尝试合并为跨页完整选区。
      * @return null 表示当前无选区
      */
     fun getSelectionInfo(sourceView: PageContentView? = null): SelectionInfo? {
@@ -1462,6 +1529,57 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val viewOffsetX = pageView.left.toFloat()
         val startX = tv.left + tv.paddingLeft + layout.getPrimaryHorizontal(selStart) + viewOffsetX
         val endX = tv.left + tv.paddingLeft + layout.getPrimaryHorizontal(selEnd) + viewOffsetX
+
+        // ── 跨页选择合并 ──
+        // 如果有跨页选择状态，且当前选区所在的章节与跨页选择的章节相同（或相邻），
+        // 并且当前选区在跨页选择的后面，则合并为完整的跨页选区
+        val crossPage = crossPageSelection
+        if (crossPage != null && crossPage.startChapterIndex == chapterIdx) {
+            val crossPageStartAbs = crossPage.startChapterOffset + crossPage.startPageStart
+            val currentEndAbs = chapterStartOffset + selEnd
+            // 确认当前选区在跨页选区之后（跨页选区结束位置 <= 当前选区开始位置）
+            if (crossPageStartAbs < currentEndAbs) {
+                // 使用 pageView 的 originalSpannable 获取章节全文（避免主线程 I/O）
+                val fullText = pageView.getJustifiedText()
+                if (fullText != null) {
+                    val mergedStart = crossPageStartAbs.coerceIn(0, fullText.length)
+                    val mergedEnd = currentEndAbs.coerceIn(0, fullText.length)
+                    if (mergedEnd > mergedStart) {
+                        val mergedText = fullText.substring(mergedStart, mergedEnd)
+                        Log.d(TAG, "Cross-page selection merged: " +
+                            "abs=[$mergedStart,$mergedEnd) " +
+                            "text=\"${mergedText.take(80)}\"")
+                        return SelectionInfo(
+                            selectedText = mergedText,
+                            chapterIndex = chapterIdx,
+                            chapterStartOffset = crossPage.startChapterOffset,
+                            pageStart = crossPage.startPageStart,
+                            pageEnd = mergedEnd - crossPage.startChapterOffset,
+                            selTopY = crossPage.startSelTopY.coerceAtMost(topY),
+                            selBottomY = crossPage.startSelBottomY.coerceAtMost(bottomY),
+                            selStartX = crossPage.startSelStartX,
+                            selEndX = endX
+                        )
+                    }
+                } else {
+                    // 无法获取全文，简单拼接两段选中文本
+                    val mergedText = crossPage.startText + text
+                    Log.d(TAG, "Cross-page selection merged (concatenated): " +
+                        "text=\"${mergedText.take(80)}\"")
+                    return SelectionInfo(
+                        selectedText = mergedText,
+                        chapterIndex = chapterIdx,
+                        chapterStartOffset = crossPage.startChapterOffset,
+                        pageStart = crossPage.startPageStart,
+                        pageEnd = selEnd + (chapterStartOffset - crossPage.startChapterOffset),
+                        selTopY = crossPage.startSelTopY.coerceAtMost(topY),
+                        selBottomY = crossPage.startSelBottomY.coerceAtMost(bottomY),
+                        selStartX = crossPage.startSelStartX,
+                        selEndX = endX
+                    )
+                }
+            }
+        }
 
         return SelectionInfo(
             selectedText = text,

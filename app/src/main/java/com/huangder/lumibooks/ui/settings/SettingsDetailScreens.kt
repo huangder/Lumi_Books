@@ -39,6 +39,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.FormatBold
+import androidx.compose.material.icons.outlined.RecordVoiceOver
+import androidx.compose.material.icons.outlined.Subtitles
+import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material.icons.outlined.Brightness6
 import androidx.compose.material.icons.outlined.Animation
 import androidx.compose.material.icons.outlined.Code
@@ -70,13 +75,19 @@ import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material.icons.outlined.SystemUpdateAlt
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -85,6 +96,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Rect
@@ -96,6 +108,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import com.huangder.lumibooks.R
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -195,6 +208,7 @@ fun DetailPage(title: String, onBack: () -> Unit, content: @Composable () -> Uni
 @Composable
 fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
 
     DetailCard {
         SettingsSliderItem(Icons.Outlined.FormatSize, stringResource(R.string.label_font_size), uiState.fontSize, 12f..28f, "${uiState.fontSize.toInt()} sp", step = 1f) { viewModel.saveFontSize(it) }
@@ -205,9 +219,257 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
         SettingsDivider()
         FontTypeRow(uiState.fontType) { viewModel.saveFontType(it) }
         SettingsDivider()
+        // 正文字重
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Outlined.FormatBold,
+                contentDescription = null,
+                tint = AppColors.TextSecondary,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(Modifier.width(AppSpace.md))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.body_font_weight),
+                    fontSize = AppType.Body,
+                    color = AppColors.TextPrimary
+                )
+                Text(
+                    stringResource(R.string.body_font_weight_desc),
+                    fontSize = AppType.Caption,
+                    color = AppColors.TextSecondary
+                )
+            }
+            Switch(
+                checked = uiState.bodyFontWeight >= 600,
+                onCheckedChange = {
+                    viewModel.saveBodyFontWeight(if (it) 700 else 400)
+                }
+            )
+        }
+        SettingsDivider()
         SettingsSliderItem(Icons.Outlined.Landscape, stringResource(R.string.label_margin_horiz), uiState.marginHoriz, 0f..80f, "${uiState.marginHoriz.toInt()} dp", step = 1f) { viewModel.saveMarginHoriz(it) }
         SettingsDivider()
         SettingsSliderItem(Icons.Outlined.Landscape, stringResource(R.string.label_margin_vert), uiState.marginVert, 0f..120f, "${uiState.marginVert.toInt()} dp", step = 1f) { viewModel.saveMarginVert(it) }
+    }
+
+    Spacer(Modifier.height(12.dp))
+
+    DetailCard {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable {
+                    context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "highlight_color"))
+                }
+                .padding(AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Outlined.Palette,
+                contentDescription = null,
+                tint = AppColors.TextSecondary,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(Modifier.width(AppSpace.md))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.highlight_color_palette),
+                    fontSize = AppType.Body,
+                    color = AppColors.TextPrimary
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    stringResource(R.string.highlight_color_palette_desc),
+                    fontSize = AppType.Caption,
+                    color = AppColors.TextSecondary
+                )
+            }
+            Icon(Icons.Outlined.ChevronRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+        }
+    }
+
+    Spacer(Modifier.height(12.dp))
+
+    // 听书悬浮窗开关
+    DetailCard {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Outlined.Subtitles,
+                contentDescription = null,
+                tint = AppColors.TextSecondary,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(Modifier.width(AppSpace.md))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.tts_floating_toggle),
+                    fontSize = AppType.Body,
+                    color = AppColors.TextPrimary
+                )
+                Text(
+                    stringResource(R.string.tts_floating_toggle_desc),
+                    fontSize = AppType.Caption,
+                    color = AppColors.TextSecondary
+                )
+            }
+            Switch(
+                checked = uiState.ttsFloatingWindow,
+                onCheckedChange = { viewModel.saveTtsFloatingWindow(it) }
+            )
+        }
+    }
+
+    Spacer(Modifier.height(12.dp))
+
+    // 语音引擎选择
+    val installedEngines = remember { viewModel.getInstalledTtsEngines() }
+    val selectedEngineLabel = installedEngines.find { it.first == uiState.preferredTtsEngine }?.second
+        ?: stringResource(R.string.tts_engine_system_default)
+    var showEngineDialog by remember { mutableStateOf(false) }
+    DetailCard {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { showEngineDialog = true }
+                .padding(AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Outlined.RecordVoiceOver,
+                contentDescription = null,
+                tint = AppColors.TextSecondary,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(Modifier.width(AppSpace.md))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.tts_engine_selection),
+                    fontSize = AppType.Body,
+                    color = AppColors.TextPrimary
+                )
+                Text(
+                    selectedEngineLabel,
+                    fontSize = AppType.Caption,
+                    color = AppColors.TextSecondary
+                )
+            }
+            Icon(Icons.Outlined.ChevronRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+        }
+    }
+    if (showEngineDialog) {
+        AlertDialog(
+            onDismissRequest = { showEngineDialog = false },
+            title = { Text(stringResource(R.string.tts_engine_select_dialog_title)) },
+            text = {
+                Column {
+                    // 系统默认选项
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                viewModel.savePreferredTtsEngine(null)
+                                showEngineDialog = false
+                            }
+                            .padding(vertical = 12.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = uiState.preferredTtsEngine == null,
+                            onClick = {
+                                viewModel.savePreferredTtsEngine(null)
+                                showEngineDialog = false
+                            }
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            stringResource(R.string.tts_engine_system_default),
+                            fontSize = AppType.Body,
+                            color = AppColors.TextPrimary
+                        )
+                    }
+                    // 已安装引擎列表
+                    installedEngines.forEach { (pkg, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.savePreferredTtsEngine(pkg)
+                                    showEngineDialog = false
+                                }
+                                .padding(vertical = 12.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = uiState.preferredTtsEngine == pkg,
+                                onClick = {
+                                    viewModel.savePreferredTtsEngine(pkg)
+                                    showEngineDialog = false
+                                }
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                label,
+                                fontSize = AppType.Body,
+                                color = AppColors.TextPrimary
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showEngineDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    Spacer(Modifier.height(12.dp))
+
+    // 排版作用范围
+    DetailCard {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Outlined.TextFields,
+                contentDescription = null,
+                tint = AppColors.TextSecondary,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(Modifier.width(AppSpace.md))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.apply_to_body_only),
+                    fontSize = AppType.Body,
+                    color = AppColors.TextPrimary
+                )
+                Text(
+                    stringResource(R.string.apply_to_body_only_desc),
+                    fontSize = AppType.Caption,
+                    color = AppColors.TextSecondary
+                )
+            }
+            Switch(
+                checked = uiState.applyToBodyOnly,
+                onCheckedChange = { viewModel.saveApplyToBodyOnly(it) }
+            )
+        }
     }
 }
 
@@ -1161,6 +1423,341 @@ fun ChangelogDetail() {
                 }
             }
             Spacer(Modifier.height(AppSpace.sm))
+        }
+    }
+}
+
+// ─── 高亮颜色色卡管理 ─────────────────────────────────────────
+
+private val presetColorOptions = listOf(
+    "#D6C58D", "#CFA09A", "#A7B59D", "#9DAFC1", "#B2A198", "#AFB0AC",
+    "#FFD700", "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7",
+    "#DDA0DD", "#98D8C8", "#F7DC6F", "#BB8FCE", "#85C1E9", "#F8C471",
+    "#82E0AA", "#F1948A", "#AED6F1", "#D7BDE2", "#A3E4D7", "#FAD7A0",
+    "#E59866", "#ABEBC6", "#D5F5E3", "#FADBD8", "#D6EAF8", "#E8DAEF"
+)
+
+@Composable
+fun HighlightColorDetail(viewModel: SettingsViewModel) {
+    val uiState by viewModel.uiState.collectAsState()
+    // 使用本地 mutableStateListOf 管理颜色列表，编辑后同步保存
+    val colors = remember { mutableStateListOf<String>() }
+    // 从 uiState 初始化
+    LaunchedEffect(uiState.customHighlightColors) {
+        colors.clear()
+        colors.addAll(uiState.customHighlightColors)
+    }
+
+    var showAddDialog by remember { mutableStateOf(false) }
+    var editingIndex by remember { mutableStateOf(-1) }
+    var editHex by remember { mutableStateOf("") }
+    var editError by remember { mutableStateOf(false) }
+
+    val scope = rememberCoroutineScope()
+
+    fun save() {
+        scope.launch {
+            viewModel.saveCustomHighlightColors(colors.toList())
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AppSpace.md, vertical = AppSpace.sm)
+    ) {
+        // 说明
+        DetailCard {
+            Column(Modifier.padding(AppSpace.md)) {
+                Text(
+                    stringResource(R.string.highlight_color_palette_tip),
+                    fontSize = AppType.BodySmall,
+                    color = AppColors.TextSecondary
+                )
+            }
+        }
+
+        Spacer(Modifier.height(AppSpace.sm))
+
+        // 当前颜色列表
+        DetailCard {
+            Column(Modifier.padding(AppSpace.md)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        stringResource(R.string.highlight_current_colors),
+                        fontSize = AppType.Body,
+                        fontWeight = FontWeight.SemiBold,
+                        color = AppColors.TextPrimary
+                    )
+                    TextButton(
+                        onClick = {
+                            colors.clear()
+                            save()
+                        }
+                    ) {
+                        Text(stringResource(R.string.highlight_reset_default), fontSize = AppType.Caption)
+                    }
+                }
+
+                Spacer(Modifier.height(AppSpace.sm))
+
+                if (colors.isEmpty()) {
+                    Text(
+                        stringResource(R.string.highlight_using_default),
+                        fontSize = AppType.BodySmall,
+                        color = AppColors.TextSecondary
+                    )
+                } else {
+                    colors.forEachIndexed { index, hex ->
+                        val color = try {
+                            Color(android.graphics.Color.parseColor(hex))
+                        } catch (_: Exception) {
+                            Color.Gray
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // 颜色圆点
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                                    .border(1.dp, AppColors.Divider, CircleShape)
+                                    .clickable {
+                                        editingIndex = index
+                                        editHex = hex
+                                        editError = false
+                                    }
+                            )
+                            Spacer(Modifier.width(AppSpace.md))
+                            Text(
+                                hex,
+                                fontSize = AppType.BodySmall,
+                                color = AppColors.TextPrimary,
+                                modifier = Modifier.weight(1f)
+                            )
+                            // 上移
+                            IconButton(
+                                onClick = {
+                                    if (index > 0) {
+                                        val item = colors.removeAt(index)
+                                        colors.add(index - 1, item)
+                                        save()
+                                    }
+                                },
+                                enabled = index > 0
+                            ) {
+                                Icon(
+                                    Icons.Outlined.ExpandMore,
+                                    contentDescription = stringResource(R.string.move_up),
+                                    tint = if (index > 0) AppColors.TextSecondary else AppColors.TextSecondary.copy(alpha = 0.3f),
+                                    modifier = Modifier.rotate(180f).size(20.dp)
+                                )
+                            }
+                            // 下移
+                            IconButton(
+                                onClick = {
+                                    if (index < colors.size - 1) {
+                                        val item = colors.removeAt(index)
+                                        colors.add(index + 1, item)
+                                        save()
+                                    }
+                                },
+                                enabled = index < colors.size - 1
+                            ) {
+                                Icon(
+                                    Icons.Outlined.ExpandMore,
+                                    contentDescription = stringResource(R.string.move_down),
+                                    tint = if (index < colors.size - 1) AppColors.TextSecondary else AppColors.TextSecondary.copy(alpha = 0.3f),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            // 删除
+                            IconButton(onClick = {
+                                colors.removeAt(index)
+                                save()
+                            }) {
+                                Icon(
+                                    Icons.Outlined.DeleteForever,
+                                    contentDescription = stringResource(R.string.delete),
+                                    tint = AppColors.TextSecondary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(AppSpace.sm))
+
+                // 添加颜色按钮
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showAddDialog = true }
+                        .padding(vertical = AppSpace.sm),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Outlined.Add,
+                        contentDescription = null,
+                        tint = AppColors.Accent,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(AppSpace.sm))
+                    Text(
+                        stringResource(R.string.highlight_add_color),
+                        fontSize = AppType.BodySmall,
+                        color = AppColors.Accent
+                    )
+                }
+            }
+        }
+    }
+
+    // ── 编辑颜色对话框 ──
+    if (editingIndex >= 0) {
+        LiquidGlassDialog(
+            onDismissRequest = { editingIndex = -1 },
+            backgroundScrimColor = Color.Black.copy(alpha = 0.20f),
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            com.huangder.lumibooks.ui.components.EditInputDialog(
+                title = stringResource(R.string.highlight_edit_color),
+                fields = listOf(
+                    Triple(stringResource(R.string.highlight_color_hex), editHex, editHex)
+                ),
+                onBack = { editingIndex = -1 },
+                onConfirm = { values ->
+                    val newHex = values[0].trim()
+                    if (newHex.matches(Regex("^#?[0-9A-Fa-f]{6}$"))) {
+                        val hex = if (newHex.startsWith("#")) newHex else "#$newHex"
+                        colors[editingIndex] = hex
+                        save()
+                        editingIndex = -1
+                    } else {
+                        editError = true
+                    }
+                }
+            )
+        }
+    }
+
+    // ── 添加颜色对话框 ──
+    if (showAddDialog) {
+        LiquidGlassDialog(
+            onDismissRequest = { showAddDialog = false },
+            backgroundScrimColor = Color.Black.copy(alpha = 0.20f),
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Column(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(AppRadius.lg))
+                    .background(AppColors.WindowBg)
+                    .padding(AppSpace.md)
+                    .widthIn(max = 320.dp)
+            ) {
+                Text(
+                    stringResource(R.string.highlight_add_color),
+                    fontSize = AppType.Section,
+                    fontWeight = FontWeight.Bold,
+                    color = AppColors.TextPrimary
+                )
+                Spacer(Modifier.height(AppSpace.md))
+                Text(
+                    stringResource(R.string.highlight_pick_preset),
+                    fontSize = AppType.BodySmall,
+                    color = AppColors.TextSecondary
+                )
+                Spacer(Modifier.height(AppSpace.sm))
+
+                // 预设颜色网格
+                val chunked = presetColorOptions.chunked(6)
+                chunked.forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        row.forEach { hex ->
+                            val color = try {
+                                Color(android.graphics.Color.parseColor(hex))
+                            } catch (_: Exception) {
+                                Color.Gray
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                                    .border(1.dp, AppColors.Divider, CircleShape)
+                                    .clickable {
+                                        colors.add(hex)
+                                        save()
+                                        showAddDialog = false
+                                    }
+                            )
+                        }
+                        // 填充剩余空间使对齐
+                        repeat(6 - row.size) {
+                            Spacer(Modifier.size(36.dp))
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                Spacer(Modifier.height(AppSpace.md))
+
+                // 自定义颜色输入
+                var customHex by remember { mutableStateOf("") }
+                var customError by remember { mutableStateOf(false) }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    androidx.compose.material3.OutlinedTextField(
+                        value = customHex,
+                        onValueChange = {
+                            customHex = it
+                            customError = false
+                        },
+                        label = { Text("#000000", fontSize = AppType.Caption) },
+                        isError = customError,
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        textStyle = TextStyle(fontSize = AppType.BodySmall)
+                    )
+                    Spacer(Modifier.width(AppSpace.sm))
+                    TextButton(onClick = {
+                        val hex = customHex.trim()
+                        if (hex.matches(Regex("^#?[0-9A-Fa-f]{6}$"))) {
+                            val finalHex = if (hex.startsWith("#")) hex else "#$hex"
+                            colors.add(finalHex)
+                            save()
+                            showAddDialog = false
+                        } else {
+                            customError = true
+                        }
+                    }) {
+                        Text(stringResource(R.string.confirm), fontSize = AppType.BodySmall)
+                    }
+                }
+                Spacer(Modifier.height(AppSpace.sm))
+                TextButton(
+                    onClick = { showAddDialog = false },
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text(stringResource(R.string.cancel), fontSize = AppType.BodySmall)
+                }
+            }
         }
     }
 }

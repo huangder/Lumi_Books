@@ -18,10 +18,16 @@ class TagRepositoryImpl @Inject constructor(
     override fun getAllTags(): Flow<List<LibraryTag>> =
         tagDao.getAllTags().map { tags -> tags.map { it.toDomain() } }
 
+    override fun getPrimaryTags(): Flow<List<LibraryTag>> =
+        tagDao.getPrimaryTags().map { tags -> tags.map { it.toDomain() } }
+
+    override fun getSecondaryTags(parentId: String): Flow<List<LibraryTag>> =
+        tagDao.getSecondaryTags(parentId).map { tags -> tags.map { it.toDomain() } }
+
     override fun getAllBookTagLinks(): Flow<List<BookTagLink>> =
         tagDao.getAllBookTagLinks().map { links -> links.map { it.toDomain() } }
 
-    override suspend fun createAndAssignTag(bookId: String, rawName: String): LibraryTag {
+    override suspend fun createAndAssignTag(bookId: String, rawName: String, parentId: String?): LibraryTag {
         require(TagNameValidator.isValid(rawName))
 
         val name = TagNameValidator.clean(rawName)
@@ -31,7 +37,8 @@ class TagRepositoryImpl @Inject constructor(
                 id = UUID.randomUUID().toString(),
                 name = name,
                 normalizedName = TagNameValidator.normalized(name),
-                createdAt = System.currentTimeMillis()
+                createdAt = System.currentTimeMillis(),
+                parentId = parentId
             )
         ).toDomain()
     }
@@ -56,14 +63,24 @@ class TagRepositoryImpl @Inject constructor(
         return true
     }
 
-    override suspend fun deleteTag(tagId: String) {
+    override suspend fun moveTag(tagId: String, parentId: String?) {
+        tagDao.moveTag(tagId, parentId)
+    }
+
+    override suspend fun deleteTag(tagId: String, deleteChildren: Boolean) {
+        if (deleteChildren) {
+            tagDao.deleteSecondaryTags(tagId)
+        } else {
+            tagDao.upgradeSecondaryTags(tagId)
+        }
         tagDao.deleteTag(tagId)
     }
 
     private fun TagEntity.toDomain() = LibraryTag(
         id = id,
         name = name,
-        createdAt = createdAt
+        createdAt = createdAt,
+        parentId = parentId
     )
 
     private fun BookTagCrossRefEntity.toDomain() = BookTagLink(

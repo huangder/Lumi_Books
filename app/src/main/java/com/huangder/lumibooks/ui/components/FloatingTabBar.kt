@@ -141,12 +141,7 @@ fun FloatingTabBar(
             )
         )
     } else if (isDark) {
-        Brush.verticalGradient(
-            colors = listOf(
-                Color(0xCC2C2C2E),
-                Color(0xB01C1C1E)
-            )
-        )
+        Brush.solidColor(Color(0xCC1C1C1E))
     } else {
         Brush.verticalGradient(
             colors = listOf(

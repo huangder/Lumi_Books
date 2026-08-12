@@ -43,6 +43,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Sort
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -642,6 +644,10 @@ private fun ImportLayoutSwitchButton(
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val layoutModeDescription = stringResource(R.string.import_layout_mode)
+    val icon = when (layoutMode) {
+        1 -> Icons.Default.ViewList
+        else -> Icons.Default.GridView
+    }
     LiquidGlassSurface(
         shape = CircleShape,
         fallbackColor = if (isLiquidGlass) AppColors.CardBg else AppColors.Accent,
@@ -654,11 +660,11 @@ private fun ImportLayoutSwitchButton(
                 contentDescription = layoutModeDescription
             }
     ) {
-        Text(
-            text = layoutMode.toString(),
-            color = if (isLiquidGlass) AppColors.TextPrimary else AppColors.OnAccent,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Bold
+        Icon(
+            imageVector = icon,
+            contentDescription = layoutModeDescription,
+            tint = if (isLiquidGlass) AppColors.TextPrimary else AppColors.OnAccent,
+            modifier = Modifier.size(20.dp)
         )
     }
 }

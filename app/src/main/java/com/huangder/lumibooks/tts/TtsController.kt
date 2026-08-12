@@ -1,4 +1,4 @@
-﻿package com.huangder.lumibooks.tts
+package com.huangder.lumibooks.tts
 
 import com.huangder.lumibooks.data.local.DataStoreManager
 import kotlinx.coroutines.CoroutineScope
@@ -42,6 +42,10 @@ class TtsController(
 
     private val _currentPage = MutableStateFlow<TtsPageContent?>(null)
     val currentPage: StateFlow<TtsPageContent?> = _currentPage.asStateFlow()
+
+    /** 当前TTS正在朗读的句子（含章节偏移），用于UI播放淡高亮 */
+    private val _currentSentence = MutableStateFlow<TtsTextSegment?>(null)
+    val currentSentence: StateFlow<TtsTextSegment?> = _currentSentence.asStateFlow()
 
     private val _pageTurnRequests = MutableSharedFlow<TtsPageTurnRequest>(replay = 1, extraBufferCapacity = 1)
     val pageTurnRequests: SharedFlow<TtsPageTurnRequest> = _pageTurnRequests.asSharedFlow()
@@ -118,6 +122,12 @@ class TtsController(
             dataStoreManager.externalTtsSettings.collectLatest { settings ->
                 externalTtsEnabled = settings.enabled &&
                     settings.consentVersion >= ExternalTtsConfig.CONSENT_VERSION
+            }
+        }
+        // 收集首选 TTS 引擎设置
+        scope.launch {
+            dataStoreManager.preferredTtsEngine.collectLatest { pkg ->
+                (systemTtsEngine as? TtsEngine)?.preferredEnginePackage = pkg
             }
         }
     }
@@ -214,6 +224,7 @@ class TtsController(
             if (state != TtsPlaybackState.PLAYING && state != TtsPlaybackState.PAUSED) return@launch
             activeUtteranceId = null
             activeSegment = null
+            _currentSentence.value = null
             activeEngine.stop()
 
             if (forward) {
@@ -274,6 +285,7 @@ class TtsController(
         ) {
             activeUtteranceId = null
             activeSegment = null
+            _currentSentence.value = null
             activeEngine.stop()
             speakCurrentSegment()
         }
@@ -346,6 +358,7 @@ class TtsController(
         pageContentError = null
         activeUtteranceId = null
         activeSegment = null
+        _currentSentence.value = null
         activeEngine.stop()
         crossPageMerge = null
 
@@ -474,6 +487,7 @@ class TtsController(
         }
         activeUtteranceId = utteranceId
         activeSegment = segment
+        _currentSentence.value = segment
         val resume = pendingResume?.takeIf {
             it.chapterIndex == page.location.chapterIndex &&
                 it.pageIndex == page.location.pageIndex &&
@@ -489,6 +503,7 @@ class TtsController(
         if (result.isFailure && activeUtteranceId == utteranceId) {
             activeUtteranceId = null
             activeSegment = null
+            _currentSentence.value = null
             _errors.tryEmit(result.exceptionOrNull())
             stopInternal()
             return
@@ -589,6 +604,7 @@ class TtsController(
         pageLoadToken++
         activeUtteranceId = null
         activeSegment = null
+        _currentSentence.value = null
         systemTtsEngine.stop()
         externalTtsEngine.stop()
         pageProvider = null

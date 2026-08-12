@@ -242,9 +242,14 @@ class MobiParser(private val context: Context? = null) : BookParser, BookRenderS
     internal fun imageRecordIndex(recindex: Int): Int? {
         if (recindex <= 0) return null
         val file = mobiFile ?: return null
-        if (file.header.firstImageIndex <= 0) return null
+        if (file.header.firstImageIndex < 0) return null
+        if (file.header.firstImageIndex >= file.records.size) return null
+        // 尝试 1-based recindex 计算
         val index = file.header.firstImageIndex + recindex - 1
-        return index.takeIf { it in file.records.indices }
+        if (index in file.records.indices) return index
+        // 如果 1-based 越界，尝试 0-based recindex 计算（兼容部分文件）
+        val index0 = file.header.firstImageIndex + recindex
+        return index0.takeIf { it in file.records.indices }
     }
 
     /** Maps a rawml byte offset (already adjusted) to a chapter index. */
@@ -470,6 +475,12 @@ class MobiParser(private val context: Context? = null) : BookParser, BookRenderS
             val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
             if (opts.outWidth <= 0 || opts.outHeight <= 0) return null
+            // 防止极端大图导致 OOM：限制最大解码尺寸
+            val maxDimension = 4096
+            if (opts.outWidth > maxDimension || opts.outHeight > maxDimension) {
+                android.util.Log.w("MobiParser", "image too large, skipping: ${opts.outWidth}x${opts.outHeight}")
+                return null
+            }
             val sample = maxOf(opts.outWidth / 800, opts.outHeight / 1200).coerceAtLeast(1)
             opts.inSampleSize = sample
             opts.inJustDecodeBounds = false

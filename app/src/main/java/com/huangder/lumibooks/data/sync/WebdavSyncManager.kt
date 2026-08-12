@@ -562,6 +562,7 @@ class WebdavSyncManager @Inject constructor(
                             put("note", n.note)
                             put("color", n.color)
                             put("createdAt", n.createdAt)
+                            put("type", n.type)
                         })
                     }
                 })
@@ -614,7 +615,8 @@ class WebdavSyncManager @Inject constructor(
                 selectedText = n.getString("selectedText"),
                 note = n.getString("note"),
                 color = n.getString("color"),
-                createdAt = n.getLong("createdAt")
+                createdAt = n.getLong("createdAt"),
+                type = n.optString("type", "highlight")
             ))
         }
     }

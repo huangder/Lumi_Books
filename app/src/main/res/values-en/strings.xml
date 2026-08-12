@@ -370,7 +370,10 @@
     <string name="highlight_delete">Delete Highlight</string>
     <string name="menu_search">Search</string>
     <string name="menu_copy">Copy</string>
+    <string name="highlight_label">Highlight</string>
+    <string name="underline_label">Underline</string>
     <string name="menu_highlight">Highlight</string>
+    <string name="menu_underline">Underline</string>
     <string name="menu_note">Note</string>
     <string name="menu_view_note">View Note</string>
     <string name="menu_remove_highlight">Remove Highlight</string>

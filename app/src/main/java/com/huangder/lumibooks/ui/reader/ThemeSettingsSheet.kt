@@ -47,6 +47,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Surface
@@ -1872,6 +1873,8 @@ fun AdvancedSettingsSheet(
     preservePublisherLayout: Boolean = false,
     currentWritingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL,
     eInkModeEnabled: Boolean = false,
+    comicModeEnabled: Boolean = false,
+    onComicModeChange: (Boolean) -> Unit = {},
     fontDownloadKey: String? = null,
     fontDownloadFailed: Boolean = false,
     onLineHeightChange: (Float) -> Unit,
@@ -1907,7 +1910,9 @@ fun AdvancedSettingsSheet(
     onReaderEdgeTapModeChange: (ReaderEdgeTapMode) -> Unit = {},
     onTextColorChange: (Int?) -> Unit,
     onResetSettings: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    isTxtBook: Boolean = false,
+    onEncodingClick: () -> Unit = {}
 ) {
     if (!visible) return
 
@@ -2177,6 +2182,16 @@ fun AdvancedSettingsSheet(
                         )
                     }
                     Spacer(Modifier.height(12.dp))
+
+                    AdvancedSettingsGroup(eInkModeEnabled) {
+                        AdvancedToggleRow(
+                            title = stringResource(R.string.comic_mode),
+                            hint = stringResource(R.string.comic_mode_hint),
+                            checked = comicModeEnabled,
+                            onCheckedChange = onComicModeChange
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
                 }
 
                 if (!preservePublisherLayout) {
@@ -2212,6 +2227,38 @@ fun AdvancedSettingsSheet(
                     SettingSlider(stringResource(R.string.label_margin_right), currentMarginRight, 0f..80f, 2f, { "${it.toInt()} dp" }, onMarginRightChange)
                 }
                 Spacer(Modifier.height(12.dp))
+
+                if (isTxtBook) {
+                    AdvancedSettingsGroup(eInkModeEnabled) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onEncodingClick() },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.reader_switch_encoding),
+                                    fontSize = 14.sp,
+                                    color = AppColors.TextPrimary
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    text = stringResource(R.string.txt_encoding_setting_hint),
+                                    fontSize = 12.sp,
+                                    color = LightTextSecondary
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = LightTextSecondary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                }
 
                 AdvancedSettingsGroup(eInkModeEnabled) {
                     if (!eInkModeEnabled) {

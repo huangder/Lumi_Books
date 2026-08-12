@@ -51,6 +51,9 @@ class TtsEngine(
 ) : TtsPlaybackEngine {
     override val isExternal: Boolean = false
 
+    /** 用户首选 TTS 引擎包名，null 表示使用系统默认 */
+    var preferredEnginePackage: String? = null
+
     companion object {
         private const val TAG = "TtsEngine"
         private const val INITIALIZATION_TIMEOUT_MS = 6_000L
@@ -80,9 +83,20 @@ class TtsEngine(
         shutdownEngine()
         _engineStatus.value = TtsEngineStatus.INITIALIZING
         val packages = installedEnginePackages()
-        // The null entry asks Android for the user's default engine. Explicit packages are a
-        // vendor-neutral fallback when that engine is temporarily unavailable or misconfigured.
-        val candidates = listOf<String?>(null) + packages
+        // 构建候选引擎列表：首选引擎优先，然后是系统默认（null），最后是其他已安装引擎
+        val candidates = buildList<String?> {
+            val preferred = preferredEnginePackage
+            if (preferred != null) {
+                add(preferred)
+                // 如果首选引擎失败，回退到系统默认
+                add(null)
+            } else {
+                add(null)
+            }
+            packages.forEach { pkg ->
+                if (pkg != preferred) add(pkg)
+            }
+        }
         var lastFailure: Throwable? = null
 
         candidates.forEachIndexed { index, packageName ->
@@ -208,6 +222,25 @@ class TtsEngine(
             if (result >= TextToSpeech.LANG_AVAILABLE) return candidate
         }
         return null
+    }
+
+    @Suppress("DEPRECATION")
+    fun getInstalledEngines(): List<Pair<String, String>> = runCatching {
+        val pm = appContext.packageManager
+        pm.queryIntentServices(Intent(TextToSpeech.Engine.INTENT_ACTION_TTS_SERVICE), 0)
+            .mapNotNull { info ->
+                val pkg = info.serviceInfo?.packageName ?: return@mapNotNull null
+                val label = try {
+                    info.serviceInfo.loadLabel(pm).toString()
+                } catch (_: Exception) {
+                    pkg
+                }
+                pkg to label
+            }
+            .distinctBy { it.first }
+    }.getOrElse { error ->
+        Log.w(TAG, "Unable to enumerate installed TTS engines", error)
+        emptyList()
     }
 
     @Suppress("DEPRECATION")

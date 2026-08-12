@@ -47,6 +47,7 @@ import com.huangder.lumibooks.tts.ExternalTtsProtocol
 import com.huangder.lumibooks.tts.ExternalTtsSettings
 import com.huangder.lumibooks.tts.ExternalTtsEngine
 import com.huangder.lumibooks.tts.ExternalTtsTokenStore
+import com.huangder.lumibooks.tts.TtsEngine
 import com.huangder.lumibooks.mineru.MineruTokenStore
 
 @HiltViewModel
@@ -56,6 +57,7 @@ class SettingsViewModel @Inject constructor(
     private val mineruTokenStore: MineruTokenStore,
     private val externalTtsTokenStore: ExternalTtsTokenStore,
     private val externalTtsEngine: ExternalTtsEngine,
+    private val ttsEngine: TtsEngine,
     private val mineruManualImportManager: MineruManualImportManager,
     private val externalTtsAudioCache: ExternalTtsAudioCache,
     private val webdavSyncManager: com.huangder.lumibooks.data.sync.WebdavSyncManager,
@@ -241,6 +243,32 @@ class SettingsViewModel @Inject constructor(
                 )
             }
         }
+        viewModelScope.launch {
+            dataStoreManager.customHighlightColors.collectLatest { colors ->
+                _uiState.value = _uiState.value.copy(customHighlightColors = colors)
+                com.huangder.lumibooks.ui.reader.updateHighlightPalette(colors)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.ttsFloatingWindow.collectLatest { enabled ->
+                _uiState.value = _uiState.value.copy(ttsFloatingWindow = enabled)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.preferredTtsEngine.collectLatest { pkg ->
+                _uiState.value = _uiState.value.copy(preferredTtsEngine = pkg)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.bodyFontWeight.collectLatest { weight ->
+                _uiState.value = _uiState.value.copy(bodyFontWeight = weight)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.applyToBodyOnly.collectLatest { enabled ->
+                _uiState.value = _uiState.value.copy(applyToBodyOnly = enabled)
+            }
+        }
     }
 
     // ─── 个人信息 ───
@@ -256,6 +284,45 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.saveNickname(name)
             _uiState.value = _uiState.value.copy(nickname = name)
+        }
+    }
+
+    fun saveCustomHighlightColors(colors: List<String>) {
+        viewModelScope.launch {
+            dataStoreManager.saveCustomHighlightColors(colors)
+            _uiState.value = _uiState.value.copy(customHighlightColors = colors)
+            com.huangder.lumibooks.ui.reader.updateHighlightPalette(colors)
+        }
+    }
+
+    fun saveTtsFloatingWindow(enabled: Boolean) {
+        viewModelScope.launch {
+            dataStoreManager.saveTtsFloatingWindow(enabled)
+            _uiState.value = _uiState.value.copy(ttsFloatingWindow = enabled)
+        }
+    }
+
+    fun savePreferredTtsEngine(packageName: String?) {
+        viewModelScope.launch {
+            dataStoreManager.savePreferredTtsEngine(packageName)
+            _uiState.value = _uiState.value.copy(preferredTtsEngine = packageName)
+        }
+    }
+
+    /** 获取已安装的 TTS 引擎列表（包名 -> 显示名称） */
+    fun getInstalledTtsEngines(): List<Pair<String, String>> = ttsEngine.getInstalledEngines()
+
+    fun saveBodyFontWeight(weight: Int) {
+        viewModelScope.launch {
+            dataStoreManager.saveBodyFontWeight(weight)
+            _uiState.value = _uiState.value.copy(bodyFontWeight = weight)
+        }
+    }
+
+    fun saveApplyToBodyOnly(enabled: Boolean) {
+        viewModelScope.launch {
+            dataStoreManager.saveApplyToBodyOnly(enabled)
+            _uiState.value = _uiState.value.copy(applyToBodyOnly = enabled)
         }
     }
 

@@ -42,6 +42,7 @@ import com.huangder.lumibooks.mineru.MineruManualImportManager
 import com.huangder.lumibooks.mineru.MineruMode
 import com.huangder.lumibooks.mineru.MineruTokenStore
 import com.huangder.lumibooks.pdfconversion.PdfConversionState
+import com.huangder.lumibooks.util.ChineseConverter
 import com.huangder.lumibooks.util.DownloadedFonts
 import com.huangder.lumibooks.util.TimeUtils
 import com.huangder.lumibooks.util.parser.BookParser
@@ -198,6 +199,7 @@ data class ReaderUiState(
     val bionicReadingEnabled: Boolean = false,
     val eInkModeEnabled: Boolean = false,
     val twoPageSpreadEnabled: Boolean = true,
+    val comicModeEnabled: Boolean = false,
     /** 双页对开模式当前跨页的右半页（无右页时为 null） */
     val rightPageIndex: Int? = null,
     val screenSleepTimeoutSeconds: Int = DataStoreManager.DEFAULT_SCREEN_SLEEP_TIMEOUT_SECONDS,
@@ -211,8 +213,24 @@ data class ReaderUiState(
     val ttsSpeechRate: Float = 1f,
     val ttsActiveBookId: String? = null,
     val ttsErrorMessage: String? = null,
+    val ttsCurrentSentence: TtsSentencePosition? = null,
     val sleepTimerRemainingMs: Long? = null,
-    val contentRevision: Long = 0L
+    val contentRevision: Long = 0L,
+    /** 选择文本浮动菜单项开关（key=菜单项key, value=是否显示），空Map表示全默认开启 */
+    val selectionMenuItems: Map<String, Boolean> = emptyMap(),
+
+    // 正文排版细化
+    val bodyFontWeight: Int = 400,
+    val applyToBodyOnly: Boolean = false
+)
+
+/**
+ * TTS 当前朗读句子的章节内字符偏移位置，用于连续滚动模式下淡高亮当前句。
+ */
+data class TtsSentencePosition(
+    val chapterIndex: Int,
+    val startOffset: Int,
+    val endOffset: Int
 )
 
 internal fun ReaderUiState.withReaderCornerContent(
@@ -260,7 +278,6 @@ class ReaderViewModel @Inject constructor(
 
     private companion object {
         const val CONTINUOUS_PROGRESS_SCALE = 10_000
-        const val PROGRESS_SAVE_DEBOUNCE_MS = 350L
     }
 
     private val bookId: String = savedStateHandle.get<String>("bookId") ?: ""
@@ -354,6 +371,38 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch {
             ttsController.sleepTimerRemainingMs.collectLatest { remaining ->
                 _uiState.value = _uiState.value.copy(sleepTimerRemainingMs = remaining)
+            }
+        }
+        viewModelScope.launch {
+            // 收集 TTS 当前朗读句子的字符偏移，用于 UI 淡高亮
+            ttsController.currentSentence.collectLatest { segment ->
+                val page = ttsController.currentPage.value
+                if (segment != null && page != null) {
+                    _uiState.value = _uiState.value.copy(
+                        ttsCurrentSentence = TtsSentencePosition(
+                            chapterIndex = page.location.chapterIndex,
+                            startOffset = segment.startCharacterOffset,
+                            endOffset = segment.endCharacterOffset
+                        )
+                    )
+                } else {
+                    _uiState.value = _uiState.value.copy(ttsCurrentSentence = null)
+                }
+            }
+        }
+        // 听书悬浮窗：根据播放状态和开关决定启动/停止悬浮窗
+        viewModelScope.launch {
+            combine(
+                ttsController.playbackState,
+                dataStoreManager.ttsFloatingWindow
+            ) { state, enabled ->
+                state to enabled
+            }.collectLatest { (state, enabled) ->
+                if (enabled && state == TtsPlaybackState.PLAYING) {
+                    com.huangder.lumibooks.service.TtsFloatingWindowService.start(context)
+                } else if (state == TtsPlaybackState.IDLE) {
+                    com.huangder.lumibooks.service.TtsFloatingWindowService.stop(context)
+                }
             }
         }
         viewModelScope.launch {
@@ -600,6 +649,11 @@ class ReaderViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            dataStoreManager.comicMode.collectLatest { enabled ->
+                _uiState.value = _uiState.value.copy(comicModeEnabled = enabled)
+            }
+        }
+        viewModelScope.launch {
             dataStoreManager.screenSleepTimeoutSeconds.collectLatest { seconds ->
                 _uiState.value = _uiState.value.copy(screenSleepTimeoutSeconds = seconds)
             }
@@ -627,6 +681,31 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.readerCornerContent(ReaderPageCorner.BOTTOM_RIGHT).collectLatest { content ->
                 _uiState.value = _uiState.value.copy(readerBottomRightContent = content)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.displayMode().collectLatest { mode ->
+                _uiState.value = _uiState.value.copy(readerDisplayMode = mode)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.customHighlightColors.collectLatest { colors ->
+                updateHighlightPalette(colors)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.selectionMenuItems.collectLatest { items ->
+                _uiState.value = _uiState.value.copy(selectionMenuItems = items)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.bodyFontWeight.collectLatest { weight ->
+                _uiState.value = _uiState.value.copy(bodyFontWeight = weight)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.applyToBodyOnly.collectLatest { enabled ->
+                _uiState.value = _uiState.value.copy(applyToBodyOnly = enabled)
             }
         }
     }
@@ -1350,6 +1429,12 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
+    fun toggleComicMode() {
+        val enabled = !_uiState.value.comicModeEnabled
+        _uiState.value = _uiState.value.copy(comicModeEnabled = enabled)
+        viewModelScope.launch { dataStoreManager.saveComicMode(enabled) }
+    }
+
     fun togglePdfPageMode() {
         if (_uiState.value.eInkModeEnabled) return
         val nextMode = if (_uiState.value.pdfPageMode == "horizontal") "vertical" else "horizontal"
@@ -1380,6 +1465,32 @@ class ReaderViewModel @Inject constructor(
     fun saveBionicReadingEnabled(enabled: Boolean) {
         _uiState.value = _uiState.value.copy(bionicReadingEnabled = enabled)
         viewModelScope.launch { dataStoreManager.saveBionicReadingEnabled(enabled) }
+    }
+
+    fun saveSelectionMenuItems(items: Map<String, Boolean>) {
+        _uiState.value = _uiState.value.copy(selectionMenuItems = items)
+        viewModelScope.launch { dataStoreManager.saveSelectionMenuItems(items) }
+    }
+
+    fun replaceTxtText(searchText: String, replaceWith: String) {
+        val book = _uiState.value.book ?: return
+        if (book.format != "TXT") return
+        viewModelScope.launch {
+            try {
+                val file = java.io.File(book.filePath)
+                if (!file.exists()) return@launch
+                val content = withContext(Dispatchers.IO) { file.readText() }
+                val newContent = content.replace(searchText, replaceWith)
+                if (newContent != content) {
+                    withContext(Dispatchers.IO) { file.writeText(newContent) }
+                    // 触发重新解析
+                    _uiState.value = _uiState.value.copy(contentRevision = _uiState.value.contentRevision + 1)
+                    loadChapterContent()
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = e.message)
+            }
+        }
     }
 
     fun saveScreenSleepTimeoutSeconds(seconds: Int) {
@@ -1564,6 +1675,7 @@ class ReaderViewModel @Inject constructor(
                     val chineseMode = dataStoreManager.chineseMode().first()
                     val eInkModeEnabled = dataStoreManager.eInkModeEnabled.first()
                     val twoPageSpreadEnabled = dataStoreManager.twoPageSpreadEnabled.first()
+                    val comicModeEnabled = dataStoreManager.comicMode.first()
                     val pageTransition = if (eInkModeEnabled) "none" else dataStoreManager.pageTransition().first()
                     val readerDisplayMode = dataStoreManager.displayMode().first()
                     val paragraphSpacing = dataStoreManager.paragraphSpacing().first()
@@ -1639,6 +1751,7 @@ class ReaderViewModel @Inject constructor(
                         pdfPageMode = pdfPageMode,
                         eInkModeEnabled = eInkModeEnabled,
                         twoPageSpreadEnabled = twoPageSpreadEnabled,
+                        comicModeEnabled = comicModeEnabled,
                         error = null
                     )
 
@@ -1790,6 +1903,18 @@ class ReaderViewModel @Inject constructor(
             pageReady = true,
             isLoading = false
         )
+        // 连续滚动模式下，TTS 活跃时通知控制器当前可视位置
+        if (_uiState.value.ttsActiveBookId == bookId &&
+            _uiState.value.ttsPlaybackState != TtsPlaybackState.IDLE
+        ) {
+            val totalPages = pageLayoutEngine.getChapterPageCount(chapterIndex)
+            if (totalPages > 0) {
+                val pageIndex = (chapterFraction.coerceIn(0f, 0.9999f) * totalPages).toInt()
+                    .coerceIn(0, totalPages - 1)
+                ttsController.onPageVisible(bookId, chapterIndex, pageIndex)
+            }
+        }
+
         continuousProgressJob?.cancel()
         val progressState = _uiState.value
         val writeVersion = ++progressWriteVersion
@@ -1851,7 +1976,7 @@ class ReaderViewModel @Inject constructor(
             }
             return
         }
-        scheduleProgressSave()
+        saveProgress()
     }
 
     /**
@@ -1875,7 +2000,20 @@ class ReaderViewModel @Inject constructor(
         val state = _uiState.value
         val book = state.book ?: return
         if (!state.useNewEngine || state.isLoading) return
-        startTtsSession(book.id, book.title, pageProvider, state.currentChapterIndex, state.currentPageIndex)
+        val startChapter = state.currentChapterIndex
+        val startPage = if (state.pageTransition == "continuous") {
+            // 连续滚动模式下，currentPageIndex 是 scaled 值（chapterFraction * CONTINUOUS_PROGRESS_SCALE），
+            // 需转换为真实页码才能被 TTS 的 pageProvider 正确使用
+            val totalPages = pageLayoutEngine.getChapterPageCount(startChapter)
+            if (totalPages > 0) {
+                val chapterFraction = state.currentPageIndex.toFloat() / CONTINUOUS_PROGRESS_SCALE
+                (chapterFraction.coerceIn(0f, 0.9999f) * totalPages).toInt()
+                    .coerceIn(0, totalPages - 1)
+            } else 0
+        } else {
+            state.currentPageIndex
+        }
+        startTtsSession(book.id, book.title, pageProvider, startChapter, startPage)
     }
 
     fun startPdfTts(filePath: String, currentPage: Int, pageCount: Int) {
@@ -1912,6 +2050,56 @@ class ReaderViewModel @Inject constructor(
                 context.stopService(android.content.Intent(context, TtsForegroundService::class.java))
             }
         }
+    }
+
+    /**
+     * 为连续滚动模式提供 TTS 页面内容，无需 ReadView 实例。
+     * 使用 ViewModel 持有的 PageLayoutEngine 对章节文本进行排版分页，
+     * 与 ReadView.getTtsPageContent 逻辑一致。
+     */
+    suspend fun continuousTtsPageContent(chapterIndex: Int, pageIndex: Int): TtsPageContent? {
+        val chapterCount = _uiState.value.chapterCount
+        if (chapterIndex !in 0 until chapterCount || pageIndex < 0) return null
+        val fullText = withContext(Dispatchers.IO) { getChapterText(chapterIndex) }
+            ?.takeUnless { it.isEmpty() }
+            ?: return null
+        val chapterLayout = pageLayoutEngine.layout(chapterIndex, fullText)
+        val pageLayout = chapterLayout.pages.getOrNull(pageIndex) ?: return null
+
+        var startOffset = pageLayout.startCharOffset
+        while (startOffset < pageLayout.endCharOffset && fullText[startOffset] == '\n') {
+            startOffset++
+        }
+        val rawPageText = if (startOffset < pageLayout.endCharOffset) {
+            fullText.subSequence(startOffset, pageLayout.endCharOffset).toString()
+        } else {
+            ""
+        }
+        val chineseMode = _uiState.value.chineseMode
+        val pageText = ChineseConverter.convert(rawPageText, chineseMode)
+
+        val previous = when {
+            pageIndex > 0 -> TtsPageLocation(chapterIndex, pageIndex - 1)
+            chapterIndex <= 0 -> null
+            else -> {
+                val previousLayout = pageLayoutEngine.getChapterLayout(chapterIndex - 1)
+                previousLayout?.takeIf { it.totalPages > 0 }?.let {
+                    TtsPageLocation(chapterIndex - 1, it.totalPages - 1)
+                }
+            }
+        }
+        val next = when {
+            pageIndex + 1 < chapterLayout.totalPages -> TtsPageLocation(chapterIndex, pageIndex + 1)
+            chapterIndex + 1 < chapterCount -> TtsPageLocation(chapterIndex + 1, 0)
+            else -> null
+        }
+        return TtsPageContent(
+            location = TtsPageLocation(chapterIndex, pageIndex),
+            text = pageText,
+            previous = previous,
+            next = next,
+            startCharacterOffset = startOffset
+        )
     }
 
     private suspend fun pdfTtsPageContent(
@@ -2309,7 +2497,8 @@ class ReaderViewModel @Inject constructor(
         endPosition: Int = 0,
         color: String = DefaultReaderHighlightColor,
         startLocatorJson: String? = null,
-        endLocatorJson: String? = null
+        endLocatorJson: String? = null,
+        type: String = "highlight"
     ) {
         val state = _uiState.value
         val book = state.book ?: return
@@ -2324,7 +2513,8 @@ class ReaderViewModel @Inject constructor(
             selectedText = selectedText,
             note = noteText,
             color = color,
-            createdAt = System.currentTimeMillis()
+            createdAt = System.currentTimeMillis(),
+            type = type
         )
         // Render immediately instead of waiting for Room's Flow to emit the inserted record.
         // The database observer replaces this temporary id=0 record with the persisted one.
@@ -2464,24 +2654,6 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    /**
-     * 分页引擎回调驱动的进度保存：短暂防抖后写入。
-     * 小窗/旋转等窗口 resize 会触发连续多次重排回调，中间可能夹带瞬态位置；
-     * 防抖 + 版本号保证最终只写入最后一次（锚点修正后）的真实位置，
-     * 避免瞬态 0 进度覆盖用户真实进度。退后台/离开阅读页走 saveProgress() 即时落库。
-     */
-    private fun scheduleProgressSave() {
-        val state = _uiState.value
-        val writeVersion = ++progressWriteVersion
-        continuousProgressJob?.cancel()
-        continuousProgressJob = viewModelScope.launch {
-            kotlinx.coroutines.delay(PROGRESS_SAVE_DEBOUNCE_MS)
-            progressWriteMutex.withLock {
-                if (writeVersion == progressWriteVersion) saveProgressFor(state)
-            }
-        }
-    }
-
     private suspend fun saveProgressFor(state: ReaderUiState) {
         val book = state.book ?: return
         if (state.chapterCount == 0) return
@@ -2597,6 +2769,23 @@ class ReaderViewModel @Inject constructor(
         return try {
             parser?.getChapterContent(chapterIndex)?.length ?: 0
         } catch (_: Exception) { 0 }
+    }
+
+    /**
+     * 漫画模式：提取章节中的所有图片源（data URI 或路径）。
+     * 用于漫画模式下的全宽图片渲染。
+     */
+    fun getChapterImageSources(chapterIndex: Int): List<String> {
+        val content = try { parser?.getChapterContent(chapterIndex) } catch (_: Exception) { null }
+            ?: return emptyList()
+        if (content !is Spanned) return emptyList()
+
+        val spannable = content as Spanned
+        val imageSpans = spannable.getSpans(0, spannable.length, android.text.style.ImageSpan::class.java)
+        return imageSpans.mapNotNull { span ->
+            val source = span.source
+            if (source.isNullOrBlank()) null else source
+        }
     }
 
     /**

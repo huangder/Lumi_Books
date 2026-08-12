@@ -18,11 +18,28 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.AutoStories
+import androidx.compose.material.icons.rounded.Leaderboard
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -35,6 +52,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
@@ -71,6 +89,10 @@ import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
+import com.huangder.lumibooks.ui.theme.AppColors
+import com.huangder.lumibooks.ui.theme.AppType
+import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
+import com.huangder.lumibooks.ui.theme.fangSongFamily
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.LocalGlobalFontMode
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassTransparency
@@ -164,6 +186,57 @@ private fun rememberPageEntrancePlayback(
     return play
 }
 
+/**
+ * 平板横屏导航栏（侧边栏）
+ */
+@Composable
+private fun TabletNavigationRail(
+    selectedIndex: Int,
+    onTabSelected: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val tabs = listOf(
+        Triple(Icons.Rounded.Home, "首页", Screen.Home.route),
+        Triple(Icons.Rounded.AutoStories, "书库", Screen.Bookshelf.route),
+        Triple(Icons.Rounded.Leaderboard, "统计", Screen.Statistics.route)
+    )
+    Column(
+        modifier = modifier
+            .fillMaxHeight()
+            .width(80.dp)
+            .background(AppColors.CardBg)
+            .padding(vertical = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        tabs.forEachIndexed { index, (icon, label, _) ->
+            val isSelected = index == selectedIndex
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { onTabSelected(index) }
+                    .padding(vertical = 12.dp)
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    tint = if (isSelected) AppColors.Accent else AppColors.TextSecondary,
+                    modifier = Modifier.size(26.dp)
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = label,
+                    fontSize = AppType.Caption,
+                    color = if (isSelected) AppColors.Accent else AppColors.TextSecondary,
+                    fontFamily = resolveAppFontFamily(fangSongFamily())
+                )
+            }
+        }
+    }
+}
+
 @Composable
 fun MainNavGraph(
     navController: NavHostController,
@@ -198,6 +271,9 @@ fun MainNavGraph(
     val hazeState = remember { HazeState() }
     val eInkMode = LocalEInkMode.current
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !eInkMode
+    val configuration = LocalConfiguration.current
+    val isTabletLandscape = configuration.smallestScreenWidthDp >= 600 &&
+        configuration.screenWidthDp > configuration.screenHeightDp
     val liquidGlassBackdrop = rememberLayerBackdrop()
     val homeViewModel: HomeViewModel = hiltViewModel()
     val context = LocalContext.current
@@ -556,6 +632,58 @@ fun MainNavGraph(
 
 
         // 浮动导航栏（渐隐渐显）
+        // 平板横屏：使用侧边导航栏替代底部导航栏
+        if (isTabletLandscape && currentRoute != Screen.Reader.route) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        renderEffect = if (
+                            !eInkMode &&
+                            bookshelfOverlayProgress > 0.01f &&
+                            android.os.Build.VERSION.SDK_INT >= 31
+                        ) {
+                            android.graphics.RenderEffect.createBlurEffect(
+                                20f * bookshelfOverlayProgress,
+                                20f * bookshelfOverlayProgress,
+                                android.graphics.Shader.TileMode.CLAMP
+                            ).asComposeRenderEffect()
+                        } else {
+                            null
+                        }
+                    }
+            ) {
+                AnimatedVisibility(
+                    visible = tabBarVisible,
+                    enter = if (eInkMode) {
+                        EnterTransition.None
+                    } else if (useMainReturnTabBarTransition) {
+                        fadeIn(animationSpec = tween(300, easing = FastOutSlowInEasing))
+                    } else {
+                        fadeIn(animationSpec = tween(400))
+                    },
+                    exit = if (eInkMode) ExitTransition.None else fadeOut(animationSpec = tween(300))
+                ) {
+                    TabletNavigationRail(
+                        selectedIndex = selectedTab,
+                        onTabSelected = { index ->
+                            selectedTab = index
+                            val r = when (index) {
+                                0 -> Screen.Home.route
+                                1 -> Screen.Bookshelf.route
+                                2 -> Screen.Statistics.route
+                                else -> Screen.Home.route
+                            }
+                            navController.navigate(r) {
+                                popUpTo(Screen.Home.route) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    )
+                }
+            }
+        } else {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -640,6 +768,7 @@ fun MainNavGraph(
         }
 
         // 过渡动画覆盖层
+        } // end else (bottom tab bar for non-tablet)
         }
         if (showImportActions) {
             ImportBooksActionSheet(
