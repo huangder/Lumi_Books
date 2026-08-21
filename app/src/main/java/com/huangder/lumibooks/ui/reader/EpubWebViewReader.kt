@@ -8,6 +8,7 @@ import android.view.ActionMode
 import android.view.ContextMenu
 import android.view.Menu
 import android.view.MenuItem
+import android.view.animation.PathInterpolator
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceError
 import android.webkit.WebResourceResponse
@@ -302,6 +303,7 @@ internal fun EpubWebViewReader(
     val activeDocumentUrl = remember(session) { mutableStateOf("") }
     val chapterLoadPending = remember(session) { mutableStateOf(false) }
     val readyChapter = remember(session) { mutableStateOf(-1) }
+    val continuousChapterTurnDirection = remember(session) { mutableStateOf(0) }
     val dispatchedSearchToken = remember(session) { mutableStateOf(-1) }
     var imagePreview by remember(session) { mutableStateOf<EpubImagePreviewRequest?>(null) }
     val imagePreviewProgress = remember(session) { Animatable(0f) }
@@ -644,6 +646,50 @@ internal fun EpubWebViewReader(
                                 if (pageTurnHost.hasPendingPageHandoff()) {
                                     pageTurnHost.keepActiveWebViewCoveredForHandoff()
                                     view.postInvalidateOnAnimation()
+                                } else if (continuousChapterTurnDirection.value != 0 &&
+                                    latestContinuousScroll.value
+                                ) {
+                                    val entranceDirection = continuousChapterTurnDirection.value
+                                    val travel = maxOf(
+                                        pageTurnHost.height * 0.14f,
+                                        64f * view.resources.displayMetrics.density
+                                    )
+                                    pageTurnHost.animate().cancel()
+                                    pageTurnHost.translationY = if (entranceDirection > 0) {
+                                        travel
+                                    } else {
+                                        -travel
+                                    }
+                                    pageTurnHost.alpha = 0f
+                                    view.alpha = 0f
+                                    val startEntrance = start@{
+                                        if (continuousChapterTurnDirection.value != entranceDirection ||
+                                            loadedChapterByView[view] != messageChapterIndex ||
+                                            pageTurnHost.roleOf(view) !=
+                                            EpubPageTurnHost.WebViewRole.ACTIVE
+                                        ) return@start
+                                        continuousChapterTurnDirection.value = 0
+                                        view.alpha = 1f
+                                        pageTurnHost.animate().cancel()
+                                        pageTurnHost.animate()
+                                            .translationY(0f)
+                                            .alpha(1f)
+                                            .setDuration(280L)
+                                            .setInterpolator(
+                                                PathInterpolator(0.2f, 0f, 0f, 1f)
+                                            )
+                                            .start()
+                                    }
+                                    val entranceRequestId = System.nanoTime()
+                                    view.postVisualStateCallback(
+                                        entranceRequestId,
+                                        object : WebView.VisualStateCallback() {
+                                            override fun onComplete(requestId: Long) {
+                                                if (requestId == entranceRequestId) startEntrance()
+                                            }
+                                        }
+                                    )
+                                    view.postDelayed(startEntrance, 160L)
                                 } else {
                                     view.animate().alpha(1f).setDuration(170L).start()
                                 }
@@ -666,7 +712,21 @@ internal fun EpubWebViewReader(
                         }
                         "chapterTurn" -> {
                             val direction = payload.optInt("direction", 0)
-                            if (direction != 0 && !pageTurnHost.requestTurn(direction)) {
+                            if (direction == 0) return
+                            val targetChapter = messageChapterIndex + direction
+                            if (targetChapter !in 0 until session.chapterCount) {
+                                view.evaluateJavascript(
+                                    "window.LumiReader&&window.LumiReader.cancelChapterTurn();",
+                                    null
+                                )
+                                return
+                            }
+                            if (!pageTurnHost.requestTurn(direction)) {
+                                if (latestContinuousScroll.value &&
+                                    payload.optBoolean("animated", false)
+                                ) {
+                                    continuousChapterTurnDirection.value = direction
+                                }
                                 latestChapterTurn.value(direction)
                             }
                         }
@@ -1116,6 +1176,9 @@ internal fun EpubWebViewReader(
                     loadTarget.run()
                 } else if (pageTurnHost.hasPendingPageHandoff()) {
                     loadTarget.run()
+                } else if (continuousScroll && continuousChapterTurnDirection.value != 0) {
+                    // The outgoing document already completed its gesture-driven fade.
+                    loadTarget.run()
                 } else {
                     webView.animate()
                         .alpha(0f)
@@ -1371,6 +1434,8 @@ private fun configureReader(
         .put("transition", pageTransition)
         .put("edgeTapLeft", edgeTapMode.leftAction.toEpubTurnDirection())
         .put("edgeTapRight", edgeTapMode.rightAction.toEpubTurnDirection())
+        .put("canTurnPrevious", chapterIndex > 0)
+        .put("canTurnNext", chapterIndex + 1 < session.chapterCount)
         .put(
             "insets",
             JSONObject()
@@ -1501,7 +1566,7 @@ private fun applyHighlights(view: WebView, notes: List<Note>) {
 
 private fun highlightsJson(notes: List<Note>): JSONArray = JSONArray().apply {
     notes.forEach { note ->
-        val item = JSONObject().put("exact", note.selectedText).put("color", note.color.toCssColor())
+        val item = JSONObject().put("exact", note.selectedText).put("color", note.color.toCssColor()).put("type", note.type)
         note.startLocatorJson?.let { json ->
             runCatching { JSONObject(json) }.getOrNull()?.let { item.put("start", it) }
         }

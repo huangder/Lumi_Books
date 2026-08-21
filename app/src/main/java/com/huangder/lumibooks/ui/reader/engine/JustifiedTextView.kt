@@ -109,6 +109,21 @@ class JustifiedTextView @JvmOverloads constructor(
     private var spannable: Spannable? = null
     private var layout: StaticLayout? = null
 
+    /** TTS 褰撳墠鍙ラ珮浜壒ange锛?start, end, color锛夛紝鍦?onDraw 缁樺埗鏁翠綋鍦嗚搴?*/
+    private var ttsHighlight: Triple<Int, Int, Int>? = null
+
+    fun setTtsHighlight(start: Int, end: Int, color: Int) {
+        if (ttsHighlight?.first == start && ttsHighlight?.second == end && ttsHighlight?.third == color) return
+        ttsHighlight = Triple(start, end, color)
+        invalidate()
+    }
+
+    fun clearTtsHighlight() {
+        if (ttsHighlight == null) return
+        ttsHighlight = null
+        invalidate()
+    }
+
     var justifyLastLine: Boolean = false
         set(value) {
             if (field == value) return
@@ -201,7 +216,148 @@ class JustifiedTextView @JvmOverloads constructor(
 
     // ── 绘制 ──
 
+    private fun drawWaveUnderlines(canvas: Canvas) {
+        val s = spannable ?: return
+        val sl = layout ?: return
+        if (s.isEmpty() || sl.lineCount == 0) return
+        val density = resources.displayMetrics.density
+        val wavePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 1.8f * density
+            strokeCap = Paint.Cap.ROUND
+        }
+        val save = canvas.save()
+        canvas.translate(paddingLeft.toFloat(), paddingTop.toFloat())
+        s.getSpans(0, s.length, WaveUnderlineSpan::class.java).forEach { span ->
+            val spanStart = s.getSpanStart(span).coerceIn(0, s.length)
+            val spanEnd = s.getSpanEnd(span).coerceIn(spanStart, s.length)
+            if (spanStart >= spanEnd) return@forEach
+            wavePaint.color = span.color
+            val amplitude = 1.6f * density
+            val wavelength = 5.5f * density
+            for (line in sl.getLineForOffset(spanStart)..sl.getLineForOffset(spanEnd - 1)) {
+                val layoutLineStart = sl.getLineStart(line)
+                val rawLineEnd = sl.getLineEnd(line)
+                val contentEnd = readerLineContentEnd(s, layoutLineStart, rawLineEnd)
+                val lineStart = maxOf(spanStart, layoutLineStart)
+                val lineEnd = minOf(spanEnd, contentEnd)
+                if (lineStart >= lineEnd || !s.substring(lineStart, lineEnd).any { !it.isWhitespace() }) continue
+                val range = justifiedHorizontalRange(sl, s, line, lineStart, lineEnd) ?: continue
+                val x0 = range.first
+                val x1 = range.second
+                if (x1 <= x0) continue
+                val baseline = sl.getLineBaseline(line).toFloat()
+                val underlineCenter = baseline + textPaint.fontMetrics.descent.coerceAtLeast(1f) + 1f * density
+                val path = android.graphics.Path()
+                var x = x0
+                var first = true
+                while (x <= x1) {
+                    val y = underlineCenter + amplitude * kotlin.math.sin((x - x0) / wavelength * 2.0 * Math.PI)
+                    if (first) { path.moveTo(x, y.toFloat()); first = false } else { path.lineTo(x, y.toFloat()) }
+                    x += 1f
+                }
+                canvas.drawPath(path, wavePaint)
+            }
+        }
+        canvas.restoreToCount(save)
+    }
+
+    private fun drawTtsHighlightBackground(canvas: Canvas) {
+        val tts = ttsHighlight ?: return
+        val sl = layout ?: return
+        val s = spannable ?: return
+        if (s.isEmpty()) return
+        val start = tts.first.coerceIn(0, s.length)
+        val end = tts.second.coerceIn(start, s.length)
+        if (start >= end) return
+        val firstLine = sl.getLineForOffset(start)
+        val lastLine = sl.getLineForOffset(end - 1)
+        val density = resources.displayMetrics.density
+        val gap = 1.5f * density
+        val radius = 12f * density
+        val top = sl.getLineTop(firstLine).toFloat() + gap
+        val bottom = sl.getLineBottom(lastLine).toFloat() - gap
+        if (bottom <= top) return
+        val save = canvas.save()
+        canvas.translate(paddingLeft.toFloat(), paddingTop.toFloat())
+        val oldColor = textPaint.color
+        val oldStyle = textPaint.style
+        textPaint.style = Paint.Style.FILL
+        textPaint.color = tts.third
+        canvas.drawRoundRect(
+            android.graphics.RectF(0f, top, (width - paddingLeft - paddingRight).toFloat(), bottom),
+            radius, radius, textPaint
+        )
+        textPaint.color = oldColor
+        textPaint.style = oldStyle
+        canvas.restoreToCount(save)
+    }
+
+    /** Maps offsets through the same per-character spacing used by [onDraw]. */
+    private fun justifiedHorizontalRange(
+        sl: StaticLayout,
+        text: Spannable,
+        line: Int,
+        segmentStart: Int,
+        segmentEnd: Int
+    ): Pair<Float, Float>? {
+        val lineStart = sl.getLineStart(line)
+        val rawLineEnd = sl.getLineEnd(line)
+        val effectiveEnd = readerLineContentEnd(text, lineStart, rawLineEnd)
+        if (segmentStart < lineStart || segmentEnd > effectiveEnd || segmentStart >= segmentEnd) return null
+
+        val isFirstLineOfParagraph = line == 0 || (lineStart > 0 && text[lineStart - 1] == '\n')
+        val indentPx = text.getSpans(lineStart, (lineStart + 1).coerceAtMost(text.length), LeadingMarginSpan::class.java)
+            .sumOf { it.getLeadingMargin(isFirstLineOfParagraph).toDouble() }
+            .toFloat()
+        val trailingWhitespaceWidth = if (effectiveEnd < rawLineEnd) {
+            textPaint.measureText(text, effectiveEnd, rawLineEnd)
+        } else {
+            0f
+        }
+        val lineWidth = (sl.getLineWidth(line) - trailingWhitespaceWidth).coerceAtLeast(0f)
+        val visibleCharacterCount = (lineStart until effectiveEnd).count { text[it] != '\uFFFC' }
+        val gapCount = (visibleCharacterCount - 1).coerceAtLeast(0)
+        val shouldJustify = shouldJustifyReaderLine(
+            lineIndex = line,
+            lineCount = sl.lineCount,
+            endsWithParagraphBreak = rawLineEnd > lineStart && text[rawLineEnd - 1] == '\n',
+            pageEndsMidParagraph = justifyLastLine
+        )
+        val extraPerCharacter = if (shouldJustify && gapCount > 0) {
+            ((width - paddingLeft - paddingRight).toFloat() - lineWidth).coerceAtLeast(0f) / gapCount
+        } else {
+            0f
+        }
+
+        var x = indentPx
+        var visibleIndex = 0
+        var startX: Float? = if (segmentStart == lineStart) x else null
+        var endX: Float? = null
+        for (index in lineStart until effectiveEnd) {
+            if (text[index] == '\uFFFC') continue
+            if (index == segmentStart) startX = x
+            applySpanStyles(text, index, textPaint)
+            val characterEnd = readerHighlightCharacterEnd(
+                x = x,
+                characterWidth = textPaint.measureText(text, index, index + 1),
+                hasFollowingCharacter = visibleIndex < visibleCharacterCount - 1,
+                letterSpacingPx = readerExplicitLetterSpacing(textPaint.letterSpacing, textPaint.textSize),
+                justificationSpacingPx = extraPerCharacter
+            )
+            resetPaintStyle()
+            x = characterEnd
+            visibleIndex++
+            if (index + 1 == segmentEnd) {
+                endX = x
+                break
+            }
+        }
+        return if (startX != null && endX != null) startX to endX else null
+    }
     override fun onDraw(canvas: Canvas) {
+        drawTtsHighlightBackground(canvas)
+        drawWaveUnderlines(canvas)
         super.onDraw(canvas)
         val sl = layout ?: return
         val s = spannable ?: return

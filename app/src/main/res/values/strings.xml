@@ -126,6 +126,11 @@
     <string name="highlight_color_palette">高亮颜色色卡</string>
     <string name="highlight_color_palette_desc">自定义高亮和划线的颜色</string>
     <string name="highlight_color_palette_tip">色卡修改后，浮动菜单和已有标注将使用新颜色。</string>
+    <string name="highlight_current_colors">当前颜色</string>
+    <string name="highlight_using_default">使用默认颜色</string>
+    <string name="highlight_reset_default">恢复默认</string>
+    <string name="highlight_add_color">添加颜色</string>
+    <string name="highlight_edit_color">编辑颜色</string>
     <string name="highlight_all_palettes">所有色卡</string>
     <string name="highlight_default_palette">默认色卡</string>
     <string name="highlight_create_palette">创建新色卡</string>
@@ -135,6 +140,8 @@
     <string name="highlight_palette_set_color">设置颜色</string>
     <string name="highlight_color_hex">颜色值 (#RRGGBB)</string>
     <string name="highlight_pick_preset">选择预设颜色</string>
+    <string name="move_up">上移</string>
+    <string name="move_down">下移</string>
 
     <!-- 显示与外观 -->
     <string name="label_dark_mode">深色模式</string>
@@ -364,6 +371,11 @@
     <string name="tts_stop">停止听书</string>
     <string name="tts_previous_sentence">上一句</string>
     <string name="tts_next_sentence">下一句</string>
+    <string name="tts_floating_channel">听书悬浮窗</string>
+    <string name="tts_floating_channel_desc">听书悬浮窗字幕通知</string>
+    <string name="tts_floating_notification_title">听书字幕</string>
+    <string name="tts_floating_notification_text">悬浮窗正在显示字幕</string>
+    <string name="tts_floating_loading">正在朗读...</string>
     <string name="tts_page_not_ready">当前页面尚未准备好</string>
     <string name="tts_no_readable_text">当前页面没有可朗读的文字</string>
     <string name="tts_unavailable">无法启动文字转语音，请检查系统语音引擎和语言数据</string>
@@ -407,10 +419,20 @@
     <string name="menu_search">搜索</string>
     <string name="menu_copy">复制</string>
     <string name="menu_highlight">高亮</string>
+    <string name="menu_underline">划线</string>
+    <string name="menu_delete_underline">删除划线</string>
     <string name="menu_note">笔记</string>
     <string name="menu_view_note">查看笔记</string>
     <string name="menu_remove_highlight">移除高亮</string>
     <string name="menu_dictionary">字典</string>
+    <string name="menu_replace">替换</string>
+    <string name="menu_settings">菜单设置</string>
+    <string name="replace_with_label">为</string>
+    <string name="replace_input_hint">请输入替换的文字</string>
+    <string name="replace_success">已替换</string>
+    <string name="replace_no_match">未找到可替换的内容</string>
+    <string name="replace_not_available">仅 TXT 文件支持替换</string>
+    <string name="selection_menu_settings">浮动菜单设置</string>
     <string name="dictionary_no_app">未找到支持查词的词典或翻译应用</string>
     <string name="note_input_placeholder">输入笔记...</string>
     <string name="highlights_notes_title">高亮与笔记</string>

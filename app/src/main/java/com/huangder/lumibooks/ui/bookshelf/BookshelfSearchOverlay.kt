@@ -655,7 +655,7 @@ private fun BookshelfSearchResultCard(
                             .padding(horizontal = 5.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = "${(readingProgress * 100).toInt()}%",
+                            text = formatProgressPercent(readingProgress),
                             color = Color.White,
                             fontSize = 9.sp
                         )

@@ -27,7 +27,7 @@ class EpubHighlightOverlayInstrumentedTest {
                 "application/xhtml+xml",
                 ("<html xmlns=\"http://www.w3.org/1999/xhtml\"><head></head><body>" +
                     "<p style=\"width:120px;font-size:24px;line-height:1\">" +
-                    "before repeated highlight text across several wrapped lines after</p>" +
+                    "before repeated <em>highlight text</em> across several wrapped lines after</p>" +
                     "<p>another line for pagination</p></body></html>").toByteArray()
             ),
             EpubRenditionLayout.REFLOWABLE
@@ -81,7 +81,10 @@ class EpubHighlightOverlayInstrumentedTest {
                 "window.LumiReader.configure({flow:'paginated',theme:'day',insets:{top:0,right:0,bottom:0,left:0}});" +
                     "window.LumiReader.setHighlights([{exact:'repeated highlight text across several wrapped lines'," +
                     "color:'#ffff5f64',start:{version:2,exact:'repeated highlight text across several wrapped lines'," +
-                    "prefix:'before ',suffix:' after',progression:0.2}}]);" +
+                    "prefix:'before ',suffix:' after',progression:0.2}}," +
+                    "{exact:'highlight text across several wrapped lines',color:'#123456ff',type:'underline'," +
+                    "start:{version:2,exact:'highlight text across several wrapped lines'," +
+                    "prefix:'before repeated ',suffix:' after',progression:0.2}}]);" +
                     "window.LumiReader.findText({version:2,exact:'repeated highlight text across several wrapped lines'," +
                     "prefix:'before ',suffix:' after',progression:0.2},101);" +
                     "window.LumiReader.findText({version:2,exact:'another line for pagination'," +
@@ -94,11 +97,20 @@ class EpubHighlightOverlayInstrumentedTest {
                             "if(p&&p.firstChild)r.selectNodeContents(p.firstChild);" +
                             "var blocks=Array.from(document.querySelectorAll('.lumi-highlight-block'))," +
                             "search=blocks.filter(function(e){return e.style.backgroundColor.indexOf('255, 193, 7')>=0})," +
+                            "underlines=Array.from(document.querySelectorAll('.lumi-underline-block'))," +
+                            "underlineFallbacks=blocks.filter(function(e){return e.style.backgroundColor.indexOf('18, 52, 86')>=0})," +
                             "target=document.querySelectorAll('p')[1],layer=document.getElementById('lumi-highlight-layer')," +
+                            "underlineLayer=document.getElementById('lumi-underline-layer')," +
                             "targetRect=target?target.getBoundingClientRect():null,layerRect=layer?layer.getBoundingClientRect():null;" +
                             "return JSON.stringify({count:document.querySelectorAll('.lumi-highlight-block').length," +
                             "searchCount:search.length,searchTop:search.length?parseFloat(search[0].style.top):-1," +
                             "searchAnimation:search.length?getComputedStyle(search[0]).animationName:''," +
+                            "underlineCount:underlines.length,underlineFallbackCount:underlineFallbacks.length," +
+                            "underlinePaths:underlines.filter(function(e){return !!e.querySelector('path')}).length," +
+                            "drawableUnderlines:underlines.filter(function(e){var p=e.querySelector('path');" +
+                            "return p&&p.getAttribute('d')&&isFinite(parseFloat(e.style.width))&&parseFloat(e.style.width)>0}).length," +
+                            "highlightLayerZ:layer?parseInt(getComputedStyle(layer).zIndex,10):0," +
+                            "underlineLayerZ:underlineLayer?parseInt(getComputedStyle(underlineLayer).zIndex,10):0," +
                             "targetTop:targetRect&&layerRect?targetRect.top-layerRect.top:-1," +
                             "radius:document.querySelector('.lumi-highlight-block')?" +
                             "getComputedStyle(document.querySelector('.lumi-highlight-block')).borderTopLeftRadius:''," +
@@ -142,6 +154,18 @@ class EpubHighlightOverlayInstrumentedTest {
         assertEquals("6px", result?.optString("radius"))
         assertTrue("the second locator search must replace the first temporary highlight: result=$result", result?.optInt("searchCount", 0) ?: 0 > 0)
         assertEquals("lumi-search-highlight-pulse", result?.optString("searchAnimation"))
+        assertTrue(
+            "a cross-element underline must render as line SVGs: result=$result",
+            result?.optInt("underlineCount", 0) ?: 0 > 0
+        )
+        assertEquals(result?.optInt("underlineCount"), result?.optInt("underlinePaths"))
+        assertEquals(result?.optInt("underlineCount"), result?.optInt("drawableUnderlines"))
+        assertTrue(
+            "underline SVGs must render above the text while highlight blocks stay behind it: result=$result",
+            (result?.optInt("underlineLayerZ", 0) ?: 0) >
+                (result?.optInt("highlightLayerZ", 0) ?: 0)
+        )
+        assertEquals("underlines must never fall back to background blocks", 0, result?.optInt("underlineFallbackCount", -1))
         assertTrue(
             "temporary highlight must resolve to the second paragraph: result=$result",
             kotlin.math.abs(

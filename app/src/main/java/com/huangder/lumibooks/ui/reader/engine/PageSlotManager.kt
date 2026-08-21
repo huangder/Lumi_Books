@@ -384,6 +384,66 @@ class PageSlotManager(
     }
 
     /** 刷新当前槽位的高亮（笔记/书签变化后调用）。 */
+    fun refreshAllHighlights() {
+        refreshCurrentHighlights()
+        for (slotIdx in intArrayOf(SLOT_PREV, SLOT_NEXT)) {
+            refreshAdjacentHighlights(slotIdx)
+        }
+    }
+
+    private fun refreshAdjacentHighlights(slotIdx: Int) {
+        val slot = slots[slotIdx]
+        if (!slot.isLoaded) return
+        val ci = slot.chapterIndex
+        val pi = slot.pageIndex
+        val cl = layoutEngine.getChapterLayout(ci) ?: return
+        val requestToken = requestTokens[slotIdx]
+
+        scope.launch {
+            val text = withContext(Dispatchers.IO) { contentProvider?.invoke(ci) } ?: return@launch
+            val highlights = highlightProvider?.invoke(ci) ?: emptyList()
+
+            withContext(Dispatchers.Main) {
+                val currentSlot = slots[slotIdx]
+                if (isCurrentRequest(slotIdx, requestToken) &&
+                    currentSlot.chapterIndex == ci && currentSlot.pageIndex == pi && currentSlot.isLoaded
+                ) {
+                    if (spreadEnabled()) {
+                        val leftPage = if (currentSlot.primaryIsRight) null else pi
+                        val rightPage = if (currentSlot.rightIsLoaded) currentSlot.rightPageIndex else null
+                        if (leftPage != null) {
+                            val pageLayout = cl.pages.getOrNull(leftPage)
+                            if (pageLayout != null) {
+                                currentSlot.contentView.setPageContent(text, pageLayout.startCharOffset, pageLayout.endCharOffset, highlights, pageLayout.verticalGeometry)
+                            }
+                        } else {
+                            currentSlot.contentView.clear()
+                        }
+                        if (rightPage != null) {
+                            val pageLayout = cl.pages.getOrNull(rightPage)
+                            if (pageLayout != null) {
+                                currentSlot.rightContentView?.setPageContent(text, pageLayout.startCharOffset, pageLayout.endCharOffset, highlights, pageLayout.verticalGeometry)
+                            }
+                        } else {
+                            currentSlot.rightContentView?.clear()
+                        }
+                    } else {
+                        val pageLayout = cl.pages.getOrNull(pi) ?: return@withContext
+                        currentSlot.contentView.setPageContent(text, pageLayout.startCharOffset, pageLayout.endCharOffset, highlights, pageLayout.verticalGeometry)
+                    }
+                }
+            }
+        }
+    }
+    /** 寮哄埗閲嶆柊娴佺幇褰撳墠椤碉紙TTS 褰撳墠鍙ラ珮浜涘埛鏂扮敤锛?*/
+    fun refreshCurrent() {
+        val cur = slots[SLOT_CUR]
+        if (cur.chapterIndex < 0 || cur.pageIndex < 0) return
+        cur.isLoaded = false
+        cur.rightIsLoaded = false
+        loadSlot(SLOT_CUR, cur.chapterIndex, cur.pageIndex)
+    }
+
     fun refreshCurrentHighlights() {
         val cur = slots[SLOT_CUR]
         if (!cur.isLoaded) return
@@ -636,9 +696,6 @@ class PageSlotManager(
         val fromSlot = slots[from]
         val toSlot = slots[to]
 
-        toSlot.contentView.clear()
-        toSlot.rightContentView?.clear()
-
         toSlot.chapterIndex = fromSlot.chapterIndex
         toSlot.pageIndex = fromSlot.pageIndex
         toSlot.globalPageIndex = fromSlot.globalPageIndex
@@ -648,21 +705,23 @@ class PageSlotManager(
         toSlot.rightGlobalPageIndex = fromSlot.rightGlobalPageIndex
         toSlot.rightIsLoaded = fromSlot.rightIsLoaded
         toSlot.primaryIsRight = fromSlot.primaryIsRight
-        toSlot.contentView.syncText(
-            textViewText = fromSlot.contentView.textView.text,
-            justifiedText = fromSlot.contentView.getJustifiedText(),
-            justifyLastLine = fromSlot.contentView.shouldJustifyLastLine(),
-            chapterStartOffset = fromSlot.contentView.chapterStartOffset,
-            verticalGeometry = fromSlot.contentView.getVerticalGeometry()
-        )
-        fromSlot.rightContentView?.let { fromRight ->
-            toSlot.rightContentView?.syncText(
-                textViewText = fromRight.textView.text,
-                justifiedText = fromRight.getJustifiedText(),
-                justifyLastLine = fromRight.shouldJustifyLastLine(),
-                chapterStartOffset = fromRight.chapterStartOffset,
-                verticalGeometry = fromRight.getVerticalGeometry()
+        if (!renderSlotFromCache(toSlot)) {
+            toSlot.contentView.syncText(
+                textViewText = fromSlot.contentView.textView.text,
+                justifiedText = fromSlot.contentView.getJustifiedText(),
+                justifyLastLine = fromSlot.contentView.shouldJustifyLastLine(),
+                chapterStartOffset = fromSlot.contentView.chapterStartOffset,
+                verticalGeometry = fromSlot.contentView.getVerticalGeometry()
             )
+            fromSlot.rightContentView?.let { fromRight ->
+                toSlot.rightContentView?.syncText(
+                    textViewText = fromRight.textView.text,
+                    justifiedText = fromRight.getJustifiedText(),
+                    justifyLastLine = fromRight.shouldJustifyLastLine(),
+                    chapterStartOffset = fromRight.chapterStartOffset,
+                    verticalGeometry = fromRight.getVerticalGeometry()
+                )
+            } ?: toSlot.rightContentView?.clear()
         }
         Log.d(TAG, "moveSlot $from→$to: invalidating ${toSlot.contentView}")
         toSlot.contentView.invalidate()
@@ -679,6 +738,59 @@ class PageSlotManager(
         fromSlot.primaryIsRight = false
         fromSlot.contentView.clear()
         fromSlot.rightContentView?.clear()
+    }
+
+    /**
+     * TextView's selectable Editable copy does not reliably retain custom
+     * CharacterStyle subclasses across slot rotation. Recreate the destination
+     * page from the cached chapter source so saved highlight spans stay concrete.
+     */
+    private fun renderSlotFromCache(slot: SlotState): Boolean {
+        if (!slot.isLoaded || slot.chapterIndex < 0 || slot.pageIndex < 0) return false
+        val text = chapterTextCache[slot.chapterIndex] ?: return false
+        val chapterLayout = layoutEngine.getChapterLayout(slot.chapterIndex) ?: return false
+        val highlights = highlightProvider?.invoke(slot.chapterIndex) ?: emptyList()
+
+        if (!spreadEnabled()) {
+            val page = chapterLayout.pages.getOrNull(slot.pageIndex) ?: return false
+            slot.contentView.setPageContent(
+                text,
+                page.startCharOffset,
+                page.endCharOffset,
+                highlights,
+                page.verticalGeometry
+            )
+            slot.rightContentView?.clear()
+            return true
+        }
+
+        if (slot.primaryIsRight) {
+            slot.contentView.clear()
+        } else {
+            val leftPage = chapterLayout.pages.getOrNull(slot.pageIndex) ?: return false
+            slot.contentView.setPageContent(
+                text,
+                leftPage.startCharOffset,
+                leftPage.endCharOffset,
+                highlights,
+                leftPage.verticalGeometry
+            )
+        }
+
+        if (slot.rightIsLoaded && slot.rightPageIndex >= 0) {
+            val rightPage = chapterLayout.pages.getOrNull(slot.rightPageIndex) ?: return false
+            val rightView = slot.rightContentView ?: return false
+            rightView.setPageContent(
+                text,
+                rightPage.startCharOffset,
+                rightPage.endCharOffset,
+                highlights,
+                rightPage.verticalGeometry
+            )
+        } else {
+            slot.rightContentView?.clear()
+        }
+        return true
     }
 
     private fun recycleSlot(slotIdx: Int) {

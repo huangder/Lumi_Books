@@ -164,7 +164,8 @@ class ReadingRepositoryImpl @Inject constructor(
             selectedText = selectedText,
             note = note,
             color = color,
-            createdAt = createdAt
+            createdAt = createdAt,
+            type = type
         )
     }
 
@@ -180,7 +181,8 @@ class ReadingRepositoryImpl @Inject constructor(
             selectedText = selectedText,
             note = note,
             color = color,
-            createdAt = createdAt
+            createdAt = createdAt,
+            type = type
         )
     }
 }

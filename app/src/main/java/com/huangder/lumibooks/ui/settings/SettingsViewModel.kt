@@ -250,22 +250,43 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            combine(dataStoreManager.customHighlightPalettes, dataStoreManager.activeHighlightPaletteId) { palettes, activeId -> palettes to activeId }
+            combine(
+                dataStoreManager.customHighlightPalettes,
+                dataStoreManager.activeHighlightPaletteId
+            ) { palettes, activeId -> palettes to activeId }
                 .collectLatest { (palettes, activeId) ->
-                    val active = palettes.firstOrNull { it.id == activeId }
-                        ?: palettes.firstOrNull()?.takeIf { it.id == "legacy" && activeId == null }
+                    val selected = palettes.firstOrNull { it.id == activeId }
+                        ?: palettes.firstOrNull()?.takeIf {
+                            it.id == "legacy" && (activeId == null || activeId == "legacy")
+                    }
                     _uiState.value = _uiState.value.copy(
-                        customHighlightColors = active?.normalizedColors?.filterNotNull().orEmpty(),
+                        customHighlightColors = selected?.normalizedColors?.filterNotNull().orEmpty(),
                         customHighlightPalettes = palettes,
                         activeHighlightPaletteId = activeId
                     )
                     com.huangder.lumibooks.ui.reader.updateHighlightPalettes(palettes, activeId)
                 }
         }
-        viewModelScope.launch { dataStoreManager.ttsFloatingWindow.collectLatest { _uiState.value = _uiState.value.copy(ttsFloatingWindow = it) } }
-        viewModelScope.launch { dataStoreManager.preferredTtsEngine.collectLatest { _uiState.value = _uiState.value.copy(preferredTtsEngine = it) } }
-        viewModelScope.launch { dataStoreManager.bodyFontWeight.collectLatest { _uiState.value = _uiState.value.copy(bodyFontWeight = it) } }
-        viewModelScope.launch { dataStoreManager.applyToBodyOnly.collectLatest { _uiState.value = _uiState.value.copy(applyToBodyOnly = it) } }
+        viewModelScope.launch {
+            dataStoreManager.ttsFloatingWindow.collectLatest { enabled ->
+                _uiState.value = _uiState.value.copy(ttsFloatingWindow = enabled)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.preferredTtsEngine.collectLatest { preferredTtsEngine ->
+                _uiState.value = _uiState.value.copy(preferredTtsEngine = preferredTtsEngine)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.bodyFontWeight.collectLatest { bodyFontWeight ->
+                _uiState.value = _uiState.value.copy(bodyFontWeight = bodyFontWeight)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.applyToBodyOnly.collectLatest { applyToBodyOnly ->
+                _uiState.value = _uiState.value.copy(applyToBodyOnly = applyToBodyOnly)
+            }
+        }
     }
 
     // ─── 个人信息 ───
@@ -281,6 +302,36 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.saveNickname(name)
             _uiState.value = _uiState.value.copy(nickname = name)
+        }
+    }
+
+    fun saveCustomHighlightColors(colors: List<String>) {
+        viewModelScope.launch {
+            dataStoreManager.saveCustomHighlightColors(colors)
+            _uiState.value = _uiState.value.copy(customHighlightColors = colors)
+        }
+    }
+
+    fun saveCustomHighlightPalettes(
+        palettes: List<com.huangder.lumibooks.domain.model.HighlightPalette>
+    ) {
+        viewModelScope.launch {
+            dataStoreManager.saveCustomHighlightPalettes(palettes)
+            _uiState.value = _uiState.value.copy(customHighlightPalettes = palettes)
+        }
+    }
+
+    fun saveActiveHighlightPalette(id: String?) {
+        viewModelScope.launch {
+            dataStoreManager.saveActiveHighlightPaletteId(id)
+            _uiState.value = _uiState.value.copy(activeHighlightPaletteId = id)
+        }
+    }
+
+    fun saveTtsFloatingWindow(enabled: Boolean) {
+        viewModelScope.launch {
+            dataStoreManager.saveTtsFloatingWindow(enabled)
+            _uiState.value = _uiState.value.copy(ttsFloatingWindow = enabled)
         }
     }
 
@@ -373,27 +424,6 @@ class SettingsViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(darkMode = mode)
         viewModelScope.launch {
             dataStoreManager.saveDarkMode(mode)
-        }
-    }
-
-    fun saveCustomHighlightPalettes(palettes: List<com.huangder.lumibooks.domain.model.HighlightPalette>) {
-        viewModelScope.launch {
-            dataStoreManager.saveCustomHighlightPalettes(palettes)
-            _uiState.value = _uiState.value.copy(customHighlightPalettes = palettes)
-        }
-    }
-
-    fun saveActiveHighlightPalette(id: String?) {
-        viewModelScope.launch {
-            dataStoreManager.saveActiveHighlightPaletteId(id)
-            _uiState.value = _uiState.value.copy(activeHighlightPaletteId = id)
-        }
-    }
-
-    fun saveTtsFloatingWindow(enabled: Boolean) {
-        viewModelScope.launch {
-            dataStoreManager.saveTtsFloatingWindow(enabled)
-            _uiState.value = _uiState.value.copy(ttsFloatingWindow = enabled)
         }
     }
 

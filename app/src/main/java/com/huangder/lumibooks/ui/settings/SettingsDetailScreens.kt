@@ -38,8 +38,8 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -87,10 +87,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -111,8 +110,8 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import com.huangder.lumibooks.R
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalContext
@@ -153,70 +152,67 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 fun DetailPage(title: String, onBack: () -> Unit, content: @Composable () -> Unit) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val pageBackdrop = rememberLayerBackdrop()
-    val controlsBackdrop = rememberLayerBackdrop()
+    val activeBackdrop = pageBackdrop.takeIf { isLiquidGlass }
 
     LiquidGlassMenuHost(
         modifier = Modifier
             .fillMaxSize()
             .background(AppColors.WindowBg),
-        backdrop = pageBackdrop.takeIf { isLiquidGlass }
+        backdrop = activeBackdrop
     ) {
         LiquidGlassDialogHost(
             modifier = Modifier.fillMaxSize(),
-            backdrop = pageBackdrop.takeIf { isLiquidGlass }
+            backdrop = activeBackdrop
         ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(if (isLiquidGlass) Modifier.layerBackdrop(pageBackdrop) else Modifier)
-        ) {
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .then(if (isLiquidGlass) Modifier.layerBackdrop(controlsBackdrop) else Modifier)
-                .background(AppColors.WindowBg)
-        )
-        ProvideLiquidGlassBackdrop(controlsBackdrop.takeIf { isLiquidGlass }) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(AppColors.WindowBg)
-                .statusBarsPadding(),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // 顶栏
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = AppSpace.sm, vertical = AppSpace.sm),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                LiquidGlassIconButton(
-                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                    contentDescription = stringResource(R.string.back),
-                    onClick = onBack,
-                    settingsBackButton = true
+            Box(modifier = Modifier.fillMaxSize()) {
+                // Keep the backdrop source separate from glass controls. Capturing controls that
+                // draw this same backdrop creates a recursive HWUI RenderNode tree on some devices.
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(AppColors.WindowBg)
+                        .then(activeBackdrop?.let { Modifier.layerBackdrop(it) } ?: Modifier)
                 )
-                Spacer(Modifier.weight(1f))
-                Text(title, fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = resolveAppFontFamily(fangSongFamily()), color = AppColors.TextPrimary)
-                Spacer(Modifier.weight(1f))
-                Spacer(Modifier.size(48.dp))
+                ProvideLiquidGlassBackdrop(activeBackdrop) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .statusBarsPadding(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        // 顶栏
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = AppSpace.sm, vertical = AppSpace.sm),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            LiquidGlassIconButton(
+                                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                                contentDescription = stringResource(R.string.back),
+                                onClick = onBack,
+                                settingsBackButton = true
+                            )
+                            Spacer(Modifier.weight(1f))
+                            Text(title, fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = resolveAppFontFamily(fangSongFamily()), color = AppColors.TextPrimary)
+                            Spacer(Modifier.weight(1f))
+                            Spacer(Modifier.size(48.dp))
+                        }
+                        Column(
+                            modifier = Modifier
+                                .widthIn(max = 840.dp)
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .imePadding()
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            Spacer(Modifier.height(AppSpace.sm))
+                            content()
+                            Spacer(Modifier.height(120.dp))
+                        }
+                    }
+                }
             }
-            Column(
-                modifier = Modifier
-                    .widthIn(max = 840.dp)
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .imePadding()
-                    .verticalScroll(rememberScrollState())
-            ) {
-                Spacer(Modifier.height(AppSpace.sm))
-                content()
-                Spacer(Modifier.height(120.dp))
-            }
-        }
-        }
-        }
         }
     }
 }
@@ -227,7 +223,6 @@ fun DetailPage(title: String, onBack: () -> Unit, content: @Composable () -> Uni
 fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
-
     DetailCard {
         // 正文字重
         Row(
@@ -795,377 +790,6 @@ fun ReadingGoalDetail(viewModel: SettingsViewModel) {
 
     DetailCard {
         SettingsSliderItem(Icons.Outlined.Timer, stringResource(R.string.label_daily_goal), uiState.dailyGoal.toFloat(), 10f..120f, stringResource(R.string.goal_minutes, uiState.dailyGoal), steps = 21) { viewModel.saveDailyGoal(it.toInt()) }
-    }
-}
-
-// ─── 高亮颜色色卡 ────────────────────────────────────────────
-
-private val presetColorOptions = listOf(
-    "#D6C58D", "#CFA09A", "#A7B59D", "#9DAFC1", "#B2A198", "#AFB0AC",
-    "#FFD700", "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7",
-    "#DDA0DD", "#98D8C8", "#F7DC6F", "#BB8FCE", "#85C1E9", "#F8C471",
-    "#82E0AA", "#F1948A", "#AED6F1", "#D7BDE2", "#A3E4D7", "#FAD7A0",
-    "#E59866", "#ABEBC6", "#D5F5E3", "#FADBD8", "#D6EAF8", "#E8DAEF"
-)
-
-private val defaultHighlightColors = listOf(
-    "#D6C58D", "#CFA09A", "#A7B59D", "#9DAFC1", "#B2A198", "#AFB0AC"
-)
-
-@Composable
-fun HighlightColorDetail(viewModel: SettingsViewModel) {
-    val uiState by viewModel.uiState.collectAsState()
-    val palettes = remember { mutableStateListOf<HighlightPalette>() }
-    LaunchedEffect(uiState.customHighlightPalettes) {
-        if (palettes.toList() != uiState.customHighlightPalettes) {
-            palettes.clear()
-            palettes.addAll(uiState.customHighlightPalettes)
-        }
-    }
-    var showCreateDialog by remember { mutableStateOf(false) }
-    var paletteName by remember { mutableStateOf("") }
-    var colorTarget by remember { mutableStateOf<Pair<Int, Int>?>(null) }
-
-    fun savePalettes() = viewModel.saveCustomHighlightPalettes(palettes.toList())
-
-    fun updateSlot(paletteIndex: Int, slotIndex: Int, hex: String) {
-        val palette = palettes.getOrNull(paletteIndex) ?: return
-        val updated = palette.normalizedColors.toMutableList().apply { this[slotIndex] = hex }
-        palettes[paletteIndex] = palette.copy(colors = updated)
-        savePalettes()
-    }
-
-    fun deletePalette(index: Int) {
-        val removed = palettes.removeAt(index)
-        if (uiState.activeHighlightPaletteId == removed.id) viewModel.saveActiveHighlightPalette(null)
-        savePalettes()
-    }
-
-    val density = androidx.compose.ui.platform.LocalDensity.current
-    val g2CardShape = remember(density) {
-        G2ContinuousCornerShape(with(density) { 26.dp.toPx() })
-    }
-
-    Column(Modifier.fillMaxWidth().padding(vertical = AppSpace.sm)) {
-        DetailCard {
-            Column(Modifier.padding(AppSpace.md)) {
-                Text(
-                    stringResource(R.string.highlight_color_palette_tip),
-                    fontSize = AppType.BodySmall,
-                    color = AppColors.TextSecondary
-                )
-            }
-        }
-        Spacer(Modifier.height(AppSpace.sm))
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = AppSpace.md)
-                .animateContentSize(animationSpec = tween(360))
-                .background(AppColors.CardBg, g2CardShape)
-        ) {
-            Column(Modifier.padding(AppSpace.md)) {
-                Text(
-                    stringResource(R.string.highlight_all_palettes),
-                    fontSize = AppType.Section,
-                    fontWeight = FontWeight.Bold,
-                    color = AppColors.TextPrimary
-                )
-                Spacer(Modifier.height(AppSpace.md))
-
-                HighlightPaletteRow(
-                    palette = HighlightPalette(
-                        id = "default",
-                        name = stringResource(R.string.highlight_default_palette),
-                        colors = defaultHighlightColors
-                    ),
-                    selected = uiState.activeHighlightPaletteId == null,
-                    isDefault = true,
-                    shape = g2CardShape,
-                    onSelect = { viewModel.saveActiveHighlightPalette(null) },
-                    onSlotClick = {}
-                )
-
-                palettes.forEachIndexed { index, palette ->
-                    Spacer(Modifier.height(AppSpace.sm))
-                    HighlightPaletteRow(
-                        palette = palette,
-                        selected = uiState.activeHighlightPaletteId == palette.id,
-                        isDefault = false,
-                        shape = g2CardShape,
-                        onSelect = { viewModel.saveActiveHighlightPalette(palette.id) },
-                        onSlotClick = { slot -> colorTarget = index to slot },
-                        onDelete = { deletePalette(index) }
-                    )
-                }
-
-                Spacer(Modifier.height(AppSpace.lg))
-                LiquidGlassButton(
-                    onClick = {
-                        paletteName = ""
-                        showCreateDialog = true
-                    },
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
-                    shape = g2CardShape,
-                    tintedColor = AppColors.Accent,
-                    prominentShadow = true,
-                    contentColor = AppColors.OnAccent
-                ) {
-                    Icon(Icons.Outlined.Add, null, modifier = Modifier.size(18.dp), tint = Color.White)
-                    Spacer(Modifier.width(AppSpace.sm))
-                    Text(
-                        stringResource(R.string.highlight_create_palette),
-                        color = Color.White,
-                        fontSize = AppType.BodySmall
-                    )
-                }
-            }
-        }
-    }
-
-    if (showCreateDialog) {
-        LiquidGlassDialog(
-            onDismissRequest = { showCreateDialog = false },
-            backgroundScrimColor = Color.Black.copy(alpha = 0.20f),
-            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
-        ) {
-            com.huangder.lumibooks.ui.components.EditInputDialog(
-                title = stringResource(R.string.highlight_create_palette),
-                fields = listOf(
-                    Triple(
-                        stringResource(R.string.highlight_palette_name),
-                        stringResource(R.string.highlight_palette_name_hint),
-                        paletteName
-                    )
-                ),
-                onBack = { showCreateDialog = false },
-                onConfirm = { values ->
-                    val name = values.firstOrNull()?.trim().orEmpty()
-                    if (name.isNotBlank()) {
-                        val palette = HighlightPalette(name = name)
-                        palettes.add(palette)
-                        savePalettes()
-                        viewModel.saveActiveHighlightPalette(palette.id)
-                        showCreateDialog = false
-                    }
-                }
-            )
-        }
-    }
-
-    colorTarget?.let { (paletteIndex, slotIndex) ->
-        HighlightPaletteColorDialog(
-            onDismiss = { colorTarget = null },
-            onColorSelected = { hex ->
-                updateSlot(paletteIndex, slotIndex, hex)
-                colorTarget = null
-            }
-        )
-    }
-}
-
-@Composable
-private fun HighlightPaletteRow(
-    palette: HighlightPalette,
-    selected: Boolean,
-    isDefault: Boolean,
-    shape: androidx.compose.ui.graphics.Shape,
-    onSelect: () -> Unit,
-    onSlotClick: (Int) -> Unit,
-    onDelete: () -> Unit = {}
-) {
-    val density = androidx.compose.ui.platform.LocalDensity.current
-    val revealWidth = with(density) { 72.dp.toPx() }
-    var dragOffset by remember(palette.id) { mutableFloatStateOf(0f) }
-    var isDragging by remember(palette.id) { mutableStateOf(false) }
-    fun resistedOffset(rawOffset: Float): Float {
-        fun rubberBand(distance: Float): Float {
-            val resisted = revealWidth * (1f - 1f / (1f + distance * 0.70f / revealWidth))
-            return resisted.coerceAtMost(with(density) { 14.dp.toPx() })
-        }
-        return when {
-            rawOffset < -revealWidth -> -revealWidth - rubberBand(-revealWidth - rawOffset)
-            rawOffset > 0f -> rubberBand(rawOffset)
-            else -> rawOffset
-        }
-    }
-    val visualTarget = if (isDragging) resistedOffset(dragOffset) else dragOffset
-    val animatedOffset by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = visualTarget,
-        animationSpec = if (isDragging) androidx.compose.animation.core.snap()
-        else spring(dampingRatio = 0.62f, stiffness = 360f),
-        label = "paletteReveal"
-    )
-    val currentAnimatedOffset = androidx.compose.runtime.rememberUpdatedState(animatedOffset)
-    val revealProgress = (-animatedOffset / revealWidth).coerceIn(0f, 1f)
-    val deleteButtonTravel = with(density) { 35.dp.toPx() }
-
-    Box(Modifier.fillMaxWidth().height(70.dp)) {
-        if (!isDefault) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 12.dp)
-                    .size(46.dp)
-                    .graphicsLayer {
-                        alpha = revealProgress
-                        translationX = deleteButtonTravel * (1f - revealProgress)
-                    }
-                    .clip(CircleShape)
-                    .background(AppColors.Accent.copy(alpha = 0.88f)),
-                contentAlignment = Alignment.Center
-            ) {
-                IconButton(onClick = onDelete, modifier = Modifier.fillMaxSize()) {
-                    Icon(
-                        Icons.Outlined.DeleteForever,
-                        stringResource(R.string.highlight_palette_delete),
-                        tint = AppColors.OnAccent,
-                        modifier = Modifier.size(19.dp)
-                    )
-                }
-            }
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer { translationX = if (isDefault) 0f else animatedOffset }
-                .clip(shape)
-                .background(AppColors.BgGray)
-                .then(if (selected) Modifier.border(1.5.dp, AppColors.Accent, shape) else Modifier)
-                .pointerInput(revealWidth, isDefault) {
-                    if (!isDefault) {
-                        detectHorizontalDragGestures(
-                            onDragStart = {
-                                dragOffset = currentAnimatedOffset.value
-                                isDragging = true
-                            },
-                            onHorizontalDrag = { change, dragAmount ->
-                                change.consume()
-                                dragOffset += dragAmount
-                            },
-                            onDragEnd = {
-                                dragOffset = if (resistedOffset(dragOffset) < -revealWidth * 0.35f) -revealWidth else 0f
-                                isDragging = false
-                            },
-                            onDragCancel = {
-                                dragOffset = 0f
-                                isDragging = false
-                            }
-                        )
-                    }
-                }
-                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onSelect() }
-                .padding(horizontal = AppSpace.md),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(7.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
-            ) {
-                palette.normalizedColors.forEachIndexed { index, hex ->
-                    HighlightPaletteSlot(hex, !isDefault) { onSlotClick(index) }
-                }
-            }
-            Spacer(Modifier.width(AppSpace.sm))
-            Text(
-                palette.name,
-                fontSize = AppType.Body,
-                color = AppColors.TextSecondary,
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
-@Composable
-private fun HighlightPaletteSlot(hex: String?, enabled: Boolean, onClick: () -> Unit) {
-    val color = hex?.let { runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull() }
-    Box(
-        modifier = Modifier
-            .size(28.dp)
-            .clip(CircleShape)
-            .then(
-                if (color != null) Modifier.background(color).border(1.dp, AppColors.Divider, CircleShape)
-                else Modifier.border(1.5.dp, AppColors.TextSecondary.copy(alpha = 0.42f), CircleShape)
-            )
-            .clickable(enabled = enabled, indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        if (color == null) {
-            Icon(Icons.Outlined.Add, stringResource(R.string.highlight_palette_set_color), tint = AppColors.TextSecondary.copy(alpha = 0.66f), modifier = Modifier.size(16.dp))
-        }
-    }
-}
-
-@Composable
-private fun HighlightPaletteColorDialog(onDismiss: () -> Unit, onColorSelected: (String) -> Unit) {
-    var customHex by remember { mutableStateOf("") }
-    var customError by remember { mutableStateOf(false) }
-    val density = androidx.compose.ui.platform.LocalDensity.current
-    val shape = remember(density) { G2ContinuousCornerShape(with(density) { 30.dp.toPx() }) }
-    LiquidGlassDialog(
-        onDismissRequest = onDismiss,
-        backgroundScrimColor = Color.Black.copy(alpha = 0.20f),
-        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        LiquidGlassSurface(
-            shape = shape,
-            fallbackColor = AppColors.CardBg,
-            contentScrimColor = AppColors.CardBg.copy(alpha = 0.82f),
-            modifier = Modifier.fillMaxWidth().widthIn(max = 360.dp)
-        ) {
-            Column(Modifier.padding(AppSpace.lg)) {
-                Text(stringResource(R.string.highlight_palette_set_color), fontSize = AppType.Section, fontWeight = FontWeight.Bold, color = AppColors.TextPrimary)
-                Spacer(Modifier.height(AppSpace.md))
-                Text(stringResource(R.string.highlight_pick_preset), fontSize = AppType.BodySmall, color = AppColors.TextSecondary)
-                Spacer(Modifier.height(AppSpace.sm))
-                presetColorOptions.chunked(6).forEach { row ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        row.forEach { hex ->
-                            val color = runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrDefault(Color.Gray)
-                            Box(
-                                Modifier.size(36.dp).clip(CircleShape).background(color)
-                                    .border(1.dp, AppColors.Divider, CircleShape)
-                                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onColorSelected(hex) }
-                            )
-                        }
-                        repeat(6 - row.size) { Spacer(Modifier.size(36.dp)) }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                }
-                Spacer(Modifier.height(AppSpace.sm))
-                OutlinedTextField(
-                    value = customHex,
-                    onValueChange = { customHex = it; customError = false },
-                    label = { Text(stringResource(R.string.highlight_color_hex), fontSize = AppType.Caption) },
-                    isError = customError,
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    textStyle = TextStyle(fontSize = AppType.BodySmall)
-                )
-                Spacer(Modifier.height(AppSpace.sm))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
-                    LiquidGlassTextButton(
-                        text = stringResource(R.string.confirm),
-                        onClick = {
-                            val value = customHex.trim()
-                            if (value.matches(Regex("^#?[0-9A-Fa-f]{6}$"))) {
-                                onColorSelected(if (value.startsWith("#")) value else "#$value")
-                            } else {
-                                customError = true
-                            }
-                        },
-                        tintedColor = AppColors.Accent,
-                        contentColor = AppColors.OnAccent
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -1804,6 +1428,480 @@ fun ChangelogDetail() {
                 }
             }
             Spacer(Modifier.height(AppSpace.sm))
+        }
+    }
+}
+
+// ─── 高亮颜色色卡管理 ─────────────────────────────────────────
+
+private val presetColorOptions = listOf(
+    "#D6C58D", "#CFA09A", "#A7B59D", "#9DAFC1", "#B2A198", "#AFB0AC",
+    "#FFD700", "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7",
+    "#DDA0DD", "#98D8C8", "#F7DC6F", "#BB8FCE", "#85C1E9", "#F8C471",
+    "#82E0AA", "#F1948A", "#AED6F1", "#D7BDE2", "#A3E4D7", "#FAD7A0",
+    "#E59866", "#ABEBC6", "#D5F5E3", "#FADBD8", "#D6EAF8", "#E8DAEF"
+)
+
+@Composable
+fun HighlightColorDetail(viewModel: SettingsViewModel) {
+    val uiState by viewModel.uiState.collectAsState()
+    val palettes = remember { mutableStateListOf<HighlightPalette>() }
+    LaunchedEffect(uiState.customHighlightPalettes) {
+        if (palettes.toList() != uiState.customHighlightPalettes) {
+            palettes.clear()
+            palettes.addAll(uiState.customHighlightPalettes)
+        }
+    }
+
+    var showCreateDialog by remember { mutableStateOf(false) }
+    var paletteName by remember { mutableStateOf("") }
+    var paletteNameError by remember { mutableStateOf(false) }
+    var colorTarget by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+
+    fun savePalettes() = viewModel.saveCustomHighlightPalettes(palettes.toList())
+
+    fun updateSlot(paletteIndex: Int, slotIndex: Int, hex: String) {
+        val palette = palettes.getOrNull(paletteIndex) ?: return
+        val updated = palette.normalizedColors.toMutableList().apply { this[slotIndex] = hex }
+        palettes[paletteIndex] = palette.copy(colors = updated)
+        savePalettes()
+    }
+
+    fun deletePalette(index: Int) {
+        val removed = palettes.removeAt(index)
+        if (uiState.activeHighlightPaletteId == removed.id) viewModel.saveActiveHighlightPalette(null)
+        savePalettes()
+    }
+
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val g2CardShape = remember(density) {
+        G2ContinuousCornerShape(with(density) { 26.dp.toPx() })
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = AppSpace.sm)
+    ) {
+        DetailCard {
+            Column(Modifier.padding(AppSpace.md)) {
+                Text(
+                    stringResource(R.string.highlight_color_palette_tip),
+                    fontSize = AppType.BodySmall,
+                    color = AppColors.TextSecondary
+                )
+            }
+        }
+
+        Spacer(Modifier.height(AppSpace.sm))
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = AppSpace.md)
+                .animateContentSize(animationSpec = tween(360))
+                .background(AppColors.CardBg, g2CardShape)
+        ) {
+            Column(Modifier.padding(AppSpace.md)) {
+                Text(
+                    stringResource(R.string.highlight_all_palettes),
+                    fontSize = AppType.Section,
+                    fontWeight = FontWeight.Bold,
+                    color = AppColors.TextPrimary
+                )
+                Spacer(Modifier.height(AppSpace.md))
+
+                HighlightPaletteRow(
+                    palette = HighlightPalette(
+                        id = "default",
+                        name = stringResource(R.string.highlight_default_palette),
+                        colors = defaultHighlightColors
+                    ),
+                    selected = uiState.activeHighlightPaletteId == null,
+                    isDefault = true,
+                    shape = g2CardShape,
+                    onSelect = { viewModel.saveActiveHighlightPalette(null) },
+                    onSlotClick = {}
+                )
+
+                palettes.forEachIndexed { index, palette ->
+                    Spacer(Modifier.height(AppSpace.sm))
+                    HighlightPaletteRow(
+                        palette = palette,
+                        selected = uiState.activeHighlightPaletteId == palette.id,
+                        isDefault = false,
+                        shape = g2CardShape,
+                        onSelect = { viewModel.saveActiveHighlightPalette(palette.id) },
+                        onSlotClick = { slot -> colorTarget = index to slot },
+                        onDelete = { deletePalette(index) }
+                    )
+                }
+
+                Spacer(Modifier.height(AppSpace.lg))
+                LiquidGlassButton(
+                    onClick = {
+                        paletteName = ""
+                        paletteNameError = false
+                        showCreateDialog = true
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                    shape = g2CardShape,
+                    tintedColor = AppColors.Accent,
+                    prominentShadow = true,
+                    contentColor = AppColors.OnAccent
+                ) {
+                    Icon(
+                        Icons.Outlined.Add,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = Color.White
+                    )
+                    Spacer(Modifier.width(AppSpace.sm))
+                    Text(
+                        stringResource(R.string.highlight_create_palette),
+                        color = Color.White,
+                        fontSize = AppType.BodySmall
+                    )
+                }
+            }
+        }
+    }
+
+    if (showCreateDialog) {
+        LiquidGlassDialog(
+            onDismissRequest = { showCreateDialog = false },
+            backgroundScrimColor = Color.Black.copy(alpha = 0.20f),
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            com.huangder.lumibooks.ui.components.EditInputDialog(
+                title = stringResource(R.string.highlight_create_palette),
+                fields = listOf(
+                    Triple(
+                        stringResource(R.string.highlight_palette_name),
+                        stringResource(R.string.highlight_palette_name_hint),
+                        paletteName
+                    )
+                ),
+                onBack = { showCreateDialog = false },
+                onConfirm = { values ->
+                    val name = values.firstOrNull()?.trim().orEmpty()
+                    if (name.isBlank()) {
+                        paletteNameError = true
+                    } else {
+                        val palette = HighlightPalette(name = name)
+                        palettes.add(palette)
+                        savePalettes()
+                        viewModel.saveActiveHighlightPalette(palette.id)
+                        showCreateDialog = false
+                    }
+                }
+            )
+        }
+    }
+
+    colorTarget?.let { (paletteIndex, slotIndex) ->
+        HighlightPaletteColorDialog(
+            onDismiss = { colorTarget = null },
+            onColorSelected = { hex ->
+                updateSlot(paletteIndex, slotIndex, hex)
+                colorTarget = null
+            }
+        )
+    }
+}
+
+private val defaultHighlightColors = listOf(
+    "#D6C58D", "#CFA09A", "#A7B59D", "#9DAFC1", "#B2A198", "#AFB0AC"
+)
+
+@Composable
+private fun HighlightPaletteRow(
+    palette: HighlightPalette,
+    selected: Boolean,
+    isDefault: Boolean,
+    shape: androidx.compose.ui.graphics.Shape,
+    onSelect: () -> Unit,
+    onSlotClick: (Int) -> Unit,
+    onDelete: () -> Unit = {}
+) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val revealWidth = with(density) { 72.dp.toPx() }
+    var dragOffset by remember(palette.id) { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    var isDragging by remember(palette.id) { mutableStateOf(false) }
+    fun resistedOffset(rawOffset: Float): Float {
+        fun rubberBand(distance: Float): Float {
+            val resisted = revealWidth * (
+                1f - 1f / (1f + distance * 0.70f / revealWidth)
+            )
+            return resisted.coerceAtMost(with(density) { 14.dp.toPx() })
+        }
+        return when {
+            rawOffset < -revealWidth -> {
+                -revealWidth - rubberBand(-revealWidth - rawOffset)
+            }
+            rawOffset > 0f -> rubberBand(rawOffset)
+            else -> rawOffset
+        }
+    }
+    val visualTarget = if (isDragging) resistedOffset(dragOffset) else dragOffset
+    val animatedOffset by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = visualTarget,
+        animationSpec = if (isDragging) {
+            androidx.compose.animation.core.snap()
+        } else {
+            spring(dampingRatio = 0.62f, stiffness = 360f)
+        },
+        label = "paletteReveal"
+    )
+    val currentAnimatedOffset = androidx.compose.runtime.rememberUpdatedState(animatedOffset)
+    val revealProgress = (-animatedOffset / revealWidth).coerceIn(0f, 1f)
+    val deleteButtonTravel = with(density) { 35.dp.toPx() }
+    val safeColors = palette.normalizedColors
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(70.dp)
+    ) {
+        if (!isDefault) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 12.dp)
+                    .size(46.dp)
+                    .graphicsLayer {
+                        alpha = revealProgress
+                        translationX = deleteButtonTravel * (1f - revealProgress)
+                    }
+                    .clip(CircleShape)
+                    .background(AppColors.Accent.copy(alpha = 0.88f)),
+                contentAlignment = Alignment.Center
+            ) {
+                IconButton(onClick = onDelete, modifier = Modifier.fillMaxSize()) {
+                    Icon(
+                        Icons.Outlined.DeleteForever,
+                        contentDescription = stringResource(R.string.highlight_palette_delete),
+                        tint = AppColors.OnAccent,
+                        modifier = Modifier.size(19.dp)
+                    )
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { translationX = if (isDefault) 0f else animatedOffset }
+                .clip(shape)
+                .background(AppColors.BgGray)
+                .then(
+                    if (selected) Modifier.border(1.5.dp, AppColors.Accent, shape)
+                    else Modifier
+                )
+                .pointerInput(revealWidth, isDefault) {
+                    if (!isDefault) {
+                        detectHorizontalDragGestures(
+                            onDragStart = {
+                                dragOffset = currentAnimatedOffset.value
+                                isDragging = true
+                            },
+                            onHorizontalDrag = { change, dragAmount ->
+                                change.consume()
+                                dragOffset += dragAmount
+                            },
+                            onDragEnd = {
+                                dragOffset = if (
+                                    resistedOffset(dragOffset) < -revealWidth * 0.35f
+                                ) {
+                                    -revealWidth
+                                } else {
+                                    0f
+                                }
+                                isDragging = false
+                            },
+                            onDragCancel = {
+                                dragOffset = 0f
+                                isDragging = false
+                            }
+                        )
+                    }
+                }
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() }
+                ) { onSelect() }
+                .padding(horizontal = AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                safeColors.forEachIndexed { index, hex ->
+                    HighlightPaletteSlot(
+                        hex = hex,
+                        enabled = !isDefault,
+                        onClick = { onSlotClick(index) }
+                    )
+                }
+            }
+            Spacer(Modifier.width(AppSpace.sm))
+            Text(
+                text = palette.name,
+                fontSize = AppType.Body,
+                color = AppColors.TextSecondary,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun HighlightPaletteSlot(
+    hex: String?,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val color = hex?.let {
+        runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull()
+    }
+    Box(
+        modifier = Modifier
+            .size(28.dp)
+            .clip(CircleShape)
+            .then(
+                if (color != null) {
+                    Modifier
+                        .background(color)
+                        .border(1.dp, AppColors.Divider, CircleShape)
+                } else {
+                    Modifier.border(1.5.dp, AppColors.TextSecondary.copy(alpha = 0.42f), CircleShape)
+                }
+            )
+            .clickable(
+                enabled = enabled,
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        if (color == null) {
+            Icon(
+                Icons.Outlined.Add,
+                contentDescription = stringResource(R.string.highlight_palette_set_color),
+                tint = AppColors.TextSecondary.copy(alpha = 0.66f),
+                modifier = Modifier.size(16.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun HighlightPaletteColorDialog(
+    onDismiss: () -> Unit,
+    onColorSelected: (String) -> Unit
+) {
+    var customHex by remember { mutableStateOf("") }
+    var customError by remember { mutableStateOf(false) }
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val shape = remember(density) {
+        G2ContinuousCornerShape(with(density) { 30.dp.toPx() })
+    }
+
+    LiquidGlassDialog(
+        onDismissRequest = onDismiss,
+        backgroundScrimColor = Color.Black.copy(alpha = 0.20f),
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        LiquidGlassSurface(
+            shape = shape,
+            fallbackColor = AppColors.CardBg,
+            contentScrimColor = AppColors.CardBg.copy(alpha = 0.82f),
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 360.dp)
+        ) {
+            Column(Modifier.padding(AppSpace.lg)) {
+                Text(
+                    stringResource(R.string.highlight_palette_set_color),
+                    fontSize = AppType.Section,
+                    fontWeight = FontWeight.Bold,
+                    color = AppColors.TextPrimary
+                )
+                Spacer(Modifier.height(AppSpace.md))
+                Text(
+                    stringResource(R.string.highlight_pick_preset),
+                    fontSize = AppType.BodySmall,
+                    color = AppColors.TextSecondary
+                )
+                Spacer(Modifier.height(AppSpace.sm))
+                presetColorOptions.chunked(6).forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        row.forEach { hex ->
+                            val color = runCatching {
+                                Color(android.graphics.Color.parseColor(hex))
+                            }.getOrDefault(Color.Gray)
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                                    .border(1.dp, AppColors.Divider, CircleShape)
+                                    .clickable(
+                                        indication = null,
+                                        interactionSource = remember { MutableInteractionSource() }
+                                    ) { onColorSelected(hex) }
+                            )
+                        }
+                        repeat(6 - row.size) { Spacer(Modifier.size(36.dp)) }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+                Spacer(Modifier.height(AppSpace.sm))
+                OutlinedTextField(
+                    value = customHex,
+                    onValueChange = {
+                        customHex = it
+                        customError = false
+                    },
+                    label = { Text(stringResource(R.string.highlight_color_hex), fontSize = AppType.Caption) },
+                    isError = customError,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = TextStyle(fontSize = AppType.BodySmall)
+                )
+                Spacer(Modifier.height(AppSpace.sm))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text(stringResource(R.string.cancel), fontSize = AppType.BodySmall)
+                    }
+                    Spacer(Modifier.width(AppSpace.xs))
+                    LiquidGlassTextButton(
+                        text = stringResource(R.string.confirm),
+                        onClick = {
+                            val value = customHex.trim()
+                            if (value.matches(Regex("^#?[0-9A-Fa-f]{6}$"))) {
+                                onColorSelected(if (value.startsWith("#")) value else "#$value")
+                            } else {
+                                customError = true
+                            }
+                        },
+                        tintedColor = AppColors.Accent,
+                        contentColor = AppColors.OnAccent
+                    )
+                }
+            }
         }
     }
 }

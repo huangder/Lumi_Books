@@ -83,6 +83,14 @@ class ReaderEdgeTapModeTest {
         assertEquals("continuous", preferred)
     }
 
+    @Test
+    fun `continuous scroll detection uses the effective writing mode transition`() {
+        assertTrue(ReaderWritingMode.HORIZONTAL.usesContinuousScroll("continuous", false))
+        assertFalse(ReaderWritingMode.VERTICAL_RL.usesContinuousScroll("continuous", false))
+        assertFalse(ReaderWritingMode.HORIZONTAL.usesContinuousScroll("continuous", true))
+        assertFalse(ReaderWritingMode.HORIZONTAL.usesContinuousScroll("slide", false))
+    }
+
     private fun assertActions(
         mode: ReaderEdgeTapMode,
         left: ReaderEdgeTapAction,

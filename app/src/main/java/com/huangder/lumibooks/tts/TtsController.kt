@@ -43,6 +43,9 @@ class TtsController(
     private val _currentPage = MutableStateFlow<TtsPageContent?>(null)
     val currentPage: StateFlow<TtsPageContent?> = _currentPage.asStateFlow()
 
+    private val _currentSentence = MutableStateFlow<TtsTextSegment?>(null)
+    val currentSentence: StateFlow<TtsTextSegment?> = _currentSentence.asStateFlow()
+
     private val _pageTurnRequests = MutableSharedFlow<TtsPageTurnRequest>(replay = 1, extraBufferCapacity = 1)
     val pageTurnRequests: SharedFlow<TtsPageTurnRequest> = _pageTurnRequests.asSharedFlow()
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -214,6 +217,7 @@ class TtsController(
             if (state != TtsPlaybackState.PLAYING && state != TtsPlaybackState.PAUSED) return@launch
             activeUtteranceId = null
             activeSegment = null
+            _currentSentence.value = null
             activeEngine.stop()
 
             if (forward) {
@@ -274,6 +278,7 @@ class TtsController(
         ) {
             activeUtteranceId = null
             activeSegment = null
+            _currentSentence.value = null
             activeEngine.stop()
             speakCurrentSegment()
         }
@@ -346,6 +351,7 @@ class TtsController(
         pageContentError = null
         activeUtteranceId = null
         activeSegment = null
+        _currentSentence.value = null
         activeEngine.stop()
         crossPageMerge = null
 
@@ -474,6 +480,7 @@ class TtsController(
         }
         activeUtteranceId = utteranceId
         activeSegment = segment
+        _currentSentence.value = segment
         val resume = pendingResume?.takeIf {
             it.chapterIndex == page.location.chapterIndex &&
                 it.pageIndex == page.location.pageIndex &&
@@ -489,6 +496,7 @@ class TtsController(
         if (result.isFailure && activeUtteranceId == utteranceId) {
             activeUtteranceId = null
             activeSegment = null
+            _currentSentence.value = null
             _errors.tryEmit(result.exceptionOrNull())
             stopInternal()
             return
@@ -589,6 +597,7 @@ class TtsController(
         pageLoadToken++
         activeUtteranceId = null
         activeSegment = null
+        _currentSentence.value = null
         systemTtsEngine.stop()
         externalTtsEngine.stop()
         pageProvider = null

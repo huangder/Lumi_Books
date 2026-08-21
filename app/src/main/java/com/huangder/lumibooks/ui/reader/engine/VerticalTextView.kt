@@ -34,6 +34,7 @@ internal class VerticalTextView(context: Context) : View(context) {
     private var text: Spannable? = null
     private var geometry: VerticalPageGeometry? = null
     private var chapterStartOffset: Int = 0
+    private var ttsHighlight: Triple<Int, Int, Int>? = null
     private var draggingStartHandle = false
     private var draggingEndHandle = false
 
@@ -70,6 +71,18 @@ internal class VerticalTextView(context: Context) : View(context) {
         invalidate()
     }
 
+    fun setTtsHighlight(start: Int, end: Int, color: Int) {
+        if (ttsHighlight?.first == start && ttsHighlight?.second == end && ttsHighlight?.third == color) return
+        ttsHighlight = Triple(start, end, color)
+        invalidate()
+    }
+
+    fun clearTtsHighlight() {
+        if (ttsHighlight == null) return
+        ttsHighlight = null
+        invalidate()
+    }
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val spannable = text ?: return
@@ -77,6 +90,7 @@ internal class VerticalTextView(context: Context) : View(context) {
         val save = canvas.save()
         canvas.translate(paddingLeft.toFloat(), paddingTop.toFloat())
 
+        drawTtsHighlightBackground(canvas, spannable, page)
         drawHighlightColumns(canvas, spannable, page)
         page.items.forEach { item ->
             when (item) {
@@ -108,6 +122,44 @@ internal class VerticalTextView(context: Context) : View(context) {
             canvas.drawText(display, centerX - paint.measureText(display) / 2f, baseline, paint)
         }
         resetPaint()
+    }
+
+    private fun drawTtsHighlightBackground(canvas: Canvas, spannable: Spannable, page: VerticalPageGeometry) {
+        val tts = ttsHighlight ?: return
+        val start = tts.first.coerceIn(0, spannable.length)
+        val end = tts.second.coerceIn(start, spannable.length)
+        if (start >= end) return
+        val density = resources.displayMetrics.density
+        val gap = 1.5f * density
+        val radius = 12f * density
+        var minLeft = Float.MAX_VALUE
+        var minTop = Float.MAX_VALUE
+        var maxRight = Float.MIN_VALUE
+        var maxBottom = Float.MIN_VALUE
+        var found = false
+        page.glyphs.forEach { glyph ->
+            val localStart = glyph.startOffset - chapterStartOffset
+            val localEnd = glyph.endOffset - chapterStartOffset
+            if (localEnd > start && localStart < end) {
+                found = true
+                minLeft = minOf(minLeft, glyph.bounds.left)
+                minTop = minOf(minTop, glyph.bounds.top)
+                maxRight = maxOf(maxRight, glyph.bounds.right)
+                maxBottom = maxOf(maxBottom, glyph.bounds.bottom)
+            }
+        }
+        if (!found) return
+        minTop += gap
+        maxBottom -= gap
+        if (maxBottom <= minTop) return
+        val oldColor = paint.color
+        paint.style = Paint.Style.FILL
+        paint.color = tts.third
+        canvas.drawRoundRect(
+            android.graphics.RectF(minLeft, minTop, maxRight, maxBottom),
+            radius, radius, paint
+        )
+        paint.color = oldColor
     }
 
     private fun drawHighlightColumns(

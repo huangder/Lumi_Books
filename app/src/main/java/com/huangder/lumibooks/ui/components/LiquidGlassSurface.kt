@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.colorspace.ColorSpaces
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -101,6 +102,7 @@ fun ProvideLiquidGlassBackdrop(
 internal fun Modifier.liquidGlassBackdrop(
     backdrop: Backdrop,
     shape: Shape,
+    lensShape: Shape = shape,
     isDark: Boolean,
     transparency: Float,
     contentScrimColor: Color = Color.Transparent,
@@ -117,7 +119,7 @@ internal fun Modifier.liquidGlassBackdrop(
     shadowAlpha: Float = 0.16f,
     pressedShadowAlpha: Float = 0.08f
 ): Modifier {
-    val lensSupported = supportsLiquidGlassLens(shape)
+    val lensSupported = supportsLiquidGlassLens(lensShape)
     val tonalHighlight = tonalGlassHighlight(highlightColor)
     val surfaceColor = if (isDark) {
         Color(0xFF101012).copy(alpha = 0.34f - transparency * 0.24f)
@@ -141,7 +143,10 @@ internal fun Modifier.liquidGlassBackdrop(
     }
     val glassModifier = drawBackdrop(
         backdrop = backdrop,
-        shape = { shape },
+        // The lens library only accepts rounded rectangular/corner-based shapes. A G2
+        // superellipse is clipped and outlined with its real path outside this effect;
+        // the same-radius rounded rectangle is only the SDF proxy used by the lens.
+        shape = { lensShape },
         effects = {
             vibrancy()
             if (transparency < 1f) {
@@ -401,6 +406,14 @@ fun LiquidGlassSurface(
     val hdrHighlightEnabled = LocalLiquidGlassHdrHighlightEnabled.current
     val motionEnabled = LocalMotionEnabled.current
     val activeBackdrop = backdrop ?: LocalLiquidGlassBackdrop.current
+    val density = LocalDensity.current
+    val lensShape = remember(shape, density) {
+        if (shape is G2ContinuousCornerShape) {
+            RoundedCornerShape(with(density) { shape.cornerRadius.toDp() })
+        } else {
+            shape
+        }
+    }
     val interactionState = if (interactive) {
         val animationScope = rememberCoroutineScope()
         remember(animationScope) { LiquidGlassButtonInteractionState(animationScope) }
@@ -409,7 +422,7 @@ fun LiquidGlassSurface(
     }
     val latestOnClick = rememberUpdatedState(onClick)
     val handlesButtonGesture = isLiquidGlass && enabled && interactionState != null &&
-        supportsLiquidGlassLens(shape)
+        supportsLiquidGlassLens(lensShape)
     val clickModifier = if (onClick != null) {
         Modifier.clickable(
             interactionSource = null,
@@ -434,6 +447,7 @@ fun LiquidGlassSurface(
         Modifier.liquidGlassBackdrop(
             backdrop = activeBackdrop,
             shape = shape,
+            lensShape = lensShape,
             isDark = isDark,
             transparency = transparency,
             contentScrimColor = contentScrimColor,

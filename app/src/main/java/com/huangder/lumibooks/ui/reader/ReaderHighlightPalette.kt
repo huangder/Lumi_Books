@@ -1,7 +1,7 @@
 package com.huangder.lumibooks.ui.reader
 
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import com.huangder.lumibooks.domain.model.HighlightPalette
@@ -33,6 +33,7 @@ private var activePaletteColors: List<String> = defaultPaletteColors
 private var highlightSlotsByRgb: Map<String, Int> = buildMap {
     defaultPaletteColors.forEachIndexed { index, color -> rgbKey(color)?.let { put(it, index) } }
 }
+
 private fun rgbKey(color: String): String? {
     val value = color.trim().removePrefix("#")
     return when (value.length) {

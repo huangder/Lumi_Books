@@ -1,6 +1,5 @@
 package com.huangder.lumibooks.ui.components
 
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
@@ -14,7 +13,9 @@ import kotlin.math.sign
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-/** A continuous corner whose curvature reaches zero where it joins each edge. */
+/**
+ * A continuous corner whose curvature reaches zero where it joins each edge.
+ */
 class G2ContinuousCornerShape(internal val cornerRadius: Float) : Shape {
     override fun createOutline(
         size: Size,
@@ -24,7 +25,7 @@ class G2ContinuousCornerShape(internal val cornerRadius: Float) : Shape {
         val width = size.width
         val height = size.height
         val radius = cornerRadius.coerceIn(0f, minOf(width, height) / 2f)
-        if (radius == 0f) return Outline.Rectangle(Rect(0f, 0f, width, height))
+        if (radius == 0f) return Outline.Rectangle(androidx.compose.ui.geometry.Rect(0f, 0f, width, height))
 
         return Outline.Generic(Path().apply {
             moveTo(radius, 0f)
@@ -48,8 +49,8 @@ private fun Path.addSuperellipseCorner(
     startAngle: Double,
     endAngle: Double
 ) {
-    repeat(32) { index ->
-        val angle = startAngle + (endAngle - startAngle) * (index + 1) / 32.0
+    repeat(96) { index ->
+        val angle = startAngle + (endAngle - startAngle) * (index + 1) / 96.0
         val cosine = cos(angle)
         val sine = sin(angle)
         lineTo(

@@ -11,5 +11,6 @@ data class Note(
     val selectedText: String,
     val note: String,
     val color: String,
-    val createdAt: Long
+    val createdAt: Long,
+    val type: String = "highlight"
 )

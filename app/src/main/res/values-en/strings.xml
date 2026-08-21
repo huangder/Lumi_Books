@@ -397,6 +397,12 @@
     <string name="search_no_results">No matching results</string>
     <string name="highlight_delete">Delete Highlight</string>
     <string name="menu_search">Search</string>
+    <string name="menu_replace">Replace</string>
+    <string name="replace_with_label">With</string>
+    <string name="replace_input_hint">Enter replacement text</string>
+    <string name="replace_success">Replaced</string>
+    <string name="replace_no_match">No matching text found</string>
+    <string name="replace_not_available">Replacement is only available for TXT files</string>
     <string name="menu_copy">Copy</string>
     <string name="menu_highlight">Highlight</string>
     <string name="menu_note">Note</string>
