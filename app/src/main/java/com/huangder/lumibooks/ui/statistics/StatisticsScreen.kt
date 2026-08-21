@@ -1,5 +1,13 @@
 package com.huangder.lumibooks.ui.statistics
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -9,6 +17,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +25,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -25,11 +35,17 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,6 +70,7 @@ import com.huangder.lumibooks.ui.animation.cardPressEffect
 import androidx.compose.ui.res.stringResource
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.huangder.lumibooks.ui.animation.PageEntranceItem
@@ -69,6 +86,7 @@ import java.util.Calendar
 @Composable
 fun StatisticsScreen(
     playEntranceAnimation: Boolean = false,
+    onMessage: (String) -> Unit = {},
     viewModel: StatisticsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -77,6 +95,22 @@ fun StatisticsScreen(
     val statusBarTopPadding = WindowInsets.statusBars
         .asPaddingValues()
         .calculateTopPadding()
+    val motionEnabled = LocalMotionEnabled.current
+    val chartAnimationsPlayed = remember { mutableStateListOf(false, false, false) }
+    val selectedPeriod = uiState.selectedTab.coerceIn(0, 2)
+    val playChartAnimation = remember(selectedPeriod) {
+        !chartAnimationsPlayed[selectedPeriod]
+    }
+
+    LaunchedEffect(selectedPeriod) {
+        chartAnimationsPlayed[selectedPeriod] = true
+    }
+    LaunchedEffect(uiState.error) {
+        uiState.error?.let { message ->
+            viewModel.clearError()
+            onMessage(message)
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(AppColors.WindowBg)) {
         OverscrollBounce(
@@ -115,39 +149,40 @@ fun StatisticsScreen(
                         stringResource(R.string.tab_year)
                     )
                     PageEntranceItem(play = playEntranceAnimation, index = 1) {
-                        Column {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = AppSpace.lg, vertical = AppSpace.sm),
-                                horizontalArrangement = Arrangement.spacedBy(AppSpace.lg)
-                            ) {
-                                tabs.forEachIndexed { index, label ->
-                                    val isSelected = index == uiState.selectedTab
-                                    Text(
-                                        text = label,
-                                        fontSize = AppType.Body,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (isSelected) AppColors.TextPrimary else AppColors.TextSecondary,
-                                        modifier = Modifier.clickable(
-                                            indication = null,
-                                            interactionSource = remember { MutableInteractionSource() }
-                                        ) { viewModel.selectTab(index) }
-                                    )
-                                }
-                            }
-                            Spacer(Modifier.height(AppSpace.lg))
-                        }
+                        PeriodSegmentedControl(
+                            labels = tabs,
+                            selectedIndex = selectedPeriod,
+                            onSelected = viewModel::selectTab
+                        )
                     }
+                    Spacer(Modifier.height(AppSpace.md))
                 }
 
-                item(key = "overview_${uiState.selectedTab}") {
+                item(key = "summary") {
                     PageEntranceItem(play = playEntranceAnimation, index = 2) {
+                        StatisticsSummary(uiState = uiState, selectedPeriod = selectedPeriod)
+                    }
+                    Spacer(Modifier.height(AppSpace.md))
+                }
+
+                item(key = "overview") {
+                    AnimatedContent(
+                        targetState = selectedPeriod,
+                        transitionSpec = {
+                            val duration = if (motionEnabled) 190 else 100
+                            fadeIn(tween(duration)) togetherWith fadeOut(tween(duration))
+                        },
+                        label = "statisticsPeriod"
+                    ) { period ->
                         Column {
-                            when (uiState.selectedTab) {
-                                0 -> WeeklyOverview(uiState, viewModel)
+                            when (period) {
+                                0 -> WeeklyOverview(
+                                    uiState = uiState,
+                                    viewModel = viewModel,
+                                    animateChart = period == selectedPeriod && playChartAnimation
+                                )
                                 1 -> MonthlyHeatmap(uiState, viewModel)
-                                2 -> YearlyHeatmap(uiState, viewModel)
+                                else -> YearlyHeatmap(uiState, viewModel)
                             }
                             Spacer(Modifier.height(AppSpace.lg))
                         }
@@ -179,7 +214,114 @@ fun StatisticsScreen(
 }
 
 @Composable
-private fun WeeklyOverview(uiState: StatisticsUiState, viewModel: StatisticsViewModel) {
+private fun PeriodSegmentedControl(
+    labels: List<String>,
+    selectedIndex: Int,
+    onSelected: (Int) -> Unit
+) {
+    val motionEnabled = LocalMotionEnabled.current
+    val shape = RoundedCornerShape(AppRadius.md)
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AppSpace.lg)
+            .height(44.dp)
+            .clip(shape)
+            .background(AppColors.BgGray)
+            .padding(3.dp)
+    ) {
+        val segmentWidth = maxWidth / labels.size
+        val indicatorOffset by animateDpAsState(
+            targetValue = segmentWidth * selectedIndex,
+            animationSpec = if (motionEnabled) tween(190) else snap(),
+            label = "statisticsSegmentIndicator"
+        )
+        Box(
+            modifier = Modifier
+                .offset(x = indicatorOffset)
+                .width(segmentWidth)
+                .fillMaxSize()
+                .shadow(3.dp, RoundedCornerShape(AppRadius.sm))
+                .clip(RoundedCornerShape(AppRadius.sm))
+                .background(AppColors.CardBg)
+        )
+        Row(modifier = Modifier.fillMaxSize()) {
+            labels.forEachIndexed { index, label ->
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(AppRadius.sm))
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) { onSelected(index) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = label,
+                        fontSize = AppType.BodySmall,
+                        fontWeight = if (index == selectedIndex) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (index == selectedIndex) AppColors.TextPrimary else AppColors.TextSecondary
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatisticsSummary(uiState: StatisticsUiState, selectedPeriod: Int) {
+    val durations = when (selectedPeriod) {
+        0 -> uiState.weeklyData.map { it.duration }
+        1 -> uiState.monthlyDailyData.values.toList()
+        else -> uiState.yearlyDailyData.values.toList()
+    }
+    val totalMinutes = (durations.sum() / 1000L / 60L).toInt()
+    val hours = totalMinutes / 60
+    val minutes = totalMinutes % 60
+    val activeDays = durations.count { it > 0L }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AppSpace.lg),
+        horizontalArrangement = Arrangement.spacedBy(AppSpace.xl)
+    ) {
+        StatisticValue(
+            value = stringResource(R.string.statistics_duration_value, hours, minutes),
+            label = stringResource(R.string.statistics_reading_time),
+            modifier = Modifier.weight(1f)
+        )
+        StatisticValue(
+            value = stringResource(R.string.statistics_active_days_value, activeDays),
+            label = stringResource(R.string.statistics_active_days),
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun StatisticValue(value: String, label: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier) {
+        Text(
+            text = value,
+            fontSize = AppType.Title,
+            fontWeight = FontWeight.Bold,
+            color = AppColors.TextPrimary,
+            maxLines = 1
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(text = label, fontSize = AppType.Caption, color = AppColors.TextSecondary)
+    }
+}
+
+@Composable
+private fun WeeklyOverview(
+    uiState: StatisticsUiState,
+    viewModel: StatisticsViewModel,
+    animateChart: Boolean = false
+) {
     val isCurrentWeek = uiState.displayWeekOffset == 0
     val weekData = uiState.weeklyData
     val totalMinutes = (weekData.sumOf { it.duration } / 1000 / 60).toInt()
@@ -233,7 +375,12 @@ private fun WeeklyOverview(uiState: StatisticsUiState, viewModel: StatisticsView
                     .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { viewModel.previousWeek() },
                 contentAlignment = Alignment.Center
             ) {
-                Text("‹", fontSize = 20.sp, color = AppColors.TextPrimary, fontWeight = FontWeight.Bold)
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowLeft,
+                    contentDescription = null,
+                    tint = AppColors.TextPrimary,
+                    modifier = Modifier.size(20.dp)
+                )
             }
             Spacer(Modifier.width(4.dp))
             Box(
@@ -247,7 +394,12 @@ private fun WeeklyOverview(uiState: StatisticsUiState, viewModel: StatisticsView
                     ) { viewModel.nextWeek() },
                 contentAlignment = Alignment.Center
             ) {
-                Text("›", fontSize = 20.sp, color = if (isCurrentWeek) AppColors.TextSecondary.copy(alpha = 0.3f) else AppColors.TextPrimary, fontWeight = FontWeight.Bold)
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = if (isCurrentWeek) AppColors.TextSecondary.copy(alpha = 0.3f) else AppColors.TextPrimary,
+                    modifier = Modifier.size(20.dp)
+                )
             }
         }
 
@@ -269,8 +421,14 @@ private fun WeeklyOverview(uiState: StatisticsUiState, viewModel: StatisticsView
         val accentColor = AppColors.Accent
         val accentDim = accentColor.copy(alpha = 0.35f)
         val textSecColor = AppColors.TextSecondary
-        val maxVal = (weeklyMinutes.maxOrNull() ?: 0f).coerceAtLeast(5f)
-        val labelSize = 10.sp
+    val maxVal = (weeklyMinutes.maxOrNull() ?: 0f).coerceAtLeast(5f)
+    val labelSize = 10.sp
+        val chartProgress = remember { Animatable(if (animateChart) 0f else 1f) }
+        LaunchedEffect(animateChart) {
+            if (animateChart) {
+                chartProgress.animateTo(1f, tween(220))
+            }
+        }
 
         // 预计算 native 颜色
         val accentArgb = android.graphics.Color.argb((accentColor.alpha * 255).toInt(), (accentColor.red * 255).toInt(), (accentColor.green * 255).toInt(), (accentColor.blue * 255).toInt())
@@ -285,7 +443,7 @@ private fun WeeklyOverview(uiState: StatisticsUiState, viewModel: StatisticsView
             // 柱体
             weeklyMinutes.forEachIndexed { index, value ->
                 val normalized = (value / maxVal).coerceIn(0f, 1f)
-                val barHeight = barAreaHeight * normalized
+                val barHeight = barAreaHeight * normalized * chartProgress.value
                 val x = index * barWidth * 2
                 val isToday = index == todayIndex
                 val visibleHeight = if (value > 0f) maxOf(barHeight, 2.dp.toPx()) else 0f
@@ -380,7 +538,12 @@ private fun MonthlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsView
                     .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { viewModel.previousMonth() },
                 contentAlignment = Alignment.Center
             ) {
-                Text("‹", fontSize = 20.sp, color = AppColors.TextPrimary, fontWeight = FontWeight.Bold)
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowLeft,
+                    contentDescription = null,
+                    tint = AppColors.TextPrimary,
+                    modifier = Modifier.size(20.dp)
+                )
             }
             Spacer(Modifier.width(4.dp))
             // 右箭头（当前月禁用）
@@ -395,7 +558,12 @@ private fun MonthlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsView
                     ) { viewModel.nextMonth() },
                 contentAlignment = Alignment.Center
             ) {
-                Text("›", fontSize = 20.sp, color = if (isCurrentMonth) AppColors.TextSecondary.copy(alpha = 0.3f) else AppColors.TextPrimary, fontWeight = FontWeight.Bold)
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = if (isCurrentMonth) AppColors.TextSecondary.copy(alpha = 0.3f) else AppColors.TextPrimary,
+                    modifier = Modifier.size(20.dp)
+                )
             }
         }
 
@@ -554,7 +722,12 @@ private fun YearlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsViewM
                     .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { viewModel.previousYear() },
                 contentAlignment = Alignment.Center
             ) {
-                Text("‹", fontSize = 20.sp, color = AppColors.TextPrimary, fontWeight = FontWeight.Bold)
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowLeft,
+                    contentDescription = null,
+                    tint = AppColors.TextPrimary,
+                    modifier = Modifier.size(20.dp)
+                )
             }
             Spacer(Modifier.width(4.dp))
             Box(
@@ -568,7 +741,12 @@ private fun YearlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsViewM
                     ) { viewModel.nextYear() },
                 contentAlignment = Alignment.Center
             ) {
-                Text("›", fontSize = 20.sp, color = if (isCurrentYear) AppColors.TextSecondary.copy(alpha = 0.3f) else AppColors.TextPrimary, fontWeight = FontWeight.Bold)
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = if (isCurrentYear) AppColors.TextSecondary.copy(alpha = 0.3f) else AppColors.TextPrimary,
+                    modifier = Modifier.size(20.dp)
+                )
             }
         }
 

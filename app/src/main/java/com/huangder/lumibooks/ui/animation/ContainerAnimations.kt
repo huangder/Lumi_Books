@@ -1,8 +1,5 @@
 package com.huangder.lumibooks.ui.animation
 
-import android.os.Build
-import android.graphics.RenderEffect
-import android.graphics.Shader
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.EnterTransition
@@ -25,10 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asComposeRenderEffect
-import androidx.compose.ui.graphics.graphicsLayer
 import com.huangder.lumibooks.ui.theme.AppColors
-import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
 
 /**
@@ -51,17 +45,17 @@ fun BottomSheetContainer(
                 visible = visible,
                 enter = if (motionEnabled) {
                     slideInVertically(
-                        animationSpec = tween(400, easing = AppEasing.Smooth)
+                        animationSpec = tween(LumiMotion.SheetEnterMillis, easing = AppEasing.Smooth)
                     ) { it } + fadeIn(animationSpec = tween(300))
                 } else {
-                    EnterTransition.None
+                    fadeIn(animationSpec = tween(140))
                 },
                 exit = if (motionEnabled) {
                     slideOutVertically(
-                        animationSpec = tween(300, easing = AppEasing.Accelerate)
+                        animationSpec = tween(LumiMotion.SheetExitMillis, easing = AppEasing.Accelerate)
                     ) { it } + fadeOut(animationSpec = tween(200))
                 } else {
-                    ExitTransition.None
+                    fadeOut(animationSpec = tween(160))
                 },
                 modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter)
             ) {
@@ -81,21 +75,11 @@ fun ScrimOverlay(
     alpha: Float = 1f,
     onClick: () -> Unit = {}
 ) {
-    val eInkMode = LocalEInkMode.current
     Box(
         modifier = Modifier
             .fillMaxSize()
             .alpha(alpha)
             .background(AppColors.Scrim.copy(alpha = 0.4f))
-            .then(
-                if (!eInkMode && Build.VERSION.SDK_INT >= 31) {
-                    Modifier.graphicsLayer {
-                        renderEffect = RenderEffect
-                            .createBlurEffect(8f, 8f, Shader.TileMode.CLAMP)
-                            .asComposeRenderEffect()
-                    }
-                } else Modifier
-            )
             .clickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() }

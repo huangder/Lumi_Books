@@ -2,7 +2,6 @@ package com.huangder.lumibooks.ui.navigation
 
 import android.net.Uri
 import android.os.SystemClock
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -23,18 +22,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asComposeRenderEffect
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
@@ -75,6 +73,7 @@ import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.LocalGlobalFontMode
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassTransparency
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassHdrHighlightEnabled
+import com.huangder.lumibooks.ui.theme.LocalMotionPreference
 import com.huangder.lumibooks.ui.theme.LocalUseMaterial3Theme
 import com.huangder.lumibooks.ui.theme.LocalReaderColors
 import com.huangder.lumibooks.ui.theme.ReaderColors
@@ -107,6 +106,7 @@ private fun ReaderRouter(
     val useMaterial3Theme = LocalUseMaterial3Theme.current
     val eInkMode = LocalEInkMode.current
     val globalFontMode = LocalGlobalFontMode.current
+    val motionPreference = LocalMotionPreference.current
 
     // 正文颜色由阅读主题控制，弹层和应用级控件继承全局主题。
     EBookReaderTheme(
@@ -116,7 +116,8 @@ private fun ReaderRouter(
         liquidGlassTransparency = liquidGlassTransparency,
         liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled && !eInkMode,
         eInkMode = eInkMode,
-        globalFontMode = globalFontMode
+        globalFontMode = globalFontMode,
+        motionPreference = motionPreference
     ) {
         CompositionLocalProvider(LocalReaderColors provides ReaderColors.Light) {
             if (isPdf) {
@@ -183,9 +184,7 @@ fun MainNavGraph(
     var pendingBookId by remember { mutableStateOf<String?>(null) }
     var tabBarVisible by remember { mutableStateOf(true) }
     var useMainReturnTabBarTransition by remember { mutableStateOf(false) }
-    var synchronizeNextMainReturn by remember { mutableStateOf(false) }
     var previousRoute by remember { mutableStateOf<String?>(null) }
-    var bookshelfOverlayProgress by remember { mutableFloatStateOf(0f) }
     var homeGoalSheetVisible by remember { mutableStateOf(false) }
     var showImportActions by remember { mutableStateOf(false) }
     var showImportConfirmation by remember { mutableStateOf(false) }
@@ -194,6 +193,8 @@ fun MainNavGraph(
     var importCopiesIntoApp by remember { mutableStateOf(true) }
     var isPreparingImport by remember { mutableStateOf(false) }
     var importPreparationGeneration by remember { mutableIntStateOf(0) }
+    var transientMessage by remember { mutableStateOf<String?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
     val entranceTracker = remember { PageEntranceTracker() }
     val hazeState = remember { HazeState() }
     val eInkMode = LocalEInkMode.current
@@ -249,8 +250,23 @@ fun MainNavGraph(
         }
     }
     val homeUiState by homeViewModel.uiState.collectAsState()
+    val snackbarMessage = transientMessage
+        ?: homeUiState.importMessage
+        ?: homeUiState.tagMessage
+        ?: homeUiState.error
     val homeLastReadBook = remember(homeUiState.books) {
         homeUiState.books.sortedByDescending { it.lastReadTime }.firstOrNull()
+    }
+
+    LaunchedEffect(snackbarMessage) {
+        val message = snackbarMessage ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(message)
+        when {
+            transientMessage == message -> transientMessage = null
+            homeUiState.importMessage == message -> homeViewModel.clearImportMessage()
+            homeUiState.tagMessage == message -> homeViewModel.clearTagMessage()
+            homeUiState.error == message -> homeViewModel.clearError()
+        }
     }
 
     LaunchedEffect(requestedOpenBookId) {
@@ -287,11 +303,10 @@ fun MainNavGraph(
     } else {
         MainSystemBarStyle()
     }
-    LaunchedEffect(currentRoute, showTransition, synchronizeNextMainReturn) {
+    LaunchedEffect(currentRoute, showTransition) {
         val returningFromReader = previousRoute == Screen.Reader.route &&
             currentRoute != null &&
-            currentRoute != Screen.Reader.route &&
-            !showTransition
+            currentRoute != Screen.Reader.route
         selectedTab = when (currentRoute) {
             Screen.Home.route -> 0
             Screen.Bookshelf.route -> 1
@@ -301,19 +316,12 @@ fun MainNavGraph(
         if (currentRoute != Screen.Home.route) {
             homeGoalSheetVisible = false
         }
-        if (currentRoute != Screen.Bookshelf.route) {
-            bookshelfOverlayProgress = 0f
-        }
-        if (
-            currentRoute == Screen.Reader.route ||
-            (showTransition && !synchronizeNextMainReturn)
-        ) {
+        if (currentRoute == Screen.Reader.route || showTransition) {
             tabBarVisible = false
             useMainReturnTabBarTransition = false
-        } else if (returningFromReader || synchronizeNextMainReturn) {
+        } else if (returningFromReader) {
             useMainReturnTabBarTransition = true
             tabBarVisible = true
-            if (!showTransition) synchronizeNextMainReturn = false
         } else {
             if (!eInkMode) {
                 delay(800)
@@ -324,10 +332,12 @@ fun MainNavGraph(
         previousRoute = currentRoute
     }
 
-    // 立即导航到阅读页，边播入场动画边加载书籍，并行进行
+    // Navigate immediately so the reader can load behind the original loading page.
+    // The overlay intentionally receives no source bounds: there is no connected-cover
+    // transition, only the established loading surface.
     LaunchedEffect(pendingBookId) {
         val bookId = pendingBookId ?: return@LaunchedEffect
-        if (pendingBookId != bookId || !showTransition) return@LaunchedEffect
+        if (!showTransition) return@LaunchedEffect
         navController.navigate(Screen.Reader.createRoute(bookId))
         pendingBookId = null
     }
@@ -391,10 +401,8 @@ fun MainNavGraph(
                 )
                 HomeScreen(
                     playEntranceAnimation = playEntranceAnimation,
-                    onNavigateToReader = { bookId, coverPath, title ->
+                    onNavigateToReader = { bookId, coverPath, title, _ ->
                         if (eInkMode) {
-                            showTransition = false
-                            pendingBookId = null
                             navController.navigate(Screen.Reader.createRoute(bookId))
                         } else {
                             transitionCover = coverPath
@@ -464,10 +472,8 @@ fun MainNavGraph(
                 )
                 BookshelfScreen(
                     playEntranceAnimation = playEntranceAnimation,
-                    onNavigateToReader = { bookId, coverPath, title ->
+                    onNavigateToReader = { bookId, coverPath, title, _ ->
                         if (eInkMode) {
-                            showTransition = false
-                            pendingBookId = null
                             navController.navigate(Screen.Reader.createRoute(bookId))
                         } else {
                             transitionCover = coverPath
@@ -486,9 +492,7 @@ fun MainNavGraph(
                         showImportActions = true
                         showImportConfirmation = false
                     },
-                    onOverlayProgressChange = { progress ->
-                        bookshelfOverlayProgress = progress.coerceIn(0f, 1f)
-                    },
+                    onMessage = { transientMessage = it },
                     viewModel = homeViewModel
                 )
             }
@@ -518,7 +522,8 @@ fun MainNavGraph(
                     tracker = entranceTracker
                 )
                 StatisticsScreen(
-                    playEntranceAnimation = playEntranceAnimation
+                    playEntranceAnimation = playEntranceAnimation,
+                    onMessage = { transientMessage = it }
                 )
             }
 
@@ -541,6 +546,7 @@ fun MainNavGraph(
                     bookId = bookId,
                     onNavigateBack = {
                         showTransition = false
+                        pendingBookId = null
                         navController.popBackStack()
                     },
                     onLoadingComplete = { readerReady = true },
@@ -557,23 +563,7 @@ fun MainNavGraph(
 
         // 浮动导航栏（渐隐渐显）
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    renderEffect = if (
-                        !eInkMode &&
-                        bookshelfOverlayProgress > 0.01f &&
-                        android.os.Build.VERSION.SDK_INT >= 31
-                    ) {
-                        android.graphics.RenderEffect.createBlurEffect(
-                            20f * bookshelfOverlayProgress,
-                            20f * bookshelfOverlayProgress,
-                            android.graphics.Shader.TileMode.CLAMP
-                        ).asComposeRenderEffect()
-                    } else {
-                        null
-                    }
-                }
+            modifier = Modifier.fillMaxSize()
         ) {
         AnimatedVisibility(
             visible = tabBarVisible,
@@ -592,11 +582,33 @@ fun MainNavGraph(
                 modifier = Modifier.fillMaxWidth(),
                 contentAlignment = Alignment.Center
             ) {
+                val requestImport = {
+                    selectedImportBooks = emptyList()
+                    selectedImportBookUris = emptySet()
+                    importCopiesIntoApp = true
+                    isPreparingImport = false
+                    importPreparationGeneration++
+                    showImportActions = true
+                    showImportConfirmation = false
+                }
                 Box(
                     modifier = Modifier.widthIn(
                         max = if (isLiquidGlass) 480.dp else 430.dp
                     )
                 ) {
+                    if (showLiquidImport) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .navigationBarsPadding()
+                                .padding(end = 24.dp, bottom = 10.dp)
+                        ) {
+                            LiquidGlassImportButton(
+                                onClick = requestImport,
+                                liquidGlassBackdrop = liquidGlassBackdrop
+                            )
+                        }
+                    }
                     FloatingTabBar(
                         selectedIndex = selectedTab,
                         hazeState = hazeState,
@@ -617,29 +629,10 @@ fun MainNavGraph(
                             }
                         }
                     )
-                    if (showLiquidImport) {
-                        LiquidGlassImportButton(
-                            onClick = {
-                                selectedImportBooks = emptyList()
-                                selectedImportBookUris = emptySet()
-                                importCopiesIntoApp = true
-                                isPreparingImport = false
-                                importPreparationGeneration++
-                                showImportActions = true
-                                showImportConfirmation = false
-                            },
-                            liquidGlassBackdrop = liquidGlassBackdrop,
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .navigationBarsPadding()
-                                .padding(end = 24.dp, top = 10.dp, bottom = 10.dp)
-                        )
-                    }
                 }
             }
         }
 
-        // 过渡动画覆盖层
         }
         if (showImportActions) {
             ImportBooksActionSheet(
@@ -656,22 +649,20 @@ fun MainNavGraph(
                     runCatching {
                         importLauncher.launch(arrayOf("*/*"))
                     }.onFailure { error ->
-                        Toast.makeText(
-                            context,
-                            context.getString(R.string.import_failed, error.message.orEmpty()),
-                            Toast.LENGTH_SHORT
-                        ).show()
+                        transientMessage = context.getString(
+                            R.string.import_failed,
+                            error.message.orEmpty()
+                        )
                     }
                 },
                 onAuthorizeDirectory = {
                     runCatching {
                         directoryLauncher.launch(null)
                     }.onFailure { error ->
-                        Toast.makeText(
-                            context,
-                            context.getString(R.string.import_failed, error.message.orEmpty()),
-                            Toast.LENGTH_SHORT
-                        ).show()
+                        transientMessage = context.getString(
+                            R.string.import_failed,
+                            error.message.orEmpty()
+                        )
                     }
                 },
                 onRefreshDirectories = {
@@ -758,6 +749,14 @@ fun MainNavGraph(
             onSaveGoal = { minutes -> homeViewModel.saveDailyGoal(minutes) }
         )
 
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(start = 20.dp, end = 20.dp, bottom = 88.dp)
+        )
+
         if (showTransition && !eInkMode) {
             BookTransitionOverlay(
                 title = transitionTitle,
@@ -766,17 +765,15 @@ fun MainNavGraph(
                 onBackNavigationStarted = {
                     pendingBookId = null
                     readerReady = false
-                    synchronizeNextMainReturn = true
                     if (navController.currentDestination?.route == Screen.Reader.route) {
                         navController.popBackStack()
                     }
                 },
                 onBack = { showTransition = false },
-                onTransitionComplete = {
-                    showTransition = false
-                }
+                onTransitionComplete = { showTransition = false }
             )
         }
+
         }
     }
     }

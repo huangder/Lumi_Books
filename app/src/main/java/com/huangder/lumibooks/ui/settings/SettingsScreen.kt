@@ -163,8 +163,6 @@ fun SettingsScreen(
                     settingsBackButton = true
                 )
                 Spacer(Modifier.weight(1f))
-                Text(stringResource(R.string.settings_title), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = resolveAppFontFamily(fangSongFamily()), color = AppColors.TextPrimary)
-                Spacer(Modifier.weight(1f))
                 Spacer(Modifier.size(48.dp))
             }
 
@@ -176,6 +174,15 @@ fun SettingsScreen(
                     .verticalScroll(rememberScrollState())
             ) {
                 Spacer(Modifier.height(AppSpace.sm))
+
+                Text(
+                    text = stringResource(R.string.settings_title),
+                    fontSize = AppType.Display,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = resolveAppFontFamily(fangSongFamily()),
+                    color = AppColors.TextPrimary,
+                    modifier = Modifier.padding(horizontal = AppSpace.lg, vertical = AppSpace.sm)
+                )
 
                 // 头像快捷入口
                 Row(
@@ -236,30 +243,45 @@ fun SettingsScreen(
 
                 Spacer(Modifier.height(AppSpace.lg))
 
-                // 分类列表
-                CategoryItem(Icons.Outlined.Brightness6, stringResource(R.string.category_display)) {
-                    context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "display"))
+                // 分类列表：按设置域分组，组内使用细分隔线保持扫描节奏。
+                SettingsCategoryGroup {
+                    CategoryItem(Icons.Outlined.FormatSize, stringResource(R.string.title_reading_settings), grouped = true) {
+                        context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "reading"))
+                    }
+                    SettingsGroupDivider()
+                    CategoryItem(Icons.Outlined.Brightness6, stringResource(R.string.category_display), grouped = true) {
+                        context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "display"))
+                    }
+                    SettingsGroupDivider()
+                    CategoryItem(Icons.Outlined.Translate, stringResource(R.string.category_language), grouped = true) {
+                        context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "language"))
+                    }
+                    SettingsGroupDivider()
+                    CategoryItem(Icons.Outlined.DeleteSweep, stringResource(R.string.category_storage), grouped = true) {
+                        context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "storage"))
+                    }
+                    SettingsGroupDivider()
+                    CategoryItem(Icons.Outlined.Backup, stringResource(R.string.category_backup), grouped = true) {
+                        context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "backup"))
+                    }
                 }
-                CategoryItem(Icons.Outlined.Translate, stringResource(R.string.category_language)) {
-                    context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "language"))
-                }
-                CategoryItem(Icons.Outlined.DeleteSweep, stringResource(R.string.category_storage)) {
-                    context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "storage"))
-                }
-                CategoryItem(Icons.Outlined.Backup, stringResource(R.string.category_backup)) {
-                    context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "backup"))
-                }
-                CategoryItem(Icons.Outlined.Cloud, stringResource(R.string.category_third_party_services)) {
-                    context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "third_party_services"))
-                }
-                CategoryItem(Icons.Outlined.Info, stringResource(R.string.category_about)) {
-                    context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "about"))
-                }
-                CategoryItem(Icons.Outlined.FavoriteBorder, stringResource(R.string.category_sponsor)) {
-                    context.startActivity(Intent(context, SponsorActivity::class.java))
-                }
-                CategoryItem(Icons.Outlined.BugReport, stringResource(R.string.category_feedback)) {
-                    context.startActivity(Intent(context, FeedbackActivity::class.java))
+                Spacer(Modifier.height(AppSpace.sm))
+                SettingsCategoryGroup {
+                    CategoryItem(Icons.Outlined.Cloud, stringResource(R.string.category_third_party_services), grouped = true) {
+                        context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "third_party_services"))
+                    }
+                    SettingsGroupDivider()
+                    CategoryItem(Icons.Outlined.Info, stringResource(R.string.category_about), grouped = true) {
+                        context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "about"))
+                    }
+                    SettingsGroupDivider()
+                    CategoryItem(Icons.Outlined.FavoriteBorder, stringResource(R.string.category_sponsor), grouped = true) {
+                        context.startActivity(Intent(context, SponsorActivity::class.java))
+                    }
+                    SettingsGroupDivider()
+                    CategoryItem(Icons.Outlined.BugReport, stringResource(R.string.category_feedback), grouped = true) {
+                        context.startActivity(Intent(context, FeedbackActivity::class.java))
+                    }
                 }
 
                 Spacer(Modifier.height(120.dp))
@@ -337,15 +359,16 @@ private fun CategoryItem(
     icon: ImageVector,
     label: String,
     supportingText: String? = null,
+    grouped: Boolean = false,
     onClick: () -> Unit
 ) {
+    val shape = RoundedCornerShape(AppRadius.md)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = AppSpace.md, vertical = 1.dp)
-            .shadow(6.dp, RoundedCornerShape(AppRadius.md), ambientColor = Color(0x04000000), spotColor = Color(0x04000000))
-            .clip(RoundedCornerShape(AppRadius.md))
-            .background(AppColors.CardBg)
+            .then(if (grouped) Modifier else Modifier.padding(horizontal = AppSpace.md, vertical = 1.dp))
+            .then(if (grouped) Modifier else Modifier.shadow(6.dp, shape, ambientColor = Color(0x04000000), spotColor = Color(0x04000000)))
+            .then(if (grouped) Modifier else Modifier.clip(shape).background(AppColors.CardBg))
             .clickable(onClick = onClick)
             .padding(horizontal = AppSpace.md, vertical = AppSpace.md + 2.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -361,4 +384,28 @@ private fun CategoryItem(
         }
         Icon(Icons.Outlined.ChevronRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
     }
+}
+
+@Composable
+private fun SettingsCategoryGroup(content: @Composable () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AppSpace.md)
+            .clip(RoundedCornerShape(AppRadius.lg))
+            .background(AppColors.CardBg)
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun SettingsGroupDivider() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 54.dp)
+            .height(0.5.dp)
+            .background(AppColors.Divider)
+    )
 }

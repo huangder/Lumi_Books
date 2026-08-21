@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -47,6 +48,7 @@ import com.huangder.lumibooks.tts.ExternalTtsProtocol
 import com.huangder.lumibooks.tts.ExternalTtsSettings
 import com.huangder.lumibooks.tts.ExternalTtsEngine
 import com.huangder.lumibooks.tts.ExternalTtsTokenStore
+import com.huangder.lumibooks.tts.TtsEngine
 import com.huangder.lumibooks.mineru.MineruTokenStore
 
 @HiltViewModel
@@ -56,6 +58,7 @@ class SettingsViewModel @Inject constructor(
     private val mineruTokenStore: MineruTokenStore,
     private val externalTtsTokenStore: ExternalTtsTokenStore,
     private val externalTtsEngine: ExternalTtsEngine,
+    private val ttsEngine: TtsEngine,
     private val mineruManualImportManager: MineruManualImportManager,
     private val externalTtsAudioCache: ExternalTtsAudioCache,
     private val webdavSyncManager: com.huangder.lumibooks.data.sync.WebdavSyncManager,
@@ -144,6 +147,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.darkMode.collectLatest { mode ->
                 _uiState.value = _uiState.value.copy(darkMode = mode)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.motionPreference.collectLatest { preference ->
+                _uiState.value = _uiState.value.copy(motionPreference = preference)
             }
         }
         viewModelScope.launch {
@@ -241,6 +249,23 @@ class SettingsViewModel @Inject constructor(
                 )
             }
         }
+        viewModelScope.launch {
+            combine(dataStoreManager.customHighlightPalettes, dataStoreManager.activeHighlightPaletteId) { palettes, activeId -> palettes to activeId }
+                .collectLatest { (palettes, activeId) ->
+                    val active = palettes.firstOrNull { it.id == activeId }
+                        ?: palettes.firstOrNull()?.takeIf { it.id == "legacy" && activeId == null }
+                    _uiState.value = _uiState.value.copy(
+                        customHighlightColors = active?.normalizedColors?.filterNotNull().orEmpty(),
+                        customHighlightPalettes = palettes,
+                        activeHighlightPaletteId = activeId
+                    )
+                    com.huangder.lumibooks.ui.reader.updateHighlightPalettes(palettes, activeId)
+                }
+        }
+        viewModelScope.launch { dataStoreManager.ttsFloatingWindow.collectLatest { _uiState.value = _uiState.value.copy(ttsFloatingWindow = it) } }
+        viewModelScope.launch { dataStoreManager.preferredTtsEngine.collectLatest { _uiState.value = _uiState.value.copy(preferredTtsEngine = it) } }
+        viewModelScope.launch { dataStoreManager.bodyFontWeight.collectLatest { _uiState.value = _uiState.value.copy(bodyFontWeight = it) } }
+        viewModelScope.launch { dataStoreManager.applyToBodyOnly.collectLatest { _uiState.value = _uiState.value.copy(applyToBodyOnly = it) } }
     }
 
     // ─── 个人信息 ───
@@ -348,6 +373,62 @@ class SettingsViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(darkMode = mode)
         viewModelScope.launch {
             dataStoreManager.saveDarkMode(mode)
+        }
+    }
+
+    fun saveCustomHighlightPalettes(palettes: List<com.huangder.lumibooks.domain.model.HighlightPalette>) {
+        viewModelScope.launch {
+            dataStoreManager.saveCustomHighlightPalettes(palettes)
+            _uiState.value = _uiState.value.copy(customHighlightPalettes = palettes)
+        }
+    }
+
+    fun saveActiveHighlightPalette(id: String?) {
+        viewModelScope.launch {
+            dataStoreManager.saveActiveHighlightPaletteId(id)
+            _uiState.value = _uiState.value.copy(activeHighlightPaletteId = id)
+        }
+    }
+
+    fun saveTtsFloatingWindow(enabled: Boolean) {
+        viewModelScope.launch {
+            dataStoreManager.saveTtsFloatingWindow(enabled)
+            _uiState.value = _uiState.value.copy(ttsFloatingWindow = enabled)
+        }
+    }
+
+    fun savePreferredTtsEngine(packageName: String?) {
+        viewModelScope.launch {
+            dataStoreManager.savePreferredTtsEngine(packageName)
+            _uiState.value = _uiState.value.copy(preferredTtsEngine = packageName)
+        }
+    }
+
+    fun getInstalledTtsEngines(): List<Pair<String, String>> = ttsEngine.getInstalledEngines()
+
+    fun saveBodyFontWeight(weight: Int) {
+        viewModelScope.launch {
+            dataStoreManager.saveBodyFontWeight(weight)
+            _uiState.value = _uiState.value.copy(bodyFontWeight = weight)
+        }
+    }
+
+    fun saveApplyToBodyOnly(enabled: Boolean) {
+        viewModelScope.launch {
+            dataStoreManager.saveApplyToBodyOnly(enabled)
+            _uiState.value = _uiState.value.copy(applyToBodyOnly = enabled)
+        }
+    }
+
+    fun saveMotionPreference(preference: String) {
+        val normalized = if (preference == "reduced") "reduced" else "standard"
+        if (_uiState.value.motionPreference == normalized) return
+        _uiState.value = _uiState.value.copy(
+            motionPreference = normalized,
+            entranceAnimationsEnabled = normalized == "standard"
+        )
+        viewModelScope.launch {
+            dataStoreManager.saveMotionPreference(normalized)
         }
     }
 

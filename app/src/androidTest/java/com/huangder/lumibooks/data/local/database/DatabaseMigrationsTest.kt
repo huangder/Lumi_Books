@@ -73,16 +73,49 @@ class DatabaseMigrationsTest {
         }
     }
 
+    @Test
+    fun migration4To6PreservesNotesAndTagsAndAddsCompatibleDefaults() {
+        openHelper(version = 4, createSchema = true).use { helper ->
+            helper.writableDatabase.apply {
+                execSQL(
+                    "INSERT INTO notes " +
+                        "(id,bookId,chapterIndex,startPosition,endPosition,selectedText,note,color,createdAt) VALUES " +
+                        "(9,'book-1',3,12,24,'selected','note','#ffee00',12)"
+                )
+                execSQL(
+                    "INSERT INTO tags VALUES ('tag-1','Fiction','fiction',13)"
+                )
+            }
+        }
+
+        openHelper(version = 6, createSchema = false).use { helper ->
+            val db = helper.writableDatabase
+            db.query("SELECT note, type FROM notes WHERE id=9").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals("note", cursor.getString(0))
+                assertEquals("highlight", cursor.getString(1))
+            }
+            db.query("SELECT name, parentId FROM tags WHERE id='tag-1'").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals("Fiction", cursor.getString(0))
+                assertNull(cursor.getString(1))
+            }
+        }
+    }
+
     private fun openHelper(version: Int, createSchema: Boolean): SupportSQLiteOpenHelper {
         val callback = object : SupportSQLiteOpenHelper.Callback(version) {
             override fun onCreate(db: SupportSQLiteDatabase) {
-                if (createSchema) createVersion3Schema(db)
+                if (createSchema) {
+                    createVersion3Schema(db)
+                    if (version >= 4) DatabaseMigrations.MIGRATION_3_4.migrate(db)
+                }
             }
 
             override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) {
-                if (oldVersion == 3 && newVersion == 4) {
-                    DatabaseMigrations.MIGRATION_3_4.migrate(db)
-                }
+                if (oldVersion < 4 && newVersion >= 4) DatabaseMigrations.MIGRATION_3_4.migrate(db)
+                if (oldVersion < 5 && newVersion >= 5) DatabaseMigrations.MIGRATION_4_5.migrate(db)
+                if (oldVersion < 6 && newVersion >= 6) DatabaseMigrations.MIGRATION_5_6.migrate(db)
             }
         }
         val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)
@@ -112,6 +145,14 @@ class DatabaseMigrationsTest {
                 "chapterIndex INTEGER NOT NULL, startPosition INTEGER NOT NULL, " +
                 "endPosition INTEGER NOT NULL, selectedText TEXT NOT NULL, note TEXT NOT NULL, " +
                 "color TEXT NOT NULL, createdAt INTEGER NOT NULL)"
+        )
+        db.execSQL(
+            "CREATE TABLE tags (" +
+                "id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, " +
+                "normalizedName TEXT NOT NULL, createdAt INTEGER NOT NULL)"
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX index_tags_normalizedName ON tags (normalizedName)"
         )
     }
 }

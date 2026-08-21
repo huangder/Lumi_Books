@@ -28,7 +28,6 @@ import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
@@ -184,6 +183,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalConfiguration
 import com.huangder.lumibooks.ui.animation.AppEasing
+import com.huangder.lumibooks.ui.animation.LumiMotion
 import com.huangder.lumibooks.ui.animation.cardPressEffect
 import com.huangder.lumibooks.ui.components.ConfigurableBackHandler
 import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
@@ -211,6 +211,7 @@ import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.data.local.DataStoreManager
@@ -511,6 +512,7 @@ private fun darkenReaderSolidColor(color: Int): Int {
 fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> Unit = {}, onLoadingComplete: () -> Unit = {}, viewModel: ReaderViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsState()
     val eInkMode = uiState.eInkModeEnabled
+    val motionEnabled = LocalMotionEnabled.current
     val basePageTransition = if (eInkMode) "none" else uiState.pageTransition
     val effectiveReaderTheme = if (eInkMode) "day" else uiState.readerTheme
     val effectiveReaderBackgroundSelection = if (eInkMode) "day" else uiState.readerBackgroundSelection
@@ -1054,6 +1056,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     var showToc by remember { mutableStateOf(false) }
     var showThemeSheet by remember { mutableStateOf(false) }
     var showAdvancedSheet by remember { mutableStateOf(false) }
+    var openAdvancedAfterThemeClose by remember { mutableStateOf(false) }
     var showTxtEncodingDialog by remember(bookId) { mutableStateOf(false) }
 
     // 搜索状态
@@ -1073,7 +1076,10 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         viewModel.stopTts()
         onNavigateBack()
     }
-    BackHandler(enabled = !isAnySheetOpen) { exitReader() }
+    ConfigurableBackHandler(
+        enabled = !isAnySheetOpen && linkReturnLocation == null,
+        onBack = exitReader
+    )
 
     // TxtEditor Activity 返回后刷新内容
     val txtEditorLauncher = rememberLauncherForActivityResult(
@@ -1357,25 +1363,52 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     }
     val readerGlassBackdrop = rememberLayerBackdrop()
     val activeReaderGlassBackdrop = readerGlassBackdrop.takeIf { isLiquidGlass && !isBookLayout }
+    val readerGlassOverlayVisible = uiState.isMenuVisible ||
+        isAnySheetOpen ||
+        selectionState != null ||
+        linkReturnLocation != null ||
+        uiState.showEpubLayoutHint ||
+        uiState.showMobiLayoutHint ||
+        uiState.showTxtEncodingHint ||
+        pendingExternalLink != null ||
+        uiState.ttsPlaybackState != TtsPlaybackState.IDLE
     ReaderSystemBarStyle(
         backgroundColor = composeBgColor,
         useDarkIcons = ColorUtils.calculateLuminance(customBackgroundThemeColorInt) >= 0.42
     )
 
     Box(Modifier.fillMaxSize().background(composeBgColor)) {
+        val modeTransitionActive = readerModeTransitionProgress.value < 0.999f
+        val imagePreviewBlurActive = !eInkMode && readerImagePreviewProgress.value > 0.001f
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer {
-                    val progress = readerModeTransitionProgress.value
-                    alpha = progress
-                    val scale = 0.96f + (0.04f * progress)
-                    scaleX = scale
-                    scaleY = scale
-                }
-                .blur(if (eInkMode) 0.dp else (12f * readerImagePreviewProgress.value).dp)
                 .then(
-                    activeReaderGlassBackdrop?.let { Modifier.layerBackdrop(it) } ?: Modifier
+                    if (modeTransitionActive) {
+                        Modifier.graphicsLayer {
+                            val progress = readerModeTransitionProgress.value
+                            alpha = progress
+                            val scale = 0.96f + (0.04f * progress)
+                            scaleX = scale
+                            scaleY = scale
+                        }
+                    } else {
+                        Modifier
+                    }
+                )
+                .then(
+                    if (imagePreviewBlurActive) {
+                        Modifier.blur((12f * readerImagePreviewProgress.value).dp)
+                    } else {
+                        Modifier
+                    }
+                )
+                .then(
+                    if (readerGlassOverlayVisible) {
+                        activeReaderGlassBackdrop?.let { Modifier.layerBackdrop(it) } ?: Modifier
+                    } else {
+                        Modifier
+                    }
                 )
         ) {
             // ── 新 Canvas 引擎（TXT/EPUB） ──
@@ -1982,8 +2015,22 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             // 顶部栏
             AnimatedVisibility(
                 visible = uiState.isMenuVisible,
-                enter = if (eInkMode) EnterTransition.None else fadeIn(animationSpec = tween(300)),
-                exit = if (eInkMode) ExitTransition.None else fadeOut(animationSpec = tween(200)),
+                enter = when {
+                    eInkMode -> EnterTransition.None
+                    !motionEnabled -> fadeIn(animationSpec = tween(120))
+                    else -> slideInVertically(
+                        initialOffsetY = { -it },
+                        animationSpec = tween(LumiMotion.MenuEnterMillis, easing = AppEasing.Smooth)
+                    ) + fadeIn(animationSpec = tween(LumiMotion.MenuEnterMillis))
+                },
+                exit = when {
+                    eInkMode -> ExitTransition.None
+                    !motionEnabled -> fadeOut(animationSpec = tween(100))
+                    else -> slideOutVertically(
+                        targetOffsetY = { -it },
+                        animationSpec = tween(LumiMotion.MenuExitMillis, easing = AppEasing.Accelerate)
+                    ) + fadeOut(animationSpec = tween(LumiMotion.MenuExitMillis))
+                },
                 modifier = Modifier.align(Alignment.TopCenter)
             ) {
                 val bookTitle = uiState.book?.title ?: ""
@@ -2073,17 +2120,23 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 val menuAlpha = remember { Animatable(0f) }
                 val menuOffset = remember { Animatable(60f) }
                 val menuScope = rememberCoroutineScope()
-                LaunchedEffect(uiState.isMenuVisible, eInkMode) {
+                LaunchedEffect(uiState.isMenuVisible, eInkMode, motionEnabled) {
                     if (eInkMode) {
                         menuAlpha.snapTo(if (uiState.isMenuVisible) 1f else 0f)
                         menuOffset.snapTo(if (uiState.isMenuVisible) 0f else 60f)
+                    } else if (!motionEnabled) {
+                        menuOffset.snapTo(0f)
+                        menuAlpha.animateTo(
+                            if (uiState.isMenuVisible) 1f else 0f,
+                            tween(if (uiState.isMenuVisible) 120 else 100)
+                        )
                     } else if (uiState.isMenuVisible) {
                         menuOffset.snapTo(60f)
-                        menuScope.launch { menuAlpha.animateTo(1f, tween(300)) }
-                        menuScope.launch { menuOffset.animateTo(0f, tween(300, easing = AppEasing.Smooth)) }
+                        menuScope.launch { menuAlpha.animateTo(1f, tween(LumiMotion.MenuEnterMillis)) }
+                        menuScope.launch { menuOffset.animateTo(0f, tween(LumiMotion.MenuEnterMillis, easing = AppEasing.Smooth)) }
                     } else {
-                        menuScope.launch { menuAlpha.animateTo(0f, tween(200)) }
-                        menuScope.launch { menuOffset.animateTo(60f, tween(200, easing = AppEasing.Accelerate)) }
+                        menuScope.launch { menuAlpha.animateTo(0f, tween(LumiMotion.MenuExitMillis)) }
+                        menuScope.launch { menuOffset.animateTo(60f, tween(LumiMotion.MenuExitMillis, easing = AppEasing.Accelerate)) }
                     }
                 }
 
@@ -2180,6 +2233,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         },
                         onThemeClick = {
                             viewModel.hideMenu()
+                            openAdvancedAfterThemeClose = false
+                            requestCloseTheme = false
                             showThemeSheet = true
                         },
                         onCatalogProgressDragStart = {
@@ -2255,15 +2310,15 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
 
             val ttsBottomPadding by animateDpAsState(
                 targetValue = if (uiState.isMenuVisible) 204.dp else 44.dp,
-                animationSpec = if (eInkMode) snap() else spring(dampingRatio = 0.82f, stiffness = 360f),
+                animationSpec = if (eInkMode || !motionEnabled) snap() else spring(dampingRatio = 0.82f, stiffness = 360f),
                 label = "ttsBottomPadding"
             )
             AnimatedVisibility(
                 visible = uiState.ttsActiveBookId == uiState.book?.id &&
                     uiState.ttsPlaybackState != TtsPlaybackState.IDLE &&
                     !isAnySheetOpen,
-                enter = if (eInkMode) EnterTransition.None else slideInVertically(initialOffsetY = { it }) + fadeIn(),
-                exit = if (eInkMode) ExitTransition.None else slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+                enter = if (eInkMode || !motionEnabled) fadeIn(tween(LumiMotion.MenuEnterMillis)) else slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                exit = if (eInkMode || !motionEnabled) fadeOut(tween(LumiMotion.MenuExitMillis)) else slideOutVertically(targetOffsetY = { it }) + fadeOut(),
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
@@ -2411,12 +2466,23 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 onPageTransitionChange = { viewModel.savePageTransition(it) },
                 onDisplayModeChange = viewModel::saveReaderDisplayMode,
                 onOpenAdvanced = {
-                    showThemeSheet = false
-                    requestCloseTheme = false
-                    showAdvancedSheet = true
+                    if (!openAdvancedAfterThemeClose) {
+                        openAdvancedAfterThemeClose = true
+                        requestCloseTheme = true
+                        scope.launch {
+                            delay(if (eInkMode || !motionEnabled) 0L else 90L)
+                            if (openAdvancedAfterThemeClose) {
+                                showAdvancedSheet = true
+                                openAdvancedAfterThemeClose = false
+                            }
+                        }
+                    }
                 },
                 eInkModeEnabled = eInkMode,
-                onDismiss = { showThemeSheet = false; requestCloseTheme = false }
+                onDismiss = {
+                    showThemeSheet = false
+                    requestCloseTheme = false
+                }
             )
 
             // 搜索弹窗

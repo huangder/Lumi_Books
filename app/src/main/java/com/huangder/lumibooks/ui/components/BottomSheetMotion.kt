@@ -3,21 +3,24 @@ package com.huangder.lumibooks.ui.components
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
 import kotlin.math.min
 
 suspend fun Animatable<Float, AnimationVector1D>.animateBottomSheetIn() {
     animateTo(
         targetValue = 0f,
         animationSpec = spring(
-            dampingRatio = 0.70f,
-            stiffness = 145f,
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = 500f,
             visibilityThreshold = 0.001f
         )
     )
@@ -26,11 +29,7 @@ suspend fun Animatable<Float, AnimationVector1D>.animateBottomSheetIn() {
 suspend fun Animatable<Float, AnimationVector1D>.animateBottomSheetOut() {
     animateTo(
         targetValue = 1f,
-        animationSpec = spring(
-            dampingRatio = 0.86f,
-            stiffness = 240f,
-            visibilityThreshold = 0.001f
-        )
+        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
     )
 }
 
@@ -42,8 +41,18 @@ fun Modifier.materialBottomSheetMotion(
     alpha: Float = 1f
 ): Modifier {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val motionEnabled = LocalMotionEnabled.current
     return graphicsLayer {
         val progress = predictiveBackProgress.coerceIn(0f, 1f)
+        if (!motionEnabled) {
+            translationY = 0f
+            this.alpha = alpha.coerceIn(0f, 1f) *
+                (1f - entryOffset.coerceIn(0f, 1f))
+            scaleX = 1f
+            scaleY = 1f
+            transformOrigin = TransformOrigin(0.5f, 1f)
+            return@graphicsLayer
+        }
         if (!isLiquidGlass) {
             val entry = entryOffset.coerceIn(0f, 1f)
             val curvedEntry = 1f - FastOutSlowInEasing.transform(1f - entry)

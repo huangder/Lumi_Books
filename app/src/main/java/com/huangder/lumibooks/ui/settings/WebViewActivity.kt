@@ -24,6 +24,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -33,6 +34,8 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
+import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
+import com.huangder.lumibooks.ui.theme.effectiveAppTheme
 import com.huangder.lumibooks.ui.theme.fangSongFamily
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
@@ -92,10 +95,12 @@ class WebViewActivity : ComponentActivity() {
         }
 
         setContent {
+            val capability = rememberLiquidGlassCapability(view = LocalView.current)
+            val resolvedAppTheme = effectiveAppTheme(appTheme, capability)
             EBookReaderTheme(
                 darkTheme = isDark,
-                dynamicColor = appTheme == "material3",
-                appTheme = appTheme,
+                dynamicColor = resolvedAppTheme == "material3",
+                appTheme = resolvedAppTheme,
                 liquidGlassTransparency = liquidGlassTransparency,
                 liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled,
                 globalFontMode = globalFontMode

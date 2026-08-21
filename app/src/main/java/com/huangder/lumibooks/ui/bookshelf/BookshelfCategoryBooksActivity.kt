@@ -14,12 +14,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import com.huangder.lumibooks.MainActivity
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.ui.components.ConfigurableActivityBack
 import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
+import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
+import com.huangder.lumibooks.ui.theme.effectiveAppTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -45,7 +48,7 @@ class BookshelfCategoryBooksActivity : ComponentActivity() {
 
         setContent {
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = "lumi")
-            val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = "default")
+            val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = "system")
             val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = 0.55f)
             val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = false)
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
@@ -56,7 +59,8 @@ class BookshelfCategoryBooksActivity : ComponentActivity() {
                 "light" -> false
                 else -> systemDarkMode
             }
-            val effectiveTheme = if (eInkMode && appTheme == "liquid_glass") "lumi" else appTheme
+            val capability = rememberLiquidGlassCapability(eInkMode, LocalView.current)
+            val effectiveTheme = effectiveAppTheme(appTheme, capability)
 
             EBookReaderTheme(
                 darkTheme = isDark,

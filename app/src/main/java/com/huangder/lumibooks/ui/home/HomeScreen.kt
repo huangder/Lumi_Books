@@ -9,9 +9,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -44,9 +41,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import android.widget.Toast
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -97,11 +92,10 @@ import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.ui.animation.PageEntranceItem
 import com.huangder.lumibooks.util.TimeUtils
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun HomeScreen(
     playEntranceAnimation: Boolean = false,
-    onNavigateToReader: (bookId: String, coverPath: String?, title: String) -> Unit,
+    onNavigateToReader: (bookId: String, coverPath: String?, title: String, sourceBounds: Rect?) -> Unit,
     onNavigateToStatistics: () -> Unit,
     onNavigateToBookshelf: () -> Unit,
     onImportClick: () -> Unit,
@@ -133,22 +127,7 @@ fun HomeScreen(
         uiState.books.sortedByDescending { it.lastReadTime }
     }
     val lastReadBook = booksByLastRead.firstOrNull()
-    val otherBooks = booksByLastRead.drop(1)
-    val booksThisYear = if (isTablet) booksByLastRead.take(6) else booksByLastRead.take(3)
-
-    LaunchedEffect(uiState.importMessage) {
-        uiState.importMessage?.let {
-            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
-            viewModel.clearImportMessage()
-        }
-    }
-
-    LaunchedEffect(uiState.error) {
-        uiState.error?.let {
-            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
-            viewModel.clearError()
-        }
-    }
+    val recentBooks = booksByLastRead
 
     Box(modifier = Modifier.fillMaxSize().background(AppColors.WindowBg)) {
         OverscrollBounce(
@@ -179,84 +158,44 @@ fun HomeScreen(
                     Spacer(Modifier.height(AppSpace.lg))
                 }
 
-                item(key = "import_hint") {
-                    PageEntranceItem(play = playEntranceAnimation, index = 1) {
-                        ImportHint()
-                    }
-                    Spacer(Modifier.height(AppSpace.lg))
-                }
-
-                if (lastReadBook != null) {
-                    item(key = "continue_reading") {
-                        PageEntranceItem(play = playEntranceAnimation, index = 2) {
-                            if (isTablet && otherBooks.isNotEmpty()) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = AppSpace.lg),
-                                    horizontalArrangement = Arrangement.spacedBy(AppSpace.md),
-                                    verticalAlignment = Alignment.Top
-                                ) {
-                                    ContinueReadingCard(
-                                        book = lastReadBook,
-                                        onClick = { onNavigateToReader(lastReadBook.id, lastReadBook.coverPath, lastReadBook.title) },
-                                        onToggleFavorite = { viewModel.updateBook(lastReadBook.copy(isFavorite = !lastReadBook.isFavorite)) },
-                                        onDelete = { viewModel.deleteBook(lastReadBook) },
-                                        modifier = Modifier.weight(1.35f)
-                                    )
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = stringResource(R.string.section_recently_read),
-                                            fontSize = AppType.Section,
-                                            fontWeight = FontWeight.Bold,
-                                            fontFamily = resolveAppFontFamily(KaiTi),
-                                            color = AppColors.TextPrimary
-                                        )
-                                        Spacer(Modifier.height(AppSpace.sm))
-                                        otherBooks.take(2).forEach { book ->
-                                            RecentBookCard(
-                                                book = book,
-                                                onClick = { onNavigateToReader(book.id, book.coverPath, book.title) },
-                                                modifier = Modifier.fillMaxWidth(),
-                                                fixedWidth = false
-                                            )
-                                            Spacer(Modifier.height(AppSpace.sm))
-                                        }
-                                    }
-                                }
-                            } else {
-                                ContinueReadingCard(
-                                    book = lastReadBook,
-                                    onClick = { onNavigateToReader(lastReadBook.id, lastReadBook.coverPath, lastReadBook.title) },
-                                    onToggleFavorite = { viewModel.updateBook(lastReadBook.copy(isFavorite = !lastReadBook.isFavorite)) },
-                                    onDelete = { viewModel.deleteBook(lastReadBook) },
-                                    modifier = Modifier.padding(horizontal = AppSpace.lg)
-                                )
-                            }
+                if (uiState.books.isEmpty()) {
+                    item(key = "empty_library") {
+                        PageEntranceItem(play = playEntranceAnimation, index = 1) {
+                            ImportHint(onImportClick = onImportClick)
                         }
                         Spacer(Modifier.height(AppSpace.lg))
                     }
                 }
 
-                if (otherBooks.isNotEmpty() && !(isTablet && lastReadBook != null)) {
-                    item(key = "previously_read") {
+                if (lastReadBook != null) {
+                    item(key = "continue_reading") {
+                        PageEntranceItem(play = playEntranceAnimation, index = 2) {
+                            ContinueReadingCard(
+                                book = lastReadBook,
+                                onClick = { bounds -> onNavigateToReader(lastReadBook.id, lastReadBook.coverPath, lastReadBook.title, bounds) },
+                                onToggleFavorite = { viewModel.updateBook(lastReadBook.copy(isFavorite = !lastReadBook.isFavorite)) },
+                                onDelete = { viewModel.deleteBook(lastReadBook) },
+                                modifier = Modifier.padding(horizontal = AppSpace.lg)
+                            )
+                        }
+                        Spacer(Modifier.height(AppSpace.lg))
+                    }
+                }
+
+                if (recentBooks.isNotEmpty()) {
+                    item(key = "recently_read") {
                         PageEntranceItem(play = playEntranceAnimation, index = 3) {
                             Column {
-                                SectionHeader(stringResource(R.string.section_previously_read))
+                                SectionHeader(stringResource(R.string.section_recently_read))
                                 Spacer(Modifier.height(AppSpace.md))
-                                LazyRow(
-                                    contentPadding = PaddingValues(horizontal = AppSpace.lg),
-                                    horizontalArrangement = Arrangement.spacedBy(AppSpace.md)
-                                ) {
-                                    items(otherBooks, key = { it.id }) { book ->
-                                        RecentBookCard(
-                                            book = book,
-                                            onClick = { onNavigateToReader(book.id, book.coverPath, book.title) },
-                                            modifier = if (isTablet) Modifier.width(320.dp) else Modifier,
-                                            fixedWidth = !isTablet
-                                        )
+                                BooksReadGrid(
+                                    books = recentBooks,
+                                    modifier = Modifier.padding(horizontal = AppSpace.lg),
+                                    isTablet = isTablet,
+                                    onBookClick = { book, bounds ->
+                                        onNavigateToReader(book.id, book.coverPath, book.title, bounds)
                                     }
-                                }
+                                )
                             }
                         }
                         Spacer(Modifier.height(AppSpace.lg))
@@ -271,28 +210,13 @@ fun HomeScreen(
                             weeklyData = uiState.weeklyData,
                             onCardClick = { setShowGoalSheet(true) },
                             onContinueClick = {
-                                lastReadBook?.let { onNavigateToReader(it.id, it.coverPath, it.title) }
+                                lastReadBook?.let { onNavigateToReader(it.id, it.coverPath, it.title, null) }
                             }
                         )
                     }
                     Spacer(Modifier.height(AppSpace.lg))
                 }
 
-                if (booksThisYear.isNotEmpty()) {
-                    item(key = "recently_read") {
-                        PageEntranceItem(play = playEntranceAnimation, index = 5) {
-                            Column {
-                                SectionHeader(stringResource(R.string.section_recently_read))
-                                Spacer(Modifier.height(AppSpace.md))
-                                BooksReadGrid(
-                                    books = booksThisYear,
-                                    modifier = Modifier.padding(horizontal = AppSpace.lg),
-                                    isTablet = isTablet
-                                )
-                            }
-                        }
-                    }
-                }
                 item(key = "bottom_spacing") {
                     Spacer(Modifier.height(120.dp))
                 }
@@ -394,18 +318,19 @@ private fun HomeHeader(
     }
 }
 
-// ─── 导入提示 ──────────────────────────────────────────────────
+// ─── 空书库 ────────────────────────────────────────────────────
 
 @Composable
-private fun ImportHint() {
-    Row(
+private fun ImportHint(onImportClick: () -> Unit) {
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = AppSpace.lg)
             .clip(RoundedCornerShape(AppRadius.md))
             .background(AppColors.BgGray)
-            .padding(AppSpace.md),
-        verticalAlignment = Alignment.CenterVertically
+            .clickable(onClick = onImportClick)
+            .padding(horizontal = AppSpace.lg, vertical = AppSpace.xl),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Icon(
             Icons.Outlined.Book,
@@ -413,12 +338,20 @@ private fun ImportHint() {
             tint = AppColors.TextSecondary,
             modifier = Modifier.size(24.dp)
         )
-        Spacer(Modifier.width(AppSpace.md))
+        Spacer(Modifier.height(AppSpace.sm))
         Text(
             text = stringResource(R.string.home_manage_hint),
             fontSize = AppType.BodySmall,
             color = AppColors.TextSecondary,
-            fontFamily = SansSerif
+            fontFamily = SansSerif,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(AppSpace.md))
+        Text(
+            text = stringResource(R.string.import_books),
+            fontSize = AppType.Body,
+            fontWeight = FontWeight.SemiBold,
+            color = AppColors.Accent
         )
     }
 }
@@ -428,7 +361,7 @@ private fun ImportHint() {
 @Composable
 private fun ContinueReadingCard(
     book: Book,
-    onClick: () -> Unit,
+    onClick: (Rect?) -> Unit,
     onToggleFavorite: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
@@ -444,6 +377,7 @@ private fun ContinueReadingCard(
         stringResource(R.string.add_favorite)
     }
     val deleteMenuLabel = stringResource(R.string.delete_book)
+    var coverBounds by remember { mutableStateOf(Rect.Zero) }
 
     Row(
         modifier = modifier
@@ -452,7 +386,7 @@ private fun ContinueReadingCard(
             .clip(RoundedCornerShape(AppRadius.lg))
             .background(AppColors.CardBg)
             .cardPressEffect()
-            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onClick)
+            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick(coverBounds.takeUnless { it == Rect.Zero }) }
             .padding(AppSpace.md),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -463,6 +397,7 @@ private fun ContinueReadingCard(
             modifier = Modifier
                 .width(72.dp)
                 .aspectRatio(0.75f)
+                .onGloballyPositioned { coverBounds = it.boundsInRoot() }
                 .clip(RoundedCornerShape(AppRadius.sm))
                 .background(AppColors.BgGray),
             contentScale = ContentScale.Crop
@@ -870,69 +805,53 @@ private fun WeeklyCheckIn(weeklyData: List<DailyReading> = emptyList(), dailyGoa
     }
 }
 
-// ─── 今年读过的图书网格 ────────────────────────────────────────
+// ─── 最近读过的图书 ────────────────────────────────────────────
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun BooksReadGrid(books: List<Book>, modifier: Modifier = Modifier, isTablet: Boolean = false) {
-    if (isTablet) {
-        FlowRow(
-            modifier = modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpace.md),
-            verticalArrangement = Arrangement.spacedBy(AppSpace.md),
-            maxItemsInEachRow = 6
-        ) {
-            books.forEach { book ->
-                Box(
-                    modifier = Modifier
-                        .width(120.dp)
-                        .aspectRatio(0.75f)
-                        .clip(RoundedCornerShape(AppRadius.sm))
-                        .background(AppColors.BgGray)
-                        .border(1.dp, AppColors.Divider, RoundedCornerShape(AppRadius.sm)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    AsyncImage(
-                        model = book.coverPath,
-                        contentDescription = book.title,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
+private fun BooksReadGrid(
+    books: List<Book>,
+    modifier: Modifier = Modifier,
+    isTablet: Boolean = false,
+    onBookClick: (Book, Rect?) -> Unit
+) {
+    val coverShape = RoundedCornerShape(
+        if (LocalAppTheme.current == "liquid_glass") 16.dp else AppRadius.md
+    )
+    val bookBounds = remember { mutableMapOf<String, Rect>() }
+    LazyRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpace.md)
+    ) {
+        items(books, key = { it.id }) { book ->
+            Box(
+                modifier = Modifier
+                    .width(if (isTablet) 120.dp else 96.dp)
+                    .aspectRatio(0.75f)
+                    .shadow(
+                        elevation = 8.dp,
+                        shape = coverShape,
+                        ambientColor = AppColors.CardShadow,
+                        spotColor = AppColors.CardShadow
                     )
-                }
-            }
-        }
-    } else {
-        Row(
-            modifier = modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpace.md)
-        ) {
-            // 3列占位网格
-            repeat(3) { index ->
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .aspectRatio(0.75f)
-                        .clip(RoundedCornerShape(AppRadius.sm))
-                        .background(AppColors.BgGray)
-                        .border(1.dp, AppColors.Divider, RoundedCornerShape(AppRadius.sm)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (index < books.size) {
-                        AsyncImage(
-                            model = books[index].coverPath,
-                            contentDescription = books[index].title,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                    } else {
-                        Text(
-                            text = "${index + 1}",
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.Light,
-                            color = AppColors.Divider
-                        )
+                    .clip(coverShape)
+                    .background(AppColors.BgGray)
+                    .border(1.dp, AppColors.Divider, coverShape)
+                    .cardPressEffect()
+                    .onGloballyPositioned { coordinates ->
+                        bookBounds[book.id] = coordinates.boundsInRoot()
                     }
-                }
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { onBookClick(book, bookBounds[book.id]) },
+                contentAlignment = Alignment.Center
+            ) {
+                AsyncImage(
+                    model = book.coverPath,
+                    contentDescription = book.title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
             }
         }
     }

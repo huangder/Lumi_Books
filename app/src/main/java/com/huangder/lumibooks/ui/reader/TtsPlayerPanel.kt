@@ -3,6 +3,7 @@ package com.huangder.lumibooks.ui.reader
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -11,6 +12,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -44,6 +46,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -55,6 +58,7 @@ import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import java.util.Locale
@@ -101,10 +105,15 @@ fun TtsPlayerPanel(
     val capsuleShape = RoundedCornerShape(28.dp)
     val rateMenuShape = RoundedCornerShape(16.dp)
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val motionEnabled = LocalMotionEnabled.current
     val panelBackdrop = rememberLayerBackdrop()
     val panelHeight by animateDpAsState(
         targetValue = if (showRateMenu || showTimerMenu) 328.dp else 56.dp,
-        animationSpec = spring(dampingRatio = 0.82f, stiffness = 360f),
+        animationSpec = if (motionEnabled) {
+            spring(dampingRatio = 0.82f, stiffness = 360f)
+        } else {
+            tween(120)
+        },
         label = "ttsRateMenuHeight"
     )
 
@@ -115,7 +124,7 @@ fun TtsPlayerPanel(
     ) {
         AnimatedVisibility(
             visible = showRateMenu,
-            enter = fadeIn(spring(dampingRatio = 0.80f, stiffness = 420f)) +
+            enter = if (!motionEnabled) fadeIn(tween(120)) else fadeIn(spring(dampingRatio = 0.80f, stiffness = 420f)) +
                 slideInVertically(
                     animationSpec = spring(dampingRatio = 0.72f, stiffness = 360f),
                     initialOffsetY = { it / 5 }
@@ -125,7 +134,7 @@ fun TtsPlayerPanel(
                     initialScale = 0.78f,
                     transformOrigin = TransformOrigin(0.5f, 1f)
                 ),
-            exit = fadeOut(spring(dampingRatio = 0.88f, stiffness = 520f)) +
+            exit = if (!motionEnabled) fadeOut(tween(100)) else fadeOut(spring(dampingRatio = 0.88f, stiffness = 520f)) +
                 slideOutVertically(
                     animationSpec = spring(dampingRatio = 0.84f, stiffness = 440f),
                     targetOffsetY = { it / 6 }
@@ -188,7 +197,7 @@ fun TtsPlayerPanel(
 
         AnimatedVisibility(
             visible = showTimerMenu,
-            enter = fadeIn(spring(dampingRatio = 0.80f, stiffness = 420f)) +
+            enter = if (!motionEnabled) fadeIn(tween(120)) else fadeIn(spring(dampingRatio = 0.80f, stiffness = 420f)) +
                 slideInVertically(
                     animationSpec = spring(dampingRatio = 0.72f, stiffness = 360f),
                     initialOffsetY = { it / 5 }
@@ -198,7 +207,7 @@ fun TtsPlayerPanel(
                     initialScale = 0.78f,
                     transformOrigin = TransformOrigin(0.5f, 1f)
                 ),
-            exit = fadeOut(spring(dampingRatio = 0.88f, stiffness = 520f)) +
+            exit = if (!motionEnabled) fadeOut(tween(100)) else fadeOut(spring(dampingRatio = 0.88f, stiffness = 520f)) +
                 slideOutVertically(
                     animationSpec = spring(dampingRatio = 0.84f, stiffness = 440f),
                     targetOffsetY = { it / 6 }
@@ -290,6 +299,20 @@ fun TtsPlayerPanel(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .height(56.dp)
+                .pointerInput(Unit) {
+                    var totalDrag = 0f
+                    detectVerticalDragGestures(
+                        onDragStart = { totalDrag = 0f },
+                        onVerticalDrag = { _, dragAmount -> totalDrag += dragAmount },
+                        onDragEnd = {
+                            if (totalDrag < -24f) {
+                                activeTab = TtsCenterTab.SPEED
+                                showTimerMenu = false
+                                showRateMenu = true
+                            }
+                        }
+                    )
+                }
                 .then(
                     if (isLiquidGlass && !forceSolidSurface) {
                         Modifier

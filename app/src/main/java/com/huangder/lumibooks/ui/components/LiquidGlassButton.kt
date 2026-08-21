@@ -17,13 +17,12 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
-import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 
 @Composable
 fun LiquidGlassButton(
@@ -37,7 +36,6 @@ fun LiquidGlassButton(
     content: @Composable RowScope.() -> Unit
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
-    val isDark = LocalIsDarkTheme.current
 
     if (!isLiquidGlass) {
         TextButton(
@@ -56,40 +54,29 @@ fun LiquidGlassButton(
         return
     }
 
-    val scrim = tintedColor?.let { color ->
-        if (isDark) {
-            lerp(color, Color.White, 0.16f).copy(alpha = 0.62f)
-        } else {
-            color.copy(alpha = 0.72f)
-        }
-    } ?: AppColors.CardBg.copy(alpha = 0.24f)
-    val diffuseShadow = Modifier.shadow(
-        elevation = if (prominentShadow) 28.dp else 22.dp,
-        shape = shape,
-        clip = false,
-        ambientColor = Color.Black.copy(
-            alpha = if (isDark) {
-                if (prominentShadow) 0.16f else 0.12f
-            } else {
-                if (prominentShadow) 0.10f else 0.07f
-            }
-        ),
-        spotColor = Color.Black.copy(
-            alpha = if (isDark) {
-                if (prominentShadow) 0.14f else 0.10f
-            } else {
-                if (prominentShadow) 0.09f else 0.06f
-            }
+    val prominentDecoration = if (prominentShadow) {
+        Modifier.shadow(
+            elevation = 20.dp,
+            shape = shape,
+            clip = false,
+            ambientColor = Color.Black.copy(alpha = 0.10f),
+            spotColor = Color.Black.copy(alpha = 0.09f)
         )
-    )
+    } else {
+        Modifier
+    }
     LiquidGlassSurface(
         shape = shape,
         fallbackColor = tintedColor ?: AppColors.CardBg,
-        contentScrimColor = scrim,
+        contentScrimColor = if (tintedColor == null) {
+            AppColors.CardBg.copy(alpha = 0.24f)
+        } else {
+            Color.Transparent
+        },
+        tintColor = tintedColor,
         enabled = enabled,
         onClick = onClick,
-        effectPadding = 2.dp,
-        decorationModifier = diffuseShadow,
+        decorationModifier = prominentDecoration,
         modifier = modifier
             .heightIn(min = 44.dp)
             .widthIn(min = 72.dp)
@@ -128,7 +115,10 @@ fun LiquidGlassTextButton(
             text = text,
             color = contentColor,
             fontSize = AppType.BodySmall,
-            fontWeight = FontWeight.SemiBold
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }

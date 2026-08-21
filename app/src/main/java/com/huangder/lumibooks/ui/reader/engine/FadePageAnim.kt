@@ -1,6 +1,8 @@
 package com.huangder.lumibooks.ui.reader.engine
 
 import android.graphics.Canvas
+import android.view.View
+import android.view.ViewGroup
 
 /**
  * 渐变切换翻页动画。
@@ -18,9 +20,8 @@ class FadePageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
         private const val FADE_DURATION_MS = 400
     }
 
-    /** 动画期间被清背景的视图，abort/complete 时恢复 */
-    private var fadingOutView: PageContentView? = null
-    private var fadingInView: PageContentView? = null
+    /** 动画期间被清背景的文字页，abort/complete 时恢复。 */
+    private var fadingPageViews: List<PageContentView> = emptyList()
 
     // ── 绘制 ──
 
@@ -128,12 +129,10 @@ class FadePageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
         fadeProgress = 0f
 
         // 🔥 清除两页背景 → ReadView 底色静止不动，只有文字参与动画
-        val incoming = (if (direction == Direction.NEXT) readView.nextPageView else readView.prevPageView) as PageContentView
-        val outgoing = readView.curPageView as PageContentView
-        outgoing.stripBackgroundForFade()
-        incoming.stripBackgroundForFade()
-        fadingOutView = outgoing
-        fadingInView = incoming
+        val incoming = if (direction == Direction.NEXT) readView.nextPageView else readView.prevPageView
+        val outgoing = readView.curPageView
+        fadingPageViews = (outgoing.pageContentViews() + incoming.pageContentViews()).distinct()
+        fadingPageViews.forEach(PageContentView::stripBackgroundForFade)
 
         scroller.startScroll(0, 0, 1000, 0, FADE_DURATION_MS)
         readView.postInvalidateOnAnimation()
@@ -172,9 +171,17 @@ class FadePageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
 
     private fun restoreBackgrounds() {
         val bg = readView.bgColor
-        fadingOutView?.restoreBackgroundForFade(bg)
-        fadingInView?.restoreBackgroundForFade(bg)
-        fadingOutView = null
-        fadingInView  = null
+        fadingPageViews.forEach { it.restoreBackgroundForFade(bg) }
+        fadingPageViews = emptyList()
+    }
+
+    private fun View.pageContentViews(): List<PageContentView> = when (this) {
+        is PageContentView -> listOf(this)
+        is ViewGroup -> buildList {
+            repeat(childCount) {
+                addAll(getChildAt(it).pageContentViews())
+            }
+        }
+        else -> emptyList()
     }
 }

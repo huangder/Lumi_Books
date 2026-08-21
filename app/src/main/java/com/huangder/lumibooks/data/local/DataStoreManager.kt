@@ -16,6 +16,8 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.huangder.lumibooks.domain.model.CustomFontPreset
 import com.huangder.lumibooks.domain.model.CustomFontPresetCodec
+import com.huangder.lumibooks.domain.model.HighlightPalette
+import com.huangder.lumibooks.domain.model.HighlightPaletteCodec
 import com.huangder.lumibooks.domain.model.WebdavConfig
 import com.huangder.lumibooks.domain.model.WebdavSyncContent
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
@@ -40,6 +42,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import org.json.JSONObject
+import org.json.JSONArray
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -83,6 +86,13 @@ class DataStoreManager @Inject constructor(
         private val READER_THEME_SUITES = stringPreferencesKey("reader_theme_suites")
         private val ACTIVE_READER_THEME_SUITE_ID = stringPreferencesKey("active_reader_theme_suite_id")
         private val READER_THEME_SUITES_VERSION = intPreferencesKey("reader_theme_suites_version")
+        private val CUSTOM_HIGHLIGHT_COLORS = stringPreferencesKey("custom_highlight_colors")
+        private val CUSTOM_HIGHLIGHT_PALETTES = stringPreferencesKey("custom_highlight_palettes")
+        private val ACTIVE_HIGHLIGHT_PALETTE_ID = stringPreferencesKey("active_highlight_palette_id")
+        private val TTS_FLOATING_WINDOW = booleanPreferencesKey("tts_floating_window")
+        private val PREFERRED_TTS_ENGINE = stringPreferencesKey("preferred_tts_engine")
+        private val BODY_FONT_WEIGHT = intPreferencesKey("body_font_weight")
+        private val APPLY_TO_BODY_ONLY = booleanPreferencesKey("apply_to_body_only")
         private val PARAGRAPH_SPACING = floatPreferencesKey("paragraph_spacing")
         private val FIRST_LINE_INDENT = floatPreferencesKey("first_line_indent")
         private val ADVANCED_DEFAULTS_VERSION = intPreferencesKey("advanced_defaults_version")
@@ -111,6 +121,7 @@ class DataStoreManager @Inject constructor(
         private val LIQUID_GLASS_HDR_HIGHLIGHT_ENABLED = booleanPreferencesKey("liquid_glass_hdr_highlight_enabled")
         private val DARK_MODE = stringPreferencesKey("dark_mode")
         private val ENTRANCE_ANIMATIONS_ENABLED = booleanPreferencesKey("entrance_animations_enabled")
+        private val MOTION_PREFERENCE = stringPreferencesKey("motion_preference")
         private val E_INK_MODE_ENABLED = booleanPreferencesKey("e_ink_mode_enabled")
         private val TWO_PAGE_SPREAD_ENABLED = booleanPreferencesKey("two_page_spread_enabled")
         private val PREDICTIVE_BACK_ENABLED = booleanPreferencesKey("predictive_back_enabled")
@@ -239,6 +250,25 @@ class DataStoreManager @Inject constructor(
             ReaderBackgroundPresetCodec.decode(preferences[CUSTOM_READER_BACKGROUNDS])
         }
 
+    val customHighlightPalettes: Flow<List<HighlightPalette>> = context.dataStore.data.map { preferences ->
+        val encoded = HighlightPaletteCodec.decode(preferences[CUSTOM_HIGHLIGHT_PALETTES])
+        if (encoded.isNotEmpty()) encoded else {
+            val legacy = preferences[CUSTOM_HIGHLIGHT_COLORS]
+            runCatching {
+                if (legacy.isNullOrBlank()) emptyList()
+                else listOf(HighlightPalette(id = "legacy", name = "自定义", colors = JSONArray(legacy).let { array ->
+                    (0 until minOf(6, array.length())).map { array.optString(it).takeIf(String::isNotBlank) }
+                }))
+            }.getOrDefault(emptyList())
+        }
+    }
+
+    val activeHighlightPaletteId: Flow<String?> = context.dataStore.data.map { it[ACTIVE_HIGHLIGHT_PALETTE_ID] }
+    val ttsFloatingWindow: Flow<Boolean> = context.dataStore.data.map { it[TTS_FLOATING_WINDOW] ?: true }
+    val preferredTtsEngine: Flow<String?> = context.dataStore.data.map { it[PREFERRED_TTS_ENGINE] }
+    val bodyFontWeight: Flow<Int> = context.dataStore.data.map { it[BODY_FONT_WEIGHT] ?: 400 }
+    val applyToBodyOnly: Flow<Boolean> = context.dataStore.data.map { it[APPLY_TO_BODY_ONLY] ?: false }
+
     val preserveEpubBackground: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[PRESERVE_EPUB_BACKGROUND] ?: true
     }
@@ -318,7 +348,10 @@ class DataStoreManager @Inject constructor(
     }
 
     val globalFontMode: Flow<String> = context.dataStore.data.map { preferences ->
-        if (preferences[GLOBAL_FONT_MODE] == "system") "system" else "default"
+        when (preferences[GLOBAL_FONT_MODE]) {
+            "default" -> "default"
+            else -> "system"
+        }
     }
 
     val liquidGlassTransparency: Flow<Float> = context.dataStore.data.map { preferences ->
@@ -335,6 +368,13 @@ class DataStoreManager @Inject constructor(
 
     val entranceAnimationsEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[ENTRANCE_ANIMATIONS_ENABLED] ?: true
+    }
+
+    /** Full motion policy. The legacy entrance flag remains the migration fallback. */
+    val motionPreference: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[MOTION_PREFERENCE]
+            ?.takeIf { it == "standard" || it == "reduced" }
+            ?: if (preferences[ENTRANCE_ANIMATIONS_ENABLED] == false) "reduced" else "standard"
     }
 
     val eInkModeEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
@@ -716,6 +756,44 @@ class DataStoreManager @Inject constructor(
         }
     }
 
+    suspend fun saveCustomHighlightPalettes(palettes: List<HighlightPalette>) {
+        context.dataStore.edit { preferences ->
+            if (palettes.isEmpty()) {
+                preferences.remove(CUSTOM_HIGHLIGHT_PALETTES)
+                preferences.remove(ACTIVE_HIGHLIGHT_PALETTE_ID)
+            } else {
+                preferences[CUSTOM_HIGHLIGHT_PALETTES] = HighlightPaletteCodec.encode(palettes)
+            }
+            preferences.remove(CUSTOM_HIGHLIGHT_COLORS)
+        }
+    }
+
+    suspend fun saveActiveHighlightPaletteId(id: String?) {
+        context.dataStore.edit { preferences ->
+            if (id.isNullOrBlank()) preferences.remove(ACTIVE_HIGHLIGHT_PALETTE_ID)
+            else preferences[ACTIVE_HIGHLIGHT_PALETTE_ID] = id
+        }
+    }
+
+    suspend fun saveTtsFloatingWindow(enabled: Boolean) {
+        context.dataStore.edit { preferences -> preferences[TTS_FLOATING_WINDOW] = enabled }
+    }
+
+    suspend fun savePreferredTtsEngine(packageName: String?) {
+        context.dataStore.edit { preferences ->
+            if (packageName == null) preferences.remove(PREFERRED_TTS_ENGINE)
+            else preferences[PREFERRED_TTS_ENGINE] = packageName
+        }
+    }
+
+    suspend fun saveBodyFontWeight(weight: Int) {
+        context.dataStore.edit { preferences -> preferences[BODY_FONT_WEIGHT] = weight.coerceIn(100, 900) }
+    }
+
+    suspend fun saveApplyToBodyOnly(enabled: Boolean) {
+        context.dataStore.edit { preferences -> preferences[APPLY_TO_BODY_ONLY] = enabled }
+    }
+
     suspend fun saveTtsPitch(pitch: Float) {
         context.dataStore.edit { preferences ->
             preferences[TTS_PITCH] = pitch.coerceIn(0.5f, 2f)
@@ -1078,6 +1156,16 @@ class DataStoreManager @Inject constructor(
     suspend fun saveEntranceAnimationsEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[ENTRANCE_ANIMATIONS_ENABLED] = enabled
+            preferences[MOTION_PREFERENCE] = if (enabled) "standard" else "reduced"
+        }
+    }
+
+    suspend fun saveMotionPreference(preference: String) {
+        val normalized = if (preference == "reduced") "reduced" else "standard"
+        context.dataStore.edit { preferences ->
+            preferences[MOTION_PREFERENCE] = normalized
+            // Keep older builds and exported settings in sync.
+            preferences[ENTRANCE_ANIMATIONS_ENABLED] = normalized == "standard"
         }
     }
 

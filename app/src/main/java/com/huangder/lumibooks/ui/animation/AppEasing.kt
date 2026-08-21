@@ -1,6 +1,9 @@
 package com.huangder.lumibooks.ui.animation
 
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.SpringSpec
+import androidx.compose.animation.core.spring
 
 /**
  * 统一缓动曲线
@@ -23,4 +26,27 @@ object AppEasing {
 
     /** 强弹性（收藏/点赞弹跳） */
     val SpringBounce = CubicBezierEasing(0.175f, 0.885f, 0.32f, 1.275f)
+}
+
+/** Shared timing vocabulary for app chrome. Gesture-driven code may opt into
+ * the under-damped spec, while programmatic state changes stay calm. */
+object LumiMotion {
+    const val PressMillis = 120
+    const val MenuEnterMillis = 180
+    const val MenuExitMillis = 140
+    const val SheetEnterMillis = 260
+    const val SheetExitMillis = 200
+    const val PageEnterMillis = 240
+
+    val ProgrammaticSpring: SpringSpec<Float> = spring(
+        dampingRatio = Spring.DampingRatioNoBouncy,
+        stiffness = 500f,
+        visibilityThreshold = 0.001f
+    )
+
+    val GestureSpring: SpringSpec<Float> = spring(
+        dampingRatio = 0.82f,
+        stiffness = 380f,
+        visibilityThreshold = 0.001f
+    )
 }

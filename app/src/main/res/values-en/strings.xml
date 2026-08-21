@@ -3,6 +3,9 @@
     <string name="label_predictive_back">Predictive back</string>
     <string name="label_entrance_animations">Motion Pro (Beta)</string>
     <string name="entrance_animations_description">Adds element animations to selected pages\nand may affect performance</string>
+    <string name="motion_preference_label">Motion</string>
+    <string name="motion_preference_standard">Standard</string>
+    <string name="motion_preference_reduced">Reduced</string>
     <string name="label_app_theme">Theme</string>
     <string name="label_global_font">Global font</string>
     <string name="global_font_default">Default font</string>
@@ -117,6 +120,20 @@
     <string name="label_margin_top">Top Margin</string>
     <string name="label_margin_bottom">Bottom Margin</string>
 
+    <!-- Highlight color palettes -->
+    <string name="highlight_color_palette">Highlight color palettes</string>
+    <string name="highlight_color_palette_desc">Customize highlight and underline colors</string>
+    <string name="highlight_color_palette_tip">Changes apply to the floating menu and existing annotations.</string>
+    <string name="highlight_all_palettes">All palettes</string>
+    <string name="highlight_default_palette">Default palette</string>
+    <string name="highlight_create_palette">Create palette</string>
+    <string name="highlight_palette_name">Palette name</string>
+    <string name="highlight_palette_name_hint">For example: Soft colors</string>
+    <string name="highlight_palette_delete">Delete palette</string>
+    <string name="highlight_palette_set_color">Set color</string>
+    <string name="highlight_color_hex">Color value (#RRGGBB)</string>
+    <string name="highlight_pick_preset">Choose a preset color</string>
+
     <!-- Display & Appearance -->
     <string name="label_dark_mode">Dark Mode</string>
     <string name="dark_mode_system">Follow System</string>
@@ -131,6 +148,17 @@
     <!-- Reading Goal -->
     <string name="label_daily_goal">Daily Goal</string>
     <string name="goal_minutes">%d min</string>
+
+    <!-- Reading settings details -->
+    <string name="tts_floating_toggle">Reading overlay subtitles</string>
+    <string name="tts_floating_toggle_desc">Show the current sentence above the screen while reading aloud</string>
+    <string name="tts_engine_selection">Speech engine</string>
+    <string name="tts_engine_system_default">System default</string>
+    <string name="tts_engine_select_dialog_title">Select speech engine</string>
+    <string name="body_font_weight">Body text weight</string>
+    <string name="body_font_weight_desc">Use a bold weight for body text</string>
+    <string name="apply_to_body_only">Apply typography to body only</string>
+    <string name="apply_to_body_only_desc">When enabled, typography applies only to body text; headings keep their original style</string>
 
     <!-- Storage Management -->
     <string name="label_total_size">Total Space Used</string>
@@ -852,4 +880,13 @@
     <string name="widget_preview_book_title">Book title</string>
     <string name="widget_preview_author">Author</string>
     <string name="widget_quote_preview_attribution">“Book title” · Author</string>
+    <string name="more_options">More options</string>
+    <string name="bookshelf_layout">Bookshelf layout</string>
+    <string name="bookshelf_compact_grid">Compact grid</string>
+    <string name="bookshelf_standard_grid">Standard grid</string>
+    <string name="bookshelf_list_layout">List</string>
+    <string name="statistics_reading_time">Reading time</string>
+    <string name="statistics_active_days">Active days</string>
+    <string name="statistics_duration_value">%1$dh %2$dm</string>
+    <string name="statistics_active_days_value">%1$d days</string>
 </resources>

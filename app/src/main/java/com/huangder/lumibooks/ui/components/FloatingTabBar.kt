@@ -12,6 +12,7 @@ package com.huangder.lumibooks.ui.components
 
 import android.graphics.Paint
 import android.graphics.RectF
+import androidx.compose.animation.core.Spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -27,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -42,11 +44,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -55,9 +62,9 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -65,7 +72,13 @@ import androidx.annotation.StringRes
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -75,6 +88,7 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassTransparency
+import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
@@ -89,7 +103,9 @@ import com.kyant.backdrop.shadow.Shadow
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeChild
+import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlin.math.sign
 
 data class TabItem(
     val selectedIcon: ImageVector,
@@ -115,13 +131,29 @@ fun FloatingTabBar(
     val isDark = LocalIsDarkTheme.current
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val transparency = LocalLiquidGlassTransparency.current
+    val motionEnabled = LocalMotionEnabled.current
     val density = LocalDensity.current
+    val barHeight = if (isLiquidGlass) 72.dp else 56.dp
+    val accent = if (isDark) AppColors.Accent else Color(0xFFFF6868)
+    // Automatic backdrop sampling is intentionally disabled. PixelCopy and draw
+    // observation both add work to every animated frame on affected devices.
+    val adaptiveBackgroundIsDark = isDark
+    val toneProgress by animateFloatAsState(
+        targetValue = if (adaptiveBackgroundIsDark) 1f else 0f,
+        animationSpec = if (motionEnabled) tween(180) else snap(),
+        label = "adaptiveTabBarTone"
+    )
+    val tabContentColor = if (isLiquidGlass) {
+        lerp(Color(0xFF17171A), Color.White.copy(alpha = 0.92f), toneProgress)
+    } else {
+        AppColors.TextSecondary
+    }
+    val tabMaskColor = lerp(Color.White, Color.Black, toneProgress)
+    val selectedTabContentColor = if (isLiquidGlass) accent.copy(alpha = 0.88f) else AppColors.TextPrimary
     val currentOnTabSelected by rememberUpdatedState(onTabSelected)
     val animationScope = rememberCoroutineScope()
     // Compensate the light glass' neutral overlay so the sampled result matches Lumi pink.
-    val accent = if (isDark) AppColors.Accent else Color(0xFFFF6868)
     val glassShape = CircleShape
-    val barHeight = if (isLiquidGlass) 72.dp else 56.dp
     val horizontalPadding = if (isLiquidGlass) 24.dp else 80.dp
     val endPadding = if (isLiquidGlass && reserveImportButtonSpace) 108.dp else horizontalPadding
     val glassBrush = if (isLiquidGlass && isDark) {
@@ -212,9 +244,11 @@ fun FloatingTabBar(
     } else {
         Color.White.copy(alpha = 0.38f - transparency * 0.20f)
     }
-    val tintedTabsBackdrop = rememberLayerBackdrop()
-    val selectedBackdrop = liquidGlassBackdrop?.let { rootBackdrop ->
-        rememberCombinedBackdrop(rootBackdrop, tintedTabsBackdrop)
+    val tabsBackdrop = rememberLayerBackdrop()
+    val combinedTabsBackdrop = if (isLiquidGlass && liquidGlassBackdrop != null) {
+        rememberCombinedBackdrop(liquidGlassBackdrop, tabsBackdrop)
+    } else {
+        null
     }
     val outerGlassModifier = if (isLiquidGlass && liquidGlassBackdrop != null) {
         Modifier.drawBackdrop(
@@ -295,54 +329,42 @@ fun FloatingTabBar(
             val contentWidthPx = with(density) { contentWidth.toPx() }
             val indicatorWidth = contentWidth / tabs.size
             val indicatorWidthPx = with(density) { indicatorWidth.toPx() }
-            val indicatorExtraWidth = 12.dp
+            val indicatorExtraWidth = contentPadding * 2
             val indicatorExtraWidthPx = with(density) { indicatorExtraWidth.toPx() }
             val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
             var currentIndex by remember { mutableIntStateOf(selectedIndex) }
-            val dragState = remember(animationScope, indicatorWidthPx) {
-                LiquidGlassTabDragState(
+            val dragState = remember(animationScope, indicatorWidthPx, motionEnabled) {
+                LiquidGlassDampedMotionState(
                     animationScope = animationScope,
                     initialValue = selectedIndex.toFloat(),
                     valueRange = 0f..tabs.lastIndex.toFloat(),
-                    onDragStopped = {
-                        val target = targetValue.roundToInt().coerceIn(0, tabs.lastIndex)
-                        currentIndex = target
-                        animateToValue(target.toFloat())
-                        // Plain taps are handled by the tab's own clickable; only
-                        // fire navigation for real drags so they don't double-trigger.
-                        if (hasDragged) {
-                            currentOnTabSelected(target)
-                        }
-                    },
-                    onDrag = { _, dragAmount ->
-                        val direction = if (isLtr) 1f else -1f
-                        updateValue(
-                            (targetValue + dragAmount.x / indicatorWidthPx * direction)
-                                .coerceIn(0f, tabs.lastIndex.toFloat())
-                        )
-                    }
+                    motionEnabled = motionEnabled,
+                    pressedScale = 78f / 56f
                 )
             }
+            var panelDragDistancePx by remember { mutableFloatStateOf(0f) }
+            var panelOffsetTargetPx by remember { mutableFloatStateOf(0f) }
+            val panelOffsetPx by animateFloatAsState(
+                targetValue = panelOffsetTargetPx,
+                animationSpec = if (dragState.isInteracting) {
+                    snap()
+                } else {
+                    spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = 300f
+                    )
+                },
+                label = "liquidTabPanelOffset"
+            )
 
             LaunchedEffect(selectedIndex, dragState) {
                 if (selectedIndex != currentIndex) {
                     currentIndex = selectedIndex
-                    dragState.animateToValue(selectedIndex.toFloat())
+                    if (abs(dragState.targetValue - selectedIndex.toFloat()) > 0.001f) {
+                        dragState.syncToValue(selectedIndex.toFloat())
+                    }
                 }
             }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        if (isLiquidGlass) {
-                            val scale = dragState.barScale
-                            scaleX = scale
-                            scaleY = scale
-                        }
-                    }
-                    .then(if (isLiquidGlass) dragState.modifier else Modifier)
-            ) {
 
             Box(
                 modifier = Modifier
@@ -355,9 +377,7 @@ fun FloatingTabBar(
                     .border(width = if (isLiquidGlass) 1.dp else 0.8.dp, brush = borderBrush, shape = glassShape)
             )
 
-            if (isLiquidGlass) {
-                // Soft light that radiates from under the finger and is clipped to
-                // the bar's pill outline; it follows the finger while dragging.
+            if (isLiquidGlass && liquidGlassBackdrop != null) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -365,7 +385,12 @@ fun FloatingTabBar(
                         .drawBehind {
                             val progress = dragState.pressProgress
                             if (progress > 0f) {
-                                val center = dragState.pressPosition
+                                val center = androidx.compose.ui.geometry.Offset(
+                                    x = contentPaddingPx +
+                                        (dragState.value + 0.5f) * indicatorWidthPx +
+                                        panelOffsetPx,
+                                    y = size.height / 2f
+                                )
                                 val radius = size.minDimension * 1.8f
                                 drawCircle(
                                     brush = Brush.radialGradient(
@@ -386,27 +411,37 @@ fun FloatingTabBar(
                 )
             }
 
-            Row(
+            // A translucent tonal veil keeps the bar readable over changing content;
+            // the prism remains a separate, brighter layer above it.
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = contentPadding),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                tabs.forEachIndexed { index, tab ->
-                    TabItemView(
-                        tab = tab,
-                        isSelected = index == currentIndex,
-                        liquidGlass = isLiquidGlass,
-                        onClick = {
-                            currentIndex = index
-                            dragState.animateToValue(index.toFloat(), pressDuringAnimation = true)
-                            currentOnTabSelected(index)
-                        },
-                        modifier = Modifier.weight(1f)
+                    .clip(glassShape)
+                    .background(
+                        tabMaskColor.copy(
+                            alpha = (
+                                (if (isLiquidGlass) 0.30f else 0.20f) * (1f - toneProgress) +
+                                    (if (isLiquidGlass) 0.24f else 0.16f) * toneProgress
+                                )
+                        )
                     )
-                }
-            }
+            )
+
+            FixedTabItems(
+                currentIndex = currentIndex,
+                contentPadding = contentPadding,
+                contentColor = tabContentColor,
+                selectedContentColor = selectedTabContentColor,
+                onTabSelected = { index ->
+                    if (index != currentIndex) {
+                        currentIndex = index
+                        dragState.animateToValue(index.toFloat())
+                        currentOnTabSelected(index)
+                    }
+                },
+                liquidGlass = isLiquidGlass,
+                interactive = true
+            )
 
             if (isLiquidGlass && liquidGlassBackdrop != null) {
                 Box(
@@ -414,7 +449,7 @@ fun FloatingTabBar(
                         .fillMaxSize()
                         .clearAndSetSemantics {}
                         .alpha(0f)
-                        .layerBackdrop(tintedTabsBackdrop)
+                        .layerBackdrop(tabsBackdrop)
                         .drawBackdrop(
                             backdrop = liquidGlassBackdrop,
                             shape = { glassShape },
@@ -422,110 +457,186 @@ fun FloatingTabBar(
                                 val progress = dragState.pressProgress
                                 vibrancy()
                                 if (transparency < 1f) {
-                                    blur((8.dp * (1f - transparency)).toPx())
+                                    blur((6.dp * (1f - transparency)).toPx())
                                 }
                                 lens(
-                                    24.dp.toPx() * progress,
-                                    24.dp.toPx() * progress
+                                    16.dp.toPx() * progress,
+                                    20.dp.toPx() * progress
                                 )
                             },
                             onDrawSurface = { drawRect(liquidSurfaceColor) }
                         )
-                        .graphicsLayer(colorFilter = ColorFilter.tint(accent))
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = contentPadding),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        tabs.forEachIndexed { index, tab ->
-                            TabItemView(
-                                tab = tab,
-                                isSelected = index == currentIndex,
-                                liquidGlass = true,
-                                interactive = false,
-                                onClick = {},
-                                modifier = Modifier.weight(1f)
-                            )
+                    FixedTabItems(
+                        currentIndex = currentIndex,
+                        contentPadding = contentPadding,
+                        contentColor = tabContentColor,
+                        selectedContentColor = selectedTabContentColor,
+                        onTabSelected = {},
+                        liquidGlass = true,
+                        interactive = false,
+                        itemScale = {
+                            if (motionEnabled) {
+                                1f + 0.2f * dragState.pressProgress
+                            } else {
+                                1f
+                            }
                         }
-                    }
+                    )
                 }
             }
 
             if (isLiquidGlass) {
-                Box(
-                    modifier = Modifier
-                        .width(indicatorWidth + indicatorExtraWidth)
-                        .fillMaxHeight()
-                        .graphicsLayer {
-                            translationX = if (isLtr) {
-                                contentPaddingPx - indicatorExtraWidthPx / 2f +
-                                    dragState.value * indicatorWidthPx
-                            } else {
-                                contentPaddingPx + contentWidthPx -
-                                    (dragState.value + 1f) * indicatorWidthPx -
-                                    indicatorExtraWidthPx / 2f
-                            }
-                            scaleX = dragState.scaleX
-                            scaleY = dragState.scaleY
-                            val velocity = dragState.velocity / 10f
-                            scaleX /= 1f - (velocity * 0.75f).coerceIn(-0.2f, 0.2f)
-                            scaleY *= 1f - (velocity * 0.25f).coerceIn(-0.2f, 0.2f)
+                val maxPanelOffsetPx = with(density) { 4.dp.toPx() }
+                val prismGestureModifier = Modifier
+                    .width(indicatorWidth + indicatorExtraWidth)
+                    .fillMaxHeight()
+                    .offset {
+                        val baseTranslation = if (isLtr) {
+                            contentPaddingPx - indicatorExtraWidthPx / 2f +
+                                dragState.value * indicatorWidthPx
+                        } else {
+                            contentPaddingPx + contentWidthPx -
+                                (dragState.value + 1f) * indicatorWidthPx -
+                                indicatorExtraWidthPx / 2f
                         }
-                        .padding(3.dp)
-                        .then(
-                            if (selectedBackdrop != null) {
-                                Modifier.drawBackdrop(
-                                    backdrop = selectedBackdrop,
-                                    shape = { CircleShape },
-                                    effects = {
-                                        val progress = dragState.pressProgress
-                                        lens(
-                                            10.dp.toPx() * progress,
-                                            14.dp.toPx() * progress,
-                                            chromaticAberration = true
-                                        )
-                                    },
-                                    highlight = {
-                                        Highlight.Default.copy(alpha = dragState.pressProgress)
-                                    },
-                                    shadow = {
-                                        Shadow(alpha = dragState.pressProgress)
-                                    },
-                                    innerShadow = {
-                                        val progress = dragState.pressProgress
-                                        InnerShadow(
-                                            radius = 8.dp * progress,
-                                            alpha = progress
-                                        )
-                                    },
-                                    onDrawSurface = {
-                                        val progress = dragState.pressProgress
-                                        drawRect(
-                                            if (isDark) Color.White.copy(alpha = 0.10f)
-                                            else Color.Black.copy(alpha = 0.10f),
-                                            alpha = 1f - progress
-                                        )
-                                        drawRect(Color.Black.copy(alpha = 0.03f * progress))
-                                    }
+                        IntOffset((baseTranslation + panelOffsetPx).roundToInt(), 0)
+                    }
+                    .padding(3.dp)
+                    .liquidGlassTabDrag(
+                        state = dragState,
+                        onDragStart = {
+                            panelDragDistancePx = 0f
+                            panelOffsetTargetPx = 0f
+                        },
+                        onDrag = { dragAmount ->
+                            val direction = if (isLtr) 1f else -1f
+                            dragState.dragTo(
+                                dragState.targetValue +
+                                    dragAmount.x / indicatorWidthPx * direction
+                            )
+                            panelDragDistancePx += dragAmount.x
+                            panelOffsetTargetPx = dampedTabPanelOffset(
+                                dragDistancePx = panelDragDistancePx,
+                                panelWidthPx = contentWidthPx,
+                                maxOffsetPx = maxPanelOffsetPx
+                            )
+                        },
+                        onDragEnd = { dragged ->
+                            val target = if (dragged) {
+                                projectedTabTarget(
+                                    currentValue = dragState.targetValue,
+                                    velocity = dragState.velocity,
+                                    lastIndex = tabs.lastIndex
                                 )
                             } else {
-                                Modifier
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (isDark) Color.White.copy(alpha = 0.13f)
-                                        else Color.Black.copy(alpha = 0.10f)
-                                    )
+                                currentIndex
                             }
+                            dragState.settleTo(target.toFloat())
+                            panelOffsetTargetPx = 0f
+                            if (target != currentIndex) {
+                                currentIndex = target
+                                currentOnTabSelected(target)
+                            }
+                        },
+                        onDragCancel = {
+                            dragState.cancelInteraction(currentIndex.toFloat())
+                            panelOffsetTargetPx = 0f
+                        }
+                    )
+                val prismVisualModifier = if (combinedTabsBackdrop != null) {
+                    Modifier.drawBackdrop(
+                        backdrop = combinedTabsBackdrop,
+                        shape = { CircleShape },
+                        effects = {
+                            val opticalProgress =
+                                if (motionEnabled) dragState.pressProgress else 0f
+                            lens(
+                                14.dp.toPx() * opticalProgress,
+                                18.dp.toPx() * opticalProgress,
+                                chromaticAberration = opticalProgress > 0.05f
+                            )
+                        },
+                        highlight = {
+                            Highlight.Default.copy(alpha = dragState.pressProgress)
+                        },
+                        shadow = {
+                            Shadow(alpha = dragState.pressProgress)
+                        },
+                        innerShadow = {
+                            val progress = dragState.pressProgress
+                            InnerShadow(radius = 8.dp * progress, alpha = progress)
+                        },
+                        layerBlock = {
+                            scaleY = dragState.scale
+                            scaleX = equalEdgePrismScaleX(
+                                scaleY = scaleY,
+                                widthPx = size.width,
+                                heightPx = size.height
+                            )
+                            if (motionEnabled) {
+                                val velocity = dragState.velocity / 10f
+                                scaleX /= 1f -
+                                    (velocity * 0.75f).coerceIn(-0.2f, 0.2f)
+                                scaleY *= 1f -
+                                    (velocity * 0.25f).coerceIn(-0.2f, 0.2f)
+                            }
+                        },
+                        onDrawSurface = {
+                            val progress = dragState.pressProgress
+                            drawRect(
+                                color = if (isDark) Color.White else Color.Black,
+                                alpha = (if (isDark) 0.08f else 0.06f) * (1f - progress)
+                            )
+                            drawRect(Color.Black, alpha = 0.03f * progress)
+                        }
+                    )
+                } else {
+                    Modifier
+                        .clip(CircleShape)
+                        .background(
+                            (if (isDark) Color.White else Color.Black).copy(
+                                alpha = if (isDark) 0.08f else 0.06f
+                            )
                         )
+                }
+                Box(
+                    modifier = prismGestureModifier.then(prismVisualModifier)
                 )
             }
-            }
+
         }
     }
     }
+}
+
+internal fun projectedTabTarget(
+    currentValue: Float,
+    velocity: Float,
+    lastIndex: Int,
+    projectionSeconds: Float = 0.18f
+): Int = (currentValue + velocity * projectionSeconds)
+    .roundToInt()
+    .coerceIn(0, lastIndex)
+
+internal fun dampedTabPanelOffset(
+    dragDistancePx: Float,
+    panelWidthPx: Float,
+    maxOffsetPx: Float
+): Float {
+    if (panelWidthPx <= 0f || maxOffsetPx <= 0f) return 0f
+    val fraction = (abs(dragDistancePx) / panelWidthPx).coerceIn(0f, 1f)
+    val easedFraction = 1f - (1f - fraction) * (1f - fraction)
+    return maxOffsetPx * dragDistancePx.sign * easedFraction
+}
+
+internal fun equalEdgePrismScaleX(
+    scaleY: Float,
+    widthPx: Float,
+    heightPx: Float
+): Float {
+    if (widthPx <= 0f) return 1f
+    return 1f + (scaleY - 1f) * (heightPx / widthPx)
 }
 
 @Composable
@@ -539,6 +650,7 @@ fun LiquidGlassImportButton(
         fallbackColor = Color.Black,
         backdrop = liquidGlassBackdrop,
         contentScrimColor = Color.Black.copy(alpha = 0.85f),
+        // Keep the action button on the same 72dp baseline as the Liquid Glass tab bar.
         modifier = modifier.size(72.dp),
         onClick = onClick,
         contentAlignment = Alignment.Center
@@ -547,8 +659,43 @@ fun LiquidGlassImportButton(
             imageVector = Icons.Rounded.Add,
             contentDescription = stringResource(R.string.import_books),
             tint = Color.White,
-            modifier = Modifier.size(36.dp)
+            modifier = Modifier.size(32.dp)
         )
+    }
+}
+
+@Composable
+private fun FixedTabItems(
+    currentIndex: Int,
+    contentPadding: androidx.compose.ui.unit.Dp,
+    contentColor: Color,
+    selectedContentColor: Color,
+    onTabSelected: (Int) -> Unit,
+    liquidGlass: Boolean = true,
+    interactive: Boolean = true,
+    itemScale: () -> Float = { 1f },
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = contentPadding),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        tabs.forEachIndexed { index, tab ->
+            TabItemView(
+                tab = tab,
+                isSelected = index == currentIndex,
+                liquidGlass = liquidGlass,
+                contentColor = contentColor,
+                selectedContentColor = selectedContentColor,
+                interactive = interactive,
+                itemScale = itemScale,
+                onClick = { onTabSelected(index) },
+                modifier = Modifier.weight(1f)
+            )
+        }
     }
 }
 
@@ -557,7 +704,10 @@ private fun TabItemView(
     tab: TabItem,
     isSelected: Boolean,
     liquidGlass: Boolean,
+    contentColor: Color,
+    selectedContentColor: Color,
     interactive: Boolean = true,
+    itemScale: () -> Float = { 1f },
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -567,6 +717,14 @@ private fun TabItemView(
                 .fillMaxSize()
                 .padding(vertical = 5.dp)
                 .clip(CircleShape)
+                .semantics {
+                    role = Role.Tab
+                    selected = isSelected
+                    onClick {
+                        onClick()
+                        true
+                    }
+                }
                 .then(
                     if (interactive) {
                         Modifier.clickable(
@@ -576,20 +734,25 @@ private fun TabItemView(
                     } else {
                         Modifier
                     }
-                ),
+                )
+                .graphicsLayer {
+                    val scale = itemScale()
+                    scaleX = scale
+                    scaleY = scale
+                },
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
             Icon(
                 imageVector = if (isSelected) tab.selectedIcon else tab.unselectedIcon,
                 contentDescription = stringResource(tab.titleRes),
-                tint = AppColors.TextPrimary,
+                tint = if (isSelected) selectedContentColor else contentColor,
                 modifier = Modifier.size(28.dp)
             )
             Spacer(Modifier.height(2.dp))
             androidx.compose.material3.Text(
                 text = stringResource(tab.titleRes),
-                color = AppColors.TextPrimary,
+                color = if (isSelected) selectedContentColor else contentColor,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
                 lineHeight = 13.sp,
@@ -622,7 +785,7 @@ private fun TabItemView(
             Icon(
                 imageVector = if (isSelected) tab.selectedIcon else tab.unselectedIcon,
                 contentDescription = null,
-                tint = if (isSelected) AppColors.TextPrimary else AppColors.TextSecondary,
+                tint = if (isSelected) selectedContentColor else contentColor,
                 modifier = Modifier.size(22.dp)
             )
         }

@@ -5,7 +5,6 @@ import android.content.Context
 import android.net.Uri
 import android.content.Intent
 import android.provider.DocumentsContract
-import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.huangder.lumibooks.R
@@ -260,10 +259,10 @@ class HomeViewModel @Inject constructor(
     }
 
     fun syncWebdavNow() {
-        Toast.makeText(application, R.string.webdav_syncing, Toast.LENGTH_SHORT).show()
+        _uiState.value = _uiState.value.copy(importMessage = application.getString(R.string.webdav_syncing))
         viewModelScope.launch {
             val result = webdavSyncManager.fullSync()
-            Toast.makeText(application, result.message, Toast.LENGTH_LONG).show()
+            _uiState.value = _uiState.value.copy(importMessage = result.message)
         }
     }
 

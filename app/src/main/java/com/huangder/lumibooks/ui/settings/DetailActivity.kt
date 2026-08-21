@@ -13,11 +13,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
+import com.huangder.lumibooks.ui.theme.MotionPreference
+import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
+import com.huangder.lumibooks.ui.theme.effectiveAppTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.flow.first
@@ -65,10 +69,13 @@ class DetailActivity : ComponentActivity() {
             val uiState by viewModel.uiState.collectAsState()
             val predictiveBackEnabled by dataStoreManager.predictiveBackEnabled.collectAsState(initial = true)
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = initialAppTheme)
-            val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = "default")
+            val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = "system")
             val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = initialTransparency)
             val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = initialHdrHighlightEnabled)
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = initialDarkMode)
+            val motionPreferenceValue by dataStoreManager.motionPreference.collectAsState(initial = "standard")
+            val liquidGlassCapability = rememberLiquidGlassCapability(view = LocalView.current)
+            val effectiveAppTheme = effectiveAppTheme(appTheme, liquidGlassCapability)
             val isDark = when (darkMode) {
                 "dark" -> true
                 "light" -> false
@@ -77,11 +84,12 @@ class DetailActivity : ComponentActivity() {
 
             EBookReaderTheme(
                 darkTheme = isDark,
-                dynamicColor = appTheme == "material3",
-                appTheme = appTheme,
+                dynamicColor = effectiveAppTheme == "material3",
+                appTheme = effectiveAppTheme,
                 liquidGlassTransparency = liquidGlassTransparency,
                 liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled,
-                globalFontMode = globalFontMode
+                globalFontMode = globalFontMode,
+                motionPreference = MotionPreference.fromStoredValue(motionPreferenceValue)
             ) {
                 com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
                     predictiveBackEnabled = predictiveBackEnabled,
@@ -124,6 +132,9 @@ class DetailActivity : ComponentActivity() {
                             WebdavConfigurationDetail(viewModel, onSaved = onBack)
                         }
                         "changelog" -> DetailPage(stringResource(R.string.title_changelog), onBack) { ChangelogDetail() }
+                        "highlight_color" -> DetailPage(stringResource(R.string.highlight_color_palette), onBack) {
+                            HighlightColorDetail(viewModel)
+                        }
                         else -> DetailPage(stringResource(R.string.title_about), onBack) { AboutDetail(viewModel) }
                     }
                 }

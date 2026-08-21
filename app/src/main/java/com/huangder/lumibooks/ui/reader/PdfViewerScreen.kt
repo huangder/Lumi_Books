@@ -7,7 +7,6 @@ import android.graphics.pdf.PdfRenderer
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.content.pm.PackageManager
-import androidx.activity.compose.BackHandler
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -116,6 +115,7 @@ import com.huangder.lumibooks.tts.TtsPlaybackState
 import com.huangder.lumibooks.ui.animation.AppEasing
 import com.huangder.lumibooks.ui.animation.cardPressEffect
 import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
+import com.huangder.lumibooks.ui.components.ConfigurableBackHandler
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
@@ -129,6 +129,7 @@ import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
+import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.util.BookFileAccess
@@ -218,12 +219,16 @@ fun PdfViewerScreen(
         onOpenBook(targetBookId)
     }
     val isAnySheetOpen = showPdfToc || conversionSheet != null
-    BackHandler(enabled = !isAnySheetOpen) { exitReader() }
+    val readerBackProgress = ConfigurableBackHandler(
+        enabled = !isAnySheetOpen,
+        onBack = exitReader
+    )
     var pendingReplaceAfterMineruSettings by remember { mutableStateOf(false) }
     var pendingManualReplace by remember { mutableStateOf(false) }
     var observedActiveConversion by remember { mutableStateOf(false) }
     var pendingModePage by remember { mutableStateOf<Int?>(null) }
     val eInkMode = LocalEInkMode.current || uiState.eInkModeEnabled
+    val motionEnabled = LocalMotionEnabled.current
     val effectivePdfPageMode = if (eInkMode) "horizontal" else uiState.pdfPageMode
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !eInkMode
     LaunchedEffect(uiState.ttsErrorMessage) {
@@ -425,10 +430,13 @@ fun PdfViewerScreen(
     // 菜单动画（同时淡入+移动，不是先后）
     val menuAlpha = remember { Animatable(0f) }
     val menuOffset = remember { Animatable(60f) }
-    LaunchedEffect(showMenu, eInkMode) {
+    LaunchedEffect(showMenu, eInkMode, motionEnabled) {
         if (eInkMode) {
             menuAlpha.snapTo(if (showMenu) 1f else 0f)
             menuOffset.snapTo(if (showMenu) 0f else 60f)
+        } else if (!motionEnabled) {
+            menuOffset.snapTo(0f)
+            menuAlpha.animateTo(if (showMenu) 1f else 0f, tween(if (showMenu) 120 else 100))
         } else if (showMenu) {
             coroutineScope {
                 launch { menuAlpha.animateTo(1f, tween(300)) }
@@ -446,6 +454,14 @@ fun PdfViewerScreen(
     Box(
         Modifier
             .fillMaxSize()
+            .graphicsLayer {
+                if (motionEnabled) {
+                    scaleX = 1f - readerBackProgress * 0.04f
+                    scaleY = 1f - readerBackProgress * 0.04f
+                    translationX = readerBackProgress * 48.dp.toPx()
+                }
+                alpha = 1f - readerBackProgress * 0.08f
+            }
             .background(
                 if (isHorizontal) AppColors.WindowBg
                 else com.huangder.lumibooks.ui.theme.ReaderColors.Light.background
@@ -554,8 +570,16 @@ fun PdfViewerScreen(
         // ── 顶部栏（淡入淡出）──
         AnimatedVisibility(
             visible = showMenu,
-            enter = if (eInkMode) EnterTransition.None else fadeIn(tween(300)),
-            exit = if (eInkMode) ExitTransition.None else fadeOut(tween(200)),
+            enter = when {
+                eInkMode -> EnterTransition.None
+                !motionEnabled -> fadeIn(tween(120))
+                else -> slideInVertically(initialOffsetY = { -it }, animationSpec = tween(180, easing = AppEasing.Smooth)) + fadeIn(tween(180))
+            },
+            exit = when {
+                eInkMode -> ExitTransition.None
+                !motionEnabled -> fadeOut(tween(100))
+                else -> slideOutVertically(targetOffsetY = { -it }, animationSpec = tween(140, easing = AppEasing.Accelerate)) + fadeOut(tween(140))
+            },
             modifier = Modifier.align(Alignment.TopCenter)
         ) {
             PdfTopBar(
@@ -667,15 +691,15 @@ fun PdfViewerScreen(
         }
         val ttsBottomPadding by animateDpAsState(
             targetValue = if (showMenu) 160.dp else 44.dp,
-            animationSpec = if (eInkMode) tween(0) else spring(dampingRatio = 0.82f, stiffness = 360f),
+            animationSpec = if (eInkMode || !motionEnabled) tween(0) else spring(dampingRatio = 0.82f, stiffness = 360f),
             label = "ttsBottomPadding"
         )
         AnimatedVisibility(
             visible = uiState.ttsActiveBookId == bookId &&
                 uiState.ttsPlaybackState != TtsPlaybackState.IDLE &&
                 !showPdfToc && conversionSheet == null,
-            enter = if (eInkMode) EnterTransition.None else slideInVertically(initialOffsetY = { it }) + fadeIn(),
-            exit = if (eInkMode) ExitTransition.None else slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            enter = if (eInkMode) EnterTransition.None else if (!motionEnabled) fadeIn(tween(120)) else slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = if (eInkMode) ExitTransition.None else if (!motionEnabled) fadeOut(tween(100)) else slideOutVertically(targetOffsetY = { it }) + fadeOut(),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()

@@ -13,12 +13,15 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import androidx.lifecycle.lifecycleScope
 import com.huangder.lumibooks.BuildConfig
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.ui.components.LocalPredictiveBackEnabled
 import com.huangder.lumibooks.ui.settings.SponsorActivity
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
+import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
+import com.huangder.lumibooks.ui.theme.effectiveAppTheme
 import com.huangder.lumibooks.util.LaunchThemeController
 import com.huangder.lumibooks.util.LocaleHelper
 import dagger.hilt.android.AndroidEntryPoint
@@ -86,7 +89,7 @@ class WelcomeActivity : ComponentActivity() {
 
         setContent {
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = "lumi")
-            val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = "default")
+            val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = "system")
             val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = 0.55f)
             val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = false)
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
@@ -101,14 +104,16 @@ class WelcomeActivity : ComponentActivity() {
                     else -> isSystemInDarkTheme()
                 }
             }
-            val effectiveAppTheme = if (eInkModeEnabled && appTheme == "liquid_glass") "lumi" else appTheme
+            val liquidGlassCapability = rememberLiquidGlassCapability(eInkModeEnabled, LocalView.current)
+            val resolvedAppTheme = effectiveAppTheme(appTheme, liquidGlassCapability)
 
             EBookReaderTheme(
                 darkTheme = isDark,
-                dynamicColor = effectiveAppTheme == "material3",
-                appTheme = effectiveAppTheme,
+                dynamicColor = resolvedAppTheme == "material3",
+                appTheme = resolvedAppTheme,
                 liquidGlassTransparency = liquidGlassTransparency,
                 liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled,
+                eInkMode = eInkModeEnabled,
                 globalFontMode = globalFontMode
             ) {
                 com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
@@ -137,7 +142,7 @@ class WelcomeActivity : ComponentActivity() {
                                 initialEInkMode = eInkModeEnabled,
                                 isEInkMode = eInkModeEnabled,
                                 isDark = isDark,
-                                isLiquidGlass = !eInkModeEnabled && effectiveAppTheme == "liquid_glass",
+                                isLiquidGlass = resolvedAppTheme == "liquid_glass",
                                 onFinished = {
                                     if (!isDebugWelcomePreview) {
                                         runBlocking {

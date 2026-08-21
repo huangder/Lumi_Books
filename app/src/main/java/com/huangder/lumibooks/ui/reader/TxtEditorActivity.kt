@@ -14,11 +14,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
+import com.huangder.lumibooks.ui.theme.MotionPreference
+import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
+import com.huangder.lumibooks.ui.theme.effectiveAppTheme
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import dagger.hilt.android.AndroidEntryPoint
@@ -57,24 +61,31 @@ class TxtEditorActivity : ComponentActivity() {
 
         setContent {
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = "lumi")
-            val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = "default")
+            val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = "system")
             val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = 0.55f)
             val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = false)
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
+            val eInkMode by dataStoreManager.eInkModeEnabled.collectAsState(initial = false)
+            val motionPreferenceValue by dataStoreManager.motionPreference.collectAsState(initial = "standard")
             val isDark = when (darkMode) {
                 "dark" -> true
                 "light" -> false
                 else -> systemDarkMode
             }
+            val capability = rememberLiquidGlassCapability(eInkMode, LocalView.current)
+            val resolvedAppTheme = effectiveAppTheme(appTheme, capability)
             EBookReaderTheme(
                 darkTheme = isDark,
-                appTheme = appTheme,
+                dynamicColor = resolvedAppTheme == "material3",
+                appTheme = resolvedAppTheme,
                 liquidGlassTransparency = liquidGlassTransparency,
                 liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled,
-                globalFontMode = globalFontMode
+                eInkMode = eInkMode,
+                globalFontMode = globalFontMode,
+                motionPreference = MotionPreference.fromStoredValue(motionPreferenceValue)
             ) {
                 val editorBackdrop = rememberLayerBackdrop()
-                val activeEditorBackdrop = editorBackdrop.takeIf { appTheme == "liquid_glass" }
+                val activeEditorBackdrop = editorBackdrop.takeIf { resolvedAppTheme == "liquid_glass" }
                 Box(Modifier.fillMaxSize()) {
                     // Capture only a Compose underlay. Capturing the native EditText itself can
                     // create a recursive HWUI render graph on some Xiaomi Android 16 devices.

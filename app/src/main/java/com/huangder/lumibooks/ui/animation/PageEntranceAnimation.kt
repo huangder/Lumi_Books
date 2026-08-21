@@ -15,7 +15,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 const val PAGE_ENTRANCE_COOLDOWN_MILLIS = 10_000L
-const val PAGE_ENTRANCE_PLAYBACK_MILLIS = 900L
+const val PAGE_ENTRANCE_PLAYBACK_MILLIS = 300L
 class PageEntranceTracker(
     private val cooldownMillis: Long = PAGE_ENTRANCE_COOLDOWN_MILLIS
 ) {
@@ -43,18 +43,18 @@ fun PageEntranceItem(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
-    val startOffset = with(LocalDensity.current) { 18.dp.toPx() }
+    val startOffset = with(LocalDensity.current) { 10.dp.toPx() }
     val alpha = remember(play) { Animatable(if (play) 0f else 1f) }
     val offsetY = remember(play, startOffset) { Animatable(if (play) startOffset else 0f) }
     val scale = remember(play) { Animatable(if (play) 0.985f else 1f) }
 
     LaunchedEffect(play) {
         if (!play) return@LaunchedEffect
-        delay((index * 45L).coerceAtMost(225L))
+        delay((index * 4L).coerceAtMost(20L))
         coroutineScope {
-            launch { alpha.animateTo(1f, tween(360, easing = AppEasing.Smooth)) }
-            launch { offsetY.animateTo(0f, tween(440, easing = AppEasing.Decelerate)) }
-            launch { scale.animateTo(1f, tween(440, easing = AppEasing.Smooth)) }
+            launch { alpha.animateTo(1f, tween(200, easing = AppEasing.Smooth)) }
+            launch { offsetY.animateTo(0f, tween(220, easing = AppEasing.Decelerate)) }
+            launch { scale.animateTo(1f, tween(220, easing = AppEasing.Smooth)) }
         }
     }
 

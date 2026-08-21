@@ -5,7 +5,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -45,13 +44,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.asComposeRenderEffect
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
 import com.kyant.backdrop.Backdrop
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -142,16 +140,12 @@ fun LiquidGlassDialogHost(
     content: @Composable () -> Unit
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val motionEnabled = LocalMotionEnabled.current
     val inheritedBackdrop = LocalLiquidGlassBackdrop.current
     val activeBackdrop = backdrop ?: inheritedBackdrop
     val scope = rememberCoroutineScope()
     val state = remember(scope) { LiquidGlassDialogHostState(scope) }
     val currentSpec = state.spec
-    val backgroundBlurRadius by animateDpAsState(
-        targetValue = if (state.visible) currentSpec?.backgroundBlurRadius ?: 0.dp else 0.dp,
-        animationSpec = tween(180),
-        label = "liquidGlassDialogBackgroundBlur"
-    )
     val scrimProgress by animateFloatAsState(
         targetValue = if (state.visible) 1f else 0f,
         animationSpec = tween(if (state.visible) 160 else 220),
@@ -164,22 +158,7 @@ fun LiquidGlassDialogHost(
     ) {
         Box(modifier = modifier) {
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        renderEffect = if (
-                            android.os.Build.VERSION.SDK_INT >= 31 &&
-                            backgroundBlurRadius.value > 0.01f
-                        ) {
-                            android.graphics.RenderEffect.createBlurEffect(
-                                backgroundBlurRadius.toPx(),
-                                backgroundBlurRadius.toPx(),
-                                android.graphics.Shader.TileMode.CLAMP
-                            ).asComposeRenderEffect()
-                        } else {
-                            null
-                        }
-                    }
+                modifier = Modifier.fillMaxSize()
             ) {
                 content()
             }
@@ -210,7 +189,9 @@ fun LiquidGlassDialogHost(
                             if (spec.properties.dismissOnClickOutside) spec.onDismissRequest()
                         }
                 ) {
-                    val containerEnter = if (spec.alignment == Alignment.BottomCenter) {
+                    val containerEnter = if (!motionEnabled) {
+                        fadeIn(tween(140))
+                    } else if (spec.alignment == Alignment.BottomCenter) {
                         scaleIn(
                             initialScale = 0.86f,
                             animationSpec = spring(dampingRatio = 0.70f, stiffness = 145f),
@@ -228,7 +209,9 @@ fun LiquidGlassDialogHost(
                             animationSpec = spring(dampingRatio = 0.66f, stiffness = 260f)
                         ) + fadeIn(tween(120))
                     }
-                    val containerExit = if (spec.alignment == Alignment.BottomCenter) {
+                    val containerExit = if (!motionEnabled) {
+                        fadeOut(tween(160))
+                    } else if (spec.alignment == Alignment.BottomCenter) {
                         scaleOut(
                             targetScale = 0.88f,
                             animationSpec = tween(240),
@@ -255,14 +238,18 @@ fun LiquidGlassDialogHost(
                         AnimatedContent(
                             targetState = currentSpec,
                             transitionSpec = {
-                                (scaleIn(
-                                    initialScale = 0.88f,
-                                    animationSpec = spring(dampingRatio = 0.68f, stiffness = 210f)
-                                ) + fadeIn(tween(150))) togetherWith
-                                    (scaleOut(
-                                        targetScale = 0.92f,
-                                        animationSpec = tween(210)
-                                    ) + fadeOut(tween(170)))
+                                if (!motionEnabled) {
+                                    fadeIn(tween(120)) togetherWith fadeOut(tween(140))
+                                } else {
+                                    (scaleIn(
+                                        initialScale = 0.88f,
+                                        animationSpec = spring(dampingRatio = 0.68f, stiffness = 210f)
+                                    ) + fadeIn(tween(150))) togetherWith
+                                        (scaleOut(
+                                            targetScale = 0.92f,
+                                            animationSpec = tween(210)
+                                        ) + fadeOut(tween(170)))
+                                }
                             },
                             modifier = Modifier.fillMaxSize(),
                             label = "liquidGlassDialogStack"
@@ -285,7 +272,7 @@ fun LiquidGlassDialogHost(
                                         backdrop = targetSpec.backdrop ?: activeBackdrop,
                                         contentScrimColor = targetSpec.contentScrimColor,
                                         transparencyOverride = targetSpec.transparencyOverride,
-                                        interactive = true,
+                                        interactive = false,
                                         modifier = Modifier
                                             .widthIn(max = 560.dp)
                                             .then(targetSpec.modifier)

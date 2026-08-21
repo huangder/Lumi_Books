@@ -28,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
@@ -48,6 +49,9 @@ import com.huangder.lumibooks.ui.components.RemoteNoticeDialog
 import com.huangder.lumibooks.ui.settings.WebViewActivity
 import com.huangder.lumibooks.ui.welcome.WelcomeActivity
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
+import com.huangder.lumibooks.ui.theme.MotionPreference
+import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
+import com.huangder.lumibooks.ui.theme.effectiveAppTheme
 import com.huangder.lumibooks.util.FileUtils
 import com.huangder.lumibooks.util.LaunchThemeController
 import com.huangder.lumibooks.util.UpdateChecker
@@ -311,11 +315,12 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = "lumi")
-            val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = "default")
+            val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = "system")
             val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = 0.55f)
             val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = false)
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
             val entranceAnimationsEnabled by dataStoreManager.entranceAnimationsEnabled.collectAsState(initial = true)
+            val motionPreferenceValue by dataStoreManager.motionPreference.collectAsState(initial = "standard")
             val eInkModeEnabled by dataStoreManager.eInkModeEnabled.collectAsState(initial = false)
             val predictiveBackEnabled by dataStoreManager.predictiveBackEnabled.collectAsState(initial = true)
             val isDark = if (eInkModeEnabled) {
@@ -325,7 +330,8 @@ class MainActivity : ComponentActivity() {
                 "light" -> false
                 else -> systemDarkMode
             }
-            val effectiveAppTheme = if (eInkModeEnabled && appTheme == "liquid_glass") "lumi" else appTheme
+            val liquidGlassCapability = rememberLiquidGlassCapability(eInkModeEnabled, LocalView.current)
+            val effectiveAppTheme = effectiveAppTheme(appTheme, liquidGlassCapability)
             val isLiquidGlass = !eInkModeEnabled && effectiveAppTheme == "liquid_glass"
             val mainBackdrop = rememberLayerBackdrop()
 
@@ -374,7 +380,8 @@ class MainActivity : ComponentActivity() {
                 liquidGlassTransparency = liquidGlassTransparency,
                 liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled && !eInkModeEnabled,
                 eInkMode = eInkModeEnabled,
-                globalFontMode = globalFontMode
+                globalFontMode = globalFontMode,
+                motionPreference = MotionPreference.fromStoredValue(motionPreferenceValue)
             ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -386,11 +393,18 @@ class MainActivity : ComponentActivity() {
                     ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         val navController = rememberNavController()
+                        val globalGlassDialogVisible = pendingAppUpdate != null ||
+                            pendingRemoteNotice != null ||
+                            policyDialog != null
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .then(
-                                    if (isLiquidGlass) Modifier.layerBackdrop(mainBackdrop) else Modifier
+                                    if (isLiquidGlass && globalGlassDialogVisible) {
+                                        Modifier.layerBackdrop(mainBackdrop)
+                                    } else {
+                                        Modifier
+                                    }
                                 )
                                 .graphicsLayer {
                                     alpha = mainContentAlpha
@@ -401,7 +415,9 @@ class MainActivity : ComponentActivity() {
                         ) {
                             MainNavGraph(
                                 navController = navController,
-                                entranceAnimationsEnabled = entranceAnimationsEnabled && !showSplash && !eInkModeEnabled,
+                                entranceAnimationsEnabled = entranceAnimationsEnabled &&
+                                    motionPreferenceValue == "standard" &&
+                                    !showSplash && !eInkModeEnabled,
                                 predictiveBackEnabled = predictiveBackEnabled && !eInkModeEnabled,
                                 requestedOpenBookId = requestedOpenBookId,
                                 requestedOpenBookshelf = requestedOpenBookshelf,

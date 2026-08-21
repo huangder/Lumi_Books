@@ -3,6 +3,9 @@
     <string name="label_predictive_back">预见性返回</string>
     <string name="label_entrance_animations">动效 Pro (Beta)</string>
     <string name="entrance_animations_description">为部分页面添加元素\n动效，这可能会影响性能</string>
+    <string name="motion_preference_label">动效</string>
+    <string name="motion_preference_standard">标准</string>
+    <string name="motion_preference_reduced">减弱动态</string>
     <string name="label_app_theme">主题</string>
     <string name="label_global_font">全局字体</string>
     <string name="global_font_default">默认字体</string>
@@ -119,6 +122,20 @@
     <string name="label_paragraph_spacing">段间距</string>
     <string name="label_first_line_indent">首行缩进</string>
 
+    <!-- 高亮颜色色卡 -->
+    <string name="highlight_color_palette">高亮颜色色卡</string>
+    <string name="highlight_color_palette_desc">自定义高亮和划线的颜色</string>
+    <string name="highlight_color_palette_tip">色卡修改后，浮动菜单和已有标注将使用新颜色。</string>
+    <string name="highlight_all_palettes">所有色卡</string>
+    <string name="highlight_default_palette">默认色卡</string>
+    <string name="highlight_create_palette">创建新色卡</string>
+    <string name="highlight_palette_name">色卡名称</string>
+    <string name="highlight_palette_name_hint">例如：柔和色</string>
+    <string name="highlight_palette_delete">删除色卡</string>
+    <string name="highlight_palette_set_color">设置颜色</string>
+    <string name="highlight_color_hex">颜色值 (#RRGGBB)</string>
+    <string name="highlight_pick_preset">选择预设颜色</string>
+
     <!-- 显示与外观 -->
     <string name="label_dark_mode">深色模式</string>
     <string name="dark_mode_system">跟随系统</string>
@@ -133,6 +150,17 @@
     <!-- 阅读目标 -->
     <string name="label_daily_goal">每日目标</string>
     <string name="goal_minutes">%d 分钟</string>
+
+    <!-- 阅读设置细化 -->
+    <string name="tts_floating_toggle">听书悬浮窗字幕</string>
+    <string name="tts_floating_toggle_desc">朗读时在屏幕上方显示当前句子字幕</string>
+    <string name="tts_engine_selection">语音引擎</string>
+    <string name="tts_engine_system_default">系统默认</string>
+    <string name="tts_engine_select_dialog_title">选择语音引擎</string>
+    <string name="body_font_weight">正文字重</string>
+    <string name="body_font_weight_desc">开启后正文使用加粗字重</string>
+    <string name="apply_to_body_only">排版仅作用于正文</string>
+    <string name="apply_to_body_only_desc">开启时字重、间距等设置仅作用于正文，标题等保持原样</string>
 
     <!-- 存储管理 -->
     <string name="label_total_size">总占用空间</string>
@@ -880,4 +908,13 @@
     <string name="widget_preview_book_title">书名</string>
     <string name="widget_preview_author">作者</string>
     <string name="widget_quote_preview_attribution">《书名》 作者</string>
+    <string name="more_options">更多操作</string>
+    <string name="bookshelf_layout">书架布局</string>
+    <string name="bookshelf_compact_grid">紧凑网格</string>
+    <string name="bookshelf_standard_grid">标准网格</string>
+    <string name="bookshelf_list_layout">列表</string>
+    <string name="statistics_reading_time">阅读时长</string>
+    <string name="statistics_active_days">活跃天数</string>
+    <string name="statistics_duration_value">%1$d小时%2$d分</string>
+    <string name="statistics_active_days_value">%1$d天</string>
 </resources>

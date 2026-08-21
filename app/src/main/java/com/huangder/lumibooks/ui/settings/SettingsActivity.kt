@@ -6,14 +6,20 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.background
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
+import com.huangder.lumibooks.ui.theme.MotionPreference
+import com.huangder.lumibooks.ui.theme.AppColors
+import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
+import com.huangder.lumibooks.ui.theme.effectiveAppTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.flow.first
@@ -58,11 +64,14 @@ class SettingsActivity : ComponentActivity() {
 
         setContent {
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = initialAppTheme)
-            val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = "default")
+            val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = "system")
             val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = initialTransparency)
             val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = initialHdrHighlightEnabled)
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = initialDarkMode)
+            val motionPreferenceValue by dataStoreManager.motionPreference.collectAsState(initial = "standard")
             val predictiveBackEnabled by dataStoreManager.predictiveBackEnabled.collectAsState(initial = true)
+            val liquidGlassCapability = rememberLiquidGlassCapability(view = LocalView.current)
+            val effectiveAppTheme = effectiveAppTheme(appTheme, liquidGlassCapability)
             val isDark = when (darkMode) {
                 "dark" -> true
                 "light" -> false
@@ -71,13 +80,15 @@ class SettingsActivity : ComponentActivity() {
 
             EBookReaderTheme(
                 darkTheme = isDark,
-                dynamicColor = appTheme == "material3",
-                appTheme = appTheme,
+                dynamicColor = effectiveAppTheme == "material3",
+                appTheme = effectiveAppTheme,
                 liquidGlassTransparency = liquidGlassTransparency,
                 liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled,
-                globalFontMode = globalFontMode
+                globalFontMode = globalFontMode,
+                motionPreference = MotionPreference.fromStoredValue(motionPreferenceValue)
             ) {
                 val settingsBackdrop = rememberLayerBackdrop()
+                val settingsControlsBackdrop = rememberLayerBackdrop()
                 com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
                     predictiveBackEnabled = predictiveBackEnabled,
                     onBack = { finish() }
@@ -85,20 +96,34 @@ class SettingsActivity : ComponentActivity() {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     com.huangder.lumibooks.ui.components.LiquidGlassDialogHost(
                         modifier = Modifier.fillMaxSize(),
-                        backdrop = settingsBackdrop.takeIf { appTheme == "liquid_glass" }
+                        backdrop = settingsBackdrop.takeIf { effectiveAppTheme == "liquid_glass" }
                     ) {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .then(
-                                    if (appTheme == "liquid_glass") {
+                                    if (effectiveAppTheme == "liquid_glass") {
                                         Modifier.layerBackdrop(settingsBackdrop)
                                     } else {
                                         Modifier
                                     }
                                 )
                         ) {
-                            com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop(null) {
+                            Box(
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .then(
+                                        if (effectiveAppTheme == "liquid_glass") {
+                                            Modifier.layerBackdrop(settingsControlsBackdrop)
+                                        } else {
+                                            Modifier
+                                        }
+                                    )
+                                    .background(AppColors.WindowBg)
+                            )
+                            com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop(
+                                settingsControlsBackdrop.takeIf { effectiveAppTheme == "liquid_glass" }
+                            ) {
                                 SettingsScreen(
                                     onNavigateBack = { finish() }
                                 )

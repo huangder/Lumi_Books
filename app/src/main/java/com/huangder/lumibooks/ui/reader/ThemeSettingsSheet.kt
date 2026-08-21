@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -318,6 +319,7 @@ fun ThemeSettingsSheet(
                 LiquidGlassTextButton(
                     text = stringResource(R.string.advanced_settings),
                     onClick = onOpenAdvanced,
+                    modifier = Modifier.widthIn(min = 104.dp),
                     tintedColor = if (isLiquidGlass) null else AppColors.BgGray,
                     contentColor = AppColors.TextPrimary
                 )

@@ -1,8 +1,11 @@
 package com.huangder.lumibooks.ui.components
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
+/*
+ * Glass rendering and motion are adapted from AndroidLiquidGlass' LiquidSlider sample.
+ * Copyright 2025 Kyant. Licensed under Apache-2.0.
+ * Source: https://github.com/Kyant0/AndroidLiquidGlass
+ */
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -11,16 +14,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,25 +31,49 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.clipRect
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.setProgress
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassTransparency
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
+import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberBackdrop
+import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.shadow.InnerShadow
+import com.kyant.backdrop.shadow.Shadow
+import kotlinx.coroutines.delay
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
+private val LiquidSliderThumbWidth = 40.dp
+private val LiquidSliderThumbHeight = 24.dp
+private val LiquidSliderVerticalPadding = 5.dp
+private val LiquidSliderTrackHeight = 6.dp
+private const val SliderCommitStabilityMillis = 240L
+
 /**
- * A pill slider with continuous drag feedback and release-only value snapping.
- * The liquid-glass active segment becomes a dark refractive prism while held.
+ * A thick pill slider with continuous drag preview and release-only commits.
+ * The track is one cheap captured Canvas; only the fixed thumb renders glass.
  */
 @Composable
 fun PillSlider(
@@ -60,69 +87,98 @@ fun PillSlider(
     inactiveColor: Color = AppColors.BgGray,
     onDragValueChange: ((Float) -> Unit)? = null
 ) {
+    val rangeLength = valueRange.endInclusive - valueRange.start
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val isDark = LocalIsDarkTheme.current
     val transparency = LocalLiquidGlassTransparency.current
+    val motionEnabled = LocalMotionEnabled.current
     val backdrop = LocalLiquidGlassBackdrop.current
+    val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
+    val density = LocalDensity.current
+    val animationScope = rememberCoroutineScope()
     val latestValue by rememberUpdatedState(value)
     val latestOnValueChange by rememberUpdatedState(onValueChange)
     val latestOnDragValueChange by rememberUpdatedState(onDragValueChange)
-    val animatedValue = remember { Animatable(value.coerceIn(valueRange)) }
-    val animationScope = rememberCoroutineScope()
-    var settleJob by remember { mutableStateOf<Job?>(null) }
-    var directValue by remember { mutableFloatStateOf(value.coerceIn(valueRange)) }
-    var gestureActive by remember { mutableStateOf(false) }
-    var settling by remember { mutableStateOf(false) }
-    var showingDirectValue by remember { mutableStateOf(false) }
-    val pressProgress by animateFloatAsState(
-        targetValue = if (gestureActive) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.68f, stiffness = 360f),
-        label = "pillSliderPress"
-    )
+    var pendingCommittedValue by remember { mutableStateOf<Float?>(null) }
+    val motionState = remember(
+        animationScope,
+        motionEnabled,
+        valueRange.start,
+        valueRange.endInclusive
+    ) {
+        LiquidGlassDampedMotionState(
+            animationScope = animationScope,
+            initialValue = value.coerceIn(valueRange),
+            valueRange = valueRange,
+            motionEnabled = motionEnabled,
+            pressedScale = 1.5f,
+            visibilityThreshold = (abs(rangeLength) * 0.0001f).coerceAtLeast(0.0001f)
+        )
+    }
 
-    LaunchedEffect(value, valueRange, gestureActive, settling) {
-        if (!gestureActive && !settling) {
-            val externalValue = value.coerceIn(valueRange)
-            if (abs(animatedValue.value - externalValue) > 0.0001f) {
-                animatedValue.snapTo(externalValue)
+    LaunchedEffect(value, motionState, pendingCommittedValue) {
+        val externalValue = value.coerceIn(valueRange)
+        val pendingValue = pendingCommittedValue
+        if (pendingValue != null) {
+            if (abs(externalValue - pendingValue) <= 0.0001f) {
+                // A preview callback can finish after the final commit and briefly
+                // publish an older value. Only reopen external synchronization once
+                // the committed value has remained stable long enough for those
+                // queued preview updates to drain.
+                delay(SliderCommitStabilityMillis)
+                if (
+                    pendingCommittedValue == pendingValue &&
+                    abs(value.coerceIn(valueRange) - pendingValue) <= 0.0001f &&
+                    !motionState.isInteracting
+                ) {
+                    pendingCommittedValue = null
+                }
             }
+        } else if (!motionState.isInteracting && abs(motionState.targetValue - externalValue) > 0.0001f) {
+            motionState.syncToValue(externalValue)
         }
     }
 
-    val rangeLength = valueRange.endInclusive - valueRange.start
-    val visualFraction = if (rangeLength == 0f) {
-        0f
-    } else {
-        val visualValue = if (showingDirectValue) directValue else animatedValue.value
-        ((visualValue - valueRange.start) / rangeLength).coerceIn(0f, 1f)
+    val semanticsModifier = Modifier.semantics {
+        progressBarRangeInfo = ProgressBarRangeInfo(
+            current = value.coerceIn(valueRange),
+            range = valueRange,
+            steps = sliderSemanticsSteps(valueRange, step)
+        )
+        setProgress { requestedValue ->
+            val target = snapSliderValue(requestedValue, valueRange, step)
+            pendingCommittedValue = target
+            motionState.animateToValue(target)
+            latestOnDragValueChange?.invoke(target)
+            if (abs(target - latestValue) > 0.0001f) latestOnValueChange(target)
+            true
+        }
     }
-    val sliderHeight = if (isLiquidGlass) trackHeight + 10.dp else trackHeight
 
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
-            .height(sliderHeight)
-            .pointerInput(valueRange, step) {
+            .height(if (isLiquidGlass) LiquidSliderThumbHeight + LiquidSliderVerticalPadding * 2 else trackHeight)
+            .then(semanticsModifier)
+            .pointerInput(valueRange.start, valueRange.endInclusive, step, isLtr, motionState) {
                 awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val down = awaitFirstDown(
+                        requireUnconsumed = false,
+                        pass = PointerEventPass.Initial
+                    )
                     val widthPx = size.width.toFloat()
                     if (widthPx <= 0f || rangeLength <= 0f) return@awaitEachGesture
 
-                    settleJob?.cancel()
-                    settling = false
-                    directValue = animatedValue.value.coerceIn(valueRange)
-                    showingDirectValue = true
-                    gestureActive = true
+                    motionState.beginInteraction()
+                    val startValue = motionState.value
                     val startX = down.position.x
                     val startY = down.position.y
-                    val startValue = directValue
-                    val touchSlop = viewConfiguration.touchSlop
                     var dragged = false
                     var released = false
                     var cancelledByScroll = false
 
                     while (true) {
-                        val event = awaitPointerEvent()
+                        val event = awaitPointerEvent(pass = PointerEventPass.Initial)
                         val change = event.changes.firstOrNull { it.id == down.id } ?: break
                         if (change.changedToUpIgnoreConsumed()) {
                             released = true
@@ -130,198 +186,218 @@ fun PillSlider(
                         }
                         if (!change.pressed) break
 
-                        val totalDx = change.position.x - startX
-                        val totalDy = change.position.y - startY
+                        val positionDx = change.position.x - startX
+                        val positionDy = change.position.y - startY
                         if (!dragged) {
                             if (change.isConsumed) {
                                 cancelledByScroll = true
                                 break
                             }
-                            if (abs(totalDy) >= touchSlop && abs(totalDy) > abs(totalDx)) {
+                            if (abs(positionDy) >= viewConfiguration.touchSlop && abs(positionDy) > abs(positionDx)) {
                                 cancelledByScroll = true
                                 break
                             }
-                            if (abs(totalDx) < touchSlop || abs(totalDx) < abs(totalDy)) {
+                            if (abs(positionDx) < viewConfiguration.touchSlop || abs(positionDx) < abs(positionDy)) {
                                 continue
                             }
                             dragged = true
                         }
 
-                        val continuousValue = (startValue + totalDx / widthPx * rangeLength)
+                        val direction = if (isLtr) 1f else -1f
+                        val directValue = (startValue + direction * positionDx / widthPx * rangeLength)
                             .coerceIn(valueRange)
-                        directValue = continuousValue
-                        latestOnDragValueChange?.invoke(continuousValue)
+                        motionState.dragTo(directValue)
+                        latestOnDragValueChange?.invoke(directValue)
                         change.consume()
                     }
 
-                    gestureActive = false
-                    val releaseValue = when {
-                        cancelledByScroll -> latestValue.coerceIn(valueRange)
-                        dragged -> directValue
-                        released -> {
-                            val tapFraction = (startX / widthPx).coerceIn(0f, 1f)
-                            valueRange.start + tapFraction * rangeLength
+                    when {
+                        cancelledByScroll || !released -> {
+                            motionState.cancelInteraction(latestValue.coerceIn(valueRange))
                         }
-                        else -> latestValue.coerceIn(valueRange)
-                    }
-                    directValue = releaseValue
-                    val targetValue = if (released) {
-                        releaseValue.snapToStep(valueRange, step)
-                    } else {
-                        releaseValue
-                    }
-                    if (released) {
-                        latestOnDragValueChange?.invoke(targetValue)
-                    }
-                    settling = true
-                    settleJob = animationScope.launch {
-                        animatedValue.snapTo(releaseValue)
-                        showingDirectValue = false
-                        animatedValue.animateTo(
-                            targetValue = targetValue,
-                            animationSpec = spring(dampingRatio = 0.76f, stiffness = 420f)
-                        )
-                        if (released) latestOnValueChange(targetValue)
-                        settling = false
+                        dragged -> {
+                            val target = snapSliderValue(motionState.targetValue, valueRange, step)
+                            pendingCommittedValue = target
+                            motionState.settleTo(target)
+                            if (abs(target - latestValue) > 0.0001f) latestOnValueChange(target)
+                        }
+                        else -> {
+                            val fraction = (startX / widthPx).coerceIn(0f, 1f)
+                            val target = snapSliderValue(
+                                sliderValueFromFraction(fraction, valueRange, isLtr),
+                                valueRange,
+                                step
+                            )
+                            pendingCommittedValue = target
+                            motionState.animateToValue(target)
+                            if (abs(target - latestValue) > 0.0001f) latestOnValueChange(target)
+                        }
                     }
                 }
             },
         contentAlignment = Alignment.CenterStart
     ) {
-        val trackShape = RoundedCornerShape(trackHeight / 2)
-
-        if (isLiquidGlass) {
-            val idleTrackColor = if (isDark) Color.Black else inactiveColor
-            val idleActiveColor = if (isDark) Color.White else Color.Black
-            val trackScrim = if (isDark) {
-                Color.Black.copy(alpha = 0.30f)
-            } else {
-                Color.Black.copy(alpha = 0.10f)
-            }
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(trackHeight)
-                    .then(
-                        if (backdrop != null) {
-                            Modifier.liquidGlassBackdrop(
-                                backdrop = backdrop,
-                                shape = trackShape,
-                                isDark = isDark,
-                                transparency = (transparency + 0.12f).coerceAtMost(1f),
-                                contentScrimColor = trackScrim,
-                                scaleOnPress = false,
-                                outlineWidth = 0.8.dp,
-                                highlightAlpha = 0.20f
-                            )
-                        } else {
-                            Modifier
-                                .clip(trackShape)
-                                .background(idleTrackColor.copy(alpha = 0.72f))
-                        }
-                    )
-            )
-            Canvas(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(trackHeight)
-                    .clip(trackShape)
-            ) {
+        val visualFraction = sliderFraction(motionState.value, valueRange, isLtr)
+        if (!isLiquidGlass) {
+            Canvas(modifier = Modifier.fillMaxWidth().height(trackHeight)) {
                 val radius = size.height / 2f
-                val activeWidthPx = size.width * visualFraction
-                if (activeWidthPx > 0f) {
-                    clipRect(right = activeWidthPx) {
+                drawRoundRect(
+                    color = inactiveColor,
+                    cornerRadius = CornerRadius(radius, radius),
+                    size = size
+                )
+                val activeWidth = size.width * visualFraction
+                if (activeWidth > 0f) {
+                    clipRect(right = activeWidth) {
                         drawRoundRect(
-                            color = idleActiveColor.copy(
-                                alpha = (1f - pressProgress).coerceIn(0f, 1f)
-                            ),
+                            color = activeColor,
                             cornerRadius = CornerRadius(radius, radius),
                             size = size
                         )
                     }
                 }
             }
+            return@BoxWithConstraints
+        }
 
-            val activeWidth = maxWidth * visualFraction
-            if (visualFraction > 0.001f && pressProgress > 0.001f) {
-                val pressedScrim = if (isDark) {
-                    Color.White.copy(alpha = 0.48f)
-                } else {
-                    Color.Black.copy(alpha = 0.56f)
-                }
-                val activeShape = RoundedCornerShape(
-                    topStart = trackHeight / 2,
-                    topEnd = 0.dp,
-                    bottomEnd = 0.dp,
-                    bottomStart = trackHeight / 2
-                )
-                Box(
-                    modifier = Modifier
-                        .width(activeWidth)
-                        .height(trackHeight)
-                        .graphicsLayer {
-                            scaleX = 1f + pressProgress * 0.05f
-                            scaleY = 1f + pressProgress * 0.16f
-                            alpha = pressProgress
-                            transformOrigin = TransformOrigin(0f, 0.5f)
-                        }
-                        .then(
-                            if (backdrop != null) {
-                                Modifier.liquidGlassBackdrop(
-                                    backdrop = backdrop,
-                                    shape = activeShape,
-                                    isDark = isDark,
-                                    transparency = (transparency - 0.08f).coerceAtLeast(0f),
-                                    contentScrimColor = pressedScrim,
-                                    pressProgress = pressProgress,
-                                    scaleOnPress = false,
-                                    outlineWidth = 1.dp,
-                                    highlightAlpha = 0.30f
-                                )
-                            } else {
-                                Modifier
-                                    .clip(activeShape)
-                                    .background(pressedScrim)
-                            }
-                        )
-                )
-            }
-        } else {
-            Canvas(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(trackHeight)
-                    .clip(trackShape)
-            ) {
+        val glassActiveColor = AppColors.Accent
+        val trackBackdrop = rememberLayerBackdrop()
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(LiquidSliderTrackHeight)
+                .layerBackdrop(trackBackdrop)
+        ) {
+            Canvas(Modifier.matchParentSize()) {
                 val radius = size.height / 2f
+                val glassTrackColor = if (isDark) {
+                    Color(0xFF787880).copy(alpha = 0.36f)
+                } else {
+                    Color(0xFF787878).copy(alpha = 0.20f)
+                }
                 drawRoundRect(
-                    color = inactiveColor,
+                    color = glassTrackColor,
                     cornerRadius = CornerRadius(radius, radius),
                     size = Size(size.width, size.height)
                 )
-                val activeWidthPx = size.width * visualFraction
-                if (activeWidthPx > 0f) {
-                    drawContext.canvas.save()
-                    drawContext.canvas.clipRect(0f, 0f, activeWidthPx, size.height)
-                    drawRoundRect(
-                        color = activeColor,
-                        cornerRadius = CornerRadius(radius, radius),
-                        size = Size(size.width, size.height)
-                    )
-                    drawContext.canvas.restore()
+                val activeWidth = size.width * visualFraction
+                if (activeWidth > 0f) {
+                    clipRect(right = activeWidth) {
+                        drawRoundRect(
+                            color = glassActiveColor,
+                            cornerRadius = CornerRadius(radius, radius),
+                            size = Size(size.width, size.height)
+                        )
+                    }
                 }
             }
         }
+
+        val pressProgress = motionState.pressProgress
+        val sampledTrackBackdrop = if (backdrop != null) {
+            rememberBackdrop(trackBackdrop) { drawTrackBackdrop ->
+                val scaleX = 2f / 3f + pressProgress / 12f
+                val scaleY = pressProgress * 0.75f
+                scale(scaleX, scaleY) { drawTrackBackdrop() }
+            }
+        } else {
+            null
+        }
+        val thumbBackdrop = if (backdrop != null && sampledTrackBackdrop != null) {
+            rememberCombinedBackdrop(backdrop, sampledTrackBackdrop)
+        } else {
+            null
+        }
+
+        val trackWidthPx = constraints.maxWidth.toFloat()
+        val thumbWidthPx = with(density) { LiquidSliderThumbWidth.toPx() }
+        val thumbX = sliderThumbOffsetPx(visualFraction, trackWidthPx, thumbWidthPx)
+        val thumbPosition = Modifier
+            .size(width = LiquidSliderThumbWidth, height = LiquidSliderThumbHeight)
+            .offset { IntOffset(thumbX.roundToInt(), 0) }
+        val idleThumbAlpha = if (isDark) 0.34f else 0.68f
+        val thumbScrim = Color.White.copy(
+            alpha = idleThumbAlpha + (0.10f - idleThumbAlpha) * pressProgress
+        )
+        val thumbVisual = if (thumbBackdrop != null) {
+            Modifier.drawBackdrop(
+                backdrop = thumbBackdrop,
+                shape = { CircleShape },
+                effects = {
+                    val opticalProgress = if (motionEnabled) pressProgress else 0f
+                    val blurRadius = 8.dp.toPx() * (1f - transparency) * (1f - opticalProgress)
+                    if (blurRadius > 0f) blur(blurRadius)
+                    lens(
+                        10.dp.toPx() * opticalProgress,
+                        14.dp.toPx() * opticalProgress,
+                        chromaticAberration = opticalProgress > 0.05f
+                    )
+                },
+                highlight = { Highlight.Ambient.copy(alpha = pressProgress) },
+                shadow = { Shadow(radius = 4.dp, color = Color.Black.copy(alpha = 0.05f)) },
+                innerShadow = {
+                    InnerShadow(radius = 4.dp * pressProgress, alpha = pressProgress)
+                },
+                layerBlock = {
+                    scaleX = motionState.scale
+                    scaleY = motionState.scale
+                    if (motionEnabled) {
+                        val velocity = motionState.velocity / rangeLength.coerceAtLeast(0.0001f) / 10f
+                        scaleX /= 1f - (velocity * 0.75f).coerceIn(-0.2f, 0.2f)
+                        scaleY *= 1f - (velocity * 0.25f).coerceIn(-0.2f, 0.2f)
+                    }
+                },
+                onDrawSurface = { drawRect(thumbScrim) }
+            )
+        } else {
+            Modifier.clip(CircleShape).background(thumbScrim)
+        }
+        Box(modifier = thumbPosition.then(thumbVisual))
     }
 }
 
-private fun Float.snapToStep(
+internal fun snapSliderValue(
+    value: Float,
     range: ClosedFloatingPointRange<Float>,
     step: Float
 ): Float {
-    if (step <= 0f) return coerceIn(range)
-    val snapped = range.start + ((this - range.start) / step).roundToInt() * step
+    if (step <= 0f) return value.coerceIn(range)
+    val snapped = range.start + ((value - range.start) / step).roundToInt() * step
     return ((snapped * 10_000f).roundToInt() / 10_000f).coerceIn(range)
+}
+
+internal fun sliderValueFromFraction(
+    fraction: Float,
+    range: ClosedFloatingPointRange<Float>,
+    isLtr: Boolean
+): Float {
+    val directedFraction = if (isLtr) fraction else 1f - fraction
+    return range.start + directedFraction.coerceIn(0f, 1f) * (range.endInclusive - range.start)
+}
+
+internal fun sliderFraction(
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    isLtr: Boolean
+): Float {
+    val length = range.endInclusive - range.start
+    val fraction = if (length == 0f) 0f else ((value - range.start) / length).coerceIn(0f, 1f)
+    return if (isLtr) fraction else 1f - fraction
+}
+
+internal fun sliderThumbOffsetPx(fraction: Float, trackWidthPx: Float, thumbWidthPx: Float): Float {
+    val minimum = -thumbWidthPx / 4f
+    val maximum = trackWidthPx - thumbWidthPx * 3f / 4f
+    return (trackWidthPx * fraction - thumbWidthPx / 2f).coerceIn(minimum, maximum)
+}
+
+private fun sliderSemanticsSteps(
+    range: ClosedFloatingPointRange<Float>,
+    step: Float
+): Int {
+    if (step <= 0f) return 0
+    val intervals = ((range.endInclusive - range.start) / step).roundToInt()
+    return (intervals - 1).coerceAtLeast(0)
 }
 
 private fun Float.coerceIn(range: ClosedFloatingPointRange<Float>): Float =

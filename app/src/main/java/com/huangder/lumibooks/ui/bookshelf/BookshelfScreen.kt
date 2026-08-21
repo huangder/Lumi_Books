@@ -44,8 +44,12 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.FormatListBulleted
+import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Label
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material.icons.outlined.ViewModule
+import androidx.compose.material.icons.outlined.ViewList
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -53,7 +57,6 @@ import androidx.compose.material3.Text
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -63,7 +66,6 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -76,6 +78,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.zIndex
@@ -83,7 +86,6 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
@@ -131,9 +133,9 @@ import kotlinx.coroutines.launch
 @Composable
 fun BookshelfScreen(
     playEntranceAnimation: Boolean = false,
-    onNavigateToReader: (bookId: String, coverPath: String?, title: String) -> Unit,
+    onNavigateToReader: (bookId: String, coverPath: String?, title: String, sourceBounds: Rect?) -> Unit,
     onAddBook: () -> Unit,
-    onOverlayProgressChange: (Float) -> Unit = {},
+    onMessage: (String) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -174,27 +176,6 @@ fun BookshelfScreen(
         add(BookshelfFilterTab(BookshelfFilter.Favorites, stringResource(R.string.filter_favorites)))
         uiState.tags.forEach { tag ->
             add(BookshelfFilterTab(BookshelfFilter.Tag(tag.id), tag.name))
-        }
-    }
-
-    LaunchedEffect(uiState.importMessage) {
-        uiState.importMessage?.let {
-            android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show()
-            viewModel.clearImportMessage()
-        }
-    }
-
-    LaunchedEffect(uiState.tagMessage) {
-        uiState.tagMessage?.let {
-            android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show()
-            viewModel.clearTagMessage()
-        }
-    }
-
-    LaunchedEffect(uiState.error) {
-        uiState.error?.let {
-            android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show()
-            viewModel.clearError()
         }
     }
 
@@ -264,11 +245,7 @@ fun BookshelfScreen(
         runCatching { coverPickerLauncher.launch("image/*") }
             .onFailure { error ->
                 coverTargetBook = null
-                android.widget.Toast.makeText(
-                    context,
-                    error.message ?: "Unable to open the image picker",
-                    android.widget.Toast.LENGTH_LONG
-                ).show()
+                onMessage(error.message ?: "Unable to open the image picker")
             }
     }
 
@@ -278,11 +255,7 @@ fun BookshelfScreen(
                 .putExtra("bookId", book.id)
             context.startActivity(intent)
         }.onFailure { error ->
-            android.widget.Toast.makeText(
-                context,
-                error.message ?: "Unable to open bookmarks and notes",
-                android.widget.Toast.LENGTH_LONG
-            ).show()
+            onMessage(error.message ?: "Unable to open bookmarks and notes")
         }
     }
 
@@ -385,19 +358,6 @@ fun BookshelfScreen(
         openBookNotes(book)
     }
 
-    val searchBlurProgress by animateFloatAsState(
-        targetValue = if (isSearchActive) 1f else 0f,
-        animationSpec = if (eInkMode) snap() else tween(if (isSearchActive) 210 else 230),
-        label = "bookshelfSearchBlur"
-    )
-    val overlayProgress = maxOf(contextMenuState.scrimAlpha.value, searchBlurProgress)
-    SideEffect {
-        onOverlayProgressChange(overlayProgress)
-    }
-    DisposableEffect(Unit) {
-        onDispose { onOverlayProgressChange(0f) }
-    }
-
     ProvideLiquidGlassBackdrop(bookshelfBackdrop.takeIf { isLiquidGlass }) {
     Box(modifier = Modifier.fillMaxSize().background(AppColors.WindowBg)) {
         // ── 内容层（高斯模糊） ──
@@ -407,25 +367,6 @@ fun BookshelfScreen(
                 .then(
                     if (isLiquidGlass) Modifier.layerBackdrop(bookshelfBackdrop) else Modifier
                 )
-                .graphicsLayer {
-                    renderEffect = if (
-                        overlayProgress > 0.01f && android.os.Build.VERSION.SDK_INT >= 31
-                    ) {
-                        android.graphics.RenderEffect.createBlurEffect(
-                            maxOf(
-                                20f * contextMenuState.scrimAlpha.value,
-                                34.dp.toPx() * searchBlurProgress
-                            ),
-                            maxOf(
-                                20f * contextMenuState.scrimAlpha.value,
-                                34.dp.toPx() * searchBlurProgress
-                            ),
-                            android.graphics.Shader.TileMode.CLAMP
-                        ).asComposeRenderEffect()
-                    } else {
-                        null
-                    }
-                }
                 .background(AppColors.WindowBg)
         ) {
             if (isLiquidGlass) {
@@ -447,7 +388,7 @@ fun BookshelfScreen(
                         onHaptic = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
                         onSelectionToggle = toggleBookSelection,
                         onExpandedBookChange = { expandedListBookId = it },
-                        onBookClick = { book -> onNavigateToReader(book.id, book.coverPath, book.title) },
+                        onBookClick = { book, bounds -> onNavigateToReader(book.id, book.coverPath, book.title, bounds) },
                         onAddBook = onAddBook,
                         onEditInfo = editBookFromList,
                         onDelete = deleteBookFromList,
@@ -519,7 +460,7 @@ fun BookshelfScreen(
                         onHaptic = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
                         onSelectionToggle = toggleBookSelection,
                         onExpandedBookChange = { expandedListBookId = it },
-                        onBookClick = { book -> onNavigateToReader(book.id, book.coverPath, book.title) },
+                        onBookClick = { book, bounds -> onNavigateToReader(book.id, book.coverPath, book.title, bounds) },
                         onAddBook = onAddBook,
                         onEditInfo = editBookFromList,
                         onDelete = deleteBookFromList,
@@ -585,25 +526,6 @@ fun BookshelfScreen(
                         .onGloballyPositioned { coordinates ->
                             bookshelfHeaderHeightPx = coordinates.size.height
                         }
-                        .graphicsLayer {
-                            renderEffect = if (
-                                overlayProgress > 0.01f && android.os.Build.VERSION.SDK_INT >= 31
-                            ) {
-                                android.graphics.RenderEffect.createBlurEffect(
-                                    maxOf(
-                                        20f * contextMenuState.scrimAlpha.value,
-                                        34.dp.toPx() * searchBlurProgress
-                                    ),
-                                    maxOf(
-                                        20f * contextMenuState.scrimAlpha.value,
-                                        34.dp.toPx() * searchBlurProgress
-                                    ),
-                                    android.graphics.Shader.TileMode.CLAMP
-                                ).asComposeRenderEffect()
-                            } else {
-                                null
-                            }
-                        }
                         .align(Alignment.TopCenter)
                         .widthIn(max = 1000.dp)
                 )
@@ -626,7 +548,7 @@ fun BookshelfScreen(
                 },
                 onExpandedBookChange = { expandedSearchBookId = it },
                 onBookClick = { book ->
-                    onNavigateToReader(book.id, book.coverPath, book.title)
+                    onNavigateToReader(book.id, book.coverPath, book.title, null)
                 },
                 onEditInfo = { book ->
                     expandedSearchBookId = null
@@ -823,7 +745,7 @@ internal fun BookshelfCollection(
     onHaptic: () -> Unit,
     onSelectionToggle: (Book) -> Unit,
     onExpandedBookChange: (String?) -> Unit,
-    onBookClick: (Book) -> Unit,
+    onBookClick: (Book, Rect?) -> Unit,
     onAddBook: () -> Unit,
     onEditInfo: (Book) -> Unit,
     onDelete: (Book) -> Unit,
@@ -937,7 +859,7 @@ internal fun BookshelfCollection(
                                     if (expandedListBookId == book.id) null else book.id
                                 )
                             },
-                            onClick = { onBookClick(book) },
+                            onClick = { onBookClick(book, null) },
                             onEditInfo = { onEditInfo(book) },
                             onDelete = { onDelete(book) },
                             onFavorite = { onFavorite(book) },
@@ -985,7 +907,7 @@ internal fun BookshelfCollection(
                             syncedBookIds = syncedBookIds,
                             onHaptic = onHaptic,
                             onSelectionToggle = { onSelectionToggle(book) },
-                            onClick = { onBookClick(book) }
+                            onClick = { bounds -> onBookClick(book, bounds) }
                         )
                     }
                 }
@@ -1041,6 +963,13 @@ private fun BookshelfHeaderActions(
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val contentColor = if (isLiquidGlass) AppColors.TextPrimary else Color.White
+    val menuHost = LocalLiquidGlassMenuHost.current
+    var menuExpanded by remember { mutableStateOf(false) }
+    var menuAnchorBounds by remember { mutableStateOf(Rect.Zero) }
+    val syncLabel = stringResource(if (isSyncing) R.string.webdav_syncing else R.string.webdav_sync_now)
+    val standardGridLabel = stringResource(R.string.bookshelf_standard_grid)
+    val compactGridLabel = stringResource(R.string.bookshelf_compact_grid)
+    val listLayoutLabel = stringResource(R.string.bookshelf_list_layout)
     // 平板横屏下 2/3 宫格都按自适应列渲染（效果一致），因此只在列表/宫格间切换
     val configuration = LocalConfiguration.current
     val isTabletLandscape = configuration.smallestScreenWidthDp >= 600 &&
@@ -1051,16 +980,62 @@ private fun BookshelfHeaderActions(
         verticalAlignment = Alignment.CenterVertically
     ) {
         LiquidGlassIconButton(
-            imageVector = Icons.Outlined.Sync,
-            contentDescription = stringResource(R.string.webdav_sync_now),
-            onClick = onSyncClick,
-            enabled = !isSyncing,
+            imageVector = Icons.Outlined.MoreVert,
+            contentDescription = stringResource(R.string.more_options),
+            onClick = {
+                if (menuExpanded) {
+                    menuHost?.dismiss()
+                } else if (menuHost != null && menuAnchorBounds != Rect.Zero) {
+                    menuExpanded = true
+                    menuHost.show(
+                        LiquidGlassMenuSpec(
+                            anchorBounds = menuAnchorBounds,
+                            width = 196.dp,
+                            onDismiss = { menuExpanded = false },
+                            items = buildList {
+                                add(
+                                    LiquidGlassMenuItem(
+                                        label = syncLabel,
+                                        icon = Icons.Outlined.Sync,
+                                        onClick = { if (!isSyncing) onSyncClick() }
+                                    )
+                                )
+                                add(
+                                    LiquidGlassMenuItem(
+                                        label = standardGridLabel,
+                                        icon = layoutIcon(layoutMode = layoutMode, compact = false),
+                                        selected = layoutMode == 3,
+                                        onClick = { onLayoutModeChange(3) }
+                                    )
+                                )
+                                add(
+                                    LiquidGlassMenuItem(
+                                        label = compactGridLabel,
+                                        icon = Icons.Outlined.ViewModule,
+                                        selected = layoutMode == 2,
+                                        onClick = { onLayoutModeChange(2) }
+                                    )
+                                )
+                                add(
+                                    LiquidGlassMenuItem(
+                                        label = listLayoutLabel,
+                                        icon = Icons.Outlined.ViewList,
+                                        selected = layoutMode == 1,
+                                        onClick = { onLayoutModeChange(1) }
+                                    )
+                                )
+                            }
+                        )
+                    )
+                }
+            },
             size = 32.dp,
             iconSize = 15.dp,
             contentColor = contentColor,
             normalContainerColor = AppColors.Accent,
             liquidContainerColor = AppColors.CardBg,
-            liquidScrimColor = AppColors.CardBg.copy(alpha = 0.58f)
+            liquidScrimColor = AppColors.CardBg.copy(alpha = 0.58f),
+            modifier = Modifier.onGloballyPositioned { menuAnchorBounds = it.boundsInRoot() }
         )
         LiquidGlassSurface(
             shape = CircleShape,
@@ -1078,18 +1053,22 @@ private fun BookshelfHeaderActions(
             effectPadding = 1.dp,
             modifier = Modifier.size(32.dp)
         ) {
-            Text(
-                text = if (isTabletLandscape) {
-                    (if (layoutMode == 1) 1 else 2).toString()
-                } else {
-                    layoutMode.coerceIn(1, 3).toString()
-                },
-                color = contentColor,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold
+            Icon(
+                imageVector = layoutIcon(layoutMode, compact = isTabletLandscape),
+                contentDescription = stringResource(R.string.bookshelf_layout),
+                tint = contentColor,
+                modifier = Modifier.size(18.dp)
             )
         }
     }
+}
+
+private fun layoutIcon(layoutMode: Int, compact: Boolean): ImageVector = when {
+    compact && layoutMode == 1 -> Icons.Outlined.ViewList
+    compact -> Icons.Outlined.GridView
+    layoutMode == 1 -> Icons.Outlined.ViewList
+    layoutMode == 2 -> Icons.Outlined.ViewModule
+    else -> Icons.Outlined.GridView
 }
 
 @Composable
@@ -1403,7 +1382,7 @@ private fun AnimatedBookGridItem(
     syncedBookIds: Set<String>,
     onHaptic: () -> Unit,
     onSelectionToggle: () -> Unit,
-    onClick: () -> Unit
+    onClick: (Rect?) -> Unit
 ) {
     val scale by animateFloatAsState(
         targetValue = when {
@@ -1459,7 +1438,7 @@ private fun BookGridItem(
     syncedBookIds: Set<String>,
     onHaptic: () -> Unit,
     onSelectionToggle: () -> Unit,
-    onClick: () -> Unit
+    onClick: (Rect?) -> Unit
 ) {
     val coverCorner = if (LocalAppTheme.current == "liquid_glass") 16.dp else AppRadius.sm
     // 是否为当前操作的目标书本（在组合期间读取，确保触发重组）
@@ -1517,7 +1496,9 @@ private fun BookGridItem(
             .combinedClickable(
                 indication = null,
                 interactionSource = interactionSource,
-                onClick = if (isEditing) onSelectionToggle else onClick,
+                onClick = if (isEditing) onSelectionToggle else {
+                    { onClick(coverCoordinates[0]?.boundsInRoot()) }
+                },
                 onLongClick = if (isEditing) null else {
                     {
                         onHaptic()

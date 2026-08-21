@@ -50,6 +50,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
+import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
+import com.huangder.lumibooks.ui.animation.LumiMotion
 import com.kyant.backdrop.Backdrop
 import kotlin.math.roundToInt
 
@@ -95,6 +97,7 @@ fun LiquidGlassMenuHost(
     content: @Composable BoxScope.() -> Unit
 ) {
     val hostState = remember { LiquidGlassMenuHostState() }
+    val motionEnabled = LocalMotionEnabled.current
     val visibility = remember { MutableTransitionState(false) }
     var displayedMenu by remember { mutableStateOf<LiquidGlassMenuSpec?>(null) }
     val activeMenu = hostState.activeMenu
@@ -170,16 +173,24 @@ fun LiquidGlassMenuHost(
                                 IntOffset(menuX.roundToInt(), menuY.roundToInt())
                             }
                             .width(menu.width),
-                        enter = fadeIn(tween(90)) + scaleIn(
-                            initialScale = 0.88f,
-                            transformOrigin = TransformOrigin(1f, 0f),
-                            animationSpec = spring(dampingRatio = 0.74f, stiffness = 310f)
-                        ),
-                        exit = fadeOut(tween(100)) + scaleOut(
-                            targetScale = 0.92f,
-                            transformOrigin = TransformOrigin(1f, 0f),
-                            animationSpec = tween(120)
-                        )
+                        enter = if (!motionEnabled) {
+                            fadeIn(tween(LumiMotion.MenuEnterMillis))
+                        } else {
+                            fadeIn(tween(LumiMotion.MenuEnterMillis)) + scaleIn(
+                                initialScale = 0.88f,
+                                transformOrigin = TransformOrigin(1f, 0f),
+                                animationSpec = spring(dampingRatio = 0.74f, stiffness = 310f)
+                            )
+                        },
+                        exit = if (!motionEnabled) {
+                            fadeOut(tween(LumiMotion.MenuExitMillis))
+                        } else {
+                            fadeOut(tween(LumiMotion.MenuExitMillis)) + scaleOut(
+                                targetScale = 0.92f,
+                                transformOrigin = TransformOrigin(1f, 0f),
+                                animationSpec = tween(LumiMotion.MenuExitMillis)
+                            )
+                        }
                     ) {
                         AnchoredLiquidGlassMenu(menu, hostState, backdrop)
                     }

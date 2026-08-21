@@ -133,6 +133,39 @@ class TxtParserTest {
     }
 
     @Test
+    fun combinesDecoratedPreludeWithMixedNumberedChapterFormats() {
+        val text = buildString {
+            for (chapter in 1..119) {
+                append('<').append("前篇").append(chapter).append(">\n")
+                append("这里是前篇").append(chapter).append("的正文\n")
+                if (chapter == 35) {
+                    append("<前篇35>\n")
+                    append("ⓒ 作者\n")
+                }
+            }
+            append("第120话 特别诱饵（3）\n这里是第一百二十章的正文\n")
+            append("第121话 清洗还是水清洗（1）\n这里是第一百二十一章的正文\n")
+            append("第122话：清洗还是水清洗（2）\n这里是第一百二十二章的正文\n")
+            append("第123话：清洗还是水清洗（3）\n这里是第一百二十三章的正文\n\n")
+            append("海贼王124：清洁的终结\n\n这里是第一百二十四章的正文\n")
+            append("第125章 艾琳（1）\n这里是第一百二十五章的正文\n")
+            append("第126话 艾琳（2）\n这里是第一百二十六章的正文")
+        }
+        val file = writeText("mixed-chapter-headings.txt", text, Charsets.UTF_8)
+        val parser = TxtParser()
+
+        val book = parser.parse(file.absolutePath)
+
+        assertEquals(126, book.chapters.size)
+        assertEquals("<前篇1>", book.chapters[0].title)
+        assertEquals("<前篇119>", book.chapters[118].title)
+        assertEquals("第120话 特别诱饵（3）", book.chapters[119].title)
+        assertEquals("海贼王124：清洁的终结", book.chapters[123].title)
+        assertEquals("第125章 艾琳（1）", book.chapters[124].title)
+        assertTrue(parser.getChapterContent(123).contains("第一百二十四章的正文"))
+    }
+
+    @Test
     fun escapesHtmlOnDemand() {
         val file = writeText("escape.txt", "A & B < C > D", Charsets.UTF_8)
         val parser = TxtParser()

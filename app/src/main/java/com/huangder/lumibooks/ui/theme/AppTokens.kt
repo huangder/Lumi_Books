@@ -19,8 +19,23 @@ val LocalUseMaterial3Theme = staticCompositionLocalOf { false }
 val LocalAppTheme = staticCompositionLocalOf { "lumi" }
 val LocalLiquidGlassTransparency = staticCompositionLocalOf { 0.55f }
 val LocalLiquidGlassHdrHighlightEnabled = staticCompositionLocalOf { false }
+val LocalLiquidGlassCapability = staticCompositionLocalOf {
+    LiquidGlassCapability(supported = false, hdrSupported = false)
+}
 val LocalEInkMode = staticCompositionLocalOf { false }
 val LocalMotionEnabled = staticCompositionLocalOf { true }
+
+enum class MotionPreference {
+    STANDARD,
+    REDUCED;
+
+    companion object {
+        fun fromStoredValue(value: String?): MotionPreference =
+            if (value == "reduced") REDUCED else STANDARD
+    }
+}
+
+val LocalMotionPreference = staticCompositionLocalOf { MotionPreference.STANDARD }
 
 object GlobalFontMode {
     const val DEFAULT = "default"
@@ -125,9 +140,10 @@ object AppSpace {
 // ─── 圆角 ───
 object AppRadius {
     val sm = 8.dp
-    val md = 12.dp
-    val lg = 16.dp
-    val xl = 20.dp
+    // Softer card corners without turning compact controls into pills.
+    val md = 14.dp
+    val lg = 18.dp
+    val xl = 22.dp
     val full = 999.dp
     val capsule = 28.dp
 }

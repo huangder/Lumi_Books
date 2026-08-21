@@ -52,6 +52,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -89,6 +90,8 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
+import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
+import com.huangder.lumibooks.ui.theme.effectiveAppTheme
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
@@ -114,7 +117,7 @@ class BookshelfCategoriesActivity : ComponentActivity() {
 
         setContent {
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = "lumi")
-            val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = "default")
+            val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = "system")
             val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = 0.55f)
             val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = false)
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
@@ -125,7 +128,8 @@ class BookshelfCategoriesActivity : ComponentActivity() {
                 "light" -> false
                 else -> systemDarkMode
             }
-            val effectiveTheme = if (eInkMode && appTheme == "liquid_glass") "lumi" else appTheme
+            val capability = rememberLiquidGlassCapability(eInkMode, LocalView.current)
+            val effectiveTheme = effectiveAppTheme(appTheme, capability)
             EBookReaderTheme(
                 darkTheme = isDark,
                 dynamicColor = effectiveTheme == "material3",
@@ -496,7 +500,7 @@ private fun CategoryBooksPage(
                     }
                 },
                 onExpandedBookChange = { expandedListBookId = it },
-                onBookClick = onOpenBook,
+                onBookClick = { book, _ -> onOpenBook(book) },
                 onAddBook = {},
                 onEditInfo = { editingBook = it },
                 onDelete = {

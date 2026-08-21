@@ -60,10 +60,11 @@ data class SettingsUiState(
 
     // 显示与外观
     val appTheme: String = "lumi",         // "lumi" / "material3" / "liquid_glass"
-    val globalFontMode: String = "default", // "default" / "system"
+    val globalFontMode: String = "system", // "default" / "system"
     val liquidGlassTransparency: Float = 0.55f,
     val liquidGlassHdrHighlightEnabled: Boolean = false,
     val darkMode: String = "system",       // "system" / "light" / "dark"
+    val motionPreference: String = "standard", // "standard" / "reduced"
     val entranceAnimationsEnabled: Boolean = true,
     val eInkModeEnabled: Boolean = false,
     val twoPageSpreadEnabled: Boolean = true,
@@ -101,5 +102,14 @@ data class SettingsUiState(
     val isWebdavSyncing: Boolean = false,
 
     // 检查更新
-    val updateCheck: UpdateCheckDisplay = UpdateCheckDisplay()
+    val updateCheck: UpdateCheckDisplay = UpdateCheckDisplay(),
+
+    // 阅读设置扩展
+    val customHighlightColors: List<String> = emptyList(),
+    val customHighlightPalettes: List<com.huangder.lumibooks.domain.model.HighlightPalette> = emptyList(),
+    val activeHighlightPaletteId: String? = null,
+    val ttsFloatingWindow: Boolean = true,
+    val preferredTtsEngine: String? = null,
+    val bodyFontWeight: Int = 400,
+    val applyToBodyOnly: Boolean = false
 )

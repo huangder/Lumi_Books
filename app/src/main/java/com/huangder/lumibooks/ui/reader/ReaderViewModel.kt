@@ -2470,6 +2470,15 @@ class ReaderViewModel @Inject constructor(
                 if (writeVersion == progressWriteVersion) saveProgressFor(state)
             }
         }
+        viewModelScope.launch {
+            combine(
+                dataStoreManager.customHighlightPalettes,
+                dataStoreManager.activeHighlightPaletteId
+            ) { palettes, activeId -> palettes to activeId }
+                .collectLatest { (palettes, activeId) ->
+                    updateHighlightPalettes(palettes, activeId)
+                }
+        }
     }
 
     /**

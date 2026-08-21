@@ -13,5 +13,6 @@ data class TagEntity(
     val id: String,
     val name: String,
     val normalizedName: String,
-    val createdAt: Long
+    val createdAt: Long,
+    val parentId: String? = null
 )

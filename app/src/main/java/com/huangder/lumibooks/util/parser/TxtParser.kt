@@ -31,6 +31,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
     )
 
     private data class Heading(val title: String, val startByte: Long)
+    private data class NumberedHeading(val heading: Heading, val number: Int)
     private data class ByteRange(val startByte: Long, val endByte: Long)
     private data class EncodingInfo(val charset: Charset, val contentStart: Long)
 
@@ -299,19 +300,97 @@ class TxtParser(private val context: Context? = null) : BookParser {
     private fun findChapterHeadings(file: File, encoding: EncodingInfo): List<Heading> {
         // 一次扫描同时匹配所有模式，避免对大文件重复全文扫描（原来最多 5 次）
         val matchesByPattern = Array(CHAPTER_PATTERNS.size) { mutableListOf<Heading>() }
+        val decoratedHeadings = mutableListOf<Heading>()
+        val looseNumberedHeadings = mutableListOf<NumberedHeading>()
+        var pendingDecoratedHeading: Heading? = null
+        var pendingLooseNumberedHeading: NumberedHeading? = null
+        var previousLineWasBlank = true
         forEachLinePrefix(file, encoding, encoding.contentStart, file.length()) { start, _, prefix ->
             // 🔥 同时 trim 首尾：中文TXT常见全角空格缩进如「　　第一章」
             // 原来只 trimEnd 导致 ^ 锚定失败，触发 fallback 用正文首行当标题
             val line = prefix.trim()
+            pendingDecoratedHeading?.let { pending ->
+                if (line.isNotEmpty()) {
+                    if (!COPYRIGHT_LINE_PATTERN.containsMatchIn(line)) {
+                        decoratedHeadings += pending
+                    }
+                    pendingDecoratedHeading = null
+                }
+            }
+            pendingLooseNumberedHeading?.let { pending ->
+                if (line.isEmpty()) {
+                    looseNumberedHeadings += pending
+                }
+                pendingLooseNumberedHeading = null
+            }
+
+            if (DECORATED_HEADING_PATTERN.matches(line)) {
+                pendingDecoratedHeading = Heading(line.take(50), start)
+            }
+
+            var matchedStrictPattern = false
             for (i in CHAPTER_PATTERNS.indices) {
                 if (CHAPTER_PATTERNS[i].containsMatchIn(line)) {
                     matchesByPattern[i] += Heading(line.take(50), start)
+                    matchedStrictPattern = true
                     break
                 }
             }
+            if (!matchedStrictPattern && previousLineWasBlank) {
+                LOOSE_NUMBERED_HEADING_PATTERN.matchEntire(line)?.let { match ->
+                    val number = match.groupValues[1].toIntOrNull()
+                    if (number != null) {
+                        pendingLooseNumberedHeading = NumberedHeading(
+                            heading = Heading(line.take(50), start),
+                            number = number
+                        )
+                    }
+                }
+            }
+            previousLineWasBlank = line.isEmpty()
         }
+        pendingDecoratedHeading?.let(decoratedHeadings::add)
+
         // 数字加顿号/空格更常见于正文清单，不能作为通用章节规则。
-        return matchesByPattern.firstOrNull { it.size >= 2 } ?: emptyList()
+        val primaryHeadings = matchesByPattern.firstOrNull { it.size >= 2 } ?: return emptyList()
+        val headingsWithFilledGaps = fillSingleNumberGaps(primaryHeadings, looseNumberedHeadings)
+        val firstNumber = extractArabicChapterNumber(headingsWithFilledGaps.first().title)
+        val decoratedPrelude = decoratedHeadings.filter {
+            it.startByte < headingsWithFilledGaps.first().startByte
+        }
+        return if (firstNumber != null && firstNumber > 1 && decoratedPrelude.size == firstNumber - 1) {
+            decoratedPrelude + headingsWithFilledGaps
+        } else {
+            headingsWithFilledGaps
+        }
+    }
+
+    private fun fillSingleNumberGaps(
+        headings: List<Heading>,
+        looseNumberedHeadings: List<NumberedHeading>
+    ): List<Heading> {
+        if (headings.size < 2 || looseNumberedHeadings.isEmpty()) return headings
+        return buildList {
+            headings.zipWithNext().forEach { (current, next) ->
+                add(current)
+                val currentNumber = extractArabicChapterNumber(current.title) ?: return@forEach
+                val nextNumber = extractArabicChapterNumber(next.title) ?: return@forEach
+                if (nextNumber != currentNumber + 2) return@forEach
+
+                val expectedNumber = currentNumber + 1
+                val candidates = looseNumberedHeadings.filter { candidate ->
+                    candidate.number == expectedNumber &&
+                        candidate.heading.startByte > current.startByte &&
+                        candidate.heading.startByte < next.startByte
+                }
+                if (candidates.size == 1) add(candidates.single().heading)
+            }
+            add(headings.last())
+        }
+    }
+
+    private fun extractArabicChapterNumber(title: String): Int? {
+        return ARABIC_CHAPTER_NUMBER_PATTERN.find(title)?.groupValues?.get(1)?.toIntOrNull()
     }
 
     private fun buildHeadingEntries(
@@ -902,7 +981,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
     }
 
     private companion object {
-        const val CACHE_VERSION = "TXT_INDEX_V4"  // V4: reject late numeric lists as false chapter indexes
+        const val CACHE_VERSION = "TXT_INDEX_V5"  // V5: support mixed-format chapter sequences
         const val STREAM_BUFFER_SIZE = 64 * 1024
         const val HEADING_PREFIX_BYTES = 512
         const val TITLE_PREFIX_BYTES = 512
@@ -920,11 +999,15 @@ class TxtParser(private val context: Context? = null) : BookParser {
         }
 
         val CHAPTER_PATTERNS = listOf(
-            Regex("^第[一二三四五六七八九十百千零\\d]+[章节回卷]"),
+            Regex("^第[一二三四五六七八九十百千零\\d]+[章节回卷话]"),
             Regex("^[卷篇][一二三四五六七八九十百千零\\d]+[章回]?"),
             Regex("^Chapter\\s+\\d+", RegexOption.IGNORE_CASE),
             Regex("^[一二三四五六七八九十百千零〇两]+$"),
             Regex("^第\\d+章")
         )
+        val DECORATED_HEADING_PATTERN = Regex("^<[^<>\\r\\n]{1,48}>$")
+        val COPYRIGHT_LINE_PATTERN = Regex("^(?:ⓒ|\u00a9|版权)", RegexOption.IGNORE_CASE)
+        val LOOSE_NUMBERED_HEADING_PATTERN = Regex("^\\D{1,12}?(\\d{1,5})\\s*[：:]\\s*\\S.{0,40}$")
+        val ARABIC_CHAPTER_NUMBER_PATTERN = Regex("^第(\\d{1,5})[章节回卷话]")
     }
 }

@@ -128,6 +128,7 @@ android_books/
 │   ├── technical-spec.md       # 技术规范
 │   ├── design-spec.md          # 设计规范
 │   ├── ui-design-spec.md       # UI 设计实现
+│   ├── lumi-ui-motion-design-system.md # 现行 UI 与动效规范
 │   ├── project-status.md       # 项目状态
 │   ├── development-plan.md     # 开发计划
 │   └── CHANGELOG.md            # 更新日志（v1.0.01.124）
@@ -205,6 +206,7 @@ Release 构建需要在 `app/` 下放置 `keystore.properties` 或在 `build.gra
 | 技术规范 | [devdocs/technical-spec.md](devdocs/technical-spec.md) |
 | 设计规范 | [devdocs/design-spec.md](devdocs/design-spec.md) |
 | UI 设计实现 | [devdocs/ui-design-spec.md](devdocs/ui-design-spec.md) |
+| 现行 UI 与动效规范 | [devdocs/lumi-ui-motion-design-system.md](devdocs/lumi-ui-motion-design-system.md) |
 | 项目状态 | [devdocs/project-status.md](devdocs/project-status.md) |
 | 开发计划 | [devdocs/development-plan.md](devdocs/development-plan.md) |
 | 开发日志 | [devlog/](devlog/) |

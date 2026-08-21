@@ -82,9 +82,6 @@ fun LiquidGlassIconButton(
         },
         enabled = enabled,
         onClick = onClick,
-        // The settings back button fills the whole circular bounds. Padding here leaves a
-        // transparent annulus around its surface, which reads as a grey/uneven outline.
-        effectPadding = if (settingsBackButton) 0.dp else 2.dp,
         modifier = resolvedModifier.size(size)
     ) {
         Icon(

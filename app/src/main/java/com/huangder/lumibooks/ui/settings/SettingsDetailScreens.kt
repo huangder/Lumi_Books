@@ -11,6 +11,8 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.animateContentSize
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -18,6 +20,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
@@ -36,9 +39,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Brightness6
 import androidx.compose.material.icons.outlined.Animation
 import androidx.compose.material.icons.outlined.Code
@@ -48,6 +53,10 @@ import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.FontDownload
 import androidx.compose.material.icons.outlined.FormatSize
+import androidx.compose.material.icons.outlined.FormatBold
+import androidx.compose.material.icons.outlined.RecordVoiceOver
+import androidx.compose.material.icons.outlined.Subtitles
+import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material.icons.outlined.GroupAdd
 import androidx.compose.material.icons.outlined.HdrOn
 import androidx.compose.material.icons.outlined.Info
@@ -70,13 +79,19 @@ import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material.icons.outlined.SystemUpdateAlt
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -86,6 +101,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -95,6 +112,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
 import com.huangder.lumibooks.R
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalContext
@@ -109,6 +127,10 @@ import com.huangder.lumibooks.ui.theme.fangSongFamily
 import com.huangder.lumibooks.ui.components.LiquidGlassSwitch
 import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
+import com.huangder.lumibooks.ui.components.LiquidGlassDialog
+import com.huangder.lumibooks.ui.components.LiquidGlassSurface
+import com.huangder.lumibooks.ui.components.LiquidGlassButton
+import com.huangder.lumibooks.ui.components.G2ContinuousCornerShape
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
 import com.huangder.lumibooks.ui.components.AppUpdateDialog
@@ -119,6 +141,8 @@ import com.huangder.lumibooks.ui.components.LiquidGlassMenuItem
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuSpec
 import com.huangder.lumibooks.ui.components.LocalLiquidGlassMenuHost
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.domain.model.HighlightPalette
+import com.huangder.lumibooks.ui.theme.LocalLiquidGlassCapability
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
@@ -129,6 +153,7 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 fun DetailPage(title: String, onBack: () -> Unit, content: @Composable () -> Unit) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val pageBackdrop = rememberLayerBackdrop()
+    val controlsBackdrop = rememberLayerBackdrop()
 
     LiquidGlassMenuHost(
         modifier = Modifier
@@ -145,7 +170,13 @@ fun DetailPage(title: String, onBack: () -> Unit, content: @Composable () -> Uni
                 .fillMaxSize()
                 .then(if (isLiquidGlass) Modifier.layerBackdrop(pageBackdrop) else Modifier)
         ) {
-        ProvideLiquidGlassBackdrop(null) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .then(if (isLiquidGlass) Modifier.layerBackdrop(controlsBackdrop) else Modifier)
+                .background(AppColors.WindowBg)
+        )
+        ProvideLiquidGlassBackdrop(controlsBackdrop.takeIf { isLiquidGlass }) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -195,6 +226,263 @@ fun DetailPage(title: String, onBack: () -> Unit, content: @Composable () -> Uni
 @Composable
 fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+
+    DetailCard {
+        // 正文字重
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Outlined.FormatBold,
+                contentDescription = null,
+                tint = AppColors.TextSecondary,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(Modifier.width(AppSpace.md))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.body_font_weight),
+                    fontSize = AppType.Body,
+                    color = AppColors.TextPrimary
+                )
+                Text(
+                    stringResource(R.string.body_font_weight_desc),
+                    fontSize = AppType.Caption,
+                    color = AppColors.TextSecondary
+                )
+            }
+            LiquidGlassSwitch(
+                checked = uiState.bodyFontWeight >= 600,
+                onCheckedChange = {
+                    viewModel.saveBodyFontWeight(if (it) 700 else 400)
+                }
+            )
+        }
+    }
+
+    Spacer(Modifier.height(12.dp))
+
+    DetailCard {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable {
+                    context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "highlight_color"))
+                }
+                .padding(AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Outlined.Palette,
+                contentDescription = null,
+                tint = AppColors.TextSecondary,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(Modifier.width(AppSpace.md))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.highlight_color_palette),
+                    fontSize = AppType.Body,
+                    color = AppColors.TextPrimary
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    stringResource(R.string.highlight_color_palette_desc),
+                    fontSize = AppType.Caption,
+                    color = AppColors.TextSecondary
+                )
+            }
+            Icon(Icons.Outlined.ChevronRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+        }
+    }
+
+    Spacer(Modifier.height(12.dp))
+
+    // 听书悬浮窗开关
+    DetailCard {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Outlined.Subtitles,
+                contentDescription = null,
+                tint = AppColors.TextSecondary,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(Modifier.width(AppSpace.md))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.tts_floating_toggle),
+                    fontSize = AppType.Body,
+                    color = AppColors.TextPrimary
+                )
+                Text(
+                    stringResource(R.string.tts_floating_toggle_desc),
+                    fontSize = AppType.Caption,
+                    color = AppColors.TextSecondary
+                )
+            }
+            LiquidGlassSwitch(
+                checked = uiState.ttsFloatingWindow,
+                onCheckedChange = { viewModel.saveTtsFloatingWindow(it) }
+            )
+        }
+    }
+
+    Spacer(Modifier.height(12.dp))
+
+    // 语音引擎选择
+    val installedEngines = remember { viewModel.getInstalledTtsEngines() }
+    val selectedEngineLabel = installedEngines.find { it.first == uiState.preferredTtsEngine }?.second
+        ?: stringResource(R.string.tts_engine_system_default)
+    var showEngineDialog by remember { mutableStateOf(false) }
+    DetailCard {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { showEngineDialog = true }
+                .padding(AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Outlined.RecordVoiceOver,
+                contentDescription = null,
+                tint = AppColors.TextSecondary,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(Modifier.width(AppSpace.md))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.tts_engine_selection),
+                    fontSize = AppType.Body,
+                    color = AppColors.TextPrimary
+                )
+                Text(
+                    selectedEngineLabel,
+                    fontSize = AppType.Caption,
+                    color = AppColors.TextSecondary
+                )
+            }
+            Icon(Icons.Outlined.ChevronRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+        }
+    }
+    if (showEngineDialog) {
+        AlertDialog(
+            onDismissRequest = { showEngineDialog = false },
+            title = { Text(stringResource(R.string.tts_engine_select_dialog_title)) },
+            text = {
+                Column {
+                    // 系统默认选项
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                viewModel.savePreferredTtsEngine(null)
+                                showEngineDialog = false
+                            }
+                            .padding(vertical = 12.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = uiState.preferredTtsEngine == null,
+                            onClick = {
+                                viewModel.savePreferredTtsEngine(null)
+                                showEngineDialog = false
+                            }
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            stringResource(R.string.tts_engine_system_default),
+                            fontSize = AppType.Body,
+                            color = AppColors.TextPrimary
+                        )
+                    }
+                    // 已安装引擎列表
+                    installedEngines.forEach { (pkg, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.savePreferredTtsEngine(pkg)
+                                    showEngineDialog = false
+                                }
+                                .padding(vertical = 12.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = uiState.preferredTtsEngine == pkg,
+                                onClick = {
+                                    viewModel.savePreferredTtsEngine(pkg)
+                                    showEngineDialog = false
+                                }
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                label,
+                                fontSize = AppType.Body,
+                                color = AppColors.TextPrimary
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showEngineDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    Spacer(Modifier.height(12.dp))
+
+    // 排版作用范围
+    DetailCard {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Outlined.TextFields,
+                contentDescription = null,
+                tint = AppColors.TextSecondary,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(Modifier.width(AppSpace.md))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.apply_to_body_only),
+                    fontSize = AppType.Body,
+                    color = AppColors.TextPrimary
+                )
+                Text(
+                    stringResource(R.string.apply_to_body_only_desc),
+                    fontSize = AppType.Caption,
+                    color = AppColors.TextSecondary
+                )
+            }
+            Spacer(Modifier.width(AppSpace.sm))
+            LiquidGlassSwitch(
+                checked = uiState.applyToBodyOnly,
+                onCheckedChange = { viewModel.saveApplyToBodyOnly(it) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReadingSettingsBasicDetail(viewModel: SettingsViewModel) {
+    val uiState by viewModel.uiState.collectAsState()
 
     DetailCard {
         SettingsSliderItem(Icons.Outlined.FormatSize, stringResource(R.string.label_font_size), uiState.fontSize, 12f..28f, "${uiState.fontSize.toInt()} sp", step = 1f) { viewModel.saveFontSize(it) }
@@ -216,10 +504,12 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
 @Composable
 fun DisplayDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
+    val liquidGlassCapability = LocalLiquidGlassCapability.current
+    val liquidGlassSupported = liquidGlassCapability.supported
     val appThemeOptions = listOf(
         "lumi" to stringResource(R.string.app_theme_lumi),
         "material3" to stringResource(R.string.app_theme_material3)
-    ) + if (uiState.eInkModeEnabled) {
+    ) + if (uiState.eInkModeEnabled || !liquidGlassSupported) {
         emptyList()
     } else {
         listOf("liquid_glass" to stringResource(R.string.app_theme_liquid_glass))
@@ -253,7 +543,9 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
             icon = Icons.Outlined.Palette,
             label = stringResource(R.string.label_app_theme),
             options = appThemeOptions,
-            selected = if (uiState.eInkModeEnabled && uiState.appTheme == "liquid_glass") "lumi" else uiState.appTheme,
+            selected = if (
+                (uiState.eInkModeEnabled || !liquidGlassSupported) && uiState.appTheme == "liquid_glass"
+            ) "lumi" else uiState.appTheme,
             onSelect = viewModel::saveAppTheme
         )
         SettingsDivider()
@@ -342,7 +634,7 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
 
 
     AnimatedVisibility(
-        visible = uiState.appTheme == "liquid_glass" && !uiState.eInkModeEnabled,
+        visible = uiState.appTheme == "liquid_glass" && !uiState.eInkModeEnabled && liquidGlassSupported,
         enter = expandVertically(animationSpec = tween(260)) +
             slideInVertically(animationSpec = tween(260)) { it / 3 } +
             fadeIn(animationSpec = tween(180)),
@@ -364,30 +656,32 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
                         onDragChange = viewModel::previewLiquidGlassTransparency,
                         onChange = viewModel::saveLiquidGlassTransparency
                     )
-                    SettingsDivider()
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = AppSpace.md, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Outlined.HdrOn,
-                            contentDescription = null,
-                            tint = AppColors.TextSecondary,
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Spacer(Modifier.width(AppSpace.md))
-                        Text(
-                            stringResource(R.string.liquid_glass_hdr_highlight),
-                            fontSize = AppType.Body,
-                            color = AppColors.TextPrimary,
-                            modifier = Modifier.weight(1f)
-                        )
-                        LiquidGlassSwitch(
-                            checked = uiState.liquidGlassHdrHighlightEnabled,
-                            onCheckedChange = viewModel::saveLiquidGlassHdrHighlightEnabled
-                        )
+                    if (liquidGlassCapability.hdrSupported) {
+                        SettingsDivider()
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = AppSpace.md, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Outlined.HdrOn,
+                                contentDescription = null,
+                                tint = AppColors.TextSecondary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(Modifier.width(AppSpace.md))
+                            Text(
+                                stringResource(R.string.liquid_glass_hdr_highlight),
+                                fontSize = AppType.Body,
+                                color = AppColors.TextPrimary,
+                                modifier = Modifier.weight(1f)
+                            )
+                            LiquidGlassSwitch(
+                                checked = uiState.liquidGlassHdrHighlightEnabled,
+                                onCheckedChange = viewModel::saveLiquidGlassHdrHighlightEnabled
+                            )
+                        }
                     }
                 }
             }
@@ -438,38 +732,16 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
     Spacer(Modifier.height(12.dp))
 
     DetailCard {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(AppSpace.md),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                Icons.Outlined.Animation,
-                contentDescription = null,
-                tint = AppColors.TextSecondary,
-                modifier = Modifier.size(22.dp)
-            )
-            Spacer(Modifier.width(AppSpace.md))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    stringResource(R.string.label_entrance_animations),
-                    fontSize = AppType.Body,
-                    color = AppColors.TextPrimary
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    stringResource(R.string.entrance_animations_description),
-                    fontSize = AppType.Caption,
-                    color = AppColors.TextSecondary
-                )
-            }
-            Spacer(Modifier.width(12.dp))
-            LiquidGlassSwitch(
-                checked = uiState.entranceAnimationsEnabled,
-                onCheckedChange = viewModel::saveEntranceAnimationsEnabled
-            )
-        }
+        DropdownSettingRow(
+            icon = Icons.Outlined.Animation,
+            label = stringResource(R.string.motion_preference_label),
+            options = listOf(
+                "standard" to stringResource(R.string.motion_preference_standard),
+                "reduced" to stringResource(R.string.motion_preference_reduced)
+            ),
+            selected = uiState.motionPreference,
+            onSelect = viewModel::saveMotionPreference
+        )
     }
 
     Spacer(Modifier.height(12.dp))
@@ -523,6 +795,377 @@ fun ReadingGoalDetail(viewModel: SettingsViewModel) {
 
     DetailCard {
         SettingsSliderItem(Icons.Outlined.Timer, stringResource(R.string.label_daily_goal), uiState.dailyGoal.toFloat(), 10f..120f, stringResource(R.string.goal_minutes, uiState.dailyGoal), steps = 21) { viewModel.saveDailyGoal(it.toInt()) }
+    }
+}
+
+// ─── 高亮颜色色卡 ────────────────────────────────────────────
+
+private val presetColorOptions = listOf(
+    "#D6C58D", "#CFA09A", "#A7B59D", "#9DAFC1", "#B2A198", "#AFB0AC",
+    "#FFD700", "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7",
+    "#DDA0DD", "#98D8C8", "#F7DC6F", "#BB8FCE", "#85C1E9", "#F8C471",
+    "#82E0AA", "#F1948A", "#AED6F1", "#D7BDE2", "#A3E4D7", "#FAD7A0",
+    "#E59866", "#ABEBC6", "#D5F5E3", "#FADBD8", "#D6EAF8", "#E8DAEF"
+)
+
+private val defaultHighlightColors = listOf(
+    "#D6C58D", "#CFA09A", "#A7B59D", "#9DAFC1", "#B2A198", "#AFB0AC"
+)
+
+@Composable
+fun HighlightColorDetail(viewModel: SettingsViewModel) {
+    val uiState by viewModel.uiState.collectAsState()
+    val palettes = remember { mutableStateListOf<HighlightPalette>() }
+    LaunchedEffect(uiState.customHighlightPalettes) {
+        if (palettes.toList() != uiState.customHighlightPalettes) {
+            palettes.clear()
+            palettes.addAll(uiState.customHighlightPalettes)
+        }
+    }
+    var showCreateDialog by remember { mutableStateOf(false) }
+    var paletteName by remember { mutableStateOf("") }
+    var colorTarget by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+
+    fun savePalettes() = viewModel.saveCustomHighlightPalettes(palettes.toList())
+
+    fun updateSlot(paletteIndex: Int, slotIndex: Int, hex: String) {
+        val palette = palettes.getOrNull(paletteIndex) ?: return
+        val updated = palette.normalizedColors.toMutableList().apply { this[slotIndex] = hex }
+        palettes[paletteIndex] = palette.copy(colors = updated)
+        savePalettes()
+    }
+
+    fun deletePalette(index: Int) {
+        val removed = palettes.removeAt(index)
+        if (uiState.activeHighlightPaletteId == removed.id) viewModel.saveActiveHighlightPalette(null)
+        savePalettes()
+    }
+
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val g2CardShape = remember(density) {
+        G2ContinuousCornerShape(with(density) { 26.dp.toPx() })
+    }
+
+    Column(Modifier.fillMaxWidth().padding(vertical = AppSpace.sm)) {
+        DetailCard {
+            Column(Modifier.padding(AppSpace.md)) {
+                Text(
+                    stringResource(R.string.highlight_color_palette_tip),
+                    fontSize = AppType.BodySmall,
+                    color = AppColors.TextSecondary
+                )
+            }
+        }
+        Spacer(Modifier.height(AppSpace.sm))
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = AppSpace.md)
+                .animateContentSize(animationSpec = tween(360))
+                .background(AppColors.CardBg, g2CardShape)
+        ) {
+            Column(Modifier.padding(AppSpace.md)) {
+                Text(
+                    stringResource(R.string.highlight_all_palettes),
+                    fontSize = AppType.Section,
+                    fontWeight = FontWeight.Bold,
+                    color = AppColors.TextPrimary
+                )
+                Spacer(Modifier.height(AppSpace.md))
+
+                HighlightPaletteRow(
+                    palette = HighlightPalette(
+                        id = "default",
+                        name = stringResource(R.string.highlight_default_palette),
+                        colors = defaultHighlightColors
+                    ),
+                    selected = uiState.activeHighlightPaletteId == null,
+                    isDefault = true,
+                    shape = g2CardShape,
+                    onSelect = { viewModel.saveActiveHighlightPalette(null) },
+                    onSlotClick = {}
+                )
+
+                palettes.forEachIndexed { index, palette ->
+                    Spacer(Modifier.height(AppSpace.sm))
+                    HighlightPaletteRow(
+                        palette = palette,
+                        selected = uiState.activeHighlightPaletteId == palette.id,
+                        isDefault = false,
+                        shape = g2CardShape,
+                        onSelect = { viewModel.saveActiveHighlightPalette(palette.id) },
+                        onSlotClick = { slot -> colorTarget = index to slot },
+                        onDelete = { deletePalette(index) }
+                    )
+                }
+
+                Spacer(Modifier.height(AppSpace.lg))
+                LiquidGlassButton(
+                    onClick = {
+                        paletteName = ""
+                        showCreateDialog = true
+                    },
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = g2CardShape,
+                    tintedColor = AppColors.Accent,
+                    prominentShadow = true,
+                    contentColor = AppColors.OnAccent
+                ) {
+                    Icon(Icons.Outlined.Add, null, modifier = Modifier.size(18.dp), tint = Color.White)
+                    Spacer(Modifier.width(AppSpace.sm))
+                    Text(
+                        stringResource(R.string.highlight_create_palette),
+                        color = Color.White,
+                        fontSize = AppType.BodySmall
+                    )
+                }
+            }
+        }
+    }
+
+    if (showCreateDialog) {
+        LiquidGlassDialog(
+            onDismissRequest = { showCreateDialog = false },
+            backgroundScrimColor = Color.Black.copy(alpha = 0.20f),
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            com.huangder.lumibooks.ui.components.EditInputDialog(
+                title = stringResource(R.string.highlight_create_palette),
+                fields = listOf(
+                    Triple(
+                        stringResource(R.string.highlight_palette_name),
+                        stringResource(R.string.highlight_palette_name_hint),
+                        paletteName
+                    )
+                ),
+                onBack = { showCreateDialog = false },
+                onConfirm = { values ->
+                    val name = values.firstOrNull()?.trim().orEmpty()
+                    if (name.isNotBlank()) {
+                        val palette = HighlightPalette(name = name)
+                        palettes.add(palette)
+                        savePalettes()
+                        viewModel.saveActiveHighlightPalette(palette.id)
+                        showCreateDialog = false
+                    }
+                }
+            )
+        }
+    }
+
+    colorTarget?.let { (paletteIndex, slotIndex) ->
+        HighlightPaletteColorDialog(
+            onDismiss = { colorTarget = null },
+            onColorSelected = { hex ->
+                updateSlot(paletteIndex, slotIndex, hex)
+                colorTarget = null
+            }
+        )
+    }
+}
+
+@Composable
+private fun HighlightPaletteRow(
+    palette: HighlightPalette,
+    selected: Boolean,
+    isDefault: Boolean,
+    shape: androidx.compose.ui.graphics.Shape,
+    onSelect: () -> Unit,
+    onSlotClick: (Int) -> Unit,
+    onDelete: () -> Unit = {}
+) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val revealWidth = with(density) { 72.dp.toPx() }
+    var dragOffset by remember(palette.id) { mutableFloatStateOf(0f) }
+    var isDragging by remember(palette.id) { mutableStateOf(false) }
+    fun resistedOffset(rawOffset: Float): Float {
+        fun rubberBand(distance: Float): Float {
+            val resisted = revealWidth * (1f - 1f / (1f + distance * 0.70f / revealWidth))
+            return resisted.coerceAtMost(with(density) { 14.dp.toPx() })
+        }
+        return when {
+            rawOffset < -revealWidth -> -revealWidth - rubberBand(-revealWidth - rawOffset)
+            rawOffset > 0f -> rubberBand(rawOffset)
+            else -> rawOffset
+        }
+    }
+    val visualTarget = if (isDragging) resistedOffset(dragOffset) else dragOffset
+    val animatedOffset by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = visualTarget,
+        animationSpec = if (isDragging) androidx.compose.animation.core.snap()
+        else spring(dampingRatio = 0.62f, stiffness = 360f),
+        label = "paletteReveal"
+    )
+    val currentAnimatedOffset = androidx.compose.runtime.rememberUpdatedState(animatedOffset)
+    val revealProgress = (-animatedOffset / revealWidth).coerceIn(0f, 1f)
+    val deleteButtonTravel = with(density) { 35.dp.toPx() }
+
+    Box(Modifier.fillMaxWidth().height(70.dp)) {
+        if (!isDefault) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 12.dp)
+                    .size(46.dp)
+                    .graphicsLayer {
+                        alpha = revealProgress
+                        translationX = deleteButtonTravel * (1f - revealProgress)
+                    }
+                    .clip(CircleShape)
+                    .background(AppColors.Accent.copy(alpha = 0.88f)),
+                contentAlignment = Alignment.Center
+            ) {
+                IconButton(onClick = onDelete, modifier = Modifier.fillMaxSize()) {
+                    Icon(
+                        Icons.Outlined.DeleteForever,
+                        stringResource(R.string.highlight_palette_delete),
+                        tint = AppColors.OnAccent,
+                        modifier = Modifier.size(19.dp)
+                    )
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { translationX = if (isDefault) 0f else animatedOffset }
+                .clip(shape)
+                .background(AppColors.BgGray)
+                .then(if (selected) Modifier.border(1.5.dp, AppColors.Accent, shape) else Modifier)
+                .pointerInput(revealWidth, isDefault) {
+                    if (!isDefault) {
+                        detectHorizontalDragGestures(
+                            onDragStart = {
+                                dragOffset = currentAnimatedOffset.value
+                                isDragging = true
+                            },
+                            onHorizontalDrag = { change, dragAmount ->
+                                change.consume()
+                                dragOffset += dragAmount
+                            },
+                            onDragEnd = {
+                                dragOffset = if (resistedOffset(dragOffset) < -revealWidth * 0.35f) -revealWidth else 0f
+                                isDragging = false
+                            },
+                            onDragCancel = {
+                                dragOffset = 0f
+                                isDragging = false
+                            }
+                        )
+                    }
+                }
+                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onSelect() }
+                .padding(horizontal = AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                palette.normalizedColors.forEachIndexed { index, hex ->
+                    HighlightPaletteSlot(hex, !isDefault) { onSlotClick(index) }
+                }
+            }
+            Spacer(Modifier.width(AppSpace.sm))
+            Text(
+                palette.name,
+                fontSize = AppType.Body,
+                color = AppColors.TextSecondary,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun HighlightPaletteSlot(hex: String?, enabled: Boolean, onClick: () -> Unit) {
+    val color = hex?.let { runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull() }
+    Box(
+        modifier = Modifier
+            .size(28.dp)
+            .clip(CircleShape)
+            .then(
+                if (color != null) Modifier.background(color).border(1.dp, AppColors.Divider, CircleShape)
+                else Modifier.border(1.5.dp, AppColors.TextSecondary.copy(alpha = 0.42f), CircleShape)
+            )
+            .clickable(enabled = enabled, indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        if (color == null) {
+            Icon(Icons.Outlined.Add, stringResource(R.string.highlight_palette_set_color), tint = AppColors.TextSecondary.copy(alpha = 0.66f), modifier = Modifier.size(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun HighlightPaletteColorDialog(onDismiss: () -> Unit, onColorSelected: (String) -> Unit) {
+    var customHex by remember { mutableStateOf("") }
+    var customError by remember { mutableStateOf(false) }
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val shape = remember(density) { G2ContinuousCornerShape(with(density) { 30.dp.toPx() }) }
+    LiquidGlassDialog(
+        onDismissRequest = onDismiss,
+        backgroundScrimColor = Color.Black.copy(alpha = 0.20f),
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        LiquidGlassSurface(
+            shape = shape,
+            fallbackColor = AppColors.CardBg,
+            contentScrimColor = AppColors.CardBg.copy(alpha = 0.82f),
+            modifier = Modifier.fillMaxWidth().widthIn(max = 360.dp)
+        ) {
+            Column(Modifier.padding(AppSpace.lg)) {
+                Text(stringResource(R.string.highlight_palette_set_color), fontSize = AppType.Section, fontWeight = FontWeight.Bold, color = AppColors.TextPrimary)
+                Spacer(Modifier.height(AppSpace.md))
+                Text(stringResource(R.string.highlight_pick_preset), fontSize = AppType.BodySmall, color = AppColors.TextSecondary)
+                Spacer(Modifier.height(AppSpace.sm))
+                presetColorOptions.chunked(6).forEach { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        row.forEach { hex ->
+                            val color = runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrDefault(Color.Gray)
+                            Box(
+                                Modifier.size(36.dp).clip(CircleShape).background(color)
+                                    .border(1.dp, AppColors.Divider, CircleShape)
+                                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onColorSelected(hex) }
+                            )
+                        }
+                        repeat(6 - row.size) { Spacer(Modifier.size(36.dp)) }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+                Spacer(Modifier.height(AppSpace.sm))
+                OutlinedTextField(
+                    value = customHex,
+                    onValueChange = { customHex = it; customError = false },
+                    label = { Text(stringResource(R.string.highlight_color_hex), fontSize = AppType.Caption) },
+                    isError = customError,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = TextStyle(fontSize = AppType.BodySmall)
+                )
+                Spacer(Modifier.height(AppSpace.sm))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+                    LiquidGlassTextButton(
+                        text = stringResource(R.string.confirm),
+                        onClick = {
+                            val value = customHex.trim()
+                            if (value.matches(Regex("^#?[0-9A-Fa-f]{6}$"))) {
+                                onColorSelected(if (value.startsWith("#")) value else "#$value")
+                            } else {
+                                customError = true
+                            }
+                        },
+                        tintedColor = AppColors.Accent,
+                        contentColor = AppColors.OnAccent
+                    )
+                }
+            }
+        }
     }
 }
 

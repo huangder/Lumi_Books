@@ -70,6 +70,21 @@ class TtsEngine(
     private val _engineStatus = MutableStateFlow(TtsEngineStatus.UNINITIALIZED)
     val engineStatus: StateFlow<TtsEngineStatus> = _engineStatus.asStateFlow()
 
+    @Suppress("DEPRECATION")
+    fun getInstalledEngines(): List<Pair<String, String>> = runCatching {
+        val packageManager = appContext.packageManager
+        packageManager.queryIntentServices(Intent(TextToSpeech.Engine.INTENT_ACTION_TTS_SERVICE), 0)
+            .mapNotNull { info ->
+                val service = info.serviceInfo ?: return@mapNotNull null
+                service.packageName to runCatching { service.loadLabel(packageManager).toString() }
+                    .getOrDefault(service.packageName)
+            }
+            .distinctBy { it.first }
+    }.getOrElse { error ->
+        Log.w(TAG, "Unable to enumerate installed TTS engines", error)
+        emptyList()
+    }
+
     override suspend fun initialize(): Result<Unit> = initialize(Locale.getDefault())
 
     suspend fun initialize(locale: Locale = Locale.getDefault()): Result<Unit> = initializeMutex.withLock {

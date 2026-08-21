@@ -34,6 +34,9 @@ local.properties
 # Dev logs
 devlog/
 devdocs/
+!devdocs/
+devdocs/*
+!devdocs/lumi-ui-motion-design-system.md
 /test/
 
 # Window dumps

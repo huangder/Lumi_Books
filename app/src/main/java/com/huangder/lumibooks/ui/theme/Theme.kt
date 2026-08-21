@@ -111,11 +111,14 @@ fun EBookReaderTheme(
     liquidGlassHdrHighlightEnabled: Boolean = false,
     eInkMode: Boolean = false,
     globalFontMode: String = GlobalFontMode.DEFAULT,
+    motionPreference: MotionPreference = MotionPreference.STANDARD,
     content: @Composable () -> Unit
 ) {
     val effectiveDarkTheme = if (eInkMode) false else darkTheme
     val effectiveDynamicColor = if (eInkMode) false else dynamicColor
-    val effectiveAppTheme = if (eInkMode && appTheme == "liquid_glass") "lumi" else appTheme
+    val view = LocalView.current
+    val liquidGlassCapability = rememberLiquidGlassCapability(eInkMode, view)
+    val effectiveAppTheme = effectiveAppTheme(appTheme, liquidGlassCapability)
     val effectiveHdrHighlightEnabled = liquidGlassHdrHighlightEnabled && !eInkMode
 
     val colorScheme = when {
@@ -128,9 +131,8 @@ fun EBookReaderTheme(
         else -> LightColorScheme
     }
 
-    val view = LocalView.current
     val hdrHighlightRequested = effectiveAppTheme == "liquid_glass" && effectiveHdrHighlightEnabled
-    val hdrHighlightActive = hdrHighlightRequested && view.display?.isHdr == true
+    val hdrHighlightActive = hdrHighlightRequested && liquidGlassCapability.hdrSupported
     if (!view.isInEditMode) {
         SideEffect {
             val activity = view.context as? Activity ?: return@SideEffect
@@ -140,13 +142,15 @@ fun EBookReaderTheme(
             window.navigationBarColor = Color.Transparent.toArgb()
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !effectiveDarkTheme
             WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !effectiveDarkTheme
-            window.colorMode = if (hdrHighlightRequested) {
+            window.colorMode = if (hdrHighlightActive) {
                 ActivityInfo.COLOR_MODE_HDR
             } else {
                 ActivityInfo.COLOR_MODE_DEFAULT
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-                window.desiredHdrHeadroom = if (hdrHighlightRequested) 1.35f else 0f
+                // Request only a small HDR envelope for the pressed highlight. Large values
+                // make several OEMs tone-map the entire window and visibly dim SDR content.
+                window.desiredHdrHeadroom = if (hdrHighlightActive) 1.15f else 0f
             }
         }
     }
@@ -155,8 +159,10 @@ fun EBookReaderTheme(
         LocalIsDarkTheme provides effectiveDarkTheme,
         LocalUseMaterial3Theme provides effectiveDynamicColor,
         LocalAppTheme provides effectiveAppTheme,
+        LocalLiquidGlassCapability provides liquidGlassCapability,
         LocalEInkMode provides eInkMode,
-        LocalMotionEnabled provides !eInkMode,
+        LocalMotionEnabled provides (!eInkMode && motionPreference == MotionPreference.STANDARD),
+        LocalMotionPreference provides motionPreference,
         LocalGlobalFontMode provides GlobalFontMode.normalize(globalFontMode),
         LocalLiquidGlassTransparency provides liquidGlassTransparency.coerceIn(0f, 1f),
         LocalLiquidGlassHdrHighlightEnabled provides hdrHighlightActive
