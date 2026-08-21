@@ -359,6 +359,11 @@
     <string name="tts_stop">停止听书</string>
     <string name="tts_previous_sentence">上一句</string>
     <string name="tts_next_sentence">下一句</string>
+    <string name="tts_floating_channel">听书悬浮窗</string>
+    <string name="tts_floating_channel_desc">听书悬浮窗字幕通知</string>
+    <string name="tts_floating_notification_title">听书字幕</string>
+    <string name="tts_floating_notification_text">悬浮窗正在显示字幕</string>
+    <string name="tts_floating_loading">正在朗读...</string>
     <string name="tts_page_not_ready">当前页面尚未准备好</string>
     <string name="tts_no_readable_text">当前页面没有可朗读的文字</string>
     <string name="tts_unavailable">无法启动文字转语音，请检查系统语音引擎和语言数据</string>

@@ -32,6 +32,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.pm.PackageInfoCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.rememberNavController
 import com.huangder.lumibooks.data.local.DataStoreManager
@@ -40,6 +43,7 @@ import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.ui.navigation.MainNavGraph
 import com.huangder.lumibooks.tts.TtsController
+import com.huangder.lumibooks.tts.TtsPlaybackState
 import com.huangder.lumibooks.ui.splash.SplashScreen
 import com.huangder.lumibooks.ui.components.AppUpdateDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
@@ -303,6 +307,24 @@ class MainActivity : ComponentActivity() {
         // 启动时自动检查更新（静默执行，有变更时弹窗）
         performStartupUpdateCheck()
 
+        // 听书悬浮窗：退出应用到后台时显示，回到前台时隐藏
+        lifecycle.addObserver(object : LifecycleEventObserver {
+            override fun onStateChanged(source: LifecycleOwner, event: Lifecycle.Event) {
+                when (event) {
+                    Lifecycle.Event.ON_STOP -> {
+                        if (ttsController.playbackState.value != TtsPlaybackState.IDLE) {
+                            com.huangder.lumibooks.service.TtsFloatingWindowService.start(this@MainActivity)
+                        }
+                    }
+                    Lifecycle.Event.ON_START -> {
+                        if (!com.huangder.lumibooks.service.TtsFloatingWindowService.consumeKeepVisibleOnForeground()) {
+                            com.huangder.lumibooks.service.TtsFloatingWindowService.stop(this@MainActivity)
+                        }
+                    }
+                    else -> Unit
+                }
+            }
+        })
         val splashEnabledAtLaunch = if (intent.hasExtra(LaunchThemeController.EXTRA_SPLASH_ENABLED)) {
             intent.getBooleanExtra(LaunchThemeController.EXTRA_SPLASH_ENABLED, false)
         } else {
