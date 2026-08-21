@@ -432,7 +432,7 @@ private fun HighlightNoteItem(
             )
             Spacer(Modifier.width(12.dp))
             Text(
-                text = note.selectedText,
+                text = note.selectedText.replace('\n', ' '),
                 fontSize = 14.sp,
                 color = AppColors.TextPrimary,
                 maxLines = 2,

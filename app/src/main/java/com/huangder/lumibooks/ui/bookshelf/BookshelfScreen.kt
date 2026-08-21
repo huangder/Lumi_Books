@@ -1589,7 +1589,7 @@ private fun BookGridItem(
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = "${(book.readingProgress * 100).toInt()}%",
+                        text = formatProgressPercent(book.readingProgress),
                         fontSize = 10.sp,
                         color = Color.White
                     )
@@ -1754,4 +1754,9 @@ private fun AddBookItem(onClick: () -> Unit) {
             color = AppColors.TextSecondary
         )
     }
+}
+
+internal fun formatProgressPercent(progress: Float): String {
+    val pct = progress * 100f
+    return if (pct < 10f) "%.1f%%".format(pct) else "${pct.toInt()}%"
 }
