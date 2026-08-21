@@ -23,7 +23,7 @@ import com.huangder.lumibooks.data.local.entity.TagEntity
         BookmarkEntity::class,
         NoteEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

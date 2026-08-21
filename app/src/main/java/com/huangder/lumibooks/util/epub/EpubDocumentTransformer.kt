@@ -261,19 +261,30 @@ html.lumi-green-dark body { color: #c8e6c9 !important; }
   border-radius: 50%;
   animation: lumi-footnote-spin 0.8s linear infinite;
 }
-#lumi-highlight-layer {
+#lumi-highlight-layer,
+#lumi-underline-layer {
   position: absolute;
   inset: 0 auto auto 0;
   width: 100%;
   height: 100%;
   overflow: visible;
   pointer-events: none;
+}
+#lumi-highlight-layer {
   z-index: -1;
+}
+#lumi-underline-layer {
+  z-index: 2147483000;
 }
 .lumi-highlight-block {
   position: absolute;
   pointer-events: none;
   box-sizing: border-box;
+}
+.lumi-underline-block {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
 }
 .lumi-search-highlight-block {
   animation: lumi-search-highlight-pulse 2000ms linear forwards;
@@ -370,7 +381,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     viewportWidth: 0, viewportHeight: 0, paginating: false, configured: false, mediaSettled: false,
     pendingProgression: undefined, publisherBox: null, publisherBackground: null, scrollGuard: false, initialFragmentApplied: false,
     transition: 'slide', nativePaging: false, animationTimer: 0, suppressClickUntil: 0, preservePublisherBackground: true,
-    edgeTapLeft: -1, edgeTapRight: 1,
+    edgeTapLeft: -1, edgeTapRight: 1, canTurnPrevious: true, canTurnNext: true,
     bionicReading: false, chineseMode: 'original', chineseMap: null, pendingPreparedPage: null, prepareSerial: 0,
     highlightItems: [], searchHighlight: null,
     insets: { top: 0, right: 0, bottom: 0, left: 0 }
@@ -387,6 +398,13 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
   var touchVelocityX = 0;
   var touchBaseX = 0;
   var touchPaging = false;
+  var scrollChapterDragDirection = 0;
+  var scrollChapterDragStartY = 0;
+  var scrollChapterDragOffset = 0;
+  var scrollChapterStartedAtTop = false;
+  var scrollChapterStartedAtBottom = false;
+  var scrollChapterTurnPending = false;
+  var scrollChapterAnimationTimer = 0;
   var imageLongPressTimer = 0;
   var imageLongPressTarget = null;
   var imageLongPressTriggered = false;
@@ -1655,6 +1673,8 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     state.nativePaging = config.nativePaging === true;
     state.edgeTapLeft = Number(config.edgeTapLeft) > 0 ? 1 : -1;
     state.edgeTapRight = Number(config.edgeTapRight) < 0 ? -1 : 1;
+    state.canTurnPrevious = config.canTurnPrevious !== false;
+    state.canTurnNext = config.canTurnNext !== false;
     var insets = config.insets || {};
     state.insets = {
       top: Math.max(0, Number(insets.top) || 0), right: Math.max(0, Number(insets.right) || 0),
@@ -1763,11 +1783,11 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     return true;
   }
 
-  function highlightLayer() {
-    var existing = document.getElementById('lumi-highlight-layer');
+  function annotationLayer(id) {
+    var existing = document.getElementById(id);
     if (existing) existing.remove();
     var layer = document.createElement('div');
-    layer.id = 'lumi-highlight-layer';
+    layer.id = id;
     layer.setAttribute('aria-hidden', 'true');
     layer.style.width = Math.max(document.body.offsetWidth, document.body.scrollWidth, 1) + 'px';
     layer.style.height = Math.max(document.body.offsetHeight, document.body.scrollHeight, 1) + 'px';
@@ -1850,6 +1870,150 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     return rects;
   }
 
+  function textRectsForRange(range) {
+    if (!range || range.collapsed) return [];
+    var common = range.commonAncestorContainer;
+    var root = common.nodeType === Node.TEXT_NODE ? common.parentNode : common;
+    if (!root) return [];
+    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+    var nodes = [];
+    if (common.nodeType === Node.TEXT_NODE) nodes.push(common);
+    else {
+      var node;
+      while ((node = walker.nextNode())) nodes.push(node);
+    }
+    var rects = [];
+    nodes.forEach(function (node) {
+      if (!node.nodeValue || !range.intersectsNode(node)) return;
+      var start = node === range.startContainer ? range.startOffset : 0;
+      var end = node === range.endContainer ? range.endOffset : node.nodeValue.length;
+      start = Math.max(0, Math.min(start, node.nodeValue.length));
+      end = Math.max(start, Math.min(end, node.nodeValue.length));
+      if (start >= end || !node.nodeValue.substring(start, end).trim()) return;
+      var textRange = document.createRange();
+      textRange.setStart(node, start);
+      textRange.setEnd(node, end);
+      Array.prototype.forEach.call(textRange.getClientRects(), function (rect) {
+        if (rect.width > 0 && rect.height > 0) rects.push(rect);
+      });
+    });
+    return rects;
+  }
+
+  function scrollBoundaryState() {
+    var root = document.scrollingElement || document.documentElement;
+    var extent = Math.max(root.scrollHeight, document.body.scrollHeight, state.viewportHeight);
+    return {
+      atTop: window.scrollY <= 1,
+      atBottom: window.scrollY + state.viewportHeight >= extent - 2
+    };
+  }
+
+  function resetScrolledChapterDrag(animate) {
+    clearTimeout(scrollChapterAnimationTimer);
+    var body = document.body;
+    if (body) {
+      body.style.transition = animate
+        ? 'transform 190ms cubic-bezier(.2,.72,.2,1), opacity 160ms ease-out'
+        : 'none';
+      body.style.transform = '';
+      body.style.opacity = '1';
+      if (animate) {
+        scrollChapterAnimationTimer = setTimeout(function () {
+          if (body.isConnected) body.style.transition = 'none';
+        }, 210);
+      }
+    }
+    scrollChapterDragDirection = 0;
+    scrollChapterDragOffset = 0;
+    touchPaging = false;
+  }
+
+  function updateScrolledChapterDrag(offset) {
+    var body = document.body;
+    if (!body) return;
+    var limit = Math.max(96, state.viewportHeight * 0.34);
+    var distance = Math.min(Math.abs(offset), limit);
+    var signedDistance = scrollChapterDragDirection * distance;
+    var progress = Math.min(1, distance / limit);
+    scrollChapterDragOffset = signedDistance;
+    body.style.visibility = 'visible';
+    body.style.transition = 'none';
+    body.style.transform = 'translate3d(0,' + signedDistance + 'px,0)';
+    body.style.opacity = String(1 - progress * 0.72);
+  }
+
+  function completeScrolledChapterTurn() {
+    var direction = scrollChapterDragDirection;
+    if (!direction || scrollChapterTurnPending) return;
+    scrollChapterTurnPending = true;
+    clearTimeout(scrollChapterAnimationTimer);
+    var body = document.body;
+    var exitDistance = Math.max(Math.abs(scrollChapterDragOffset), state.viewportHeight * 0.34);
+    body.style.transition = 'transform 150ms cubic-bezier(.32,0,.2,1), opacity 135ms ease-out';
+    body.style.transform = 'translate3d(0,' + (direction * exitDistance) + 'px,0)';
+    body.style.opacity = '0';
+    scrollChapterAnimationTimer = setTimeout(function () {
+      post('chapterTurn', { direction: direction < 0 ? 1 : -1, animated: true });
+      scrollChapterTurnPending = false;
+      touchPaging = false;
+    }, 155);
+  }
+
+  function appendUnderlineRange(layer, range, color) {
+    if (!range) return 0;
+    var layerRect = layer.getBoundingClientRect();
+    var scaleX = layer.offsetWidth > 0 ? layerRect.width / layer.offsetWidth : 1;
+    var scaleY = layer.offsetHeight > 0 ? layerRect.height / layer.offsetHeight : scaleX;
+    if (!isFinite(scaleX) || scaleX <= 0) scaleX = 1;
+    if (!isFinite(scaleY) || scaleY <= 0) scaleY = scaleX;
+    var vertical = state.writingMode.indexOf('vertical') === 0 || state.writingMode.indexOf('sideways') === 0;
+    var count = 0;
+    var rects = textRectsForRange(range).map(function (rect) {
+      return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
+    });
+    mergeHighlightRects(rects, vertical).forEach(function (rect) {
+      var width = (rect.right - rect.left) / scaleX;
+      var height = (rect.bottom - rect.top) / scaleY;
+      if (width <= 0 || height <= 0) return;
+      var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('class', 'lumi-underline-block');
+      svg.style.left = ((rect.left - layerRect.left) / scaleX) + 'px';
+      svg.style.top = ((rect.top - layerRect.top) / scaleY) + 'px';
+      var svgWidth = vertical ? 5 : width;
+      var svgHeight = vertical ? height : 5;
+      svg.setAttribute('width', svgWidth);
+      svg.setAttribute('height', svgHeight);
+      svg.setAttribute('viewBox', '0 0 ' + svgWidth + ' ' + svgHeight);
+      svg.style.width = svgWidth + 'px';
+      svg.style.height = svgHeight + 'px';
+      var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      var d = '';
+      if (vertical) {
+        for (var y = 0; y <= height; y += 1) {
+          var x = 1.75 + Math.sin(y / 5.5 * Math.PI * 2) * 1.1;
+          d += (y === 0 ? 'M' : 'L') + x.toFixed(2) + ' ' + y.toFixed(2) + ' ';
+        }
+        svg.style.left = (((rect.left - layerRect.left) / scaleX) - 4) + 'px';
+      } else {
+        for (var x = 0; x <= width; x += 1) {
+          var y = 1.75 + Math.sin(x / 5.5 * Math.PI * 2) * 1.1;
+          d += (x === 0 ? 'M' : 'L') + x.toFixed(2) + ' ' + y.toFixed(2) + ' ';
+        }
+        svg.style.top = (((rect.bottom - layerRect.top) / scaleY) - 3) + 'px';
+      }
+      path.setAttribute('d', d);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', color);
+      path.setAttribute('stroke-width', '1.5');
+      path.setAttribute('stroke-linecap', 'round');
+      svg.appendChild(path);
+      layer.appendChild(svg);
+      count += 1;
+    });
+    return count;
+  }
+
   function appendHighlightRange(layer, range, color, extraClass) {
     if (!range) return 0;
     var layerRect = layer.getBoundingClientRect();
@@ -1857,9 +2021,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     var scaleY = layer.offsetHeight > 0 ? layerRect.height / layer.offsetHeight : scaleX;
     if (!isFinite(scaleX) || scaleX <= 0) scaleX = 1;
     if (!isFinite(scaleY) || scaleY <= 0) scaleY = scaleX;
-    var rects = Array.prototype.slice.call(range.getClientRects()).filter(function (rect) {
-      return rect.width > 0 && rect.height > 0;
-    }).map(function (rect) {
+    var rects = textRectsForRange(range).map(function (rect) {
       return {
         left: (rect.left - layerRect.left) / scaleX,
         top: (rect.top - layerRect.top) / scaleY,
@@ -1886,7 +2048,8 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
 
   function rebuildHighlightLayer() {
     if (!document.body) return false;
-    var layer = highlightLayer();
+    var layer = annotationLayer('lumi-highlight-layer');
+    var underlineLayer = annotationLayer('lumi-underline-layer');
     (state.highlightItems || []).forEach(function (item) {
       var range = rangeFromLocators(item.start, item.end, item.exact);
       if (!range && item.exact) {
@@ -1895,7 +2058,11 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       }
       if (!range) return;
       var color = /^#[0-9a-f]{6,8}$/i.test(item.color || '') ? item.color : '#66ffeb3b';
-      appendHighlightRange(layer, range, color);
+      if (item.type === 'underline') {
+        appendUnderlineRange(underlineLayer, range, color);
+      } else {
+        appendHighlightRange(layer, range, color);
+      }
     });
     if (state.searchHighlight && state.searchHighlight.exact) {
       var searchRange = quoteRange(state.searchHighlight);
@@ -2175,6 +2342,13 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     touchLastX = touch.clientX;
     touchStartTime = Date.now();
     touchLastTime = touchStartTime;
+    if (state.flow === 'scrolled' && !state.fixed && !scrollChapterTurnPending) {
+      resetScrolledChapterDrag(false);
+      var boundary = scrollBoundaryState();
+      scrollChapterStartedAtTop = boundary.atTop;
+      scrollChapterStartedAtBottom = boundary.atBottom;
+      scrollChapterDragStartY = touchStartY;
+    }
     beginImageLongPress(imageFromTarget(event.target));
     if (pageStageActive) {
       settleActivePageStageForInput(true);
@@ -2190,6 +2364,33 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     var dx = touch.clientX - touchStartX;
     var dy = touch.clientY - touchStartY;
     if (Math.abs(dx) >= 12 || Math.abs(dy) >= 12) cancelImageLongPress();
+    if (state.flow === 'scrolled' && !state.fixed) {
+      if (scrollChapterTurnPending) {
+        event.preventDefault();
+        return;
+      }
+      var direction = dy < 0 ? -1 : 1;
+      var boundary = scrollBoundaryState();
+      var canTurn = direction < 0 ? state.canTurnNext : state.canTurnPrevious;
+      var atBoundary = direction < 0 ? boundary.atBottom : boundary.atTop;
+      if (!scrollChapterDragDirection && canTurn && atBoundary &&
+          Math.abs(dy) >= 6 && Math.abs(dy) > Math.abs(dx)) {
+        scrollChapterDragDirection = direction;
+        var startedAtBoundary = direction < 0 ? scrollChapterStartedAtBottom : scrollChapterStartedAtTop;
+        scrollChapterDragStartY = startedAtBoundary ? touchStartY : touch.clientY;
+      }
+      if (scrollChapterDragDirection) {
+        var offset = touch.clientY - scrollChapterDragStartY;
+        if (offset * scrollChapterDragDirection <= 0) {
+          resetScrolledChapterDrag(false);
+          return;
+        }
+        touchPaging = true;
+        event.preventDefault();
+        updateScrolledChapterDrag(offset);
+      }
+      return;
+    }
     if (state.nativePaging || state.flow !== 'paginated' || state.fixed) return;
     if (!touchPaging && (Math.abs(dx) < 6 || Math.abs(dx) <= Math.abs(dy))) return;
     touchPaging = true;
@@ -2246,12 +2447,12 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
 
     if (state.flow === 'scrolled' && !state.fixed) {
       pageStageDurationOverride = 0;
-      var root = document.scrollingElement || document.documentElement;
-      var atTop = window.scrollY <= 1;
-      var atBottom = window.scrollY + state.viewportHeight >= root.scrollHeight - 2;
-      var chapterSwipe = Math.abs(dy) >= 52 && Math.abs(dy) > Math.abs(dx) * 1.2;
-      if (chapterSwipe && ((dy > 0 && atTop) || (dy < 0 && atBottom))) {
-        post('chapterTurn', { direction: dy < 0 ? 1 : -1 });
+      if (scrollChapterDragDirection) {
+        event.preventDefault();
+        var chapterSwipe = Math.abs(scrollChapterDragOffset) >= 52 &&
+          Math.abs(scrollChapterDragOffset) > Math.abs(dx) * 1.2;
+        if (chapterSwipe) completeScrolledChapterTurn();
+        else resetScrolledChapterDrag(true);
         state.suppressClickUntil = Date.now() + 450;
       }
       return;
@@ -2314,7 +2515,8 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
   document.addEventListener('touchcancel', function () {
     cancelImageLongPress();
     imageLongPressTriggered = false;
-    if (touchPaging && state.flow === 'paginated' && state.transition !== 'fade' && state.transition !== 'none') snapBackPage();
+    if (scrollChapterDragDirection) resetScrolledChapterDrag(true);
+    else if (touchPaging && state.flow === 'paginated' && state.transition !== 'fade' && state.transition !== 'none') snapBackPage();
     else pageStageDurationOverride = 0;
     touchPaging = false;
   }, { passive: true });
@@ -2518,6 +2720,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     setHighlights: setHighlights,
     findText: findText,
     clearSearchHighlight: clearSearchHighlight,
+    cancelChapterTurn: function () { resetScrolledChapterDrag(true); },
     pageText: pageText,
     visibleText: function () { return document.body ? document.body.innerText : ''; },
     repaginate: function () {

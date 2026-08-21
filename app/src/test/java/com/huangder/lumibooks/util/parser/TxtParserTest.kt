@@ -314,6 +314,36 @@ class TxtParserTest {
     }
 
     @Test
+    fun replacesAllMatchesWithoutChangingGbkEncoding() {
+        val charset = Charset.forName("GBK")
+        val file = writeText(
+            "rewrite-gbk.txt",
+            "第1章 开始\n中文目标 保持正常\n第2章 继续\n中文目标 仍然正常",
+            charset
+        )
+        val parser = TxtParser().apply { parse(file.absolutePath) }
+
+        val result = parser.rewriteWithOperations(
+            listOf(
+                TxtReplaceText(
+                    chapterIndex = null,
+                    query = "目标",
+                    replacement = "完成",
+                    ignoreCase = false
+                )
+            )
+        )
+
+        val decoded = String(file.readBytes(), charset)
+        assertTrue(result.success)
+        assertEquals(2, result.changedChapterCount)
+        assertTrue(decoded.contains("中文完成 保持正常"))
+        assertTrue(decoded.contains("中文完成 仍然正常"))
+        assertFalse(decoded.contains("目标"))
+        assertTrue(parser.getChapterContent(0).contains("中文完成 保持正常"))
+    }
+
+    @Test
     fun editorRewriteCanCommitWithoutSynchronouslyReparsing() {
         val file = writeText(
             "editor-fast-save.txt",

@@ -50,6 +50,7 @@ import com.huangder.lumibooks.util.parser.BookLinkTarget
 import com.huangder.lumibooks.util.parser.PdfParser
 import com.huangder.lumibooks.util.parser.TxtEncoding
 import com.huangder.lumibooks.util.parser.TxtParser
+import com.huangder.lumibooks.util.parser.TxtReplaceText
 import com.huangder.lumibooks.util.epub.EpubRenderMode
 import com.huangder.lumibooks.util.epub.BookRenderSession
 import com.huangder.lumibooks.util.epub.BookRenderSource
@@ -211,8 +212,16 @@ data class ReaderUiState(
     val ttsSpeechRate: Float = 1f,
     val ttsActiveBookId: String? = null,
     val ttsErrorMessage: String? = null,
+    val ttsCurrentSentence: TtsSentencePosition? = null,
     val sleepTimerRemainingMs: Long? = null,
-    val contentRevision: Long = 0L
+    val contentRevision: Long = 0L,
+    val selectionMenuItems: Map<String, Boolean> = emptyMap()
+)
+
+data class TtsSentencePosition(
+    val chapterIndex: Int,
+    val startOffset: Int,
+    val endOffset: Int
 )
 
 internal fun ReaderUiState.withReaderCornerContent(
@@ -354,6 +363,31 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch {
             ttsController.sleepTimerRemainingMs.collectLatest { remaining ->
                 _uiState.value = _uiState.value.copy(sleepTimerRemainingMs = remaining)
+            }
+        }
+        viewModelScope.launch {
+            // 收集 TTS 当前朗读句子的字符偏移，用于 UI 淡高亮
+            ttsController.currentSentence.collectLatest { segment ->
+                val page = ttsController.currentPage.value
+                if (segment != null && page != null) {
+                    _uiState.value = _uiState.value.copy(
+                        ttsCurrentSentence = TtsSentencePosition(
+                            chapterIndex = page.location.chapterIndex,
+                            startOffset = segment.startCharacterOffset,
+                            endOffset = segment.endCharacterOffset
+                        )
+                    )
+                } else {
+                    _uiState.value = _uiState.value.copy(ttsCurrentSentence = null)
+                }
+            }
+        }
+        // 听书悬浮窗：根据播放状态和开关决定启动/停止悬浮窗
+        viewModelScope.launch {
+            ttsController.playbackState.collectLatest { state ->
+                if (state == TtsPlaybackState.IDLE) {
+                    com.huangder.lumibooks.service.TtsFloatingWindowService.stop(context)
+                }
             }
         }
         viewModelScope.launch {
@@ -627,6 +661,25 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.readerCornerContent(ReaderPageCorner.BOTTOM_RIGHT).collectLatest { content ->
                 _uiState.value = _uiState.value.copy(readerBottomRightContent = content)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.displayMode().collectLatest { mode ->
+                _uiState.value = _uiState.value.copy(readerDisplayMode = mode)
+            }
+        }
+        viewModelScope.launch {
+            combine(
+                dataStoreManager.customHighlightPalettes,
+                dataStoreManager.activeHighlightPaletteId
+            ) { palettes, activeId -> palettes to activeId }
+                .collectLatest { (palettes, activeId) ->
+                    updateHighlightPalettes(palettes, activeId)
+                }
+        }
+        viewModelScope.launch {
+            dataStoreManager.selectionMenuItems.collectLatest { items ->
+                _uiState.value = _uiState.value.copy(selectionMenuItems = items)
             }
         }
     }
@@ -1382,6 +1435,58 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch { dataStoreManager.saveBionicReadingEnabled(enabled) }
     }
 
+    fun saveSelectionMenuItems(items: Map<String, Boolean>) {
+        _uiState.value = _uiState.value.copy(selectionMenuItems = items)
+        viewModelScope.launch { dataStoreManager.saveSelectionMenuItems(items) }
+    }
+
+    fun replaceTxtText(
+        searchText: String,
+        replaceWith: String,
+        onResult: (Boolean) -> Unit = {}
+    ) {
+        val book = _uiState.value.book
+        val txtParser = parser as? TxtParser
+        if (book?.format?.name != "TXT" || txtParser == null || searchText.isEmpty()) {
+            onResult(false)
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    txtParser.rewriteWithOperations(
+                        listOf(
+                            TxtReplaceText(
+                                chapterIndex = null,
+                                query = searchText,
+                                replacement = replaceWith,
+                                ignoreCase = false
+                            )
+                        )
+                    )
+                }
+                if (result.success && result.changedChapterCount > 0) {
+                    preloadCache.clear()
+                    pageLayoutEngine.invalidateAll()
+                    _uiState.value = _uiState.value.copy(
+                        txtActiveCharsetName = txtParser.activeCharsetName,
+                        contentRevision = _uiState.value.contentRevision + 1,
+                        error = result.errorMessage
+                    )
+                    onResult(true)
+                } else {
+                    result.errorMessage?.let { message ->
+                        _uiState.value = _uiState.value.copy(error = message)
+                    }
+                    onResult(false)
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = e.message)
+                onResult(false)
+            }
+        }
+    }
+
     fun saveScreenSleepTimeoutSeconds(seconds: Int) {
         if (seconds !in DataStoreManager.SCREEN_SLEEP_TIMEOUT_SECONDS_OPTIONS) return
         _uiState.value = _uiState.value.copy(screenSleepTimeoutSeconds = seconds)
@@ -1781,7 +1886,11 @@ class ReaderViewModel @Inject constructor(
         val currentState = _uiState.value
         // Ignore a final viewport callback from the outgoing continuous reader after switching back
         // to a paged mode. Otherwise it can overwrite the destination reader's restore counters.
-        if (currentState.pageTransition != "continuous" || currentState.eInkModeEnabled) return
+        if (!currentState.readerWritingMode.usesContinuousScroll(
+                currentState.pageTransition,
+                currentState.eInkModeEnabled
+            )
+        ) return
         val progressScale = CONTINUOUS_PROGRESS_SCALE
         _uiState.value = _uiState.value.copy(
             currentChapterIndex = chapterIndex,
@@ -1832,7 +1941,11 @@ class ReaderViewModel @Inject constructor(
         val currentState = _uiState.value
         // The old paged view may emit one last callback while Compose swaps in continuous scroll.
         // Do not let it mark the page ready or replace the pending normalized restore fraction.
-        if (currentState.pageTransition == "continuous" && !currentState.eInkModeEnabled) return
+        if (currentState.readerWritingMode.usesContinuousScroll(
+                currentState.pageTransition,
+                currentState.eInkModeEnabled
+            )
+        ) return
         _uiState.value = currentState.copy(
             globalPageIndex = globalPage,
             currentChapterIndex = chapterIndex,
@@ -1863,7 +1976,11 @@ class ReaderViewModel @Inject constructor(
         rightPageInChapter: Int
     ) {
         val currentState = _uiState.value
-        if (currentState.pageTransition == "continuous" && !currentState.eInkModeEnabled) return
+        if (currentState.readerWritingMode.usesContinuousScroll(
+                currentState.pageTransition,
+                currentState.eInkModeEnabled
+            )
+        ) return
         _uiState.value = currentState.copy(
             rightPageIndex = rightPageInChapter.takeIf { it >= 0 }
         )
@@ -1875,7 +1992,24 @@ class ReaderViewModel @Inject constructor(
         val state = _uiState.value
         val book = state.book ?: return
         if (!state.useNewEngine || state.isLoading) return
-        startTtsSession(book.id, book.title, pageProvider, state.currentChapterIndex, state.currentPageIndex)
+        val startChapter = state.currentChapterIndex
+        val startPage = if (state.readerWritingMode.usesContinuousScroll(
+                state.pageTransition,
+                state.eInkModeEnabled
+            )
+        ) {
+            // 连续滚动模式下，currentPageIndex 是 scaled 值（chapterFraction * CONTINUOUS_PROGRESS_SCALE），
+            // 需转换为真实页码才能被 TTS 的 pageProvider 正确使用
+            val totalPages = pageLayoutEngine.getChapterPageCount(startChapter)
+            if (totalPages > 0) {
+                val chapterFraction = state.currentPageIndex.toFloat() / CONTINUOUS_PROGRESS_SCALE
+                (chapterFraction.coerceIn(0f, 0.9999f) * totalPages).toInt()
+                    .coerceIn(0, totalPages - 1)
+            } else 0
+        } else {
+            state.currentPageIndex
+        }
+        startTtsSession(book.id, book.title, pageProvider, startChapter, startPage)
     }
 
     fun startPdfTts(filePath: String, currentPage: Int, pageCount: Int) {
@@ -2317,7 +2451,8 @@ class ReaderViewModel @Inject constructor(
         endPosition: Int = 0,
         color: String = DefaultReaderHighlightColor,
         startLocatorJson: String? = null,
-        endLocatorJson: String? = null
+        endLocatorJson: String? = null,
+        type: String = "highlight"
     ) {
         val state = _uiState.value
         val book = state.book ?: return
@@ -2332,7 +2467,8 @@ class ReaderViewModel @Inject constructor(
             selectedText = selectedText,
             note = noteText,
             color = color,
-            createdAt = System.currentTimeMillis()
+            createdAt = System.currentTimeMillis(),
+            type = type
         )
         // Render immediately instead of waiting for Room's Flow to emit the inserted record.
         // The database observer replaces this temporary id=0 record with the persisted one.

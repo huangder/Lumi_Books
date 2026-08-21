@@ -19,6 +19,148 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class RoundedHighlightRenderingInstrumentedTest {
     @Test
+    fun visiblePagedUnderlineUsesWrappedLineEndAndGlyphDescent() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val context = instrumentation.targetContext
+            val density = context.resources.displayMetrics.density
+            val underlineColor = 0xFF1677FF.toInt()
+            val value = SpannableString("这是一段用于验证自动换行划线位置的正文，它应当覆盖完整的首行并继续到第二行。").apply {
+                setSpan(WaveUnderlineSpan(underlineColor), 0, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            val horizontalPadding = (20f * density).roundToInt()
+            val view = RoundedHighlightTextView(context).apply {
+                includeFontPadding = false
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+                setLineSpacing(0f, 1.8f)
+                setPadding(horizontalPadding, 0, horizontalPadding, 0)
+                text = value
+            }
+            val width = (360f * density).roundToInt()
+            val height = (280f * density).roundToInt()
+            view.measure(
+                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
+            )
+            view.layout(0, 0, width, height)
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(bitmap))
+
+            val textLayout = requireNotNull(view.layout)
+            assertTrue("fixture must wrap", textLayout.lineCount >= 2)
+            val firstBaseline = view.totalPaddingTop + textLayout.getLineBaseline(0)
+            val firstBandTop = (firstBaseline + view.paint.fontMetrics.descent).roundToInt()
+            val firstBandBottom = (firstBandTop + 5f * density).roundToInt().coerceAtMost(height - 1)
+            val firstLineRight = (view.totalPaddingLeft + textLayout.getLineRight(0)).roundToInt()
+            val rightmostUnderline = (firstBandTop.coerceAtLeast(0)..firstBandBottom)
+                .flatMap { y -> (0 until width).map { x -> x to y } }
+                .filter { (x, y) -> isHighlightPixel(bitmap.getPixel(x, y), underlineColor) }
+                .maxOfOrNull { it.first }
+            assertTrue("the first wrapped underline must be visible", rightmostUnderline != null)
+            assertTrue(
+                "the visible underline must reach the wrapped line end",
+                requireNotNull(rightmostUnderline) >= firstLineRight - 4f * density
+            )
+
+            val lastLine = textLayout.lineCount - 1
+            val expectedLastTop = view.totalPaddingTop + textLayout.getLineBaseline(lastLine) +
+                view.paint.fontMetrics.descent + 1f * density - 1.6f * density
+            val lastLineUnderlineRows = (textLayout.getLineTop(lastLine) until height)
+                .filter { y ->
+                    (0 until width).any { x -> isHighlightPixel(bitmap.getPixel(x, y), underlineColor) }
+                }
+            assertTrue("the final underline must be visible", lastLineUnderlineRows.isNotEmpty())
+            assertTrue(
+                "the final underline must follow glyph descent instead of the spacious line box",
+                kotlin.math.abs(lastLineUnderlineRows.first() - expectedLastTop) <= 2f * density
+            )
+        }
+    }
+
+    @Test
+    fun justifiedUnderlineUsesVisibleGlyphGeometryAcrossWrappedLines() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val context = instrumentation.targetContext
+            val density = context.resources.displayMetrics.density
+            val underlineColor = 0xFF1677FF.toInt()
+            val value = SpannableString("这是一段用于验证自动换行划线位置的正文，它应当覆盖完整的首行并继续到第二行。").apply {
+                setSpan(
+                    WaveUnderlineSpan(underlineColor),
+                    0,
+                    length,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+            val horizontalPadding = (20f * density).roundToInt()
+            val view = JustifiedTextView(context).apply {
+                setTextSize(20f * density)
+                setDefaultTextColor(Color.BLACK)
+                setLineSpacing(0f, 1.5f)
+                setPadding(horizontalPadding, 0, horizontalPadding, 0)
+                text = value
+            }
+            val width = (360f * density).roundToInt()
+            val height = (260f * density).roundToInt()
+            view.measure(
+                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
+            )
+            view.layout(0, 0, width, height)
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(bitmap))
+
+            val underlinePixels = mutableListOf<Pair<Int, Int>>()
+            for (y in 0 until height) {
+                for (x in 0 until width) {
+                    if (isHighlightPixel(bitmap.getPixel(x, y), underlineColor)) {
+                        underlinePixels += x to y
+                    }
+                }
+            }
+            assertTrue("wrapped underline must be visible", underlinePixels.isNotEmpty())
+            val occupiedRows = underlinePixels.map { it.second }.distinct().sorted()
+            val rowBands = occupiedRows.fold(mutableListOf<MutableList<Int>>()) { bands, row ->
+                if (bands.isEmpty() || row > bands.last().last() + 1) bands += mutableListOf(row)
+                else bands.last() += row
+                bands
+            }
+            assertTrue("fixture must produce underline segments on multiple lines", rowBands.size >= 2)
+
+            val firstBandRows = rowBands.first().toSet()
+            val firstBandRight = underlinePixels
+                .asSequence()
+                .filter { it.second in firstBandRows }
+                .maxOf { it.first }
+            val contentRight = width - horizontalPadding
+            assertTrue(
+                "the first wrapped segment must reach the justified line end: right=$firstBandRight expected=$contentRight",
+                firstBandRight >= contentRight - 4f * density
+            )
+
+            val lastBand = rowBands.last()
+            val previousBandBottom = rowBands[rowBands.lastIndex - 1].last()
+            val lastUnderlineTop = lastBand.first()
+            val lastGlyphBottom = (previousBandBottom + 1 until lastUnderlineTop)
+                .filter { y ->
+                    (0 until width).any { x ->
+                        val pixel = bitmap.getPixel(x, y)
+                        Color.alpha(pixel) > 128 &&
+                            Color.red(pixel) < 80 &&
+                            Color.green(pixel) < 80 &&
+                            Color.blue(pixel) < 80
+                    }
+                }
+                .maxOrNull()
+            assertTrue("the last line must contain visible glyphs above its underline", lastGlyphBottom != null)
+            assertTrue(
+                "the final underline must follow glyph descent, not the spacious line box",
+                lastUnderlineTop - requireNotNull(lastGlyphBottom) <= 6f * density
+            )
+        }
+    }
+
+    @Test
     fun savedHighlightRendersAsSeparatedRoundedLines() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
 

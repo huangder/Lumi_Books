@@ -101,5 +101,13 @@ data class SettingsUiState(
     val isWebdavSyncing: Boolean = false,
 
     // 检查更新
-    val updateCheck: UpdateCheckDisplay = UpdateCheckDisplay()
+    val updateCheck: UpdateCheckDisplay = UpdateCheckDisplay(),
+
+    // 高亮颜色色卡
+    val customHighlightColors: List<String> = emptyList(),
+    val customHighlightPalettes: List<com.huangder.lumibooks.domain.model.HighlightPalette> = emptyList(),
+    val activeHighlightPaletteId: String? = null,
+
+    // 听书悬浮窗
+    val ttsFloatingWindow: Boolean = true
 )

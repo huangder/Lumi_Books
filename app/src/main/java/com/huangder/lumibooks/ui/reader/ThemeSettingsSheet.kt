@@ -636,9 +636,7 @@ fun ThemeSettingsSheet(
                                     icon = ReaderIconPageSlide
                                 )
                             )
-                            if ((!supportsBookLayout || currentRenderMode != EpubRenderMode.BOOK_LAYOUT) &&
-                                currentWritingMode != ReaderWritingMode.VERTICAL_RL
-                            ) {
+                            if (currentWritingMode != ReaderWritingMode.VERTICAL_RL) {
                                 add(
                                     ReaderModeOption(
                                         key = "continuous",

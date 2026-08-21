@@ -237,6 +237,9 @@ fun SettingsScreen(
                 Spacer(Modifier.height(AppSpace.lg))
 
                 // 分类列表
+                CategoryItem(Icons.Outlined.FormatSize, stringResource(R.string.title_reading_settings)) {
+                    context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "reading"))
+                }
                 CategoryItem(Icons.Outlined.Brightness6, stringResource(R.string.category_display)) {
                     context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "display"))
                 }

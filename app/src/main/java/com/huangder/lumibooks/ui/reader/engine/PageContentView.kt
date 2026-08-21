@@ -28,6 +28,24 @@ internal fun pageStartsMidParagraph(text: CharSequence, start: Int): Boolean {
 }
 
 private class PagedSelectableTextView(context: Context) : RoundedHighlightTextView(context) {
+    /** 閫夋嫨缁堢偣鎷栧埌鏂囨湰鏈熬锛堥〉闈㈠簳閮?/ 鍙崇紭锛夋椂鍥炶皟锛岀敤浜庤法椤佃嚜鍔ㄧ炕椤点€?*/
+    var onSelectionReachEnd: (() -> Unit)? = null
+    private var lastReachEndAt = 0L
+
+    override fun onSelectionChanged(selStart: Int, selEnd: Int) {
+        super.onSelectionChanged(selStart, selEnd)
+        val sp = text ?: return
+        if (sp.isEmpty()) return
+        android.util.Log.d("PagedSel", "onSelectionChanged sel=" + selStart + ".." + selEnd + " len=" + sp.length + " h=" + height + " pb=" + paddingBottom)
+        if (selEnd < sp.length - 1) return
+        val now = System.currentTimeMillis()
+        if (now - lastReachEndAt > 1500L) {
+            lastReachEndAt = now
+            android.util.Log.d("PagedSel", "REACH_END trigger sel=" + selEnd + " len=" + sp.length)
+            onSelectionReachEnd?.invoke()
+        }
+    }
+
     // NOTE: justification must stay NONE (the default).
     // PageLayoutEngine paginates with a plain ALIGN_NORMAL StaticLayout. When
     // justification is enabled, Android's line breaker reserves extra trailing
@@ -64,6 +82,8 @@ class PageContentView(context: Context) : FrameLayout(context) {
     companion object {
         private const val TAG = "PageContentView"
         private const val SEARCH_HIGHLIGHT_RGB = 0x00FFE082
+        internal const val TTS_HIGHLIGHT_RGB = 0x00FF9E80
+        internal const val UNDERLINE_FLAG = 0xFE
     }
 
     private val backgroundImageView = ImageView(context).apply {
@@ -112,9 +132,18 @@ class PageContentView(context: Context) : FrameLayout(context) {
         addView(verticalTextView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     }
 
+    /** 閫夋嫨缁堢偣鎷栧埌椤甸潰鏈熬锛堝洖璋冪粰 ReadView 鑷姩缈婚〉锛?*/
+    var onSelectionReachEnd: (() -> Unit)? = null
+        set(value) {
+            field = value
+            (textView as? PagedSelectableTextView)?.onSelectionReachEnd = value
+        }
+
     private var readerBackgroundImagePath: String? = null
+    private var currentBgColor: Int = 0
 
     fun setReaderBackground(color: Int, imagePath: String?) {
+        currentBgColor = color
         setBackgroundColor(color)
         backgroundImageView.setBackgroundColor(color)
         if (readerBackgroundImagePath == imagePath) return
@@ -312,6 +341,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
         }
 
         // 应用高亮（将全局偏移转换为页内偏移，基于 actualStart 而非 startChar）
+        var ttsHighlightInfo: Triple<Int, Int, Int>? = null
         for ((hStart, hEnd, hColor) in highlights) {
             val localStart = (hStart - actualStart).coerceIn(0, spannable.length)
             val localEnd = (hEnd - actualStart).coerceIn(0, spannable.length)
@@ -322,6 +352,18 @@ class PageContentView(context: Context) : FrameLayout(context) {
                         localStart, localEnd,
                         Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
                     )
+                } else if ((hColor and 0x00FFFFFF) == TTS_HIGHLIGHT_RGB) {
+                    val ttsColor = TtsSentenceHighlightSpan.computeHighlightColor(currentBgColor, 0.06f)
+                    spannable.setSpan(
+                        TtsSentenceHighlightSpan(ttsColor),
+                        localStart, localEnd,
+                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
+                    ttsHighlightInfo = Triple(localStart, localEnd, ttsColor)
+                } else if (hColor ushr 24 == UNDERLINE_FLAG) {
+                    // 涓嬪垝绾匡細浣跨敤鏂囧瓧棰滆壊 + 涓嬪垝绾匡紝涓嶇敾鑳屾櫙
+                    val underlineColor = 0xFF000000.toInt() or (hColor and 0x00FFFFFF)
+                    spannable.setSpan(WaveUnderlineSpan(underlineColor), localStart, localEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                 } else {
                     spannable.setSpan(
                         ReaderHighlightSpan(hColor),
@@ -358,8 +400,30 @@ class PageContentView(context: Context) : FrameLayout(context) {
         // setTextIsSelectable(true) 时 Android 内部通过 Editable.Factory.newEditable() 创建副本
         // 必须从 textView.text 取实际存储的 Spannable，否则 SpanWatcher 注册在死对象上
         val actualSpannable = textView.text as? Spannable ?: spannable
+        val requiresCustomTextDrawing =
+            actualSpannable.getSpans(0, actualSpannable.length, ReaderHighlightSpan::class.java).isNotEmpty() ||
+                actualSpannable.getSpans(0, actualSpannable.length, ReaderSearchHighlightSpan::class.java).isNotEmpty() ||
+                actualSpannable.getSpans(0, actualSpannable.length, TtsSentenceHighlightSpan::class.java).isNotEmpty() ||
+                actualSpannable.getSpans(0, actualSpannable.length, WaveUnderlineSpan::class.java).isNotEmpty()
+        val requiredLayerType = if (requiresCustomTextDrawing) {
+            View.LAYER_TYPE_SOFTWARE
+        } else {
+            View.LAYER_TYPE_NONE
+        }
+        if (textView.layerType != requiredLayerType) {
+            textView.setLayerType(requiredLayerType, null)
+        }
+        val tts = ttsHighlightInfo
+        if (tts != null) {
+            justifiedView.setTtsHighlight(tts.first, tts.second, tts.third)
+            verticalTextView.setTtsHighlight(tts.first, tts.second, tts.third)
+        } else {
+            justifiedView.clearTtsHighlight()
+            verticalTextView.clearTtsHighlight()
+        }
         verticalTextView.setPage(actualSpannable, verticalGeometry, actualStart)
         onTextSet?.invoke(actualSpannable)
+        invalidateRenderers()
     }
 
     fun setSearchHighlightAlpha(alpha: Int) {
@@ -394,11 +458,25 @@ class PageContentView(context: Context) : FrameLayout(context) {
         val spacingRatio = if (fontSizePx > 0) letterSpacingPx / fontSizePx else 0f
 
         // Native TextView is the visible renderer as well as the selection owner.
-        textView.setTextSize(TypedValue.COMPLEX_UNIT_PX, fontSizePx)
+        if (textView.paint.textSize != fontSizePx) {
+            textView.setTextSize(TypedValue.COMPLEX_UNIT_PX, fontSizePx)
+        }
         textView.setTextColor(textColor)
-        textView.typeface = typeface
-        textView.setLineSpacing(lineSpacingExtraPx, lineHeightMult)
-        textView.letterSpacing = spacingRatio
+        if (textView.typeface !== typeface) {
+            textView.typeface = typeface
+        }
+        // TextView.setLineSpacing() always discards its internal Layout, even when
+        // both values are unchanged. Page-turn completion configures every slot;
+        // avoid clearing the freshly built destination layout immediately before
+        // RoundedHighlightTextView draws its saved highlight background.
+        if (textView.lineSpacingExtra != lineSpacingExtraPx ||
+            textView.lineSpacingMultiplier != lineHeightMult
+        ) {
+            textView.setLineSpacing(lineSpacingExtraPx, lineHeightMult)
+        }
+        if (textView.letterSpacing != spacingRatio) {
+            textView.letterSpacing = spacingRatio
+        }
         // 🔥 守卫：仅在值变更时才设置，避免无条件触发 nullLayouts() + requestLayout()
         // Android 的 setBreakStrategy/setHyphenationFrequency 不检查相等性，即使值相同
         // 也会无效化已存在的 Layout，导致多余的 layout pass → 内容位移
@@ -675,6 +753,37 @@ class PageContentView(context: Context) : FrameLayout(context) {
             verticalTextView.setPage(it, verticalGeometry, chapterStartOffset)
             onTextSet?.invoke(it)
         }
+        invalidateRenderers()
+    }
+
+    /**
+     * Saved highlights are drawn by the child renderers, not by this container.
+     * Slot rotation can otherwise leave a child's hardware display list stale
+     * until the next touch event invalidates it.
+     */
+    private fun invalidateRenderers() {
+        // Slot rotation happens at the terminal animation frame. Rebuild the
+        // fixed-size child layouts synchronously so that the first idle frame
+        // already contains the new highlight spans instead of an old display list.
+        if (width > 0 && height > 0) {
+            val widthSpec = View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY)
+            val heightSpec = View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
+            listOf(textView, justifiedView, verticalTextView).forEach { child ->
+                child.forceLayout()
+                child.measure(widthSpec, heightSpec)
+                child.layout(0, 0, width, height)
+            }
+        } else {
+            textView.requestLayout()
+            justifiedView.requestLayout()
+            verticalTextView.requestLayout()
+            requestLayout()
+        }
+        textView.invalidate()
+        justifiedView.invalidate()
+        verticalTextView.invalidate()
+        invalidate()
+        postInvalidateOnAnimation()
     }
 
     fun getVerticalSelectionBounds(): Pair<VerticalRect, VerticalRect>? =

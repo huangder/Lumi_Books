@@ -70,6 +70,34 @@ data class ReaderTextAnchor(
     val characterOffset: Int
 )
 
+/**
+ * 跨页选择起始信息：用户在第 A 页开始选择，翻页到第 B 页继续扩展选区时，
+ * 用此记录第 A 页的选区起止。
+ *
+ * @param startPageStart 第一页的页面内选区起始偏移
+ * @param startPageEnd   第一页的页面内选区结束偏移
+ * @param startText      第一页选中的文本
+ */
+data class TtsHighlightRange(
+    val chapterIndex: Int,
+    val start: Int,
+    val end: Int
+)
+
+data class CrossPageSelectionState(
+    val startChapterIndex: Int,
+    val startChapterOffset: Int,
+    val startPageStart: Int,
+    val startPageEnd: Int,
+    val startText: String,
+    val startSelTopY: Float,
+    val startSelBottomY: Float,
+    val startSelStartX: Float,
+    val startSelEndX: Float,
+    val startLocatorJson: String? = null,
+    val endLocatorJson: String? = null
+)
+
 class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null) : FrameLayout(context) {
 
     companion object {
@@ -94,12 +122,12 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private val nextSpreadView = FrameLayout(context).apply { clipChildren = false }
 
     // ── 页槽：左半页 + 右半页（单页模式只用左半页） ──
-    val prevPageView = PageContentView(context)
-    val curPageView = PageContentView(context)
-    val nextPageView = PageContentView(context)
-    private val prevPageRightView = PageContentView(context)
-    private val curPageRightView = PageContentView(context)
-    private val nextPageRightView = PageContentView(context)
+    val prevPageView = PageContentView(context).apply { onSelectionReachEnd = { handleSelectionReachEnd() } }
+    val curPageView = PageContentView(context).apply { onSelectionReachEnd = { handleSelectionReachEnd() } }
+    val nextPageView = PageContentView(context).apply { onSelectionReachEnd = { handleSelectionReachEnd() } }
+    private val prevPageRightView = PageContentView(context).apply { onSelectionReachEnd = { handleSelectionReachEnd() } }
+    private val curPageRightView = PageContentView(context).apply { onSelectionReachEnd = { handleSelectionReachEnd() } }
+    private val nextPageRightView = PageContentView(context).apply { onSelectionReachEnd = { handleSelectionReachEnd() } }
 
     // ── 中缝遮挡条：翻页动画时下层页面从缝隙透出，用阅读背景色盖住 ──
     private val prevGutterView = View(context)
@@ -134,7 +162,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         if (notes === savedNotes) return
         if (notes == savedNotes) return
         savedNotes = notes
-        slotManager.refreshCurrentHighlights()
+        // 鍒锋柊鎵€鏈夊凡鍔犺浇妲戒綅锛堝寘鍚缁勮繃椤电殑绗竴椤碉級锛岄槻姝㈣法椤甸珮浜彧鏄剧ず鍦ㄥ綋鍓嶉〉
+        slotManager.refreshAllHighlights()
     }
 
     // ── 触摸分类追踪（ReadView 层统一拦截） ──
@@ -182,6 +211,15 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var pendingStartPage: Int = 0
     private var configuredWidth: Int = 0
     private var configuredHeight: Int = 0
+
+    // ── 跨页选择 ──
+    /** 跨页选择状态：用户在第 A 页选择后翻页，在第 B 页继续选择时合并两页选区 */
+    var crossPageSelection: CrossPageSelectionState? = null
+        private set
+    private var pendingRebuildSelection = false
+
+    /** 褰撳墠鍙ュ彞 TTS 楂樹寒鑼冨洿锛堝叏灞€绔犺妭鍐呭亸绉伙級锛屼负绌哄垯涓嶆樉绀?*/
+    var ttsHighlightRange: TtsHighlightRange? = null
 
     /** 当前阅读背景色（供 CurlPageAnim 背面绘制使用）。 */
     var bgColor: Int = 0xFFFBFBFC.toInt()
@@ -322,17 +360,29 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val savedHighlights = savedNotes
             .filter { it.chapterIndex == chapterIndex }
             .map { note ->
-                val color = try {
-                    android.graphics.Color.parseColor(note.color)
-                } catch (_: IllegalArgumentException) {
-                    0x40FFEB3B.toInt()
+                if (note.type == "underline") {
+                    val color = try {
+                        android.graphics.Color.parseColor(note.color)
+                    } catch (_: IllegalArgumentException) {
+                        0xFF333333.toInt()
+                    }
+                    Triple(note.startPosition, note.endPosition, (PageContentView.UNDERLINE_FLAG shl 24) or (color and 0x00FFFFFF))
+                } else {
+                    val color = try {
+                        android.graphics.Color.parseColor(note.color)
+                    } catch (_: IllegalArgumentException) {
+                        0x40FFEB3B.toInt()
+                    }
+                    Triple(note.startPosition, note.endPosition, color)
                 }
-                Triple(note.startPosition, note.endPosition, color)
             }
         val transientHighlight = searchHighlight
             ?.takeIf { it.chapterIndex == chapterIndex }
             ?.let { Triple(it.start, it.end, 0x00FFE082) }
-        return if (transientHighlight != null) savedHighlights + transientHighlight else savedHighlights
+        val ttsHighlight = ttsHighlightRange
+            ?.takeIf { it.chapterIndex == chapterIndex }
+            ?.let { Triple(it.start, it.end, PageContentView.TTS_HIGHLIGHT_RGB) }
+        return buildList { addAll(savedHighlights); if (transientHighlight != null) add(transientHighlight); if (ttsHighlight != null) add(ttsHighlight) }
     }
 
     /** 配置所有 PageContentView 的 TextView 样式（防止翻页错版） */
@@ -676,6 +726,12 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
      * 用于段间距/首行缩进等文本内容变化后，
      * 需要在 configure() 之外单独触发的场景。
      */
+    /** 鍙縅forceRelayout 杞伙細鍙己鍒堕噸鏂颁慨娓?SLOT_CUR 椤靛唴瀹癸紙甯︽渶鏂癶ighlight锛?*/
+    fun refreshCurrentPage() {
+        if (!isConfigured) return
+        slotManager.refreshCurrent()
+    }
+
     fun forceRelayout() {
         if (!isConfigured) return
         slotManager.clearContentCache()
@@ -976,6 +1032,43 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         clearCurrentSelection()
         startTapAnimation(PageAnimationController.Direction.NEXT)
         return true
+    }
+
+    /** 閫夋嫨缁堢偣鎷栧埌椤甸潰鏈熬锛氳嚜鍔ㄧ炕鍒颁笅涓€椤靛苟鍦ㄦ柊椤甸噸寤洪€夊尯锛堣法椤甸€夋嫨锛?*/
+    private fun handleSelectionReachEnd() {
+        android.util.Log.d(TAG, "handleSelectionReachEnd isJump=" + isJumpSettling + " nextLoaded=" + slotManager.getNextSlot().isLoaded)
+        if (isJumpSettling) return
+        val next = slotManager.getNextSlot()
+        if (!next.isLoaded) return
+        turnToNextPage()
+        postDelayed({ rebuildSelectionOnCurrentPage() }, 420L)
+    }
+
+    private fun rebuildSelectionOnCurrentPage() {
+        val slot = slotManager.getCurSlot()
+        val pageView = slot.contentView
+        val tv = pageView.textView
+        val sp = tv.text as? android.text.Spannable ?: return
+        if (sp.isEmpty()) return
+        android.util.Log.d(TAG, "rebuildSelectionOnCurrentPage len=" + sp.length)
+        val x = tv.paddingLeft + 4f
+        val y = tv.paddingTop + 4f
+        val downTime = android.os.SystemClock.uptimeMillis()
+        val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0)
+        tv.dispatchTouchEvent(down)
+        down.recycle()
+        // 鍏堝彂 DOWN 锛屽欢杩熷啀鍙?UP锛屾瀯鎴愮湡瀹炵殑闀挎寜鏃堕棿宸€傚悓姝ュ彂閫?down+up 浼氳鍙栨秷闀挎寜銆?
+        tv.postDelayed({
+            val upTime = android.os.SystemClock.uptimeMillis()
+            val up = MotionEvent.obtain(downTime, upTime, MotionEvent.ACTION_UP, x, y, 0)
+            tv.dispatchTouchEvent(up)
+            up.recycle()
+            // 闀挎寜閫夎瘝鍚庯紝灏嗛€夊尯璋冩暣鍒版柊椤靛紑澶村嚑涓瓧
+            val sp2 = tv.text as? android.text.Spannable ?: return@postDelayed
+            if (!sp2.isEmpty()) {
+                android.text.Selection.setSelection(sp2, 0, minOf(4, sp2.length))
+            }
+        }, android.view.ViewConfiguration.getLongPressTimeout().toLong() + 120L)
     }
 
     // ── 触摸 ──
@@ -1462,6 +1555,32 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val viewOffsetX = pageView.left.toFloat()
         val startX = tv.left + tv.paddingLeft + layout.getPrimaryHorizontal(selStart) + viewOffsetX
         val endX = tv.left + tv.paddingLeft + layout.getPrimaryHorizontal(selEnd) + viewOffsetX
+
+        // ── 跨页选择合并 ──
+        // 如果有跨页选择状态，且当前选区所在的章节与跨页选择的章节相同（或相邻），
+        // 并且当前选区在跨页选择的后面，则合并为完整的跨页选区
+        val crossPage = crossPageSelection
+        if (crossPage != null && crossPage.startChapterIndex == chapterIdx) {
+            val crossPageStartAbs = crossPage.startChapterOffset + crossPage.startPageStart
+            val currentEndAbs = chapterStartOffset + selEnd
+            // 确认当前选区在跨页选区之后（跨页选区结束位置 <= 当前选区开始位置）
+            if (crossPageStartAbs < currentEndAbs) {
+                // 使用 pageView 的 originalSpannable 获取章节全文（避免主线程 I/O）
+                val mergedText = crossPage.startText + text
+                Log.d(TAG, "Cross-page selection merged: abs=[" + crossPageStartAbs + "," + currentEndAbs + ") startLen=" + crossPage.startText.length + " textLen=" + text.length + " mergedLen=" + mergedText.length + " text=" + mergedText.take(80))
+                return SelectionInfo(
+                    selectedText = mergedText,
+                    chapterIndex = chapterIdx,
+                    chapterStartOffset = crossPage.startChapterOffset,
+                    pageStart = crossPage.startPageStart,
+                    pageEnd = currentEndAbs - crossPage.startChapterOffset,
+                    selTopY = crossPage.startSelTopY.coerceAtMost(topY),
+                    selBottomY = crossPage.startSelBottomY.coerceAtMost(bottomY),
+                    selStartX = crossPage.startSelStartX,
+                    selEndX = endX
+                )
+            }
+        }
 
         return SelectionInfo(
             selectedText = text,

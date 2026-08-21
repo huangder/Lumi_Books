@@ -26,6 +26,9 @@ enum class ReaderWritingMode(val key: String) {
     fun effectivePageTransition(preferredTransition: String): String =
         if (isVertical && preferredTransition == "continuous") "slide" else preferredTransition
 
+    fun usesContinuousScroll(preferredTransition: String, eInkModeEnabled: Boolean): Boolean =
+        !eInkModeEnabled && effectivePageTransition(preferredTransition) == "continuous"
+
     companion object {
         fun fromKey(key: String?): ReaderWritingMode =
             entries.firstOrNull { it.key == key } ?: HORIZONTAL

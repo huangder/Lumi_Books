@@ -16,6 +16,8 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.huangder.lumibooks.domain.model.CustomFontPreset
 import com.huangder.lumibooks.domain.model.CustomFontPresetCodec
+import com.huangder.lumibooks.domain.model.HighlightPalette
+import com.huangder.lumibooks.domain.model.HighlightPaletteCodec
 import com.huangder.lumibooks.domain.model.WebdavConfig
 import com.huangder.lumibooks.domain.model.WebdavSyncContent
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
@@ -39,6 +41,7 @@ import com.huangder.lumibooks.tts.ExternalTtsConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import org.json.JSONArray
 import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -83,6 +86,11 @@ class DataStoreManager @Inject constructor(
         private val READER_THEME_SUITES = stringPreferencesKey("reader_theme_suites")
         private val ACTIVE_READER_THEME_SUITE_ID = stringPreferencesKey("active_reader_theme_suite_id")
         private val READER_THEME_SUITES_VERSION = intPreferencesKey("reader_theme_suites_version")
+        private val CUSTOM_HIGHLIGHT_COLORS = stringPreferencesKey("custom_highlight_colors")
+        private val CUSTOM_HIGHLIGHT_PALETTES = stringPreferencesKey("custom_highlight_palettes")
+        private val ACTIVE_HIGHLIGHT_PALETTE_ID = stringPreferencesKey("active_highlight_palette_id")
+        private val SELECTION_MENU_ITEMS = stringPreferencesKey("selection_menu_items")
+        private val TTS_FLOATING_WINDOW = booleanPreferencesKey("tts_floating_window")
         private val PARAGRAPH_SPACING = floatPreferencesKey("paragraph_spacing")
         private val FIRST_LINE_INDENT = floatPreferencesKey("first_line_indent")
         private val ADVANCED_DEFAULTS_VERSION = intPreferencesKey("advanced_defaults_version")
@@ -238,6 +246,67 @@ class DataStoreManager @Inject constructor(
         context.dataStore.data.map { preferences ->
             ReaderBackgroundPresetCodec.decode(preferences[CUSTOM_READER_BACKGROUNDS])
         }
+
+    /** Named custom palettes. The old flat color list is exposed as one legacy palette. */
+    val customHighlightPalettes: Flow<List<HighlightPalette>> = context.dataStore.data.map { preferences ->
+        decodeHighlightPalettes(preferences)
+    }
+
+    /** Null means the built-in default palette is active. */
+    val activeHighlightPaletteId: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[ACTIVE_HIGHLIGHT_PALETTE_ID]
+    }
+
+    val selectedHighlightPalette: Flow<HighlightPalette?> = context.dataStore.data.map { preferences ->
+        val palettes = decodeHighlightPalettes(preferences)
+        if (palettes.isEmpty()) {
+            null
+        } else {
+            val activeId = preferences[ACTIVE_HIGHLIGHT_PALETTE_ID]
+            palettes.firstOrNull { it.id == activeId }
+                ?: if (activeId == null && palettes.firstOrNull()?.id == "legacy") {
+                    palettes.firstOrNull()
+                } else if (activeId == "legacy") {
+                    palettes.firstOrNull()
+                } else {
+                    null
+                }
+        }
+    }
+
+    /** Backward-compatible flattened view for callers that only need set colors. */
+    val customHighlightColors: Flow<List<String>> = selectedHighlightPalette.map { palette ->
+        palette?.normalizedColors?.filterNotNull() ?: emptyList()
+    }
+
+    private fun decodeHighlightPalettes(preferences: Preferences): List<HighlightPalette> {
+        val decoded = HighlightPaletteCodec.decode(preferences[CUSTOM_HIGHLIGHT_PALETTES])
+        if (decoded.isNotEmpty()) return decoded
+        val oldRaw = preferences[CUSTOM_HIGHLIGHT_COLORS] ?: return emptyList()
+        return runCatching {
+            val arr = JSONArray(oldRaw)
+            val colors = (0 until arr.length()).map { arr.optString(it).takeIf(String::isNotBlank) }.take(6)
+            if (colors.isEmpty()) emptyList()
+            else listOf(HighlightPalette(id = "legacy", name = "自定义", colors = colors))
+        }.getOrDefault(emptyList())
+    }
+
+    /** 选择文本菜单项开关（JSON 对象，如 "{\"copy\":true,\"search\":true}"），为空时默认全部开启 */
+    val selectionMenuItems: Flow<Map<String, Boolean>> = context.dataStore.data.map { preferences ->
+        val raw = preferences[SELECTION_MENU_ITEMS] ?: ""
+        if (raw.isBlank()) emptyMap()
+        else try {
+            val obj = org.json.JSONObject(raw)
+            val map = mutableMapOf<String, Boolean>()
+            obj.keys().forEach { key -> map[key] = obj.getBoolean(key) }
+            map
+        } catch (_: Exception) { emptyMap() }
+    }
+
+    /** 听书悬浮窗字幕开关 */
+    val ttsFloatingWindow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[TTS_FLOATING_WINDOW] ?: true
+    }
 
     val preserveEpubBackground: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[PRESERVE_EPUB_BACKGROUND] ?: true
@@ -617,6 +686,53 @@ class DataStoreManager @Inject constructor(
     suspend fun saveCustomFonts(presets: List<CustomFontPreset>) {
         context.dataStore.edit { preferences ->
             preferences[CUSTOM_FONTS] = CustomFontPresetCodec.encode(presets)
+        }
+    }
+
+    suspend fun saveCustomHighlightColors(colors: List<String>) {
+        context.dataStore.edit { preferences ->
+            if (colors.isEmpty()) {
+                preferences.remove(CUSTOM_HIGHLIGHT_COLORS)
+            } else {
+                preferences[CUSTOM_HIGHLIGHT_COLORS] = JSONArray(colors).toString()
+            }
+        }
+    }
+
+    suspend fun saveCustomHighlightPalettes(palettes: List<HighlightPalette>) {
+        context.dataStore.edit { preferences ->
+            if (palettes.isEmpty()) {
+                preferences.remove(CUSTOM_HIGHLIGHT_PALETTES)
+                preferences.remove(ACTIVE_HIGHLIGHT_PALETTE_ID)
+            } else {
+                preferences[CUSTOM_HIGHLIGHT_PALETTES] = HighlightPaletteCodec.encode(palettes)
+            }
+            preferences.remove(CUSTOM_HIGHLIGHT_COLORS)
+        }
+    }
+
+    suspend fun saveActiveHighlightPaletteId(id: String?) {
+        context.dataStore.edit { preferences ->
+            if (id.isNullOrBlank()) preferences.remove(ACTIVE_HIGHLIGHT_PALETTE_ID)
+            else preferences[ACTIVE_HIGHLIGHT_PALETTE_ID] = id
+        }
+    }
+
+    suspend fun saveSelectionMenuItems(items: Map<String, Boolean>) {
+        context.dataStore.edit { preferences ->
+            if (items.isEmpty()) {
+                preferences.remove(SELECTION_MENU_ITEMS)
+            } else {
+                val obj = JSONObject()
+                items.forEach { (k, v) -> obj.put(k, v) }
+                preferences[SELECTION_MENU_ITEMS] = obj.toString()
+            }
+        }
+    }
+
+    suspend fun saveTtsFloatingWindow(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[TTS_FLOATING_WINDOW] = enabled
         }
     }
 

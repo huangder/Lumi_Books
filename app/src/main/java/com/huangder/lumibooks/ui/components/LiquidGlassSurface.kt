@@ -108,6 +108,7 @@ fun ProvideLiquidGlassBackdrop(
 fun Modifier.liquidGlassBackdrop(
     backdrop: Backdrop,
     shape: Shape,
+    lensShape: Shape = shape,
     isDark: Boolean,
     transparency: Float,
     contentScrimColor: Color = Color.Transparent,
@@ -145,7 +146,10 @@ fun Modifier.liquidGlassBackdrop(
 
     return drawBackdrop(
         backdrop = backdrop,
-        shape = { shape },
+        // The lens library only accepts rounded rectangular/corner-based shapes. A G2
+        // superellipse is clipped and outlined with its real path outside this effect;
+        // the same-radius rounded rectangle is only the SDF proxy used by the lens.
+        shape = { lensShape },
         effects = {
             vibrancy()
             if (transparency < 1f) {
@@ -362,6 +366,13 @@ fun LiquidGlassSurface(
     val hdrHighlightEnabled = LocalLiquidGlassHdrHighlightEnabled.current
     val activeBackdrop = backdrop ?: LocalLiquidGlassBackdrop.current
     val density = LocalDensity.current
+    val lensShape = remember(shape, density) {
+        if (shape is G2ContinuousCornerShape) {
+            RoundedCornerShape(with(density) { shape.cornerRadius.toDp() })
+        } else {
+            shape
+        }
+    }
     val latestOnClick by rememberUpdatedState(onClick)
     var gestureActive by remember { mutableStateOf(false) }
     var edgeDragTarget by remember { mutableStateOf(Offset.Zero) }
@@ -474,6 +485,7 @@ fun LiquidGlassSurface(
         Modifier.liquidGlassBackdrop(
             backdrop = activeBackdrop,
             shape = shape,
+            lensShape = lensShape,
             isDark = isDark,
             transparency = transparency,
             contentScrimColor = contentScrimColor,

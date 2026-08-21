@@ -119,6 +119,29 @@
     <string name="label_paragraph_spacing">段间距</string>
     <string name="label_first_line_indent">首行缩进</string>
 
+    <!-- 高亮颜色色卡 -->
+    <string name="highlight_color_palette">高亮颜色色卡</string>
+    <string name="highlight_color_palette_desc">自定义高亮和划线的颜色</string>
+    <string name="highlight_color_palette_tip">色卡修改后，浮动菜单和已有标注将使用新颜色。</string>
+    <string name="highlight_current_colors">当前颜色</string>
+    <string name="highlight_using_default">使用默认颜色</string>
+    <string name="highlight_reset_default">恢复默认</string>
+    <string name="highlight_add_color">添加颜色</string>
+    <string name="highlight_edit_color">编辑颜色</string>
+    <string name="highlight_color_hex">颜色值 (#RRGGBB)</string>
+    <string name="highlight_pick_preset">选择预设颜色</string>
+    <string name="highlight_all_palettes">所有色卡</string>
+    <string name="highlight_default_palette">默认色卡</string>
+    <string name="highlight_create_palette">创建新色卡</string>
+    <string name="highlight_palette_name">色卡名称</string>
+    <string name="highlight_palette_name_hint">例如：柔和色</string>
+    <string name="highlight_palette_delete">删除色卡</string>
+    <string name="highlight_palette_set_color">设置颜色</string>
+    <string name="tts_floating_toggle">听书悬浮窗字幕</string>
+    <string name="tts_floating_toggle_desc">朗读时在屏幕上方显示当前句子字幕</string>
+    <string name="move_up">上移</string>
+    <string name="move_down">下移</string>
+
     <!-- 显示与外观 -->
     <string name="label_dark_mode">深色模式</string>
     <string name="dark_mode_system">跟随系统</string>
@@ -379,10 +402,20 @@
     <string name="menu_search">搜索</string>
     <string name="menu_copy">复制</string>
     <string name="menu_highlight">高亮</string>
+    <string name="menu_underline">划线</string>
+    <string name="menu_delete_underline">删除划线</string>
     <string name="menu_note">笔记</string>
     <string name="menu_view_note">查看笔记</string>
     <string name="menu_remove_highlight">移除高亮</string>
     <string name="menu_dictionary">字典</string>
+    <string name="menu_replace">替换</string>
+    <string name="menu_settings">菜单设置</string>
+    <string name="replace_with_label">为</string>
+    <string name="replace_input_hint">请输入替换的文字</string>
+    <string name="replace_success">已替换</string>
+    <string name="replace_no_match">未找到可替换的内容</string>
+    <string name="replace_not_available">仅 TXT 文件支持替换</string>
+    <string name="selection_menu_settings">浮动菜单设置</string>
     <string name="dictionary_no_app">未找到支持查词的词典或翻译应用</string>
     <string name="note_input_placeholder">输入笔记...</string>
     <string name="highlights_notes_title">高亮与笔记</string>
