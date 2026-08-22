@@ -901,4 +901,12 @@
     <string name="tts_floating_go_settings">Go to settings</string>
     <string name="bookmark_added_toast">Bookmark added</string>
     <string name="bookmark_removed_toast">Bookmark removed</string>
+    <string name="add_sub_tag">Add sub-tag</string>
+    <string name="sub_tag_name_hint">Sub-tag name</string>
+    <string name="tag_group_ungrouped">Ungrouped</string>
+    <string name="delete_primary_tag_title">Delete tag “%1$s”?</string>
+    <string name="delete_tag_with_children_desc">This tag has %1$d sub-tags</string>
+    <string name="delete_tag_simple_desc">This cannot be undone</string>
+    <string name="delete_tag_keep_children">Keep sub-tags</string>
+    <string name="delete_tag_cascade">Delete all</string>
 </resources>

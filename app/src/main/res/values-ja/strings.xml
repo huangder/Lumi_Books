@@ -813,4 +813,12 @@
     <string name="tts_floating_go_settings">設定に移動</string>
     <string name="bookmark_added_toast">しおりを追加しました</string>
     <string name="bookmark_removed_toast">しおりを削除しました</string>
+    <string name="add_sub_tag">サブタグを追加</string>
+    <string name="sub_tag_name_hint">サブタグ名</string>
+    <string name="tag_group_ungrouped">未分類</string>
+    <string name="delete_primary_tag_title">タグ「%1$s」を削除しますか？</string>
+    <string name="delete_tag_with_children_desc">このタグには %1$d 個のサブタグがあります</string>
+    <string name="delete_tag_simple_desc">元に戻せません</string>
+    <string name="delete_tag_keep_children">サブタグを残す</string>
+    <string name="delete_tag_cascade">まとめて削除</string>
 </resources>

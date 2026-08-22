@@ -816,4 +816,12 @@
     <string name="tts_floating_go_settings">前往设置</string>
     <string name="bookmark_added_toast">已添加书签</string>
     <string name="bookmark_removed_toast">已移除书签</string>
+    <string name="add_sub_tag">添加子标签</string>
+    <string name="sub_tag_name_hint">子标签名称</string>
+    <string name="tag_group_ungrouped">未分组</string>
+    <string name="delete_primary_tag_title">删除标签「%1$s」？</string>
+    <string name="delete_tag_with_children_desc">该标签下有 %1$d 个子标签</string>
+    <string name="delete_tag_simple_desc">删除后不可恢复</string>
+    <string name="delete_tag_keep_children">保留子标签</string>
+    <string name="delete_tag_cascade">连同删除</string>
 </resources>

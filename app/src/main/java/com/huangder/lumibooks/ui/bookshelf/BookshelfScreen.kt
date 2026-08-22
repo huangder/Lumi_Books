@@ -658,11 +658,11 @@ fun BookshelfScreen(
                 onTagCheckedChange = { tag, isChecked ->
                     viewModel.setBookTag(targetBook.id, tag.id, isChecked)
                 },
-                onCreateTag = { name ->
-                    viewModel.createAndAssignTag(targetBook.id, name)
+                onCreateTag = { name, parentId ->
+                    viewModel.createAndAssignTag(targetBook.id, name, parentId)
                 },
-                onDeleteTag = { tag ->
-                    viewModel.deleteTag(tag.id)
+                onDeleteTag = { tag, deleteChildren ->
+                    viewModel.deleteTag(tag.id, deleteChildren)
                 }
             )
         }

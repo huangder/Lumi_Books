@@ -577,10 +577,13 @@ class HomeViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(importMessage = null)
     }
 
-    fun createAndAssignTag(bookId: String, rawName: String) {
+    fun createAndAssignTag(bookId: String, rawName: String, parentId: String? = null) {
         if (!validateTagName(rawName)) return
         viewModelScope.launch {
-            runCatching { tagRepository.createAndAssignTag(bookId, rawName) }
+            runCatching { tagRepository.createAndAssignTag(bookId, rawName, parentId) }
+                .onSuccess { tag ->
+                    if (tag == null) showTagMessage(application.getString(R.string.tag_name_exists))
+                }
                 .onFailure { showTagMessage(it.message ?: application.getString(R.string.error)) }
         }
     }
@@ -612,6 +615,7 @@ class HomeViewModel @Inject constructor(
             runCatching {
                 val firstBookId = bookIds.first()
                 val tag = tagRepository.createAndAssignTag(firstBookId, rawName)
+                    ?: return@runCatching
                 bookIds.asSequence()
                     .filterNot { it == firstBookId }
                     .forEach { bookId -> tagRepository.assignTag(bookId, tag.id) }
@@ -630,9 +634,9 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun deleteTag(tagId: String) {
+    fun deleteTag(tagId: String, deleteChildren: Boolean = false) {
         viewModelScope.launch {
-            runCatching { tagRepository.deleteTag(tagId) }
+            runCatching { tagRepository.deleteTag(tagId, deleteChildren) }
                 .onFailure { showTagMessage(it.message ?: application.getString(R.string.error)) }
         }
     }

@@ -32,8 +32,14 @@ abstract class TagDao {
     @Query("UPDATE tags SET name = :name, normalizedName = :normalizedName WHERE id = :tagId")
     abstract suspend fun updateTagName(tagId: String, name: String, normalizedName: String)
 
+    @Query("UPDATE tags SET parentId = NULL WHERE parentId = :parentId")
+    abstract suspend fun upgradeSecondaryTags(parentId: String)
+
     @Query("DELETE FROM tags WHERE id = :tagId")
     abstract suspend fun deleteTag(tagId: String)
+
+    @Query("DELETE FROM tags WHERE parentId = :parentId")
+    abstract suspend fun deleteSecondaryTags(parentId: String)
 
     @Transaction
     open suspend fun createAndAssignTag(bookId: String, tag: TagEntity): TagEntity {
@@ -43,5 +49,16 @@ abstract class TagDao {
         }
         insertBookTagLink(BookTagCrossRefEntity(bookId = bookId, tagId = storedTag.id))
         return storedTag
+    }
+
+    /** 删除一级标签：deleteChildren=false 时子标签升级为一级，true 时级联删除 */
+    @Transaction
+    open suspend fun deleteTagWithChildren(tagId: String, deleteChildren: Boolean) {
+        if (deleteChildren) {
+            deleteSecondaryTags(tagId)
+        } else {
+            upgradeSecondaryTags(tagId)
+        }
+        deleteTag(tagId)
     }
 }

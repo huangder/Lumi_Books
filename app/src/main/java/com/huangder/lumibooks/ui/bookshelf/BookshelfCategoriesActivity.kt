@@ -568,8 +568,12 @@ private fun CategoryBooksPage(
             selectedTagIds = tagIdsByBook[book.id].orEmpty(),
             onDismiss = { tagTargetBook = null },
             onTagCheckedChange = { tag, checked -> viewModel.setBookTag(book.id, tag.id, checked) },
-            onCreateTag = { viewModel.createAndAssignTag(book.id, it) },
-            onDeleteTag = { viewModel.deleteTag(it.id) }
+            onCreateTag = { name, parentId ->
+                viewModel.createAndAssignTag(book.id, name, parentId)
+            },
+            onDeleteTag = { tag, deleteChildren ->
+                viewModel.deleteTag(tag.id, deleteChildren)
+            }
         )
     }
     if (showBatchTagSheet) {

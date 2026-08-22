@@ -813,4 +813,12 @@
     <string name="tts_floating_go_settings">설정으로 이동</string>
     <string name="bookmark_added_toast">책갈피가 추가되었습니다</string>
     <string name="bookmark_removed_toast">책갈피가 제거되었습니다</string>
+    <string name="add_sub_tag">하위 태그 추가</string>
+    <string name="sub_tag_name_hint">하위 태그 이름</string>
+    <string name="tag_group_ungrouped">분류 없음</string>
+    <string name="delete_primary_tag_title">‘%1$s’ 태그를 삭제할까요?</string>
+    <string name="delete_tag_with_children_desc">이 태그에는 하위 태그 %1$d개가 있습니다</string>
+    <string name="delete_tag_simple_desc">되돌릴 수 없습니다</string>
+    <string name="delete_tag_keep_children">하위 태그 유지</string>
+    <string name="delete_tag_cascade">함께 삭제</string>
 </resources>
