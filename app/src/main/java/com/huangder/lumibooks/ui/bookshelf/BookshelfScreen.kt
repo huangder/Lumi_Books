@@ -1151,14 +1151,6 @@ private fun BookshelfCapsuleHeader(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Spacer(Modifier.width(10.dp))
-                    Text(
-                        text = stringResource(R.string.selected_books_count_compact, selectedCount),
-                        color = AppColors.TextSecondary,
-                        fontSize = AppType.Caption,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1
-                    )
-                    Spacer(Modifier.width(10.dp))
                     LiquidGlassIconButton(
                         imageVector = Icons.Outlined.Delete,
                         contentDescription = stringResource(R.string.delete),
@@ -1202,9 +1194,7 @@ private fun BookshelfCapsuleHeader(
                     tintedColor = AppColors.Accent,
                     contentColor = AppColors.OnAccent,
                     prominentShadow = false,
-                    modifier = Modifier
-                        .widthIn(min = 88.dp)
-                        .height(46.dp)
+                    modifier = Modifier.height(46.dp)
                 ) {
                     Text(
                         text = stringResource(R.string.select_all),
@@ -1311,6 +1301,19 @@ private fun BookshelfCapsuleHeader(
                     }
                 }
             }
+        }
+
+        AnimatedVisibility(visible = isEditing) {
+            Text(
+                text = stringResource(R.string.selected_books_count_compact, selectedCount),
+                color = AppColors.TextSecondary,
+                fontSize = AppType.Caption,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = AppSpace.lg, vertical = 10.dp)
+            )
         }
 
         AnimatedVisibility(visible = !isEditing) {

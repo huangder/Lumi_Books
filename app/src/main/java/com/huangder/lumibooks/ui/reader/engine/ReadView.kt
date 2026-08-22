@@ -103,8 +103,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     companion object {
         private const val TAG = "ReadView"
         private const val JUMP_SETTLE_DELAY_MS = 120L
-        /** 给系统选择手柄保留的页底命中安全区，分页计算与渲染共同使用 */
-        private const val SELECTION_BOTTOM_SAFE_AREA_DP = 20f
+        /** 给系统选择手柄保留约一行半的页底命中安全区，分页计算与渲染共同使用 */
+        private const val SELECTION_BOTTOM_SAFE_AREA_DP = 56f
     }
 
     // ── 子组件 ──
@@ -124,12 +124,12 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private val nextSpreadView = FrameLayout(context).apply { clipChildren = false }
 
     // ── 页槽：左半页 + 右半页（单页模式只用左半页） ──
-    val prevPageView = PageContentView(context).apply { onSelectionReachEnd = { handleSelectionReachEnd() } }
-    val curPageView = PageContentView(context).apply { onSelectionReachEnd = { handleSelectionReachEnd() } }
-    val nextPageView = PageContentView(context).apply { onSelectionReachEnd = { handleSelectionReachEnd() } }
-    private val prevPageRightView = PageContentView(context).apply { onSelectionReachEnd = { handleSelectionReachEnd() } }
-    private val curPageRightView = PageContentView(context).apply { onSelectionReachEnd = { handleSelectionReachEnd() } }
-    private val nextPageRightView = PageContentView(context).apply { onSelectionReachEnd = { handleSelectionReachEnd() } }
+    val prevPageView = PageContentView(context)
+    val curPageView = PageContentView(context)
+    val nextPageView = PageContentView(context)
+    private val prevPageRightView = PageContentView(context)
+    private val curPageRightView = PageContentView(context)
+    private val nextPageRightView = PageContentView(context)
 
     // ── 中缝遮挡条：翻页动画时下层页面从缝隙透出，用阅读背景色盖住 ──
     private val prevGutterView = View(context)
@@ -1051,46 +1051,6 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         clearCurrentSelection()
         startTapAnimation(PageAnimationController.Direction.NEXT)
         return true
-    }
-
-    /** 閫夋嫨缁堢偣鎷栧埌椤甸潰鏈熬锛氳嚜鍔ㄧ炕鍒颁笅涓€椤靛苟鍦ㄦ柊椤甸噸寤洪€夊尯锛堣法椤甸€夋嫨锛?*/
-    private fun handleSelectionReachEnd() {
-        if (isJumpSettling) return
-        val next = slotManager.getNextSlot()
-        if (!next.isLoaded) return
-        // 翻页会替换当前页文本；若系统选择手柄仍挂在旧 TextView 上，
-        // 其后续 MOVE 会按失效的 layout 计算出 -1 并写入选区导致越界崩溃。
-        // 翻页前先清空选区并收起手柄。
-        curPageView.dismissSelection()
-        turnToNextPage()
-        postDelayed({ rebuildSelectionOnCurrentPage() }, 420L)
-    }
-
-    private fun rebuildSelectionOnCurrentPage() {
-        val slot = slotManager.getCurSlot()
-        val pageView = slot.contentView
-        val tv = pageView.textView
-        val sp = tv.text as? android.text.Spannable ?: return
-        if (sp.isEmpty()) return
-        android.util.Log.d(TAG, "rebuildSelectionOnCurrentPage len=" + sp.length)
-        val x = tv.paddingLeft + 4f
-        val y = tv.paddingTop + 4f
-        val downTime = android.os.SystemClock.uptimeMillis()
-        val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0)
-        tv.dispatchTouchEvent(down)
-        down.recycle()
-        // 鍏堝彂 DOWN 锛屽欢杩熷啀鍙?UP锛屾瀯鎴愮湡瀹炵殑闀挎寜鏃堕棿宸€傚悓姝ュ彂閫?down+up 浼氳鍙栨秷闀挎寜銆?
-        tv.postDelayed({
-            val upTime = android.os.SystemClock.uptimeMillis()
-            val up = MotionEvent.obtain(downTime, upTime, MotionEvent.ACTION_UP, x, y, 0)
-            tv.dispatchTouchEvent(up)
-            up.recycle()
-            // 闀挎寜閫夎瘝鍚庯紝灏嗛€夊尯璋冩暣鍒版柊椤靛紑澶村嚑涓瓧
-            val sp2 = tv.text as? android.text.Spannable ?: return@postDelayed
-            if (!sp2.isEmpty()) {
-                android.text.Selection.setSelection(sp2, 0, minOf(4, sp2.length))
-            }
-        }, android.view.ViewConfiguration.getLongPressTimeout().toLong() + 120L)
     }
 
     // ── 触摸 ──

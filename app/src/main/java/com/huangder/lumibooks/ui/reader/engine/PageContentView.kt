@@ -28,34 +28,6 @@ internal fun pageStartsMidParagraph(text: CharSequence, start: Int): Boolean {
 }
 
 private class PagedSelectableTextView(context: Context) : RoundedHighlightTextView(context) {
-    /** 閫夋嫨缁堢偣鎷栧埌鏂囨湰鏈熬锛堥〉闈㈠簳閮?/ 鍙崇紭锛夋椂鍥炶皟锛岀敤浜庤法椤佃嚜鍔ㄧ炕椤点€?*/
-    var onSelectionReachEnd: (() -> Unit)? = null
-    private var lastReachEndAt = 0L
-    private var previousSelectionStart = -1
-    private var previousSelectionEnd = -1
-
-    override fun onSelectionChanged(selStart: Int, selEnd: Int) {
-        super.onSelectionChanged(selStart, selEnd)
-        val sp = text ?: return
-        if (sp.isEmpty()) return
-
-        // 仅在右手柄基于已有选区继续向末尾扩展时自动翻页。
-        // 初次长按最后一行也可能直接选到文本末尾，不能在这一步抢先翻页。
-        val extendsRightHandle = previousSelectionStart >= 0 &&
-            selStart == previousSelectionStart &&
-            selEnd > previousSelectionEnd &&
-            previousSelectionEnd > previousSelectionStart
-        previousSelectionStart = selStart
-        previousSelectionEnd = selEnd
-        if (!extendsRightHandle || selEnd < sp.length - 1) return
-
-        val now = System.currentTimeMillis()
-        if (now - lastReachEndAt > 1500L) {
-            lastReachEndAt = now
-            onSelectionReachEnd?.invoke()
-        }
-    }
-
     // NOTE: justification must stay NONE (the default).
     // PageLayoutEngine paginates with a plain ALIGN_NORMAL StaticLayout. When
     // justification is enabled, Android's line breaker reserves extra trailing
@@ -141,13 +113,6 @@ class PageContentView(context: Context) : FrameLayout(context) {
         addView(justifiedView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(verticalTextView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     }
-
-    /** 閫夋嫨缁堢偣鎷栧埌椤甸潰鏈熬锛堝洖璋冪粰 ReadView 鑷姩缈婚〉锛?*/
-    var onSelectionReachEnd: (() -> Unit)? = null
-        set(value) {
-            field = value
-            (textView as? PagedSelectableTextView)?.onSelectionReachEnd = value
-        }
 
     private var readerBackgroundImagePath: String? = null
     private var currentBgColor: Int = 0
@@ -440,23 +405,6 @@ class PageContentView(context: Context) : FrameLayout(context) {
         textView.invalidate()
         justifiedView.invalidate()
         verticalTextView.invalidate()
-    }
-
-    /** 清空选区并收起系统选择手柄（页面文本将被替换前调用，防止手柄用失效 layout 越界） */
-    fun dismissSelection() {
-        (textView.text as? Spannable)?.let { sp ->
-            if (android.text.Selection.getSelectionStart(sp) >= 0 ||
-                android.text.Selection.getSelectionEnd(sp) >= 0
-            ) {
-                android.text.Selection.removeSelection(sp)
-            }
-        }
-        // 派发 CANCEL 终止手柄事件流，Editor 收到后收起选择手柄
-        val now = android.os.SystemClock.uptimeMillis()
-        val cancel = MotionEvent.obtain(now, now, MotionEvent.ACTION_CANCEL, 0f, 0f, 0)
-        textView.dispatchTouchEvent(cancel)
-        cancel.recycle()
-        textView.invalidate()
     }
 
     /**
