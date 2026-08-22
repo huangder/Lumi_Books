@@ -27,8 +27,8 @@ interface ReadViewCallbacks {
     /** 点击中间区域，切换菜单 */
     fun onMenuToggle()
 
-    /** 点击 EPUB 正文中的超链接。 */
-    fun onLinkClick(href: String) {}
+    /** 点击 EPUB 正文中的超链接。x/y 为 ReadView 内的点击坐标（像素）。 */
+    fun onLinkClick(href: String, x: Float, y: Float) {}
 
     /** Called after a plain EPUB image is long-pressed. Coordinates are in screen pixels. */
     fun onImageLongPress(chapterIndex: Int, image: ReaderImageHit) {}

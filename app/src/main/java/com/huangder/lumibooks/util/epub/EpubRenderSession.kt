@@ -206,7 +206,7 @@ class EpubRenderSession private constructor(
         private const val CONTENT_SECURITY_POLICY =
             "default-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; " +
                 "img-src 'self' data: blob:; media-src 'self' data: blob:; " +
-                "script-src 'unsafe-inline'; connect-src 'none'; frame-src 'none'; object-src 'none'"
+                "script-src 'unsafe-inline'; connect-src 'self'; frame-src 'none'; object-src 'none'"
 
         fun open(filePath: String, parsedPackage: EpubPackage? = null): EpubRenderSession {
             val epubPackage = parsedPackage ?: EpubPackageReader.read(filePath)

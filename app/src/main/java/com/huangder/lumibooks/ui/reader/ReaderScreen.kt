@@ -106,6 +106,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -134,6 +135,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import kotlin.math.roundToInt
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -164,8 +166,14 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
@@ -291,6 +299,13 @@ private data class ContinuousTextSelection(
     val bottomY: Float
 )
 
+/** Canvas 引擎注释气泡状态：注释正文 + 锚点在窗口中的坐标（像素）。 */
+private data class ReaderFootnoteBubble(
+    val text: String,
+    val anchorWindowX: Float,
+    val anchorWindowY: Float
+)
+
 internal enum class AnnotationColorTarget(val noteType: String) {
     HIGHLIGHT("highlight"),
     UNDERLINE("underline")
@@ -307,7 +322,7 @@ private class ContinuousSelectionController {
 
 private class ContinuousSelectableTextView(context: Context) : RoundedHighlightTextView(context) {
     var onReaderTap: (() -> Unit)? = null
-    var onLinkTap: ((String) -> Unit)? = null
+    var onLinkTap: ((String, Float, Float) -> Unit)? = null
     var onImageLongPress: ((ReaderImageHit) -> Unit)? = null
     var onSelectionChanging: (() -> Unit)? = null
     var onReaderSelection: ((ContinuousTextSelection) -> Unit)? = null
@@ -334,10 +349,11 @@ private class ContinuousSelectableTextView(context: Context) : RoundedHighlightT
             if (start < 0 || end <= start) {
                 val image = readerImageAt(lastTapX, lastTapY)
                 when {
-                    image?.link != null -> onLinkTap?.invoke(image.link)
+                    image?.link != null -> onLinkTap?.invoke(image.link, lastTapX, lastTapY)
                     image?.hasAction == true -> Unit
                     image != null -> Unit
-                    else -> readerLinkAt(lastTapX, lastTapY)?.let { onLinkTap?.invoke(it) }
+                    else -> readerLinkAt(lastTapX, lastTapY)
+                        ?.let { onLinkTap?.invoke(it, lastTapX, lastTapY) }
                         ?: onReaderTap?.invoke()
                 }
             }
@@ -576,6 +592,13 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
 
     // ReadView 引用
     val readViewRef = remember { mutableStateOf<ReadView?>(null) }
+    // Canvas 引擎注释气泡 + 根布局在窗口中的位置（用于把窗口坐标换算为气泡偏移）
+    var footnoteBubble by remember { mutableStateOf<ReaderFootnoteBubble?>(null) }
+    // 实际渲染的气泡：目标为 null 时先播放退出动画再移除
+    var renderedFootnote by remember { mutableStateOf<ReaderFootnoteBubble?>(null) }
+    val footnoteProgress = remember { Animatable(0f) }
+    val readerRootWindowPosition = remember { mutableStateOf(Offset.Zero) }
+    val readerRootSize = remember { mutableStateOf(IntSize.Zero) }
     val continuousScrollRequests = remember { MutableSharedFlow<Int>(extraBufferCapacity = 1) }
     val continuousSelectionController = remember { ContinuousSelectionController() }
     val isEpub = uiState.book?.format?.name == "EPUB"
@@ -1411,6 +1434,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         isAnySheetOpen ||
         selectionState != null ||
         linkReturnLocation != null ||
+        footnoteBubble != null ||
         uiState.showEpubLayoutHint ||
         uiState.showMobiLayoutHint ||
         uiState.showTxtEncodingHint ||
@@ -1421,7 +1445,44 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         useDarkIcons = ColorUtils.calculateLuminance(customBackgroundThemeColorInt) >= 0.42
     )
 
-    Box(Modifier.fillMaxSize().background(composeBgColor)) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(composeBgColor)
+            .onGloballyPositioned { coordinates ->
+                readerRootWindowPosition.value = coordinates.positionInWindow()
+                readerRootSize.value = coordinates.size
+            }
+    ) {
+        // Canvas 引擎（阅读器排版）的注释气泡：进出动画（180ms 进入 / 140ms 退出，见动效规范 7.1）
+        LaunchedEffect(footnoteBubble) {
+            if (footnoteBubble != null) {
+                renderedFootnote = footnoteBubble
+                if (motionEnabled) {
+                    footnoteProgress.snapTo(0f)
+                    footnoteProgress.animateTo(
+                        1f,
+                        tween(LumiMotion.MenuEnterMillis, easing = AppEasing.Decelerate)
+                    )
+                } else {
+                    footnoteProgress.snapTo(1f)
+                }
+            } else if (renderedFootnote != null) {
+                if (motionEnabled) {
+                    footnoteProgress.animateTo(
+                        0f,
+                        tween(LumiMotion.MenuExitMillis, easing = AppEasing.Accelerate)
+                    )
+                } else {
+                    footnoteProgress.snapTo(0f)
+                }
+                renderedFootnote = null
+            }
+        }
+        // 章节切换时关闭注释气泡（分页翻页与菜单在各自回调中关闭）
+        LaunchedEffect(uiState.currentChapterIndex, uiState.renderMode, renderedContinuousScrollMode) {
+            footnoteBubble = null
+        }
         val modeTransitionActive = readerModeTransitionProgress.value < 0.999f
         val imagePreviewBlurActive = !eInkMode && readerImagePreviewProgress.value > 0.001f
         Box(
@@ -1615,12 +1676,24 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     scrollRequests = continuousScrollRequests,
                     onSearchHighlightFinished = { continuousSearchHighlight = null },
                     onMenuToggle = viewModel::toggleMenu,
-                    onLinkClick = { sourceChapterIndex, href ->
+                    onLinkClick = { sourceChapterIndex, href, anchorWindowX, anchorWindowY ->
                         if (isExternalBookLink(href)) {
                             pendingExternalLink = href
                         } else {
                             linkNavigationJob?.cancel()
                             linkNavigationJob = scope.launch {
+                                if (viewModel.isFootnoteHref(sourceChapterIndex, href)) {
+                                    val noteText = viewModel.resolveFootnoteText(sourceChapterIndex, href)
+                                    if (noteText != null) {
+                                        footnoteBubble = ReaderFootnoteBubble(
+                                            text = noteText,
+                                            anchorWindowX = anchorWindowX,
+                                            anchorWindowY = anchorWindowY
+                                        )
+                                        return@launch
+                                    }
+                                }
+                                footnoteBubble = null
                                 val target = viewModel.resolveBookLink(sourceChapterIndex, href)
                                     ?: return@launch
                                 jumpToContinuousChapter(target.chapterIndex)
@@ -1708,6 +1781,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                 // 翻页时关闭选择菜单（选区已随页面切换失效）
                                 selectionState = null
                                 isSelectionDragging = false
+                                footnoteBubble = null
                                 viewModel.onNewEnginePageChanged(
                                     globalPage, chapterIndex, pageInChapter, chapterTotalPages
                                 )
@@ -1729,10 +1803,11 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                 // 用户点击屏幕中心区域，关闭选择菜单
                                 selectionState = null
                                 isSelectionDragging = false
+                                footnoteBubble = null
                                 viewModel.toggleMenu()
                             }
 
-                            override fun onLinkClick(href: String) {
+                            override fun onLinkClick(href: String, tapX: Float, tapY: Float) {
                                 if (isExternalBookLink(href)) {
                                     pendingExternalLink = href
                                     return
@@ -1740,9 +1815,28 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                 val source = readViewRef.value?.getCurrentLocation()
                                     ?.let { ReaderLinkLocation(it.first, it.second) }
                                     ?: return
+                                val anchorWindow = readViewRef.value?.let { view ->
+                                    val location = IntArray(2)
+                                    view.getLocationInWindow(location)
+                                    Offset(location[0] + tapX, location[1] + tapY)
+                                }
 
                                 linkNavigationJob?.cancel()
                                 linkNavigationJob = scope.launch {
+                                    if (anchorWindow != null &&
+                                        viewModel.isFootnoteHref(source.chapterIndex, href)
+                                    ) {
+                                        val noteText = viewModel.resolveFootnoteText(source.chapterIndex, href)
+                                        if (noteText != null) {
+                                            footnoteBubble = ReaderFootnoteBubble(
+                                                text = noteText,
+                                                anchorWindowX = anchorWindow.x,
+                                                anchorWindowY = anchorWindow.y
+                                            )
+                                            return@launch
+                                        }
+                                    }
+                                    footnoteBubble = null
                                     val target = viewModel.resolveBookLink(source.chapterIndex, href)
                                         ?: return@launch
                                     linkReturnLocation = source
@@ -1985,6 +2079,22 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             if (!uiState.useNewEngine) {
                 LegacyWebViewContent(uiState, viewModel, composeBgColor)
             }
+        }
+
+        // ── Canvas 引擎注释气泡（同窗口覆盖层：玻璃折射对位正确，且无 Popup 窗口首帧闪现） ──
+        renderedFootnote?.let { bubble ->
+            ReaderFootnoteBubbleOverlay(
+                footnote = bubble,
+                progress = footnoteProgress.value,
+                rootWindowPosition = readerRootWindowPosition.value,
+                rootSize = readerRootSize.value,
+                isLiquidGlass = isLiquidGlass,
+                glassBackdrop = activeReaderGlassBackdrop,
+                backgroundColor = menuBgColor,
+                contentColor = menuContentColor,
+                fontSizeSp = uiState.fontSize,
+                onDismiss = { footnoteBubble = null }
+            )
         }
 
         // ── 覆盖层 UI（新旧引擎共享） ──
@@ -4354,7 +4464,7 @@ private fun ContinuousScrollReader(
     scrollRequests: MutableSharedFlow<Int>,
     onSearchHighlightFinished: () -> Unit,
     onMenuToggle: () -> Unit,
-    onLinkClick: (chapterIndex: Int, href: String) -> Unit,
+    onLinkClick: (chapterIndex: Int, href: String, anchorWindowX: Float, anchorWindowY: Float) -> Unit,
     onImageLongPress: (chapterIndex: Int, image: ReaderImageHit) -> Unit,
     selectionController: ContinuousSelectionController,
     onSelectionChanging: () -> Unit,
@@ -4658,7 +4768,11 @@ private fun ContinuousScrollReader(
                     },
                     update = { textView ->
                         textView.onReaderTap = onMenuToggle
-                        textView.onLinkTap = { href -> onLinkClick(chapterIndex, href) }
+                        textView.onLinkTap = { href, tapX, tapY ->
+                            val location = IntArray(2)
+                            textView.getLocationInWindow(location)
+                            onLinkClick(chapterIndex, href, location[0] + tapX, location[1] + tapY)
+                        }
                         textView.onImageLongPress = { image -> onImageLongPress(chapterIndex, image) }
                         textView.onSelectionChanging = onSelectionChanging
                         textView.onReaderSelection = { selection ->
@@ -7145,4 +7259,139 @@ private fun SelectionHandle(
             drawCircle(Color.White, r, Offset(cx, cy), style = Stroke(3.dp.toPx()))
         }
     }
+}
+
+/**
+ * Canvas 引擎（阅读器排版）的注释气泡（同窗口覆盖层，非 Popup 窗口）：
+ * - 避免独立窗口首帧定位造成的闪现；
+ * - 与阅读内容同一坐标空间，液态玻璃折射的正是气泡正下方的内容。
+ * 锚定在注释链接的点击位置附近，点击外部关闭，正文过长时内部滚动。
+ * 进出动画遵循动效规范（进入 180ms Decelerate / 退出 140ms Accelerate），
+ * 阴影保持大羽化但有足够对比度以分辨气泡边缘。
+ */
+@Composable
+private fun ReaderFootnoteBubbleOverlay(
+    footnote: ReaderFootnoteBubble,
+    progress: Float,
+    rootWindowPosition: Offset,
+    rootSize: IntSize,
+    isLiquidGlass: Boolean,
+    glassBackdrop: Backdrop?,
+    backgroundColor: Color,
+    contentColor: Color,
+    fontSizeSp: Float,
+    onDismiss: () -> Unit
+) {
+    val density = LocalDensity.current
+    val anchorX = footnote.anchorWindowX - rootWindowPosition.x
+    val anchorY = footnote.anchorWindowY - rootWindowPosition.y
+    // 首帧用估算尺寸占位，测量后（onSizeChanged）按真实尺寸重新定位
+    var bubbleSize by remember { mutableStateOf(IntSize(320, 180)) }
+    val gapPx = with(density) { 14.dp.toPx() }
+    val edgePx = with(density) { 10.dp.toPx() }
+    val maxWidthPx = minOf((rootSize.width * 0.84f).toInt(), with(density) { 420.dp.roundToPx() })
+        .coerceAtLeast(200)
+    val maxHeightPx = (rootSize.height * 0.4f).toInt().coerceAtLeast(200)
+    val maxWidthDp = with(density) { maxWidthPx.toDp() }
+    val maxHeightDp = with(density) { maxHeightPx.toDp() }
+    val bubbleShape = RoundedCornerShape(16.dp)
+
+    val bubbleWidth = bubbleSize.width.coerceIn(200, maxWidthPx)
+    val left = (anchorX - bubbleWidth / 2f)
+        .roundToInt()
+        .coerceIn(edgePx.roundToInt(), (rootSize.width - bubbleWidth - edgePx).roundToInt())
+    val placeBelow = anchorY < rootSize.height / 2f
+    val top = if (placeBelow) {
+        (anchorY + gapPx).roundToInt()
+    } else {
+        (anchorY - gapPx - bubbleSize.height).roundToInt()
+    }.coerceIn(edgePx.roundToInt(), (rootSize.height - bubbleSize.height - edgePx).roundToInt().coerceAtLeast(0))
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        // 点击气泡外任意处关闭
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    detectTapGestures { onDismiss() }
+                }
+        )
+        Box(
+            modifier = Modifier
+                .offset { IntOffset(left, top) }
+                // 真实尺寸测得前保持透明，避免用估算尺寸定位导致的首帧位置闪跳
+                .graphicsLayer {
+                    alpha = progress
+                    val scale = 0.96f + 0.04f * progress
+                    scaleX = scale
+                    scaleY = scale
+                }
+        ) {
+            val sizeModifier = Modifier.onSizeChanged { bubbleSize = it }
+            if (isLiquidGlass) {
+                LiquidGlassSurface(
+                    shape = bubbleShape,
+                    fallbackColor = backgroundColor,
+                    modifier = sizeModifier
+                        .widthIn(min = 200.dp, max = maxWidthDp)
+                        .heightIn(max = maxHeightDp)
+                        .shadow(
+                            elevation = 20.dp,
+                            shape = bubbleShape,
+                            clip = false,
+                            ambientColor = Color.Black.copy(alpha = 0.14f),
+                            spotColor = Color.Black.copy(alpha = 0.20f)
+                        ),
+                    backdrop = glassBackdrop,
+                    contentScrimColor = backgroundColor.copy(alpha = 0.52f)
+                ) {
+                    FootnoteBubbleText(
+                        footnote = footnote,
+                        contentColor = contentColor,
+                        fontSizeSp = fontSizeSp
+                    )
+                }
+            } else {
+                Surface(
+                    shape = bubbleShape,
+                    color = backgroundColor,
+                    tonalElevation = 0.dp,
+                    border = BorderStroke(1.dp, contentColor.copy(alpha = 0.16f)),
+                    modifier = sizeModifier
+                        .shadow(
+                            elevation = 20.dp,
+                            shape = bubbleShape,
+                            clip = false,
+                            ambientColor = Color.Black.copy(alpha = 0.14f),
+                            spotColor = Color.Black.copy(alpha = 0.20f)
+                        )
+                        .widthIn(min = 200.dp, max = maxWidthDp)
+                        .heightIn(max = maxHeightDp)
+                ) {
+                    FootnoteBubbleText(
+                        footnote = footnote,
+                        contentColor = contentColor,
+                        fontSizeSp = fontSizeSp
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FootnoteBubbleText(
+    footnote: ReaderFootnoteBubble,
+    contentColor: Color,
+    fontSizeSp: Float
+) {
+    Text(
+        text = footnote.text,
+        color = contentColor,
+        fontSize = (fontSizeSp * 0.92f).sp,
+        lineHeight = (fontSizeSp * 0.92f * 1.6f).sp,
+        modifier = Modifier
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 14.dp)
+    )
 }

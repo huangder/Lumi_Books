@@ -2320,6 +2320,20 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
+    /** Canvas 引擎注释气泡：该 href 是否为注释引用链接。 */
+    suspend fun isFootnoteHref(chapterIndex: Int, href: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            parser?.isFootnoteHref(chapterIndex, href) == true
+        }
+    }
+
+    /** Canvas 引擎注释气泡：提取注释正文，失败返回 null（调用方回退为普通跳转）。 */
+    suspend fun resolveFootnoteText(sourceChapterIndex: Int, href: String): String? {
+        return withContext(Dispatchers.IO) {
+            parser?.resolveFootnoteText(sourceChapterIndex, href)
+        }
+    }
+
     /** Resolves a TOC anchor inside its target chapter before the reader performs the jump. */
     suspend fun resolveTocTarget(
         chapterIndex: Int,

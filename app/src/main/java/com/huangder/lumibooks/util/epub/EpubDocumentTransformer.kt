@@ -197,7 +197,7 @@ html.lumi-green-dark body { color: #c8e6c9 !important; }
   border-radius: 14px;
   background: #fff;
   color: #242424;
-  box-shadow: 0 18px 52px rgba(0, 0, 0, 0.15), 0 5px 18px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.10), 0 6px 24px rgba(0, 0, 0, 0.05);
   font-family: sans-serif;
   font-size: 16px;
   line-height: 1.62;
@@ -2174,6 +2174,14 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     return /(^|[\s_#./-])(footnotes?|endnotes?|rearnotes?|notes?|fn|en)([\s_./-]|\d|$)/i.test(String(value || ''));
   }
 
+  function hasFootnoteMarkerLabel(anchor) {
+    var label = String(anchor.textContent || '').replace(/\s+/g, '');
+    if (!label || label.length > 16) return false;
+    if (/^(?:[\[［【〔](?:[0-9０-９]{1,3}|[*＊]{1,3})[\]］】〕])+$/.test(label)) return true;
+    if (/^[*＊]{1,3}$/.test(label)) return true;
+    return /^[①-⑳]$/.test(label);
+  }
+
   function decodedFragment(url) {
     var fragment = String(url && url.hash || '').replace(/^#/, '');
     if (!fragment) return '';
@@ -2195,6 +2203,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     var fragment = decodedFragment(url);
     if (!fragment) return false;
     if (hasFootnoteSemantics(anchor, true)) return true;
+    if (hasFootnoteMarkerLabel(anchor)) return true;
     if (hasFootnoteHint(anchor.className) || hasFootnoteHint(anchor.id) ||
         hasFootnoteHint(anchor.getAttribute('title')) || hasFootnoteHint(fragment)) return true;
     var sameDocument = url.origin === location.origin && url.pathname === location.pathname && url.search === location.search;

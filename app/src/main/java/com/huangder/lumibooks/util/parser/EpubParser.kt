@@ -34,6 +34,104 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
     companion object {
         private const val ANCHOR_MARKER_PREFIX = "\uE000LUMIBOOKS_ANCHOR:"
         private const val ANCHOR_MARKER_SUFFIX = "\uE001"
+
+        // ── 注释引用识别（与 WebView 版 EpubDocumentTransformer 的启发式保持一致） ──
+        private val FOOTNOTE_HINT_REGEX = Regex(
+            """(^|[\s_#./-])(footnotes?|endnotes?|rearnotes?|notes?|fn|en)([\s_./-]|\d|$)""",
+            RegexOption.IGNORE_CASE
+        )
+        private val NOTEREF_SEMANTICS_REGEX = Regex("""(^|\s)(noteref|doc-noteref)(\s|$)""")
+        private val NOTE_BODY_SEMANTICS_REGEX = Regex("""(^|\s)(footnote|endnote|rearnote|doc-footnote|doc-endnote)(\s|$)""")
+        private val BACKLINK_SEMANTICS_REGEX = Regex("""(^|\s)(backlink|doc-backlink)(\s|$)""")
+        private val BRACKETED_MARKER_REGEX = Regex("""^(?:[\[［【〔](?:[0-9０-９]{1,3}|[*＊]{1,3})[\]］】〕])+$""")
+        private val CIRCLED_MARKER_REGEX = Regex("""^[①-⑳]$""")
+        private val ASTERISK_MARKER_REGEX = Regex("""^[*＊]{1,3}$""")
+        private val LINK_SCHEME_REGEX = Regex("""^[A-Za-z][A-Za-z0-9+.-]*:""")
+        private val PARAGRAPH_LIKE_TAGS = setOf("p", "li", "dd", "dt", "td", "h1", "h2", "h3", "h4", "h5", "h6")
+
+        /** 提取标签属性值，兼容单双引号。 */
+        internal fun tagAttribute(tag: String, name: String): String? {
+            val doubleQuoted = Regex("""\s${Regex.escape(name)}\s*=\s*"([^"]*)"""", RegexOption.IGNORE_CASE)
+            val singleQuoted = Regex("""\s${Regex.escape(name)}\s*=\s*'([^']*)'""", RegexOption.IGNORE_CASE)
+            return doubleQuoted.find(tag)?.groupValues?.get(1)
+                ?: singleQuoted.find(tag)?.groupValues?.get(1)
+        }
+
+        private fun decodeTagEntities(value: String): String = value
+            .replace("&amp;", "&")
+            .replace("&quot;", "\"")
+            .replace("&#39;", "'")
+            .replace("&apos;", "'")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+
+        /**
+         * 判断 <a> 标签是否为注释引用：
+         * - epub:type/role/rel 含 noteref 语义 → 是
+         * - class/id/title/fragment 含 footnote 等字样 → 是
+         * - 链接可见文本是 [01]、［2］、【3】、① 等纯注释编号 → 是
+         * - 自身是注释正文/返回链接（footnote/endnote/backlink 语义）→ 否
+         */
+        internal fun isFootnoteAnchorTag(openTag: String, innerHtml: String): Boolean {
+            val href = tagAttribute(openTag, "href") ?: return false
+            val decodedHref = decodeTagEntities(href)
+            if (!decodedHref.contains('#')) return false
+            val fragment = decodedHref.substringAfter('#')
+            if (fragment.isBlank()) return false
+
+            val semantics = listOf("epub:type", "role", "rel")
+                .mapNotNull { tagAttribute(openTag, it) }
+                .joinToString(" ")
+                .lowercase()
+            if (NOTE_BODY_SEMANTICS_REGEX.containsMatchIn(semantics)) return false
+            if (NOTEREF_SEMANTICS_REGEX.containsMatchIn(semantics)) return true
+            if (listOf("class", "id", "title").any {
+                    tagAttribute(openTag, it)?.let(FOOTNOTE_HINT_REGEX::containsMatchIn) == true
+                }) return true
+            if (FOOTNOTE_HINT_REGEX.containsMatchIn(fragment)) return true
+
+            val label = innerHtml
+                .replace(Regex("<[^>]*>"), "")
+                .replace(Regex("\\s+"), "")
+            return BRACKETED_MARKER_REGEX.matches(label) ||
+                CIRCLED_MARKER_REGEX.matches(label) ||
+                ASTERISK_MARKER_REGEX.matches(label)
+        }
+
+        /**
+         * 从章节 HTML 中提取注释正文：按 fragment 找 id/name 目标元素，
+         * 移除 backlink 后返回其纯文本。找不到目标或正文为空时返回 null。
+         */
+        internal fun extractFootnoteElementText(html: String, fragment: String): String? {
+            if (fragment.isBlank()) return null
+            val document = runCatching { org.jsoup.Jsoup.parse(html) }.getOrNull() ?: return null
+            val target = document.getElementById(fragment)
+                ?: document.allElements.firstOrNull { it.attr("name") == fragment }
+                ?: document.allElements.firstOrNull { it.id().equals(fragment, ignoreCase = true) }
+                ?: return null
+
+            // 行内 <a name="..."> 锚点只标记注释起点，正文在其父段落中
+            val parent = target.parent()
+            val holder = if (target.tagName() == "a" &&
+                parent != null && parent.tagName() in PARAGRAPH_LIKE_TAGS
+            ) {
+                parent
+            } else {
+                target
+            }.clone()
+            holder.select("script,style,iframe,frame,object,embed,form,input,textarea,select,button,link").remove()
+            holder.allElements.toList().forEach { element ->
+                val tokens = listOf("epub:type", "role", "rel")
+                    .map { element.attr(it) }
+                    .filter { it.isNotBlank() }
+                    .joinToString(" ")
+                    .lowercase()
+                if (tokens.isNotBlank() && BACKLINK_SEMANTICS_REGEX.containsMatchIn(tokens)) {
+                    element.remove()
+                }
+            }
+            return holder.text().trim().takeIf { it.isNotEmpty() }
+        }
     }
 
     override var paragraphSpacingDp: Float = 0f
@@ -63,6 +161,8 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
     private val anchorOffsets = mutableMapOf<Int, Map<String, Int>>()
     // CSS 文件内容缓存（key = ZIP 内完整路径，避免重复读取同一文件）
     private val cssFileCache = mutableMapOf<String, String>()
+    // 各章节中识别为注释引用的 href 集合（Canvas 引擎注释气泡用）
+    private val footnoteHrefs = mutableMapOf<Int, Set<String>>()
 
     override fun parse(filePath: String): BookContent {
         sourceLease?.close()
@@ -657,7 +757,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             val rawHtml = zipFile.getInputStream(zipEntry).bufferedReader().readText()
             android.util.Log.d("EpubParser", "getChapterContent: idx=$chapterIndex rawHtml.length=${rawHtml.length}")
             if (chapterIndex == 0) android.util.Log.d("EpubParser", "cover HTML: $rawHtml")
-            val spanned = htmlToSpanned(rawHtml, zipFile)
+            val spanned = htmlToSpanned(chapterIndex, rawHtml, zipFile)
             // 应用段间距和首行缩进（Canvas 引擎需要在 Spanned 层面处理）
             val formatted = applyParagraphFormatting(spanned)
             // 修剪末尾多余换行（防止章节末尾出现空白页）
@@ -722,6 +822,62 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         contentCache.clear()  // 段间距/首行缩进变更时也需要清空内容缓存
         anchorOffsets.clear()
         cssFileCache.clear()
+        footnoteHrefs.clear()
+    }
+
+    /** 扫描章节 HTML，收集注释引用链接的 href（保持 HTML 属性原样，仅解码实体）。 */
+    private fun collectFootnoteHrefs(chapterIndex: Int, html: String) {
+        val hrefs = mutableSetOf<String>()
+        val anchorRegex = Regex(
+            """<a\b[^>]*>(.*?)</a>""",
+            setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)
+        )
+        anchorRegex.findAll(html).forEach { match ->
+            val tag = match.value
+            val openTagEnd = tag.indexOf('>')
+            if (openTagEnd < 0) return@forEach
+            val openTag = tag.substring(0, openTagEnd + 1)
+            val innerHtml = tag.substring(openTag.length, tag.length - "</a>".length)
+            if (isFootnoteAnchorTag(openTag, innerHtml)) {
+                tagAttribute(openTag, "href")?.let { hrefs.add(decodeTagEntities(it)) }
+            }
+        }
+        footnoteHrefs[chapterIndex] = hrefs
+    }
+
+    override fun isFootnoteHref(chapterIndex: Int, href: String): Boolean {
+        if (chapterIndex !in chapterPaths.indices) return false
+        // 章节已展示时必有缓存；这里兜底确保 href 集合已收集
+        getChapterContent(chapterIndex)
+        return footnoteHrefs[chapterIndex]?.contains(href.trim()) == true
+    }
+
+    override fun resolveFootnoteText(sourceChapterIndex: Int, href: String): String? {
+        val trimmed = href.trim()
+        if (trimmed.isEmpty() || trimmed.startsWith("//")) return null
+        if (LINK_SCHEME_REGEX.containsMatchIn(trimmed)) return null
+        if (sourceChapterIndex !in chapterPaths.indices) return null
+
+        val documentHref = trimmed.substringBefore('#').substringBefore('?')
+        val targetChapter = if (documentHref.isBlank()) {
+            sourceChapterIndex
+        } else {
+            resolveLinkedChapter(sourceChapterIndex, documentHref)
+        }
+        if (targetChapter !in chapterPaths.indices) return null
+
+        val fragment = if ('#' in trimmed) decodeUrlComponent(trimmed.substringAfter('#')) else ""
+        if (fragment.isEmpty()) return null
+
+        val rawHtml = try {
+            ZipFile(File(epubFilePath)).use { zipFile ->
+                val zipEntry = findEntry(zipFile, chapterPaths[targetChapter]) ?: return null
+                zipFile.getInputStream(zipEntry).bufferedReader().readText()
+            }
+        } catch (_: Exception) {
+            return null
+        }
+        return extractFootnoteElementText(rawHtml, fragment)
     }
 
     /**
@@ -1119,7 +1275,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         return "image/png"
     }
 
-    private fun htmlToSpanned(html: String, zipFile: ZipFile): Spanned {
+    private fun htmlToSpanned(chapterIndex: Int, html: String, zipFile: ZipFile): Spanned {
         val bodyContent = extractBody(html) ?: html
 
         // 检测是否是纯图片章节（封面）：有 SVG/image 引用但没有 <img> 标签
@@ -1143,6 +1299,9 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             .replace(Regex("""<div[^>]*>\s*</div>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
             .replace(Regex("""<span[^>]*>\s*</span>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
             .replace(Regex("""\n{3,}"""), "\n\n")
+
+        // 收集注释引用链接（Canvas 引擎注释气泡判定用）
+        collectFootnoteHrefs(chapterIndex, cleaned)
 
         // Html.fromHtml 会丢弃 id/name。先插入不可见占位，转成 Spanned 后再移除并记录偏移。
         val withAnchorMarkers = insertAnchorMarkers(cleaned)

@@ -1201,7 +1201,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                     if (link != null) {
                         Log.d(TAG, "EPUB link tap: $link")
                         clearCurrentSelection()
-                        callbacks?.onLinkClick(link)
+                        callbacks?.onLinkClick(link, rvTouchStartX, rvTouchStartY)
                     } else {
                         val image = hitView.getImageAt(
                             rvTouchStartX - hitView.left,
@@ -1211,7 +1211,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                             image?.link != null -> {
                                 Log.d(TAG, "EPUB linked image tap: ${image.link}")
                                 clearCurrentSelection()
-                                callbacks?.onLinkClick(image.link)
+                                callbacks?.onLinkClick(image.link, rvTouchStartX, rvTouchStartY)
                             }
                             image?.hasAction == true -> {
                                 // Keep action-bearing images out of the preview path.

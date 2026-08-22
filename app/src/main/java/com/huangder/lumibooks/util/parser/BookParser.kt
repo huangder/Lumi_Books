@@ -98,6 +98,18 @@ interface BookParser {
      */
     fun replaceChapterContent(chapterIndex: Int, newText: String): Boolean = false
 
+    /**
+     * 判断给定章节中的 href 是否为注释引用链接。
+     * 仅阅读器排版（Canvas 引擎）的注释气泡使用，默认返回 false。
+     */
+    fun isFootnoteHref(chapterIndex: Int, href: String): Boolean = false
+
+    /**
+     * 解析注释引用 href 指向的注释正文。
+     * 返回 null 表示解析失败（调用方应回退到普通跳转）。
+     */
+    fun resolveFootnoteText(sourceChapterIndex: Int, href: String): String? = null
+
     /** Releases descriptors held for Storage Access Framework documents. */
     fun close() { }
 

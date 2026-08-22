@@ -215,6 +215,110 @@ class EpubLinkClickInstrumentedTest {
 
     @SuppressLint("SetJavaScriptEnabled")
     @Test
+    fun bracketedMarkerLinkShowsPopover() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val html = EpubDocumentTransformer.transform(
+            EpubResource(
+                "OPS/chapter.xhtml",
+                "application/xhtml+xml",
+                (
+                    "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head></head><body>" +
+                        "<p>正文内容<a href=\"#note-01\">[01]</a>继续正文。</p>" +
+                        "<p id=\"note-01\">注：这是一条正文注释。</p>" +
+                        "</body></html>"
+                    ).toByteArray()
+            ),
+            EpubRenditionLayout.REFLOWABLE
+        ).toString(Charsets.UTF_8)
+
+        val loaded = CountDownLatch(1)
+        val linkPosted = CountDownLatch(1)
+        var footnoteState: JSONObject? = null
+        lateinit var webView: WebView
+
+        instrumentation.runOnMainSync {
+            webView = WebView(instrumentation.targetContext).apply {
+                settings.javaScriptEnabled = true
+                webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: WebView, url: String?) {
+                        loaded.countDown()
+                    }
+                }
+                if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+                    WebViewCompat.addWebMessageListener(
+                        this,
+                        "lumiNative",
+                        setOf("https://" + EpubRenderSession.ASSET_DOMAIN),
+                        object : WebViewCompat.WebMessageListener {
+                            override fun onPostMessage(
+                                sourceView: WebView,
+                                message: WebMessageCompat,
+                                sourceOrigin: Uri,
+                                isMainFrame: Boolean,
+                                replyProxy: JavaScriptReplyProxy
+                            ) {
+                                val root = runCatching { JSONObject(message.data ?: return) }.getOrNull() ?: return
+                                if (root.optString("type") == "link") linkPosted.countDown()
+                            }
+                        }
+                    )
+                }
+                loadDataWithBaseURL(
+                    "https://" + EpubRenderSession.ASSET_DOMAIN + "/chapter.xhtml",
+                    html,
+                    "application/xhtml+xml",
+                    "utf-8",
+                    null
+                )
+            }
+        }
+        assertTrue("transformed document must load", loaded.await(10, TimeUnit.SECONDS))
+
+        instrumentation.runOnMainSync {
+            webView.evaluateJavascript(
+                "window.LumiReader.configure({flow:'paginated',theme:'day',nativePaging:true," +
+                    "insets:{top:0,right:0,bottom:0,left:0}});" +
+                    "(function(){var a=document.querySelector('a[href]');" +
+                    "a.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));})()"
+            ) {}
+        }
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(8)
+        while (footnoteState == null && System.nanoTime() < deadline) {
+            val pollReady = CountDownLatch(1)
+            instrumentation.runOnMainSync {
+                webView.evaluateJavascript(
+                    "JSON.stringify({popover:!!document.getElementById('lumi-footnote-popover')," +
+                        "content:(document.getElementById('lumi-footnote-content')||{}).textContent||''})"
+                ) { encoded ->
+                    val decoded = runCatching { JSONArray("[$encoded]").optString(0) }.getOrNull()
+                    footnoteState = decoded?.let { runCatching { JSONObject(it) }.getOrNull() }
+                    pollReady.countDown()
+                }
+            }
+            assertTrue("footnote state poll must complete", pollReady.await(2, TimeUnit.SECONDS))
+            if (footnoteState == null) Thread.sleep(200)
+        }
+        assertTrue(
+            "bracketed marker link must show a popover: state=$footnoteState",
+            footnoteState?.optBoolean("popover", false) == true
+        )
+        assertTrue(
+            "popover must contain the note body: state=$footnoteState",
+            footnoteState?.optString("content")?.contains("这是一条正文注释") == true
+        )
+        assertEquals(
+            "popover must not fall back to a link jump",
+            1,
+            linkPosted.count
+        )
+
+        instrumentation.runOnMainSync {
+            webView.destroy()
+        }
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    @Test
     fun goToFragmentReportsMissingTarget() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val html = EpubDocumentTransformer.transform(
