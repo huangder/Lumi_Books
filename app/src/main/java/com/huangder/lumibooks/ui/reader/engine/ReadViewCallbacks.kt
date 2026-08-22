@@ -27,6 +27,9 @@ interface ReadViewCallbacks {
     /** 点击中间区域，切换菜单 */
     fun onMenuToggle()
 
+    /** 从阅读页顶部向下拖动，添加或取消当前页书签 */
+    fun onBookmarkSwipe() {}
+
     /** 点击 EPUB 正文中的超链接。 */
     fun onLinkClick(href: String) {}
 

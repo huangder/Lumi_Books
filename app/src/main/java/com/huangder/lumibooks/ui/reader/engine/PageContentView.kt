@@ -31,12 +31,24 @@ private class PagedSelectableTextView(context: Context) : RoundedHighlightTextVi
     /** 閫夋嫨缁堢偣鎷栧埌鏂囨湰鏈熬锛堥〉闈㈠簳閮?/ 鍙崇紭锛夋椂鍥炶皟锛岀敤浜庤法椤佃嚜鍔ㄧ炕椤点€?*/
     var onSelectionReachEnd: (() -> Unit)? = null
     private var lastReachEndAt = 0L
+    private var previousSelectionStart = -1
+    private var previousSelectionEnd = -1
 
     override fun onSelectionChanged(selStart: Int, selEnd: Int) {
         super.onSelectionChanged(selStart, selEnd)
         val sp = text ?: return
         if (sp.isEmpty()) return
-        if (selEnd < sp.length - 1) return
+
+        // 仅在右手柄基于已有选区继续向末尾扩展时自动翻页。
+        // 初次长按最后一行也可能直接选到文本末尾，不能在这一步抢先翻页。
+        val extendsRightHandle = previousSelectionStart >= 0 &&
+            selStart == previousSelectionStart &&
+            selEnd > previousSelectionEnd &&
+            previousSelectionEnd > previousSelectionStart
+        previousSelectionStart = selStart
+        previousSelectionEnd = selEnd
+        if (!extendsRightHandle || selEnd < sp.length - 1) return
+
         val now = System.currentTimeMillis()
         if (now - lastReachEndAt > 1500L) {
             lastReachEndAt = now

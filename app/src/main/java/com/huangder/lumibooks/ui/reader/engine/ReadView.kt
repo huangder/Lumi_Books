@@ -103,6 +103,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     companion object {
         private const val TAG = "ReadView"
         private const val JUMP_SETTLE_DELAY_MS = 120L
+        /** 给系统选择手柄保留的页底命中安全区，分页计算与渲染共同使用 */
+        private const val SELECTION_BOTTOM_SAFE_AREA_DP = 20f
     }
 
     // ── 子组件 ──
@@ -173,6 +175,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var rvHasMoved = false
     private var rvIsEdgeTouch = false
     private var rvIsHandlingPageGesture = false
+    private var rvBookmarkSwipeTriggered = false
     private var rvPendingImageLongPress: ReaderImageHit? = null
     private var rvPendingImageView: PageContentView? = null
     private var rvImageLongPressHandled = false
@@ -400,7 +403,10 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             marginLeft
         }
         val baseMarginTop = (currentMarginTopDp + currentTopOverlayInsetDp) * density
-        val baseMarginBottom = (currentMarginBottomDp + currentBottomOverlayInsetDp) * density
+        val baseMarginBottom = (
+            currentMarginBottomDp + currentBottomOverlayInsetDp +
+                if (currentWritingMode.isVertical) 0f else SELECTION_BOTTOM_SAFE_AREA_DP
+            ) * density
         val lineSpacingExtra = 2.5f * density
 
         // 选择高亮色jian
@@ -657,7 +663,10 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             width
         }
         val baseMarginTop = (marginTopDp + topOverlayInsetDp) * density
-        val baseMarginBottom = (marginBottomDp + bottomOverlayInsetDp) * density
+        val baseMarginBottom = (
+            marginBottomDp + bottomOverlayInsetDp +
+                if (writingMode.isVertical) 0f else SELECTION_BOTTOM_SAFE_AREA_DP
+            ) * density
         val lineSpacing = 2.5f * density
         val lsPx = letterSpacingDp * density
 
@@ -1114,6 +1123,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 rvTouchDownTime = System.currentTimeMillis()
                 rvHasMoved = false
                 rvIsHandlingPageGesture = false
+                rvBookmarkSwipeTriggered = false
                 rvImageLongPressHandled = false
                 val hitView = pageViewAt(ev.x, ev.y)
                 rvPendingImageView = hitView
@@ -1148,6 +1158,24 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                     rvHasMoved = true
                     removeCallbacks(rvImageLongPressRunnable)
                     rvPendingImageLongPress = null
+                }
+
+                // 顶部下拉书签：放在 ReadView 统一触摸分类器中处理，避免 Compose
+                // 覆盖层与可选择 TextView 竞争事件。仅短时、垂直主导、起点在顶部 160dp 内触发。
+                val density = resources.displayMetrics.density
+                if (!rvBookmarkSwipeTriggered &&
+                    dt < 700L &&
+                    rvTouchStartY <= 160f * density &&
+                    ev.y - rvTouchStartY >= 64f * density &&
+                    dy > dx * 1.8f
+                ) {
+                    rvBookmarkSwipeTriggered = true
+                    val cancelEvent = MotionEvent.obtain(ev).apply { action = MotionEvent.ACTION_CANCEL }
+                    super.dispatchTouchEvent(cancelEvent)
+                    cancelEvent.recycle()
+                    clearCurrentSelection()
+                    callbacks?.onBookmarkSwipe()
+                    return true
                 }
 
                 // 仅在 500ms 窗口内拦截水平滑动（超过 500ms 视为选择扩展，不拦截）
