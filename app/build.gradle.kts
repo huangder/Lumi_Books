@@ -16,8 +16,8 @@ android {
         applicationId = "com.huangder.lumibooks"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.7.8.1"
+        versionCode = 9
+        versionName = "Dev2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
