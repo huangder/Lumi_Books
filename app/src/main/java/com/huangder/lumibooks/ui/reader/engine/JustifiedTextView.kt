@@ -153,6 +153,12 @@ class JustifiedTextView @JvmOverloads constructor(
         rebuildLayout()
     }
 
+    fun setFakeBold(enabled: Boolean) {
+        if (textPaint.isFakeBoldText == enabled) return
+        textPaint.isFakeBoldText = enabled
+        rebuildLayout()
+    }
+
     fun setLetterSpacing(ratio: Float) {
         if (textPaint.letterSpacing == ratio) return
         textPaint.letterSpacing = ratio

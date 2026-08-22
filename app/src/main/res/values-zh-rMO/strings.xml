@@ -607,7 +607,7 @@
     <string name="title_external_tts">第三方 TTS 服務</string>
     <string name="title_external_tts_configuration">設定第三方 TTS 服務</string>
     <string name="external_tts_enabled_status">已啟用</string>
-    <string name="external_tts_not_configured">未啟用</string>
+    <string name="external_tts_not_configured">未啟用（朗讀使用系統引擎）</string>
     <string name="external_tts_service_status">目前狀態</string>
     <string name="external_tts_configure">設定第三方 TTS 服務</string>
     <string name="external_tts_choose_protocol">選擇第三方 TTS 協定</string>

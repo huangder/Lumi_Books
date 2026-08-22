@@ -81,9 +81,7 @@ fun BookTagBottomSheet(
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     var newTagName by remember { mutableStateOf("") }
     var nameError by remember { mutableStateOf<String?>(null) }
-    // 二级标签的删除覆盖层目标；一级标签统一走确认对话框
-    var deleteTargetId by remember { mutableStateOf<String?>(null) }
-    // 待删除的一级标签（长按触发，含子标签时弹两选项对话框）
+    // 待删除的标签（长按触发；一级标签含子标签时提供两选项，其余为简单确认）
     var deletePrimaryTarget by remember { mutableStateOf<LibraryTag?>(null) }
     // 行内添加子标签的一级标签 id
     var subTagInputParentId by remember { mutableStateOf<String?>(null) }
@@ -92,7 +90,6 @@ fun BookTagBottomSheet(
     val nameTooLong = stringResource(R.string.tag_name_too_long, TagNameValidator.MAX_LENGTH)
 
     LaunchedEffect(tags) {
-        if (tags.none { it.id == deleteTargetId }) deleteTargetId = null
         deletePrimaryTarget = deletePrimaryTarget?.takeIf { target -> tags.any { it.id == target.id } }
         subTagInputParentId = subTagInputParentId?.takeIf { id -> tags.any { it.id == id } }
     }
@@ -125,6 +122,21 @@ fun BookTagBottomSheet(
     val primaryTags = tags.filter { it.parentId == null }
     val childTagsByParent = tags.filter { it.parentId != null }.groupBy { it.parentId!! }
     val orphanChildTags = childTagsByParent.filterKeys { parentId -> tags.none { it.id == parentId } }.values.flatten()
+
+    // 级联选择：选子标签自动勾选其主标签；取消主标签连带取消其已选子标签
+    val toggleTagWithCascade: (LibraryTag) -> Unit = { tag ->
+        val willSelect = tag.id !in selectedTagIds
+        onTagCheckedChange(tag, willSelect)
+        if (willSelect && tag.parentId != null) {
+            tags.firstOrNull { it.id == tag.parentId && it.id !in selectedTagIds }?.let { parent ->
+                onTagCheckedChange(parent, true)
+            }
+        } else if (!willSelect && tag.parentId == null) {
+            childTagsByParent[tag.id].orEmpty()
+                .filter { it.id in selectedTagIds }
+                .forEach { child -> onTagCheckedChange(child, false) }
+        }
+    }
 
     val sheetContent: @Composable () -> Unit = {
         Column(
@@ -241,28 +253,14 @@ fun BookTagBottomSheet(
                             primaryTag = primaryTag,
                             childTags = childTagsByParent[primaryTag.id].orEmpty(),
                             selectedTagIds = selectedTagIds,
-                            deleteTargetId = deleteTargetId,
                             subTagInputVisible = subTagInputParentId == primaryTag.id,
                             subTagName = subTagName,
                             onSubTagNameChange = {
                                 subTagName = it
                                 nameError = null
                             },
-                            onToggle = { tag ->
-                                deleteTargetId = null
-                                onTagCheckedChange(tag, tag.id !in selectedTagIds)
-                            },
-                            onShowDelete = { tag ->
-                                if (tag.parentId != null) {
-                                    deleteTargetId = tag.id
-                                } else {
-                                    deletePrimaryTarget = tag
-                                }
-                            },
-                            onDeleteChild = { tag ->
-                                deleteTargetId = null
-                                onDeleteTag(tag, false)
-                            },
+                            onToggle = { tag -> toggleTagWithCascade(tag) },
+                            onShowDelete = { tag -> deletePrimaryTarget = tag },
                             onShowSubTagInput = {
                                 subTagName = ""
                                 subTagInputParentId = primaryTag.id
@@ -279,19 +277,11 @@ fun BookTagBottomSheet(
                             primaryTag = null,
                             childTags = orphanChildTags,
                             selectedTagIds = selectedTagIds,
-                            deleteTargetId = deleteTargetId,
                             subTagInputVisible = false,
                             subTagName = subTagName,
                             onSubTagNameChange = {},
-                            onToggle = { tag ->
-                                deleteTargetId = null
-                                onTagCheckedChange(tag, tag.id !in selectedTagIds)
-                            },
-                            onShowDelete = { tag -> deleteTargetId = tag.id },
-                            onDeleteChild = { tag ->
-                                deleteTargetId = null
-                                onDeleteTag(tag, false)
-                            },
+                            onToggle = { tag -> toggleTagWithCascade(tag) },
+                            onShowDelete = { tag -> deletePrimaryTarget = tag },
                             onShowSubTagInput = {},
                             onSubTagCreate = {},
                             onSubTagDismiss = {}
@@ -410,13 +400,11 @@ private fun PrimaryTagSection(
     primaryTag: LibraryTag?,
     childTags: List<LibraryTag>,
     selectedTagIds: Set<String>,
-    deleteTargetId: String?,
     subTagInputVisible: Boolean,
     subTagName: String,
     onSubTagNameChange: (String) -> Unit,
     onToggle: (LibraryTag) -> Unit,
     onShowDelete: (LibraryTag) -> Unit,
-    onDeleteChild: (LibraryTag) -> Unit,
     onShowSubTagInput: () -> Unit,
     onSubTagCreate: () -> Unit,
     onSubTagDismiss: () -> Unit
@@ -431,10 +419,8 @@ private fun PrimaryTagSection(
                     TagSelectionChip(
                         tag = primaryTag,
                         selected = primaryTag.id in selectedTagIds,
-                        deleteVisible = false,
                         onToggle = { onToggle(primaryTag) },
-                        onShowDelete = { onShowDelete(primaryTag) },
-                        onDelete = {}
+                        onShowDelete = { onShowDelete(primaryTag) }
                     )
                 } else {
                     Text(
@@ -527,11 +513,9 @@ private fun PrimaryTagSection(
                     TagSelectionChip(
                         tag = childTag,
                         selected = childTag.id in selectedTagIds,
-                        deleteVisible = deleteTargetId == childTag.id,
                         small = true,
                         onToggle = { onToggle(childTag) },
-                        onShowDelete = { onShowDelete(childTag) },
-                        onDelete = { onDeleteChild(childTag) }
+                        onShowDelete = { onShowDelete(childTag) }
                     )
                 }
             }
@@ -779,11 +763,9 @@ fun BatchBookTagSheet(
 private fun TagSelectionChip(
     tag: LibraryTag,
     selected: Boolean,
-    deleteVisible: Boolean,
     small: Boolean = false,
     onToggle: () -> Unit,
-    onShowDelete: () -> Unit,
-    onDelete: () -> Unit
+    onShowDelete: () -> Unit
 ) {
     val shape = RoundedCornerShape(50)
     val chipHeight = if (small) 30.dp else 36.dp
@@ -817,35 +799,6 @@ private fun TagSelectionChip(
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                 color = if (selected) AppColors.Accent else AppColors.TextPrimary
             )
-            AnimatedVisibility(
-                visible = deleteVisible,
-                enter = fadeIn() + scaleIn(
-                    initialScale = 0.88f,
-                    animationSpec = spring(dampingRatio = 0.72f, stiffness = 420f)
-                ),
-                exit = fadeOut() + scaleOut(targetScale = 0.92f),
-                modifier = Modifier.matchParentSize()
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(shape)
-                        .background(Color.Black.copy(alpha = 0.28f))
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = onDelete
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Delete,
-                        contentDescription = stringResource(R.string.delete),
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
         }
     }
 }

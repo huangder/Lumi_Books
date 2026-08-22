@@ -607,7 +607,7 @@
     <string name="title_external_tts">타사 TTS 서비스</string>
     <string name="title_external_tts_configuration">타사 TTS 서비스 구성</string>
     <string name="external_tts_enabled_status">사용</string>
-    <string name="external_tts_not_configured">사용 안 함</string>
+    <string name="external_tts_not_configured">사용 안 함(낭독은 시스템 엔진 사용)</string>
     <string name="external_tts_service_status">현재 상태</string>
     <string name="external_tts_configure">타사 TTS 서비스 구성</string>
     <string name="external_tts_choose_protocol">타사 TTS 프로토콜 선택</string>

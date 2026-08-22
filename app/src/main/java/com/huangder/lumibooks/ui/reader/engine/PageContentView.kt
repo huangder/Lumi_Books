@@ -430,6 +430,23 @@ class PageContentView(context: Context) : FrameLayout(context) {
         verticalTextView.invalidate()
     }
 
+    /** 清空选区并收起系统选择手柄（页面文本将被替换前调用，防止手柄用失效 layout 越界） */
+    fun dismissSelection() {
+        (textView.text as? Spannable)?.let { sp ->
+            if (android.text.Selection.getSelectionStart(sp) >= 0 ||
+                android.text.Selection.getSelectionEnd(sp) >= 0
+            ) {
+                android.text.Selection.removeSelection(sp)
+            }
+        }
+        // 派发 CANCEL 终止手柄事件流，Editor 收到后收起选择手柄
+        val now = android.os.SystemClock.uptimeMillis()
+        val cancel = MotionEvent.obtain(now, now, MotionEvent.ACTION_CANCEL, 0f, 0f, 0)
+        textView.dispatchTouchEvent(cancel)
+        cancel.recycle()
+        textView.invalidate()
+    }
+
     /**
      * 配置 TextView 样式。
      * 同时配置隐藏的 TextView（用于 layout 计算）和可见的 JustifiedTextView（用于渲染）。
@@ -447,7 +464,8 @@ class PageContentView(context: Context) : FrameLayout(context) {
         marginBottomPx: Float = 32f,
         highlightColor: Int = 0x40007AFF.toInt(),
         accentColor: Int = 0xFF007AFF.toInt(),
-        writingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL
+        writingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL,
+        boldText: Boolean = false
     ) {
         this.writingMode = writingMode
         val spacingRatio = if (fontSizePx > 0) letterSpacingPx / fontSizePx else 0f
@@ -460,6 +478,13 @@ class PageContentView(context: Context) : FrameLayout(context) {
         if (textView.typeface !== typeface) {
             textView.typeface = typeface
         }
+        // 正文字重（PR #19 #24）：选择层 paint 即分页引擎 sharedTextPaint 的来源，
+        // 在此设置后 StaticLayout 行宽与渲染保持一致
+        if (textView.paint.isFakeBoldText != boldText) {
+            textView.paint.isFakeBoldText = boldText
+            textView.invalidate()
+        }
+        justifiedView.setFakeBold(boldText)
         // TextView.setLineSpacing() always discards its internal Layout, even when
         // both values are unchanged. Page-turn completion configures every slot;
         // avoid clearing the freshly built destination layout immediately before

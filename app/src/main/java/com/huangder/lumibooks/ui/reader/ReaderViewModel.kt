@@ -198,6 +198,8 @@ data class ReaderUiState(
     val volumeKeyPageTurnEnabled: Boolean = false,
     val bionicReadingEnabled: Boolean = false,
     val comicModeEnabled: Boolean = false,
+    /** 正文字重（PR #19 #24）：>=600 视为加粗 */
+    val bodyFontWeight: Int = 400,
     val eInkModeEnabled: Boolean = false,
     val twoPageSpreadEnabled: Boolean = true,
     /** 双页对开模式当前跨页的右半页（无右页时为 null） */
@@ -627,6 +629,11 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.comicMode.collectLatest { enabled ->
                 _uiState.value = _uiState.value.copy(comicModeEnabled = enabled)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.bodyFontWeight.collectLatest { weight ->
+                _uiState.value = _uiState.value.copy(bodyFontWeight = weight)
             }
         }
         viewModelScope.launch {

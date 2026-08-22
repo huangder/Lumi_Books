@@ -194,6 +194,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var currentTopOverlayInsetDp: Float = 0f
     private var currentBottomOverlayInsetDp: Float = 0f
     private var currentParagraphSpacingDp: Float = 0f
+    private var currentBoldText: Boolean = false
     private var currentBionicReadingEnabled: Boolean = false
     private var currentUseDisplayDensityForSpans: Boolean = false
     private var currentChineseMode: String = "original"
@@ -439,7 +440,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 marginBottomPx = baseMarginBottom,
                 highlightColor = highlightColor,
                 accentColor = accentColor,
-                writingMode = currentWritingMode
+                writingMode = currentWritingMode,
+                boldText = currentBoldText
             )
             right.configure(
                 fontSizePx = currentFontSizePx,
@@ -454,7 +456,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 marginBottomPx = baseMarginBottom,
                 highlightColor = highlightColor,
                 accentColor = accentColor,
-                writingMode = currentWritingMode
+                writingMode = currentWritingMode,
+                boldText = currentBoldText
             )
             left.setReaderBackground(bgColor, currentReaderBackgroundImagePath)
             right.setReaderBackground(bgColor, currentReaderBackgroundImagePath)
@@ -913,6 +916,13 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         slotManager.refreshCurrentPage()
     }
 
+    /** 正文字重开关（PR #19 #24）：仅横排分页生效 */
+    fun setBoldText(enabled: Boolean) {
+        if (currentBoldText == enabled) return
+        currentBoldText = enabled
+        configureCurrentPageView()
+    }
+
     /** 设置翻页动画类型 */
     fun setPageTransition(mode: String) {
         if (currentPageTransition == mode) return
@@ -1036,10 +1046,13 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
     /** 閫夋嫨缁堢偣鎷栧埌椤甸潰鏈熬锛氳嚜鍔ㄧ炕鍒颁笅涓€椤靛苟鍦ㄦ柊椤甸噸寤洪€夊尯锛堣法椤甸€夋嫨锛?*/
     private fun handleSelectionReachEnd() {
-        android.util.Log.d(TAG, "handleSelectionReachEnd isJump=" + isJumpSettling + " nextLoaded=" + slotManager.getNextSlot().isLoaded)
         if (isJumpSettling) return
         val next = slotManager.getNextSlot()
         if (!next.isLoaded) return
+        // 翻页会替换当前页文本；若系统选择手柄仍挂在旧 TextView 上，
+        // 其后续 MOVE 会按失效的 layout 计算出 -1 并写入选区导致越界崩溃。
+        // 翻页前先清空选区并收起手柄。
+        curPageView.dismissSelection()
         turnToNextPage()
         postDelayed({ rebuildSelectionOnCurrentPage() }, 420L)
     }

@@ -1681,7 +1681,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     onRestoreComplete = viewModel::clearPendingPageFraction,
                     chineseMode = uiState.chineseMode,
                     ttsCurrentSentence = uiState.ttsCurrentSentence,
-                    comicModeEnabled = uiState.comicModeEnabled
+                    comicModeEnabled = uiState.comicModeEnabled,
+                    boldTextEnabled = uiState.bodyFontWeight >= 600
                 )
             } else if (uiState.useNewEngine) {
             AndroidView(
@@ -1942,6 +1943,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     }
                     // 简繁转换
                     readView.setChineseMode(uiState.chineseMode)
+                    // 正文字重（PR #19 #24）
+                    readView.setBoldText(uiState.bodyFontWeight >= 600)
                     // 翻页效果
                     readView.setPageTransition(if (isContinuousScrollMode) lastPagedTransition else effectivePageTransition)
                     // 左右边缘点击翻页方向（不影响滑动手势）
@@ -1952,6 +1955,11 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
 
             // 段间距/首行缩进变化时，强制重新分页
             LaunchedEffect(uiState.paragraphSpacing, uiState.firstLineIndent) {
+                readViewRef.value?.forceRelayout()
+            }
+
+            // 字重变化影响行宽，需要重新分页
+            LaunchedEffect(uiState.bodyFontWeight) {
                 readViewRef.value?.forceRelayout()
             }
 
@@ -2093,7 +2101,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .fillMaxWidth()
-                        .height(92.dp)
+                        .height(160.dp)
                         .pointerInput(bookId) {
                             awaitEachGesture {
                                 val down = awaitFirstDown(
@@ -4403,7 +4411,8 @@ private fun ContinuousScrollReader(
     onRestoreComplete: () -> Unit,
     chineseMode: String = "original",
     ttsCurrentSentence: TtsSentencePosition? = null,
-    comicModeEnabled: Boolean = false
+    comicModeEnabled: Boolean = false,
+    boldTextEnabled: Boolean = false
 ) {
     if (chapterCount <= 0) return
 
@@ -4693,6 +4702,10 @@ private fun ContinuousScrollReader(
                         }
                         textView.setTextColor(textColor)
                         textView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, fontSize)
+                        if (textView.paint.isFakeBoldText != boldTextEnabled) {
+                            textView.paint.isFakeBoldText = boldTextEnabled
+                            textView.invalidate()
+                        }
                         textView.setLineSpacing(0f, lineHeight)
                         textView.typeface = typeface
                         val fontSizePx = android.util.TypedValue.applyDimension(

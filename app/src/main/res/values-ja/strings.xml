@@ -607,7 +607,7 @@
     <string name="title_external_tts">サードパーティ TTS サービス</string>
     <string name="title_external_tts_configuration">サードパーティ TTS サービスを設定</string>
     <string name="external_tts_enabled_status">有効</string>
-    <string name="external_tts_not_configured">無効</string>
+    <string name="external_tts_not_configured">無効（読み上げはシステムエンジンを使用）</string>
     <string name="external_tts_service_status">現在の状態</string>
     <string name="external_tts_configure">サードパーティ TTS サービスを設定</string>
     <string name="external_tts_choose_protocol">サードパーティ TTS プロトコルを選択</string>

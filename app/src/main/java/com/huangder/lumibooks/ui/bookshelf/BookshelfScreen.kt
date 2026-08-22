@@ -1149,7 +1149,14 @@ private fun BookshelfCapsuleHeader(
                 ),
                 exit = fadeOut(tween(110)) + scaleOut(targetScale = 0.82f)
             ) {
-                Row {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = stringResource(R.string.selected_books_count, selectedCount),
+                        color = AppColors.TextSecondary,
+                        fontSize = AppType.Caption,
+                        fontWeight = FontWeight.Medium
+                    )
                     Spacer(Modifier.width(10.dp))
                     LiquidGlassIconButton(
                         imageVector = Icons.Outlined.Delete,

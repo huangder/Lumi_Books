@@ -48,7 +48,6 @@ import com.huangder.lumibooks.tts.ExternalTtsProtocol
 import com.huangder.lumibooks.tts.ExternalTtsSettings
 import com.huangder.lumibooks.tts.ExternalTtsEngine
 import com.huangder.lumibooks.tts.ExternalTtsTokenStore
-import com.huangder.lumibooks.tts.TtsEngine
 import com.huangder.lumibooks.mineru.MineruTokenStore
 
 @HiltViewModel
@@ -58,7 +57,6 @@ class SettingsViewModel @Inject constructor(
     private val mineruTokenStore: MineruTokenStore,
     private val externalTtsTokenStore: ExternalTtsTokenStore,
     private val externalTtsEngine: ExternalTtsEngine,
-    private val ttsEngine: TtsEngine,
     private val mineruManualImportManager: MineruManualImportManager,
     private val externalTtsAudioCache: ExternalTtsAudioCache,
     private val webdavSyncManager: com.huangder.lumibooks.data.sync.WebdavSyncManager,
@@ -273,11 +271,6 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            dataStoreManager.preferredTtsEngine.collectLatest { preferredTtsEngine ->
-                _uiState.value = _uiState.value.copy(preferredTtsEngine = preferredTtsEngine)
-            }
-        }
-        viewModelScope.launch {
             dataStoreManager.bodyFontWeight.collectLatest { bodyFontWeight ->
                 _uiState.value = _uiState.value.copy(bodyFontWeight = bodyFontWeight)
             }
@@ -426,15 +419,6 @@ class SettingsViewModel @Inject constructor(
             dataStoreManager.saveDarkMode(mode)
         }
     }
-
-    fun savePreferredTtsEngine(packageName: String?) {
-        viewModelScope.launch {
-            dataStoreManager.savePreferredTtsEngine(packageName)
-            _uiState.value = _uiState.value.copy(preferredTtsEngine = packageName)
-        }
-    }
-
-    fun getInstalledTtsEngines(): List<Pair<String, String>> = ttsEngine.getInstalledEngines()
 
     fun saveBodyFontWeight(weight: Int) {
         viewModelScope.launch {

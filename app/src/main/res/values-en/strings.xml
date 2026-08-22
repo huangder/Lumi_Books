@@ -663,7 +663,7 @@
     <string name="title_external_tts">Third-party TTS service</string>
     <string name="title_external_tts_configuration">Configure third-party TTS service</string>
     <string name="external_tts_enabled_status">Enabled</string>
-    <string name="external_tts_not_configured">Not enabled</string>
+    <string name="external_tts_not_configured">Not enabled (reading uses the system engine)</string>
     <string name="external_tts_service_status">Current status</string>
     <string name="external_tts_configure">Configure third-party TTS service</string>
     <string name="external_tts_choose_protocol">Choose a third-party TTS protocol</string>
