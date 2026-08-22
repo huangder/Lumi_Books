@@ -36,12 +36,10 @@ private class PagedSelectableTextView(context: Context) : RoundedHighlightTextVi
         super.onSelectionChanged(selStart, selEnd)
         val sp = text ?: return
         if (sp.isEmpty()) return
-        android.util.Log.d("PagedSel", "onSelectionChanged sel=" + selStart + ".." + selEnd + " len=" + sp.length + " h=" + height + " pb=" + paddingBottom)
         if (selEnd < sp.length - 1) return
         val now = System.currentTimeMillis()
         if (now - lastReachEndAt > 1500L) {
             lastReachEndAt = now
-            android.util.Log.d("PagedSel", "REACH_END trigger sel=" + selEnd + " len=" + sp.length)
             onSelectionReachEnd?.invoke()
         }
     }
@@ -272,9 +270,6 @@ class PageContentView(context: Context) : FrameLayout(context) {
         justifiedView.justifyLastLine = justifyLastLine
 
         val subText = fullText.subSequence(actualStart, endChar)
-        val preview = subText.take(120).toString().replace("\n", "\\n")
-        val newlineCount = (actualStart until endChar).count { fullText[it] == '\n' }
-        Log.d("ContentDebug", "page start=$actualStart end=$endChar newlines=$newlineCount preview=$preview")
         Log.d(TAG, "setPageContent: subText type=${subText.javaClass.simpleName} isSpanned=${subText is android.text.Spanned}")
 
         // 简繁转换（在切片后、应用高亮前）

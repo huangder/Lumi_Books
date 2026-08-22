@@ -1657,15 +1657,6 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                             selection.start,
                             selection.end
                         )
-                        android.util.Log.e(
-                            "ReaderSelectionDebug",
-                            "continuous chapter=$chapterIndex selection=" +
-                                "[${selection.start},${selection.end}) " +
-                                "existingId=${overlapping?.id} existingRange=" +
-                                "[${overlapping?.startPosition},${overlapping?.endPosition}) " +
-                                "selected=${selection.selectedText.take(80)} " +
-                                "existing=${overlapping?.selectedText?.take(80)}"
-                        )
                         selectionState = SelectionState(
                             chapterIndex = chapterIndex,
                             pageInChapter = 0,
@@ -1703,11 +1694,6 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                 pageInChapter: Int,
                                 chapterTotalPages: Int
                             ) {
-                                android.util.Log.e(
-                                    "ReaderSelectionDebug",
-                                    "pageChanged chapter=$chapterIndex page=$pageInChapter/$chapterTotalPages " +
-                                        "curView=${System.identityHashCode(readViewRef.value?.curPageView)}"
-                                )
                                 // 翻页时关闭选择菜单（选区已随页面切换失效）
                                 selectionState = null
                                 isSelectionDragging = false
@@ -1786,14 +1772,6 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                 val cStart = info.chapterStartOffset + info.pageStart
                                 val cEnd = info.chapterStartOffset + info.pageEnd
                                 val overlapping = findOverlappingNote(readerNotes, info.chapterIndex, cStart, cEnd)
-                                android.util.Log.e(
-                                    "ReaderSelectionDebug",
-                                    "paged sourceView=${System.identityHashCode(sourceView)} " +
-                                        "chapter=${info.chapterIndex} selection=[$cStart,$cEnd) " +
-                                        "existingId=${overlapping?.id} existingRange=" +
-                                        "[${overlapping?.startPosition},${overlapping?.endPosition}) " +
-                                        "selected=${info.selectedText.take(80)} existing=${overlapping?.selectedText?.take(80)}"
-                                )
                                 selectionState = SelectionState(
                                     chapterIndex = info.chapterIndex,
                                     pageInChapter = 0,
@@ -4484,11 +4462,6 @@ private fun ContinuousScrollReader(
 
     LaunchedEffect(restoreTarget, restoreFraction, chapterCount, contentRevision) {
         isRestoringPosition = true
-        android.util.Log.e(
-            "ContinuousProgressDebug",
-            "restoreStart target=$restoreTarget fraction=$restoreFraction " +
-                "firstVisible=${listState.firstVisibleItemIndex}"
-        )
         listState.scrollToItem(restoreTarget)
         val restoredItem = awaitStableChapterMeasurement(restoreTarget)
         if (restoredItem != null) {
@@ -4498,11 +4471,6 @@ private fun ContinuousScrollReader(
                 listState.scrollBy(restoredItem.size * restoreFraction)
             }
         }
-        android.util.Log.e(
-            "ContinuousProgressDebug",
-            "restoreMeasured target=$restoreTarget loaded=${loadedChapters[restoreTarget]} " +
-                "itemOffset=${restoredItem?.offset} itemSize=${restoredItem?.size}"
-        )
         // The bounded measurement wait prevents a corrupt chapter from holding the loading page forever.
         onChapterVisible(restoreTarget, restoreFraction)
         onRestoreComplete()
@@ -4524,13 +4492,8 @@ private fun ContinuousScrollReader(
             val safeTarget = target.coerceIn(0, chapterCount - 1)
             isRestoringPosition = true
             listState.scrollToItem(safeTarget)
-            val targetItem = awaitStableChapterMeasurement(safeTarget)
+            awaitStableChapterMeasurement(safeTarget)
             listState.scrollToItem(safeTarget)
-            android.util.Log.e(
-                "ContinuousProgressDebug",
-                "jumpMeasured target=$safeTarget loaded=${loadedChapters[safeTarget]} " +
-                    "itemSize=${targetItem?.size}"
-            )
             onChapterVisible(safeTarget, 0f)
             withFrameNanos { }
             isRestoringPosition = false
@@ -4587,10 +4550,6 @@ private fun ContinuousScrollReader(
                 size > 0
             ) {
                 val fraction = (-offset).toFloat().div(size).coerceIn(0f, 0.9999f)
-                android.util.Log.e(
-                    "ContinuousProgressDebug",
-                    "viewportCenter chapter=$index offset=$offset size=$size fraction=$fraction"
-                )
                 onChapterVisible(index, fraction)
             }
             // 预加载当前可见章节之后的两章，保证章节衔接处内容已就绪
@@ -4676,10 +4635,6 @@ private fun ContinuousScrollReader(
                     com.huangder.lumibooks.util.ChineseConverter.convertPreservingSpans(it, chineseMode)
                 }
                 loadedChapters[chapterIndex] = true
-                android.util.Log.e(
-                    "ContinuousProgressDebug",
-                    "chapterLoaded chapter=$chapterIndex textLength=${value?.length ?: -1}"
-                )
             }
             val selectableText = remember(
                 chapterText,

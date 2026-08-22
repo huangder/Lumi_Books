@@ -1373,11 +1373,6 @@ class ReaderViewModel @Inject constructor(
             0f
         }
         _uiState.value = if (crossesContinuousBoundary) {
-            android.util.Log.e(
-                "ContinuousProgressDebug",
-                "modeSwitch from=${state.pageTransition} to=$mode chapter=${state.currentChapterIndex} " +
-                    "position=${state.currentPageIndex}/${state.totalPages} fraction=$chapterFraction"
-            )
             state.copy(
                 pageTransition = mode,
                 currentPageIndex = 0,
@@ -1722,12 +1717,6 @@ class ReaderViewModel @Inject constructor(
                     val progressFraction = book.readingProgress * chapterCount
                     val startChapter = progressFraction.toInt().coerceIn(0, chapterCount - 1)
                     val pageFraction = (progressFraction - startChapter).coerceIn(0f, 1f)
-                    android.util.Log.e(
-                        "ContinuousProgressDebug",
-                        "load stored=${book.readingProgress} chapters=$chapterCount " +
-                            "targetChapter=$startChapter fraction=$pageFraction"
-                    )
-
                     val isPdf = book.format.name == "PDF"
                     _uiState.value = _uiState.value.copy(
                         book = displayBook,
@@ -1913,11 +1902,6 @@ class ReaderViewModel @Inject constructor(
         continuousProgressJob?.cancel()
         val progressState = _uiState.value
         val writeVersion = ++progressWriteVersion
-        android.util.Log.e(
-            "ContinuousProgressDebug",
-            "position chapter=$chapterIndex fraction=$chapterFraction pageIndex=${progressState.currentPageIndex} " +
-                "version=$writeVersion"
-        )
         continuousProgressJob = viewModelScope.launch {
             kotlinx.coroutines.delay(350L)
             progressWriteMutex.withLock {
@@ -2655,12 +2639,6 @@ class ReaderViewModel @Inject constructor(
             state.currentPageIndex.toFloat() / state.totalPages
         } else 0f
         val progress = ((state.currentChapterIndex + pageProgress) / state.chapterCount).coerceIn(0f, 1f)
-        android.util.Log.e(
-            "ContinuousProgressDebug",
-            "persist chapter=${state.currentChapterIndex} page=${state.currentPageIndex}/${state.totalPages} " +
-                "global=$progress"
-        )
-
         bookRepository.updateReadingProgress(
             book.id,
             progress,

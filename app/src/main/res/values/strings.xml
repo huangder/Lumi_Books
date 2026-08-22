@@ -393,6 +393,11 @@
     <string name="comic_mode">漫画模式</string>
     <string name="comic_mode_hint">图片按屏宽等比缩放，无缝上下拼接滚动</string>
     <string name="comic_mode_no_images">本章没有可显示的图片</string>
+    <string name="goal_no_target">不设置目标</string>
+    <string name="goal_no_target_desc">首页只显示今日是否阅读</string>
+    <string name="goal_custom_target">自定义目标</string>
+    <string name="goal_custom_desc">输入 1-1439 分钟</string>
+    <string name="goal_custom_current_desc">当前 %1$d 分钟，可改为 1-1439 分钟</string>
     <string name="tts_page_not_ready">当前页面尚未准备好</string>
     <string name="tts_no_readable_text">当前页面没有可朗读的文字</string>
     <string name="tts_unavailable">无法启动文字转语音，请检查系统语音引擎和语言数据</string>

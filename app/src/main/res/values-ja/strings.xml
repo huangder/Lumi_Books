@@ -824,4 +824,9 @@
     <string name="comic_mode">コミックモード</string>
     <string name="comic_mode_hint">画像を画面幅に合わせて拡大縮小し、途切れなく縦につなげて表示します</string>
     <string name="comic_mode_no_images">この章に表示できる画像はありません</string>
+    <string name="goal_no_target">目標を設定しない</string>
+    <string name="goal_no_target_desc">ホームには今日読んだかどうかのみ表示します</string>
+    <string name="goal_custom_target">カスタム目標</string>
+    <string name="goal_custom_desc">1〜1439分を入力</string>
+    <string name="goal_custom_current_desc">現在 %1$d 分、1〜1439分に変更できます</string>
 </resources>

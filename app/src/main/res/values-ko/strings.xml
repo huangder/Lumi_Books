@@ -824,4 +824,9 @@
     <string name="comic_mode">코믹 모드</string>
     <string name="comic_mode_hint">이미지를 화면 너비에 맞춰 조정하고 끊김 없이 세로로 이어 붙입니다</string>
     <string name="comic_mode_no_images">이 장에 표시할 이미지가 없습니다</string>
+    <string name="goal_no_target">목표 설정 안 함</string>
+    <string name="goal_no_target_desc">홈에는 오늘 읽었는지 여부만 표시합니다</string>
+    <string name="goal_custom_target">사용자 지정 목표</string>
+    <string name="goal_custom_desc">1-1439분을 입력하세요</string>
+    <string name="goal_custom_current_desc">현재 %1$d분, 1-1439분으로 변경할 수 있습니다</string>
 </resources>

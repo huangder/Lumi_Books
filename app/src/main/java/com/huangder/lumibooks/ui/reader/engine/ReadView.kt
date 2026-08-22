@@ -1531,21 +1531,6 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             )
         }
         val layout = tv.layout ?: return null
-        val hiddenStartLine = layout.getLineForOffset(selStart)
-        val hiddenStartLineOffset = layout.getLineStart(hiddenStartLine)
-        val visualStartLineInfo = pageView.getVisualLineInfo(selStart)
-
-        Log.e(
-            "ReaderSelectionDebug",
-            "getSelectionInfo view=${System.identityHashCode(pageView)} " +
-                "slotChapter=${slot.chapterIndex} slotPage=${slot.pageIndex} " +
-                "chapterStart=$chapterStartOffset local=[$selStart,$selEnd) " +
-                "absolute=[${chapterStartOffset + selStart},${chapterStartOffset + selEnd}) " +
-                "hiddenLine=$hiddenStartLine@$hiddenStartLineOffset " +
-                "visualLine=${visualStartLineInfo?.first}@${visualStartLineInfo?.second} " +
-                "text=${text.take(80)}"
-        )
-
         val startLine = layout.getLineForOffset(selStart)
         val endLine = layout.getLineForOffset(selEnd.coerceAtMost(spannable.length - 1))
         val topY = (tv.top + tv.paddingTop + layout.getLineTop(startLine)).toFloat()

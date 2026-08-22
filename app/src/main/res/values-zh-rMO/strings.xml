@@ -824,4 +824,9 @@
     <string name="comic_mode">漫畫模式</string>
     <string name="comic_mode_hint">圖片按螢幕寬度等比縮放，無縫上下拼接捲動</string>
     <string name="comic_mode_no_images">本章沒有可顯示的圖片</string>
+    <string name="goal_no_target">不設定目標</string>
+    <string name="goal_no_target_desc">首頁只顯示今日是否閱讀</string>
+    <string name="goal_custom_target">自訂目標</string>
+    <string name="goal_custom_desc">輸入 1-1439 分鐘</string>
+    <string name="goal_custom_current_desc">目前 %1$d 分鐘，可改為 1-1439 分鐘</string>
 </resources>

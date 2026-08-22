@@ -912,4 +912,9 @@
     <string name="comic_mode">Comic mode</string>
     <string name="comic_mode_hint">Scale images to screen width and stitch them seamlessly</string>
     <string name="comic_mode_no_images">No images to display in this chapter</string>
+    <string name="goal_no_target">No target</string>
+    <string name="goal_no_target_desc">Home only shows whether you read today</string>
+    <string name="goal_custom_target">Custom target</string>
+    <string name="goal_custom_desc">Enter 1-1439 minutes</string>
+    <string name="goal_custom_current_desc">Currently %1$d minutes, change to 1-1439 minutes</string>
 </resources>
