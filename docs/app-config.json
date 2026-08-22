@@ -1,16 +1,16 @@
 {
   "config_version": 1,
   "generated_at": "2026-08-22T00:00:00+08:00",
-  "latest_version": "1.7.9",
+  "latest_version": "1.7.8.1",
   "latest_version_code": 8,
-  "release_url": "https://github.com/huangder/Lumi_Books/releases/tag/1.7.9",
+  "release_url": "https://github.com/huangder/Lumi_Books/releases/tag/1.7.8.1",
   "terms_version": 0,
   "privacy_version": 0,
   "update": {
     "latest_version_code": 8,
-    "latest_version_name": "1.7.9",
-    "download_url": "https://github.com/huangder/Lumi_Books/releases/tag/1.7.9",
-    "title": "新版本1.7.9",
+    "latest_version_name": "1.7.8.1",
+    "download_url": "https://github.com/huangder/Lumi_Books/releases/tag/1.7.8.1",
+    "title": "新版本1.7.8.1",
     "message": "新版本已经发布，建议前往下载更新。",
     "changelog": "· 添加了些许 TXT 目录规则，修复了部分 TXT 缺章节的情况。\n· 理论修复了编辑书本信息以及删除书本的闪退情况（开发者暂未复现问题）。",
     "force_update_below_version_code": 0
