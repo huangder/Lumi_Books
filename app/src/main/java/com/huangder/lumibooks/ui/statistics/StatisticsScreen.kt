@@ -291,12 +291,11 @@ private fun StatisticsSummary(uiState: StatisticsUiState, selectedPeriod: Int) {
         StatisticValue(
             value = stringResource(R.string.statistics_duration_value, hours, minutes),
             label = stringResource(R.string.statistics_reading_time),
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f, fill = false)
         )
         StatisticValue(
             value = stringResource(R.string.statistics_active_days_value, activeDays),
-            label = stringResource(R.string.statistics_active_days),
-            modifier = Modifier.weight(1f)
+            label = stringResource(R.string.statistics_active_days)
         )
     }
 }
@@ -309,7 +308,9 @@ private fun StatisticValue(value: String, label: String, modifier: Modifier = Mo
             fontSize = AppType.Title,
             fontWeight = FontWeight.Bold,
             color = AppColors.TextPrimary,
-            maxLines = 1
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis
         )
         Spacer(Modifier.height(2.dp))
         Text(text = label, fontSize = AppType.Caption, color = AppColors.TextSecondary)
