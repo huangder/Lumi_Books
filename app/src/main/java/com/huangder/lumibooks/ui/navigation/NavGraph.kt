@@ -27,12 +27,15 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
@@ -185,6 +188,7 @@ fun MainNavGraph(
     var tabBarVisible by remember { mutableStateOf(true) }
     var useMainReturnTabBarTransition by remember { mutableStateOf(false) }
     var previousRoute by remember { mutableStateOf<String?>(null) }
+    var bookshelfOverlayProgress by remember { mutableFloatStateOf(0f) }
     var homeGoalSheetVisible by remember { mutableStateOf(false) }
     var showImportActions by remember { mutableStateOf(false) }
     var showImportConfirmation by remember { mutableStateOf(false) }
@@ -315,6 +319,9 @@ fun MainNavGraph(
         }
         if (currentRoute != Screen.Home.route) {
             homeGoalSheetVisible = false
+        }
+        if (currentRoute != Screen.Bookshelf.route) {
+            bookshelfOverlayProgress = 0f
         }
         if (currentRoute == Screen.Reader.route || showTransition) {
             tabBarVisible = false
@@ -493,6 +500,9 @@ fun MainNavGraph(
                         showImportConfirmation = false
                     },
                     onMessage = { transientMessage = it },
+                    onOverlayProgressChange = { progress ->
+                        bookshelfOverlayProgress = progress.coerceIn(0f, 1f)
+                    },
                     viewModel = homeViewModel
                 )
             }
@@ -563,7 +573,23 @@ fun MainNavGraph(
 
         // 浮动导航栏（渐隐渐显）
         Box(
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    renderEffect = if (
+                        !eInkMode &&
+                        bookshelfOverlayProgress > 0.01f &&
+                        android.os.Build.VERSION.SDK_INT >= 31
+                    ) {
+                        android.graphics.RenderEffect.createBlurEffect(
+                            20f * bookshelfOverlayProgress,
+                            20f * bookshelfOverlayProgress,
+                            android.graphics.Shader.TileMode.CLAMP
+                        ).asComposeRenderEffect()
+                    } else {
+                        null
+                    }
+                }
         ) {
         AnimatedVisibility(
             visible = tabBarVisible,

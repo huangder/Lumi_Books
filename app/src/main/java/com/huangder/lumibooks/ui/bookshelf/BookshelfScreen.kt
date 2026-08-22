@@ -57,6 +57,7 @@ import androidx.compose.material3.Text
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -66,6 +67,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -86,6 +88,7 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
@@ -136,6 +139,7 @@ fun BookshelfScreen(
     onNavigateToReader: (bookId: String, coverPath: String?, title: String, sourceBounds: Rect?) -> Unit,
     onAddBook: () -> Unit,
     onMessage: (String) -> Unit = {},
+    onOverlayProgressChange: (Float) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -359,6 +363,31 @@ fun BookshelfScreen(
         openBookNotes(book)
     }
 
+    val searchBlurProgress by animateFloatAsState(
+        targetValue = if (isSearchActive && !eInkMode) 1f else 0f,
+        animationSpec = if (eInkMode) snap() else tween(if (isSearchActive) 210 else 230),
+        label = "bookshelfSearchBlur"
+    )
+    val overlayProgress = if (eInkMode) {
+        0f
+    } else {
+        maxOf(contextMenuState.scrimAlpha.value, searchBlurProgress)
+    }
+    val contentBlurRadius = if (eInkMode) {
+        0f
+    } else {
+        maxOf(
+            20f * contextMenuState.scrimAlpha.value,
+            with(density) { 34.dp.toPx() } * searchBlurProgress
+        )
+    }
+    SideEffect {
+        onOverlayProgressChange(overlayProgress)
+    }
+    DisposableEffect(Unit) {
+        onDispose { onOverlayProgressChange(0f) }
+    }
+
     ProvideLiquidGlassBackdrop(bookshelfBackdrop.takeIf { isLiquidGlass }) {
     Box(modifier = Modifier.fillMaxSize().background(AppColors.WindowBg)) {
         // ── 内容层（高斯模糊） ──
@@ -368,6 +397,19 @@ fun BookshelfScreen(
                 .then(
                     if (isLiquidGlass) Modifier.layerBackdrop(bookshelfBackdrop) else Modifier
                 )
+                .graphicsLayer {
+                    renderEffect = if (
+                        contentBlurRadius > 0.01f && android.os.Build.VERSION.SDK_INT >= 31
+                    ) {
+                        android.graphics.RenderEffect.createBlurEffect(
+                            contentBlurRadius,
+                            contentBlurRadius,
+                            android.graphics.Shader.TileMode.CLAMP
+                        ).asComposeRenderEffect()
+                    } else {
+                        null
+                    }
+                }
                 .background(AppColors.WindowBg)
         ) {
             if (isLiquidGlass) {
@@ -526,6 +568,19 @@ fun BookshelfScreen(
                         .zIndex(2f)
                         .onGloballyPositioned { coordinates ->
                             bookshelfHeaderHeightPx = coordinates.size.height
+                        }
+                        .graphicsLayer {
+                            renderEffect = if (
+                                contentBlurRadius > 0.01f && android.os.Build.VERSION.SDK_INT >= 31
+                            ) {
+                                android.graphics.RenderEffect.createBlurEffect(
+                                    contentBlurRadius,
+                                    contentBlurRadius,
+                                    android.graphics.Shader.TileMode.CLAMP
+                                ).asComposeRenderEffect()
+                            } else {
+                                null
+                            }
                         }
                         .align(Alignment.TopCenter)
                         .widthIn(max = 1000.dp)
