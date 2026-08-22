@@ -23,6 +23,10 @@ class FadePageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
     /** 动画期间被清背景的文字页，abort/complete 时恢复。 */
     private var fadingPageViews: List<PageContentView> = emptyList()
 
+    /** 动画期间参与淡入淡出的旧页 / 新页内容 View（可能包含双页模式的两半）。 */
+    private var outgoingViews: List<PageContentView> = emptyList()
+    private var incomingViews: List<PageContentView> = emptyList()
+
     // ── 绘制 ──
 
     override fun onDraw(canvas: Canvas) {
@@ -39,8 +43,12 @@ class FadePageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
 
                 // 🔥 顺序渐变：旧页先淡出（0→0.55），新页后淡入（0.45→1.0）
                 // 10% 交叠区让过渡更柔和，避免中间出现硬切感
-                outgoing.alpha = (1f - fadeProgress / 0.55f).coerceIn(0f, 1f)
-                incoming.alpha = ((fadeProgress - 0.45f) / 0.55f).coerceIn(0f, 1f)
+                // 图片背景时 setFadeAlpha 只淡入淡出文字、整页保持不透明，背景不会露白
+                val outAlpha = (1f - fadeProgress / 0.55f).coerceIn(0f, 1f)
+                val inAlpha  = ((fadeProgress - 0.45f) / 0.55f).coerceIn(0f, 1f)
+                outgoingViews.forEach { it.setFadeAlpha(outAlpha) }
+                incomingViews.forEach { it.setFadeAlpha(inAlpha) }
+                outgoing.alpha = 1f; incoming.alpha = 1f
                 hidden.alpha   = 0f
 
                 outgoing.translationX = 0f; outgoing.translationY = 0f
@@ -131,7 +139,9 @@ class FadePageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
         // 🔥 清除两页背景 → ReadView 底色静止不动，只有文字参与动画
         val incoming = if (direction == Direction.NEXT) readView.nextPageView else readView.prevPageView
         val outgoing = readView.curPageView
-        fadingPageViews = (outgoing.pageContentViews() + incoming.pageContentViews()).distinct()
+        outgoingViews = outgoing.pageContentViews()
+        incomingViews = incoming.pageContentViews()
+        fadingPageViews = (outgoingViews + incomingViews).distinct()
         fadingPageViews.forEach(PageContentView::stripBackgroundForFade)
 
         scroller.startScroll(0, 0, 1000, 0, FADE_DURATION_MS)

@@ -146,13 +146,36 @@ class PageContentView(context: Context) : FrameLayout(context) {
      */
     internal fun stripBackgroundForFade() {
         setBackgroundColor(android.graphics.Color.TRANSPARENT)
-        backgroundImageView.alpha = 0f   // 图片背景也隐藏，由对面页的图片保持视觉连续
+        // 图片背景保持可见：淡入淡出期间作为静止底层，避免露出 ReadView 的白色底色
+        backgroundImageView.alpha = if (backgroundImageView.visibility == View.VISIBLE) 1f else 0f
+    }
+
+    /**
+     * 渐变动画用：设置本页的淡入淡出透明度。
+     * - 纯色背景：整页透明（ReadView 实心底色充当静止底层）
+     * - 图片背景：整页保持不透明，仅文字淡入淡出，图片背景全程静止
+     */
+    internal fun setFadeAlpha(alpha: Float) {
+        if (backgroundImageView.visibility == View.VISIBLE) {
+            textView.alpha = alpha
+            justifiedView.alpha = alpha
+            verticalTextView.alpha = alpha
+        } else {
+            textView.alpha = 1f
+            justifiedView.alpha = 1f
+            verticalTextView.alpha = 1f
+            this.alpha = alpha.coerceIn(0f, 1f)
+        }
     }
 
     /** 渐变动画结束 / abort 时恢复背景色；图片背景由下一次 setReaderBackground 完整恢复。 */
     internal fun restoreBackgroundForFade(bgColor: Int) {
         setBackgroundColor(bgColor)
         backgroundImageView.alpha = 1f
+        textView.alpha = 1f
+        justifiedView.alpha = 1f
+        verticalTextView.alpha = 1f
+        this.alpha = 1f
     }
 
     /**
