@@ -942,4 +942,5 @@
     <string name="tts_previous_sentence">上一句</string>
     <string name="tts_stop">停止聽書</string>
     <string name="tts_unavailable">無法啟動文字轉語音，請檢查系統語音引擎和語言資料</string>
+    <string name="selected_books_count_compact">已選 %1$d 本</string>
 </resources>

@@ -1152,10 +1152,11 @@ private fun BookshelfCapsuleHeader(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Spacer(Modifier.width(10.dp))
                     Text(
-                        text = stringResource(R.string.selected_books_count, selectedCount),
+                        text = stringResource(R.string.selected_books_count_compact, selectedCount),
                         color = AppColors.TextSecondary,
                         fontSize = AppType.Caption,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1
                     )
                     Spacer(Modifier.width(10.dp))
                     LiquidGlassIconButton(
@@ -1201,7 +1202,9 @@ private fun BookshelfCapsuleHeader(
                     tintedColor = AppColors.Accent,
                     contentColor = AppColors.OnAccent,
                     prominentShadow = false,
-                    modifier = Modifier.height(46.dp)
+                    modifier = Modifier
+                        .widthIn(min = 88.dp)
+                        .height(46.dp)
                 ) {
                     Text(
                         text = stringResource(R.string.select_all),

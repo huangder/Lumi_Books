@@ -942,4 +942,5 @@
     <string name="tts_previous_sentence">前の文</string>
     <string name="tts_stop">読み上げを停止</string>
     <string name="tts_unavailable">音声読み上げを開始できません。システムの音声エンジンと言語データを確認してください</string>
+    <string name="selected_books_count_compact">%1$d冊選択</string>
 </resources>
