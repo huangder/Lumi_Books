@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 
 @Composable
 fun LiquidGlassButton(
@@ -54,16 +55,26 @@ fun LiquidGlassButton(
         return
     }
 
-    val prominentDecoration = if (prominentShadow) {
+    // Semi-transparent drop shadow so the glass edge stays readable over any
+    // content (apple-design §12: separation comes from shadow, not borders;
+    // dark mode needs a heavier shadow to separate from dark backgrounds).
+    val isDark = LocalIsDarkTheme.current
+    val shadowDecoration = if (prominentShadow) {
         Modifier.shadow(
             elevation = 20.dp,
             shape = shape,
             clip = false,
-            ambientColor = Color.Black.copy(alpha = 0.10f),
-            spotColor = Color.Black.copy(alpha = 0.09f)
+            ambientColor = Color.Black.copy(alpha = if (isDark) 0.30f else 0.16f),
+            spotColor = Color.Black.copy(alpha = if (isDark) 0.44f else 0.26f)
         )
     } else {
-        Modifier
+        Modifier.shadow(
+            elevation = 10.dp,
+            shape = shape,
+            clip = false,
+            ambientColor = Color.Black.copy(alpha = if (isDark) 0.24f else 0.12f),
+            spotColor = Color.Black.copy(alpha = if (isDark) 0.34f else 0.18f)
+        )
     }
     LiquidGlassSurface(
         shape = shape,
@@ -76,7 +87,7 @@ fun LiquidGlassButton(
         tintColor = tintedColor,
         enabled = enabled,
         onClick = onClick,
-        decorationModifier = prominentDecoration,
+        decorationModifier = shadowDecoration,
         modifier = modifier
             .heightIn(min = 44.dp)
             .widthIn(min = 72.dp)

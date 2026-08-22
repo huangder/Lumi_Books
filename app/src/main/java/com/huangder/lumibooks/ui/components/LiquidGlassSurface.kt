@@ -392,7 +392,7 @@ fun LiquidGlassSurface(
     outlineWidth: Dp = 0.8.dp,
     highlightColor: Color = fallbackColor,
     highlightAlpha: Float = 0.18f,
-    decorationModifier: Modifier = Modifier,
+    decorationModifier: Modifier? = null,
     contentAlignment: Alignment = Alignment.Center,
     content: @Composable BoxScope.() -> Unit
 ) {
@@ -523,9 +523,25 @@ fun LiquidGlassSurface(
         Modifier
     }
 
+    // Default semi-transparent drop shadow so every glass surface reads as
+    // floating over the content behind it (apple-design §12: separation via
+    // shadow, not borders; heavier in dark mode). Callers that pass their own
+    // decorationModifier stay in full control.
+    val defaultGlassShadow = if (isLiquidGlass) {
+        Modifier.shadow(
+            elevation = 10.dp,
+            shape = shape,
+            clip = false,
+            ambientColor = Color.Black.copy(alpha = if (isDark) 0.24f else 0.12f),
+            spotColor = Color.Black.copy(alpha = if (isDark) 0.34f else 0.18f)
+        )
+    } else {
+        Modifier
+    }
+
     Box(
         modifier = modifier
-            .then(decorationModifier)
+            .then(decorationModifier ?: defaultGlassShadow)
             .then(clickModifier)
             .then(interactionModifier),
         contentAlignment = contentAlignment
