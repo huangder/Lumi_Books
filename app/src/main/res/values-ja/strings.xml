@@ -943,4 +943,5 @@
     <string name="tts_stop">読み上げを停止</string>
     <string name="tts_unavailable">音声読み上げを開始できません。システムの音声エンジンと言語データを確認してください</string>
     <string name="selected_books_count_compact">%1$d冊選択</string>
+    <string name="txt_editor_structure_changed_warning">章構成の変更を検出しました。本文は保存されましたが、既存の注釈位置は再確認が必要な場合があります。</string>
 </resources>

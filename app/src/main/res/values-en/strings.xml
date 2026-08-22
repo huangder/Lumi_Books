@@ -945,4 +945,5 @@
     <string name="tts_floating_notification_text">Floating window is showing captions</string>
     <string name="tts_floating_notification_title">Audiobook captions</string>
     <string name="selected_books_count_compact">%1$d selected</string>
+    <string name="txt_editor_structure_changed_warning">Chapter structure changed. Text was saved, but existing annotation positions may need review.</string>
 </resources>

@@ -962,4 +962,5 @@
     <string name="statistics_duration_value">%1$d小时%2$d分</string>
     <string name="statistics_active_days_value">%1$d天</string>
     <string name="selected_books_count_compact">已选 %1$d 本</string>
+    <string name="txt_editor_structure_changed_warning">检测到章节结构变化，已保存正文；原有标注定位可能需要重新确认</string>
 </resources>

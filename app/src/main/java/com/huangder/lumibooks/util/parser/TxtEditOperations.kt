@@ -1,5 +1,29 @@
 package com.huangder.lumibooks.util.parser
 
+internal object TxtChapterStructure {
+    const val MAX_CHAPTER_CHARS = 32_000
+    val chapterPatterns = listOf(
+        Regex("^第[一二三四五六七八九十百千零\\d]+[章节回卷话]"),
+        Regex("^[卷篇][一二三四五六七八九十百千零\\d]+[章回]?"),
+        Regex("^Chapter\\s+\\d+", RegexOption.IGNORE_CASE),
+        Regex("^[一二三四五六七八九十百千零〇两]+$"),
+        Regex("^第\\d+章")
+    )
+    val decoratedHeadingPattern = Regex("^<[^<>\\r\\n]{1,48}>$")
+
+    fun headingLines(text: String): List<String> = text.lineSequence()
+        .map { it.trim() }
+        .filter { line ->
+            line.isNotEmpty() &&
+                (decoratedHeadingPattern.matches(line) || chapterPatterns.any { it.containsMatchIn(line) })
+        }
+        .toList()
+
+    fun mayChange(oldText: String, newText: String): Boolean =
+        headingLines(oldText) != headingLines(newText) ||
+            (oldText.length < MAX_CHAPTER_CHARS) != (newText.length < MAX_CHAPTER_CHARS)
+}
+
 data class TxtTextMatch(
     val start: Int,
     val endExclusive: Int
@@ -31,6 +55,74 @@ data class TxtRewriteResult(
     val changedChapterCount: Int = 0,
     val errorMessage: String? = null
 )
+
+data class TxtOffsetMigrationStep(
+    val matches: List<TxtTextMatch>,
+    val replacementLength: Int
+)
+
+fun computeMinimalTxtReplacement(
+    chapterIndex: Int,
+    oldText: String,
+    newText: String
+): TxtReplaceRange? {
+    if (oldText == newText) return null
+    var prefix = 0
+    val sharedLength = minOf(oldText.length, newText.length)
+    while (prefix < sharedLength && oldText[prefix] == newText[prefix]) prefix++
+    if (prefix > 0 && prefix < oldText.length && prefix < newText.length &&
+        (oldText[prefix].isLowSurrogate() || newText[prefix].isLowSurrogate())
+    ) {
+        prefix--
+    }
+
+    var suffix = 0
+    val maxSuffix = sharedLength - prefix
+    while (suffix < maxSuffix &&
+        oldText[oldText.lastIndex - suffix] == newText[newText.lastIndex - suffix]
+    ) suffix++
+    val oldSuffixStart = oldText.length - suffix
+    val newSuffixStart = newText.length - suffix
+    if (suffix > 0 && oldSuffixStart > prefix && newSuffixStart > prefix &&
+        (oldText[oldSuffixStart].isLowSurrogate() || newText[newSuffixStart].isLowSurrogate())
+    ) {
+        suffix--
+    }
+
+    return TxtReplaceRange(
+        chapterIndex = chapterIndex,
+        start = prefix,
+        endExclusive = oldText.length - suffix,
+        replacement = newText.substring(prefix, newText.length - suffix)
+    )
+}
+
+fun mapTxtOffsetThroughSteps(
+    originalOffset: Int,
+    steps: List<TxtOffsetMigrationStep>,
+    endBias: Boolean
+): Int {
+    var offset = originalOffset.coerceAtLeast(0)
+    steps.forEach { step ->
+        var delta = 0
+        var mappedInsideMatch = false
+        step.matches.forEach { match ->
+            when {
+                offset < match.start -> Unit
+                offset >= match.endExclusive -> {
+                    delta += step.replacementLength - (match.endExclusive - match.start)
+                }
+                else -> {
+                    offset = match.start + delta + if (endBias) step.replacementLength else 0
+                    mappedInsideMatch = true
+                }
+            }
+            if (mappedInsideMatch) return@forEach
+        }
+        if (!mappedInsideMatch) offset += delta
+    }
+    return offset.coerceAtLeast(0)
+}
 
 fun applyTxtEditOperations(
     chapterIndex: Int,
