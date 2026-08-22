@@ -178,6 +178,10 @@
     <string name="external_tts_cache_limit_desc">Older audio is removed automatically when the cache exceeds this limit.</string>
     <string name="clear_external_tts_cache">Clear third-party TTS service audio cache</string>
     <string name="clear_external_tts_cache_confirm">Clear the third-party TTS service audio cache? Other caches will not be affected.</string>
+    <string name="storage_group_overview">Storage</string>
+    <string name="storage_group_cleanup">Cleanup</string>
+    <string name="storage_show_all_books">Show all %1$d books</string>
+    <string name="storage_hide_books">Show less</string>
 
     <!-- Backup & Restore -->
     <string name="backup_in_progress">Backing up...</string>

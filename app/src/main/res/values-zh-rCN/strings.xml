@@ -150,6 +150,10 @@
     <string name="external_tts_cache_limit_desc">缓存超过此上限时，会自动清理较早的音频。</string>
     <string name="clear_external_tts_cache">清除第三方 TTS 服务音频缓存</string>
     <string name="clear_external_tts_cache_confirm">清除第三方 TTS 服务音频缓存吗？不会影响其他缓存。</string>
+    <string name="storage_group_overview">存储空间</string>
+    <string name="storage_group_cleanup">清理</string>
+    <string name="storage_show_all_books">显示全部 %1$d 本</string>
+    <string name="storage_hide_books">收起</string>
 
     <!-- 备份与恢复 -->
     <string name="backup_in_progress">正在备份...</string>

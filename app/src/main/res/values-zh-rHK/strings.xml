@@ -150,6 +150,10 @@
     <string name="external_tts_cache_limit_desc">快取超過此上限時，會自動清理較早的音訊。</string>
     <string name="clear_external_tts_cache">清除第三方 TTS 服務音訊快取</string>
     <string name="clear_external_tts_cache_confirm">清除第三方 TTS 服務音訊快取嗎？不會影響其他快取。</string>
+    <string name="storage_group_overview">儲存空間</string>
+    <string name="storage_group_cleanup">清理</string>
+    <string name="storage_show_all_books">顯示全部 %1$d 本</string>
+    <string name="storage_hide_books">收起</string>
 
     <!-- 備份與還原 -->
     <string name="backup_in_progress">正在備份...</string>

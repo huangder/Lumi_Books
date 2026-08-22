@@ -150,6 +150,10 @@
     <string name="external_tts_cache_limit_desc">この上限を超えると、古い音声が自動的に削除されます。</string>
     <string name="clear_external_tts_cache">サードパーティ TTS サービスの音声キャッシュをクリア</string>
     <string name="clear_external_tts_cache_confirm">サードパーティ TTS サービスの音声キャッシュをクリアしますか？ほかのキャッシュには影響しません。</string>
+    <string name="storage_group_overview">ストレージ</string>
+    <string name="storage_group_cleanup">クリーンアップ</string>
+    <string name="storage_show_all_books">すべて表示（%1$d 冊）</string>
+    <string name="storage_hide_books">折りたたむ</string>
 
     <!-- バックアップ -->
     <string name="backup_in_progress">バックアップ中...</string>

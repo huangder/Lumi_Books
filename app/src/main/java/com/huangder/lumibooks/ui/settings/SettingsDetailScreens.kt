@@ -10,18 +10,22 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
@@ -83,6 +87,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -94,6 +99,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -103,7 +109,10 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
@@ -112,6 +121,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import com.huangder.lumibooks.R
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalContext
@@ -121,6 +131,10 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
+import com.huangder.lumibooks.ui.theme.LocalEInkMode
+import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
+import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
+import com.huangder.lumibooks.ui.theme.LocalUseMaterial3Theme
 import com.huangder.lumibooks.tts.ExternalTtsConfig
 import com.huangder.lumibooks.ui.theme.fangSongFamily
 import com.huangder.lumibooks.ui.components.LiquidGlassSwitch
@@ -795,12 +809,22 @@ fun ReadingGoalDetail(viewModel: SettingsViewModel) {
 
 // ─── 存储管理 ────────────────────────────────────────────────
 
-/** 分段色条颜色 */
+/** 存储分段颜色（圆环与图例共用；顺序：应用/缓存/TTS/电子书/封面） */
 private val SegmentColors = listOf(
     Color(0xFF4A90D9),  // 应用本体 - 蓝
     Color(0xFF9B9B9B),  // 缓存文件 - 灰
+    Color(0xFFAF52DE),  // 第三方 TTS 缓存 - 紫
     Color(0xFFE85D5D),  // 电子书文件 - 主题红
     Color(0xFFF5A623),  // 封面图片 - 橙黄
+)
+
+/** 墨水屏下的分段灰阶（保持图例各段可区分） */
+private val EInkSegmentGrays = listOf(
+    Color(0xFF1A1A1A),
+    Color(0xFF444444),
+    Color(0xFF666666),
+    Color(0xFF888888),
+    Color(0xFFABABAB)
 )
 
 /** 格式标签颜色 */
@@ -810,98 +834,95 @@ private val FormatColors = mapOf(
     "TXT" to Color(0xFF9B9B9B)
 )
 
+/** 等宽数字排版（苹果细节：数值列位数对齐、不跳动） */
+private val TabularFigures = TextStyle(fontFeatureSettings = "tnum")
+
+/** 苹果式 iOS 警示红（M3 动态色回退 error、墨水屏回退黑色） */
+private val DestructiveRed: Color
+    @Composable get() = if (LocalEInkMode.current) {
+        Color.Black
+    } else if (LocalUseMaterial3Theme.current) {
+        MaterialTheme.colorScheme.error
+    } else if (LocalIsDarkTheme.current) {
+        Color(0xFFFF453A)
+    } else {
+        Color(0xFFFF3B30)
+    }
+
 @Composable
 fun StorageDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
     val info = uiState.storageInfo
     var showClearDialog by remember { mutableStateOf(false) }
     var showClearExternalTtsCacheDialog by remember { mutableStateOf(false) }
-    val externalTtsCacheColor = AppColors.Accent
+    var booksExpanded by rememberSaveable { mutableStateOf(false) }
+    val displayColors = if (LocalEInkMode.current) EInkSegmentGrays else SegmentColors
+
+    val totalBytes = info.appSizeBytes + info.cacheSizeBytes + info.externalTtsCacheSizeBytes + info.booksSizeBytes + info.coversSizeBytes
+    val categoryLabels = listOf(
+        stringResource(R.string.storage_app),
+        stringResource(R.string.storage_cache),
+        stringResource(R.string.external_tts_audio_cache),
+        stringResource(R.string.storage_books),
+        stringResource(R.string.storage_covers)
+    )
+    val categoryBytes = listOf(
+        info.appSizeBytes,
+        info.cacheSizeBytes,
+        info.externalTtsCacheSizeBytes,
+        info.booksSizeBytes,
+        info.coversSizeBytes
+    )
+
+    // 圆环分段：过滤空项、保底可见占比后归一化
+    val ringParts: List<Pair<Float, Color>> = if (totalBytes > 0) {
+        val activeIndexes = categoryBytes.indices.filter { categoryBytes[it] > 0 }
+        val weights = activeIndexes.map { (categoryBytes[it].toFloat() / totalBytes).coerceAtLeast(0.02f) }
+        val weightSum = weights.sum()
+        activeIndexes.mapIndexed { i, index -> weights[i] / weightSum to displayColors[index] }
+    } else {
+        emptyList()
+    }
 
     Column {
-        // ── 总览卡片 ──
-        DetailCard {
-            Column(Modifier.fillMaxWidth().padding(AppSpace.md)) {
-                // 标题行
-                val totalBytes = info.appSizeBytes + info.cacheSizeBytes + info.externalTtsCacheSizeBytes + info.booksSizeBytes + info.coversSizeBytes
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Outlined.Speed, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
-                    Spacer(Modifier.width(AppSpace.sm))
-                    Text(stringResource(R.string.label_total_size), fontSize = AppType.Body, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
-                    Text(viewModel.formatFileSize(totalBytes), fontSize = AppType.Section, fontWeight = FontWeight.Bold, color = AppColors.Accent)
-                }
-
-                Spacer(Modifier.height(AppSpace.sm))
-
-                // 分段色条
-                if (totalBytes > 0) {
-                    val segments = listOf(
-                        info.appSizeBytes to SegmentColors[0],
-                        info.cacheSizeBytes to SegmentColors[1],
-                        info.externalTtsCacheSizeBytes to externalTtsCacheColor,
-                        info.booksSizeBytes to SegmentColors[2],
-                        info.coversSizeBytes to SegmentColors[3]
-                    ).filter { it.first > 0 }
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(8.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                    ) {
-                        segments.forEach { (bytes, color) ->
-                            val weight = (bytes.toFloat() / totalBytes).coerceAtLeast(0.02f)
-                            Box(
-                                modifier = Modifier
-                                    .weight(weight)
-                                    .fillMaxSize()
-                                    .background(color)
-                            )
-                        }
-                    }
-
-                    Spacer(Modifier.height(AppSpace.md))
-
-                    // 分类明细
-                    val categories = listOf(
-                        stringResource(R.string.storage_app) to (info.appSizeBytes to SegmentColors[0]),
-                        stringResource(R.string.storage_cache) to (info.cacheSizeBytes to SegmentColors[1]),
-                        stringResource(R.string.external_tts_audio_cache) to (info.externalTtsCacheSizeBytes to externalTtsCacheColor),
-                        stringResource(R.string.storage_books) to (info.booksSizeBytes to SegmentColors[2]),
-                        stringResource(R.string.storage_covers) to (info.coversSizeBytes to SegmentColors[3])
+        // ── 分组：存储空间（小米圆环总览）──
+        StorageGroupTitle(stringResource(R.string.storage_group_overview))
+        StorageCard {
+            Column(Modifier.fillMaxWidth()) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(top = AppSpace.lg, bottom = AppSpace.md),
+                    contentAlignment = Alignment.Center
+                ) {
+                    StorageRing(
+                        fractions = ringParts.map { it.first },
+                        colors = ringParts.map { it.second },
+                        totalText = viewModel.formatFileSize(totalBytes),
+                        caption = stringResource(R.string.label_total_size),
+                        calculating = totalBytes == 0L
                     )
-                    categories.forEach { (label, pair) ->
-                        val (bytes, color) = pair
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(10.dp)
-                                    .clip(RoundedCornerShape(2.dp))
-                                    .background(color)
-                            )
-                            Spacer(Modifier.width(AppSpace.sm))
-                            Text(label, fontSize = AppType.BodySmall, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
-                            Text(
-                                viewModel.formatFileSize(bytes),
-                                fontSize = AppType.BodySmall,
-                                color = AppColors.TextSecondary
-                            )
-                        }
-                    }
-                } else {
-                    Text(stringResource(R.string.calculating), fontSize = AppType.BodySmall, color = AppColors.TextSecondary)
+                }
+                SettingsDivider()
+                categoryLabels.indices.forEach { index ->
+                    StorageLegendRow(
+                        color = displayColors[index],
+                        label = categoryLabels[index],
+                        size = viewModel.formatFileSize(categoryBytes[index])
+                    )
                 }
             }
         }
 
-        // ── 书籍明细卡片 ──
+        // ── 分组：电子书文件（默认前几本，可展开）──
         if (info.bookDetails.isNotEmpty()) {
-            Spacer(Modifier.height(AppSpace.md))
-            DetailCard {
-                Column(Modifier.fillMaxWidth()) {
+            StorageGroupTitle(stringResource(R.string.storage_books))
+            StorageCard {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .animateContentSize(
+                            animationSpec = if (LocalMotionEnabled.current) spring(dampingRatio = 1f, stiffness = 380f) else snap()
+                        )
+                ) {
                     Row(
                         Modifier.fillMaxWidth().padding(AppSpace.md),
                         verticalAlignment = Alignment.CenterVertically
@@ -916,110 +937,107 @@ fun StorageDetail(viewModel: SettingsViewModel) {
                         Text(
                             viewModel.formatFileSize(info.booksSizeBytes),
                             fontSize = AppType.BodySmall,
-                            color = AppColors.TextSecondary
+                            color = AppColors.TextSecondary,
+                            style = TabularFigures
                         )
                     }
                     SettingsDivider()
-                    info.bookDetails.forEach { item ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = AppSpace.md, vertical = AppSpace.md),
-                            verticalAlignment = Alignment.Top
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    item.title,
-                                    fontSize = AppType.BodySmall,
-                                    color = AppColors.TextPrimary,
-                                    maxLines = 1
-                                )
-                                Spacer(Modifier.height(4.dp))
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    val fmtColor = FormatColors[item.format] ?: Color.Gray
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(3.dp))
-                                            .background(fmtColor.copy(alpha = 0.12f))
-                                            .padding(horizontal = 5.dp, vertical = 1.dp)
-                                    ) {
-                                        Text(
-                                            item.format,
-                                            fontSize = 10.sp,
-                                            color = fmtColor,
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                    }
-                                }
-                            }
-                            Spacer(Modifier.width(AppSpace.sm))
-                            Text(
-                                viewModel.formatFileSize(item.sizeBytes),
-                                fontSize = AppType.BodySmall,
-                                color = AppColors.TextSecondary,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
+                    val visibleBooks = if (booksExpanded) info.bookDetails else info.bookDetails.take(StorageBookPreviewCount)
+                    visibleBooks.forEachIndexed { index, item ->
+                        if (index > 0) SettingsDivider()
+                        StorageBookRow(
+                            title = item.title,
+                            format = item.format,
+                            size = viewModel.formatFileSize(item.sizeBytes)
+                        )
+                    }
+                    if (info.bookDetails.size > StorageBookPreviewCount) {
+                        SettingsDivider()
+                        StorageToggleRow(
+                            expanded = booksExpanded,
+                            label = if (booksExpanded) {
+                                stringResource(R.string.storage_hide_books)
+                            } else {
+                                stringResource(R.string.storage_show_all_books, info.bookDetails.size)
+                            },
+                            onClick = { booksExpanded = !booksExpanded }
+                        )
                     }
                 }
             }
         }
 
-        // ── 外部 TTS 音频缓存 ──
-        Spacer(Modifier.height(AppSpace.md))
-        DetailCard {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(AppSpace.md),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Outlined.VolumeUp, null, tint = externalTtsCacheColor, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(AppSpace.md))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        stringResource(R.string.external_tts_audio_cache),
-                        fontSize = AppType.Body,
-                        color = AppColors.TextPrimary
-                    )
-                    Text(
-                        stringResource(
-                            R.string.external_tts_cache_usage,
-                            viewModel.formatFileSize(info.externalTtsCacheSizeBytes)
-                        ),
-                        fontSize = AppType.BodySmall,
-                        color = AppColors.TextSecondary
-                    )
+        // ── 分组：第三方 TTS 音频缓存 ──
+        StorageGroupTitle(stringResource(R.string.external_tts_audio_cache))
+        StorageCard {
+            Column(Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(AppSpace.md),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Outlined.VolumeUp, null, tint = AppColors.Accent, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(AppSpace.md))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            stringResource(R.string.external_tts_audio_cache),
+                            fontSize = AppType.Body,
+                            color = AppColors.TextPrimary
+                        )
+                        Text(
+                            stringResource(
+                                R.string.external_tts_cache_usage,
+                                viewModel.formatFileSize(info.externalTtsCacheSizeBytes)
+                            ),
+                            fontSize = AppType.BodySmall,
+                            color = AppColors.TextSecondary,
+                            style = TabularFigures
+                        )
+                    }
                 }
-            }
-            SettingsDivider()
-            SettingsSliderItem(
-                icon = Icons.Outlined.Timer,
-                label = stringResource(R.string.external_tts_cache_limit),
-                value = info.externalTtsCacheLimitMb.toFloat(),
-                range = ExternalTtsConfig.MIN_AUDIO_CACHE_LIMIT_MB.toFloat()..ExternalTtsConfig.MAX_AUDIO_CACHE_LIMIT_MB.toFloat(),
-                valueText = stringResource(R.string.external_tts_cache_limit_value, info.externalTtsCacheLimitMb),
-                step = 32f,
-                onChange = { viewModel.saveExternalTtsCacheLimitMb(it.toInt()) }
-            )
-            Text(
-                stringResource(R.string.external_tts_cache_limit_desc),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = AppSpace.md, vertical = AppSpace.sm),
-                fontSize = AppType.BodySmall,
-                color = AppColors.TextSecondary
-            )
-            SettingsDivider()
-            ActionRow(
-                Icons.Outlined.DeleteSweep,
-                stringResource(R.string.clear_external_tts_cache),
-                Color.Red
-            ) {
-                showClearExternalTtsCacheDialog = true
+                StorageUsageBar(
+                    fraction = (info.externalTtsCacheSizeBytes / (info.externalTtsCacheLimitMb * 1024f * 1024f)).coerceIn(0f, 1f)
+                )
+                SettingsDivider()
+                SettingsSliderItem(
+                    icon = Icons.Outlined.Timer,
+                    label = stringResource(R.string.external_tts_cache_limit),
+                    value = info.externalTtsCacheLimitMb.toFloat(),
+                    range = ExternalTtsConfig.MIN_AUDIO_CACHE_LIMIT_MB.toFloat()..ExternalTtsConfig.MAX_AUDIO_CACHE_LIMIT_MB.toFloat(),
+                    valueText = stringResource(R.string.external_tts_cache_limit_value, info.externalTtsCacheLimitMb),
+                    step = 32f,
+                    onChange = { viewModel.saveExternalTtsCacheLimitMb(it.toInt()) }
+                )
+                Text(
+                    stringResource(R.string.external_tts_cache_limit_desc),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = AppSpace.md, vertical = AppSpace.sm),
+                    fontSize = AppType.BodySmall,
+                    color = AppColors.TextSecondary
+                )
+                SettingsDivider()
+                StorageActionRow(
+                    icon = Icons.Outlined.DeleteSweep,
+                    label = stringResource(R.string.clear_external_tts_cache),
+                    destructive = true,
+                    onClick = { showClearExternalTtsCacheDialog = true }
+                )
             }
         }
 
-        Spacer(Modifier.height(AppSpace.md))
-
-        DetailCard {
-            ActionRow(Icons.Outlined.DeleteSweep, stringResource(R.string.clear_cache)) { viewModel.clearCache() }
+        // ── 分组：清理 ──
+        StorageGroupTitle(stringResource(R.string.storage_group_cleanup))
+        StorageCard {
+            StorageActionRow(
+                icon = Icons.Outlined.DeleteSweep,
+                label = stringResource(R.string.clear_cache),
+                onClick = { viewModel.clearCache() }
+            )
             SettingsDivider()
-            ActionRow(Icons.Outlined.DeleteForever, stringResource(R.string.clear_all_data), Color.Red) { showClearDialog = true }
+            StorageActionRow(
+                icon = Icons.Outlined.DeleteForever,
+                label = stringResource(R.string.clear_all_data),
+                destructive = true,
+                onClick = { showClearDialog = true }
+            )
         }
     }
 
@@ -1065,6 +1083,228 @@ fun StorageDetail(viewModel: SettingsViewModel) {
                     onClick = { showClearDialog = false }
                 )
             }
+        )
+    }
+}
+
+// ─── 存储管理专用组件（HyperOS 版面 × 苹果控件细节）──────────
+
+/** 书籍列表默认展示数量，超出部分折叠 */
+private const val StorageBookPreviewCount = 5
+
+/** HyperOS 分组小标题（miuix SmallTitle 复刻：28dp 缩进 + 次要色） */
+@Composable
+private fun StorageGroupTitle(text: String) {
+    Text(
+        text,
+        modifier = Modifier.padding(start = 28.dp, top = 12.dp, bottom = 6.dp),
+        fontSize = AppType.BodySmall,
+        fontWeight = FontWeight.Medium,
+        color = AppColors.TextSecondary
+    )
+}
+
+/** HyperOS 分组卡片（miuix Card 复刻：16dp 圆角） */
+@Composable
+private fun StorageCard(content: @Composable () -> Unit) {
+    val shape = RoundedCornerShape(16.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AppSpace.md)
+            .shadow(8.dp, shape, ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
+            .clip(shape)
+            .background(AppColors.CardBg)
+    ) { content() }
+}
+
+/** 小米存储圆环：分段留缝、顶部起点，入场按进度弹性生长 */
+@Composable
+private fun StorageRing(
+    fractions: List<Float>,
+    colors: List<Color>,
+    totalText: String,
+    caption: String,
+    calculating: Boolean
+) {
+    val motionEnabled = LocalMotionEnabled.current
+    val trackColor = AppColors.BgGray
+    val progress by animateFloatAsState(
+        targetValue = if (calculating) 0f else 1f,
+        animationSpec = if (motionEnabled) spring(dampingRatio = 1f, stiffness = 250f) else snap(),
+        label = "storageRingProgress"
+    )
+    Box(contentAlignment = Alignment.Center) {
+        Canvas(Modifier.size(150.dp)) {
+            val strokePx = 14.dp.toPx()
+            val arcStyle = Stroke(width = strokePx)
+            val arcTopLeft = Offset(strokePx / 2f, strokePx / 2f)
+            val arcSize = Size(size.width - strokePx, size.height - strokePx)
+            drawArc(color = trackColor, startAngle = 0f, sweepAngle = 360f, useCenter = false, topLeft = arcTopLeft, size = arcSize, style = arcStyle)
+            var startAngle = -90f
+            val gapDegrees = 3f
+            fractions.forEachIndexed { index, fraction ->
+                val fullSweep = fraction * 360f * progress
+                val sweep = fullSweep - gapDegrees
+                if (sweep > 1f) {
+                    drawArc(
+                        color = colors.getOrElse(index) { Color.Gray },
+                        startAngle = startAngle,
+                        sweepAngle = sweep,
+                        useCenter = false,
+                        topLeft = arcTopLeft,
+                        size = arcSize,
+                        style = arcStyle
+                    )
+                }
+                startAngle += fullSweep
+            }
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(caption, fontSize = AppType.Caption, color = AppColors.TextSecondary)
+            Spacer(Modifier.height(AppSpace.xs))
+            Text(
+                if (calculating) stringResource(R.string.calculating) else totalText,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = AppColors.TextPrimary,
+                style = TabularFigures
+            )
+        }
+    }
+}
+
+/** 总览图例行：圆点 + 标签 + 右对齐等宽数字 */
+@Composable
+private fun StorageLegendRow(color: Color, label: String, size: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = AppSpace.md, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(Modifier.size(10.dp).clip(CircleShape).background(color))
+        Spacer(Modifier.width(AppSpace.sm))
+        Text(label, fontSize = AppType.BodySmall, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
+        Text(size, fontSize = AppType.BodySmall, color = AppColors.TextSecondary, style = TabularFigures)
+    }
+}
+
+/** 书籍行：书名 + 格式标签 + 等宽大小 */
+@Composable
+private fun StorageBookRow(title: String, format: String, size: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = AppSpace.md, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                title,
+                fontSize = AppType.BodySmall,
+                color = AppColors.TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.height(4.dp))
+            val fmtColor = FormatColors[format] ?: Color.Gray
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(fmtColor.copy(alpha = 0.12f))
+                    .padding(horizontal = 6.dp, vertical = 1.dp)
+            ) {
+                Text(format, fontSize = 10.sp, color = fmtColor, fontWeight = FontWeight.Medium)
+            }
+        }
+        Spacer(Modifier.width(AppSpace.sm))
+        Text(size, fontSize = AppType.BodySmall, color = AppColors.TextSecondary, fontWeight = FontWeight.Medium, style = TabularFigures)
+    }
+}
+
+/** 展开/收起行：按下即时高亮，箭头随状态弹簧旋转 */
+@Composable
+private fun StorageToggleRow(expanded: Boolean, label: String, onClick: () -> Unit) {
+    val motionEnabled = LocalMotionEnabled.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val highlight by animateFloatAsState(
+        targetValue = if (pressed) 1f else 0f,
+        animationSpec = if (motionEnabled) spring(dampingRatio = 1f, stiffness = 800f) else snap(),
+        label = "storageToggleHighlight"
+    )
+    val chevronRotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = if (motionEnabled) spring(dampingRatio = 1f, stiffness = 380f) else snap(),
+        label = "storageChevronRotation"
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(AppColors.BgGray.copy(alpha = highlight))
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+            .padding(horizontal = AppSpace.md, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, fontSize = AppType.BodySmall, color = AppColors.Accent, fontWeight = FontWeight.Medium)
+        Spacer(Modifier.weight(1f))
+        Icon(
+            Icons.Outlined.ExpandMore,
+            contentDescription = null,
+            tint = AppColors.TextSecondary,
+            modifier = Modifier
+                .size(20.dp)
+                .graphicsLayer { rotationZ = chevronRotation }
+        )
+    }
+}
+
+/** 动作行：按下即时高亮、无涟漪、无箭头（苹果规范：箭头仅表示页面导航） */
+@Composable
+private fun StorageActionRow(icon: ImageVector, label: String, destructive: Boolean = false, onClick: () -> Unit) {
+    val motionEnabled = LocalMotionEnabled.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val highlight by animateFloatAsState(
+        targetValue = if (pressed) 1f else 0f,
+        animationSpec = if (motionEnabled) spring(dampingRatio = 1f, stiffness = 800f) else snap(),
+        label = "storageActionHighlight"
+    )
+    val contentColor = if (destructive) DestructiveRed else AppColors.TextPrimary
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(AppColors.BgGray.copy(alpha = highlight))
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+            .padding(horizontal = AppSpace.md, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = if (destructive) contentColor else AppColors.TextSecondary, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(AppSpace.md))
+        Text(label, fontSize = AppType.Body, color = contentColor)
+    }
+}
+
+/** TTS 已用/上限细进度条 */
+@Composable
+private fun StorageUsageBar(fraction: Float) {
+    val motionEnabled = LocalMotionEnabled.current
+    val animatedFraction by animateFloatAsState(
+        targetValue = fraction,
+        animationSpec = if (motionEnabled) spring(dampingRatio = 1f, stiffness = 250f) else snap(),
+        label = "storageUsageFraction"
+    )
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AppSpace.md)
+            .padding(bottom = AppSpace.md)
+            .height(6.dp)
+            .clip(RoundedCornerShape(3.dp))
+            .background(AppColors.BgGray)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(animatedFraction)
+                .fillMaxSize()
+                .background(AppColors.Accent)
         )
     }
 }
