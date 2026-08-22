@@ -37,6 +37,7 @@ devdocs/
 !devdocs/
 devdocs/*
 !devdocs/lumi-ui-motion-design-system.md
+!devdocs/PR19-HANDOFF.md
 /test/
 
 # Window dumps
