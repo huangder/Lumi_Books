@@ -824,4 +824,7 @@
     <string name="delete_tag_simple_desc">删除后不可恢复</string>
     <string name="delete_tag_keep_children">保留子标签</string>
     <string name="delete_tag_cascade">连同删除</string>
+    <string name="comic_mode">漫画模式</string>
+    <string name="comic_mode_hint">图片按屏宽等比缩放，无缝上下拼接滚动</string>
+    <string name="comic_mode_no_images">本章没有可显示的图片</string>
 </resources>

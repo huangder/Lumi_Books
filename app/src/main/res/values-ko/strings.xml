@@ -821,4 +821,7 @@
     <string name="delete_tag_simple_desc">되돌릴 수 없습니다</string>
     <string name="delete_tag_keep_children">하위 태그 유지</string>
     <string name="delete_tag_cascade">함께 삭제</string>
+    <string name="comic_mode">코믹 모드</string>
+    <string name="comic_mode_hint">이미지를 화면 너비에 맞춰 조정하고 끊김 없이 세로로 이어 붙입니다</string>
+    <string name="comic_mode_no_images">이 장에 표시할 이미지가 없습니다</string>
 </resources>

@@ -909,4 +909,7 @@
     <string name="delete_tag_simple_desc">This cannot be undone</string>
     <string name="delete_tag_keep_children">Keep sub-tags</string>
     <string name="delete_tag_cascade">Delete all</string>
+    <string name="comic_mode">Comic mode</string>
+    <string name="comic_mode_hint">Scale images to screen width and stitch them seamlessly</string>
+    <string name="comic_mode_no_images">No images to display in this chapter</string>
 </resources>

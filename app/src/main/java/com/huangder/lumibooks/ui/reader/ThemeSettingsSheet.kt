@@ -1898,11 +1898,13 @@ fun AdvancedSettingsSheet(
     readerBottomRightContent: ReaderCornerContent,
     volumeKeyPageTurnEnabled: Boolean = false,
     bionicReadingEnabled: Boolean = false,
+    comicModeEnabled: Boolean = false,
     screenSleepTimeoutSeconds: Int = DataStoreManager.DEFAULT_SCREEN_SLEEP_TIMEOUT_SECONDS,
     readerEdgeTapMode: ReaderEdgeTapMode = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT,
     onReaderCornerContentChange: (ReaderPageCorner, ReaderCornerContent) -> Unit,
     onVolumeKeyPageTurnEnabledChange: (Boolean) -> Unit = {},
     onBionicReadingEnabledChange: (Boolean) -> Unit = {},
+    onComicModeChange: (Boolean) -> Unit = {},
     onScreenSleepTimeoutChange: (Int) -> Unit = {},
     onReaderEdgeTapModeChange: (ReaderEdgeTapMode) -> Unit = {},
     onTextColorChange: (Int?) -> Unit,
@@ -2174,6 +2176,16 @@ fun AdvancedSettingsSheet(
                             hint = stringResource(R.string.bionic_reading_hint),
                             checked = bionicReadingEnabled,
                             onCheckedChange = onBionicReadingEnabledChange
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
+
+                    AdvancedSettingsGroup(eInkModeEnabled) {
+                        AdvancedToggleRow(
+                            title = stringResource(R.string.comic_mode),
+                            hint = stringResource(R.string.comic_mode_hint),
+                            checked = comicModeEnabled,
+                            onCheckedChange = onComicModeChange
                         )
                     }
                     Spacer(Modifier.height(12.dp))

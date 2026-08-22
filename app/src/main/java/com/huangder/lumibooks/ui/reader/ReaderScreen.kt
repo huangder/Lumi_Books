@@ -247,6 +247,8 @@ import kotlinx.coroutines.launch
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import coil.load
+import android.text.Spanned
+import androidx.compose.ui.layout.ContentScale
 
 private data class ReaderLinkLocation(
     val chapterIndex: Int,
@@ -1687,7 +1689,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     onChapterVisible = viewModel::onContinuousScrollPosition,
                     onRestoreComplete = viewModel::clearPendingPageFraction,
                     chineseMode = uiState.chineseMode,
-                    ttsCurrentSentence = uiState.ttsCurrentSentence
+                    ttsCurrentSentence = uiState.ttsCurrentSentence,
+                    comicModeEnabled = uiState.comicModeEnabled
                 )
             } else if (uiState.useNewEngine) {
             AndroidView(
@@ -2737,11 +2740,13 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 readerBottomRightContent = uiState.readerBottomRightContent,
                 volumeKeyPageTurnEnabled = uiState.volumeKeyPageTurnEnabled,
                 bionicReadingEnabled = uiState.bionicReadingEnabled,
+                comicModeEnabled = uiState.comicModeEnabled,
                 screenSleepTimeoutSeconds = uiState.screenSleepTimeoutSeconds,
                 readerEdgeTapMode = uiState.readerEdgeTapMode,
                 onReaderCornerContentChange = viewModel::saveReaderCornerContent,
                 onVolumeKeyPageTurnEnabledChange = { viewModel.saveVolumeKeyPageTurnEnabled(it) },
                 onBionicReadingEnabledChange = viewModel::saveBionicReadingEnabled,
+                onComicModeChange = viewModel::saveComicMode,
                 onScreenSleepTimeoutChange = { seconds ->
                     viewModel.saveScreenSleepTimeoutSeconds(seconds)
                     if (seconds != DataStoreManager.SCREEN_SLEEP_TIMEOUT_FOLLOW_SYSTEM &&
@@ -4419,7 +4424,8 @@ private fun ContinuousScrollReader(
     onChapterVisible: (chapterIndex: Int, chapterFraction: Float) -> Unit,
     onRestoreComplete: () -> Unit,
     chineseMode: String = "original",
-    ttsCurrentSentence: TtsSentencePosition? = null
+    ttsCurrentSentence: TtsSentencePosition? = null,
+    comicModeEnabled: Boolean = false
 ) {
     if (chapterCount <= 0) return
 
@@ -4706,6 +4712,14 @@ private fun ContinuousScrollReader(
                     // 绔犺妭闂撮殧锛氶槻姝㈠墠涓€绔犳湯灏句笌涓嬩竴绔犳爣棰樿创澶繎
                     .padding(bottom = 28.dp)
             ) {
+                if (comicModeEnabled) {
+                    // 漫画模式：提取章节内图片，按屏宽等比缩放、无缝上下拼接
+                    ComicChapterImages(
+                        chapterIndex = chapterIndex,
+                        chapterText = chapterText,
+                        backgroundColor = backgroundColor
+                    )
+                } else {
                 AndroidView(
                     factory = { context ->
                         ContinuousSelectableTextView(context).apply {
@@ -4741,9 +4755,68 @@ private fun ContinuousScrollReader(
                     },
                     modifier = Modifier.fillMaxWidth()
                 )
+                }
             }
         }
     }
+    }
+}
+
+/**
+ * 漫画模式：渲染章节中的所有图片，按屏宽等比缩放，无缝上下拼接。
+ */
+@Composable
+private fun ComicChapterImages(
+    chapterIndex: Int,
+    chapterText: CharSequence?,
+    backgroundColor: Int
+) {
+    val imageSources = remember(chapterIndex, chapterText) {
+        if (chapterText is Spanned) {
+            chapterText.getSpans(0, chapterText.length, android.text.style.ImageSpan::class.java)
+                .mapNotNull { it.source }
+                .filter { !it.isNullOrBlank() }
+        } else {
+            emptyList()
+        }
+    }
+    val context = LocalContext.current
+    // 共享单个 ImageLoader，避免每张图重复构建请求队列/内存缓存
+    val imageLoader = remember(context) {
+        coil.ImageLoader.Builder(context)
+            .crossfade(true)
+            .build()
+    }
+    val hintColor = remember(backgroundColor) {
+        val bg = Color(backgroundColor)
+        val luminance = bg.red * 0.299f + bg.green * 0.587f + bg.blue * 0.114f
+        if (luminance > 0.5f) Color(0xFF666666) else Color(0xFF999999)
+    }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.Top
+    ) {
+        if (imageSources.isEmpty()) {
+            Text(
+                text = stringResource(R.string.comic_mode_no_images),
+                color = hintColor,
+                fontSize = 14.sp,
+                modifier = Modifier.padding(vertical = 16.dp)
+            )
+        } else {
+            imageSources.forEach { source ->
+                coil.compose.AsyncImage(
+                    model = coil.request.ImageRequest.Builder(context)
+                        .data(source)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = null,
+                    imageLoader = imageLoader,
+                    modifier = Modifier.fillMaxWidth(),
+                    contentScale = ContentScale.FillWidth
+                )
+            }
+        }
     }
 }
 

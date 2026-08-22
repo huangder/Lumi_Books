@@ -197,6 +197,7 @@ data class ReaderUiState(
     val showReaderBattery: Boolean = true,
     val volumeKeyPageTurnEnabled: Boolean = false,
     val bionicReadingEnabled: Boolean = false,
+    val comicModeEnabled: Boolean = false,
     val eInkModeEnabled: Boolean = false,
     val twoPageSpreadEnabled: Boolean = true,
     /** 双页对开模式当前跨页的右半页（无右页时为 null） */
@@ -621,6 +622,11 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.bionicReadingEnabled.collectLatest { enabled ->
                 _uiState.value = _uiState.value.copy(bionicReadingEnabled = enabled)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.comicMode.collectLatest { enabled ->
+                _uiState.value = _uiState.value.copy(comicModeEnabled = enabled)
             }
         }
         viewModelScope.launch {
@@ -1433,6 +1439,11 @@ class ReaderViewModel @Inject constructor(
     fun saveBionicReadingEnabled(enabled: Boolean) {
         _uiState.value = _uiState.value.copy(bionicReadingEnabled = enabled)
         viewModelScope.launch { dataStoreManager.saveBionicReadingEnabled(enabled) }
+    }
+
+    fun saveComicMode(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(comicModeEnabled = enabled)
+        viewModelScope.launch { dataStoreManager.saveComicMode(enabled) }
     }
 
     fun saveSelectionMenuItems(items: Map<String, Boolean>) {

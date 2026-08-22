@@ -821,4 +821,7 @@
     <string name="delete_tag_simple_desc">刪除後無法復原</string>
     <string name="delete_tag_keep_children">保留子標籤</string>
     <string name="delete_tag_cascade">一併刪除</string>
+    <string name="comic_mode">漫畫模式</string>
+    <string name="comic_mode_hint">圖片按螢幕寬度等比縮放，無縫上下拼接捲動</string>
+    <string name="comic_mode_no_images">本章沒有可顯示的圖片</string>
 </resources>

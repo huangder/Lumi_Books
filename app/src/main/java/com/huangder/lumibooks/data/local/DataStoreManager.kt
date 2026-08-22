@@ -103,6 +103,7 @@ class DataStoreManager @Inject constructor(
         private val SHOW_READER_BATTERY = booleanPreferencesKey("show_reader_battery")
         private val VOLUME_KEY_PAGE_TURN = booleanPreferencesKey("volume_key_page_turn")
         private val BIONIC_READING_ENABLED = booleanPreferencesKey("bionic_reading_enabled")
+        private val COMIC_MODE = booleanPreferencesKey("comic_mode")
         private val SCREEN_SLEEP_TIMEOUT_SECONDS = intPreferencesKey("screen_sleep_timeout_seconds")
         private val READER_EDGE_TAP_MODE = stringPreferencesKey("reader_edge_tap_mode")
         private val READER_TOP_LEFT_CONTENT = stringPreferencesKey("reader_top_left_content")
@@ -357,6 +358,11 @@ class DataStoreManager @Inject constructor(
 
     val bionicReadingEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[BIONIC_READING_ENABLED] ?: false
+    }
+
+    /** 漫画模式：图片按屏宽等比缩放、整页无缝上下拼接滚动 */
+    val comicMode: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[COMIC_MODE] ?: false
     }
 
     val screenSleepTimeoutSeconds: Flow<Int> = context.dataStore.data.map { preferences ->
@@ -808,6 +814,12 @@ class DataStoreManager @Inject constructor(
     suspend fun saveBionicReadingEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[BIONIC_READING_ENABLED] = enabled
+        }
+    }
+
+    suspend fun saveComicMode(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[COMIC_MODE] = enabled
         }
     }
 

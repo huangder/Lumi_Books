@@ -821,4 +821,7 @@
     <string name="delete_tag_simple_desc">元に戻せません</string>
     <string name="delete_tag_keep_children">サブタグを残す</string>
     <string name="delete_tag_cascade">まとめて削除</string>
+    <string name="comic_mode">コミックモード</string>
+    <string name="comic_mode_hint">画像を画面幅に合わせて拡大縮小し、途切れなく縦につなげて表示します</string>
+    <string name="comic_mode_no_images">この章に表示できる画像はありません</string>
 </resources>
