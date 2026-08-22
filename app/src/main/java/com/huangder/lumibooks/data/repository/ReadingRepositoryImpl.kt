@@ -7,6 +7,7 @@ import com.huangder.lumibooks.data.local.dao.ReadingRecordDao
 import com.huangder.lumibooks.data.local.entity.BookmarkEntity
 import com.huangder.lumibooks.data.local.entity.NoteEntity
 import com.huangder.lumibooks.data.local.entity.ReadingRecordEntity
+import com.huangder.lumibooks.domain.model.AnnotationEditPlan
 import com.huangder.lumibooks.domain.model.Bookmark
 import com.huangder.lumibooks.domain.model.DailyTotal
 import com.huangder.lumibooks.domain.model.Note
@@ -92,6 +93,14 @@ class ReadingRepositoryImpl @Inject constructor(
 
     override suspend fun deleteNote(note: Note) {
         noteDao.deleteNote(note.toEntity())
+    }
+
+    override suspend fun applyAnnotationEdit(plan: AnnotationEditPlan) {
+        noteDao.applyAnnotationEdit(
+            deleteIds = plan.deletes.map { it.id }.filter { it > 0L },
+            updates = plan.updates.map { it.toEntity() },
+            inserts = plan.inserts.map { it.copy(id = 0).toEntity() }
+        )
     }
 
     override suspend fun deleteAllNotesByBookId(bookId: String) {

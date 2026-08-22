@@ -169,7 +169,7 @@ internal object HighlightAnchorResolver {
     private const val CONTEXT_LENGTH = 32
 }
 
-internal fun findOverlappingResolvedNote(
+internal fun findOverlappingResolvedNotes(
     chapterText: CharSequence,
     notes: List<Note>,
     chapterIndex: Int,
@@ -178,7 +178,7 @@ internal fun findOverlappingResolvedNote(
     selectedText: String,
     startLocatorJson: String?,
     endLocatorJson: String?
-): Note? {
+): List<Note> {
     val reference = parseHighlightTextReference(
         startLocatorJson = startLocatorJson,
         endLocatorJson = endLocatorJson,
@@ -190,13 +190,33 @@ internal fun findOverlappingResolvedNote(
         storedEnd = storedEnd,
         selectedText = selectedText,
         reference = reference
-    ) ?: return null
-    return notes.firstOrNull { note ->
+    ) ?: return emptyList()
+    return notes.filter { note ->
         note.chapterIndex == chapterIndex &&
             note.startPosition < selectionRange.end &&
             note.endPosition > selectionRange.start
     }
 }
+
+internal fun findOverlappingResolvedNote(
+    chapterText: CharSequence,
+    notes: List<Note>,
+    chapterIndex: Int,
+    storedStart: Int,
+    storedEnd: Int,
+    selectedText: String,
+    startLocatorJson: String?,
+    endLocatorJson: String?
+): Note? = findOverlappingResolvedNotes(
+    chapterText,
+    notes,
+    chapterIndex,
+    storedStart,
+    storedEnd,
+    selectedText,
+    startLocatorJson,
+    endLocatorJson
+).firstOrNull()
 
 internal fun resolveReaderNote(note: Note, readerChapterText: CharSequence): Note? {
     val reference = parseHighlightTextReference(

@@ -5,6 +5,7 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import com.huangder.lumibooks.data.local.entity.NoteEntity
 import com.huangder.lumibooks.data.local.model.QuoteWidgetData
@@ -38,11 +39,31 @@ interface NoteDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertNote(note: NoteEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertNotes(notes: List<NoteEntity>)
+
     @Update
     suspend fun updateNote(note: NoteEntity)
 
+    @Update
+    suspend fun updateNotes(notes: List<NoteEntity>)
+
     @Delete
     suspend fun deleteNote(note: NoteEntity)
+
+    @Query("DELETE FROM notes WHERE id IN (:ids)")
+    suspend fun deleteNotesByIds(ids: List<Long>)
+
+    @Transaction
+    suspend fun applyAnnotationEdit(
+        deleteIds: List<Long>,
+        updates: List<NoteEntity>,
+        inserts: List<NoteEntity>
+    ) {
+        if (deleteIds.isNotEmpty()) deleteNotesByIds(deleteIds)
+        if (updates.isNotEmpty()) updateNotes(updates)
+        if (inserts.isNotEmpty()) insertNotes(inserts)
+    }
 
     @Query("DELETE FROM notes WHERE bookId = :bookId")
     suspend fun deleteAllNotesByBookId(bookId: String)

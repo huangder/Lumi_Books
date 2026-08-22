@@ -1557,7 +1557,15 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     onSelection = { selection ->
                         if (selection.text.isNotBlank()) {
                             val isNewSelection = selectionState == null
-                            val existing = viewModel.findOverlappingReaderNote(
+                            val resolvedSelection = viewModel.resolveAnnotationSelection(
+                                chapterIndex = uiState.currentChapterIndex,
+                                startPosition = selection.startPosition,
+                                endPosition = selection.endPosition,
+                                selectedText = selection.text,
+                                startLocatorJson = selection.startLocatorJson,
+                                endLocatorJson = selection.endLocatorJson
+                            ) ?: return@EpubWebViewReader
+                            val overlapping = viewModel.findOverlappingReaderNotes(
                                 chapterIndex = uiState.currentChapterIndex,
                                 startPosition = selection.startPosition,
                                 endPosition = selection.endPosition,
@@ -1568,15 +1576,13 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                             selectionState = SelectionState(
                                 chapterIndex = uiState.currentChapterIndex,
                                 pageInChapter = uiState.currentPageIndex,
-                                charStart = selection.startPosition,
-                                charEnd = selection.endPosition,
+                                charStart = resolvedSelection.start,
+                                charEnd = resolvedSelection.end,
                                 selectedText = selection.text,
                                 touchX = selection.centerX,
                                 touchY = selection.centerY,
-                                hasHighlight = existing != null && existing.type != "underline",
-                                hasUnderline = existing?.type == "underline",
-                                hasNote = existing?.note?.isNotEmpty() == true,
-                                existingNote = existing,
+                                overlappingHighlights = overlapping.filter { it.type != "underline" },
+                                overlappingUnderlines = overlapping.filter { it.type == "underline" },
                                 selTopY = selection.top,
                                 selBottomY = selection.bottom,
                                 selStartX = selection.left,
@@ -1675,11 +1681,11 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         isSelectionDragging = true
                     },
                     onSelection = { chapterIndex, selection ->
-                        val overlapping = findOverlappingNote(
-                            readerNotes,
-                            chapterIndex,
-                            selection.start,
-                            selection.end
+                        val overlappingHighlights = findOverlappingNotes(
+                            readerNotes, chapterIndex, selection.start, selection.end, "highlight"
+                        )
+                        val overlappingUnderlines = findOverlappingNotes(
+                            readerNotes, chapterIndex, selection.start, selection.end, "underline"
                         )
                         selectionState = SelectionState(
                             chapterIndex = chapterIndex,
@@ -1689,10 +1695,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                             selectedText = selection.selectedText,
                             touchX = selection.startX,
                             touchY = selection.topY,
-                            hasHighlight = overlapping != null && overlapping.type != "underline",
-                            hasUnderline = overlapping?.type == "underline",
-                            hasNote = overlapping?.note?.isNotEmpty() == true,
-                            existingNote = overlapping,
+                            overlappingHighlights = overlappingHighlights,
+                            overlappingUnderlines = overlappingUnderlines,
                             selTopY = selection.topY,
                             selBottomY = selection.bottomY,
                             selStartX = selection.startX,
@@ -1800,7 +1804,12 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                     ?: return
                                 val cStart = info.chapterStartOffset + info.pageStart
                                 val cEnd = info.chapterStartOffset + info.pageEnd
-                                val overlapping = findOverlappingNote(readerNotes, info.chapterIndex, cStart, cEnd)
+                                val overlappingHighlights = findOverlappingNotes(
+                                    readerNotes, info.chapterIndex, cStart, cEnd, "highlight"
+                                )
+                                val overlappingUnderlines = findOverlappingNotes(
+                                    readerNotes, info.chapterIndex, cStart, cEnd, "underline"
+                                )
                                 selectionState = SelectionState(
                                     chapterIndex = info.chapterIndex,
                                     pageInChapter = 0,
@@ -1809,10 +1818,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                     selectedText = info.selectedText,
                                     touchX = info.selStartX,
                                     touchY = info.selTopY,
-                                    hasHighlight = overlapping != null && overlapping.type != "underline",
-                                    hasUnderline = overlapping?.type == "underline",
-                                    hasNote = overlapping?.note?.isNotEmpty() == true,
-                                    existingNote = overlapping,
+                                    overlappingHighlights = overlappingHighlights,
+                                    overlappingUnderlines = overlappingUnderlines,
                                     selTopY = info.selTopY,
                                     selBottomY = info.selBottomY,
                                     selStartX = info.selStartX,
@@ -1842,7 +1849,12 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                                 if (fresh != null) {
                                                     val cs = fresh.chapterStartOffset + fresh.pageStart
                                                     val ce = fresh.chapterStartOffset + fresh.pageEnd
-                                                    val ov = findOverlappingNote(readerNotes, fresh.chapterIndex, cs, ce)
+                                                    val overlappingHighlights = findOverlappingNotes(
+                                                        readerNotes, fresh.chapterIndex, cs, ce, "highlight"
+                                                    )
+                                                    val overlappingUnderlines = findOverlappingNotes(
+                                                        readerNotes, fresh.chapterIndex, cs, ce, "underline"
+                                                    )
                                                     selectionState = SelectionState(
                                                         chapterIndex = fresh.chapterIndex,
                                                         pageInChapter = 0,
@@ -1851,10 +1863,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                                         selectedText = fresh.selectedText,
                                                         touchX = fresh.selStartX,
                                                         touchY = fresh.selTopY,
-                                                        hasHighlight = ov != null && ov.type != "underline",
-                                                        hasUnderline = ov?.type == "underline",
-                                                        hasNote = ov?.note?.isNotEmpty() == true,
-                                                        existingNote = ov,
+                                                        overlappingHighlights = overlappingHighlights,
+                                                        overlappingUnderlines = overlappingUnderlines,
                                                         selTopY = fresh.selTopY,
                                                         selBottomY = fresh.selBottomY,
                                                         selStartX = fresh.selStartX,
@@ -2759,6 +2769,31 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     )
 
     // ── 文字选择自定义菜单 ──
+    val replaceSelectedAnnotationColor: (String, Int) -> Unit = { type, slot ->
+        selectionState?.let { selection ->
+            viewModel.replaceAnnotationRange(
+                chapterIndex = selection.chapterIndex,
+                startPosition = selection.charStart,
+                endPosition = selection.charEnd,
+                type = type,
+                color = readerHighlightColorReference(slot, type)
+            )
+        }
+        selectionState = null
+        clearActiveTextSelection()
+    }
+    val removeSelectedAnnotation: (String) -> Unit = { type ->
+        selectionState?.let { selection ->
+            viewModel.removeAnnotationRange(
+                chapterIndex = selection.chapterIndex,
+                startPosition = selection.charStart,
+                endPosition = selection.charEnd,
+                type = type
+            )
+        }
+        selectionState = null
+        clearActiveTextSelection()
+    }
     SelectionMenuOverlay(
         state = selectionState,
         readerTheme = renderingTheme,
@@ -2783,27 +2818,21 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 val colorReference = readerHighlightColorReference(slot, target.noteType)
                 val fresh = if (isBookLayout) null else readViewRef.value?.getSelectionInfo()
                 if (fresh != null) {
-                    viewModel.addNote(
-                        selectedText = fresh.selectedText,
-                        noteText = "",
+                    viewModel.replaceAnnotationRange(
                         chapterIndex = fresh.chapterIndex,
                         startPosition = fresh.chapterStartOffset + fresh.pageStart,
                         endPosition = fresh.chapterStartOffset + fresh.pageEnd,
-                        color = colorReference,
-                        type = target.noteType
+                        type = target.noteType,
+                        color = colorReference
                     )
                 } else {
                     selectionState?.let { selection ->
-                        viewModel.addNote(
-                            selectedText = selection.selectedText,
-                            noteText = "",
+                        viewModel.replaceAnnotationRange(
                             chapterIndex = selection.chapterIndex,
                             startPosition = selection.charStart,
                             endPosition = selection.charEnd,
-                            color = colorReference,
                             type = target.noteType,
-                            startLocatorJson = selection.startLocatorJson,
-                            endLocatorJson = selection.endLocatorJson
+                            color = colorReference
                         )
                     }
                 }
@@ -2916,21 +2945,16 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             clearActiveTextSelection()
         },
         onChangeHighlightColor = { slot ->
-            // 修改已有高亮的颜色
-            val existing = selectionState?.existingNote
-            if (existing != null) {
-                viewModel.updateNote(
-                    existing.copy(color = readerHighlightColorReference(slot, existing.type))
-                )
-            }
-            selectionState = null
-            clearActiveTextSelection()
+            replaceSelectedAnnotationColor("highlight", slot)
+        },
+        onChangeUnderlineColor = { slot ->
+            replaceSelectedAnnotationColor("underline", slot)
         },
         onDeleteHighlight = {
-            // 删除高亮
-            selectionState?.existingNote?.let { viewModel.deleteNote(it) }
-            selectionState = null
-            clearActiveTextSelection()
+            removeSelectedAnnotation("highlight")
+        },
+        onDeleteUnderline = {
+            removeSelectedAnnotation("underline")
         },
         onReplace = {
             // 替换功能：仅TXT书籍支持
@@ -5604,10 +5628,8 @@ private data class SelectionState(
     val selectedText: String,
     val touchX: Float,
     val touchY: Float,
-    val hasHighlight: Boolean = false,
-    val hasUnderline: Boolean = false,
-    val hasNote: Boolean = false,
-    val existingNote: com.huangder.lumibooks.domain.model.Note? = null,
+    val overlappingHighlights: List<com.huangder.lumibooks.domain.model.Note> = emptyList(),
+    val overlappingUnderlines: List<com.huangder.lumibooks.domain.model.Note> = emptyList(),
     // 选区边界框（屏幕像素坐标），用于菜单定位
     val selTopY: Float = 0f,
     val selBottomY: Float = 0f,
@@ -5615,18 +5637,24 @@ private data class SelectionState(
     val selEndX: Float = 0f,
     val startLocatorJson: String? = null,
     val endLocatorJson: String? = null
-)
+) {
+    val hasHighlight: Boolean get() = overlappingHighlights.isNotEmpty()
+    val hasUnderline: Boolean get() = overlappingUnderlines.isNotEmpty()
+    val hasNote: Boolean get() = (overlappingHighlights + overlappingUnderlines).any { it.note.isNotEmpty() }
+    val existingNote: com.huangder.lumibooks.domain.model.Note?
+        get() = (overlappingHighlights + overlappingUnderlines).firstOrNull()
+}
 
-/** 查找与选区重叠的 Note（chapterIndex 匹配 + 范围相交） */
-private fun findOverlappingNote(
+/** 查找与选区重叠的标注，按 type 分离高亮和划线。 */
+private fun findOverlappingNotes(
     notes: List<com.huangder.lumibooks.domain.model.Note>,
     chapterIndex: Int,
     selStart: Int,
-    selEnd: Int
-): com.huangder.lumibooks.domain.model.Note? {
-    return notes.firstOrNull { n ->
-        n.chapterIndex == chapterIndex && n.startPosition < selEnd && n.endPosition > selStart
-    }
+    selEnd: Int,
+    type: String
+): List<com.huangder.lumibooks.domain.model.Note> = notes.filter { note ->
+    note.chapterIndex == chapterIndex && note.type == type &&
+        note.startPosition < selEnd && note.endPosition > selStart
 }
 
 // ── 选择菜单覆盖层 ──
@@ -5774,7 +5802,9 @@ private fun SelectionMenuOverlay(
     onMenuSettings: () -> Unit = {},
     onColorPicked: (Int) -> Unit = {},
     onChangeHighlightColor: (Int) -> Unit = {},
-    onDeleteHighlight: () -> Unit = {}
+    onChangeUnderlineColor: (Int) -> Unit = {},
+    onDeleteHighlight: () -> Unit = {},
+    onDeleteUnderline: () -> Unit = {}
 ) {
     if (state == null) return
     // Hide the menu while selection handles are being dragged; re-enter at the updated position.
@@ -6015,14 +6045,14 @@ private fun SelectionMenuOverlay(
                                                     .then(if (isCurrentColor) Modifier.border(2.dp, menuText, CircleShape) else Modifier)
                                                     .clip(CircleShape)
                                                     .background(color)
-                                                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onChangeHighlightColor(index) }
+                                                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onChangeUnderlineColor(index) }
                                             )
                                         }
                                         Spacer(Modifier.width(6.dp))
                                         MenuDivider(dividerColor)
                                         Spacer(Modifier.width(6.dp))
                                         Box(
-                                            modifier = Modifier.size(22.dp).clip(CircleShape).clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onDeleteHighlight() },
+                                            modifier = Modifier.size(22.dp).clip(CircleShape).clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onDeleteUnderline() },
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.menu_delete_underline), tint = menuText.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
@@ -6146,7 +6176,7 @@ private fun SelectionMenuOverlay(
                                             .clickable(
                                                 indication = null,
                                                 interactionSource = remember { MutableInteractionSource() }
-                                            ) { onChangeHighlightColor(index) }
+                                            ) { onChangeUnderlineColor(index) }
                                     )
                                 }
                                 Spacer(Modifier.width(6.dp))
@@ -6159,12 +6189,12 @@ private fun SelectionMenuOverlay(
                                         .clickable(
                                             indication = null,
                                             interactionSource = remember { MutableInteractionSource() }
-                                        ) { onDeleteHighlight() },
+                                        ) { onDeleteUnderline() },
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
                                         Icons.Default.Delete,
-                                        contentDescription = stringResource(if (state.hasUnderline) R.string.menu_delete_underline else R.string.highlight_delete),
+                                        contentDescription = stringResource(R.string.menu_delete_underline),
                                         tint = menuText.copy(alpha = 0.7f),
                                         modifier = Modifier.size(18.dp)
                                     )

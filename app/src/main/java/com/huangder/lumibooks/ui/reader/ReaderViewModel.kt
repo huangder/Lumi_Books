@@ -14,6 +14,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.palette.graphics.Palette
 import com.huangder.lumibooks.data.local.DataStoreManager
+import com.huangder.lumibooks.domain.model.AnnotationEditPlan
+import com.huangder.lumibooks.domain.model.AnnotationNoteEditPlanner
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.model.Bookmark
 import com.huangder.lumibooks.domain.model.Note
@@ -2530,6 +2532,110 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch { readingRepository.deleteNote(note) }
     }
 
+    fun replaceAnnotationRange(
+        chapterIndex: Int,
+        startPosition: Int,
+        endPosition: Int,
+        type: String,
+        color: String
+    ) {
+        applyAnnotationRangeEdit(chapterIndex) { chapterText, existing, book ->
+            AnnotationNoteEditPlanner.replaceRange(
+                existing = existing,
+                chapterText = chapterText,
+                bookId = book.id,
+                chapterIndex = chapterIndex,
+                start = startPosition,
+                end = endPosition,
+                type = type,
+                color = color,
+                createdAt = System.currentTimeMillis()
+            )
+        }
+    }
+
+    fun removeAnnotationRange(
+        chapterIndex: Int,
+        startPosition: Int,
+        endPosition: Int,
+        type: String
+    ) {
+        applyAnnotationRangeEdit(chapterIndex) { chapterText, existing, book ->
+            AnnotationNoteEditPlanner.removeRange(
+                existing = existing,
+                chapterText = chapterText,
+                bookId = book.id,
+                chapterIndex = chapterIndex,
+                start = startPosition,
+                end = endPosition,
+                type = type
+            )
+        }
+    }
+
+    private fun applyAnnotationRangeEdit(
+        chapterIndex: Int,
+        buildPlan: (chapterText: String, existing: List<Note>, book: Book) -> AnnotationEditPlan
+    ) {
+        val book = _uiState.value.book ?: return
+        viewModelScope.launch {
+            val snapshot = _notes.value
+            try {
+                val chapterText = withContext(Dispatchers.IO) {
+                    getChapterText(chapterIndex)?.toString()
+                } ?: return@launch
+                val plan = buildPlan(chapterText, _readerNotes.value, book)
+                if (plan.isEmpty) return@launch
+                val prepared = withContext(Dispatchers.IO) {
+                    prepareAnnotationLocators(plan, chapterText, book.format.name == "EPUB")
+                }
+                val optimistic = applyAnnotationPlanToMemory(snapshot, prepared)
+                _notes.value = optimistic
+                refreshReaderNotes(optimistic)
+                readingRepository.applyAnnotationEdit(prepared)
+            } catch (_: Exception) {
+                _notes.value = snapshot
+                refreshReaderNotes(snapshot)
+            }
+        }
+    }
+
+    private fun prepareAnnotationLocators(
+        plan: AnnotationEditPlan,
+        chapterText: String,
+        needsLocators: Boolean
+    ): AnnotationEditPlan {
+        if (!needsLocators) return plan
+        fun withLocators(note: Note): Note {
+            val locators = createHighlightLocatorPair(
+                chapterText = chapterText,
+                startPosition = note.startPosition,
+                endPosition = note.endPosition,
+                selectedText = note.selectedText
+            )
+            return note.copy(startLocatorJson = locators.first, endLocatorJson = locators.second)
+        }
+        return plan.copy(
+            updates = plan.updates.map(::withLocators),
+            inserts = plan.inserts.map(::withLocators)
+        )
+    }
+
+    private fun applyAnnotationPlanToMemory(
+        current: List<Note>,
+        plan: AnnotationEditPlan
+    ): List<Note> {
+        val deleteIds = plan.deletes.mapTo(mutableSetOf()) { it.id }
+        val updatesById = plan.updates.associateBy { it.id }
+        return current.mapNotNull { note ->
+            when {
+                note.id in deleteIds -> null
+                note.id in updatesById -> updatesById.getValue(note.id)
+                else -> note
+            }
+        } + plan.inserts
+    }
+
     private fun loadBookmarks() {
         viewModelScope.launch {
             readingRepository.getBookmarksByBookId(bookId).collect { list ->
@@ -2559,17 +2665,35 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    fun findOverlappingReaderNote(
+    internal fun resolveAnnotationSelection(
         chapterIndex: Int,
         startPosition: Int,
         endPosition: Int,
         selectedText: String,
         startLocatorJson: String?,
         endLocatorJson: String?
-    ): Note? {
+    ): ResolvedHighlightRange? {
+        val chapterText = runCatching { getChapterText(chapterIndex) }.getOrNull() ?: return null
+        return HighlightAnchorResolver.resolve(
+            chapterText = chapterText,
+            storedStart = startPosition,
+            storedEnd = endPosition,
+            selectedText = selectedText,
+            reference = parseHighlightTextReference(startLocatorJson, endLocatorJson, selectedText)
+        )
+    }
+
+    fun findOverlappingReaderNotes(
+        chapterIndex: Int,
+        startPosition: Int,
+        endPosition: Int,
+        selectedText: String,
+        startLocatorJson: String?,
+        endLocatorJson: String?
+    ): List<Note> {
         val chapterText = runCatching { getChapterText(chapterIndex) }.getOrNull()
-            ?: return null
-        return findOverlappingResolvedNote(
+            ?: return emptyList()
+        return findOverlappingResolvedNotes(
             chapterText = chapterText,
             notes = _readerNotes.value,
             chapterIndex = chapterIndex,
@@ -2580,6 +2704,22 @@ class ReaderViewModel @Inject constructor(
             endLocatorJson = endLocatorJson
         )
     }
+
+    fun findOverlappingReaderNote(
+        chapterIndex: Int,
+        startPosition: Int,
+        endPosition: Int,
+        selectedText: String,
+        startLocatorJson: String?,
+        endLocatorJson: String?
+    ): Note? = findOverlappingReaderNotes(
+        chapterIndex,
+        startPosition,
+        endPosition,
+        selectedText,
+        startLocatorJson,
+        endLocatorJson
+    ).firstOrNull()
 
     private fun refreshReaderNotes(notes: List<Note>) {
         readerNotesJob?.cancel()
