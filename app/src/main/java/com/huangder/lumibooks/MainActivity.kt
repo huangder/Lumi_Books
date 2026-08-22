@@ -38,12 +38,14 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.ui.navigation.MainNavGraph
+import com.huangder.lumibooks.ui.navigation.Screen
 import com.huangder.lumibooks.tts.TtsController
 import com.huangder.lumibooks.tts.TtsPlaybackState
 import com.huangder.lumibooks.ui.splash.SplashScreen
@@ -446,9 +448,14 @@ class MainActivity : ComponentActivity() {
                     ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         val navController = rememberNavController()
-                        val globalGlassDialogVisible = pendingAppUpdate != null ||
-                            pendingRemoteNotice != null ||
-                            policyDialog != null ||
+                        val navCurrentEntry by navController.currentBackStackEntryAsState()
+                        // 阅读页（EPUB/TXT/PDF 共用 reader/{bookId} 路由）禁止弹出全局启动弹窗：
+                        // 弹窗会切换主内容 layerBackdrop 导致阅读内容闪烁，退出阅读页后补显示。
+                        val onReaderRoute = navCurrentEntry?.destination?.route == Screen.Reader.route
+                        val globalGlassDialogVisible = (!onReaderRoute && (
+                            pendingAppUpdate != null ||
+                                pendingRemoteNotice != null ||
+                                policyDialog != null)) ||
                             showFloatingPermissionDialog
                         Box(
                             modifier = Modifier
@@ -482,10 +489,11 @@ class MainActivity : ComponentActivity() {
                         }
 
                     // Remote startup dialog priority: app update > notice > policy.
+                    // 阅读页不渲染启动弹窗，避免 layerBackdrop 切换导致内容闪烁。
                     val appUpdate = pendingAppUpdate
                     val remoteNotice = pendingRemoteNotice
                     when {
-                        appUpdate != null -> {
+                        !onReaderRoute && appUpdate != null -> {
                             AppUpdateDialog(
                                 appVersion = appUpdate.appVersion,
                                 updateTitle = appUpdate.title,
@@ -509,7 +517,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             )
                         }
-                        remoteNotice != null -> {
+                        !onReaderRoute && remoteNotice != null -> {
                             RemoteNoticeDialog(
                                 title = remoteNotice.title,
                                 message = remoteNotice.message,
@@ -521,7 +529,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             )
                         }
-                        policyDialog != null -> {
+                        !onReaderRoute && policyDialog != null -> {
                             val update = policyDialog
                             if (update != null) {
                                 PolicyUpdateDialog(
