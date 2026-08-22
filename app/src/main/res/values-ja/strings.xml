@@ -318,6 +318,8 @@
     <string name="reader_toc">目次</string>
     <string name="reader_toc_scroll_to_top">最上部へ移動</string>
     <string name="reader_toc_scroll_to_bottom">最下部へ移動</string>
+    <string name="reader_toc_group_collapse">巻を折りたたむ</string>
+    <string name="reader_toc_group_expand">巻を展開</string>
     <string name="reader_previous_chapter">前の章</string>
     <string name="reader_next_chapter">次の章</string>
     <string name="reader_close">閉じる</string>

@@ -346,6 +346,8 @@
     <string name="reader_toc">Contents</string>
     <string name="reader_toc_scroll_to_top">Jump to top</string>
     <string name="reader_toc_scroll_to_bottom">Jump to bottom</string>
+    <string name="reader_toc_group_collapse">Collapse volume</string>
+    <string name="reader_toc_group_expand">Expand volume</string>
     <string name="reader_previous_chapter">Previous chapter</string>
     <string name="reader_next_chapter">Next chapter</string>
     <string name="reader_close">Close</string>

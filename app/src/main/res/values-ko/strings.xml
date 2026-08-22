@@ -318,6 +318,8 @@
     <string name="reader_toc">목차</string>
     <string name="reader_toc_scroll_to_top">맨 위로 이동</string>
     <string name="reader_toc_scroll_to_bottom">맨 아래로 이동</string>
+    <string name="reader_toc_group_collapse">권 접기</string>
+    <string name="reader_toc_group_expand">권 펼치기</string>
     <string name="reader_previous_chapter">이전 장</string>
     <string name="reader_next_chapter">다음 장</string>
     <string name="reader_close">닫기</string>

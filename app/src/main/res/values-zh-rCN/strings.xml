@@ -316,6 +316,8 @@
     <string name="reader_toc">目录</string>
     <string name="reader_toc_scroll_to_top">翻到最顶</string>
     <string name="reader_toc_scroll_to_bottom">翻到最底</string>
+    <string name="reader_toc_group_collapse">折叠该卷</string>
+    <string name="reader_toc_group_expand">展开该卷</string>
     <string name="reader_previous_chapter">上一章</string>
     <string name="reader_next_chapter">下一章</string>
     <string name="reader_close">关闭</string>

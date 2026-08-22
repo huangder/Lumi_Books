@@ -83,6 +83,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.blur
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Bookmark
@@ -4770,12 +4771,36 @@ private fun TocSheet(
     onEditBookmark: (com.huangder.lumibooks.domain.model.Bookmark, String) -> Unit = { _, _ -> },
     onDismiss: () -> Unit
 ) {
+    // Keep fold choices while this book's reader remains open, including across sheet reopens.
+    var collapsedGroups by remember(tocEntries) { mutableStateOf<Set<Int>>(emptySet()) }
+
     if (!visible) return
 
     val sheetOffset = remember { Animatable(1f) }
     val scope = rememberCoroutineScope()
-    val currentEntryIndex = remember(tocEntries, currentChapter) {
+
+    val foldGroups = remember(tocEntries) { findTocFoldGroups(tocEntries) }
+    val visibleEntries = remember(tocEntries, foldGroups, collapsedGroups) {
+        visibleTocEntries(tocEntries, foldGroups, collapsedGroups)
+    }
+    val currentSourceIndex = remember(tocEntries, currentChapter) {
         tocEntries.indexOfFirst { !it.isGroup && it.chapterIndex == currentChapter }
+    }
+
+    val currentEntryIndex = remember(
+        tocEntries,
+        visibleEntries,
+        foldGroups,
+        collapsedGroups,
+        currentChapter
+    ) {
+        currentTocVisibleIndex(
+            entries = tocEntries,
+            visibleEntries = visibleEntries,
+            foldGroups = foldGroups,
+            collapsedGroups = collapsedGroups,
+            currentChapter = currentChapter
+        )
     }
     val tocListState = rememberLazyListState(
         initialFirstVisibleItemIndex = currentEntryIndex.coerceAtLeast(0)
@@ -4792,7 +4817,9 @@ private fun TocSheet(
         )
     }
 
-    LaunchedEffect(currentEntryIndex) {
+    // Center the reading position only when this sheet instance opens. Folding changes the
+    // visible index, but the tapped group header must remain the visual anchor.
+    LaunchedEffect(tocListState) {
         if (currentEntryIndex < 0) return@LaunchedEffect
         snapshotFlow { tocListState.layoutInfo.viewportSize.height }
             .first { it > 0 }
@@ -4900,7 +4927,7 @@ private fun TocSheet(
                     imageVector = Icons.Default.VerticalAlignTop,
                     contentDescription = stringResource(R.string.reader_toc_scroll_to_top),
                     onClick = {
-                        val target = if (activeSection == "toc") tocEntries else sortedBookmarks
+                        val target = if (activeSection == "toc") visibleEntries else sortedBookmarks
                         if (target.isNotEmpty()) {
                             val state = if (activeSection == "toc") tocListState else bookmarkListState
                             scope.launch { state.scrollToItem(0) }
@@ -4910,7 +4937,7 @@ private fun TocSheet(
                     iconSize = 20.dp,
                     contentColor = AppColors.TextPrimary,
                     normalContainerColor = LightBgGray,
-                    enabled = if (activeSection == "toc") tocEntries.isNotEmpty() else sortedBookmarks.isNotEmpty()
+                    enabled = if (activeSection == "toc") visibleEntries.isNotEmpty() else sortedBookmarks.isNotEmpty()
                 )
                 Spacer(Modifier.width(8.dp))
                 LiquidGlassIconButton(
@@ -4918,8 +4945,8 @@ private fun TocSheet(
                     contentDescription = stringResource(R.string.reader_toc_scroll_to_bottom),
                     onClick = {
                         if (activeSection == "toc") {
-                            if (tocEntries.isNotEmpty()) {
-                                scope.launch { tocListState.scrollToItem(tocEntries.lastIndex) }
+                            if (visibleEntries.isNotEmpty()) {
+                                scope.launch { tocListState.scrollToItem(visibleEntries.lastIndex) }
                             }
                         } else {
                             if (sortedBookmarks.isNotEmpty()) {
@@ -4931,7 +4958,7 @@ private fun TocSheet(
                     iconSize = 20.dp,
                     contentColor = AppColors.TextPrimary,
                     normalContainerColor = LightBgGray,
-                    enabled = if (activeSection == "toc") tocEntries.isNotEmpty() else sortedBookmarks.isNotEmpty()
+                    enabled = if (activeSection == "toc") visibleEntries.isNotEmpty() else sortedBookmarks.isNotEmpty()
                 )
                 Spacer(Modifier.width(8.dp))
                 // 关闭按钮
@@ -4950,7 +4977,7 @@ private fun TocSheet(
 
             if (activeSection == "toc") {
                 Box(Modifier.weight(1f)) {
-                    // 目录列表（支持层级：分组标题 + 缩进章节）
+                    // 目录列表（支持层级：可折叠分组标题 + 缩进章节）
                     LazyColumn(
                         state = tocListState,
                         modifier = Modifier
@@ -4958,24 +4985,90 @@ private fun TocSheet(
                             .padding(end = 12.dp),
                         contentPadding = PaddingValues(bottom = 24.dp)
                     ) {
-                        items(tocEntries.size) { index ->
-                            val entry = tocEntries[index]
+                        items(
+                            count = visibleEntries.size,
+                            key = { index -> visibleEntries[index].sourceIndex }
+                        ) { index ->
+                            val (originalIndex, entry) = visibleEntries[index]
 
-                            if (entry.isGroup) {
-                                // 分组标题（如"第X卷"）：灰色、粗体、不可点击、无背景
-                                Text(
-                                    text = entry.title,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.Gray,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(
-                                        start = 16.dp,
-                                        top = if (index > 0) 16.dp else 4.dp,
-                                        bottom = 4.dp
-                                    )
+                            if (entry.isGroup || originalIndex in foldGroups) {
+                                // 分组标题（如"第X卷"）：箭头折叠/展开该卷；
+                                // 卷本身指向真实章节时（TXT 扁平目录），点标题仍可跳转
+                                val isFoldable = originalIndex in foldGroups
+                                val collapsed = originalIndex in collapsedGroups
+                                val isCurrent =
+                                    (entry.chapterIndex >= 0 && entry.chapterIndex == currentChapter) ||
+                                        (collapsed && currentSourceIndex > originalIndex &&
+                                            currentSourceIndex < (foldGroups[originalIndex] ?: originalIndex + 1))
+                                val arrowRotation by animateFloatAsState(
+                                    targetValue = if (collapsed) -90f else 0f,
+                                    animationSpec = tween(160),
+                                    label = "tocGroupArrow"
                                 )
+                                val toggleCollapse = {
+                                    collapsedGroups = if (collapsed) collapsedGroups - originalIndex
+                                    else collapsedGroups + originalIndex
+                                }
+                                val groupIndent = ((entry.level - 1).coerceAtLeast(0) * 20).dp
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .animateItem(
+                                            fadeInSpec = tween(180),
+                                            placementSpec = tween(220, easing = FastOutSlowInEasing),
+                                            fadeOutSpec = tween(140)
+                                        )
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .then(
+                                            if (entry.chapterIndex >= 0 || isFoldable) {
+                                                Modifier.clickable(
+                                                    indication = null,
+                                                    interactionSource = remember { MutableInteractionSource() }
+                                                ) {
+                                                    if (entry.chapterIndex >= 0) {
+                                                        pendingJumpEntry = entry
+                                                        isClosing = true
+                                                    } else {
+                                                        toggleCollapse()
+                                                    }
+                                                }
+                                            } else {
+                                                Modifier
+                                            }
+                                        )
+                                        .padding(
+                                            start = 4.dp + groupIndent,
+                                            top = if (index > 0) 16.dp else 4.dp,
+                                            bottom = 4.dp,
+                                            end = 4.dp
+                                        )
+                                ) {
+                                    if (isFoldable) {
+                                        IconButton(
+                                            onClick = toggleCollapse,
+                                            modifier = Modifier.size(40.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.KeyboardArrowDown,
+                                                contentDescription = if (collapsed) stringResource(R.string.reader_toc_group_expand)
+                                                else stringResource(R.string.reader_toc_group_collapse),
+                                                tint = Color.Gray,
+                                                modifier = Modifier.graphicsLayer { rotationZ = arrowRotation }
+                                            )
+                                        }
+                                    } else {
+                                        Spacer(Modifier.size(40.dp))
+                                    }
+                                    Text(
+                                        text = entry.title,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isCurrent) AccentColor else Color.Gray,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             } else {
                                 // 实际章节：可点击，根据 level 缩进
                                 val isCurrent = entry.chapterIndex == currentChapter
@@ -4984,6 +5077,11 @@ private fun TocSheet(
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .animateItem(
+                                            fadeInSpec = tween(180),
+                                            placementSpec = tween(220, easing = FastOutSlowInEasing),
+                                            fadeOutSpec = tween(140)
+                                        )
                                         .padding(start = indent, top = 2.dp, bottom = 2.dp, end = 4.dp)
                                         .clip(RoundedCornerShape(12.dp))
                                         .background(if (isCurrent) AccentColor.copy(alpha = 0.1f) else LightBgGray)
@@ -5010,13 +5108,13 @@ private fun TocSheet(
 
                     DraggableScrollbar(
                         listState = tocListState,
-                        itemCount = tocEntries.size,
+                        itemCount = visibleEntries.size,
                         hintText = { fraction ->
-                            if (tocEntries.isEmpty()) return@DraggableScrollbar null
-                            val idx = (fraction * (tocEntries.size - 1))
+                            if (visibleEntries.isEmpty()) return@DraggableScrollbar null
+                            val idx = (fraction * (visibleEntries.size - 1))
                                 .toInt()
-                                .coerceIn(0, tocEntries.lastIndex)
-                            val entry = tocEntries[idx]
+                                .coerceIn(0, visibleEntries.lastIndex)
+                            val entry = visibleEntries[idx].entry
                             val title = entry.title.ifBlank {
                                 stringResource(R.string.reader_chapter_fallback, entry.chapterIndex + 1)
                             }
