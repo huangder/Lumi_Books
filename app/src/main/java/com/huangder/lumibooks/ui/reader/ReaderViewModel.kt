@@ -53,6 +53,7 @@ import com.huangder.lumibooks.util.parser.PdfParser
 import com.huangder.lumibooks.util.parser.TxtEncoding
 import com.huangder.lumibooks.util.parser.TxtParser
 import com.huangder.lumibooks.util.parser.TxtReplaceText
+import com.huangder.lumibooks.util.parser.TxtReplaceRange
 import com.huangder.lumibooks.util.epub.EpubRenderMode
 import com.huangder.lumibooks.util.epub.BookRenderSession
 import com.huangder.lumibooks.util.epub.BookRenderSource
@@ -1476,6 +1477,58 @@ class ReaderViewModel @Inject constructor(
                                 query = searchText,
                                 replacement = replaceWith,
                                 ignoreCase = false
+                            )
+                        )
+                    )
+                }
+                if (result.success && result.changedChapterCount > 0) {
+                    preloadCache.clear()
+                    pageLayoutEngine.invalidateAll()
+                    _uiState.value = _uiState.value.copy(
+                        txtActiveCharsetName = txtParser.activeCharsetName,
+                        contentRevision = _uiState.value.contentRevision + 1,
+                        error = result.errorMessage
+                    )
+                    onResult(true)
+                } else {
+                    result.errorMessage?.let { message ->
+                        _uiState.value = _uiState.value.copy(error = message)
+                    }
+                    onResult(false)
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = e.message)
+                onResult(false)
+            }
+        }
+    }
+
+    /** 仅替换选中处：按章节内字符区间精确改写，不影响其他同名文本。 */
+    fun replaceTxtRange(
+        chapterIndex: Int,
+        start: Int,
+        endExclusive: Int,
+        replaceWith: String,
+        onResult: (Boolean) -> Unit = {}
+    ) {
+        val book = _uiState.value.book
+        val txtParser = parser as? TxtParser
+        if (book?.format?.name != "TXT" || txtParser == null ||
+            start < 0 || endExclusive <= start
+        ) {
+            onResult(false)
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    txtParser.rewriteWithOperations(
+                        listOf(
+                            TxtReplaceRange(
+                                chapterIndex = chapterIndex,
+                                start = start,
+                                endExclusive = endExclusive,
+                                replacement = replaceWith
                             )
                         )
                     )
