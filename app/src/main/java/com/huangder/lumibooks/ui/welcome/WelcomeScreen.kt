@@ -5,22 +5,28 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,7 +38,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -44,7 +49,6 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -68,21 +72,29 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.zIndex
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.R
@@ -97,6 +109,7 @@ import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassTransparency
+import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.util.LocaleHelper
 import java.util.Locale
@@ -115,8 +128,9 @@ private val DarkTextSecondary = Color(0xFF98989D)
 private val DarkBgGray = Color(0xFF2C2C2E)
 private val DarkBackground = Color(0xFF000000)
 private val DarkCardBg = Color(0xFF1C1C1E)
-private val LightSupportBackground = Color(0xFFFFECEF)
-private val DarkSupportBackground = Color(0xFF3A2429)
+private val WelcomePink = Color(0xFFFC6161)
+private val WelcomeDarkPink = Color(0xFF6F202A)
+private val WelcomeDarkBackground = Color(0xFF140B0D)
 
 private enum class WelcomePage {
     LANGUAGE_SETUP,
@@ -164,7 +178,6 @@ private fun defaultWelcomeLanguage(savedLanguage: String): String {
 
 @Composable
 fun WelcomeScreen(
-    isUpdate: Boolean,
     isNewInstallation: Boolean,
     shouldShowLanguageSetup: Boolean,
     initialLanguage: String,
@@ -173,13 +186,13 @@ fun WelcomeScreen(
     isDark: Boolean,
     isLiquidGlass: Boolean,
     onFinished: () -> Unit,
-    onExit: () -> Unit,
     onOpenSponsor: () -> Unit,
     onLanguageSetupComplete: (language: String, eInkEnabled: Boolean) -> Unit,
     onEnableLiquidGlass: () -> Unit,
     startOnIntroduction: Boolean = false,
     startOnSupport: Boolean = false
 ) {
+    val motionEnabled = LocalMotionEnabled.current
     val pages = remember(shouldShowLanguageSetup, isNewInstallation, isEInkMode) {
         buildList {
             if (shouldShowLanguageSetup) add(WelcomePage.LANGUAGE_SETUP)
@@ -215,7 +228,7 @@ fun WelcomeScreen(
             .fillMaxSize()
             .background(if (isDark) DarkBackground else LightBackground)
             .graphicsLayer {
-                if (!isEInkMode) {
+                if (!isEInkMode && motionEnabled) {
                     translationX = predictiveBackProgress * size.width * 0.12f
                     alpha = 1f - predictiveBackProgress * 0.1f
                 }
@@ -223,24 +236,26 @@ fun WelcomeScreen(
         transitionSpec = {
             if (isEInkMode) {
                 EnterTransition.None togetherWith ExitTransition.None
+            } else if (!motionEnabled) {
+                fadeIn(tween(140)) togetherWith fadeOut(tween(120))
             } else if (targetState.ordinal > initialState.ordinal) {
                 (slideInHorizontally(
-                    animationSpec = spring(dampingRatio = 0.84f, stiffness = 460f),
+                    animationSpec = tween(520, easing = AppEasing.Smooth),
                     initialOffsetX = { it }
-                ) + fadeIn(tween(220)) + scaleIn(initialScale = 0.96f)) togetherWith
+                ) + fadeIn(tween(420, delayMillis = 80, easing = AppEasing.Decelerate))) togetherWith
                     (slideOutHorizontally(
-                        animationSpec = tween(280, easing = AppEasing.Accelerate),
+                        animationSpec = tween(520, easing = AppEasing.Smooth),
                         targetOffsetX = { -it / 4 }
-                    ) + fadeOut(tween(180)) + scaleOut(targetScale = 0.98f))
+                    ) + fadeOut(tween(360, easing = AppEasing.Accelerate)))
             } else {
                 (slideInHorizontally(
-                    animationSpec = spring(dampingRatio = 0.84f, stiffness = 460f),
-                    initialOffsetX = { -it / 3 }
-                ) + fadeIn(tween(220)) + scaleIn(initialScale = 0.96f)) togetherWith
+                    animationSpec = tween(520, easing = AppEasing.Smooth),
+                    initialOffsetX = { -it }
+                ) + fadeIn(tween(420, delayMillis = 80, easing = AppEasing.Decelerate))) togetherWith
                     (slideOutHorizontally(
-                        animationSpec = tween(280, easing = AppEasing.Smooth),
-                        targetOffsetX = { it }
-                    ) + fadeOut(tween(180)) + scaleOut(targetScale = 0.98f))
+                        animationSpec = tween(520, easing = AppEasing.Smooth),
+                        targetOffsetX = { it / 4 }
+                    ) + fadeOut(tween(360, easing = AppEasing.Accelerate)))
             }
         },
         label = "welcomePage"
@@ -254,10 +269,9 @@ fun WelcomeScreen(
             )
 
             WelcomePage.INTRODUCTION -> WelcomeIntroductionPage(
-                isUpdate = isUpdate,
                 isDark = isDark,
-                onContinue = { currentPage = pages[(pages.indexOf(WelcomePage.INTRODUCTION) + 1).coerceAtMost(pages.lastIndex)] },
-                onExit = onExit
+                isEInkMode = isEInkMode,
+                onContinue = { currentPage = pages[(pages.indexOf(WelcomePage.INTRODUCTION) + 1).coerceAtMost(pages.lastIndex)] }
             )
 
             WelcomePage.LIQUID_GLASS_PREVIEW -> UpdatePreviewPage(
@@ -958,84 +972,73 @@ private fun LanguageAndEInkPage(
 
 @Composable
 private fun WelcomeIntroductionPage(
-    isUpdate: Boolean,
     isDark: Boolean,
-    onContinue: () -> Unit,
-    onExit: () -> Unit
+    isEInkMode: Boolean,
+    onContinue: () -> Unit
 ) {
     var showPrivacyPolicy by remember { mutableStateOf(false) }
     var showTermsOfService by remember { mutableStateOf(false) }
-
-    // 根据深浅模式动态获取颜色
-    val backgroundColor = if (isDark) DarkBackground else LightBackground
-    val textPrimary = if (isDark) Color.White else Color.Black
-    val textSecondary = if (isDark) DarkTextSecondary else LightTextSecondary
-    val bgGray = if (isDark) DarkBgGray else LightBgGray
-    val cardBg = if (isDark) DarkCardBg else LightCardBg
+    val privacyColor = when {
+        isEInkMode -> Color.Black
+        isDark -> Color(0xFFFFA0A8).copy(alpha = 0.62f)
+        else -> WelcomePink.copy(alpha = 0.58f)
+    }
+    val linkColor = when {
+        isEInkMode -> Color.Black
+        isDark -> Color(0xFFFFBCC2)
+        else -> WelcomePink
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        WelcomeGradientBackground(
+            isDark = isDark,
+            isEInkMode = isEInkMode
+        )
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(backgroundColor)
-                .navigationBarsPadding(),
+                .navigationBarsPadding()
+                .padding(bottom = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // 上半部分 - 推到中间
             Spacer(modifier = Modifier.weight(1f))
 
-            // App Icon
-            Image(
-                painter = painterResource(id = R.drawable.app_icon),
-                contentDescription = stringResource(R.string.welcome_app_icon_description),
-                modifier = Modifier
-                    .size(80.dp)
-                    .clip(RoundedCornerShape(20.dp)),
-                contentScale = ContentScale.Crop
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
             Column(
-                modifier = Modifier.heightIn(min = 84.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+                verticalArrangement = Arrangement.Center,
+                modifier = Modifier.padding(horizontal = 24.dp)
             ) {
-                if (isUpdate) {
-                    Text(
-                        text = stringResource(R.string.welcome_update_title),
-                        modifier = Modifier.padding(horizontal = 24.dp),
-                        fontSize = 30.sp,
-                        lineHeight = 38.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center,
-                        color = textPrimary
-                    )
-                } else {
-                    Text(
-                        text = stringResource(R.string.welcome_title),
-                        fontSize = 32.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = textPrimary
-                    )
-                    Text(
-                        text = "Lumi",
-                        fontSize = 36.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = AccentColor
-                    )
-                }
+                WelcomeHeroText(
+                    text = stringResource(R.string.welcome_title),
+                    fontSize = 21.sp,
+                    lineHeight = 28.sp,
+                    fontWeight = FontWeight.Medium,
+                    isEInkMode = isEInkMode
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                WelcomeHeroText(
+                    text = stringResource(R.string.welcome_brand_name),
+                    fontSize = 37.sp,
+                    lineHeight = 44.sp,
+                    fontWeight = FontWeight.Medium,
+                    isEInkMode = isEInkMode
+                )
+                Spacer(modifier = Modifier.height(18.dp))
+                WelcomeHeroText(
+                    text = stringResource(R.string.welcome_major_version),
+                    fontSize = 167.sp,
+                    lineHeight = 176.sp,
+                    fontWeight = FontWeight.Medium,
+                    outlineWidth = 1.33.dp,
+                    useOpacityGradient = true,
+                    isEInkMode = isEInkMode
+                )
             }
 
-            // 下半部分 - 推到底部
             Spacer(modifier = Modifier.weight(1f))
 
-            // 隐私说明区域
-            Column(
-                modifier = Modifier.padding(horizontal = 32.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // 隐私文字（带可点击的链接）
+            Column(modifier = Modifier.padding(horizontal = 32.dp)) {
                 val privacyText = stringResource(R.string.welcome_privacy)
                 val andText = stringResource(R.string.welcome_and)
                 val termsText = stringResource(R.string.welcome_terms)
@@ -1043,38 +1046,36 @@ private fun WelcomeIntroductionPage(
                 val policyPunctuation = stringResource(R.string.welcome_policy_punctuation)
                 val annotatedText = buildAnnotatedString {
                     append(privacySummary)
-
-                    // 隐私政策链接
                     pushStringAnnotation(tag = "PRIVACY", annotation = "privacy")
-                    withStyle(style = SpanStyle(color = AccentColor, fontWeight = FontWeight.Medium)) {
+                    withStyle(style = SpanStyle(color = linkColor, fontWeight = FontWeight.SemiBold)) {
                         append(privacyText)
                     }
                     pop()
-
                     append(andText)
-
-                    // 用户协议链接
                     pushStringAnnotation(tag = "TERMS", annotation = "terms")
-                    withStyle(style = SpanStyle(color = AccentColor, fontWeight = FontWeight.Medium)) {
+                    withStyle(style = SpanStyle(color = linkColor, fontWeight = FontWeight.SemiBold)) {
                         append(termsText)
                     }
                     pop()
-
                     append(policyPunctuation)
                 }
-
                 var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
 
                 BasicText(
                     text = annotatedText,
                     style = androidx.compose.ui.text.TextStyle(
-                        fontSize = 12.sp,
-                        color = textSecondary,
-                        lineHeight = 18.sp,
-                        textAlign = TextAlign.Center
+                        color = privacyColor,
+                        fontFamily = FontFamily.SansSerif,
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp,
+                        fontWeight = FontWeight.Normal,
+                        letterSpacing = 0.sp,
+                        textAlign = TextAlign.Start
                     ),
                     onTextLayout = { textLayoutResult = it },
-                    modifier = Modifier.pointerInput(Unit) {
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .pointerInput(annotatedText) {
                         detectTapGestures { offset ->
                             textLayoutResult?.let { layoutResult ->
                                 val position = layoutResult.getOffsetForPosition(offset)
@@ -1098,60 +1099,19 @@ private fun WelcomeIntroductionPage(
                 )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // 按钮区域
-            Row(
+            Spacer(modifier = Modifier.height(20.dp))
+            WelcomeStartButton(
+                text = stringResource(R.string.welcome_start_using),
+                isDark = isDark,
+                isEInkMode = isEInkMode,
+                onClick = onContinue,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 32.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // 退出按钮
-                Button(
-                    onClick = onExit,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(52.dp),
-                    shape = RoundedCornerShape(28.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = bgGray,
-                        contentColor = textPrimary
-                    )
-                ) {
-                    Text(
-                        text = stringResource(R.string.welcome_exit),
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(16.dp))
-
-                // 继续按钮
-                Button(
-                    onClick = onContinue,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(52.dp),
-                    shape = RoundedCornerShape(28.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = AccentColor,
-                        contentColor = Color.White
-                    )
-                ) {
-                    Text(
-                        text = stringResource(R.string.welcome_continue),
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
+                    .padding(horizontal = 32.dp)
+                    .height(52.dp)
+            )
         }
 
-        // 隐私政策底部弹窗（带动画）
         AnimatedVisibility(
             visible = showPrivacyPolicy,
             enter = fadeIn(animationSpec = tween(300, easing = FastOutSlowInEasing)),
@@ -1166,7 +1126,6 @@ private fun WelcomeIntroductionPage(
             )
         }
 
-        // 用户协议底部弹窗（带动画）
         AnimatedVisibility(
             visible = showTermsOfService,
             enter = fadeIn(animationSpec = tween(300, easing = FastOutSlowInEasing)),
@@ -1207,22 +1166,6 @@ private fun SupportProjectPage(
 
     val backgroundColor = if (isDark) DarkBackground else LightBackground
     val textSecondary = if (isDark) DarkTextSecondary else LightTextSecondary
-    val supportBackground = if (isDark) DarkSupportBackground else LightSupportBackground
-    val panelAlpha by animateFloatAsState(
-        targetValue = if (entranceStage >= 1) 1f else 0f,
-        animationSpec = tween(300),
-        label = "supportPanelAlpha"
-    )
-    val panelScale by animateFloatAsState(
-        targetValue = if (entranceStage >= 1) 1f else 0.72f,
-        animationSpec = spring(dampingRatio = 0.66f, stiffness = 320f),
-        label = "supportPanelScale"
-    )
-    val sideEmojiProgress by animateFloatAsState(
-        targetValue = if (entranceStage >= 2) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.62f, stiffness = 360f),
-        label = "supportSideEmojiProgress"
-    )
     val copyProgress by animateFloatAsState(
         targetValue = if (entranceStage >= 3) 1f else 0f,
         animationSpec = tween(420, easing = AppEasing.Decelerate),
@@ -1246,99 +1189,7 @@ private fun SupportProjectPage(
             .navigationBarsPadding(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(modifier = Modifier.weight(0.42f))
-
-        Box(
-            modifier = Modifier
-                .width(164.dp)
-                .height(104.dp)
-                .graphicsLayer {
-                    alpha = panelAlpha
-                    scaleX = panelScale
-                    scaleY = panelScale
-                    translationY = (1f - panelAlpha) * 18.dp.toPx()
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            if (isLiquidGlass) {
-                LiquidGlassSurface(
-                    shape = RoundedCornerShape(28.dp),
-                    fallbackColor = supportBackground,
-                    contentScrimColor = if (isDark) {
-                        Color(0xFFD67588).copy(alpha = 0.36f)
-                    } else {
-                        Color(0xFFFF9FAF).copy(alpha = 0.34f)
-                    },
-                    transparencyOverride = 0.65f,
-                    outlineWidth = 0.dp,
-                    highlightAlpha = 0f,
-                    decorationModifier = Modifier.shadow(
-                        elevation = 20.dp,
-                        shape = RoundedCornerShape(28.dp),
-                        clip = false,
-                        ambientColor = Color(0xFFFF9FAF).copy(alpha = if (isDark) 0.12f else 0.24f),
-                        spotColor = Color(0xFFE85D5D).copy(alpha = if (isDark) 0.10f else 0.14f)
-                    ),
-                    modifier = Modifier.fillMaxSize()
-                ) {}
-            } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(RoundedCornerShape(28.dp))
-                        .background(supportBackground)
-                ) {}
-            }
-
-            Box(
-                modifier = Modifier.size(width = 112.dp, height = 88.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                AnimatedEmoji(
-                    emoji = "☕",
-                    progress = sideEmojiProgress,
-                    rotation = -16f,
-                    fontSize = 30,
-                    containerSize = 42,
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .offset(x = 7.dp, y = (-1).dp)
-                        .zIndex(3f)
-                )
-                AnimatedBookIcon(
-                    progress = panelAlpha,
-                    rotation = -4f,
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .offset(y = 4.dp)
-                        .zIndex(2f)
-                )
-                AnimatedEmoji(
-                    emoji = "✨",
-                    progress = sideEmojiProgress,
-                    rotation = 18f,
-                    fontSize = 28,
-                    containerSize = 38,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = (-2).dp, y = (-1).dp)
-                        .zIndex(3f)
-                )
-                AnimatedEmoji(
-                    emoji = "💗",
-                    progress = sideEmojiProgress,
-                    rotation = 12f,
-                    fontSize = 21,
-                    containerSize = 30,
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .offset(x = 1.dp, y = 23.dp)
-                        .zIndex(4f)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(28.dp))
+        Spacer(modifier = Modifier.weight(0.48f))
 
         Text(
             text = stringResource(R.string.welcome_support_title),
@@ -1374,7 +1225,7 @@ private fun SupportProjectPage(
             color = textSecondary
         )
 
-        Spacer(modifier = Modifier.weight(0.58f))
+        Spacer(modifier = Modifier.weight(0.52f))
 
         Row(
             modifier = Modifier
@@ -1484,55 +1335,245 @@ private fun SupportWelcomeButton(
 }
 
 @Composable
-private fun AnimatedBookIcon(
-    progress: Float,
-    rotation: Float,
-    modifier: Modifier = Modifier
+private fun WelcomeHeroText(
+    text: String,
+    fontSize: TextUnit,
+    lineHeight: TextUnit,
+    fontWeight: FontWeight,
+    isEInkMode: Boolean,
+    outlineWidth: Dp = 0.dp,
+    useOpacityGradient: Boolean = false
 ) {
-    Box(
-        modifier = modifier.size(66.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            imageVector = Icons.Outlined.MenuBook,
-            contentDescription = null,
-            modifier = Modifier
-                .size(52.dp)
-                .graphicsLayer {
-                    alpha = progress.coerceIn(0f, 1f)
-                    scaleX = 0.6f + progress * 0.4f
-                    scaleY = 0.6f + progress * 0.4f
-                    rotationZ = (1f - progress) * rotation
-                },
-            tint = AccentColor
+    val outlineWidthPx = with(LocalDensity.current) { outlineWidth.toPx() }
+    val fillBrush = when {
+        isEInkMode -> Brush.verticalGradient(listOf(Color.Black, Color.Black))
+        useOpacityGradient -> Brush.verticalGradient(
+            listOf(Color.White.copy(alpha = 0.82f), Color.White.copy(alpha = 0.06f))
+        )
+        else -> Brush.verticalGradient(
+            listOf(Color.White.copy(alpha = 0.70f), Color.White.copy(alpha = 0.70f))
+        )
+    }
+    val outlineBrush = when {
+        isEInkMode -> Brush.verticalGradient(listOf(Color.Black, Color.Black))
+        useOpacityGradient -> Brush.verticalGradient(
+            listOf(Color.White, Color.White.copy(alpha = 0.08f))
+        )
+        else -> Brush.verticalGradient(
+            listOf(Color.White.copy(alpha = 0.90f), Color.White.copy(alpha = 0.90f))
+        )
+    }
+    val baseStyle = TextStyle(
+        fontFamily = FontFamily.SansSerif,
+        fontSize = fontSize,
+        lineHeight = lineHeight,
+        fontWeight = fontWeight,
+        letterSpacing = 0.sp,
+        textAlign = TextAlign.Center
+    )
+
+    Box(contentAlignment = Alignment.Center) {
+        if (outlineWidth > 0.dp) {
+            Text(
+                text = text,
+                modifier = Modifier.clearAndSetSemantics {},
+                maxLines = 1,
+                style = baseStyle.copy(
+                    brush = outlineBrush,
+                    drawStyle = Stroke(width = outlineWidthPx)
+                )
+            )
+        }
+        Text(
+            text = text,
+            maxLines = 1,
+            style = baseStyle.copy(
+                brush = fillBrush,
+                drawStyle = Fill
+            )
         )
     }
 }
+
 @Composable
-private fun AnimatedEmoji(
-    emoji: String,
-    progress: Float,
-    rotation: Float,
-    fontSize: Int,
-    containerSize: Int,
+private fun WelcomeGradientBackground(
+    isDark: Boolean,
+    isEInkMode: Boolean
+) {
+    val motionEnabled = LocalMotionEnabled.current && !isEInkMode
+    val progress = if (motionEnabled) {
+        val transition = rememberInfiniteTransition(label = "welcomeGradientFlow")
+        val first by transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(18_000, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "welcomeGradientFirst"
+        )
+        val second by transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(23_000, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "welcomeGradientSecond"
+        )
+        val third by transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(29_000, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "welcomeGradientThird"
+        )
+        Triple(first, second, third)
+    } else {
+        Triple(0.5f, 0.5f, 0.5f)
+    }
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        if (isEInkMode) {
+            drawRect(Color.White)
+            return@Canvas
+        }
+
+        drawRect(if (isDark) WelcomeDarkBackground else Color(0xFFFFF9FA))
+        drawRect(
+            brush = Brush.verticalGradient(
+                0f to if (isDark) WelcomeDarkPink else WelcomePink,
+                0.52f to if (isDark) Color(0xFF3A171D) else WelcomePink.copy(alpha = 0.62f),
+                1f to Color.Transparent,
+                startY = 0f,
+                endY = size.height
+            )
+        )
+
+        val longestSide = maxOf(size.width, size.height)
+        fun center(
+            startX: Float,
+            startY: Float,
+            endX: Float,
+            endY: Float,
+            value: Float
+        ) = Offset(
+            x = size.width * (startX + (endX - startX) * value),
+            y = size.height * (startY + (endY - startY) * value)
+        )
+
+        fun drawPinkField(center: Offset, radius: Float, alpha: Float) {
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        WelcomePink.copy(alpha = alpha),
+                        WelcomePink.copy(alpha = alpha * 0.42f),
+                        Color.Transparent
+                    ),
+                    center = center,
+                    radius = radius
+                ),
+                radius = radius,
+                center = center
+            )
+        }
+
+        val darkAlphaScale = if (isDark) 0.42f else 1f
+        val firstCenter = center(-0.08f, 0.20f, 0.05f, 0.28f, progress.first)
+        val secondCenter = center(0.88f, 0.35f, 0.74f, 0.47f, progress.second)
+        val thirdCenter = center(0.18f, 0.70f, 0.34f, 0.63f, progress.third)
+        drawPinkField(firstCenter, longestSide * 0.68f, 0.58f * darkAlphaScale)
+        drawPinkField(secondCenter, longestSide * 0.62f, 0.54f * darkAlphaScale)
+        drawPinkField(thirdCenter, longestSide * 0.74f, 0.38f * darkAlphaScale)
+
+        val highlightCenter = center(0.82f, 0.48f, 0.68f, 0.57f, progress.second)
+        val highlightRadius = longestSide * 0.52f
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    if (isDark) Color(0xFFFFD8DD).copy(alpha = 0.08f) else Color.White.copy(alpha = 0.72f),
+                    Color.Transparent
+                ),
+                center = highlightCenter,
+                radius = highlightRadius
+            ),
+            radius = highlightRadius,
+            center = highlightCenter
+        )
+    }
+}
+
+@Composable
+private fun WelcomeStartButton(
+    text: String,
+    isDark: Boolean,
+    isEInkMode: Boolean,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val alpha = progress.coerceIn(0f, 1f)
+    val motionEnabled = LocalMotionEnabled.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (motionEnabled && pressed) 0.97f else 1f,
+        animationSpec = if (!motionEnabled) {
+            snap()
+        } else {
+            tween(
+                durationMillis = if (pressed) 90 else 160,
+                easing = FastOutSlowInEasing
+            )
+        },
+        label = "welcomeStartButtonScale"
+    )
+    val shape = RoundedCornerShape(26.dp)
+    val containerColor = when {
+        isEInkMode -> Color.White
+        isDark -> Color(0xFF241417).copy(alpha = 0.55f)
+        else -> Color.White.copy(alpha = 0.48f)
+    }
+    val contentColor = when {
+        isEInkMode -> Color.Black
+        isDark -> Color(0xFFFFA0A8)
+        else -> WelcomePink
+    }
+    val borderColor = if (isEInkMode) Color.Black else Color.White.copy(alpha = 0.90f)
 
     Box(
-        modifier = modifier.size(containerSize.dp),
+        modifier = modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .shadow(
+                elevation = if (isEInkMode) 0.dp else 20.dp,
+                shape = shape,
+                clip = false,
+                ambientColor = WelcomePink.copy(alpha = 0.18f),
+                spotColor = WelcomePink.copy(alpha = 0.18f)
+            )
+            .clip(shape)
+            .background(containerColor)
+            .border(1.dp, borderColor, shape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                role = Role.Button,
+                onClick = onClick
+            ),
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = emoji,
-            modifier = Modifier.graphicsLayer {
-                this.alpha = alpha
-                scaleX = 0.6f + progress * 0.4f
-                scaleY = 0.6f + progress * 0.4f
-                rotationZ = (1f - progress) * rotation
-            },
-            fontSize = fontSize.sp,
-            textAlign = TextAlign.Center
+            text = text,
+            color = contentColor,
+            fontFamily = FontFamily.SansSerif,
+            fontSize = 18.sp,
+            lineHeight = 24.sp,
+            fontWeight = FontWeight.Medium,
+            letterSpacing = 0.sp,
+            maxLines = 1
         )
     }
 }

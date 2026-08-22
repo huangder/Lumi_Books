@@ -20,6 +20,7 @@ import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.ui.components.LocalPredictiveBackEnabled
 import com.huangder.lumibooks.ui.settings.SponsorActivity
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
+import com.huangder.lumibooks.ui.theme.MotionPreference
 import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
 import com.huangder.lumibooks.ui.theme.effectiveAppTheme
 import com.huangder.lumibooks.util.LaunchThemeController
@@ -95,6 +96,7 @@ class WelcomeActivity : ComponentActivity() {
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
             val predictiveBackEnabled by dataStoreManager.predictiveBackEnabled.collectAsState(initial = true)
             val eInkModeEnabled by dataStoreManager.eInkModeEnabled.collectAsState(initial = false)
+            val motionPreferenceValue by dataStoreManager.motionPreference.collectAsState(initial = "standard")
             val isDark = if (eInkModeEnabled) {
                 false
             } else {
@@ -114,7 +116,8 @@ class WelcomeActivity : ComponentActivity() {
                 liquidGlassTransparency = liquidGlassTransparency,
                 liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled,
                 eInkMode = eInkModeEnabled,
-                globalFontMode = globalFontMode
+                globalFontMode = globalFontMode,
+                motionPreference = MotionPreference.fromStoredValue(motionPreferenceValue)
             ) {
                 com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
                     predictiveBackEnabled = predictiveBackEnabled,
@@ -135,7 +138,6 @@ class WelcomeActivity : ComponentActivity() {
                             modifier = Modifier.fillMaxSize()
                         ) {
                             WelcomeScreen(
-                                isUpdate = installState.isUpdate,
                                 isNewInstallation = !installState.isUpdate,
                                 shouldShowLanguageSetup = isDebugLanguagePreview || !hasCompletedLanguageSetup,
                                 initialLanguage = initialLanguage,
@@ -150,13 +152,6 @@ class WelcomeActivity : ComponentActivity() {
                                         }
                                     }
                                     startMainActivity(splashEnabled)
-                                },
-                                onExit = {
-                                    if (isDebugWelcomePreview) {
-                                        startMainActivity(splashEnabled)
-                                    } else {
-                                        finish()
-                                    }
                                 },
                                 onOpenSponsor = {
                                     startActivity(Intent(this@WelcomeActivity, SponsorActivity::class.java))
