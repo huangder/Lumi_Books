@@ -2926,11 +2926,9 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             clearActiveTextSelection()
         },
         onRemoveHighlight = {
-            // 移除高亮 = 删除该 Note（高亮和笔记共用同一条记录）
-            selectionState?.existingNote?.let { viewModel.deleteNote(it) }
-            selectionState = null
+            val type = selectionState?.existingNote?.type ?: "highlight"
+            removeSelectedAnnotation(type)
             showHighlightColorPicker = false
-            clearActiveTextSelection()
         },
         onViewNote = {
             // 🔥 查看/修改笔记：打开 NoteInputSheet 预填原笔记文字
@@ -5642,7 +5640,9 @@ private data class SelectionState(
     val hasUnderline: Boolean get() = overlappingUnderlines.isNotEmpty()
     val hasNote: Boolean get() = (overlappingHighlights + overlappingUnderlines).any { it.note.isNotEmpty() }
     val existingNote: com.huangder.lumibooks.domain.model.Note?
-        get() = (overlappingHighlights + overlappingUnderlines).firstOrNull()
+        get() = (overlappingHighlights + overlappingUnderlines).let { notes ->
+            notes.firstOrNull { it.note.isNotEmpty() } ?: notes.firstOrNull()
+        }
 }
 
 /** 查找与选区重叠的标注，按 type 分离高亮和划线。 */
