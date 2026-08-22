@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.util
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.net.Uri
 import java.io.File
 import java.io.FileOutputStream
@@ -104,6 +105,28 @@ object FileUtils {
                 }
             }
 
+            destinationFile.absolutePath
+        } catch (error: Exception) {
+            destination?.let { partialFile -> runCatching { partialFile.delete() } }
+            error.printStackTrace()
+            null
+        }
+    }
+
+    /**
+     * 将 Bitmap（如浏览器裁剪捕获的封面区域）压缩保存到 covers 目录
+     * 与 [copyCoverImage] 使用相同的 custom_{bookId}_{timestamp}.jpg 命名规则
+     * @return 保存后的文件路径，失败返回 null
+     */
+    fun saveCoverBitmap(context: Context, bitmap: Bitmap, bookId: String): String? {
+        var destination: File? = null
+        return try {
+            val coversDir = getCoversDirectory(context)
+            val destinationFile = File(coversDir, "custom_${bookId}_${System.currentTimeMillis()}.jpg")
+            destination = destinationFile
+            FileOutputStream(destinationFile).use { output ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 90, output)
+            }
             destinationFile.absolutePath
         } catch (error: Exception) {
             destination?.let { partialFile -> runCatching { partialFile.delete() } }

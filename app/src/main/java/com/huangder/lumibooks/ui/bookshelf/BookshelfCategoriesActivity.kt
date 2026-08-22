@@ -440,6 +440,7 @@ private fun CategoryBooksPage(
     var tagTargetBook by remember { mutableStateOf<Book?>(null) }
     var editingBook by remember { mutableStateOf<Book?>(null) }
     var coverTargetBook by remember { mutableStateOf<Book?>(null) }
+    var coverSourceBook by remember { mutableStateOf<Book?>(null) }
     var headerHeightPx by remember { mutableStateOf(0) }
     val collectionTopPadding = if (headerHeightPx > 0) {
         with(density) { headerHeightPx.toDp() } + 12.dp
@@ -508,10 +509,7 @@ private fun CategoryBooksPage(
                     deletingBookIds = setOf(it.id)
                 },
                 onFavorite = { viewModel.updateBook(it.copy(isFavorite = !it.isFavorite)) },
-                onCustomCover = {
-                    coverTargetBook = it
-                    coverPicker.launch("image/*")
-                },
+                onCustomCover = { coverSourceBook = it },
                 onRemoveCustomCover = viewModel::removeCustomCover,
                 onTags = { tagTargetBook = it },
                 onBookmarksNotes = {
@@ -546,10 +544,7 @@ private fun CategoryBooksPage(
                     deletingBookIds = setOf(it.id)
                 },
                 onFavorite = { viewModel.updateBook(it.copy(isFavorite = !it.isFavorite)) },
-                onCustomCover = {
-                    coverTargetBook = it
-                    coverPicker.launch("image/*")
-                },
+                onCustomCover = { coverSourceBook = it },
                 onRemoveCustomCover = viewModel::removeCustomCover,
                 onBookmarksNotes = {
                     context.startActivity(
@@ -560,6 +555,25 @@ private fun CategoryBooksPage(
                 onEditInfo = { editingBook = it }
             )
         }
+    }
+
+    // ── 自定义封面来源选择（选择图片 / 网络搜索） ──
+    coverSourceBook?.let { sourceBook ->
+        CustomCoverSourceSheet(
+            book = sourceBook,
+            onDismiss = { coverSourceBook = null },
+            onPickImage = {
+                coverSourceBook = null
+                coverTargetBook = sourceBook
+                runCatching { coverPicker.launch("image/*") }
+            },
+            onWebSearch = {
+                coverSourceBook = null
+                runCatching {
+                    CoverSearchActivity.start(context, sourceBook.id, sourceBook.title)
+                }
+            }
+        )
     }
 
     tagTargetBook?.let { book ->

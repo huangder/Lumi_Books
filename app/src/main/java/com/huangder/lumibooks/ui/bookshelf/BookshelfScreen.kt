@@ -223,6 +223,7 @@ fun BookshelfScreen(
 
     // 自定义封面：记录正在操作的书本
     var coverTargetBook by remember { mutableStateOf<Book?>(null) }
+    var coverSourceBook by remember { mutableStateOf<Book?>(null) }
     var pendingContextMenuAction by remember { mutableStateOf<PendingBookMenuAction?>(null) }
 
     // 删除动画：记录正在删除的书本 ID
@@ -271,7 +272,7 @@ fun BookshelfScreen(
             when (pendingAction.type) {
                 PendingBookMenuActionType.Favorite ->
                     viewModel.updateBook(currentBook.copy(isFavorite = !currentBook.isFavorite))
-                PendingBookMenuActionType.CustomCover -> launchCoverPicker(currentBook)
+                PendingBookMenuActionType.CustomCover -> coverSourceBook = currentBook
                 PendingBookMenuActionType.RemoveCustomCover -> viewModel.removeCustomCover(currentBook)
                 PendingBookMenuActionType.BookmarksNotes -> openBookNotes(currentBook)
                 PendingBookMenuActionType.Tags -> {
@@ -610,6 +611,26 @@ fun BookshelfScreen(
                 pendingContextMenuAction = PendingBookMenuAction(PendingBookMenuActionType.EditInfo, book)
             }
         )
+
+        // ── 自定义封面来源选择（选择图片 / 网络搜索） ──
+        coverSourceBook?.let { sourceBook ->
+            CustomCoverSourceSheet(
+                book = sourceBook,
+                onDismiss = { coverSourceBook = null },
+                onPickImage = {
+                    coverSourceBook = null
+                    launchCoverPicker(sourceBook)
+                },
+                onWebSearch = {
+                    coverSourceBook = null
+                    runCatching {
+                        CoverSearchActivity.start(context, sourceBook.id, sourceBook.title)
+                    }.onFailure { error ->
+                        onMessage(error.message ?: "Unable to open cover search")
+                    }
+                }
+            )
+        }
 
         // ── 编辑书本信息对话框（卡片风格） ──
         editingBook?.takeIf { showEditDialog }?.let { currentEditingBook ->
