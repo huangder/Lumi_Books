@@ -807,4 +807,8 @@
     <string name="widget_preview_book_title">책 제목</string>
     <string name="widget_preview_author">저자</string>
     <string name="widget_quote_preview_attribution">『책 제목』 저자</string>
+    <string name="tts_floating_permission_title">낭독 자막 권한</string>
+    <string name="tts_floating_permission_required">다른 앱 위에 자막을 표시하려면 ‘다른 앱 위에 표시’ 권한이 필요합니다. 시스템 설정에서 허용해 주세요.</string>
+    <string name="tts_floating_permission_toast">오버레이 권한이 없어 낭독 자막을 표시할 수 없습니다</string>
+    <string name="tts_floating_go_settings">설정으로 이동</string>
 </resources>

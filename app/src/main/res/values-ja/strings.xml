@@ -807,4 +807,8 @@
     <string name="widget_preview_book_title">書名</string>
     <string name="widget_preview_author">著者</string>
     <string name="widget_quote_preview_attribution">『書名』 著者</string>
+    <string name="tts_floating_permission_title">読み上げ字幕の権限</string>
+    <string name="tts_floating_permission_required">他のアプリの上に字幕を表示するには、「他のアプリの上に重ねて表示」の権限が必要です。システム設定で許可してください。</string>
+    <string name="tts_floating_permission_toast">オーバーレイ権限がないため、読み上げ字幕を表示できません</string>
+    <string name="tts_floating_go_settings">設定に移動</string>
 </resources>

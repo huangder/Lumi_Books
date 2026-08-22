@@ -810,4 +810,8 @@
     <string name="widget_preview_book_title">书名</string>
     <string name="widget_preview_author">作者</string>
     <string name="widget_quote_preview_attribution">《书名》 作者</string>
+    <string name="tts_floating_permission_title">听书字幕权限</string>
+    <string name="tts_floating_permission_required">在后台显示听书字幕需要「显示在其他应用上层」权限，请在系统设置中授权</string>
+    <string name="tts_floating_permission_toast">缺少悬浮窗权限，暂时无法显示听书字幕</string>
+    <string name="tts_floating_go_settings">前往设置</string>
 </resources>

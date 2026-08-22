@@ -4,6 +4,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
 import android.view.ActionMode
@@ -48,6 +49,7 @@ import com.huangder.lumibooks.tts.TtsPlaybackState
 import com.huangder.lumibooks.ui.splash.SplashScreen
 import com.huangder.lumibooks.ui.components.AppUpdateDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
+import com.huangder.lumibooks.ui.components.OverlayPermissionDialog
 import com.huangder.lumibooks.ui.components.PolicyUpdateDialog
 import com.huangder.lumibooks.ui.components.RemoteNoticeDialog
 import com.huangder.lumibooks.ui.settings.WebViewActivity
@@ -112,6 +114,10 @@ class MainActivity : ComponentActivity() {
     private var systemDarkMode by mutableStateOf(false)
     private var requestedOpenBookId by mutableStateOf<String?>(null)
     private var requestedOpenBookshelf by mutableStateOf(false)
+
+    /** 听书悬浮窗权限引导：退后台时发现未授权，回到前台后弹窗引导 */
+    private var showFloatingPermissionDialog by mutableStateOf(false)
+    private var pendingFloatingPermissionHint = false
 
     override fun attachBaseContext(newBase: android.content.Context) {
         super.attachBaseContext(com.huangder.lumibooks.util.LocaleHelper.applyLanguage(newBase))
@@ -317,12 +323,37 @@ class MainActivity : ComponentActivity() {
                 when (event) {
                     Lifecycle.Event.ON_STOP -> {
                         if (ttsController.playbackState.value != TtsPlaybackState.IDLE) {
-                            com.huangder.lumibooks.service.TtsFloatingWindowService.start(this@MainActivity)
+                            lifecycleScope.launch {
+                                val floatingEnabled = dataStoreManager.ttsFloatingWindow.first()
+                                if (!floatingEnabled) return@launch
+                                if (Settings.canDrawOverlays(this@MainActivity)) {
+                                    runCatching {
+                                        com.huangder.lumibooks.service.TtsFloatingWindowService.start(this@MainActivity)
+                                    }.onFailure { error ->
+                                        Log.w("MainActivity", "Failed to start tts floating window", error)
+                                    }
+                                } else {
+                                    pendingFloatingPermissionHint = true
+                                    Toast.makeText(
+                                        this@MainActivity,
+                                        R.string.tts_floating_permission_toast,
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            }
                         }
                     }
                     Lifecycle.Event.ON_START -> {
                         if (!com.huangder.lumibooks.service.TtsFloatingWindowService.consumeKeepVisibleOnForeground()) {
                             com.huangder.lumibooks.service.TtsFloatingWindowService.stop(this@MainActivity)
+                        }
+                        if (pendingFloatingPermissionHint) {
+                            pendingFloatingPermissionHint = false
+                            if (ttsController.playbackState.value != TtsPlaybackState.IDLE &&
+                                !Settings.canDrawOverlays(this@MainActivity)
+                            ) {
+                                showFloatingPermissionDialog = true
+                            }
                         }
                     }
                     else -> Unit
@@ -417,7 +448,8 @@ class MainActivity : ComponentActivity() {
                         val navController = rememberNavController()
                         val globalGlassDialogVisible = pendingAppUpdate != null ||
                             pendingRemoteNotice != null ||
-                            policyDialog != null
+                            policyDialog != null ||
+                            showFloatingPermissionDialog
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -513,6 +545,24 @@ class MainActivity : ComponentActivity() {
                                     onViewPrivacy = { openUpdateDocument("隐私政策", "privacy.html") }
                                 )
                             }
+                        }
+                        showFloatingPermissionDialog -> {
+                            OverlayPermissionDialog(
+                                onGoSettings = {
+                                    showFloatingPermissionDialog = false
+                                    runCatching {
+                                        startActivity(
+                                            Intent(
+                                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                                Uri.parse("package:$packageName")
+                                            )
+                                        )
+                                    }.onFailure { error ->
+                                        Log.w("MainActivity", "Failed to open overlay settings", error)
+                                    }
+                                },
+                                onDismiss = { showFloatingPermissionDialog = false }
+                            )
                         }
                     }
 
