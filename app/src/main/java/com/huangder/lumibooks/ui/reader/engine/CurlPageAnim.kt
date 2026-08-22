@@ -3,6 +3,8 @@ package com.huangder.lumibooks.ui.reader.engine
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
@@ -59,8 +61,21 @@ class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
     private val backTintPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val ambientShadowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val foldTextureMatrix = Matrix()
-    private val foldTexturePaint = Paint(Paint.DITHER_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
-        alpha = 100
+
+    // 纸背画笔：镜像当前页并整体压暗，模拟油墨透过纸背的观感（与 EPUB 卷曲路径一致）
+    private val foldTexturePaint = Paint(
+        Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG or Paint.FILTER_BITMAP_FLAG
+    ).apply {
+        colorFilter = ColorMatrixColorFilter(
+            ColorMatrix(
+                floatArrayOf(
+                    0.94f, 0f, 0f, 0f, 6f,
+                    0f, 0.94f, 0f, 0f, 6f,
+                    0f, 0f, 0.94f, 0f, 6f,
+                    0f, 0f, 0f, 0.96f, 0f
+                )
+            )
+        )
     }
     private val seamCoverPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -1121,7 +1136,6 @@ class CurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(rea
     }
 
     private fun drawFoldBackTexture(canvas: Canvas): Boolean {
-        if (readView.curlBackTextureMode != CurlBackTextureMode.FADED_MIRROR) return false
         val reflection = CurlReflectionGeometry.between(
             cornerX = cornerX,
             cornerY = cornerY,
