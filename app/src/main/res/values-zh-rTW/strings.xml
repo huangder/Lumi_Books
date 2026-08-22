@@ -811,4 +811,6 @@
     <string name="tts_floating_permission_required">在背景顯示聽書字幕需要「顯示在其他應用程式上層」權限，請在系統設定中授權</string>
     <string name="tts_floating_permission_toast">缺少懸浮視窗權限，暫時無法顯示聽書字幕</string>
     <string name="tts_floating_go_settings">前往設定</string>
+    <string name="bookmark_added_toast">已加入書籤</string>
+    <string name="bookmark_removed_toast">已移除書籤</string>
 </resources>

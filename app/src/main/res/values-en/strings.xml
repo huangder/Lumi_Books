@@ -899,4 +899,6 @@
     <string name="tts_floating_permission_required">To show captions over other apps while in the background, please allow the Display over other apps permission in system settings.</string>
     <string name="tts_floating_permission_toast">Overlay permission missing — audiobook captions are unavailable for now</string>
     <string name="tts_floating_go_settings">Go to settings</string>
+    <string name="bookmark_added_toast">Bookmark added</string>
+    <string name="bookmark_removed_toast">Bookmark removed</string>
 </resources>

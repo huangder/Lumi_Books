@@ -380,6 +380,8 @@
     <string name="tts_floating_permission_required">在后台显示听书字幕需要「显示在其他应用上层」权限，请在系统设置中授权</string>
     <string name="tts_floating_permission_toast">缺少悬浮窗权限，暂时无法显示听书字幕</string>
     <string name="tts_floating_go_settings">前往设置</string>
+    <string name="bookmark_added_toast">已添加书签</string>
+    <string name="bookmark_removed_toast">已移除书签</string>
     <string name="tts_page_not_ready">当前页面尚未准备好</string>
     <string name="tts_no_readable_text">当前页面没有可朗读的文字</string>
     <string name="tts_unavailable">无法启动文字转语音，请检查系统语音引擎和语言数据</string>

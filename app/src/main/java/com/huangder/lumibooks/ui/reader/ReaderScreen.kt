@@ -137,6 +137,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -2063,6 +2064,88 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 )
             }
 
+            // 当前页书签判定与切换（顶栏按钮与顶部下拉手势共用）
+            val currentBookmarkOffset = if (isContinuousScrollMode) {
+                0
+            } else {
+                readViewRef.value?.getCurrentPageStartCharacterOffset()
+            }
+            val isCurrentPageBookmarked = bookmarks.any {
+                it.chapterIndex == displayedMenuSnapshot.chapterIndex &&
+                (it.characterOffset == currentBookmarkOffset ||
+                    (it.characterOffset == null &&
+                        it.position.toInt() == displayedMenuSnapshot.pageIndex))
+            }
+            val toggleBookmarkForCurrentPage = {
+                if (isCurrentPageBookmarked) {
+                    bookmarks.firstOrNull {
+                        it.chapterIndex == displayedMenuSnapshot.chapterIndex &&
+                        (it.characterOffset == currentBookmarkOffset ||
+                            (it.characterOffset == null &&
+                                it.position.toInt() == displayedMenuSnapshot.pageIndex))
+                    }?.let { viewModel.deleteBookmark(it) }
+                    Toast.makeText(
+                        context,
+                        R.string.bookmark_removed_toast,
+                        Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    viewModel.addBookmark(
+                        characterOffset = currentBookmarkOffset,
+                        title = readViewRef.value?.getCurrentPageBookmarkTitle()
+                    )
+                    Toast.makeText(
+                        context,
+                        R.string.bookmark_added_toast,
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+
+            // 顶部下拉添加/取消书签（仅分页引擎模式，菜单隐藏时启用；
+            // 在 Initial pass 先观察，确认为垂直下拉才消费，其余手势放行给下层翻页/点按）
+            if (uiState.useNewEngine && !isBookLayout && !isContinuousScrollMode &&
+                !uiState.isMenuVisible && !isAnySheetOpen
+            ) {
+                val latestToggleBookmark by rememberUpdatedState(toggleBookmarkForCurrentPage)
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .height(92.dp)
+                        .pointerInput(bookId) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(
+                                    pass = PointerEventPass.Initial,
+                                    requireUnconsumed = false
+                                )
+                                var totalDy = 0f
+                                var totalAbsDx = 0f
+                                while (true) {
+                                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                    val delta = change.positionChange()
+                                    totalDy += delta.y
+                                    totalAbsDx += kotlin.math.abs(delta.x)
+                                    val pullThreshold = 56.dp.toPx()
+                                    val rejectThreshold = 20.dp.toPx()
+                                    if (totalDy >= pullThreshold && totalAbsDx * 2 < totalDy) {
+                                        change.consume()
+                                        latestToggleBookmark()
+                                        break
+                                    }
+                                    if (kotlin.math.abs(totalDy) >= rejectThreshold ||
+                                        totalAbsDx >= rejectThreshold
+                                    ) {
+                                        // 非下拉手势（点按/翻页/快速滑动），放行本手势剩余事件
+                                        break
+                                    }
+                                }
+                            }
+                        }
+                )
+            }
+
             // 顶部栏
             AnimatedVisibility(
                 visible = uiState.isMenuVisible,
@@ -2085,17 +2168,6 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 modifier = Modifier.align(Alignment.TopCenter)
             ) {
                 val bookTitle = uiState.book?.title ?: ""
-                val currentBookmarkOffset = if (isContinuousScrollMode) {
-                    0
-                } else {
-                    readViewRef.value?.getCurrentPageStartCharacterOffset()
-                }
-                val isCurrentPageBookmarked = bookmarks.any {
-                    it.chapterIndex == displayedMenuSnapshot.chapterIndex &&
-                    (it.characterOffset == currentBookmarkOffset ||
-                        (it.characterOffset == null &&
-                            it.position.toInt() == displayedMenuSnapshot.pageIndex))
-                }
                 val isTxtBook = uiState.book?.format?.name == "TXT"
                 ReaderTopBar(
                     title = bookTitle,
@@ -2116,21 +2188,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         }
                     },
                     isBookmarked = isCurrentPageBookmarked,
-                    onBookmarkToggle = {
-                        if (isCurrentPageBookmarked) {
-                            bookmarks.firstOrNull {
-                                it.chapterIndex == displayedMenuSnapshot.chapterIndex &&
-                                (it.characterOffset == currentBookmarkOffset ||
-                                    (it.characterOffset == null &&
-                                        it.position.toInt() == displayedMenuSnapshot.pageIndex))
-                            }?.let { viewModel.deleteBookmark(it) }
-                        } else {
-                            viewModel.addBookmark(
-                                characterOffset = currentBookmarkOffset,
-                                title = readViewRef.value?.getCurrentPageBookmarkTitle()
-                            )
-                        }
-                    },
+                    onBookmarkToggle = { toggleBookmarkForCurrentPage() },
                     isTxtBook = isTxtBook,
                     onEditClick = {
                         viewModel.hideMenu()

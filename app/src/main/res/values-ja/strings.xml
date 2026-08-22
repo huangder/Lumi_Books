@@ -811,4 +811,6 @@
     <string name="tts_floating_permission_required">他のアプリの上に字幕を表示するには、「他のアプリの上に重ねて表示」の権限が必要です。システム設定で許可してください。</string>
     <string name="tts_floating_permission_toast">オーバーレイ権限がないため、読み上げ字幕を表示できません</string>
     <string name="tts_floating_go_settings">設定に移動</string>
+    <string name="bookmark_added_toast">しおりを追加しました</string>
+    <string name="bookmark_removed_toast">しおりを削除しました</string>
 </resources>
