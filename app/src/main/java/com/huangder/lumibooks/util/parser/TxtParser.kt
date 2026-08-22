@@ -299,7 +299,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
 
     private fun findChapterHeadings(file: File, encoding: EncodingInfo): List<Heading> {
         // 一次扫描同时匹配所有模式，避免对大文件重复全文扫描（原来最多 5 次）
-        val matchesByPattern = Array(CHAPTER_PATTERNS.size) { mutableListOf<Heading>() }
+        val matchesByPattern = Array(TxtChapterStructure.chapterPatterns.size) { mutableListOf<Heading>() }
         val decoratedHeadings = mutableListOf<Heading>()
         val looseNumberedHeadings = mutableListOf<NumberedHeading>()
         var pendingDecoratedHeading: Heading? = null
@@ -324,13 +324,13 @@ class TxtParser(private val context: Context? = null) : BookParser {
                 pendingLooseNumberedHeading = null
             }
 
-            if (DECORATED_HEADING_PATTERN.matches(line)) {
+            if (TxtChapterStructure.decoratedHeadingPattern.matches(line)) {
                 pendingDecoratedHeading = Heading(line.take(50), start)
             }
 
             var matchedStrictPattern = false
-            for (i in CHAPTER_PATTERNS.indices) {
-                if (CHAPTER_PATTERNS[i].containsMatchIn(line)) {
+            for (i in TxtChapterStructure.chapterPatterns.indices) {
+                if (TxtChapterStructure.chapterPatterns[i].containsMatchIn(line)) {
                     matchesByPattern[i] += Heading(line.take(50), start)
                     matchedStrictPattern = true
                     break
@@ -473,14 +473,14 @@ class TxtParser(private val context: Context? = null) : BookParser {
                 }
 
                 val lineChars = decodeRange(contentReader, encoding.charset, lineStart, lineEnd).length
-                val limit = if (splitAtTarget) targetChars else MAX_CHAPTER_CHARS
+                val limit = if (splitAtTarget) targetChars else TxtChapterStructure.MAX_CHAPTER_CHARS
                 if (chunkChars > 0 && chunkChars + lineChars > limit) {
                     emit(lineStart)
                 }
                 chunkChars += lineChars
                 if (splitAtTarget && chunkChars >= targetChars) {
                     emit(lineEnd)
-                } else if (chunkChars >= MAX_CHAPTER_CHARS) {
+                } else if (chunkChars >= TxtChapterStructure.MAX_CHAPTER_CHARS) {
                     emit(lineEnd)
                 }
             }
@@ -986,7 +986,6 @@ class TxtParser(private val context: Context? = null) : BookParser {
         const val HEADING_PREFIX_BYTES = 512
         const val TITLE_PREFIX_BYTES = 512
         const val FALLBACK_TARGET_CHARS = 3_000
-        const val MAX_CHAPTER_CHARS = 32_000
         const val MAX_RAW_CHUNK_BYTES = 32_000L
         const val CONTENT_CACHE_SIZE = 5
         const val HTML_CACHE_SIZE = 3
@@ -998,14 +997,6 @@ class TxtParser(private val context: Context? = null) : BookParser {
             return PARSE_LOCKS[index]
         }
 
-        val CHAPTER_PATTERNS = listOf(
-            Regex("^第[一二三四五六七八九十百千零\\d]+[章节回卷话]"),
-            Regex("^[卷篇][一二三四五六七八九十百千零\\d]+[章回]?"),
-            Regex("^Chapter\\s+\\d+", RegexOption.IGNORE_CASE),
-            Regex("^[一二三四五六七八九十百千零〇两]+$"),
-            Regex("^第\\d+章")
-        )
-        val DECORATED_HEADING_PATTERN = Regex("^<[^<>\\r\\n]{1,48}>$")
         val COPYRIGHT_LINE_PATTERN = Regex("^(?:ⓒ|\u00a9|版权)", RegexOption.IGNORE_CASE)
         val LOOSE_NUMBERED_HEADING_PATTERN = Regex("^\\D{1,12}?(\\d{1,5})\\s*[：:]\\s*\\S.{0,40}$")
         val ARABIC_CHAPTER_NUMBER_PATTERN = Regex("^第(\\d{1,5})[章节回卷话]")

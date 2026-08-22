@@ -679,11 +679,11 @@ fun BookshelfScreen(
                 onTagCheckedChange = { tag, isChecked ->
                     viewModel.setBookTag(targetBook.id, tag.id, isChecked)
                 },
-                onCreateTag = { name ->
-                    viewModel.createAndAssignTag(targetBook.id, name)
+                onCreateTag = { name, parentId ->
+                    viewModel.createAndAssignTag(targetBook.id, name, parentId)
                 },
-                onDeleteTag = { tag ->
-                    viewModel.deleteTag(tag.id)
+                onDeleteTag = { tag, deleteChildren ->
+                    viewModel.deleteTag(tag.id, deleteChildren)
                 }
             )
         }
@@ -1170,7 +1170,7 @@ private fun BookshelfCapsuleHeader(
                 ),
                 exit = fadeOut(tween(110)) + scaleOut(targetScale = 0.82f)
             ) {
-                Row {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Spacer(Modifier.width(10.dp))
                     LiquidGlassIconButton(
                         imageVector = Icons.Outlined.Delete,
@@ -1322,6 +1322,19 @@ private fun BookshelfCapsuleHeader(
                     }
                 }
             }
+        }
+
+        AnimatedVisibility(visible = isEditing) {
+            Text(
+                text = stringResource(R.string.selected_books_count_compact, selectedCount),
+                color = AppColors.TextSecondary,
+                fontSize = AppType.Caption,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = AppSpace.lg, vertical = 10.dp)
+            )
         }
 
         AnimatedVisibility(visible = !isEditing) {

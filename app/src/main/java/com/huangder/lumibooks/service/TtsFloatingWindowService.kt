@@ -205,6 +205,11 @@ class TtsFloatingWindowService : Service(), LifecycleOwner, SavedStateRegistryOw
 
     private fun showFloatingWindow() {
         if (floatingView != null) return
+        // 未授予「显示在其他应用上层」权限时 addView 必然失败，直接收工避免静默崩溃路径
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !android.provider.Settings.canDrawOverlays(this)) {
+            stopSelf()
+            return
+        }
 
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
 

@@ -28,24 +28,6 @@ internal fun pageStartsMidParagraph(text: CharSequence, start: Int): Boolean {
 }
 
 private class PagedSelectableTextView(context: Context) : RoundedHighlightTextView(context) {
-    /** 閫夋嫨缁堢偣鎷栧埌鏂囨湰鏈熬锛堥〉闈㈠簳閮?/ 鍙崇紭锛夋椂鍥炶皟锛岀敤浜庤法椤佃嚜鍔ㄧ炕椤点€?*/
-    var onSelectionReachEnd: (() -> Unit)? = null
-    private var lastReachEndAt = 0L
-
-    override fun onSelectionChanged(selStart: Int, selEnd: Int) {
-        super.onSelectionChanged(selStart, selEnd)
-        val sp = text ?: return
-        if (sp.isEmpty()) return
-        android.util.Log.d("PagedSel", "onSelectionChanged sel=" + selStart + ".." + selEnd + " len=" + sp.length + " h=" + height + " pb=" + paddingBottom)
-        if (selEnd < sp.length - 1) return
-        val now = System.currentTimeMillis()
-        if (now - lastReachEndAt > 1500L) {
-            lastReachEndAt = now
-            android.util.Log.d("PagedSel", "REACH_END trigger sel=" + selEnd + " len=" + sp.length)
-            onSelectionReachEnd?.invoke()
-        }
-    }
-
     // NOTE: justification must stay NONE (the default).
     // PageLayoutEngine paginates with a plain ALIGN_NORMAL StaticLayout. When
     // justification is enabled, Android's line breaker reserves extra trailing
@@ -131,13 +113,6 @@ class PageContentView(context: Context) : FrameLayout(context) {
         addView(justifiedView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(verticalTextView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     }
-
-    /** 閫夋嫨缁堢偣鎷栧埌椤甸潰鏈熬锛堝洖璋冪粰 ReadView 鑷姩缈婚〉锛?*/
-    var onSelectionReachEnd: (() -> Unit)? = null
-        set(value) {
-            field = value
-            (textView as? PagedSelectableTextView)?.onSelectionReachEnd = value
-        }
 
     private var readerBackgroundImagePath: String? = null
     private var currentBgColor: Int = 0
@@ -272,9 +247,6 @@ class PageContentView(context: Context) : FrameLayout(context) {
         justifiedView.justifyLastLine = justifyLastLine
 
         val subText = fullText.subSequence(actualStart, endChar)
-        val preview = subText.take(120).toString().replace("\n", "\\n")
-        val newlineCount = (actualStart until endChar).count { fullText[it] == '\n' }
-        Log.d("ContentDebug", "page start=$actualStart end=$endChar newlines=$newlineCount preview=$preview")
         Log.d(TAG, "setPageContent: subText type=${subText.javaClass.simpleName} isSpanned=${subText is android.text.Spanned}")
 
         // 简繁转换（在切片后、应用高亮前）
@@ -452,7 +424,8 @@ class PageContentView(context: Context) : FrameLayout(context) {
         marginBottomPx: Float = 32f,
         highlightColor: Int = 0x40007AFF.toInt(),
         accentColor: Int = 0xFF007AFF.toInt(),
-        writingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL
+        writingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL,
+        boldText: Boolean = false
     ) {
         this.writingMode = writingMode
         val spacingRatio = if (fontSizePx > 0) letterSpacingPx / fontSizePx else 0f
@@ -465,6 +438,13 @@ class PageContentView(context: Context) : FrameLayout(context) {
         if (textView.typeface !== typeface) {
             textView.typeface = typeface
         }
+        // 正文字重（PR #19 #24）：选择层 paint 即分页引擎 sharedTextPaint 的来源，
+        // 在此设置后 StaticLayout 行宽与渲染保持一致
+        if (textView.paint.isFakeBoldText != boldText) {
+            textView.paint.isFakeBoldText = boldText
+            textView.invalidate()
+        }
+        justifiedView.setFakeBold(boldText)
         // TextView.setLineSpacing() always discards its internal Layout, even when
         // both values are unchanged. Page-turn completion configures every slot;
         // avoid clearing the freshly built destination layout immediately before

@@ -14,6 +14,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.palette.graphics.Palette
 import com.huangder.lumibooks.data.local.DataStoreManager
+import com.huangder.lumibooks.domain.model.AnnotationEditPlan
+import com.huangder.lumibooks.domain.model.AnnotationNoteEditPlanner
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.model.Bookmark
 import com.huangder.lumibooks.domain.model.Note
@@ -197,6 +199,9 @@ data class ReaderUiState(
     val showReaderBattery: Boolean = true,
     val volumeKeyPageTurnEnabled: Boolean = false,
     val bionicReadingEnabled: Boolean = false,
+    val comicModeEnabled: Boolean = false,
+    /** 正文字重（PR #19 #24）：>=600 视为加粗 */
+    val bodyFontWeight: Int = 400,
     val eInkModeEnabled: Boolean = false,
     val twoPageSpreadEnabled: Boolean = true,
     /** 双页对开模式当前跨页的右半页（无右页时为 null） */
@@ -621,6 +626,16 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.bionicReadingEnabled.collectLatest { enabled ->
                 _uiState.value = _uiState.value.copy(bionicReadingEnabled = enabled)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.comicMode.collectLatest { enabled ->
+                _uiState.value = _uiState.value.copy(comicModeEnabled = enabled)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.bodyFontWeight.collectLatest { weight ->
+                _uiState.value = _uiState.value.copy(bodyFontWeight = weight)
             }
         }
         viewModelScope.launch {
@@ -1367,11 +1382,6 @@ class ReaderViewModel @Inject constructor(
             0f
         }
         _uiState.value = if (crossesContinuousBoundary) {
-            android.util.Log.e(
-                "ContinuousProgressDebug",
-                "modeSwitch from=${state.pageTransition} to=$mode chapter=${state.currentChapterIndex} " +
-                    "position=${state.currentPageIndex}/${state.totalPages} fraction=$chapterFraction"
-            )
             state.copy(
                 pageTransition = mode,
                 currentPageIndex = 0,
@@ -1433,6 +1443,11 @@ class ReaderViewModel @Inject constructor(
     fun saveBionicReadingEnabled(enabled: Boolean) {
         _uiState.value = _uiState.value.copy(bionicReadingEnabled = enabled)
         viewModelScope.launch { dataStoreManager.saveBionicReadingEnabled(enabled) }
+    }
+
+    fun saveComicMode(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(comicModeEnabled = enabled)
+        viewModelScope.launch { dataStoreManager.saveComicMode(enabled) }
     }
 
     fun saveSelectionMenuItems(items: Map<String, Boolean>) {
@@ -1711,12 +1726,6 @@ class ReaderViewModel @Inject constructor(
                     val progressFraction = book.readingProgress * chapterCount
                     val startChapter = progressFraction.toInt().coerceIn(0, chapterCount - 1)
                     val pageFraction = (progressFraction - startChapter).coerceIn(0f, 1f)
-                    android.util.Log.e(
-                        "ContinuousProgressDebug",
-                        "load stored=${book.readingProgress} chapters=$chapterCount " +
-                            "targetChapter=$startChapter fraction=$pageFraction"
-                    )
-
                     val isPdf = book.format.name == "PDF"
                     _uiState.value = _uiState.value.copy(
                         book = displayBook,
@@ -1902,11 +1911,6 @@ class ReaderViewModel @Inject constructor(
         continuousProgressJob?.cancel()
         val progressState = _uiState.value
         val writeVersion = ++progressWriteVersion
-        android.util.Log.e(
-            "ContinuousProgressDebug",
-            "position chapter=$chapterIndex fraction=$chapterFraction pageIndex=${progressState.currentPageIndex} " +
-                "version=$writeVersion"
-        )
         continuousProgressJob = viewModelScope.launch {
             kotlinx.coroutines.delay(350L)
             progressWriteMutex.withLock {
@@ -2542,6 +2546,110 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch { readingRepository.deleteNote(note) }
     }
 
+    fun replaceAnnotationRange(
+        chapterIndex: Int,
+        startPosition: Int,
+        endPosition: Int,
+        type: String,
+        color: String
+    ) {
+        applyAnnotationRangeEdit(chapterIndex) { chapterText, existing, book ->
+            AnnotationNoteEditPlanner.replaceRange(
+                existing = existing,
+                chapterText = chapterText,
+                bookId = book.id,
+                chapterIndex = chapterIndex,
+                start = startPosition,
+                end = endPosition,
+                type = type,
+                color = color,
+                createdAt = System.currentTimeMillis()
+            )
+        }
+    }
+
+    fun removeAnnotationRange(
+        chapterIndex: Int,
+        startPosition: Int,
+        endPosition: Int,
+        type: String
+    ) {
+        applyAnnotationRangeEdit(chapterIndex) { chapterText, existing, book ->
+            AnnotationNoteEditPlanner.removeRange(
+                existing = existing,
+                chapterText = chapterText,
+                bookId = book.id,
+                chapterIndex = chapterIndex,
+                start = startPosition,
+                end = endPosition,
+                type = type
+            )
+        }
+    }
+
+    private fun applyAnnotationRangeEdit(
+        chapterIndex: Int,
+        buildPlan: (chapterText: String, existing: List<Note>, book: Book) -> AnnotationEditPlan
+    ) {
+        val book = _uiState.value.book ?: return
+        viewModelScope.launch {
+            val snapshot = _notes.value
+            try {
+                val chapterText = withContext(Dispatchers.IO) {
+                    getChapterText(chapterIndex)?.toString()
+                } ?: return@launch
+                val plan = buildPlan(chapterText, _readerNotes.value, book)
+                if (plan.isEmpty) return@launch
+                val prepared = withContext(Dispatchers.IO) {
+                    prepareAnnotationLocators(plan, chapterText, book.format.name == "EPUB")
+                }
+                val optimistic = applyAnnotationPlanToMemory(snapshot, prepared)
+                _notes.value = optimistic
+                refreshReaderNotes(optimistic)
+                readingRepository.applyAnnotationEdit(prepared)
+            } catch (_: Exception) {
+                _notes.value = snapshot
+                refreshReaderNotes(snapshot)
+            }
+        }
+    }
+
+    private fun prepareAnnotationLocators(
+        plan: AnnotationEditPlan,
+        chapterText: String,
+        needsLocators: Boolean
+    ): AnnotationEditPlan {
+        if (!needsLocators) return plan
+        fun withLocators(note: Note): Note {
+            val locators = createHighlightLocatorPair(
+                chapterText = chapterText,
+                startPosition = note.startPosition,
+                endPosition = note.endPosition,
+                selectedText = note.selectedText
+            )
+            return note.copy(startLocatorJson = locators.first, endLocatorJson = locators.second)
+        }
+        return plan.copy(
+            updates = plan.updates.map(::withLocators),
+            inserts = plan.inserts.map(::withLocators)
+        )
+    }
+
+    private fun applyAnnotationPlanToMemory(
+        current: List<Note>,
+        plan: AnnotationEditPlan
+    ): List<Note> {
+        val deleteIds = plan.deletes.mapTo(mutableSetOf()) { it.id }
+        val updatesById = plan.updates.associateBy { it.id }
+        return current.mapNotNull { note ->
+            when {
+                note.id in deleteIds -> null
+                note.id in updatesById -> updatesById.getValue(note.id)
+                else -> note
+            }
+        } + plan.inserts
+    }
+
     private fun loadBookmarks() {
         viewModelScope.launch {
             readingRepository.getBookmarksByBookId(bookId).collect { list ->
@@ -2571,17 +2679,35 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    fun findOverlappingReaderNote(
+    internal fun resolveAnnotationSelection(
         chapterIndex: Int,
         startPosition: Int,
         endPosition: Int,
         selectedText: String,
         startLocatorJson: String?,
         endLocatorJson: String?
-    ): Note? {
+    ): ResolvedHighlightRange? {
+        val chapterText = runCatching { getChapterText(chapterIndex) }.getOrNull() ?: return null
+        return HighlightAnchorResolver.resolve(
+            chapterText = chapterText,
+            storedStart = startPosition,
+            storedEnd = endPosition,
+            selectedText = selectedText,
+            reference = parseHighlightTextReference(startLocatorJson, endLocatorJson, selectedText)
+        )
+    }
+
+    fun findOverlappingReaderNotes(
+        chapterIndex: Int,
+        startPosition: Int,
+        endPosition: Int,
+        selectedText: String,
+        startLocatorJson: String?,
+        endLocatorJson: String?
+    ): List<Note> {
         val chapterText = runCatching { getChapterText(chapterIndex) }.getOrNull()
-            ?: return null
-        return findOverlappingResolvedNote(
+            ?: return emptyList()
+        return findOverlappingResolvedNotes(
             chapterText = chapterText,
             notes = _readerNotes.value,
             chapterIndex = chapterIndex,
@@ -2592,6 +2718,22 @@ class ReaderViewModel @Inject constructor(
             endLocatorJson = endLocatorJson
         )
     }
+
+    fun findOverlappingReaderNote(
+        chapterIndex: Int,
+        startPosition: Int,
+        endPosition: Int,
+        selectedText: String,
+        startLocatorJson: String?,
+        endLocatorJson: String?
+    ): Note? = findOverlappingReaderNotes(
+        chapterIndex,
+        startPosition,
+        endPosition,
+        selectedText,
+        startLocatorJson,
+        endLocatorJson
+    ).firstOrNull()
 
     private fun refreshReaderNotes(notes: List<Note>) {
         readerNotesJob?.cancel()
@@ -2658,12 +2800,6 @@ class ReaderViewModel @Inject constructor(
             state.currentPageIndex.toFloat() / state.totalPages
         } else 0f
         val progress = ((state.currentChapterIndex + pageProgress) / state.chapterCount).coerceIn(0f, 1f)
-        android.util.Log.e(
-            "ContinuousProgressDebug",
-            "persist chapter=${state.currentChapterIndex} page=${state.currentPageIndex}/${state.totalPages} " +
-                "global=$progress"
-        )
-
         bookRepository.updateReadingProgress(
             book.id,
             progress,

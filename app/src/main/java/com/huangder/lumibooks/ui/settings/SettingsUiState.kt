@@ -109,7 +109,6 @@ data class SettingsUiState(
     val customHighlightPalettes: List<com.huangder.lumibooks.domain.model.HighlightPalette> = emptyList(),
     val activeHighlightPaletteId: String? = null,
     val ttsFloatingWindow: Boolean = true,
-    val preferredTtsEngine: String? = null,
     val bodyFontWeight: Int = 400,
     val applyToBodyOnly: Boolean = false
 )

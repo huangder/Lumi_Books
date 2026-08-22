@@ -471,7 +471,16 @@ fun TxtEditorScreen(
                         textFieldValue.text,
                         currentCursor(),
                         currentScrollPosition()
-                    ) { onNavigateBack(true) }
+                    ) { structureChanged ->
+                        if (structureChanged) {
+                            Toast.makeText(
+                                context,
+                                R.string.txt_editor_structure_changed_warning,
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                        onNavigateBack(true)
+                    }
                 },
                 size = 40.dp,
                 iconSize = 22.dp,

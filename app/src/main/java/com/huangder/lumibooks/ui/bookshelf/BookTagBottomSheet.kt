@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -56,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.LibraryTag
 import com.huangder.lumibooks.domain.model.TagNameValidator
+import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
@@ -73,18 +75,23 @@ fun BookTagBottomSheet(
     selectedTagIds: Set<String>,
     onDismiss: () -> Unit,
     onTagCheckedChange: (LibraryTag, Boolean) -> Unit,
-    onCreateTag: (String) -> Unit,
-    onDeleteTag: (LibraryTag) -> Unit
+    onCreateTag: (String, String?) -> Unit,
+    onDeleteTag: (LibraryTag, Boolean) -> Unit
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     var newTagName by remember { mutableStateOf("") }
     var nameError by remember { mutableStateOf<String?>(null) }
-    var deleteTargetId by remember { mutableStateOf<String?>(null) }
+    // 待删除的标签（长按触发；一级标签含子标签时提供两选项，其余为简单确认）
+    var deletePrimaryTarget by remember { mutableStateOf<LibraryTag?>(null) }
+    // 行内添加子标签的一级标签 id
+    var subTagInputParentId by remember { mutableStateOf<String?>(null) }
+    var subTagName by remember { mutableStateOf("") }
     val nameRequired = stringResource(R.string.tag_name_required)
     val nameTooLong = stringResource(R.string.tag_name_too_long, TagNameValidator.MAX_LENGTH)
 
     LaunchedEffect(tags) {
-        if (tags.none { it.id == deleteTargetId }) deleteTargetId = null
+        deletePrimaryTarget = deletePrimaryTarget?.takeIf { target -> tags.any { it.id == target.id } }
+        subTagInputParentId = subTagInputParentId?.takeIf { id -> tags.any { it.id == id } }
     }
 
     val createTag = {
@@ -92,10 +99,42 @@ fun BookTagBottomSheet(
             TagNameValidator.clean(newTagName).isEmpty() -> nameError = nameRequired
             !TagNameValidator.isValid(newTagName) -> nameError = nameTooLong
             else -> {
-                onCreateTag(newTagName)
+                onCreateTag(newTagName, null)
                 newTagName = ""
                 nameError = null
             }
+        }
+    }
+
+    val createSubTag = { parentId: String ->
+        when {
+            TagNameValidator.clean(subTagName).isEmpty() -> nameError = nameRequired
+            !TagNameValidator.isValid(subTagName) -> nameError = nameTooLong
+            else -> {
+                onCreateTag(subTagName, parentId)
+                subTagName = ""
+                subTagInputParentId = null
+                nameError = null
+            }
+        }
+    }
+
+    val primaryTags = tags.filter { it.parentId == null }
+    val childTagsByParent = tags.filter { it.parentId != null }.groupBy { it.parentId!! }
+    val orphanChildTags = childTagsByParent.filterKeys { parentId -> tags.none { it.id == parentId } }.values.flatten()
+
+    // 级联选择：选子标签自动勾选其主标签；取消主标签连带取消其已选子标签
+    val toggleTagWithCascade: (LibraryTag) -> Unit = { tag ->
+        val willSelect = tag.id !in selectedTagIds
+        onTagCheckedChange(tag, willSelect)
+        if (willSelect && tag.parentId != null) {
+            tags.firstOrNull { it.id == tag.parentId && it.id !in selectedTagIds }?.let { parent ->
+                onTagCheckedChange(parent, true)
+            }
+        } else if (!willSelect && tag.parentId == null) {
+            childTagsByParent[tag.id].orEmpty()
+                .filter { it.id in selectedTagIds }
+                .forEach { child -> onTagCheckedChange(child, false) }
         }
     }
 
@@ -202,33 +241,72 @@ fun BookTagBottomSheet(
                     modifier = Modifier.padding(vertical = AppSpace.lg)
                 )
             } else {
-                FlowRow(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 260.dp)
+                        .heightIn(max = 300.dp)
                         .verticalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
                 ) {
-                    tags.forEach { tag ->
-                        TagSelectionChip(
-                            tag = tag,
-                            selected = tag.id in selectedTagIds,
-                            deleteVisible = deleteTargetId == tag.id,
-                            onToggle = {
-                                deleteTargetId = null
-                                onTagCheckedChange(tag, tag.id !in selectedTagIds)
+                    primaryTags.forEach { primaryTag ->
+                        PrimaryTagSection(
+                            primaryTag = primaryTag,
+                            childTags = childTagsByParent[primaryTag.id].orEmpty(),
+                            selectedTagIds = selectedTagIds,
+                            subTagInputVisible = subTagInputParentId == primaryTag.id,
+                            subTagName = subTagName,
+                            onSubTagNameChange = {
+                                subTagName = it
+                                nameError = null
                             },
-                            onShowDelete = { deleteTargetId = tag.id },
-                            onDelete = {
-                                deleteTargetId = null
-                                onDeleteTag(tag)
+                            onToggle = { tag -> toggleTagWithCascade(tag) },
+                            onShowDelete = { tag -> deletePrimaryTarget = tag },
+                            onShowSubTagInput = {
+                                subTagName = ""
+                                subTagInputParentId = primaryTag.id
+                            },
+                            onSubTagCreate = { createSubTag(primaryTag.id) },
+                            onSubTagDismiss = {
+                                subTagInputParentId = null
+                                subTagName = ""
                             }
+                        )
+                    }
+                    if (orphanChildTags.isNotEmpty()) {
+                        PrimaryTagSection(
+                            primaryTag = null,
+                            childTags = orphanChildTags,
+                            selectedTagIds = selectedTagIds,
+                            subTagInputVisible = false,
+                            subTagName = subTagName,
+                            onSubTagNameChange = {},
+                            onToggle = { tag -> toggleTagWithCascade(tag) },
+                            onShowDelete = { tag -> deletePrimaryTarget = tag },
+                            onShowSubTagInput = {},
+                            onSubTagCreate = {},
+                            onSubTagDismiss = {}
                         )
                     }
                 }
             }
         }
+    }
+
+    deletePrimaryTarget?.let { primaryTag ->
+        val childCount = childTagsByParent[primaryTag.id].orEmpty().size
+        DeletePrimaryTagDialog(
+            tagName = primaryTag.name,
+            childCount = childCount,
+            onDismiss = { deletePrimaryTarget = null },
+            onKeepChildren = {
+                deletePrimaryTarget = null
+                onDeleteTag(primaryTag, false)
+            },
+            onCascadeDelete = {
+                deletePrimaryTarget = null
+                onDeleteTag(primaryTag, true)
+            }
+        )
     }
 
     if (isLiquidGlass) {
@@ -252,6 +330,195 @@ fun BookTagBottomSheet(
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
         ) {
             sheetContent()
+        }
+    }
+}
+
+@Composable
+private fun DeletePrimaryTagDialog(
+    tagName: String,
+    childCount: Int,
+    onDismiss: () -> Unit,
+    onKeepChildren: () -> Unit,
+    onCascadeDelete: () -> Unit
+) {
+    LiquidGlassAlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = stringResource(R.string.delete_primary_tag_title, tagName),
+                fontSize = AppType.Body,
+                fontWeight = FontWeight.Bold,
+                color = AppColors.TextPrimary
+            )
+        },
+        text = {
+            Text(
+                text = if (childCount > 0) {
+                    stringResource(R.string.delete_tag_with_children_desc, childCount)
+                } else {
+                    stringResource(R.string.delete_tag_simple_desc)
+                },
+                fontSize = AppType.BodySmall,
+                color = AppColors.TextSecondary
+            )
+        },
+        confirmButton = {
+            if (childCount > 0) {
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.delete_tag_cascade),
+                    tintedColor = Color(0xFFC62828),
+                    onClick = onCascadeDelete
+                )
+            } else {
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.delete),
+                    tintedColor = Color(0xFFC62828),
+                    onClick = onCascadeDelete
+                )
+            }
+        },
+        dismissButton = {
+            if (childCount > 0) {
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.delete_tag_keep_children),
+                    onClick = onKeepChildren
+                )
+            } else {
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.cancel),
+                    onClick = onDismiss
+                )
+            }
+        }
+    )
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PrimaryTagSection(
+    primaryTag: LibraryTag?,
+    childTags: List<LibraryTag>,
+    selectedTagIds: Set<String>,
+    subTagInputVisible: Boolean,
+    subTagName: String,
+    onSubTagNameChange: (String) -> Unit,
+    onToggle: (LibraryTag) -> Unit,
+    onShowDelete: (LibraryTag) -> Unit,
+    onShowSubTagInput: () -> Unit,
+    onSubTagCreate: () -> Unit,
+    onSubTagDismiss: () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Box(modifier = Modifier.weight(1f, fill = false)) {
+                if (primaryTag != null) {
+                    TagSelectionChip(
+                        tag = primaryTag,
+                        selected = primaryTag.id in selectedTagIds,
+                        onToggle = { onToggle(primaryTag) },
+                        onShowDelete = { onShowDelete(primaryTag) }
+                    )
+                } else {
+                    Text(
+                        text = stringResource(R.string.tag_group_ungrouped),
+                        fontSize = AppType.BodySmall,
+                        color = AppColors.TextSecondary
+                    )
+                }
+            }
+            if (primaryTag != null) {
+                Spacer(Modifier.width(AppSpace.sm))
+                LiquidGlassIconButton(
+                    imageVector = Icons.Outlined.Add,
+                    contentDescription = stringResource(R.string.add_sub_tag),
+                    onClick = onShowSubTagInput,
+                    size = 30.dp,
+                    iconSize = 16.dp,
+                    normalContainerColor = AppColors.BgGray
+                )
+            }
+        }
+
+        AnimatedVisibility(visible = subTagInputVisible) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = AppSpace.sm, start = AppSpace.md)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(38.dp)
+                        .clip(RoundedCornerShape(AppRadius.md))
+                        .background(AppColors.BgGray)
+                        .padding(horizontal = AppSpace.md),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    if (subTagName.isEmpty()) {
+                        Text(
+                            text = stringResource(R.string.sub_tag_name_hint),
+                            fontSize = AppType.BodySmall,
+                            color = AppColors.TextSecondary
+                        )
+                    }
+                    BasicTextField(
+                        value = subTagName,
+                        onValueChange = onSubTagNameChange,
+                        singleLine = true,
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            fontSize = AppType.BodySmall,
+                            color = AppColors.TextPrimary
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                Spacer(Modifier.size(AppSpace.sm))
+                LiquidGlassIconButton(
+                    imageVector = Icons.Outlined.Add,
+                    contentDescription = stringResource(R.string.add_sub_tag),
+                    onClick = onSubTagCreate,
+                    size = 38.dp,
+                    iconSize = 18.dp,
+                    contentColor = AppColors.OnAccent,
+                    normalContainerColor = AppColors.Accent,
+                    liquidContainerColor = AppColors.Accent,
+                    liquidScrimColor = AppColors.Accent
+                )
+                Spacer(Modifier.size(AppSpace.sm))
+                LiquidGlassIconButton(
+                    imageVector = Icons.Outlined.Close,
+                    contentDescription = stringResource(R.string.cancel),
+                    onClick = onSubTagDismiss,
+                    size = 38.dp,
+                    iconSize = 16.dp,
+                    normalContainerColor = AppColors.BgGray
+                )
+            }
+        }
+
+        if (childTags.isNotEmpty()) {
+            FlowRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = AppSpace.sm, start = AppSpace.md),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                childTags.forEach { childTag ->
+                    TagSelectionChip(
+                        tag = childTag,
+                        selected = childTag.id in selectedTagIds,
+                        small = true,
+                        onToggle = { onToggle(childTag) },
+                        onShowDelete = { onShowDelete(childTag) }
+                    )
+                }
+            }
         }
     }
 }
@@ -496,12 +763,12 @@ fun BatchBookTagSheet(
 private fun TagSelectionChip(
     tag: LibraryTag,
     selected: Boolean,
-    deleteVisible: Boolean,
+    small: Boolean = false,
     onToggle: () -> Unit,
-    onShowDelete: () -> Unit,
-    onDelete: () -> Unit
+    onShowDelete: () -> Unit
 ) {
     val shape = RoundedCornerShape(50)
+    val chipHeight = if (small) 30.dp else 36.dp
     LiquidGlassSurface(
         shape = shape,
         fallbackColor = if (selected) AppColors.Accent.copy(alpha = 0.18f) else AppColors.BgGray,
@@ -512,7 +779,7 @@ private fun TagSelectionChip(
         },
         interactive = false,
         modifier = Modifier
-            .height(36.dp)
+            .height(chipHeight)
             .combinedClickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -522,45 +789,16 @@ private fun TagSelectionChip(
     ) {
         Box(
             modifier = Modifier
-                .height(36.dp)
-                .padding(horizontal = 14.dp),
+                .height(chipHeight)
+                .padding(horizontal = if (small) 11.dp else 14.dp),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = tag.name,
-                fontSize = AppType.BodySmall,
+                fontSize = if (small) AppType.Caption else AppType.BodySmall,
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                 color = if (selected) AppColors.Accent else AppColors.TextPrimary
             )
-            AnimatedVisibility(
-                visible = deleteVisible,
-                enter = fadeIn() + scaleIn(
-                    initialScale = 0.88f,
-                    animationSpec = spring(dampingRatio = 0.72f, stiffness = 420f)
-                ),
-                exit = fadeOut() + scaleOut(targetScale = 0.92f),
-                modifier = Modifier.matchParentSize()
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(shape)
-                        .background(Color.Black.copy(alpha = 0.28f))
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = onDelete
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Delete,
-                        contentDescription = stringResource(R.string.delete),
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
         }
     }
 }

@@ -506,8 +506,8 @@ private fun GoalPicker(
     Spacer(modifier = Modifier.height(32.dp))
 
     GoalOptionButton(
-        title = "不设置目标",
-        subtitle = "首页只显示今日是否阅读",
+        title = stringResource(R.string.goal_no_target),
+        subtitle = stringResource(R.string.goal_no_target_desc),
         onClick = { onConfirm(0) }
     )
 
@@ -524,11 +524,11 @@ private fun GoalPicker(
         )
     } else {
         GoalOptionButton(
-            title = "自定义目标",
+            title = stringResource(R.string.goal_custom_target),
             subtitle = if (currentMinutes > 0) {
-                "当前 $currentMinutes 分钟，可改为 1-1439 分钟"
+                stringResource(R.string.goal_custom_current_desc, currentMinutes)
             } else {
-                "输入 1-1439 分钟"
+                stringResource(R.string.goal_custom_desc)
             },
             onClick = { customMode = true }
         )
@@ -563,7 +563,7 @@ private fun CustomGoalInputPanel(
     val shape = RoundedCornerShape(18.dp)
     val panelContent: @Composable ColumnScope.() -> Unit = {
         Text(
-            text = "自定义目标",
+            text = stringResource(R.string.goal_custom_target),
             fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
             color = textPrimary

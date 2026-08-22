@@ -255,6 +255,8 @@ import kotlinx.coroutines.launch
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import coil.load
+import android.text.Spanned
+import androidx.compose.ui.layout.ContentScale
 
 private data class ReaderLinkLocation(
     val chapterIndex: Int,
@@ -625,6 +627,31 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     }
     val isContinuousScrollMode = !isBookLayout && uiState.useNewEngine &&
         uiState.readerWritingMode.usesContinuousScroll(basePageTransition, eInkMode)
+
+    val toggleBookmarkForCurrentPage: () -> Unit = {
+        val chapterIndex = uiState.currentChapterIndex
+        val pageIndex = uiState.currentPageIndex
+        val characterOffset = if (isContinuousScrollMode) {
+            0
+        } else {
+            readViewRef.value?.getCurrentPageStartCharacterOffset()
+        }
+        val existing = bookmarks.firstOrNull { bookmark ->
+            bookmark.chapterIndex == chapterIndex &&
+                (bookmark.characterOffset == characterOffset ||
+                    (bookmark.characterOffset == null && bookmark.position.toInt() == pageIndex))
+        }
+        if (existing != null) {
+            viewModel.deleteBookmark(existing)
+            Toast.makeText(context, R.string.bookmark_removed_toast, Toast.LENGTH_SHORT).show()
+        } else {
+            viewModel.addBookmark(
+                characterOffset = characterOffset,
+                title = readViewRef.value?.getCurrentPageBookmarkTitle()
+            )
+            Toast.makeText(context, R.string.bookmark_added_toast, Toast.LENGTH_SHORT).show()
+        }
+    }
     // 鍒嗛〉妯″紡涓嬶細褰撳墠鍙ュ彞鍙樺寲鏃堕噸鏂板簲鐢ㄩ珮浜?
     // 鍒嗛〉妯″紡涓嬶細褰撳墠鍙ュ彞鍙樺寲鏃堕噸鏂板簲鐢ㄩ珮浜?
     LaunchedEffect(uiState.ttsCurrentSentence) {
@@ -1592,7 +1619,15 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     onSelection = { selection ->
                         if (selection.text.isNotBlank()) {
                             val isNewSelection = selectionState == null
-                            val existing = viewModel.findOverlappingReaderNote(
+                            val resolvedSelection = viewModel.resolveAnnotationSelection(
+                                chapterIndex = uiState.currentChapterIndex,
+                                startPosition = selection.startPosition,
+                                endPosition = selection.endPosition,
+                                selectedText = selection.text,
+                                startLocatorJson = selection.startLocatorJson,
+                                endLocatorJson = selection.endLocatorJson
+                            ) ?: return@EpubWebViewReader
+                            val overlapping = viewModel.findOverlappingReaderNotes(
                                 chapterIndex = uiState.currentChapterIndex,
                                 startPosition = selection.startPosition,
                                 endPosition = selection.endPosition,
@@ -1603,15 +1638,13 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                             selectionState = SelectionState(
                                 chapterIndex = uiState.currentChapterIndex,
                                 pageInChapter = uiState.currentPageIndex,
-                                charStart = selection.startPosition,
-                                charEnd = selection.endPosition,
+                                charStart = resolvedSelection.start,
+                                charEnd = resolvedSelection.end,
                                 selectedText = selection.text,
                                 touchX = selection.centerX,
                                 touchY = selection.centerY,
-                                hasHighlight = existing != null && existing.type != "underline",
-                                hasUnderline = existing?.type == "underline",
-                                hasNote = existing?.note?.isNotEmpty() == true,
-                                existingNote = existing,
+                                overlappingHighlights = overlapping.filter { it.type != "underline" },
+                                overlappingUnderlines = overlapping.filter { it.type == "underline" },
                                 selTopY = selection.top,
                                 selBottomY = selection.bottom,
                                 selStartX = selection.left,
@@ -1722,20 +1755,11 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         isSelectionDragging = true
                     },
                     onSelection = { chapterIndex, selection ->
-                        val overlapping = findOverlappingNote(
-                            readerNotes,
-                            chapterIndex,
-                            selection.start,
-                            selection.end
+                        val overlappingHighlights = findOverlappingNotes(
+                            readerNotes, chapterIndex, selection.start, selection.end, "highlight"
                         )
-                        android.util.Log.e(
-                            "ReaderSelectionDebug",
-                            "continuous chapter=$chapterIndex selection=" +
-                                "[${selection.start},${selection.end}) " +
-                                "existingId=${overlapping?.id} existingRange=" +
-                                "[${overlapping?.startPosition},${overlapping?.endPosition}) " +
-                                "selected=${selection.selectedText.take(80)} " +
-                                "existing=${overlapping?.selectedText?.take(80)}"
+                        val overlappingUnderlines = findOverlappingNotes(
+                            readerNotes, chapterIndex, selection.start, selection.end, "underline"
                         )
                         selectionState = SelectionState(
                             chapterIndex = chapterIndex,
@@ -1745,10 +1769,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                             selectedText = selection.selectedText,
                             touchX = selection.startX,
                             touchY = selection.topY,
-                            hasHighlight = overlapping != null && overlapping.type != "underline",
-                            hasUnderline = overlapping?.type == "underline",
-                            hasNote = overlapping?.note?.isNotEmpty() == true,
-                            existingNote = overlapping,
+                            overlappingHighlights = overlappingHighlights,
+                            overlappingUnderlines = overlappingUnderlines,
                             selTopY = selection.topY,
                             selBottomY = selection.bottomY,
                             selStartX = selection.startX,
@@ -1760,7 +1782,9 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     onChapterVisible = viewModel::onContinuousScrollPosition,
                     onRestoreComplete = viewModel::clearPendingPageFraction,
                     chineseMode = uiState.chineseMode,
-                    ttsCurrentSentence = uiState.ttsCurrentSentence
+                    ttsCurrentSentence = uiState.ttsCurrentSentence,
+                    comicModeEnabled = uiState.comicModeEnabled,
+                    boldTextEnabled = uiState.bodyFontWeight >= 600
                 )
             } else if (uiState.useNewEngine) {
             AndroidView(
@@ -1773,11 +1797,6 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                 pageInChapter: Int,
                                 chapterTotalPages: Int
                             ) {
-                                android.util.Log.e(
-                                    "ReaderSelectionDebug",
-                                    "pageChanged chapter=$chapterIndex page=$pageInChapter/$chapterTotalPages " +
-                                        "curView=${System.identityHashCode(readViewRef.value?.curPageView)}"
-                                )
                                 // 翻页时关闭选择菜单（选区已随页面切换失效）
                                 selectionState = null
                                 isSelectionDragging = false
@@ -1805,6 +1824,10 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                 isSelectionDragging = false
                                 footnoteBubble = null
                                 viewModel.toggleMenu()
+                            }
+
+                            override fun onBookmarkSwipe() {
+                                toggleBookmarkForCurrentPage()
                             }
 
                             override fun onLinkClick(href: String, tapX: Float, tapY: Float) {
@@ -1876,14 +1899,11 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                     ?: return
                                 val cStart = info.chapterStartOffset + info.pageStart
                                 val cEnd = info.chapterStartOffset + info.pageEnd
-                                val overlapping = findOverlappingNote(readerNotes, info.chapterIndex, cStart, cEnd)
-                                android.util.Log.e(
-                                    "ReaderSelectionDebug",
-                                    "paged sourceView=${System.identityHashCode(sourceView)} " +
-                                        "chapter=${info.chapterIndex} selection=[$cStart,$cEnd) " +
-                                        "existingId=${overlapping?.id} existingRange=" +
-                                        "[${overlapping?.startPosition},${overlapping?.endPosition}) " +
-                                        "selected=${info.selectedText.take(80)} existing=${overlapping?.selectedText?.take(80)}"
+                                val overlappingHighlights = findOverlappingNotes(
+                                    readerNotes, info.chapterIndex, cStart, cEnd, "highlight"
+                                )
+                                val overlappingUnderlines = findOverlappingNotes(
+                                    readerNotes, info.chapterIndex, cStart, cEnd, "underline"
                                 )
                                 selectionState = SelectionState(
                                     chapterIndex = info.chapterIndex,
@@ -1893,10 +1913,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                     selectedText = info.selectedText,
                                     touchX = info.selStartX,
                                     touchY = info.selTopY,
-                                    hasHighlight = overlapping != null && overlapping.type != "underline",
-                                    hasUnderline = overlapping?.type == "underline",
-                                    hasNote = overlapping?.note?.isNotEmpty() == true,
-                                    existingNote = overlapping,
+                                    overlappingHighlights = overlappingHighlights,
+                                    overlappingUnderlines = overlappingUnderlines,
                                     selTopY = info.selTopY,
                                     selBottomY = info.selBottomY,
                                     selStartX = info.selStartX,
@@ -1926,7 +1944,12 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                                 if (fresh != null) {
                                                     val cs = fresh.chapterStartOffset + fresh.pageStart
                                                     val ce = fresh.chapterStartOffset + fresh.pageEnd
-                                                    val ov = findOverlappingNote(readerNotes, fresh.chapterIndex, cs, ce)
+                                                    val overlappingHighlights = findOverlappingNotes(
+                                                        readerNotes, fresh.chapterIndex, cs, ce, "highlight"
+                                                    )
+                                                    val overlappingUnderlines = findOverlappingNotes(
+                                                        readerNotes, fresh.chapterIndex, cs, ce, "underline"
+                                                    )
                                                     selectionState = SelectionState(
                                                         chapterIndex = fresh.chapterIndex,
                                                         pageInChapter = 0,
@@ -1935,10 +1958,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                                         selectedText = fresh.selectedText,
                                                         touchX = fresh.selStartX,
                                                         touchY = fresh.selTopY,
-                                                        hasHighlight = ov != null && ov.type != "underline",
-                                                        hasUnderline = ov?.type == "underline",
-                                                        hasNote = ov?.note?.isNotEmpty() == true,
-                                                        existingNote = ov,
+                                                        overlappingHighlights = overlappingHighlights,
+                                                        overlappingUnderlines = overlappingUnderlines,
                                                         selTopY = fresh.selTopY,
                                                         selBottomY = fresh.selBottomY,
                                                         selStartX = fresh.selStartX,
@@ -2055,6 +2076,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     }
                     // 简繁转换
                     readView.setChineseMode(uiState.chineseMode)
+                    // 正文字重（PR #19 #24）
+                    readView.setBoldText(uiState.bodyFontWeight >= 600)
                     // 翻页效果
                     readView.setPageTransition(if (isContinuousScrollMode) lastPagedTransition else effectivePageTransition)
                     // 左右边缘点击翻页方向（不影响滑动手势）
@@ -2065,6 +2088,11 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
 
             // 段间距/首行缩进变化时，强制重新分页
             LaunchedEffect(uiState.paragraphSpacing, uiState.firstLineIndent) {
+                readViewRef.value?.forceRelayout()
+            }
+
+            // 字重变化影响行宽，需要重新分页
+            LaunchedEffect(uiState.bodyFontWeight) {
                 readViewRef.value?.forceRelayout()
             }
 
@@ -2174,6 +2202,18 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 )
             }
 
+            val currentBookmarkOffset = if (isContinuousScrollMode) {
+                0
+            } else {
+                readViewRef.value?.getCurrentPageStartCharacterOffset()
+            }
+            val isCurrentPageBookmarked = bookmarks.any {
+                it.chapterIndex == displayedMenuSnapshot.chapterIndex &&
+                    (it.characterOffset == currentBookmarkOffset ||
+                        (it.characterOffset == null &&
+                            it.position.toInt() == displayedMenuSnapshot.pageIndex))
+            }
+
             // 顶部栏
             AnimatedVisibility(
                 visible = uiState.isMenuVisible,
@@ -2196,17 +2236,6 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 modifier = Modifier.align(Alignment.TopCenter)
             ) {
                 val bookTitle = uiState.book?.title ?: ""
-                val currentBookmarkOffset = if (isContinuousScrollMode) {
-                    0
-                } else {
-                    readViewRef.value?.getCurrentPageStartCharacterOffset()
-                }
-                val isCurrentPageBookmarked = bookmarks.any {
-                    it.chapterIndex == displayedMenuSnapshot.chapterIndex &&
-                    (it.characterOffset == currentBookmarkOffset ||
-                        (it.characterOffset == null &&
-                            it.position.toInt() == displayedMenuSnapshot.pageIndex))
-                }
                 val isTxtBook = uiState.book?.format?.name == "TXT"
                 ReaderTopBar(
                     title = bookTitle,
@@ -2227,21 +2256,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         }
                     },
                     isBookmarked = isCurrentPageBookmarked,
-                    onBookmarkToggle = {
-                        if (isCurrentPageBookmarked) {
-                            bookmarks.firstOrNull {
-                                it.chapterIndex == displayedMenuSnapshot.chapterIndex &&
-                                (it.characterOffset == currentBookmarkOffset ||
-                                    (it.characterOffset == null &&
-                                        it.position.toInt() == displayedMenuSnapshot.pageIndex))
-                            }?.let { viewModel.deleteBookmark(it) }
-                        } else {
-                            viewModel.addBookmark(
-                                characterOffset = currentBookmarkOffset,
-                                title = readViewRef.value?.getCurrentPageBookmarkTitle()
-                            )
-                        }
-                    },
+                    onBookmarkToggle = { toggleBookmarkForCurrentPage() },
                     isTxtBook = isTxtBook,
                     onEditClick = {
                         viewModel.hideMenu()
@@ -2790,11 +2805,13 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 readerBottomRightContent = uiState.readerBottomRightContent,
                 volumeKeyPageTurnEnabled = uiState.volumeKeyPageTurnEnabled,
                 bionicReadingEnabled = uiState.bionicReadingEnabled,
+                comicModeEnabled = uiState.comicModeEnabled,
                 screenSleepTimeoutSeconds = uiState.screenSleepTimeoutSeconds,
                 readerEdgeTapMode = uiState.readerEdgeTapMode,
                 onReaderCornerContentChange = viewModel::saveReaderCornerContent,
                 onVolumeKeyPageTurnEnabledChange = { viewModel.saveVolumeKeyPageTurnEnabled(it) },
                 onBionicReadingEnabledChange = viewModel::saveBionicReadingEnabled,
+                onComicModeChange = viewModel::saveComicMode,
                 onScreenSleepTimeoutChange = { seconds ->
                     viewModel.saveScreenSleepTimeoutSeconds(seconds)
                     if (seconds != DataStoreManager.SCREEN_SLEEP_TIMEOUT_FOLLOW_SYSTEM &&
@@ -2863,6 +2880,31 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     )
 
     // ── 文字选择自定义菜单 ──
+    val replaceSelectedAnnotationColor: (String, Int) -> Unit = { type, slot ->
+        selectionState?.let { selection ->
+            viewModel.replaceAnnotationRange(
+                chapterIndex = selection.chapterIndex,
+                startPosition = selection.charStart,
+                endPosition = selection.charEnd,
+                type = type,
+                color = readerHighlightColorReference(slot, type)
+            )
+        }
+        selectionState = null
+        clearActiveTextSelection()
+    }
+    val removeSelectedAnnotation: (String) -> Unit = { type ->
+        selectionState?.let { selection ->
+            viewModel.removeAnnotationRange(
+                chapterIndex = selection.chapterIndex,
+                startPosition = selection.charStart,
+                endPosition = selection.charEnd,
+                type = type
+            )
+        }
+        selectionState = null
+        clearActiveTextSelection()
+    }
     SelectionMenuOverlay(
         state = selectionState,
         readerTheme = renderingTheme,
@@ -2887,27 +2929,21 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 val colorReference = readerHighlightColorReference(slot, target.noteType)
                 val fresh = if (isBookLayout) null else readViewRef.value?.getSelectionInfo()
                 if (fresh != null) {
-                    viewModel.addNote(
-                        selectedText = fresh.selectedText,
-                        noteText = "",
+                    viewModel.replaceAnnotationRange(
                         chapterIndex = fresh.chapterIndex,
                         startPosition = fresh.chapterStartOffset + fresh.pageStart,
                         endPosition = fresh.chapterStartOffset + fresh.pageEnd,
-                        color = colorReference,
-                        type = target.noteType
+                        type = target.noteType,
+                        color = colorReference
                     )
                 } else {
                     selectionState?.let { selection ->
-                        viewModel.addNote(
-                            selectedText = selection.selectedText,
-                            noteText = "",
+                        viewModel.replaceAnnotationRange(
                             chapterIndex = selection.chapterIndex,
                             startPosition = selection.charStart,
                             endPosition = selection.charEnd,
-                            color = colorReference,
                             type = target.noteType,
-                            startLocatorJson = selection.startLocatorJson,
-                            endLocatorJson = selection.endLocatorJson
+                            color = colorReference
                         )
                     }
                 }
@@ -3001,11 +3037,9 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             clearActiveTextSelection()
         },
         onRemoveHighlight = {
-            // 移除高亮 = 删除该 Note（高亮和笔记共用同一条记录）
-            selectionState?.existingNote?.let { viewModel.deleteNote(it) }
-            selectionState = null
+            val type = selectionState?.existingNote?.type ?: "highlight"
+            removeSelectedAnnotation(type)
             showHighlightColorPicker = false
-            clearActiveTextSelection()
         },
         onViewNote = {
             // 🔥 查看/修改笔记：打开 NoteInputSheet 预填原笔记文字
@@ -3020,21 +3054,16 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             clearActiveTextSelection()
         },
         onChangeHighlightColor = { slot ->
-            // 修改已有高亮的颜色
-            val existing = selectionState?.existingNote
-            if (existing != null) {
-                viewModel.updateNote(
-                    existing.copy(color = readerHighlightColorReference(slot, existing.type))
-                )
-            }
-            selectionState = null
-            clearActiveTextSelection()
+            replaceSelectedAnnotationColor("highlight", slot)
+        },
+        onChangeUnderlineColor = { slot ->
+            replaceSelectedAnnotationColor("underline", slot)
         },
         onDeleteHighlight = {
-            // 删除高亮
-            selectionState?.existingNote?.let { viewModel.deleteNote(it) }
-            selectionState = null
-            clearActiveTextSelection()
+            removeSelectedAnnotation("highlight")
+        },
+        onDeleteUnderline = {
+            removeSelectedAnnotation("underline")
         },
         onReplace = {
             // 替换功能：仅TXT书籍支持
@@ -4472,7 +4501,9 @@ private fun ContinuousScrollReader(
     onChapterVisible: (chapterIndex: Int, chapterFraction: Float) -> Unit,
     onRestoreComplete: () -> Unit,
     chineseMode: String = "original",
-    ttsCurrentSentence: TtsSentencePosition? = null
+    ttsCurrentSentence: TtsSentencePosition? = null,
+    comicModeEnabled: Boolean = false,
+    boldTextEnabled: Boolean = false
 ) {
     if (chapterCount <= 0) return
 
@@ -4531,11 +4562,6 @@ private fun ContinuousScrollReader(
 
     LaunchedEffect(restoreTarget, restoreFraction, chapterCount, contentRevision) {
         isRestoringPosition = true
-        android.util.Log.e(
-            "ContinuousProgressDebug",
-            "restoreStart target=$restoreTarget fraction=$restoreFraction " +
-                "firstVisible=${listState.firstVisibleItemIndex}"
-        )
         listState.scrollToItem(restoreTarget)
         val restoredItem = awaitStableChapterMeasurement(restoreTarget)
         if (restoredItem != null) {
@@ -4545,11 +4571,6 @@ private fun ContinuousScrollReader(
                 listState.scrollBy(restoredItem.size * restoreFraction)
             }
         }
-        android.util.Log.e(
-            "ContinuousProgressDebug",
-            "restoreMeasured target=$restoreTarget loaded=${loadedChapters[restoreTarget]} " +
-                "itemOffset=${restoredItem?.offset} itemSize=${restoredItem?.size}"
-        )
         // The bounded measurement wait prevents a corrupt chapter from holding the loading page forever.
         onChapterVisible(restoreTarget, restoreFraction)
         onRestoreComplete()
@@ -4571,13 +4592,8 @@ private fun ContinuousScrollReader(
             val safeTarget = target.coerceIn(0, chapterCount - 1)
             isRestoringPosition = true
             listState.scrollToItem(safeTarget)
-            val targetItem = awaitStableChapterMeasurement(safeTarget)
+            awaitStableChapterMeasurement(safeTarget)
             listState.scrollToItem(safeTarget)
-            android.util.Log.e(
-                "ContinuousProgressDebug",
-                "jumpMeasured target=$safeTarget loaded=${loadedChapters[safeTarget]} " +
-                    "itemSize=${targetItem?.size}"
-            )
             onChapterVisible(safeTarget, 0f)
             withFrameNanos { }
             isRestoringPosition = false
@@ -4634,10 +4650,6 @@ private fun ContinuousScrollReader(
                 size > 0
             ) {
                 val fraction = (-offset).toFloat().div(size).coerceIn(0f, 0.9999f)
-                android.util.Log.e(
-                    "ContinuousProgressDebug",
-                    "viewportCenter chapter=$index offset=$offset size=$size fraction=$fraction"
-                )
                 onChapterVisible(index, fraction)
             }
             // 预加载当前可见章节之后的两章，保证章节衔接处内容已就绪
@@ -4723,10 +4735,6 @@ private fun ContinuousScrollReader(
                     com.huangder.lumibooks.util.ChineseConverter.convertPreservingSpans(it, chineseMode)
                 }
                 loadedChapters[chapterIndex] = true
-                android.util.Log.e(
-                    "ContinuousProgressDebug",
-                    "chapterLoaded chapter=$chapterIndex textLength=${value?.length ?: -1}"
-                )
             }
             val selectableText = remember(
                 chapterText,
@@ -4759,6 +4767,14 @@ private fun ContinuousScrollReader(
                     // 绔犺妭闂撮殧锛氶槻姝㈠墠涓€绔犳湯灏句笌涓嬩竴绔犳爣棰樿创澶繎
                     .padding(bottom = 28.dp)
             ) {
+                if (comicModeEnabled) {
+                    // 漫画模式：提取章节内图片，按屏宽等比缩放、无缝上下拼接
+                    ComicChapterImages(
+                        chapterIndex = chapterIndex,
+                        chapterText = chapterText,
+                        backgroundColor = backgroundColor
+                    )
+                } else {
                 AndroidView(
                     factory = { context ->
                         ContinuousSelectableTextView(context).apply {
@@ -4781,6 +4797,10 @@ private fun ContinuousScrollReader(
                         }
                         textView.setTextColor(textColor)
                         textView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, fontSize)
+                        if (textView.paint.isFakeBoldText != boldTextEnabled) {
+                            textView.paint.isFakeBoldText = boldTextEnabled
+                            textView.invalidate()
+                        }
                         textView.setLineSpacing(0f, lineHeight)
                         textView.typeface = typeface
                         val fontSizePx = android.util.TypedValue.applyDimension(
@@ -4798,9 +4818,68 @@ private fun ContinuousScrollReader(
                     },
                     modifier = Modifier.fillMaxWidth()
                 )
+                }
             }
         }
     }
+    }
+}
+
+/**
+ * 漫画模式：渲染章节中的所有图片，按屏宽等比缩放，无缝上下拼接。
+ */
+@Composable
+private fun ComicChapterImages(
+    chapterIndex: Int,
+    chapterText: CharSequence?,
+    backgroundColor: Int
+) {
+    val imageSources = remember(chapterIndex, chapterText) {
+        if (chapterText is Spanned) {
+            chapterText.getSpans(0, chapterText.length, android.text.style.ImageSpan::class.java)
+                .mapNotNull { it.source }
+                .filter { !it.isNullOrBlank() }
+        } else {
+            emptyList()
+        }
+    }
+    val context = LocalContext.current
+    // 共享单个 ImageLoader，避免每张图重复构建请求队列/内存缓存
+    val imageLoader = remember(context) {
+        coil.ImageLoader.Builder(context)
+            .crossfade(true)
+            .build()
+    }
+    val hintColor = remember(backgroundColor) {
+        val bg = Color(backgroundColor)
+        val luminance = bg.red * 0.299f + bg.green * 0.587f + bg.blue * 0.114f
+        if (luminance > 0.5f) Color(0xFF666666) else Color(0xFF999999)
+    }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.Top
+    ) {
+        if (imageSources.isEmpty()) {
+            Text(
+                text = stringResource(R.string.comic_mode_no_images),
+                color = hintColor,
+                fontSize = 14.sp,
+                modifier = Modifier.padding(vertical = 16.dp)
+            )
+        } else {
+            imageSources.forEach { source ->
+                coil.compose.AsyncImage(
+                    model = coil.request.ImageRequest.Builder(context)
+                        .data(source)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = null,
+                    imageLoader = imageLoader,
+                    modifier = Modifier.fillMaxWidth(),
+                    contentScale = ContentScale.FillWidth
+                )
+            }
+        }
     }
 }
 
@@ -5759,10 +5838,8 @@ private data class SelectionState(
     val selectedText: String,
     val touchX: Float,
     val touchY: Float,
-    val hasHighlight: Boolean = false,
-    val hasUnderline: Boolean = false,
-    val hasNote: Boolean = false,
-    val existingNote: com.huangder.lumibooks.domain.model.Note? = null,
+    val overlappingHighlights: List<com.huangder.lumibooks.domain.model.Note> = emptyList(),
+    val overlappingUnderlines: List<com.huangder.lumibooks.domain.model.Note> = emptyList(),
     // 选区边界框（屏幕像素坐标），用于菜单定位
     val selTopY: Float = 0f,
     val selBottomY: Float = 0f,
@@ -5770,18 +5847,26 @@ private data class SelectionState(
     val selEndX: Float = 0f,
     val startLocatorJson: String? = null,
     val endLocatorJson: String? = null
-)
+) {
+    val hasHighlight: Boolean get() = overlappingHighlights.isNotEmpty()
+    val hasUnderline: Boolean get() = overlappingUnderlines.isNotEmpty()
+    val hasNote: Boolean get() = (overlappingHighlights + overlappingUnderlines).any { it.note.isNotEmpty() }
+    val existingNote: com.huangder.lumibooks.domain.model.Note?
+        get() = (overlappingHighlights + overlappingUnderlines).let { notes ->
+            notes.firstOrNull { it.note.isNotEmpty() } ?: notes.firstOrNull()
+        }
+}
 
-/** 查找与选区重叠的 Note（chapterIndex 匹配 + 范围相交） */
-private fun findOverlappingNote(
+/** 查找与选区重叠的标注，按 type 分离高亮和划线。 */
+private fun findOverlappingNotes(
     notes: List<com.huangder.lumibooks.domain.model.Note>,
     chapterIndex: Int,
     selStart: Int,
-    selEnd: Int
-): com.huangder.lumibooks.domain.model.Note? {
-    return notes.firstOrNull { n ->
-        n.chapterIndex == chapterIndex && n.startPosition < selEnd && n.endPosition > selStart
-    }
+    selEnd: Int,
+    type: String
+): List<com.huangder.lumibooks.domain.model.Note> = notes.filter { note ->
+    note.chapterIndex == chapterIndex && note.type == type &&
+        note.startPosition < selEnd && note.endPosition > selStart
 }
 
 // ── 选择菜单覆盖层 ──
@@ -5929,7 +6014,9 @@ private fun SelectionMenuOverlay(
     onMenuSettings: () -> Unit = {},
     onColorPicked: (Int) -> Unit = {},
     onChangeHighlightColor: (Int) -> Unit = {},
-    onDeleteHighlight: () -> Unit = {}
+    onChangeUnderlineColor: (Int) -> Unit = {},
+    onDeleteHighlight: () -> Unit = {},
+    onDeleteUnderline: () -> Unit = {}
 ) {
     if (state == null) return
     // Hide the menu while selection handles are being dragged; re-enter at the updated position.
@@ -6170,14 +6257,14 @@ private fun SelectionMenuOverlay(
                                                     .then(if (isCurrentColor) Modifier.border(2.dp, menuText, CircleShape) else Modifier)
                                                     .clip(CircleShape)
                                                     .background(color)
-                                                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onChangeHighlightColor(index) }
+                                                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onChangeUnderlineColor(index) }
                                             )
                                         }
                                         Spacer(Modifier.width(6.dp))
                                         MenuDivider(dividerColor)
                                         Spacer(Modifier.width(6.dp))
                                         Box(
-                                            modifier = Modifier.size(22.dp).clip(CircleShape).clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onDeleteHighlight() },
+                                            modifier = Modifier.size(22.dp).clip(CircleShape).clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onDeleteUnderline() },
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.menu_delete_underline), tint = menuText.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
@@ -6301,7 +6388,7 @@ private fun SelectionMenuOverlay(
                                             .clickable(
                                                 indication = null,
                                                 interactionSource = remember { MutableInteractionSource() }
-                                            ) { onChangeHighlightColor(index) }
+                                            ) { onChangeUnderlineColor(index) }
                                     )
                                 }
                                 Spacer(Modifier.width(6.dp))
@@ -6314,12 +6401,12 @@ private fun SelectionMenuOverlay(
                                         .clickable(
                                             indication = null,
                                             interactionSource = remember { MutableInteractionSource() }
-                                        ) { onDeleteHighlight() },
+                                        ) { onDeleteUnderline() },
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
                                         Icons.Default.Delete,
-                                        contentDescription = stringResource(if (state.hasUnderline) R.string.menu_delete_underline else R.string.highlight_delete),
+                                        contentDescription = stringResource(R.string.menu_delete_underline),
                                         tint = menuText.copy(alpha = 0.7f),
                                         modifier = Modifier.size(18.dp)
                                     )

@@ -21,17 +21,28 @@ class TagRepositoryImpl @Inject constructor(
     override fun getAllBookTagLinks(): Flow<List<BookTagLink>> =
         tagDao.getAllBookTagLinks().map { links -> links.map { it.toDomain() } }
 
-    override suspend fun createAndAssignTag(bookId: String, rawName: String): LibraryTag {
+    override suspend fun createAndAssignTag(
+        bookId: String,
+        rawName: String,
+        parentId: String?
+    ): LibraryTag? {
         require(TagNameValidator.isValid(rawName))
 
         val name = TagNameValidator.clean(rawName)
+        val normalizedName = TagNameValidator.normalized(name)
+        // 名字全局唯一：若同名标签归属不同父级，返回 null 让调用方提示，避免静默把别处的标签关联过来
+        val existing = tagDao.getTagByNormalizedName(normalizedName)
+        if (existing != null && existing.parentId != parentId) {
+            return null
+        }
         return tagDao.createAndAssignTag(
             bookId = bookId,
             tag = TagEntity(
                 id = UUID.randomUUID().toString(),
                 name = name,
-                normalizedName = TagNameValidator.normalized(name),
-                createdAt = System.currentTimeMillis()
+                normalizedName = normalizedName,
+                createdAt = System.currentTimeMillis(),
+                parentId = parentId
             )
         ).toDomain()
     }
@@ -56,14 +67,15 @@ class TagRepositoryImpl @Inject constructor(
         return true
     }
 
-    override suspend fun deleteTag(tagId: String) {
-        tagDao.deleteTag(tagId)
+    override suspend fun deleteTag(tagId: String, deleteChildren: Boolean) {
+        tagDao.deleteTagWithChildren(tagId, deleteChildren)
     }
 
     private fun TagEntity.toDomain() = LibraryTag(
         id = id,
         name = name,
-        createdAt = createdAt
+        createdAt = createdAt,
+        parentId = parentId
     )
 
     private fun BookTagCrossRefEntity.toDomain() = BookTagLink(

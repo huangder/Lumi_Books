@@ -394,6 +394,28 @@
     <string name="tts_floating_notification_title">听书字幕</string>
     <string name="tts_floating_notification_text">悬浮窗正在显示字幕</string>
     <string name="tts_floating_loading">正在朗读...</string>
+    <string name="tts_floating_permission_title">听书字幕权限</string>
+    <string name="tts_floating_permission_required">在后台显示听书字幕需要「显示在其他应用上层」权限，请在系统设置中授权</string>
+    <string name="tts_floating_permission_toast">缺少悬浮窗权限，暂时无法显示听书字幕</string>
+    <string name="tts_floating_go_settings">前往设置</string>
+    <string name="bookmark_added_toast">已添加书签</string>
+    <string name="bookmark_removed_toast">已移除书签</string>
+    <string name="add_sub_tag">添加子标签</string>
+    <string name="sub_tag_name_hint">子标签名称</string>
+    <string name="tag_group_ungrouped">未分组</string>
+    <string name="delete_primary_tag_title">删除标签「%1$s」？</string>
+    <string name="delete_tag_with_children_desc">该标签下有 %1$d 个子标签</string>
+    <string name="delete_tag_simple_desc">删除后不可恢复</string>
+    <string name="delete_tag_keep_children">保留子标签</string>
+    <string name="delete_tag_cascade">连同删除</string>
+    <string name="comic_mode">漫画模式</string>
+    <string name="comic_mode_hint">图片按屏宽等比缩放，无缝上下拼接滚动</string>
+    <string name="comic_mode_no_images">本章没有可显示的图片</string>
+    <string name="goal_no_target">不设置目标</string>
+    <string name="goal_no_target_desc">首页只显示今日是否阅读</string>
+    <string name="goal_custom_target">自定义目标</string>
+    <string name="goal_custom_desc">输入 1-1439 分钟</string>
+    <string name="goal_custom_current_desc">当前 %1$d 分钟，可改为 1-1439 分钟</string>
     <string name="tts_page_not_ready">当前页面尚未准备好</string>
     <string name="tts_no_readable_text">当前页面没有可朗读的文字</string>
     <string name="tts_unavailable">无法启动文字转语音，请检查系统语音引擎和语言数据</string>
@@ -690,7 +712,7 @@
     <string name="title_external_tts">第三方 TTS 服务</string>
     <string name="title_external_tts_configuration">配置第三方 TTS 服务</string>
     <string name="external_tts_enabled_status">已启用</string>
-    <string name="external_tts_not_configured">未启用</string>
+    <string name="external_tts_not_configured">未启用（朗读使用系统引擎）</string>
     <string name="external_tts_service_status">当前状态</string>
     <string name="external_tts_configure">配置第三方 TTS 服务</string>
     <string name="external_tts_choose_protocol">选择第三方 TTS 协议</string>
@@ -957,4 +979,6 @@
     <string name="statistics_active_days">活跃天数</string>
     <string name="statistics_duration_value">%1$d小时%2$d分</string>
     <string name="statistics_active_days_value">%1$d天</string>
+    <string name="selected_books_count_compact">已选 %1$d 本</string>
+    <string name="txt_editor_structure_changed_warning">检测到章节结构变化，已保存正文；原有标注定位可能需要重新确认</string>
 </resources>

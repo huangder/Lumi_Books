@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.domain.repository
 
 import com.huangder.lumibooks.data.local.dao.BookDuration
+import com.huangder.lumibooks.domain.model.AnnotationEditPlan
 import com.huangder.lumibooks.domain.model.Bookmark
 import com.huangder.lumibooks.domain.model.DailyTotal
 import com.huangder.lumibooks.domain.model.Note
@@ -24,6 +25,7 @@ interface ReadingRepository {
     suspend fun insertNote(note: Note)
     suspend fun updateNote(note: Note)
     suspend fun deleteNote(note: Note)
+    suspend fun applyAnnotationEdit(plan: AnnotationEditPlan)
     suspend fun deleteAllNotesByBookId(bookId: String)
     fun getMostReadBooks(limit: Int = 5): Flow<List<BookDuration>>
     fun getDailyTotalsBetween(startDate: String, endDate: String): Flow<List<DailyTotal>>

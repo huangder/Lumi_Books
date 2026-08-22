@@ -103,6 +103,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     companion object {
         private const val TAG = "ReadView"
         private const val JUMP_SETTLE_DELAY_MS = 120L
+        /** 给系统选择手柄保留约一行半的页底命中安全区，分页计算与渲染共同使用 */
+        private const val SELECTION_BOTTOM_SAFE_AREA_DP = 56f
     }
 
     // ── 子组件 ──
@@ -122,12 +124,12 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private val nextSpreadView = FrameLayout(context).apply { clipChildren = false }
 
     // ── 页槽：左半页 + 右半页（单页模式只用左半页） ──
-    val prevPageView = PageContentView(context).apply { onSelectionReachEnd = { handleSelectionReachEnd() } }
-    val curPageView = PageContentView(context).apply { onSelectionReachEnd = { handleSelectionReachEnd() } }
-    val nextPageView = PageContentView(context).apply { onSelectionReachEnd = { handleSelectionReachEnd() } }
-    private val prevPageRightView = PageContentView(context).apply { onSelectionReachEnd = { handleSelectionReachEnd() } }
-    private val curPageRightView = PageContentView(context).apply { onSelectionReachEnd = { handleSelectionReachEnd() } }
-    private val nextPageRightView = PageContentView(context).apply { onSelectionReachEnd = { handleSelectionReachEnd() } }
+    val prevPageView = PageContentView(context)
+    val curPageView = PageContentView(context)
+    val nextPageView = PageContentView(context)
+    private val prevPageRightView = PageContentView(context)
+    private val curPageRightView = PageContentView(context)
+    private val nextPageRightView = PageContentView(context)
 
     // ── 中缝遮挡条：翻页动画时下层页面从缝隙透出，用阅读背景色盖住 ──
     private val prevGutterView = View(context)
@@ -173,6 +175,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var rvHasMoved = false
     private var rvIsEdgeTouch = false
     private var rvIsHandlingPageGesture = false
+    private var rvBookmarkSwipeTriggered = false
     private var rvPendingImageLongPress: ReaderImageHit? = null
     private var rvPendingImageView: PageContentView? = null
     private var rvImageLongPressHandled = false
@@ -194,6 +197,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var currentTopOverlayInsetDp: Float = 0f
     private var currentBottomOverlayInsetDp: Float = 0f
     private var currentParagraphSpacingDp: Float = 0f
+    private var currentBoldText: Boolean = false
     private var currentBionicReadingEnabled: Boolean = false
     private var currentUseDisplayDensityForSpans: Boolean = false
     private var currentChineseMode: String = "original"
@@ -399,7 +403,10 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             marginLeft
         }
         val baseMarginTop = (currentMarginTopDp + currentTopOverlayInsetDp) * density
-        val baseMarginBottom = (currentMarginBottomDp + currentBottomOverlayInsetDp) * density
+        val baseMarginBottom = (
+            currentMarginBottomDp + currentBottomOverlayInsetDp +
+                if (currentWritingMode.isVertical) 0f else SELECTION_BOTTOM_SAFE_AREA_DP
+            ) * density
         val lineSpacingExtra = 2.5f * density
 
         // 选择高亮色jian
@@ -439,7 +446,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 marginBottomPx = baseMarginBottom,
                 highlightColor = highlightColor,
                 accentColor = accentColor,
-                writingMode = currentWritingMode
+                writingMode = currentWritingMode,
+                boldText = currentBoldText
             )
             right.configure(
                 fontSizePx = currentFontSizePx,
@@ -454,7 +462,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 marginBottomPx = baseMarginBottom,
                 highlightColor = highlightColor,
                 accentColor = accentColor,
-                writingMode = currentWritingMode
+                writingMode = currentWritingMode,
+                boldText = currentBoldText
             )
             left.setReaderBackground(bgColor, currentReaderBackgroundImagePath)
             right.setReaderBackground(bgColor, currentReaderBackgroundImagePath)
@@ -654,7 +663,10 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             width
         }
         val baseMarginTop = (marginTopDp + topOverlayInsetDp) * density
-        val baseMarginBottom = (marginBottomDp + bottomOverlayInsetDp) * density
+        val baseMarginBottom = (
+            marginBottomDp + bottomOverlayInsetDp +
+                if (writingMode.isVertical) 0f else SELECTION_BOTTOM_SAFE_AREA_DP
+            ) * density
         val lineSpacing = 2.5f * density
         val lsPx = letterSpacingDp * density
 
@@ -913,6 +925,13 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         slotManager.refreshCurrentPage()
     }
 
+    /** 正文字重开关（PR #19 #24）：仅横排分页生效 */
+    fun setBoldText(enabled: Boolean) {
+        if (currentBoldText == enabled) return
+        currentBoldText = enabled
+        configureCurrentPageView()
+    }
+
     /** 设置翻页动画类型 */
     fun setPageTransition(mode: String) {
         if (currentPageTransition == mode) return
@@ -1034,43 +1053,6 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         return true
     }
 
-    /** 閫夋嫨缁堢偣鎷栧埌椤甸潰鏈熬锛氳嚜鍔ㄧ炕鍒颁笅涓€椤靛苟鍦ㄦ柊椤甸噸寤洪€夊尯锛堣法椤甸€夋嫨锛?*/
-    private fun handleSelectionReachEnd() {
-        android.util.Log.d(TAG, "handleSelectionReachEnd isJump=" + isJumpSettling + " nextLoaded=" + slotManager.getNextSlot().isLoaded)
-        if (isJumpSettling) return
-        val next = slotManager.getNextSlot()
-        if (!next.isLoaded) return
-        turnToNextPage()
-        postDelayed({ rebuildSelectionOnCurrentPage() }, 420L)
-    }
-
-    private fun rebuildSelectionOnCurrentPage() {
-        val slot = slotManager.getCurSlot()
-        val pageView = slot.contentView
-        val tv = pageView.textView
-        val sp = tv.text as? android.text.Spannable ?: return
-        if (sp.isEmpty()) return
-        android.util.Log.d(TAG, "rebuildSelectionOnCurrentPage len=" + sp.length)
-        val x = tv.paddingLeft + 4f
-        val y = tv.paddingTop + 4f
-        val downTime = android.os.SystemClock.uptimeMillis()
-        val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0)
-        tv.dispatchTouchEvent(down)
-        down.recycle()
-        // 鍏堝彂 DOWN 锛屽欢杩熷啀鍙?UP锛屾瀯鎴愮湡瀹炵殑闀挎寜鏃堕棿宸€傚悓姝ュ彂閫?down+up 浼氳鍙栨秷闀挎寜銆?
-        tv.postDelayed({
-            val upTime = android.os.SystemClock.uptimeMillis()
-            val up = MotionEvent.obtain(downTime, upTime, MotionEvent.ACTION_UP, x, y, 0)
-            tv.dispatchTouchEvent(up)
-            up.recycle()
-            // 闀挎寜閫夎瘝鍚庯紝灏嗛€夊尯璋冩暣鍒版柊椤靛紑澶村嚑涓瓧
-            val sp2 = tv.text as? android.text.Spannable ?: return@postDelayed
-            if (!sp2.isEmpty()) {
-                android.text.Selection.setSelection(sp2, 0, minOf(4, sp2.length))
-            }
-        }, android.view.ViewConfiguration.getLongPressTimeout().toLong() + 120L)
-    }
-
     // ── 触摸 ──
 
     /**
@@ -1101,6 +1083,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 rvTouchDownTime = System.currentTimeMillis()
                 rvHasMoved = false
                 rvIsHandlingPageGesture = false
+                rvBookmarkSwipeTriggered = false
                 rvImageLongPressHandled = false
                 val hitView = pageViewAt(ev.x, ev.y)
                 rvPendingImageView = hitView
@@ -1135,6 +1118,24 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                     rvHasMoved = true
                     removeCallbacks(rvImageLongPressRunnable)
                     rvPendingImageLongPress = null
+                }
+
+                // 顶部下拉书签：放在 ReadView 统一触摸分类器中处理，避免 Compose
+                // 覆盖层与可选择 TextView 竞争事件。仅短时、垂直主导、起点在顶部 160dp 内触发。
+                val density = resources.displayMetrics.density
+                if (!rvBookmarkSwipeTriggered &&
+                    dt < 700L &&
+                    rvTouchStartY <= 160f * density &&
+                    ev.y - rvTouchStartY >= 64f * density &&
+                    dy > dx * 1.8f
+                ) {
+                    rvBookmarkSwipeTriggered = true
+                    val cancelEvent = MotionEvent.obtain(ev).apply { action = MotionEvent.ACTION_CANCEL }
+                    super.dispatchTouchEvent(cancelEvent)
+                    cancelEvent.recycle()
+                    clearCurrentSelection()
+                    callbacks?.onBookmarkSwipe()
+                    return true
                 }
 
                 // 仅在 500ms 窗口内拦截水平滑动（超过 500ms 视为选择扩展，不拦截）
@@ -1531,21 +1532,6 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             )
         }
         val layout = tv.layout ?: return null
-        val hiddenStartLine = layout.getLineForOffset(selStart)
-        val hiddenStartLineOffset = layout.getLineStart(hiddenStartLine)
-        val visualStartLineInfo = pageView.getVisualLineInfo(selStart)
-
-        Log.e(
-            "ReaderSelectionDebug",
-            "getSelectionInfo view=${System.identityHashCode(pageView)} " +
-                "slotChapter=${slot.chapterIndex} slotPage=${slot.pageIndex} " +
-                "chapterStart=$chapterStartOffset local=[$selStart,$selEnd) " +
-                "absolute=[${chapterStartOffset + selStart},${chapterStartOffset + selEnd}) " +
-                "hiddenLine=$hiddenStartLine@$hiddenStartLineOffset " +
-                "visualLine=${visualStartLineInfo?.first}@${visualStartLineInfo?.second} " +
-                "text=${text.take(80)}"
-        )
-
         val startLine = layout.getLineForOffset(selStart)
         val endLine = layout.getLineForOffset(selEnd.coerceAtMost(spannable.length - 1))
         val topY = (tv.top + tv.paddingTop + layout.getLineTop(startLine)).toFloat()

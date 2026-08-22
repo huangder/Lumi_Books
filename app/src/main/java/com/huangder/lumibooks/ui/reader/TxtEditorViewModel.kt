@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.domain.model.Bookmark
 import com.huangder.lumibooks.domain.model.Note
+import com.huangder.lumibooks.domain.model.TxtAnnotationMigrationPlanner
 import com.huangder.lumibooks.domain.model.bookmarkPositionForCharacterOffset
 import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.domain.repository.ReadingRepository
@@ -16,9 +17,13 @@ import com.huangder.lumibooks.util.parser.TxtParser
 import com.huangder.lumibooks.util.parser.TxtReplaceRange
 import com.huangder.lumibooks.util.parser.TxtReplaceText
 import com.huangder.lumibooks.util.parser.TxtSetChapterText
+import com.huangder.lumibooks.util.parser.TxtChapterStructure
+import com.huangder.lumibooks.util.parser.TxtOffsetMigrationStep
 import com.huangder.lumibooks.util.parser.TxtTextMatch
 import com.huangder.lumibooks.util.parser.applyTxtEditOperations
+import com.huangder.lumibooks.util.parser.computeMinimalTxtReplacement
 import com.huangder.lumibooks.util.parser.findTxtLiteralMatches
+import com.huangder.lumibooks.util.parser.mapTxtOffsetThroughSteps
 import com.huangder.lumibooks.util.parser.replaceTxtLiteral
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -200,6 +205,11 @@ class TxtEditorViewModel @Inject constructor(
     private val application: Application
 ) : ViewModel() {
 
+    private companion object {
+        const val MAX_FINE_GRAINED_OPERATIONS = 200
+        const val MAX_FINE_GRAINED_CHANGE_RATIO = 0.6
+    }
+
     private val bookId: String = savedStateHandle.get<String>("bookId") ?: ""
     private val initialChapterIndex: Int = savedStateHandle.get<Int>("chapterIndex") ?: 0
     private val initialCharOffset: Int = savedStateHandle.get<Int>("charOffset") ?: 0
@@ -212,6 +222,7 @@ class TxtEditorViewModel @Inject constructor(
     private var parser: TxtParser? = null
     private var chapterTitles: List<String> = emptyList()
     private val operations = mutableListOf<TxtEditOperation>()
+    private val structureChangedChapters = mutableSetOf<Int>()
     private val cursorPositions = mutableMapOf<Int, Int>()
     private val scrollPositions = mutableMapOf<Int, Int>()
     private var searchJob: Job? = null
@@ -472,13 +483,13 @@ class TxtEditorViewModel @Inject constructor(
         currentText: String,
         cursor: Int,
         scrollPosition: Int,
-        onSuccess: () -> Unit
+        onSuccess: (structureChanged: Boolean) -> Unit
     ) {
         commitCurrent(currentText, cursor, scrollPosition)
         val txtParser = parser ?: return
         val snapshot = operations.toList()
         if (snapshot.isEmpty()) {
-            onSuccess()
+            onSuccess(false)
             return
         }
         searchJob?.cancel()
@@ -513,9 +524,11 @@ class TxtEditorViewModel @Inject constructor(
                             // Annotation migration is best effort and must not invalidate a saved file.
                         }
                     }
+                    val structureChanged = structureChangedChapters.isNotEmpty()
                     operations.clear()
+                    structureChangedChapters.clear()
                     _uiState.value = _uiState.value.copy(isSaving = false)
-                    onSuccess()
+                    onSuccess(structureChanged)
                 } else {
                     _uiState.value = _uiState.value.copy(
                         isSaving = false,
@@ -535,11 +548,50 @@ class TxtEditorViewModel @Inject constructor(
 
     private fun commitCurrent(text: String, cursor: Int, scrollPosition: Int) {
         val state = _uiState.value
-        cursorPositions[state.chapterIndex] = cursor.coerceIn(0, text.length)
-        scrollPositions[state.chapterIndex] = scrollPosition.coerceAtLeast(0)
+        val chapterIndex = state.chapterIndex
+        cursorPositions[chapterIndex] = cursor.coerceIn(0, text.length)
+        scrollPositions[chapterIndex] = scrollPosition.coerceAtLeast(0)
         if (text == state.chapterText) return
-        operations += TxtSetChapterText(state.chapterIndex, text)
+
+        if (TxtChapterStructure.mayChange(state.chapterText, text)) {
+            structureChangedChapters += chapterIndex
+        }
+        val replacement = computeMinimalTxtReplacement(chapterIndex, state.chapterText, text)
+        if (replacement != null) {
+            operations += replacement
+            if (shouldCollapseChapterOperations(chapterIndex, state.chapterText.length)) {
+                operations.removeAll { operation ->
+                    when (operation) {
+                        is TxtSetChapterText -> operation.chapterIndex == chapterIndex
+                        is TxtReplaceRange -> operation.chapterIndex == chapterIndex
+                        is TxtReplaceText -> operation.chapterIndex == chapterIndex
+                    }
+                }
+                operations += TxtSetChapterText(chapterIndex, text)
+            }
+        }
         _uiState.value = state.copy(chapterText = text)
+    }
+
+    private fun shouldCollapseChapterOperations(chapterIndex: Int, chapterLength: Int): Boolean {
+        if (operations.any { it is TxtReplaceText && it.chapterIndex == null }) return false
+        val chapterOperations = operations.filter { operation ->
+            when (operation) {
+                is TxtSetChapterText -> operation.chapterIndex == chapterIndex
+                is TxtReplaceRange -> operation.chapterIndex == chapterIndex
+                is TxtReplaceText -> operation.chapterIndex == null || operation.chapterIndex == chapterIndex
+            }
+        }
+        if (chapterOperations.size > MAX_FINE_GRAINED_OPERATIONS) return true
+        val changedSize = chapterOperations.sumOf { operation ->
+            when (operation) {
+                is TxtReplaceRange ->
+                    (operation.endExclusive - operation.start).coerceAtLeast(0) + operation.replacement.length
+                is TxtReplaceText -> operation.query.length + operation.replacement.length
+                is TxtSetChapterText -> operation.text.length
+            }
+        }
+        return changedSize > chapterLength.coerceAtLeast(1) * MAX_FINE_GRAINED_CHANGE_RATIO
     }
 
     private fun loadChapter(
@@ -711,14 +763,15 @@ class TxtEditorViewModel @Inject constructor(
 
         val unreliableChapters = operationSnapshot.filterIsInstance<TxtSetChapterText>()
             .mapTo(mutableSetOf()) { it.chapterIndex }
-        val stepsByChapter = mutableMapOf<Int, List<OffsetMigrationStep>>()
+            .apply { addAll(structureChangedChapters) }
+        val stepsByChapter = mutableMapOf<Int, List<TxtOffsetMigrationStep>>()
         val updatedTextsByChapter = mutableMapOf<Int, String>()
         annotatedChapters.forEach { chapterIndex ->
             if (chapterIndex !in 0 until txtParser.getChapterCount() ||
                 chapterIndex in unreliableChapters
             ) return@forEach
             var text = txtParser.getChapterContent(chapterIndex).toString()
-            val steps = mutableListOf<OffsetMigrationStep>()
+            val steps = mutableListOf<TxtOffsetMigrationStep>()
             operationSnapshot.forEach { operation ->
                 when (operation) {
                     is TxtSetChapterText -> Unit
@@ -727,7 +780,7 @@ class TxtEditorViewModel @Inject constructor(
                             operation.start >= 0 &&
                             operation.endExclusive in operation.start..text.length
                         ) {
-                            steps += OffsetMigrationStep(
+                            steps += TxtOffsetMigrationStep(
                                 listOf(TxtTextMatch(operation.start, operation.endExclusive)),
                                 operation.replacement.length
                             )
@@ -746,7 +799,7 @@ class TxtEditorViewModel @Inject constructor(
                                 operation.ignoreCase
                             )
                             if (matches.isNotEmpty()) {
-                                steps += OffsetMigrationStep(matches, operation.replacement.length)
+                                steps += TxtOffsetMigrationStep(matches, operation.replacement.length)
                                 text = replaceTxtLiteral(
                                     text,
                                     operation.query,
@@ -772,55 +825,25 @@ class TxtEditorViewModel @Inject constructor(
     }
 
     private suspend fun applyAnnotationMigration(migration: AnnotationMigration) {
-        migration.notes.forEach { note ->
-            val steps = migration.stepsByChapter[note.chapterIndex] ?: return@forEach
-            val start = mapOffset(note.startPosition, steps, endBias = false)
-            val end = mapOffset(note.endPosition, steps, endBias = true).coerceAtLeast(start)
-            val updatedText = migration.updatedTextsByChapter[note.chapterIndex] ?: return@forEach
-            val safeStart = start.coerceIn(0, updatedText.length)
-            val safeEnd = end.coerceIn(safeStart, updatedText.length)
-            readingRepository.updateNote(
-                note.copy(
-                    startPosition = safeStart,
-                    endPosition = safeEnd,
-                    selectedText = updatedText.substring(safeStart, safeEnd)
-                )
-            )
+        val annotationPlan = TxtAnnotationMigrationPlanner.plan(
+            notes = migration.notes,
+            stepsByChapter = migration.stepsByChapter,
+            updatedTextsByChapter = migration.updatedTextsByChapter
+        )
+        if (!annotationPlan.isEmpty) {
+            readingRepository.applyAnnotationEdit(annotationPlan)
         }
         migration.bookmarks.forEach { bookmark ->
             val offset = bookmark.characterOffset ?: return@forEach
             val steps = migration.stepsByChapter[bookmark.chapterIndex] ?: return@forEach
             readingRepository.insertBookmark(
-                bookmark.copy(position = bookmarkPositionForCharacterOffset(mapOffset(offset, steps, false)))
+                bookmark.copy(
+                    position = bookmarkPositionForCharacterOffset(
+                        mapTxtOffsetThroughSteps(offset, steps, false)
+                    )
+                )
             )
         }
-    }
-
-    private fun mapOffset(
-        originalOffset: Int,
-        steps: List<OffsetMigrationStep>,
-        endBias: Boolean
-    ): Int {
-        var offset = originalOffset.coerceAtLeast(0)
-        steps.forEach { step ->
-            var delta = 0
-            var mappedInsideMatch = false
-            step.matches.forEach { match ->
-                when {
-                    offset < match.start -> return@forEach
-                    offset >= match.endExclusive -> {
-                        delta += step.replacementLength - (match.endExclusive - match.start)
-                    }
-                    else -> {
-                        offset = match.start + delta + if (endBias) step.replacementLength else 0
-                        mappedInsideMatch = true
-                    }
-                }
-                if (mappedInsideMatch) return@forEach
-            }
-            if (!mappedInsideMatch) offset += delta
-        }
-        return offset.coerceAtLeast(0)
     }
 
     override fun onCleared() {
@@ -830,15 +853,10 @@ class TxtEditorViewModel @Inject constructor(
         super.onCleared()
     }
 
-    private data class OffsetMigrationStep(
-        val matches: List<TxtTextMatch>,
-        val replacementLength: Int
-    )
-
     private data class AnnotationMigration(
         val notes: List<Note>,
         val bookmarks: List<Bookmark>,
-        val stepsByChapter: Map<Int, List<OffsetMigrationStep>>,
+        val stepsByChapter: Map<Int, List<TxtOffsetMigrationStep>>,
         val updatedTextsByChapter: Map<Int, String>
     )
 }
