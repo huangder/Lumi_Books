@@ -139,7 +139,9 @@ private fun SponsorPage(
     LaunchedEffect(Unit) {
         val fetched = runCatching { githubContributorsClient.fetchContributors() }.getOrNull()
         if (!fetched.isNullOrEmpty()) {
-            contributors = fetched
+            // spencer1012 等人的代码经手动合入、无 commit 历史，不在 API 名单里，需从兜底名单补齐
+            val known = fetched.map { it.login.lowercase() }.toSet()
+            contributors = fetched + fallbackContributors.filter { it.login.lowercase() !in known }
         }
     }
 
@@ -371,6 +373,12 @@ private val fallbackContributors = listOf(
         login = "Corundum-Ling",
         avatarUrl = "https://avatars.githubusercontent.com/u/64763642?v=4",
         htmlUrl = "https://github.com/Corundum-Ling",
+        contributions = 0
+    ),
+    Contributor(
+        login = "spencer1012",
+        avatarUrl = "https://avatars.githubusercontent.com/u/264089283?v=4",
+        htmlUrl = "https://github.com/spencer1012",
         contributions = 0
     )
 )
