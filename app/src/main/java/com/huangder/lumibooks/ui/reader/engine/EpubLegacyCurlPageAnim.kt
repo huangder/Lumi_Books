@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.ui.reader.engine
 
 import android.graphics.Bitmap
+import android.graphics.BitmapShader
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.ColorMatrix
@@ -12,18 +13,13 @@ import android.graphics.PointF
 import android.graphics.RadialGradient
 import android.graphics.Rect
 import android.graphics.Shader
-import android.graphics.drawable.GradientDrawable
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
-import kotlin.math.PI
 import kotlin.math.abs
-import kotlin.math.atan2
-import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.sin
 
 /**
  * Bezier page-curl animation adapted to LumiBooks' snapshot and slot model.
@@ -35,9 +31,9 @@ import kotlin.math.sin
 internal class EpubLegacyCurlPageAnim(readView: PageAnimationSurface) : PageAnimationController(readView) {
 
     companion object {
-        private const val TAP_DURATION_MS = 420
-        private const val MIN_SETTLE_DURATION_MS = 180
-        private const val MAX_SETTLE_DURATION_MS = 420
+        private const val TAP_DURATION_MS = 700
+        private const val MIN_SETTLE_DURATION_MS = 300
+        private const val MAX_SETTLE_DURATION_MS = 700
         private const val COMMIT_PROGRESS = 0.14f
         private const val FLING_VELOCITY_DP_PER_SECOND = 450f
         private const val GEOMETRY_EPSILON = 0.1f
@@ -71,6 +67,10 @@ internal class EpubLegacyCurlPageAnim(readView: PageAnimationSurface) : PageAnim
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
+    // 纸背镜像纹理用 BitmapShader + CLAMP 铺满整个背面区域，
+    // 折痕附近不再露出 drawColor 底色形成浅色白边。
+    private var backShader: BitmapShader? = null
+    private var backShaderBitmap: Bitmap? = null
 
     private val path0 = Path()
     private val path1 = Path()
@@ -90,10 +90,7 @@ internal class EpubLegacyCurlPageAnim(readView: PageAnimationSurface) : PageAnim
     private var cornerY = 0f
     private var middleX = 0f
     private var middleY = 0f
-    private var degrees = 0f
     private var touchToCornerDistance = 0f
-    private var maxLength = 0f
-    private var isRightTopOrLeftBottom = false
 
     // 🔥 curl 拖拽锚点：direction 首次确定时记录手指位置，
     // 使 curl 初始偏移为 0，消除松开前纸张突变。
@@ -104,39 +101,6 @@ internal class EpubLegacyCurlPageAnim(readView: PageAnimationSurface) : PageAnim
         1f, 0f, 0f,
         0f, 1f, 0f,
         0f, 0f, 1f
-    )
-
-    private val folderShadowLR = gradient(
-        GradientDrawable.Orientation.LEFT_RIGHT,
-        intArrayOf(0x00000000, 0x08000000, 0x14000000)
-    )
-    private val folderShadowRL = gradient(
-        GradientDrawable.Orientation.RIGHT_LEFT,
-        intArrayOf(0x00000000, 0x08000000, 0x14000000)
-    )
-    private val backShadowLR = gradient(
-        GradientDrawable.Orientation.LEFT_RIGHT,
-        intArrayOf(0x1C000000, 0x0A000000, 0x02000000, 0x00000000)
-    )
-    private val backShadowRL = gradient(
-        GradientDrawable.Orientation.RIGHT_LEFT,
-        intArrayOf(0x1C000000, 0x0A000000, 0x02000000, 0x00000000)
-    )
-    private val frontShadowVLR = gradient(
-        GradientDrawable.Orientation.LEFT_RIGHT,
-        intArrayOf(0x1C000000, 0x0A000000, 0x02000000, 0x00000000)
-    )
-    private val frontShadowVRL = gradient(
-        GradientDrawable.Orientation.RIGHT_LEFT,
-        intArrayOf(0x1C000000, 0x0A000000, 0x02000000, 0x00000000)
-    )
-    private val frontShadowHTB = gradient(
-        GradientDrawable.Orientation.TOP_BOTTOM,
-        intArrayOf(0x1C000000, 0x0A000000, 0x02000000, 0x00000000)
-    )
-    private val frontShadowHBT = gradient(
-        GradientDrawable.Orientation.BOTTOM_TOP,
-        intArrayOf(0x1C000000, 0x0A000000, 0x02000000, 0x00000000)
     )
 
     private var turningBitmap: Bitmap? = null
@@ -197,13 +161,16 @@ internal class EpubLegacyCurlPageAnim(readView: PageAnimationSurface) : PageAnim
 
                 if (snapshotsReady && direction != Direction.NONE) {
                     val width = readView.width.toFloat()
-                    // curlDx 从 curlDragOriginX 累积，保证 curl 从边缘平滑起步
+                    // NEXT/PREV 都从角落（内部坐标 = 屏幕右角）平铺起步：
+                    // PREV 通过水平镜像输出渲染，手指向右拖折算为内部 touch 向左，
+                    // 卷曲从 0 连续开始，不再跳到已卷曲状态。
                     val curlDx = event.x - curlDragOriginX
-                    touchX = when (direction) {
-                        Direction.NEXT -> width + min(curlDx, 0f)
-                        Direction.PREV -> -width + max(curlDx, 0f)
-                        Direction.NONE -> event.x
-                    }.coerceIn(-width, width - 1f)
+                    val inwardDrag = when (direction) {
+                        Direction.NEXT -> min(curlDx, 0f)
+                        Direction.PREV -> -max(curlDx, 0f)
+                        Direction.NONE -> 0f
+                    }
+                    touchX = (width + inwardDrag).coerceIn(-width, width - 1f)
                     isDragging = true
                     lastX = event.x
                     readView.postInvalidateOnAnimation()
@@ -255,33 +222,28 @@ internal class EpubLegacyCurlPageAnim(readView: PageAnimationSurface) : PageAnim
         val height = readView.height.toFloat()
         if (width <= 0f || height <= 0f) return
 
-        canvas.save()
+        val saveCount = canvas.save()
+        // PREV 采用"左掀角"模型：内部几何与 NEXT 相同（从右角向左卷），整帧水平镜像输出
+        if (direction == Direction.PREV) {
+            canvas.scale(-1f, 1f, width * 0.5f, 0f)
+        }
         canvas.clipRect(0f, 0f, width, height)
         drawPage(canvas, underBitmap, underPageView)
 
         if (calculateCurlPoints()) {
             drawCurrentPageArea(canvas, turningBitmap, turningPageView)
-            drawUnderlyingPageShadow(canvas, underBitmap, underPageView)
-            drawCurrentPageShadow(canvas)
+            buildFoldEdgePath()
             drawCurlAmbientShadow(canvas)
             drawFoldedBack(canvas, turningBitmap)
-            drawFeatheredFoldEdge(canvas)
+            drawFoldEdgeShading(canvas)
         } else {
-            val targetSideReached = when (direction) {
-                Direction.NEXT -> touchX <= 0f
-                Direction.PREV -> touchX >= 0f
-                Direction.NONE -> false
-            }
-            val showTurningPage = when (direction) {
-                Direction.NEXT -> !targetSideReached
-                Direction.PREV -> targetSideReached
-                Direction.NONE -> false
-            }
-            val fallbackBitmap = if (showTurningPage) turningBitmap else underBitmap
-            val fallbackView = if (showTurningPage) turningPageView else underPageView
+            // 几何退化（贴角 / 极端收尾）时整页兜底：未过半显示被掀起的页面，过半显示下层页面
+            val targetSideReached = touchX <= 0f
+            val fallbackBitmap = if (targetSideReached) underBitmap else turningBitmap
+            val fallbackView = if (targetSideReached) underPageView else turningPageView
             drawPage(canvas, fallbackBitmap, fallbackView)
         }
-        canvas.restore()
+        canvas.restoreToCount(saveCount)
     }
 
     override fun startAnim(fromDrag: Boolean) {
@@ -298,15 +260,10 @@ internal class EpubLegacyCurlPageAnim(readView: PageAnimationSurface) : PageAnim
         direction = dir
         startY = readView.height * 0.82f
         configureCorner(startY)
-        val nearCornerY = nearCornerY()
-        if (dir == Direction.NEXT) {
-            startX = readView.width - 1f
-            touchX = startX
-        } else {
-            startX = 1f
-            touchX = -readView.width.toFloat()
-        }
-        touchY = nearCornerY
+        // NEXT/PREV 都从角落平铺起步（PREV 帧随后镜像输出），点击翻页同样从 0 卷曲
+        startX = readView.width - 1f
+        touchX = startX
+        touchY = nearCornerY()
         snapshotsReady = capturePages(dir)
         if (!snapshotsReady) {
             resetToIdle()
@@ -343,12 +300,8 @@ internal class EpubLegacyCurlPageAnim(readView: PageAnimationSurface) : PageAnim
         }
         isFlipAnim = false
         settleCompletesPage = false
-        val targetX = if (direction == Direction.NEXT) {
-            readView.width - 1f
-        } else {
-            -readView.width.toFloat()
-        }
-        startScrollTo(targetX, nearCornerY())
+        // NEXT/PREV 的平铺态都在角落（内部坐标 = 右角），回弹一律退回右角
+        startScrollTo(readView.width - 1f, nearCornerY())
     }
 
     override fun abortAnim() {
@@ -375,16 +328,15 @@ internal class EpubLegacyCurlPageAnim(readView: PageAnimationSurface) : PageAnim
         underBitmap?.recycle()
         turningBitmap = null
         underBitmap = null
+        backPaint.shader = null
+        backShader = null
+        backShaderBitmap = null
     }
 
     private fun settleToPage(fixedDurationMs: Int? = null) {
         settleCompletesPage = true
-        val targetX = if (direction == Direction.NEXT) {
-            -readView.width.toFloat()
-        } else {
-            readView.width - 1f
-        }
-        startScrollTo(targetX, nearCornerY(), fixedDurationMs)
+        // PREV 与 NEXT 内部几何一致：touch 向左越过屏幕宽度即完成
+        startScrollTo(-readView.width.toFloat(), nearCornerY(), fixedDurationMs)
     }
 
     private fun startScrollTo(targetX: Float, targetY: Float, fixedDurationMs: Int? = null) {
@@ -444,8 +396,6 @@ internal class EpubLegacyCurlPageAnim(readView: PageAnimationSurface) : PageAnim
     private fun configureCorner(initialY: Float) {
         cornerX = readView.width.toFloat()
         cornerY = if (initialY <= readView.height * 0.5f) 0f else readView.height.toFloat()
-        isRightTopOrLeftBottom = cornerY == 0f
-        maxLength = hypot(readView.width.toDouble(), readView.height.toDouble()).toFloat()
     }
 
     private fun nearCornerY(): Float {
@@ -576,161 +526,67 @@ internal class EpubLegacyCurlPageAnim(readView: PageAnimationSurface) : PageAnim
         canvas.restore()
     }
 
-    private fun drawUnderlyingPageShadow(canvas: Canvas, bitmap: Bitmap?, pageView: View?) {
-        if (bitmap == null && pageView == null) return
-        path1.reset()
-        path1.moveTo(bezierStart1.x, bezierStart1.y)
-        path1.lineTo(bezierVertex1.x, bezierVertex1.y)
-        path1.lineTo(bezierVertex2.x, bezierVertex2.y)
-        path1.lineTo(bezierStart2.x, bezierStart2.y)
-        path1.lineTo(cornerX, cornerY)
-        path1.close()
+    private fun buildFoldEdgePath() {
+        foldEdgePath.reset()
+        foldEdgePath.moveTo(bezierStart1.x, bezierStart1.y)
+        foldEdgePath.quadTo(
+            bezierControl1.x,
+            bezierControl1.y,
+            bezierEnd1.x,
+            bezierEnd1.y
+        )
+        foldEdgePath.lineTo(renderTouchX, renderTouchY)
+        foldEdgePath.lineTo(bezierEnd2.x, bezierEnd2.y)
+        foldEdgePath.quadTo(
+            bezierControl2.x,
+            bezierControl2.y,
+            bezierStart2.x,
+            bezierStart2.y
+        )
+    }
 
-        degrees = Math.toDegrees(
-            atan2(
-                (bezierControl1.x - cornerX).toDouble(),
-                bezierControl2.y - cornerY.toDouble()
-            )
-        ).toFloat()
-
-        val left: Int
-        val right: Int
-        val shadow: GradientDrawable
-        if (isRightTopOrLeftBottom) {
-            left = bezierStart1.x.toInt()
-            right = (bezierStart1.x + touchToCornerDistance / 3.4f).toInt()
-            shadow = backShadowLR
-        } else {
-            left = (bezierStart1.x - touchToCornerDistance / 3.4f).toInt()
-            right = bezierStart1.x.toInt()
-            shadow = backShadowRL
-        }
-
+    /**
+     * 沿完整折痕曲线的三段式羽化阴影：每个区域用多 pass 宽度递减、
+     * 透明度小幅递增的描边叠加，形成由折痕向外大范围平滑衰减的渐变
+     * （单步 ≤3% 避免色阶断层；折痕边缘处峰值约 20% 黑）。
+     */
+    private fun drawFoldEdgeShading(canvas: Canvas) {
+        canvas.save()
+        // 卷起的纸在下方页面上的投影（path0 内、path1 外），峰值约 12% 黑
         canvas.save()
         canvas.clipPath(path0)
+        canvas.clipOutPath(path1)
+        strokeFoldEdge(canvas, 40f * density, 0x03000000)
+        strokeFoldEdge(canvas, 28f * density, 0x04000000)
+        strokeFoldEdge(canvas, 18f * density, 0x06000000)
+        strokeFoldEdge(canvas, 10f * density, 0x08000000)
+        strokeFoldEdge(canvas, 4f * density, 0x0B000000)
+        canvas.restore()
+        // 纸背沿折痕的压暗（越贴折痕越深，峰值约 20% 黑）
+        canvas.save()
         canvas.clipPath(path1)
-        canvas.rotate(degrees, bezierStart1.x, bezierStart1.y)
-        shadow.setBounds(
-            min(left, right),
-            bezierStart1.y.toInt(),
-            max(left, right),
-            (bezierStart1.y + maxLength).toInt()
-        )
-        shadow.draw(canvas)
+        strokeFoldEdge(canvas, 36f * density, 0x03000000)
+        strokeFoldEdge(canvas, 26f * density, 0x05000000)
+        strokeFoldEdge(canvas, 17f * density, 0x07000000)
+        strokeFoldEdge(canvas, 10f * density, 0x0A000000)
+        strokeFoldEdge(canvas, 5f * density, 0x0D000000)
+        strokeFoldEdge(canvas, max(1.5f, density * 1.5f), 0x12000000)
+        canvas.restore()
+        // 折痕前方平铺页面的轻微弯曲暗示，峰值约 8% 黑
+        canvas.save()
+        canvas.clipOutPath(path0)
+        strokeFoldEdge(canvas, 30f * density, 0x03000000)
+        strokeFoldEdge(canvas, 20f * density, 0x04000000)
+        strokeFoldEdge(canvas, 11f * density, 0x06000000)
+        strokeFoldEdge(canvas, 4.5f * density, 0x0A000000)
+        canvas.restore()
         canvas.restore()
     }
 
-    private fun drawCurrentPageShadow(canvas: Canvas) {
-        val angle = if (isRightTopOrLeftBottom) {
-            PI / 4f - atan2(
-                (bezierControl1.y - renderTouchY).toDouble(),
-                (renderTouchX - bezierControl1.x).toDouble()
-            ).toFloat()
-        } else {
-            PI / 4f - atan2(
-                (renderTouchY - bezierControl1.y).toDouble(),
-                (renderTouchX - bezierControl1.x).toDouble()
-            ).toFloat()
-        }
-        val shadowWidth = max(22f * density, 28f)
-        val offsetX = (shadowWidth * 1.414f * cos(angle)).toFloat()
-        val offsetY = (shadowWidth * 1.414f * sin(angle)).toFloat()
-        val shadowTipX = renderTouchX + offsetX
-        val shadowTipY = if (isRightTopOrLeftBottom) {
-            renderTouchY + offsetY
-        } else {
-            renderTouchY - offsetY
-        }
-
-        path1.reset()
-        path1.moveTo(shadowTipX, shadowTipY)
-        path1.lineTo(renderTouchX, renderTouchY)
-        path1.lineTo(bezierControl1.x, bezierControl1.y)
-        path1.lineTo(bezierStart1.x, bezierStart1.y)
-        path1.close()
-
-        canvas.save()
-        canvas.clipOutPath(path0)
-        canvas.clipPath(path1)
-        val verticalShadow = if (isRightTopOrLeftBottom) frontShadowVLR else frontShadowVRL
-        val left = if (isRightTopOrLeftBottom) {
-            bezierControl1.x.toInt()
-        } else {
-            (bezierControl1.x - shadowWidth).toInt()
-        }
-        val right = if (isRightTopOrLeftBottom) {
-            (bezierControl1.x + shadowWidth).toInt()
-        } else {
-            (bezierControl1.x + 1f).toInt()
-        }
-        val rotation = Math.toDegrees(
-            atan2(
-                (renderTouchX - bezierControl1.x).toDouble(),
-                (bezierControl1.y - renderTouchY).toDouble()
-            )
-        ).toFloat()
-        canvas.rotate(rotation, bezierControl1.x, bezierControl1.y)
-        verticalShadow.setBounds(
-            min(left, right),
-            (bezierControl1.y - maxLength).toInt(),
-            max(left, right),
-            bezierControl1.y.toInt()
-        )
-        verticalShadow.draw(canvas)
-        canvas.restore()
-
-        path1.reset()
-        path1.moveTo(shadowTipX, shadowTipY)
-        path1.lineTo(renderTouchX, renderTouchY)
-        path1.lineTo(bezierControl2.x, bezierControl2.y)
-        path1.lineTo(bezierStart2.x, bezierStart2.y)
-        path1.close()
-
-        canvas.save()
-        canvas.clipOutPath(path0)
-        canvas.clipPath(path1)
-        val horizontalShadow = if (isRightTopOrLeftBottom) frontShadowHTB else frontShadowHBT
-        val top = if (isRightTopOrLeftBottom) {
-            bezierControl2.y.toInt()
-        } else {
-            (bezierControl2.y - shadowWidth).toInt()
-        }
-        val bottom = if (isRightTopOrLeftBottom) {
-            (bezierControl2.y + shadowWidth).toInt()
-        } else {
-            (bezierControl2.y + 1f).toInt()
-        }
-        val horizontalRotation = Math.toDegrees(
-            atan2(
-                (bezierControl2.y - renderTouchY).toDouble(),
-                (bezierControl2.x - renderTouchX).toDouble()
-            )
-        ).toFloat()
-        canvas.rotate(horizontalRotation, bezierControl2.x, bezierControl2.y)
-        val referenceY = if (bezierControl2.y < 0f) {
-            bezierControl2.y - readView.height
-        } else {
-            bezierControl2.y
-        }
-        val diagonalLength = hypot(bezierControl2.x.toDouble(), referenceY.toDouble()).toFloat()
-        val shadowLeft = if (diagonalLength > maxLength) {
-            bezierControl2.x - shadowWidth - diagonalLength
-        } else {
-            bezierControl2.x - maxLength
-        }
-        val shadowRight = if (diagonalLength > maxLength) {
-            bezierControl2.x + maxLength - diagonalLength
-        } else {
-            bezierControl2.x
-        }
-        horizontalShadow.setBounds(
-            min(shadowLeft, shadowRight).toInt(),
-            min(top, bottom),
-            max(shadowLeft, shadowRight).toInt(),
-            max(top, bottom)
-        )
-        horizontalShadow.draw(canvas)
-        canvas.restore()
+    private fun strokeFoldEdge(canvas: Canvas, width: Float, color: Int) {
+        edgeFeatherPaint.strokeWidth = width
+        edgeFeatherPaint.color = color
+        canvas.drawPath(foldEdgePath, edgeFeatherPaint)
     }
 
     private fun drawCurlAmbientShadow(canvas: Canvas) {
@@ -776,41 +632,7 @@ internal class EpubLegacyCurlPageAnim(readView: PageAnimationSurface) : PageAnim
         canvas.drawCircle(centerX, centerY, radius, ambientShadowPaint)
     }
 
-    private fun drawFeatheredFoldEdge(canvas: Canvas) {
-        foldEdgePath.reset()
-        foldEdgePath.moveTo(bezierStart1.x, bezierStart1.y)
-        foldEdgePath.quadTo(
-            bezierControl1.x,
-            bezierControl1.y,
-            bezierEnd1.x,
-            bezierEnd1.y
-        )
-        foldEdgePath.lineTo(renderTouchX, renderTouchY)
-        foldEdgePath.lineTo(bezierEnd2.x, bezierEnd2.y)
-        foldEdgePath.quadTo(
-            bezierControl2.x,
-            bezierControl2.y,
-            bezierStart2.x,
-            bezierStart2.y
-        )
-
-        // 🔥 3 passes 代替 5 passes —— 视觉接近，draw call 减少 40%
-        drawEdgeStroke(canvas, 26f * density, 0x02000000)
-        drawEdgeStroke(canvas, 12f * density, 0x04000000)
-        drawEdgeStroke(canvas, max(1.5f, density * 1.5f), 0x09000000)
-    }
-
-    private fun drawEdgeStroke(canvas: Canvas, width: Float, color: Int) {
-        edgeFeatherPaint.strokeWidth = width
-        edgeFeatherPaint.color = color
-        canvas.drawPath(foldEdgePath, edgeFeatherPaint)
-    }
-
     private fun drawFoldedBack(canvas: Canvas, bitmap: Bitmap?) {
-        val horizontalFold = abs((bezierStart1.x + bezierControl1.x) / 2f - bezierControl1.x)
-        val verticalFold = abs((bezierStart2.y + bezierControl2.y) / 2f - bezierControl2.y)
-        val foldShadowWidth = min(horizontalFold, verticalFold)
-
         path1.reset()
         path1.moveTo(bezierVertex2.x, bezierVertex2.y)
         path1.lineTo(bezierVertex1.x, bezierVertex1.y)
@@ -818,19 +640,6 @@ internal class EpubLegacyCurlPageAnim(readView: PageAnimationSurface) : PageAnim
         path1.lineTo(renderTouchX, renderTouchY)
         path1.lineTo(bezierEnd2.x, bezierEnd2.y)
         path1.close()
-
-        val folderShadow: GradientDrawable
-        val left: Int
-        val right: Int
-        if (isRightTopOrLeftBottom) {
-            left = (bezierStart1.x - 1f).toInt()
-            right = (bezierStart1.x + foldShadowWidth + 1f).toInt()
-            folderShadow = folderShadowLR
-        } else {
-            left = (bezierStart1.x - foldShadowWidth - 1f).toInt()
-            right = (bezierStart1.x + 1f).toInt()
-            folderShadow = folderShadowRL
-        }
 
         val distance = hypot(
             (cornerX - bezierControl1.x).toDouble(),
@@ -852,16 +661,7 @@ internal class EpubLegacyCurlPageAnim(readView: PageAnimationSurface) : PageAnim
         canvas.clipPath(path0)
         canvas.clipPath(path1)
         canvas.drawColor(readView.bgColor)
-        val reflectionSave = canvas.save()
-        canvas.concat(reflectionMatrix)
-        val directPage = turningPageView
-        val drewDirectPage = directPage != null && readView.drawPageDirectly(canvas, directPage)
-        if (!drewDirectPage && bitmap != null && !bitmap.isRecycled) {
-            pageSourceRect.set(0, 0, bitmap.width, bitmap.height)
-            pageDestinationRect.set(0, 0, readView.width, readView.height)
-            canvas.drawBitmap(bitmap, pageSourceRect, pageDestinationRect, backPaint)
-        }
-        canvas.restoreToCount(reflectionSave)
+        drawFoldBackTexture(canvas, bitmap)
         val background = readView.bgColor
         backTintPaint.color = Color.argb(
             42,
@@ -876,15 +676,39 @@ internal class EpubLegacyCurlPageAnim(readView: PageAnimationSurface) : PageAnim
             readView.height.toFloat(),
             backTintPaint
         )
-        canvas.rotate(degrees, bezierStart1.x, bezierStart1.y)
-        folderShadow.setBounds(
-            min(left, right),
-            bezierStart1.y.toInt(),
-            max(left, right),
-            (bezierStart1.y + maxLength).toInt()
-        )
-        folderShadow.draw(canvas)
         canvas.restore()
+    }
+
+    private fun drawFoldBackTexture(canvas: Canvas, bitmap: Bitmap?): Boolean {
+        if (bitmap != null && !bitmap.isRecycled) {
+            val shader = backShader?.takeIf { backShaderBitmap === bitmap }
+                ?: BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).also {
+                    backShader = it
+                    backShaderBitmap = bitmap
+                }
+            // CLAMP 采样让镜像纹理铺满整个背面裁剪区（含折痕附近几何近似
+            // 未覆盖的条带），不再露出 drawColor 的底色形成浅色白边。
+            reflectionMatrix.postScale(
+                readView.width.toFloat() / bitmap.width.coerceAtLeast(1),
+                readView.height.toFloat() / bitmap.height.coerceAtLeast(1)
+            )
+            shader.setLocalMatrix(reflectionMatrix)
+            backPaint.shader = shader
+            canvas.drawRect(
+                0f,
+                0f,
+                readView.width.toFloat(),
+                readView.height.toFloat(),
+                backPaint
+            )
+            return true
+        }
+        val directPage = turningPageView ?: return false
+        val reflectionSave = canvas.save()
+        canvas.concat(reflectionMatrix)
+        val drewDirectPage = readView.drawPageDirectly(canvas, directPage)
+        canvas.restoreToCount(reflectionSave)
+        return drewDirectPage
     }
 
     private fun capturePages(dir: Direction): Boolean {
@@ -899,8 +723,9 @@ internal class EpubLegacyCurlPageAnim(readView: PageAnimationSurface) : PageAnim
                 underView = readView.nextPageView
             }
             Direction.PREV -> {
-                turningView = readView.prevPageView
-                underView = readView.curPageView
+                // PREV：当前页从左边缘掀起（帧镜像输出），露出上一页
+                turningView = readView.curPageView
+                underView = readView.prevPageView
             }
             Direction.NONE -> return false
         }
@@ -1016,15 +841,6 @@ internal class EpubLegacyCurlPageAnim(readView: PageAnimationSurface) : PageAnim
     private fun recycleVelocityTracker() {
         velocityTracker?.recycle()
         velocityTracker = null
-    }
-
-    private fun gradient(
-        orientation: GradientDrawable.Orientation,
-        colors: IntArray
-    ): GradientDrawable {
-        return GradientDrawable(orientation, colors).apply {
-            gradientType = GradientDrawable.LINEAR_GRADIENT
-        }
     }
 }
 
