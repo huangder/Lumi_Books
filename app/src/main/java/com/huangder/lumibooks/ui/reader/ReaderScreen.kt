@@ -1339,8 +1339,6 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         else -> 0xFF333333.toInt()
     }
     val readerTextColorInt = effectiveReaderTextColor ?: automaticReaderTextColorInt
-    val hasTopReaderStatus = uiState.readerTopLeftContent != ReaderCornerContent.NONE ||
-        uiState.readerTopRightContent != ReaderCornerContent.NONE
     val menuBgColorInt = customBackgroundThemeColorInt
     val menuBgColor = Color(menuBgColorInt)
     val menuContentColor = if (ColorUtils.calculateLuminance(menuBgColorInt) < 0.4) {
@@ -2057,7 +2055,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         marginRightDp = uiState.marginRightDp,
                         marginTopDp = uiState.marginTopDp,
                         marginBottomDp = uiState.marginBottomDp,
-                        topOverlayInsetDp = if (hasTopReaderStatus) 38f else 0f,
+                        // 角落状态/进度信息允许与正文重叠（用户要求边距 0 即真 0，不再为信息区预留）
+                        topOverlayInsetDp = 0f,
                         bottomOverlayInsetDp = 0f,
                         paragraphSpacingDp = uiState.paragraphSpacing,
                         bionicReadingEnabled = effectiveBionicReadingEnabled,

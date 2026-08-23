@@ -103,8 +103,6 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     companion object {
         private const val TAG = "ReadView"
         private const val JUMP_SETTLE_DELAY_MS = 120L
-        /** 给系统选择手柄保留约一行半的页底命中安全区，分页计算与渲染共同使用 */
-        private const val SELECTION_BOTTOM_SAFE_AREA_DP = 56f
     }
 
     // ── 子组件 ──
@@ -403,10 +401,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             marginLeft
         }
         val baseMarginTop = (currentMarginTopDp + currentTopOverlayInsetDp) * density
-        val baseMarginBottom = (
-            currentMarginBottomDp + currentBottomOverlayInsetDp +
-                if (currentWritingMode.isVertical) 0f else SELECTION_BOTTOM_SAFE_AREA_DP
-            ) * density
+        val baseMarginBottom = (currentMarginBottomDp + currentBottomOverlayInsetDp) * density
         val lineSpacingExtra = 2.5f * density
 
         // 选择高亮色jian
@@ -663,10 +658,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             width
         }
         val baseMarginTop = (marginTopDp + topOverlayInsetDp) * density
-        val baseMarginBottom = (
-            marginBottomDp + bottomOverlayInsetDp +
-                if (writingMode.isVertical) 0f else SELECTION_BOTTOM_SAFE_AREA_DP
-            ) * density
+        val baseMarginBottom = (marginBottomDp + bottomOverlayInsetDp) * density
         val lineSpacing = 2.5f * density
         val lsPx = letterSpacingDp * density
 
