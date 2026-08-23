@@ -10,6 +10,7 @@ import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.os.BatteryManager
 import android.os.Build
+import androidx.compose.foundation.systemGestureExclusion
 import android.os.Handler
 import android.os.Looper
 import android.net.Uri
@@ -2108,6 +2109,19 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             }
         }
 
+        // 底部系统手势排除：正文边距为 0 时最后几行会伸进系统手势导航预留区，
+        // 且下滑唤出的临时导航栏显示期间会吃掉该区域的触摸（表现为"最后几行时灵时不灵"）。
+        // 此处声明排除（系统上限 200dp），左右边缘不动，保留返回手势。
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(200.dp)
+                    .systemGestureExclusion()
+            )
+        }
+
         // ── Canvas 引擎注释气泡（同窗口覆盖层：玻璃折射对位正确，且无 Popup 窗口首帧闪现） ──
         renderedFootnote?.let { bubble ->
             ReaderFootnoteBubbleOverlay(
@@ -4175,17 +4189,17 @@ private fun FloatingReaderMenu(
             Box(modifier = Modifier.weight(1f).graphicsLayer {
                 alpha = alpha1.value; translationY = offset1.value
             }) {
-                ActionCapsule(Icons.Default.Bookmark, stringResource(R.string.reader_notes), capsuleBgColor, capsuleContentColor, glassContentScrimColor, forceSolidCapsules, Modifier.fillMaxWidth(), onBookmarkClick)
+                ActionCapsule(Icons.Default.Bookmark, stringResource(R.string.reader_notes), capsuleBgColor, capsuleContentColor, glassContentScrimColor, forceSolidCapsules, Modifier.fillMaxWidth(), enabled = visible, onBookmarkClick)
             }
             Box(modifier = Modifier.weight(1f).graphicsLayer {
                 alpha = alpha2.value; translationY = offset2.value
             }) {
-                ActionCapsule(Icons.Default.Search, stringResource(R.string.reader_search), capsuleBgColor, capsuleContentColor, glassContentScrimColor, forceSolidCapsules, Modifier.fillMaxWidth(), onSearchClick)
+                ActionCapsule(Icons.Default.Search, stringResource(R.string.reader_search), capsuleBgColor, capsuleContentColor, glassContentScrimColor, forceSolidCapsules, Modifier.fillMaxWidth(), enabled = visible, onSearchClick)
             }
             Box(modifier = Modifier.weight(1f).graphicsLayer {
                 alpha = alpha3.value; translationY = offset3.value
             }) {
-                ActionCapsule(Icons.Default.Settings, stringResource(R.string.reader_theme), capsuleBgColor, capsuleContentColor, glassContentScrimColor, forceSolidCapsules, Modifier.fillMaxWidth(), onThemeClick)
+                ActionCapsule(Icons.Default.Settings, stringResource(R.string.reader_theme), capsuleBgColor, capsuleContentColor, glassContentScrimColor, forceSolidCapsules, Modifier.fillMaxWidth(), enabled = visible, onThemeClick)
             }
         }
     }
@@ -4343,52 +4357,55 @@ private fun CatalogCapsule(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 48.dp)
-                .pointerInput(enabled, onProgressDrag != null) {
-                if (!enabled) return@pointerInput   // 菜单隐藏时不拦截任何事件
-                if (onProgressDrag == null) {
-                    detectTapGestures(onTap = { latestOnClick() })
-                    return@pointerInput
-                }
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    var cumDrag = 0f
-                    var dragging = false
-                    var latestLocal = dragProgress  // 本次手势的进度起始值
-
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        val ch = event.changes.firstOrNull { it.id == down.id } ?: break
-
-                        val dx = ch.positionChange().x
-                        cumDrag += dx
-
-                        // 超过 touchSlop 才算拖动
-                        if (!dragging && kotlin.math.abs(cumDrag) >= viewConfiguration.touchSlop) {
-                            dragging = true
-                            isDragging = true
-                            latestOnDragStart?.invoke()
+                .then(
+                    // 菜单隐藏时整个 pointerInput 不挂载：父级用 graphicsLayer alpha=0 淡出，
+                    // 但 graphicsLayer 不影响命中测试，挂着的空手势块仍会拦下正文的滑动/长按
+                    if (enabled) Modifier.pointerInput(onProgressDrag != null) {
+                        if (onProgressDrag == null) {
+                            detectTapGestures(onTap = { latestOnClick() })
+                            return@pointerInput
                         }
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            var cumDrag = 0f
+                            var dragging = false
+                            var latestLocal = dragProgress  // 本次手势的进度起始值
 
-                        if (dragging) {
-                            ch.consume()
-                            val dpDelta = with(density) { dx.toDp().value }
-                            val progressDelta = dpDelta * 0.25f    // 0.25% per dp
-                            latestLocal = (latestLocal + progressDelta).coerceIn(0f, 100f)
-                            dragProgress = latestLocal
-                            latestOnDrag?.invoke(latestLocal)
-                        }
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val ch = event.changes.firstOrNull { it.id == down.id } ?: break
 
-                        if (ch.changedToUpIgnoreConsumed()) {
-                            if (!dragging) latestOnClick()   // 短按视为点击
-                            else latestOnDragEnd?.invoke(latestLocal)
+                                val dx = ch.positionChange().x
+                                cumDrag += dx
+
+                                // 超过 touchSlop 才算拖动
+                                if (!dragging && kotlin.math.abs(cumDrag) >= viewConfiguration.touchSlop) {
+                                    dragging = true
+                                    isDragging = true
+                                    latestOnDragStart?.invoke()
+                                }
+
+                                if (dragging) {
+                                    ch.consume()
+                                    val dpDelta = with(density) { dx.toDp().value }
+                                    val progressDelta = dpDelta * 0.25f    // 0.25% per dp
+                                    latestLocal = (latestLocal + progressDelta).coerceIn(0f, 100f)
+                                    dragProgress = latestLocal
+                                    latestOnDrag?.invoke(latestLocal)
+                                }
+
+                                if (ch.changedToUpIgnoreConsumed()) {
+                                    if (!dragging) latestOnClick()   // 短按视为点击
+                                    else latestOnDragEnd?.invoke(latestLocal)
+                                    isDragging = false
+                                    break
+                                }
+                                if (!ch.pressed) break
+                            }
                             isDragging = false
-                            break
                         }
-                        if (!ch.pressed) break
-                    }
-                    isDragging = false
-                }
-                }
+                    } else Modifier
+                )
         )
 
         CatalogChapterButton(
@@ -4401,7 +4418,8 @@ private fun CatalogCapsule(
             forceSolid = !isLiquidGlass,
             enabled = enabled && canGoToPreviousChapter,
             modifier = Modifier.align(Alignment.CenterStart),
-            onClick = onPreviousChapterClick
+            onClick = onPreviousChapterClick,
+            detachWhenDisabled = !enabled
         )
         CatalogChapterButton(
             icon = Icons.Default.KeyboardArrowRight,
@@ -4413,7 +4431,8 @@ private fun CatalogCapsule(
             forceSolid = !isLiquidGlass,
             enabled = enabled && canGoToNextChapter,
             modifier = Modifier.align(Alignment.CenterEnd),
-            onClick = onNextChapterClick
+            onClick = onNextChapterClick,
+            detachWhenDisabled = !enabled
         )
     }
 }
@@ -4429,7 +4448,9 @@ private fun CatalogChapterButton(
     forceSolid: Boolean,
     enabled: Boolean,
     modifier: Modifier = Modifier,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    // 菜单隐藏时不挂 clickable（disabled 的 clickable 仍参与命中测试，会挡住正文触摸）
+    detachWhenDisabled: Boolean = false
 ) {
     Box(
         modifier = modifier.size(48.dp),
@@ -4441,7 +4462,7 @@ private fun CatalogChapterButton(
             contentScrimColor = glassContentScrimColor,
             highlightColor = glassHighlightColor,
             forceFallback = forceSolid,
-            onClick = onClick,
+            onClick = if (enabled || !detachWhenDisabled) onClick else null,
             enabled = enabled,
             modifier = Modifier.size(36.dp)
         ) {
@@ -4464,6 +4485,7 @@ private fun ActionCapsule(
     glassContentScrimColor: Color,
     forceSolid: Boolean,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     LiquidGlassSurface(
@@ -4473,7 +4495,9 @@ private fun ActionCapsule(
         forceFallback = forceSolid,
         modifier = modifier
             .height(44.dp),
-        onClick = onClick
+        // 菜单隐藏时父级仅用 graphicsLayer alpha=0 淡出，节点仍在命中测试中；
+        // 必须卸载 clickable 才能让触摸穿透回正文
+        onClick = if (enabled) onClick else null
     ) {
         Row(
             modifier = Modifier
