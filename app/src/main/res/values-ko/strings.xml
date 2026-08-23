@@ -186,6 +186,7 @@
     <string name="sponsor_code_label">屿浮 님께 보내는 후원 코드</string>
     <string name="sponsor_thanks_title">꿈의 후원자</string>
     <string name="sponsor_dev_title">개발자</string>
+    <string name="sponsor_maintainer_badge">메인테이너</string>
 
     <!-- 피드백 -->
     <string name="feedback_title">문제 신고</string>

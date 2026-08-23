@@ -186,6 +186,7 @@
     <string name="sponsor_code_label">Yufu の赞赏码</string>
     <string name="sponsor_thanks_title">夢のスポンサー</string>
     <string name="sponsor_dev_title">開発者</string>
+    <string name="sponsor_maintainer_badge">メンテナー</string>
 
     <!-- フィードバック -->
     <string name="feedback_title">フィードバック</string>

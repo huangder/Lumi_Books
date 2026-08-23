@@ -227,7 +227,7 @@ private fun SponsorPage(
 
                 Spacer(Modifier.height(AppSpace.md))
 
-                // 给屿浮的赞赏码
+                // 绘屿浮的赞赏码
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -254,7 +254,7 @@ private fun SponsorPage(
             // 感谢列表
             CreditSection(
                 title = stringResource(R.string.sponsor_thanks_title),
-                names = listOf("雋乂、匿名、匿名、匿名、Jun.")
+                names = listOf("雋乂、匿名、匿名、匿名、Jun.、BennyBlack、百年老字号、匿名、匿名、白飘飘")
             )
 
             Spacer(Modifier.height(AppSpace.md))
@@ -332,12 +332,24 @@ private fun DeveloperCard(contributor: Contributor, onClick: () -> Unit) {
             )
         }
         Spacer(Modifier.width(AppSpace.sm))
-        Text(
-            text = contributor.login,
-            fontSize = AppType.Body,
-            color = AppColors.TextPrimary,
-            modifier = Modifier.weight(1f)
-        )
+        Row(
+            modifier = Modifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = contributor.login,
+                fontSize = AppType.Body,
+                color = AppColors.TextPrimary
+            )
+            if (contributor.login.equals("huangder", ignoreCase = true)) {
+                Spacer(Modifier.width(AppSpace.xs))
+                Text(
+                    text = stringResource(R.string.sponsor_maintainer_badge),
+                    fontSize = AppType.Caption,
+                    color = AppColors.TextSecondary
+                )
+            }
+        }
         Spacer(Modifier.width(AppSpace.sm))
         Icon(
             imageVector = Icons.Outlined.ChevronRight,

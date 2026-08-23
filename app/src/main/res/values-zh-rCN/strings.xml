@@ -183,9 +183,10 @@
     <string name="sponsor_desc">捐赠：如果你觉得不错的话，欢迎支持开发</string>
     <string name="sponsor_qr_desc">捐赠二维码</string>
     <string name="sponsor_quote">"如果觉得不错，请我吃个饭吧😊"</string>
-    <string name="sponsor_code_label">给屿浮 的赞赏码</string>
+    <string name="sponsor_code_label">绘屿浮 的赞赏码</string>
     <string name="sponsor_thanks_title">梦想赞助家</string>
     <string name="sponsor_dev_title">开发人员</string>
+    <string name="sponsor_maintainer_badge">维护者</string>
 
     <!-- 反馈 -->
     <string name="feedback_title">问题反馈</string>

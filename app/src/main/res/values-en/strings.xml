@@ -214,6 +214,7 @@
     <string name="sponsor_code_label">Donation code for Yufu</string>
     <string name="sponsor_thanks_title">Dream Sponsors</string>
     <string name="sponsor_dev_title">Developers</string>
+    <string name="sponsor_maintainer_badge">Maintainer</string>
 
     <!-- Feedback -->
     <string name="feedback_title">Send Feedback</string>

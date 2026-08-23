@@ -183,9 +183,10 @@
     <string name="sponsor_desc">捐贈：如果你覺得不錯的話，歡迎支持開發</string>
     <string name="sponsor_qr_desc">捐贈二維碼</string>
     <string name="sponsor_quote">"如果覺得不錯，請我食個飯啦😊"</string>
-    <string name="sponsor_code_label">畀嶼浮 的讚賞碼</string>
+    <string name="sponsor_code_label">繪嶼浮 的讚賞碼</string>
     <string name="sponsor_thanks_title">夢想贊助家</string>
     <string name="sponsor_dev_title">開發人員</string>
+    <string name="sponsor_maintainer_badge">維護者</string>
 
     <!-- 反映 -->
     <string name="feedback_title">問題反映</string>
