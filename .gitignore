@@ -27,6 +27,7 @@ local.properties
 /pagedesign/
 /icon/
 /font/
+.zcode/
 
 # Local test screenshots / artifacts
 /artifacts/
