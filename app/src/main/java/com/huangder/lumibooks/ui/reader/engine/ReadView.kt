@@ -15,6 +15,8 @@ import com.huangder.lumibooks.domain.model.ReaderEdgeTapAction
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.ui.reader.BionicReadingFormatter
+import com.huangder.lumibooks.ui.reader.mapGlobalProgress
+import com.huangder.lumibooks.ui.reader.pageIndexForChapterFraction
 import com.huangder.lumibooks.tts.TtsPageContent
 import com.huangder.lumibooks.tts.TtsPageLocation
 import com.huangder.lumibooks.util.ChineseConverter
@@ -102,7 +104,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
     companion object {
         private const val TAG = "ReadView"
-        private const val JUMP_SETTLE_DELAY_MS = 120L
+        private const val JUMP_SETTLE_TIMEOUT_MS = 5_000L
     }
 
     // ── 子组件 ──
@@ -153,8 +155,10 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private data class SearchHighlight(val chapterIndex: Int, val start: Int, val end: Int)
     private var searchHighlight: SearchHighlight? = null
     private var searchHighlightAnimator: ValueAnimator? = null
-    private var pendingJumpChapter: Int? = null
-    private var isJumpSettling = false
+    private val jumpGenerationGate = JumpGenerationGate()
+    private val isJumpSettling: Boolean
+        get() = jumpGenerationGate.isSettling
+    private var jumpTimeoutRunnable: Runnable? = null
 
     /** 设置已保存的笔记/高亮并刷新当前页。 */
     fun setSavedNotes(notes: List<Note>) {
@@ -211,6 +215,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var currentReaderTextColor: Int? = null
     private var pendingStartChapter: Int = 0
     private var pendingStartPage: Int = 0
+    private val positionRequestTracker = ReaderPositionRequestTracker()
     private var configuredWidth: Int = 0
     private var configuredHeight: Int = 0
 
@@ -270,6 +275,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         }
         slotManager.highlightProvider = { chapterIndex ->
             buildHighlights(chapterIndex)
+        }
+        slotManager.onJumpFinishedCallback = { generation, _ ->
+            finishJumpSettling(generation)
         }
 
         // 初始化动画控制器
@@ -339,14 +347,6 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         slotManager.onPageChangedCallback = { globalPage, chapterIdx, pageInChapter, chapterTotal ->
             callbacks?.onPageChanged(globalPage, chapterIdx, pageInChapter, chapterTotal)
             startSearchHighlightAnimationIfReady(chapterIdx)
-            if (isJumpSettling && pendingJumpChapter == chapterIdx && chapterTotal > 0) {
-                postDelayed({
-                    if (pendingJumpChapter == chapterIdx) {
-                        pendingJumpChapter = null
-                        isJumpSettling = false
-                    }
-                }, JUMP_SETTLE_DELAY_MS)
-            }
             configureCurrentPageView()
             invalidate()
         }
@@ -525,6 +525,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         width: Int = this.width,
         height: Int = this.height
     ) {
+        val positionRequestChanged = positionRequestTracker.observe(startChapter, startPage)
         if (width <= 0 || height <= 0 || chapterCount <= 0) {
             // 仅在拿到真实起始位置时更新锚点；书籍尚未加载（chapterCount<=0）
             // 或起始章节无效时保留上一次的有效锚点，避免用 0 覆盖真实进度。
@@ -608,7 +609,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         // 🔥 无变化时提前返回，避免菜单切换等 recomposition 触发不必要的重配置
         if (isConfigured && !needsRelayout) {
             val currentSlot = slotManager.getCurSlot()
-            if (startChapter >= 0 &&
+            // A direct TOC jump advances the slot before Compose receives its page callback.
+            // Repeated old snapshots must not command the slot back to the previous page.
+            if (positionRequestChanged && startChapter >= 0 &&
                 (currentSlot.chapterIndex != startChapter || currentSlot.pageIndex != startPage)
             ) {
                 jumpToChapter(startChapter, startPage)
@@ -748,10 +751,15 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
     /** 跳转到指定章节指定页 */
     fun jumpToChapter(chapterIndex: Int, pageInChapter: Int = 0) {
-        beginJumpSettling(chapterIndex)
+        slotManager.pendingStartCharOffset = -1
+        slotManager.pendingStartPageFraction = null
+        jumpToChapterInternal(chapterIndex, pageInChapter)
+    }
+
+    private fun jumpToChapterInternal(chapterIndex: Int, pageInChapter: Int) {
+        val generation = beginJumpSettling()
         animationController.abortAnim()
-        layoutEngine.invalidateChapter(chapterIndex)
-        slotManager.jumpTo(chapterIndex, pageInChapter)
+        slotManager.jumpTo(chapterIndex, pageInChapter, generation)
     }
 
     /**
@@ -760,33 +768,34 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
      */
     fun jumpToGlobalProgress(progressPercent: Float) {
         val chapterCount = layoutEngine.getChapterCount().takeIf { it > 0 } ?: return
-        val rawPos = (progressPercent / 100f) * chapterCount
-        val targetChapter = rawPos.toInt().coerceIn(0, chapterCount - 1)
-        val chapterFraction = rawPos - targetChapter
-        val chapterLayout = layoutEngine.getChapterLayout(targetChapter)
+        val target = mapGlobalProgress(progressPercent, chapterCount) ?: return
+        val chapterLayout = layoutEngine.getChapterLayout(target.chapterIndex)
         val targetPage = if (chapterLayout != null && chapterLayout.totalPages > 0) {
-            (chapterFraction * chapterLayout.totalPages).toInt()
-                .coerceIn(0, chapterLayout.totalPages - 1)
-        } else 0
-        jumpToChapter(targetChapter, targetPage)
+            pageIndexForChapterFraction(target.chapterFraction, chapterLayout.totalPages)
+        } else {
+            0
+        }
+        slotManager.pendingStartCharOffset = -1
+        slotManager.pendingStartPageFraction = target.chapterFraction.takeIf { chapterLayout == null }
+        jumpToChapterInternal(target.chapterIndex, targetPage)
     }
 
     /** 跳转到章节内包含指定字符偏移的页面。 */
     fun jumpToCharacter(chapterIndex: Int, characterOffset: Int) {
-        beginJumpSettling(chapterIndex)
-        animationController.abortAnim()
         val targetOffset = characterOffset.coerceAtLeast(0)
         val cachedLayout = layoutEngine.getChapterLayout(chapterIndex)
         val cachedPage = cachedLayout?.pages?.indexOfFirst { page ->
             targetOffset >= page.startCharOffset && targetOffset < page.endCharOffset
         } ?: -1
 
+        slotManager.pendingStartPageFraction = null
         if (cachedPage >= 0) {
-            slotManager.jumpTo(chapterIndex, cachedPage)
+            slotManager.pendingStartCharOffset = -1
+            jumpToChapterInternal(chapterIndex, cachedPage)
         } else {
             slotManager.pendingStartCharOffset = targetOffset
             layoutEngine.invalidateChapter(chapterIndex)
-            slotManager.jumpTo(chapterIndex, 0)
+            jumpToChapterInternal(chapterIndex, 0)
         }
     }
 
@@ -1355,6 +1364,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
+        jumpTimeoutRunnable?.let(::removeCallbacks)
+        jumpTimeoutRunnable = null
+        jumpGenerationGate.clear()
         animationController.abortAnim()
         (animationController as? CurlPageAnim)?.destroy()
         slotManager.destroy()
@@ -1387,9 +1399,19 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         }
     }
 
-    private fun beginJumpSettling(chapterIndex: Int) {
-        pendingJumpChapter = chapterIndex
-        isJumpSettling = true
+    private fun beginJumpSettling(): Long {
+        val generation = jumpGenerationGate.begin()
+        jumpTimeoutRunnable?.let(::removeCallbacks)
+        jumpTimeoutRunnable = Runnable {
+            finishJumpSettling(generation)
+        }.also { postDelayed(it, JUMP_SETTLE_TIMEOUT_MS) }
+        return generation
+    }
+
+    private fun finishJumpSettling(generation: Long) {
+        if (!jumpGenerationGate.resolve(generation)) return
+        jumpTimeoutRunnable?.let(::removeCallbacks)
+        jumpTimeoutRunnable = null
     }
 
     private fun startSearchHighlightAnimationIfReady(chapterIndex: Int) {

@@ -2365,6 +2365,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     FloatingReaderMenu(
                         visible = uiState.isMenuVisible,
                         chapterTitle = chapterTitle,
+                        chapterTitles = uiState.chapterTitles,
+                        chapterCount = uiState.chapterCount,
                         bookProgressPercent = bookProgressPercent,
                         currentPage = displayCurrentPage,
                         chapterPageCount = displayPageCount,
@@ -2432,31 +2434,12 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                 ?.getCurrentLocation()
                                 ?.let { ReaderLinkLocation(it.first, it.second) }
                         },
-                        onCatalogProgressDrag = run {
-                            // 节流：最多每 300ms 执行一次实际跳转，避免频繁 layout 重算
-                            var lastJumpMs = 0L
-                            { newProgress: Float ->
-                                val now = System.currentTimeMillis()
-                                if (now - lastJumpMs >= 300L) {
-                                    lastJumpMs = now
-                                    if (isContinuousScrollMode) {
-                                        val target = ((newProgress / 100f) * uiState.chapterCount)
-                                            .toInt().coerceIn(0, (uiState.chapterCount - 1).coerceAtLeast(0))
-                                        continuousScrollRequests.tryEmit(target)
-                                        viewModel.onContinuousScrollPosition(target, 0f)
-                                    } else {
-                                        readViewRef.value?.jumpToGlobalProgress(newProgress)
-                                    }
-                                }
-                            }
-                        },
                         onCatalogProgressDragEnd = { finalProgress ->
-                            // 拖拽结束时强制执行一次最终跳转
                             if (isContinuousScrollMode) {
-                                val target = ((finalProgress / 100f) * uiState.chapterCount)
-                                    .toInt().coerceIn(0, (uiState.chapterCount - 1).coerceAtLeast(0))
-                                continuousScrollRequests.tryEmit(target)
-                                viewModel.onContinuousScrollPosition(target, 0f)
+                                mapGlobalProgress(finalProgress, uiState.chapterCount)?.let { target ->
+                                    continuousScrollRequests.tryEmit(target.chapterIndex)
+                                    viewModel.onContinuousScrollPosition(target.chapterIndex, 0f)
+                                }
                             } else {
                                 val readView = readViewRef.value
                                 readView?.jumpToGlobalProgress(finalProgress)
@@ -2468,6 +2451,9 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                                     linkReturnToken += 1
                                 }
                             }
+                            catalogDragReturnLocation = null
+                        },
+                        onCatalogProgressDragCancel = {
                             catalogDragReturnLocation = null
                         },
                         modifier = Modifier.align(Alignment.BottomCenter)
@@ -4083,6 +4069,8 @@ private fun ReaderTopBarButton(
 private fun FloatingReaderMenu(
     visible: Boolean,
     chapterTitle: String,
+    chapterTitles: List<String>,
+    chapterCount: Int,
     bookProgressPercent: Float,
     currentPage: Int,
     chapterPageCount: Int,
@@ -4099,8 +4087,8 @@ private fun FloatingReaderMenu(
     onPreviousChapterClick: () -> Unit,
     onNextChapterClick: () -> Unit,
     onCatalogProgressDragStart: (() -> Unit)? = null,
-    onCatalogProgressDrag: ((Float) -> Unit)? = null,
     onCatalogProgressDragEnd: ((Float) -> Unit)? = null,
+    onCatalogProgressDragCancel: (() -> Unit)? = null,
     onBookmarkClick: () -> Unit,
     onSearchClick: () -> Unit,
     onThemeClick: () -> Unit,
@@ -4157,6 +4145,8 @@ private fun FloatingReaderMenu(
         }) {
             CatalogCapsule(
                 title = chapterTitle,
+                chapterTitles = chapterTitles,
+                chapterCount = chapterCount,
                 progress = bookProgressPercent,
                 bgColor = capsuleBgColor,
                 contentColor = capsuleContentColor,
@@ -4170,8 +4160,8 @@ private fun FloatingReaderMenu(
                 onPreviousChapterClick = onPreviousChapterClick,
                 onNextChapterClick = onNextChapterClick,
                 onProgressDragStart = onCatalogProgressDragStart,
-                onProgressDrag = onCatalogProgressDrag,
-                onProgressDragEnd = onCatalogProgressDragEnd
+                onProgressDragEnd = onCatalogProgressDragEnd,
+                onProgressDragCancel = onCatalogProgressDragCancel
             )
         }
         ReaderMenuStatus(
@@ -4250,6 +4240,8 @@ private fun ReaderMenuStatus(
 @Composable
 private fun CatalogCapsule(
     title: String,
+    chapterTitles: List<String>,
+    chapterCount: Int,
     progress: Float,
     bgColor: Color,
     contentColor: Color,
@@ -4263,14 +4255,15 @@ private fun CatalogCapsule(
     onPreviousChapterClick: () -> Unit,
     onNextChapterClick: () -> Unit,
     onProgressDragStart: (() -> Unit)? = null,
-    onProgressDrag: ((newProgress: Float) -> Unit)? = null,
     onProgressDragEnd: ((finalProgress: Float) -> Unit)? = null,
+    onProgressDragCancel: (() -> Unit)? = null,
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !LocalEInkMode.current && !forceSolid
     val density = androidx.compose.ui.platform.LocalDensity.current
 
     var dragProgress by remember { mutableFloatStateOf(progress) }
     var isDragging by remember { mutableStateOf(false) }
+    val dragSession = remember { CatalogProgressDragSession() }
     LaunchedEffect(progress) { if (!isDragging) dragProgress = progress }
 
     val displayProgress = if (isDragging) dragProgress else progress
@@ -4279,15 +4272,59 @@ private fun CatalogCapsule(
     // 统一在外层用 awaitEachGesture 处理：短按→onClick，横向滑动→改进度
     val latestOnClick by rememberUpdatedState(onClick)
     val latestOnDragStart by rememberUpdatedState(onProgressDragStart)
-    val latestOnDrag by rememberUpdatedState(onProgressDrag)
     val latestOnDragEnd by rememberUpdatedState(onProgressDragEnd)
-    val latestDragProgress by rememberUpdatedState(dragProgress)
+    val latestOnDragCancel by rememberUpdatedState(onProgressDragCancel)
+    val latestExternalProgress by rememberUpdatedState(progress)
+
+    val previewTarget = mapGlobalProgress(displayProgress, chapterCount)
+    val previewChapterIndex = previewTarget?.chapterIndex ?: 0
+    val previewFallbackTitle = if (previewTarget != null) {
+        stringResource(R.string.reader_chapter_fallback, previewChapterIndex + 1)
+    } else {
+        ""
+    }
+    val previewChapterTitle = chapterTitles
+        .getOrNull(previewChapterIndex)
+        ?.trim()
+        .orEmpty()
+        .ifBlank { previewFallbackTitle }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(48.dp)
     ) {
+        AnimatedVisibility(
+            visible = isDragging,
+            enter = fadeIn(tween(120)),
+            exit = fadeOut(tween(100)),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = (-44).dp)
+                .widthIn(max = 300.dp)
+        ) {
+            LiquidGlassSurface(
+                shape = RoundedCornerShape(18.dp),
+                fallbackColor = bgColor,
+                contentScrimColor = glassContentScrimColor,
+                forceFallback = !isLiquidGlass,
+                modifier = Modifier.height(36.dp),
+                onClick = null,
+                interactive = false,
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = previewChapterTitle,
+                    color = contentColor,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
+        }
+
         LiquidGlassSurface(
             shape = RoundedCornerShape(24.dp),
             fallbackColor = bgColor,
@@ -4360,8 +4397,8 @@ private fun CatalogCapsule(
                 .then(
                     // 菜单隐藏时整个 pointerInput 不挂载：父级用 graphicsLayer alpha=0 淡出，
                     // 但 graphicsLayer 不影响命中测试，挂着的空手势块仍会拦下正文的滑动/长按
-                    if (enabled) Modifier.pointerInput(onProgressDrag != null) {
-                        if (onProgressDrag == null) {
+                    if (enabled) Modifier.pointerInput(onProgressDragEnd != null) {
+                        if (onProgressDragEnd == null) {
                             detectTapGestures(onTap = { latestOnClick() })
                             return@pointerInput
                         }
@@ -4369,40 +4406,49 @@ private fun CatalogCapsule(
                             val down = awaitFirstDown(requireUnconsumed = false)
                             var cumDrag = 0f
                             var dragging = false
-                            var latestLocal = dragProgress  // 本次手势的进度起始值
+                            var committed = false
 
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                val ch = event.changes.firstOrNull { it.id == down.id } ?: break
+                            try {
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val ch = event.changes.firstOrNull { it.id == down.id } ?: break
+                                    val dx = ch.positionChange().x
 
-                                val dx = ch.positionChange().x
-                                cumDrag += dx
+                                    if (!dragging) {
+                                        cumDrag += dx
+                                        if (kotlin.math.abs(cumDrag) >= viewConfiguration.touchSlop) {
+                                            dragging = true
+                                            isDragging = true
+                                            dragSession.begin(latestExternalProgress)
+                                            latestOnDragStart?.invoke()
+                                            val dragDp = with(density) { cumDrag.toDp().value }
+                                            dragProgress = dragSession.dragBy(dragDp * 0.25f)
+                                            ch.consume()
+                                        }
+                                    } else {
+                                        ch.consume()
+                                        val dragDp = with(density) { dx.toDp().value }
+                                        dragProgress = dragSession.dragBy(dragDp * 0.25f)
+                                    }
 
-                                // 超过 touchSlop 才算拖动
-                                if (!dragging && kotlin.math.abs(cumDrag) >= viewConfiguration.touchSlop) {
-                                    dragging = true
-                                    isDragging = true
-                                    latestOnDragStart?.invoke()
+                                    if (ch.changedToUpIgnoreConsumed()) {
+                                        if (!dragging) {
+                                            latestOnClick()
+                                        } else {
+                                            committed = true
+                                            dragSession.finish { latestOnDragEnd?.invoke(it) }
+                                        }
+                                        break
+                                    }
+                                    if (!ch.pressed) break
                                 }
-
-                                if (dragging) {
-                                    ch.consume()
-                                    val dpDelta = with(density) { dx.toDp().value }
-                                    val progressDelta = dpDelta * 0.25f    // 0.25% per dp
-                                    latestLocal = (latestLocal + progressDelta).coerceIn(0f, 100f)
-                                    dragProgress = latestLocal
-                                    latestOnDrag?.invoke(latestLocal)
+                            } finally {
+                                if (dragging && !committed) {
+                                    dragSession.cancel()
+                                    latestOnDragCancel?.invoke()
                                 }
-
-                                if (ch.changedToUpIgnoreConsumed()) {
-                                    if (!dragging) latestOnClick()   // 短按视为点击
-                                    else latestOnDragEnd?.invoke(latestLocal)
-                                    isDragging = false
-                                    break
-                                }
-                                if (!ch.pressed) break
+                                isDragging = false
                             }
-                            isDragging = false
                         }
                     } else Modifier
                 )

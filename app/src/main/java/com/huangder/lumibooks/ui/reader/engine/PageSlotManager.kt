@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.ui.reader.engine
 
 import android.util.Log
+import com.huangder.lumibooks.ui.reader.pageIndexForChapterFraction
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -30,6 +31,13 @@ class PageSlotManager(
     private val nextRightView: PageContentView,
     private val spreadEnabled: () -> Boolean = { false }
 ) {
+    internal enum class CurrentSlotLoadResult {
+        LOADED,
+        EMPTY,
+        FAILED,
+        CANCELLED
+    }
+
     companion object {
         const val SLOT_PREV = 0
         const val SLOT_CUR = 1
@@ -56,6 +64,9 @@ class PageSlotManager(
     /** 字号/尺寸/模式变化时暂存当前页的字符起始偏移，供 loadSlot 搜索修正后的页码 */
     var pendingStartCharOffset: Int = -1
 
+    /** 目标章节尚未分页时暂存章内比例，待 CUR 槽布局完成后换算实际页码。 */
+    internal var pendingStartPageFraction: Float? = null
+
     /** 文本内容提供者：根据章节索引返回文本 */
     var contentProvider: (suspend (Int) -> CharSequence?)? = null
 
@@ -76,6 +87,9 @@ class PageSlotManager(
     /** 双页模式右半页回调 */
     var onSpreadPageChangedCallback: ((rightGlobalPage: Int, rightChapterIdx: Int, rightPageInChapter: Int) -> Unit)? = null
 
+    internal var onJumpFinishedCallback: ((generation: Long, result: CurrentSlotLoadResult) -> Unit)? = null
+    private var activeJumpGeneration: Long? = null
+
     fun setChapterCount(count: Int) {
         chapterCount = count
     }
@@ -84,6 +98,7 @@ class PageSlotManager(
      * 初始化：加载起始页到 CUR 槽位，预加载 PREV 和 NEXT。
      */
     fun initialize(startChapter: Int, startPageInChapter: Int) {
+        cancelActiveJump()
         for (i in 0..2) {
             recycleSlot(i)
         }
@@ -136,7 +151,9 @@ class PageSlotManager(
                 if (text.isNullOrEmpty()) {
                     Log.w(TAG, "Empty text for slot $slotIdx ch=$chapterIndex")
                     slot.isLoaded = false
-                    if (slotIdx == SLOT_CUR) notifyPageChanged()
+                    if (slotIdx == SLOT_CUR) {
+                        finishCurrentSlotLoad(requestToken, CurrentSlotLoadResult.EMPTY)
+                    }
                     return@launch
                 }
                 chapterTextCache[chapterIndex] = text
@@ -149,7 +166,9 @@ class PageSlotManager(
                 Log.e(TAG, "Failed to load slot $slotIdx ch=$chapterIndex", e)
                 if (isCurrentRequest(slotIdx, requestToken)) {
                     slot.isLoaded = false
-                    if (slotIdx == SLOT_CUR) notifyPageChanged()
+                    if (slotIdx == SLOT_CUR) {
+                        finishCurrentSlotLoad(requestToken, CurrentSlotLoadResult.FAILED)
+                    }
                 }
             } finally {
                 if (isCurrentRequest(slotIdx, requestToken)) {
@@ -172,7 +191,9 @@ class PageSlotManager(
         if (!isCurrentRequest(slotIdx, requestToken)) return
         if (chapterLayout.totalPages <= 0) {
             slot.isLoaded = false
-            if (slotIdx == SLOT_CUR) notifyPageChanged()
+            if (slotIdx == SLOT_CUR) {
+                finishCurrentSlotLoad(requestToken, CurrentSlotLoadResult.EMPTY)
+            }
             return
         }
 
@@ -187,6 +208,13 @@ class PageSlotManager(
                 slot.pageIndex = correctedPage
             }
             pendingStartCharOffset = -1
+        } else if (slotIdx == SLOT_CUR && pendingStartPageFraction != null) {
+            actualPage = pageIndexForChapterFraction(
+                pendingStartPageFraction ?: 0f,
+                chapterLayout.totalPages
+            )
+            slot.pageIndex = actualPage
+            pendingStartPageFraction = null
         }
         if (slotIdx == SLOT_PREV && actualPage == 0 && chapterIndex < currentChapterIndex) {
             actualPage = if (spreadEnabled()) {
@@ -264,12 +292,12 @@ class PageSlotManager(
         slot.globalPageIndex = layoutEngine.localToGlobal(chapterIndex, slot.pageIndex)
         slot.isLoaded = true
         if (slotIdx == SLOT_CUR) {
-            notifyPageChanged()
             val (prevCh, prevPg) = resolvePrevPage()
             if (prevCh >= 0 && prevPg >= 0) loadSlot(SLOT_PREV, prevCh, prevPg)
             val (nextCh, nextPg) = resolveNextPage()
             if (nextCh >= 0 && nextPg >= 0) loadSlot(SLOT_NEXT, nextCh, nextPg)
             eagerPreloadUpcoming(chapterIndex)
+            finishCurrentSlotLoad(requestToken, CurrentSlotLoadResult.LOADED)
         }
     }
 
@@ -603,30 +631,23 @@ class PageSlotManager(
 
     /** 跳转到指定章节的指定页（双页模式自动配对）。 */
     fun jumpTo(chapterIndex: Int, pageInChapter: Int) {
+        jumpTo(chapterIndex, pageInChapter, generation = null)
+    }
+
+    internal fun jumpTo(chapterIndex: Int, pageInChapter: Int, generation: Long?) {
+        cancelActiveJump()
         for (i in 0..2) recycleSlot(i)
+
+        activeJumpGeneration = generation
+        if (chapterIndex !in 0 until chapterCount || pageInChapter < 0) {
+            finishInvalidJump()
+            return
+        }
 
         currentChapterIndex = chapterIndex
         currentGlobalPage = layoutEngine.localToGlobal(chapterIndex, pageInChapter)
 
         loadSlot(SLOT_CUR, chapterIndex, pageInChapter)
-
-        val (prevCh, prevPg) = resolvePrevPage()
-        if (prevCh >= 0 && prevPg >= 0) loadSlot(SLOT_PREV, prevCh, prevPg)
-
-        val (nextCh, nextPg) = resolveNextPage()
-        if (nextCh >= 0 && nextPg >= 0) loadSlot(SLOT_NEXT, nextCh, nextPg)
-
-        val chapterLayout = layoutEngine.getChapterLayout(chapterIndex)
-        val chapterTotal = chapterLayout?.totalPages ?: 0
-        onPageChangedCallback?.invoke(currentGlobalPage, chapterIndex, pageInChapter, chapterTotal)
-        val cur = slots[SLOT_CUR]
-        if (cur.rightIsLoaded && cur.rightPageIndex >= 0) {
-            onSpreadPageChangedCallback?.invoke(
-                cur.rightGlobalPageIndex,
-                cur.rightChapterIndex,
-                cur.rightPageIndex
-            )
-        }
     }
 
     // ── 内部方法 ──
@@ -819,6 +840,39 @@ class PageSlotManager(
         return requestTokens[slotIdx] == requestToken
     }
 
+    private fun finishCurrentSlotLoad(
+        requestToken: Long,
+        result: CurrentSlotLoadResult
+    ) {
+        if (!isCurrentRequest(SLOT_CUR, requestToken)) return
+        val completedGeneration = activeJumpGeneration
+        activeJumpGeneration = null
+        pendingStartCharOffset = -1
+        pendingStartPageFraction = null
+        notifyPageChanged()
+        if (completedGeneration != null) {
+            onJumpFinishedCallback?.invoke(completedGeneration, result)
+        }
+    }
+
+    private fun finishInvalidJump() {
+        val completedGeneration = activeJumpGeneration
+        activeJumpGeneration = null
+        pendingStartCharOffset = -1
+        pendingStartPageFraction = null
+        if (completedGeneration != null) {
+            onJumpFinishedCallback?.invoke(completedGeneration, CurrentSlotLoadResult.FAILED)
+        }
+    }
+
+    private fun cancelActiveJump() {
+        val cancelledGeneration = activeJumpGeneration
+        activeJumpGeneration = null
+        if (cancelledGeneration != null) {
+            onJumpFinishedCallback?.invoke(cancelledGeneration, CurrentSlotLoadResult.CANCELLED)
+        }
+    }
+
     private fun notifyPageChanged() {
         val cur = slots[SLOT_CUR]
         val chapterLayout = layoutEngine.getChapterLayout(cur.chapterIndex)
@@ -853,6 +907,7 @@ class PageSlotManager(
     }
 
     fun destroy() {
+        cancelActiveJump()
         for (i in 0..2) recycleSlot(i)
         chapterTextCache.clear()
         scope.cancel()
