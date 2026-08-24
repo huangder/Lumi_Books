@@ -71,6 +71,30 @@ private fun tonalGlassHighlight(baseColor: Color): Color {
     return lerp(opaqueBase, Color.White, lightenFraction)
 }
 
+private fun liquidGlassOutlineBrush(
+    isDark: Boolean,
+    highlightColor: Color,
+    pressProgress: Float = 0f
+): Brush {
+    val tonalHighlight = tonalGlassHighlight(highlightColor)
+    val progress = pressProgress.coerceIn(0f, 1f)
+    return Brush.verticalGradient(
+        colors = if (isDark) {
+            listOf(
+                tonalHighlight.copy(alpha = 0.62f + progress * 0.14f),
+                tonalHighlight.copy(alpha = 0.24f + progress * 0.08f),
+                tonalHighlight.copy(alpha = 0.08f)
+            )
+        } else {
+            listOf(
+                tonalHighlight.copy(alpha = (0.96f + progress * 0.04f).coerceAtMost(1f)),
+                tonalHighlight.copy(alpha = 0.52f + progress * 0.10f),
+                tonalHighlight.copy(alpha = 0.16f + progress * 0.08f)
+            )
+        }
+    )
+}
+
 /**
  * Creates a highlight in scRGB so only the pressed spot can use luminance above
  * the SDR white point. Keeping every gradient stop in the same color space is
@@ -120,27 +144,12 @@ internal fun Modifier.liquidGlassBackdrop(
     pressedShadowAlpha: Float = 0.08f
 ): Modifier {
     val lensSupported = supportsLiquidGlassLens(lensShape)
-    val tonalHighlight = tonalGlassHighlight(highlightColor)
     val surfaceColor = if (isDark) {
         Color(0xFF101012).copy(alpha = 0.34f - transparency * 0.24f)
     } else {
         Color.White.copy(alpha = 0.32f - transparency * 0.28f)
     }
-    val borderBrush = if (isDark) {
-        Brush.verticalGradient(
-            colors = listOf(
-                tonalHighlight.copy(alpha = 0.46f + pressProgress * 0.14f),
-                tonalHighlight.copy(alpha = 0.14f + pressProgress * 0.08f)
-            )
-        )
-    } else {
-        Brush.verticalGradient(
-            colors = listOf(
-                tonalHighlight.copy(alpha = 0.82f + pressProgress * 0.14f),
-                tonalHighlight.copy(alpha = 0.22f + pressProgress * 0.12f)
-            )
-        )
-    }
+    val borderBrush = liquidGlassOutlineBrush(isDark, highlightColor, pressProgress)
     val glassModifier = drawBackdrop(
         backdrop = backdrop,
         // The lens library only accepts rounded rectangular/corner-based shapes. A G2
@@ -223,7 +232,9 @@ internal fun Modifier.liquidGlassBackdrop(
             }
         }
     )
-    return if (outlineWidth > 0.dp && !buttonInteraction) {
+    // drawBackdrop installs the interaction transform as the outer graphics layer, so this
+    // outline follows the same pressed stretch as the refracted surface.
+    return if (outlineWidth > 0.dp) {
         glassModifier.border(outlineWidth, borderBrush, shape)
     } else {
         glassModifier
@@ -274,12 +285,7 @@ fun Modifier.liquidGlassSheetSurface(
                 .background(fallbackColor)
                 .border(
                     width = 1.1.dp,
-                    brush = Brush.verticalGradient(
-                        listOf(
-                            Color.White.copy(alpha = if (isDark) 0.34f else 0.88f),
-                            Color.White.copy(alpha = if (isDark) 0.08f else 0.22f)
-                        )
-                    ),
+                    brush = liquidGlassOutlineBrush(isDark, fallbackColor),
                     shape = floatingShape
                 )
         }
@@ -482,16 +488,10 @@ fun LiquidGlassSurface(
                 )
             )
             .then(
-                if (outlineWidth > 0.dp && !interactive) {
+                if (outlineWidth > 0.dp) {
                     Modifier.border(
                         outlineWidth,
-                        Brush.verticalGradient(
-                            listOf(
-                                tonalGlassHighlight(fallbackColor).copy(alpha = 0.68f),
-                                tonalGlassHighlight(fallbackColor).copy(alpha = 0.26f),
-                                tonalGlassHighlight(fallbackColor).copy(alpha = 0.08f)
-                            )
-                        ),
+                        liquidGlassOutlineBrush(isDark, highlightColor),
                         shape
                     )
                 } else {
@@ -523,10 +523,8 @@ fun LiquidGlassSurface(
         Modifier
     }
 
-    // Default semi-transparent drop shadow so every glass surface reads as
-    // floating over the content behind it (apple-design §12: separation via
-    // shadow, not borders; heavier in dark mode). Callers that pass their own
-    // decorationModifier stay in full control.
+    // The standard outline establishes the glass edge; this restrained shadow adds depth.
+    // Callers that pass their own decorationModifier stay in full control of elevation.
     val defaultGlassShadow = if (isLiquidGlass) {
         Modifier.shadow(
             elevation = 10.dp,

@@ -55,9 +55,7 @@ fun LiquidGlassButton(
         return
     }
 
-    // Semi-transparent drop shadow so the glass edge stays readable over any
-    // content (apple-design §12: separation comes from shadow, not borders;
-    // dark mode needs a heavier shadow to separate from dark backgrounds).
+    // Keep the component's standard outline and add elevation appropriate to its prominence.
     val isDark = LocalIsDarkTheme.current
     val shadowDecoration = if (prominentShadow) {
         Modifier.shadow(

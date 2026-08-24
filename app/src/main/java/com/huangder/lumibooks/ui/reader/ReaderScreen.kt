@@ -2210,7 +2210,13 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             ) {
                 LinkReturnButton(
                     backgroundColor = capsuleBgColor,
-                    contentColor = capsuleContentColor,
+                    contentColor = if (isLiquidGlass && !isBookLayout) {
+                        menuContentColor
+                    } else {
+                        capsuleContentColor
+                    },
+                    glassContentScrimColor = readerGlassContentScrim,
+                    forceSolid = isBookLayout,
                     onClick = returnToLinkedSource
                 )
             }
@@ -3700,31 +3706,40 @@ try{AndroidBridge.onPageChanged(0,1);}catch(e){}
 private fun LinkReturnButton(
     backgroundColor: Color,
     contentColor: Color,
+    glassContentScrimColor: Color,
+    forceSolid: Boolean,
     onClick: () -> Unit
 ) {
-    val shape = RoundedCornerShape(8.dp)
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
+    LiquidGlassSurface(
+        shape = RoundedCornerShape(AppRadius.capsule),
+        fallbackColor = backgroundColor,
+        contentScrimColor = glassContentScrimColor,
+        forceFallback = forceSolid,
         modifier = Modifier
-            .clip(shape)
-            .background(backgroundColor.copy(alpha = 0.96f))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 7.dp, vertical = 6.dp)
+            .height(44.dp)
+            .widthIn(min = 72.dp),
+        onClick = onClick
     ) {
-        Icon(
-            imageVector = Icons.Default.KeyboardArrowLeft,
-            contentDescription = null,
-            tint = contentColor,
-            modifier = Modifier.size(14.dp)
-        )
-        Spacer(Modifier.width(3.dp))
-        Text(
-            text = stringResource(R.string.reader_link_return),
-            color = contentColor,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 12.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.KeyboardArrowLeft,
+                contentDescription = null,
+                tint = contentColor,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                text = stringResource(R.string.reader_link_return),
+                color = contentColor,
+                fontSize = AppType.Caption,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 
