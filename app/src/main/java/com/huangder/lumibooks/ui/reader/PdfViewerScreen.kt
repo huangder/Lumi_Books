@@ -101,6 +101,7 @@ import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -894,16 +895,18 @@ private fun PdfTopBar(
             }
 
             // 中间：书名
-            Text(
-                text = title,
-                fontSize = 12.sp,
-                color = AppColors.TextSecondary.copy(alpha = 0.7f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+            ReaderTitleCapsule(
+                title = title,
+                contentColor = AppColors.TextSecondary.copy(alpha = if (isLiquidGlass) 0.88f else 0.7f),
+                fallbackColor = AppColors.BgGray.copy(alpha = 0.8f),
+                glassContentScrimColor = glassContentScrimColor,
+                isLiquidGlass = isLiquidGlass,
                 modifier = Modifier
                     .weight(1f)
                     .padding(horizontal = 8.dp)
-                    .align(Alignment.CenterVertically)
+                    .align(Alignment.CenterVertically),
+                contentAlignment = Alignment.CenterStart,
+                textAlign = TextAlign.Start
             )
 
             // 右侧按钮：竖向排列

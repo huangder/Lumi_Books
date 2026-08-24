@@ -3978,14 +3978,16 @@ private fun ReaderTopBar(
                     forceSolid = forceSolidButtons,
                 onClick = onBack
             )
-            Text(
-                text = title,
-                fontSize = 12.sp,
-                color = contentColor.copy(alpha = 0.7f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.weight(1f).align(Alignment.Top).padding(top = 10.dp)
+            ReaderTitleCapsule(
+                title = title,
+                contentColor = contentColor.copy(alpha = if (isLiquidGlass) 0.88f else 0.7f),
+                fallbackColor = controlBackground,
+                glassContentScrimColor = glassContentScrimColor,
+                isLiquidGlass = isLiquidGlass,
+                modifier = Modifier
+                    .weight(1f)
+                    .align(Alignment.Top)
+                    .padding(horizontal = 8.dp)
             )
             // 右侧按钮竖向排列
             Column(
