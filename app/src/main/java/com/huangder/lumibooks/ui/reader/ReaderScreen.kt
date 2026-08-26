@@ -4373,11 +4373,17 @@ private fun CatalogCapsule(
             } else {
                 Box(
                     modifier = Modifier
-                        .fillMaxHeight()
-                        .fillMaxWidth((displayProgress / 100f).coerceIn(0f, 1f))
+                        .fillMaxSize()
                         .clip(RoundedCornerShape(24.dp))
-                        .background(progressColor)
-                )
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .fillMaxWidth((displayProgress / 100f).coerceIn(0f, 1f))
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(progressColor)
+                    )
+                }
             }
             val leftColor = if (isLiquidGlass) {
                 contentColor

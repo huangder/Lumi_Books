@@ -1104,14 +1104,6 @@ internal fun EpubWebViewReader(
                     updateAdjacentPreloads(target.chapterIndex, target.pageIndex, pageCount)
                 }
                 pageTurnHost.onInvalidatePreloads = ::invalidateAdjacentPreloads
-                pageTurnHost.onBusyEdgeTapDirection = { isLeftEdge ->
-                    val action = if (isLeftEdge) {
-                        latestEdgeTapMode.value.leftAction
-                    } else {
-                        latestEdgeTapMode.value.rightAction
-                    }
-                    if (action == ReaderEdgeTapAction.NEXT_PAGE) 1 else -1
-                }
 
                 webViewState.value = activeWebView
                 pageTurnHostState.value = pageTurnHost

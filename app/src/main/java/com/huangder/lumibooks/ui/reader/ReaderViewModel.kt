@@ -275,7 +275,7 @@ class ReaderViewModel @Inject constructor(
 
     private companion object {
         const val CONTINUOUS_PROGRESS_SCALE = 10_000
-        const val PROGRESS_SAVE_DEBOUNCE_MS = 350L
+        const val PROGRESS_SAVE_DEBOUNCE_MS = 250L
     }
 
     private val bookId: String = savedStateHandle.get<String>("bookId") ?: ""

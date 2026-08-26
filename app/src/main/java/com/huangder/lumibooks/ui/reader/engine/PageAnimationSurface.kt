@@ -11,6 +11,10 @@ interface PageBitmapSource {
     val pageBitmap: Bitmap?
 }
 
+internal interface CurlFrameSource {
+    fun acquireCurlFrame(): RenderResourceLease<Bitmap>?
+}
+
 enum class CurlBackTextureMode {
     PAPER,
     FADED_MIRROR

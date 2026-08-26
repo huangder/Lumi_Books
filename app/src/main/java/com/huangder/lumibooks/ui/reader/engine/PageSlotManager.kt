@@ -3,10 +3,13 @@ package com.huangder.lumibooks.ui.reader.engine
 import android.util.Log
 import com.huangder.lumibooks.ui.reader.pageIndexForChapterFraction
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -54,6 +57,7 @@ class PageSlotManager(
     private val supervisorJob = SupervisorJob()
     private val scope = CoroutineScope(supervisorJob + Dispatchers.Main)
     private val slotJobs = arrayOfNulls<Job>(3)
+    private val chapterLoadJobs = mutableMapOf<Int, Deferred<ChapterMaterial?>>()
     private val requestTokens = LongArray(3)
     private var chapterCount: Int = 0
     private val chapterTextCache = object : LinkedHashMap<Int, CharSequence>(4, 0.75f, true) {
@@ -87,8 +91,15 @@ class PageSlotManager(
     /** 双页模式右半页回调 */
     var onSpreadPageChangedCallback: ((rightGlobalPage: Int, rightChapterIdx: Int, rightPageInChapter: Int) -> Unit)? = null
 
+    internal var onSlotReadyCallback: (() -> Unit)? = null
+
     internal var onJumpFinishedCallback: ((generation: Long, result: CurrentSlotLoadResult) -> Unit)? = null
     private var activeJumpGeneration: Long? = null
+
+    private data class ChapterMaterial(
+        val text: CharSequence,
+        val layout: ChapterLayout
+    )
 
     fun setChapterCount(count: Int) {
         chapterCount = count
@@ -146,9 +157,9 @@ class PageSlotManager(
 
         val thisJob = scope.launch {
             try {
-                val text = withContext(Dispatchers.IO) { contentProvider?.invoke(chapterIndex) }
+                val material = getOrStartChapterLoad(chapterIndex).await()
                 if (!isCurrentRequest(slotIdx, requestToken)) return@launch
-                if (text.isNullOrEmpty()) {
+                if (material == null) {
                     Log.w(TAG, "Empty text for slot $slotIdx ch=$chapterIndex")
                     slot.isLoaded = false
                     if (slotIdx == SLOT_CUR) {
@@ -156,10 +167,15 @@ class PageSlotManager(
                     }
                     return@launch
                 }
-                chapterTextCache[chapterIndex] = text
-                val chapterLayout = layoutEngine.layout(chapterIndex, text)
                 if (!isCurrentRequest(slotIdx, requestToken)) return@launch
-                populateSlot(slotIdx, chapterIndex, pageInChapter, requestToken, text, chapterLayout)
+                populateSlot(
+                    slotIdx,
+                    chapterIndex,
+                    pageInChapter,
+                    requestToken,
+                    material.text,
+                    material.layout
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -177,6 +193,41 @@ class PageSlotManager(
             }
         }
         slotJobs[slotIdx] = thisJob
+    }
+
+    /**
+     * Chapter I/O and layout outlive an individual page slot request. Rotating the
+     * three slots may cancel a stale UI write, but must not restart the same chapter
+     * load while a rapid turn is waiting at the chapter boundary.
+     */
+    private fun getOrStartChapterLoad(chapterIndex: Int): Deferred<ChapterMaterial?> {
+        chapterLoadJobs[chapterIndex]?.let { return it }
+
+        val job = scope.async(start = CoroutineStart.LAZY) {
+            try {
+                val text = chapterTextCache[chapterIndex]
+                    ?: withContext(Dispatchers.IO) { contentProvider?.invoke(chapterIndex) }
+                        ?.takeUnless { it.isEmpty() }
+                    ?: return@async null
+                chapterTextCache[chapterIndex] = text
+                val layout = layoutEngine.getChapterLayout(chapterIndex)
+                    ?: layoutEngine.layout(chapterIndex, text)
+                ChapterMaterial(text, layout)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to prepare chapter $chapterIndex", e)
+                null
+            }
+        }
+        chapterLoadJobs[chapterIndex] = job
+        job.invokeOnCompletion {
+            if (chapterLoadJobs[chapterIndex] === job) {
+                chapterLoadJobs.remove(chapterIndex)
+            }
+        }
+        job.start()
+        return job
     }
 
     private fun populateSlot(
@@ -291,6 +342,7 @@ class PageSlotManager(
 
         slot.globalPageIndex = layoutEngine.localToGlobal(chapterIndex, slot.pageIndex)
         slot.isLoaded = true
+        onSlotReadyCallback?.invoke()
         if (slotIdx == SLOT_CUR) {
             val (prevCh, prevPg) = resolvePrevPage()
             if (prevCh >= 0 && prevPg >= 0) loadSlot(SLOT_PREV, prevCh, prevPg)
@@ -329,36 +381,21 @@ class PageSlotManager(
      * 低优先级 fire-and-forget，不阻塞主流程，失败静默忽略。
      */
     private fun eagerPreloadUpcoming(currentChapter: Int) {
-        val provider = contentProvider ?: return
+        if (contentProvider == null) return
         for (ahead in 1..2) {
             val target = currentChapter + ahead
             if (target >= chapterCount) break
             if (layoutEngine.getChapterLayout(target) != null) continue
-            scope.launch {
-                try {
-                    val text = withContext(Dispatchers.IO) { provider(target) }
-                        ?.takeUnless { it.isEmpty() } ?: return@launch
-                    chapterTextCache[target] = text
-                    layoutEngine.layout(target, text)
-                    Log.d(TAG, "EagerPreload: chapter $target layout cached")
-                } catch (_: Exception) { }
-            }
+            getOrStartChapterLoad(target)
         }
     }
 
     /** 退出阅读时调用：预跑当前章节的 layout 存入 layoutCache。 */
     fun preloadCurrentChapter() {
         val curChapter = currentChapterIndex
-        val provider = contentProvider ?: return
+        if (contentProvider == null) return
         if (layoutEngine.getChapterLayout(curChapter) != null) return
-        scope.launch {
-            try {
-                val text = withContext(Dispatchers.IO) { provider(curChapter) }
-                    ?.takeUnless { it.isEmpty() } ?: return@launch
-                layoutEngine.layout(curChapter, text)
-                Log.d(TAG, "preloadCurrentChapter: chapter $curChapter cached for re-entry")
-            } catch (_: Exception) { }
-        }
+        getOrStartChapterLoad(curChapter)
     }
 
     /** 刷新当前页内容（简繁转换等设置变更后调用）。 */
@@ -903,12 +940,16 @@ class PageSlotManager(
         slots.firstOrNull { it.contentView === view || it.rightContentView === view }
 
     fun clearContentCache() {
+        val loadingChapters = chapterLoadJobs.values.toList()
+        chapterLoadJobs.clear()
+        loadingChapters.forEach { it.cancel() }
         chapterTextCache.clear()
     }
 
     fun destroy() {
         cancelActiveJump()
         for (i in 0..2) recycleSlot(i)
+        chapterLoadJobs.clear()
         chapterTextCache.clear()
         scope.cancel()
     }
