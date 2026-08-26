@@ -686,7 +686,7 @@ private fun BookshelfSearchResultCard(
                 Text(
                     text = book.title,
                     color = AppColors.TextPrimary,
-                    fontSize = AppType.Section,
+                    fontSize = 18.sp,
                     fontWeight = FontWeight.SemiBold,
                     fontFamily = resolveAppFontFamily(KaiTi),
                     maxLines = 2,
@@ -696,7 +696,7 @@ private fun BookshelfSearchResultCard(
                 Text(
                     text = book.author,
                     color = AppColors.TextSecondary,
-                    fontSize = AppType.BodySmall,
+                    fontSize = 13.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
