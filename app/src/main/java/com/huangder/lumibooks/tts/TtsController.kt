@@ -1,7 +1,7 @@
 ﻿package com.huangder.lumibooks.tts
 
-import com.huangder.lumibooks.data.local.DataStoreManager
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -22,7 +22,7 @@ class TtsController(
     private val systemTtsEngine: TtsPlaybackEngine,
     private val externalTtsEngine: TtsPlaybackEngine,
     private val textExtractor: TtsTextExtractor,
-    private val dataStoreManager: DataStoreManager
+    private val dataStoreManager: TtsSettingsStore
 ) {
     private val configuredEngine: TtsPlaybackEngine
         get() = if (externalTtsEnabled) externalTtsEngine else systemTtsEngine
@@ -54,7 +54,7 @@ class TtsController(
     private val _errors = MutableSharedFlow<Throwable?>(extraBufferCapacity = 1)
     val errors: SharedFlow<Throwable?> = _errors.asSharedFlow()
 
-    private var pageProvider: (suspend (chapterIndex: Int, pageIndex: Int) -> TtsPageContent?)? = null
+    private var pageSource: TtsPageSource? = null
     private var segments: List<TtsTextSegment> = emptyList()
     private var sentenceIndex = 0
     private var activeUtteranceId: String? = null
@@ -66,6 +66,9 @@ class TtsController(
     private var pendingResume: ExternalTtsResumePosition? = null
     private var crossPageMerge: CrossPageMergeState? = null
     private var activeSegment: TtsTextSegment? = null
+    private var pageTurnSequence = 0L
+    private var pendingPageTurn: PendingPageTurn? = null
+    private var acknowledgedPageTurn: AcknowledgedPageTurn? = null
 
     // Sleep timer
     private val _sleepTimerRemainingMs = MutableStateFlow<Long?>(null)
@@ -75,6 +78,17 @@ class TtsController(
     private data class CrossPageMergeState(
         val landingLocation: TtsPageLocation,
         val landingStartCharacterOffset: Int
+    )
+
+    private data class PendingPageTurn(
+        val request: TtsPageTurnRequest,
+        val sourceLocation: TtsPageLocation?
+    )
+
+    private data class AcknowledgedPageTurn(
+        val sourceLocation: TtsPageLocation?,
+        val targetLocation: TtsPageLocation,
+        val acknowledgedAtNanos: Long
     )
 
     init {
@@ -127,7 +141,7 @@ class TtsController(
 
     suspend fun start(
         bookId: String,
-        provider: suspend (chapterIndex: Int, pageIndex: Int) -> TtsPageContent?,
+        source: TtsPageSource,
         startChapter: Int,
         startPage: Int
     ): Result<Unit> = withContext(Dispatchers.Main.immediate) {
@@ -137,7 +151,7 @@ class TtsController(
         externalTtsEnabled = settings.enabled &&
             settings.consentVersion >= ExternalTtsConfig.CONSENT_VERSION
         sessionEngine = configuredEngine
-        pageProvider = provider
+        pageSource = source
         _activeBookId.value = bookId
         _playbackState.value = TtsPlaybackState.INITIALIZING
 
@@ -158,7 +172,7 @@ class TtsController(
         val resume = storedResume?.takeIf { candidate ->
             val fingerprint = candidate.pageFingerprint ?: return@takeIf false
             val savedPage = try {
-                provider(candidate.chapterIndex, candidate.pageIndex)
+                source.getPage(candidate.chapterIndex, candidate.pageIndex)
             } catch (error: kotlinx.coroutines.CancellationException) {
                 throw error
             } catch (_: Throwable) {
@@ -257,13 +271,57 @@ class TtsController(
             val state = _playbackState.value
             if (state != TtsPlaybackState.PLAYING && state != TtsPlaybackState.PAUSED) return@launch
             val location = TtsPageLocation(chapterIndex, pageIndex)
+            val pending = pendingPageTurn
+            if (pending != null) {
+                if (pending.request.sessionId != sessionGeneration) return@launch
+                if (pending.request.location == location) acknowledgePendingPageTurn(pending)
+                return@launch
+            }
+            val acknowledged = acknowledgedPageTurn
+            if (acknowledged != null) {
+                val withinAnimationWindow = System.nanoTime() - acknowledged.acknowledgedAtNanos <=
+                    PAGE_TURN_CALLBACK_GRACE_NANOS
+                if (withinAnimationWindow &&
+                    (location == acknowledged.sourceLocation ||
+                        location == acknowledged.targetLocation)
+                ) return@launch
+                acknowledgedPageTurn = null
+            }
             if (_currentPage.value?.location == location) return@launch
             if (crossPageMerge?.landingLocation == location) return@launch
-            if (!moveToPage(location, startAtEnd = false, publishLocation = true)) {
+            if (!moveToPage(location, startAtEnd = false, publishLocation = false)) {
                 _errors.tryEmit(pageContentError ?: IllegalStateException("No readable text found"))
                 stopInternal()
             }
         }
+    }
+
+    fun isPageTurnRequestActive(request: TtsPageTurnRequest): Boolean =
+        request.bookId == _activeBookId.value &&
+            request.sessionId == sessionGeneration &&
+            request.location == _currentPage.value?.location &&
+            _playbackState.value != TtsPlaybackState.IDLE
+
+    fun acknowledgePageTurnRequest(request: TtsPageTurnRequest) {
+        scope.launch {
+            if (!isPageTurnRequestActive(request)) return@launch
+            val pending = pendingPageTurn ?: return@launch
+            if (pending.request.sessionId == request.sessionId &&
+                pending.request.requestId == request.requestId &&
+                pending.request.location == request.location
+            ) {
+                acknowledgePendingPageTurn(pending)
+            }
+        }
+    }
+
+    private fun acknowledgePendingPageTurn(pending: PendingPageTurn) {
+        acknowledgedPageTurn = AcknowledgedPageTurn(
+            sourceLocation = pending.sourceLocation,
+            targetLocation = pending.request.location,
+            acknowledgedAtNanos = System.nanoTime()
+        )
+        pendingPageTurn = null
     }
 
     suspend fun setSpeechRate(rate: Float) = withContext(Dispatchers.Main.immediate) {
@@ -346,7 +404,7 @@ class TtsController(
         publishLocation: Boolean,
         startCharacterOffset: Int? = null
     ): Boolean {
-        val provider = pageProvider ?: return false
+        val source = pageSource ?: return false
         val token = ++pageLoadToken
         pageContentError = null
         activeUtteranceId = null
@@ -361,7 +419,9 @@ class TtsController(
         var attempts = 0
         while (attempts < 50 && selectedPage == null) {
             val page = try {
-                provider(target.chapterIndex, target.pageIndex)
+                source.getPage(target.chapterIndex, target.pageIndex)
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Throwable) {
                 pageContentError = error
                 return false
@@ -383,11 +443,19 @@ class TtsController(
 
         val page = selectedPage ?: return false
         if (token != pageLoadToken) return true
+        val sourceLocation = _currentPage.value?.location
         _currentPage.value = page
         segments = selectedSegments
         sentenceIndex = if (startAtEnd) segments.lastIndex else 0
         if (publishLocation) {
-            _pageTurnRequests.emit(TtsPageTurnRequest(_activeBookId.value ?: return false, page.location))
+            val request = TtsPageTurnRequest(
+                bookId = _activeBookId.value ?: return false,
+                sessionId = sessionGeneration,
+                requestId = ++pageTurnSequence,
+                location = page.location
+            )
+            pendingPageTurn = PendingPageTurn(request, sourceLocation)
+            _pageTurnRequests.emit(request)
         }
         if (_playbackState.value == TtsPlaybackState.PLAYING) speakCurrentSegment()
         return true
@@ -404,9 +472,10 @@ class TtsController(
     private suspend fun mergeAcrossPages(
         trailingText: String,
         trailingStartOffset: Int,
-        trailingEndOffset: Int
+        trailingEndOffset: Int,
+        generation: Long
     ): TtsTextSegment? {
-        val provider = pageProvider ?: return null
+        val source = pageSource ?: return null
         val maxLength = TtsTextExtractor.MAX_SENTENCE_LENGTH
         var mergedText = trailingText
         var lastPage = _currentPage.value ?: return null
@@ -414,13 +483,17 @@ class TtsController(
         var landingStartOffset = lastPage.startCharacterOffset
 
         while (mergedText.length < maxLength) {
+            if (generation != sessionGeneration) return null
             val nextLocation = lastPage.next ?: break
             if (nextLocation.chapterIndex != lastPage.location.chapterIndex) break
             val nextPage = try {
-                provider(nextLocation.chapterIndex, nextLocation.pageIndex)
+                source.getPage(nextLocation.chapterIndex, nextLocation.pageIndex)
+            } catch (error: CancellationException) {
+                throw error
             } catch (_: Throwable) {
                 null
             } ?: break
+            if (generation != sessionGeneration) return null
 
             val mergeResult = textExtractor.mergeTrailingSentence(
                 trailing = mergedText,
@@ -444,6 +517,7 @@ class TtsController(
             last in TtsTextExtractor.TERMINATORS || last in TtsTextExtractor.CLOSING_PUNCTUATION
         } == true
         if (mergedText == trailingText || !endedAtSentenceBoundary) return null
+        if (generation != sessionGeneration) return null
         crossPageMerge = CrossPageMergeState(
             landingLocation = landingLocation,
             landingStartCharacterOffset = landingStartOffset
@@ -455,6 +529,7 @@ class TtsController(
         )
     }
     private suspend fun speakCurrentSegment() {
+        val generation = sessionGeneration
         val page = _currentPage.value ?: return
         var segment = segments.getOrNull(sentenceIndex) ?: return
 
@@ -464,9 +539,18 @@ class TtsController(
             segment.canContinueAcrossPage &&
             textExtractor.isTrailing(segment.text)
         ) {
-            val merged = mergeAcrossPages(segment.text, segment.startCharacterOffset, segment.endCharacterOffset)
+            val merged = mergeAcrossPages(
+                segment.text,
+                segment.startCharacterOffset,
+                segment.endCharacterOffset,
+                generation
+            )
             if (merged != null) segment = merged
         }
+        if (generation != sessionGeneration ||
+            _currentPage.value?.location != page.location ||
+            _playbackState.value != TtsPlaybackState.PLAYING
+        ) return
         val utteranceId = buildString {
             append(sessionGeneration)
             append(':')
@@ -493,6 +577,7 @@ class TtsController(
             cacheKey = resume?.cacheKey,
             startFrame = resume?.pcmFrameOffset ?: 0L
         )
+        if (generation != sessionGeneration || activeUtteranceId != utteranceId) return
         if (result.isFailure && activeUtteranceId == utteranceId) {
             activeUtteranceId = null
             activeSegment = null
@@ -600,7 +685,10 @@ class TtsController(
         _currentSentence.value = null
         systemTtsEngine.stop()
         externalTtsEngine.stop()
-        pageProvider = null
+        runCatching { pageSource?.close() }
+        pageSource = null
+        pendingPageTurn = null
+        acknowledgedPageTurn = null
         segments = emptyList()
         sentenceIndex = 0
         _currentPage.value = null
@@ -618,6 +706,10 @@ class TtsController(
         scope.cancel()
         systemTtsEngine.shutdown()
         externalTtsEngine.shutdown()
+    }
+
+    private companion object {
+        const val PAGE_TURN_CALLBACK_GRACE_NANOS = 1_000_000_000L
     }
 }
 

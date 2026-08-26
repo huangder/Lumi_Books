@@ -64,9 +64,9 @@ import com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatter
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.service.TtsForegroundService
 import com.huangder.lumibooks.tts.TtsController
-import com.huangder.lumibooks.tts.TtsPageContent
+import com.huangder.lumibooks.tts.TtsPageSource
+import com.huangder.lumibooks.tts.TtsPageTurnRequest
 import com.huangder.lumibooks.tts.TtsPlaybackState
-import com.huangder.lumibooks.tts.TtsPageLocation
 import com.huangder.lumibooks.tts.ExternalTtsException
 import com.huangder.lumibooks.tts.SystemTtsException
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -311,6 +311,13 @@ class ReaderViewModel @Inject constructor(
     private var progressWriteVersion = 0L
 
     val ttsPageTurnRequests = ttsController.pageTurnRequests
+
+    fun isTtsPageTurnRequestActive(request: TtsPageTurnRequest): Boolean =
+        ttsController.isPageTurnRequestActive(request)
+
+    fun acknowledgeTtsPageTurnRequest(request: TtsPageTurnRequest) {
+        ttsController.acknowledgePageTurnRequest(request)
+    }
 
     private var parser: BookParser? = null
     private var renderSession: BookRenderSession? = null
@@ -1988,6 +1995,13 @@ class ReaderViewModel @Inject constructor(
             pageReady = true,
             isLoading = false
         )
+        val chapterPageCount = pageLayoutEngine.getChapterPageCount(chapterIndex)
+        if (chapterPageCount > 0) {
+            val visiblePage = (chapterFraction.coerceIn(0f, 0.9999f) * chapterPageCount)
+                .toInt()
+                .coerceIn(0, chapterPageCount - 1)
+            ttsController.onPageVisible(bookId, chapterIndex, visiblePage)
+        }
         continuousProgressJob?.cancel()
         val progressState = _uiState.value
         val writeVersion = ++progressWriteVersion
@@ -2070,9 +2084,7 @@ class ReaderViewModel @Inject constructor(
         )
     }
 
-    fun startTts(
-        pageProvider: suspend (chapterIndex: Int, pageIndex: Int) -> TtsPageContent?
-    ) {
+    fun startTts() {
         val state = _uiState.value
         val book = state.book ?: return
         if (!state.useNewEngine || state.isLoading) return
@@ -2093,7 +2105,41 @@ class ReaderViewModel @Inject constructor(
         } else {
             state.currentPageIndex
         }
-        startTtsSession(book.id, book.title, pageProvider, startChapter, startPage)
+        val source = ReflowTtsPageSource(
+            layoutEngine = pageLayoutEngine,
+            chapterCount = state.chapterCount,
+            chineseMode = state.chineseMode,
+            chapterProvider = { chapterIndex ->
+                withContext(Dispatchers.IO) { getChapterText(chapterIndex) }
+            }
+        )
+        startTtsSession(book.id, book.title, source, startChapter, startPage)
+    }
+
+    internal fun startBookLayoutTts(
+        webPageProvider: suspend (chapterIndex: Int, pageIndex: Int) -> EpubPageText?
+    ) {
+        val state = _uiState.value
+        val book = state.book ?: return
+        if (!state.useNewEngine || state.isLoading) return
+        val source = OriginalLayoutEpubTtsPageSource(
+            chapterCount = state.chapterCount,
+            webPageProvider = webPageProvider,
+            chapterTextProvider = { chapterIndex ->
+                withContext(Dispatchers.IO) {
+                    getChapterText(chapterIndex)
+                        ?.toString()
+                        ?.replace('\uFFFC', ' ')
+                }
+            }
+        )
+        startTtsSession(
+            book.id,
+            book.title,
+            source,
+            state.currentChapterIndex,
+            state.currentPageIndex
+        )
     }
 
     fun startPdfTts(filePath: String, currentPage: Int, pageCount: Int) {
@@ -2102,8 +2148,8 @@ class ReaderViewModel @Inject constructor(
         startTtsSession(
             book.id,
             book.title,
-            provider = { pdfPageIndex, _ ->
-                pdfTtsPageContent(filePath, pdfPageIndex, pageCount)
+            source = PdfTtsPageSource(pageCount) { pdfPageIndex ->
+                pdfTtsPageText(filePath, pdfPageIndex, pageCount)
             },
             startChapter = currentPage.coerceIn(0, pageCount - 1),
             startPage = 0
@@ -2113,7 +2159,7 @@ class ReaderViewModel @Inject constructor(
     private fun startTtsSession(
         bookId: String,
         bookTitle: String,
-        provider: suspend (chapterIndex: Int, pageIndex: Int) -> TtsPageContent?,
+        source: TtsPageSource,
         startChapter: Int,
         startPage: Int
     ) {
@@ -2122,7 +2168,7 @@ class ReaderViewModel @Inject constructor(
             TtsForegroundService.startIntent(context, bookTitle)
         )
         viewModelScope.launch {
-            val result = ttsController.start(bookId, provider, startChapter, startPage)
+            val result = ttsController.start(bookId, source, startChapter, startPage)
             if (result.isFailure) {
                 _uiState.value = _uiState.value.copy(
                     ttsErrorMessage = ttsErrorMessage(result.exceptionOrNull())
@@ -2132,25 +2178,20 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    private suspend fun pdfTtsPageContent(
+    private suspend fun pdfTtsPageText(
         filePath: String,
         pdfPageIndex: Int,
         pageCount: Int
-    ): TtsPageContent? = withContext(Dispatchers.IO) {
-        if (pdfPageIndex !in 0 until pageCount) return@withContext null
-        val text = try {
+    ): String = withContext(Dispatchers.IO) {
+        if (pdfPageIndex !in 0 until pageCount) {
+            throw IllegalStateException("No readable text found in this PDF page")
+        }
+        try {
             pdfTextExtractor.extractPages(File(filePath), setOf(pdfPageIndex))[pdfPageIndex]
         } catch (error: Exception) {
             throw IllegalStateException("Unable to extract PDF text", error)
         }?.takeIf { it.isNotBlank() }
             ?: throw IllegalStateException("No readable text found in this PDF page")
-        TtsPageContent(
-            location = TtsPageLocation(pdfPageIndex, 0),
-            text = text,
-            previous = (pdfPageIndex - 1).takeIf { it >= 0 }?.let { TtsPageLocation(it, 0) },
-            next = (pdfPageIndex + 1).takeIf { it < pageCount }?.let { TtsPageLocation(it, 0) },
-            startCharacterOffset = 0
-        )
     }
 
     fun onPdfTtsPageVisible(bookId: String, pdfPageIndex: Int) {

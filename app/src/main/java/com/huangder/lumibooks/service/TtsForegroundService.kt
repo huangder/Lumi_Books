@@ -1,11 +1,13 @@
 package com.huangder.lumibooks.service
 
+import android.annotation.SuppressLint
 import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.media.session.MediaSession
 import android.media.session.PlaybackState
 import android.os.IBinder
+import android.os.PowerManager
 import com.huangder.lumibooks.tts.TtsController
 import com.huangder.lumibooks.tts.TtsPlaybackState
 import dagger.hilt.android.AndroidEntryPoint
@@ -39,6 +41,7 @@ class TtsForegroundService : Service() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var mediaSession: MediaSession
+    private lateinit var playbackWakeLock: PowerManager.WakeLock
     private var bookTitle = ""
     private var foregroundStarted = false
     private var awaitingSessionStart = false
@@ -46,6 +49,9 @@ class TtsForegroundService : Service() {
     override fun onCreate() {
         super.onCreate()
         notificationManager.createChannel()
+        playbackWakeLock = getSystemService(PowerManager::class.java)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$packageName:TtsPlayback")
+            .apply { setReferenceCounted(false) }
         mediaSession = MediaSession(this, "LumiTtsPlayback").apply {
             setCallback(object : MediaSession.Callback() {
                 override fun onPlay() = ttsController.resume()
@@ -64,6 +70,7 @@ class TtsForegroundService : Service() {
             combine(ttsController.playbackState, ttsController.currentPage) { state, page -> state to page }
                 .collect { (state, page) ->
                     updateMediaSessionState(state)
+                    updatePlaybackWakeLock(state)
                     if (!foregroundStarted) return@collect
                     if (state == TtsPlaybackState.IDLE) {
                         if (!awaitingSessionStart) {
@@ -122,6 +129,7 @@ class TtsForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        releasePlaybackWakeLock()
         if (ttsController.playbackState.value != TtsPlaybackState.IDLE) {
             ttsController.stop()
         }
@@ -129,6 +137,23 @@ class TtsForegroundService : Service() {
         mediaSession.release()
         serviceScope.cancel()
         super.onDestroy()
+    }
+
+    @SuppressLint("WakelockTimeout")
+    private fun updatePlaybackWakeLock(state: TtsPlaybackState) {
+        val shouldHold = state == TtsPlaybackState.INITIALIZING ||
+            state == TtsPlaybackState.PLAYING
+        if (shouldHold) {
+            if (!playbackWakeLock.isHeld) runCatching { playbackWakeLock.acquire() }
+        } else {
+            releasePlaybackWakeLock()
+        }
+    }
+
+    private fun releasePlaybackWakeLock() {
+        if (::playbackWakeLock.isInitialized && playbackWakeLock.isHeld) {
+            runCatching { playbackWakeLock.release() }
+        }
     }
 
     private fun updateMediaSessionState(state: TtsPlaybackState) {

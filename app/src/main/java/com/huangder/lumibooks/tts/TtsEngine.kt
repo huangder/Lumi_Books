@@ -2,6 +2,7 @@ package com.huangder.lumibooks.tts
 
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -66,6 +67,10 @@ class TtsEngine(
     private var utteranceListener: UtteranceProgressListener? = null
     private var pendingSpeechRate = 1f
     private var pendingPitch = 1f
+    private val speechAudioAttributes = AudioAttributes.Builder()
+        .setUsage(AudioAttributes.USAGE_MEDIA)
+        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+        .build()
 
     private val _engineStatus = MutableStateFlow(TtsEngineStatus.UNINITIALIZED)
     val engineStatus: StateFlow<TtsEngineStatus> = _engineStatus.asStateFlow()
@@ -125,6 +130,7 @@ class TtsEngine(
             }
 
             withContext(Dispatchers.Main.immediate) {
+                created.setAudioAttributes(speechAudioAttributes)
                 created.setSpeechRate(pendingSpeechRate)
                 created.setPitch(pendingPitch)
                 utteranceListener?.let(created::setOnUtteranceProgressListener)

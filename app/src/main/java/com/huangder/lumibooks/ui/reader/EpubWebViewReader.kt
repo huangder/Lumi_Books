@@ -216,7 +216,10 @@ internal data class EpubPageText(
     val chapterIndex: Int,
     val pageIndex: Int,
     val pageCount: Int,
-    val text: String
+    val text: String,
+    val chapterText: String,
+    val startCharacterOffset: Int,
+    val endCharacterOffset: Int
 )
 
 @SuppressLint("SetJavaScriptEnabled")
@@ -299,6 +302,7 @@ internal fun EpubWebViewReader(
     val latestPageTextProviderReady = rememberUpdatedState(onPageTextProviderReady)
     val latestPageTurnHandlerReady = rememberUpdatedState(onPageTurnHandlerReady)
     val webViewState = remember(session) { mutableStateOf<WebView?>(null) }
+    val ttsPageViewByChapter = remember(session) { mutableStateOf<Map<Int, WebView>>(emptyMap()) }
     val pageTurnHostState = remember(session) { mutableStateOf<EpubPageTurnHost?>(null) }
     val loadedChapter = remember(session) { mutableStateOf(-1) }
     val activePageCount = remember(session) { mutableStateOf(1) }
@@ -349,8 +353,19 @@ internal fun EpubWebViewReader(
                 val preloadRequestByView = mutableMapOf<EpubContentWebView, EpubPreloadRequest>()
                 val preparedPageByView = mutableMapOf<EpubContentWebView, EpubPreparedPage>()
                 val preloadConfigurationByView = mutableMapOf<EpubContentWebView, String>()
+                val readyTtsPageViewByChapter = mutableMapOf<Int, EpubContentWebView>()
                 var nextPreloadGeneration = 0
                 var rendererGoneHandled = false
+
+                fun publishTtsPageViews() {
+                    ttsPageViewByChapter.value = readyTtsPageViewByChapter.toMap()
+                }
+
+                fun forgetTtsPageView(view: EpubContentWebView) {
+                    if (readyTtsPageViewByChapter.entries.removeAll { it.value === view }) {
+                        publishTtsPageViews()
+                    }
+                }
 
                 fun chapterForView(view: EpubContentWebView): Int {
                     val documentUrl = view.url.orEmpty().substringBefore('#')
@@ -465,6 +480,7 @@ internal fun EpubWebViewReader(
                     ) return
                     val generation = ++nextPreloadGeneration
                     preparedPageByView.remove(view)
+                    forgetTtsPageView(view)
                     if (target == null) {
                         preloadRequestByView.remove(view)
                     } else {
@@ -566,6 +582,8 @@ internal fun EpubWebViewReader(
                                         actualPage,
                                         view
                                     )
+                                    readyTtsPageViewByChapter[target.chapterIndex] = view
+                                    publishTtsPageViews()
                                 }
                             }
                         }
@@ -645,6 +663,8 @@ internal fun EpubWebViewReader(
                                 }
                             )
                             if (type == "ready") {
+                                readyTtsPageViewByChapter[messageChapterIndex] = view
+                                publishTtsPageViews()
                                 readyChapter.value = messageChapterIndex
                                 chapterLoadPending.value = false
                                 view.animate().cancel()
@@ -1287,10 +1307,11 @@ internal fun EpubWebViewReader(
     DisposableEffect(session) {
         latestPageTextProviderReady.value { requestedChapter, requestedPage ->
             requestPageText(
-                view = webViewState.value,
-                loadedChapter = loadedChapter.value,
+                view = ttsPageViewByChapter.value[requestedChapter],
+                loadedChapter = requestedChapter,
                 requestedChapter = requestedChapter,
-                requestedPage = requestedPage
+                requestedPage = requestedPage,
+                expectedUrl = session.chapterUrl(requestedChapter).substringBefore('#')
             )
         }
         latestPageTurnHandlerReady.value pageTurn@{ direction ->
@@ -1318,6 +1339,7 @@ internal fun EpubWebViewReader(
                 host.removeAllViews()
             }
             webViewState.value = null
+            ttsPageViewByChapter.value = emptyMap()
             pageTurnHostState.value = null
         }
     }
@@ -1533,9 +1555,12 @@ private suspend fun requestPageText(
     view: WebView?,
     loadedChapter: Int,
     requestedChapter: Int,
-    requestedPage: Int
+    requestedPage: Int,
+    expectedUrl: String
 ): EpubPageText? {
-    if (view == null || loadedChapter != requestedChapter) return null
+    if (view == null || loadedChapter != requestedChapter ||
+        view.url.orEmpty().substringBefore('#') != expectedUrl
+    ) return null
     return suspendCancellableCoroutine { continuation ->
         view.post {
             if (!continuation.isActive) return@post
@@ -1544,6 +1569,10 @@ private suspend fun requestPageText(
                     requestedPage.coerceAtLeast(0) + ")):null"
             ) { encoded ->
                 if (!continuation.isActive) return@evaluateJavascript
+                if (view.url.orEmpty().substringBefore('#') != expectedUrl) {
+                    continuation.resume(null)
+                    return@evaluateJavascript
+                }
                 val decoded = runCatching { JSONArray("[$encoded]").optString(0) }.getOrNull()
                 val payload = decoded?.let { runCatching { JSONObject(it) }.getOrNull() }
                 continuation.resume(
@@ -1552,7 +1581,14 @@ private suspend fun requestPageText(
                             chapterIndex = requestedChapter,
                             pageIndex = it.optInt("pageIndex", requestedPage).coerceAtLeast(0),
                             pageCount = it.optInt("pageCount", 1).coerceAtLeast(1),
-                            text = it.optString("text").trim()
+                            text = it.optString("text"),
+                            chapterText = it.optString("chapterText"),
+                            startCharacterOffset = it.optInt("startCharacterOffset", 0)
+                                .coerceAtLeast(0),
+                            endCharacterOffset = it.optInt(
+                                "endCharacterOffset",
+                                it.optString("chapterText").length
+                            ).coerceAtLeast(0)
                         )
                     }
                 )

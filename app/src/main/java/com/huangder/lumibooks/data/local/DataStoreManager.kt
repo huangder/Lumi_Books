@@ -39,6 +39,7 @@ import com.huangder.lumibooks.tts.ExternalTtsProtocol
 import com.huangder.lumibooks.tts.ExternalTtsResumePosition
 import com.huangder.lumibooks.tts.ExternalTtsSettings
 import com.huangder.lumibooks.tts.ExternalTtsConfig
+import com.huangder.lumibooks.tts.TtsSettingsStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -52,7 +53,7 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "se
 @Singleton
 class DataStoreManager @Inject constructor(
     @ApplicationContext private val context: Context
-) {
+) : TtsSettingsStore {
     private val deviceSupportsHdr: Boolean by lazy {
         context.getSystemService(DisplayManager::class.java)
             ?.getDisplay(Display.DEFAULT_DISPLAY)
@@ -388,11 +389,11 @@ class DataStoreManager @Inject constructor(
             else ReaderCornerContent.fromKey(stored)
         }
 
-    val ttsSpeechRate: Flow<Float> = context.dataStore.data.map { preferences ->
+    override val ttsSpeechRate: Flow<Float> = context.dataStore.data.map { preferences ->
         (preferences[TTS_SPEECH_RATE] ?: 1f).coerceIn(0.5f, 2f)
     }
 
-    val ttsPitch: Flow<Float> = context.dataStore.data.map { preferences ->
+    override val ttsPitch: Flow<Float> = context.dataStore.data.map { preferences ->
         (preferences[TTS_PITCH] ?: 1f).coerceIn(0.5f, 2f)
     }
 
@@ -500,7 +501,7 @@ class DataStoreManager @Inject constructor(
     }
 
     // 外部 TTS 听书设置
-    val externalTtsSettings: Flow<ExternalTtsSettings> = context.dataStore.data.map { preferences ->
+    override val externalTtsSettings: Flow<ExternalTtsSettings> = context.dataStore.data.map { preferences ->
         ExternalTtsSettings(
             enabled = preferences[EXTERNAL_TTS_ENABLED] ?: false,
             protocol = ExternalTtsProtocol.fromKey(preferences[EXTERNAL_TTS_PROTOCOL]),
@@ -544,7 +545,7 @@ class DataStoreManager @Inject constructor(
         else raw.split(",").toSet()
     }
 
-    fun externalTtsResumePosition(bookId: String): Flow<ExternalTtsResumePosition?> =
+    override fun externalTtsResumePosition(bookId: String): Flow<ExternalTtsResumePosition?> =
         context.dataStore.data.map { preferences ->
             val raw = preferences[externalTtsResumeKey(bookId)] ?: return@map null
             parseResumePosition(raw, bookId)
@@ -869,7 +870,7 @@ class DataStoreManager @Inject constructor(
         }
     }
 
-    suspend fun saveTtsSpeechRate(rate: Float) {
+    override suspend fun saveTtsSpeechRate(rate: Float) {
         context.dataStore.edit { preferences ->
             preferences[TTS_SPEECH_RATE] = rate.coerceIn(0.5f, 2f)
         }
@@ -890,7 +891,7 @@ class DataStoreManager @Inject constructor(
         context.dataStore.edit { preferences -> preferences[APPLY_TO_BODY_ONLY] = enabled }
     }
 
-    suspend fun saveTtsPitch(pitch: Float) {
+    override suspend fun saveTtsPitch(pitch: Float) {
         context.dataStore.edit { preferences ->
             preferences[TTS_PITCH] = pitch.coerceIn(0.5f, 2f)
         }
@@ -1425,7 +1426,7 @@ class DataStoreManager @Inject constructor(
         }
     }
 
-    suspend fun saveExternalTtsResumePosition(position: ExternalTtsResumePosition) {
+    override suspend fun saveExternalTtsResumePosition(position: ExternalTtsResumePosition) {
         val key = externalTtsResumeKey(position.bookId)
         val encoded = buildString {
             append("ch=${position.chapterIndex}|pg=${position.pageIndex}|off=${position.characterOffset}")
@@ -1437,7 +1438,7 @@ class DataStoreManager @Inject constructor(
         }
     }
 
-    suspend fun clearExternalTtsResumePosition(bookId: String) {
+    override suspend fun clearExternalTtsResumePosition(bookId: String) {
         val key = externalTtsResumeKey(bookId)
         context.dataStore.edit { preferences ->
             preferences.remove(key)

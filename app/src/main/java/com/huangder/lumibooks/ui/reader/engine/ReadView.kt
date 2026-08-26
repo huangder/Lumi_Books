@@ -18,11 +18,6 @@ import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.ui.reader.BionicReadingFormatter
 import com.huangder.lumibooks.ui.reader.mapGlobalProgress
 import com.huangder.lumibooks.ui.reader.pageIndexForChapterFraction
-import com.huangder.lumibooks.tts.TtsPageContent
-import com.huangder.lumibooks.tts.TtsPageLocation
-import com.huangder.lumibooks.util.ChineseConverter
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
 internal fun calculateReaderVerticalBalanceOffset(
@@ -880,56 +875,6 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         if (current.chapterIndex <= 0) return -1 to -1
         val previousLayout = layoutEngine.getChapterLayout(current.chapterIndex - 1) ?: return -1 to -1
         return current.chapterIndex - 1 to previousLayout.totalPages - 1
-    }
-
-    /**
-     * 返回指定页的纯文本与相邻位置。TTS 后台播放时也可通过该方法继续按当前排版分页。
-     */
-    suspend fun getTtsPageContent(chapterIndex: Int, pageIndex: Int): TtsPageContent? {
-        if (chapterIndex !in 0 until currentChapterCount || pageIndex < 0) return null
-        val provider = contentProvider ?: return null
-        val fullText = withContext(Dispatchers.IO) { provider(chapterIndex) }
-            ?.takeUnless { it.isEmpty() }
-            ?: return null
-        val chapterLayout = layoutEngine.layout(chapterIndex, fullText)
-        val pageLayout = chapterLayout.pages.getOrNull(pageIndex) ?: return null
-
-        var startOffset = pageLayout.startCharOffset
-        while (startOffset < pageLayout.endCharOffset && fullText[startOffset] == '\n') {
-            startOffset++
-        }
-        val rawPageText = if (startOffset < pageLayout.endCharOffset) {
-            fullText.subSequence(startOffset, pageLayout.endCharOffset).toString()
-        } else {
-            ""
-        }
-        val pageText = ChineseConverter.convert(rawPageText, currentChineseMode)
-
-        val previous = when {
-            pageIndex > 0 -> TtsPageLocation(chapterIndex, pageIndex - 1)
-            chapterIndex <= 0 -> null
-            else -> {
-                val previousText = withContext(Dispatchers.IO) { provider(chapterIndex - 1) }
-                val previousLayout = previousText
-                    ?.takeUnless { it.isEmpty() }
-                    ?.let { layoutEngine.layout(chapterIndex - 1, it) }
-                previousLayout?.takeIf { it.totalPages > 0 }?.let {
-                    TtsPageLocation(chapterIndex - 1, it.totalPages - 1)
-                }
-            }
-        }
-        val next = when {
-            pageIndex + 1 < chapterLayout.totalPages -> TtsPageLocation(chapterIndex, pageIndex + 1)
-            chapterIndex + 1 < currentChapterCount -> TtsPageLocation(chapterIndex + 1, 0)
-            else -> null
-        }
-        return TtsPageContent(
-            location = TtsPageLocation(chapterIndex, pageIndex),
-            text = pageText,
-            previous = previous,
-            next = next,
-            startCharacterOffset = startOffset
-        )
     }
 
     /** 设置简繁转换模式，刷新当前页 */

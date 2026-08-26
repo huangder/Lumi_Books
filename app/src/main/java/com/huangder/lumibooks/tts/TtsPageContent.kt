@@ -12,11 +12,17 @@ data class TtsPageContent(
     val text: String,
     val previous: TtsPageLocation?,
     val next: TtsPageLocation?,
-    /** Offset in the text source used to build the current layout where [text] begins. */
-    val startCharacterOffset: Int = 0
+    /** Offsets in the text source used to build the current layout. */
+    val startCharacterOffset: Int = 0,
+    val endCharacterOffset: Int = startCharacterOffset + text.length
 ) {
     val resumeFingerprint: String
-        get() = buildTtsPageFingerprint(location, startCharacterOffset, text)
+        get() = buildTtsPageFingerprint(
+            location,
+            startCharacterOffset,
+            text,
+            endCharacterOffset
+        )
 }
 data class TtsTextSegment(
     val text: String,
@@ -27,6 +33,8 @@ data class TtsTextSegment(
 
 data class TtsPageTurnRequest(
     val bookId: String,
+    val sessionId: Long,
+    val requestId: Long,
     val location: TtsPageLocation
 )
 
@@ -34,13 +42,15 @@ data class TtsPageTurnRequest(
 internal fun buildTtsPageFingerprint(
     location: TtsPageLocation,
     startCharacterOffset: Int,
-    text: String
+    text: String,
+    endCharacterOffset: Int = startCharacterOffset + text.length
 ): String {
     val digest = MessageDigest.getInstance("SHA-256")
     listOf(
         location.chapterIndex.toString(),
         location.pageIndex.toString(),
         startCharacterOffset.toString(),
+        endCharacterOffset.toString(),
         text
     ).forEach { value ->
         digest.update(value.toByteArray(Charsets.UTF_8))

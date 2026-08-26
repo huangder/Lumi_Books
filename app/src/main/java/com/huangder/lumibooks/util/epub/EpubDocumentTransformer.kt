@@ -1731,26 +1731,72 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
   function pageText(pageIndex) {
     var targetPage = Math.max(0, Math.min(Number(pageIndex) || 0, state.total - 1));
     var index = textIndex();
-    var parts = [];
+    var pageStarts = [];
+    pageStarts[0] = 0;
+    function logicalPageForRect(rect) {
+      var physicalPage = physicalPageForRect(rect);
+      return state.flow === 'scrolled' ? physicalPage : logicalPageForPhysical(physicalPage);
+    }
+    function characterPage(node, offset) {
+      var range = document.createRange();
+      range.setStart(node, offset);
+      range.setEnd(node, Math.min(node.nodeValue.length, offset + 1));
+      var rects = range.getClientRects();
+      for (var r = 0; r < rects.length; r++) {
+        if (rects[r].width > 0 || rects[r].height > 0) return logicalPageForRect(rects[r]);
+      }
+      range.collapse(true);
+      return pageForRange(range);
+    }
     for (var i = 0; i < index.nodes.length; i++) {
       var info = index.nodes[i];
       if (!info.node.nodeValue || !info.node.nodeValue.trim()) continue;
       var range = document.createRange();
       range.selectNodeContents(info.node);
       var rects = range.getClientRects();
-      var belongs = false;
+      var nodePages = {};
       for (var r = 0; r < rects.length; r++) {
-        var rect = rects[r];
-        var physicalPage = physicalPageForRect(rect);
-        var rectPage = state.flow === 'scrolled' ? physicalPage : logicalPageForPhysical(physicalPage);
-        if (rectPage === targetPage) { belongs = true; break; }
+        var rectPage = logicalPageForRect(rects[r]);
+        nodePages[rectPage] = true;
       }
-      if (belongs) parts.push(info.node.nodeValue);
+      var pages = Object.keys(nodePages).map(Number);
+      if (pages.length <= 1) {
+        var onlyPage = pages.length ? pages[0] : characterPage(info.node, 0);
+        if (typeof pageStarts[onlyPage] !== 'number') pageStarts[onlyPage] = info.start;
+        continue;
+      }
+      pages.sort(function (a, b) { return a - b; });
+      if (typeof pageStarts[pages[0]] !== 'number') pageStarts[pages[0]] = info.start;
+      for (var p = 1; p < pages.length; p++) {
+        var requestedPage = pages[p];
+        var low = 0;
+        var high = info.node.nodeValue.length;
+        while (low < high) {
+          var middle = Math.floor((low + high) / 2);
+          if (characterPage(info.node, middle) < requestedPage) low = middle + 1;
+          else high = middle;
+        }
+        while (low > 0 && characterPage(info.node, low - 1) >= requestedPage) low--;
+        if (typeof pageStarts[requestedPage] !== 'number') {
+          pageStarts[requestedPage] = info.start + low;
+        }
+      }
     }
+    var previousStart = 0;
+    for (var page = 0; page < state.total; page++) {
+      var candidate = typeof pageStarts[page] === 'number' ? pageStarts[page] : previousStart;
+      pageStarts[page] = Math.max(previousStart, Math.min(index.text.length, candidate));
+      previousStart = pageStarts[page];
+    }
+    var startOffset = pageStarts[targetPage];
+    var endOffset = targetPage + 1 < state.total ? pageStarts[targetPage + 1] : index.text.length;
     return {
       pageIndex: targetPage,
       pageCount: state.total,
-      text: parts.join(' ').replace(/\s+/g, ' ').trim()
+      text: index.text.substring(startOffset, endOffset),
+      chapterText: index.text,
+      startCharacterOffset: startOffset,
+      endCharacterOffset: endOffset
     };
   }
 

@@ -247,8 +247,6 @@ import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.util.DownloadedFonts
 import com.huangder.lumibooks.util.epub.EpubRenderMode
 import com.huangder.lumibooks.util.parser.TxtEncoding
-import com.huangder.lumibooks.tts.TtsPageContent
-import com.huangder.lumibooks.tts.TtsPageLocation
 import com.huangder.lumibooks.tts.TtsPlaybackState
 import com.kyant.backdrop.Backdrop
 import androidx.compose.ui.res.stringResource
@@ -776,50 +774,10 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
             if (webProvider == null) {
                 Toast.makeText(context, R.string.tts_page_not_ready, Toast.LENGTH_SHORT).show()
             } else {
-                val chapterCount = uiState.chapterCount
-                viewModel.startTts { requestedChapter, requestedPage ->
-                    val webPage = webProvider(requestedChapter, requestedPage)
-                    if (webPage != null) {
-                        TtsPageContent(
-                            location = TtsPageLocation(webPage.chapterIndex, webPage.pageIndex),
-                            text = webPage.text,
-                            previous = when {
-                                webPage.pageIndex > 0 -> TtsPageLocation(webPage.chapterIndex, webPage.pageIndex - 1)
-                                webPage.chapterIndex > 0 -> TtsPageLocation(webPage.chapterIndex - 1, 0)
-                                else -> null
-                            },
-                            next = when {
-                                webPage.pageIndex + 1 < webPage.pageCount ->
-                                    TtsPageLocation(webPage.chapterIndex, webPage.pageIndex + 1)
-                                webPage.chapterIndex + 1 < chapterCount ->
-                                    TtsPageLocation(webPage.chapterIndex + 1, 0)
-                                else -> null
-                            }
-                        )
-                    } else {
-                        val chapterText = viewModel.getChapterText(requestedChapter)
-                            ?.toString()
-                            ?.replace('\uFFFC', ' ')
-                            ?.trim()
-                            ?: return@startTts null
-                        TtsPageContent(
-                            location = TtsPageLocation(requestedChapter, 0),
-                            text = chapterText,
-                            previous = (requestedChapter - 1).takeIf { it >= 0 }
-                                ?.let { TtsPageLocation(it, 0) },
-                            next = (requestedChapter + 1).takeIf { it < chapterCount }
-                                ?.let { TtsPageLocation(it, 0) }
-                        )
-                    }
-                }
+                viewModel.startBookLayoutTts(webProvider)
             }
         } else {
-            val readView = readViewRef.value
-            if (readView == null) {
-                Toast.makeText(context, R.string.tts_page_not_ready, Toast.LENGTH_SHORT).show()
-            } else {
-                viewModel.startTts(readView::getTtsPageContent)
-            }
+            viewModel.startTts()
         }
     }
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -842,13 +800,31 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
         }
     }
 
-    LaunchedEffect(bookId, uiState.ttsActiveBookId, uiState.ttsPlaybackState) {
+    val latestTtsUiState = rememberUpdatedState(uiState)
+    val latestTtsBookLayout = rememberUpdatedState(isBookLayout)
+    val latestTtsContinuousScroll = rememberUpdatedState(isContinuousScrollMode)
+    val latestTtsEInkMode = rememberUpdatedState(eInkMode)
+    var lastHandledTtsPageRequestId by remember(bookId) { mutableLongStateOf(0L) }
+    var lastHandledTtsSessionId by remember(bookId) { mutableLongStateOf(0L) }
+    LaunchedEffect(bookId) {
         viewModel.ttsPageTurnRequests.collect { request ->
+            val currentUiState = latestTtsUiState.value
             if (request.bookId != bookId ||
-                uiState.ttsActiveBookId != bookId ||
-                uiState.ttsPlaybackState == TtsPlaybackState.IDLE
+                !viewModel.isTtsPageTurnRequestActive(request)
             ) return@collect
-            if (isBookLayout) {
+            if (request.sessionId < lastHandledTtsSessionId ||
+                (request.sessionId == lastHandledTtsSessionId &&
+                    request.requestId <= lastHandledTtsPageRequestId)
+            ) return@collect
+            lastHandledTtsSessionId = request.sessionId
+            lastHandledTtsPageRequestId = request.requestId
+            if (latestTtsBookLayout.value) {
+                if (request.location.chapterIndex == currentUiState.currentChapterIndex &&
+                    request.location.pageIndex == currentUiState.currentPageIndex
+                ) {
+                    viewModel.acknowledgeTtsPageTurnRequest(request)
+                    return@collect
+                }
                 epubLocatorRequest = null
                 epubPageRequestToken++
                 epubPageRequest = EpubPageRequest(
@@ -856,23 +832,30 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     chapterIndex = request.location.chapterIndex,
                     pageIndex = request.location.pageIndex
                 )
-                if (request.location.chapterIndex != uiState.currentChapterIndex) {
+                if (request.location.chapterIndex != currentUiState.currentChapterIndex) {
                     viewModel.setChapter(request.location.chapterIndex)
                 }
                 return@collect
             }
+            if (latestTtsContinuousScroll.value) {
+                viewModel.acknowledgeTtsPageTurnRequest(request)
+                return@collect
+            }
             var readView = readViewRef.value
-            repeat(60) {
-                if (readView != null) return@repeat
+            while (readView == null && viewModel.isTtsPageTurnRequestActive(request)) {
                 kotlinx.coroutines.delay(16L)
                 readView = readViewRef.value
             }
             val activeReadView = readView ?: return@collect
+            if (!viewModel.isTtsPageTurnRequestActive(request)) return@collect
             val current = activeReadView.getCurrentLocation()
             val target = request.location.chapterIndex to request.location.pageIndex
-            if (current == target) return@collect
+            if (current == target) {
+                viewModel.acknowledgeTtsPageTurnRequest(request)
+                return@collect
+            }
 
-            if (eInkMode) {
+            if (latestTtsEInkMode.value) {
                 activeReadView.jumpToChapter(target.first, target.second)
             } else {
                 val movedWithAnimation = when (target) {
