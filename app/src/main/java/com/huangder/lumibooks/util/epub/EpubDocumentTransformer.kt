@@ -1728,6 +1728,13 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     return false;
   }
 
+  function goToProgression(fraction) {
+    var normalized = Number(fraction);
+    if (!isFinite(normalized)) normalized = 0;
+    normalized = Math.max(0, Math.min(1, normalized));
+    moveToPage(Math.floor(normalized * state.total), true);
+  }
+
   function pageText(pageIndex) {
     var targetPage = Math.max(0, Math.min(Number(pageIndex) || 0, state.total - 1));
     var index = textIndex();
@@ -2760,6 +2767,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     next: function () { turnByDirection(1); },
     previous: function () { turnByDirection(-1); },
     goToPage: function (page) { moveToPage(page, true); },
+    goToProgression: goToProgression,
     syncToPage: syncToPage,
     preparePage: preparePage,
     goToFragment: function (fragment) {

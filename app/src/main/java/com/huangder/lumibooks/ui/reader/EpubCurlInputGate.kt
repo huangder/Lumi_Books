@@ -1,15 +1,15 @@
 package com.huangder.lumibooks.ui.reader
 
-internal enum class EpubCurlTurnDisposition { ACCEPT, DROP, PASS_BOUNDARY }
+internal enum class EpubCurlTurnDisposition { ACCEPT, QUEUE, PASS_BOUNDARY }
 
-/** Fixed-layout Curl never queues input received while its visual handoff is busy. */
+/** Curl keeps one latest intent while animation, handoff, or target preparation is busy. */
 internal fun epubCurlTurnDisposition(
     idle: Boolean,
     targetExists: Boolean,
     targetReady: Boolean
 ): EpubCurlTurnDisposition = when {
-    !idle -> EpubCurlTurnDisposition.DROP
+    !idle -> EpubCurlTurnDisposition.QUEUE
     !targetExists -> EpubCurlTurnDisposition.PASS_BOUNDARY
-    !targetReady -> EpubCurlTurnDisposition.DROP
+    !targetReady -> EpubCurlTurnDisposition.QUEUE
     else -> EpubCurlTurnDisposition.ACCEPT
 }

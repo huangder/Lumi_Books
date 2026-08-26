@@ -1560,9 +1560,16 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     onPageTurnHandlerReady = { epubPageTurnHandler = it },
                     onPageChanged = { pageIndex, pageCount, locatorJson ->
                         viewModel.onEpubPageReady(pageIndex, pageCount, locatorJson)
-                        if (epubPageRequest?.chapterIndex == uiState.currentChapterIndex &&
-                            epubPageRequest?.pageIndex == pageIndex
-                        ) epubPageRequest = null
+                        epubPageRequest?.let { request ->
+                            val expectedPage = request.chapterFraction?.let { fraction ->
+                                pageIndexForChapterFraction(fraction, pageCount)
+                            } ?: request.pageIndex
+                            if (request.chapterIndex == uiState.currentChapterIndex &&
+                                expectedPage == pageIndex
+                            ) {
+                                epubPageRequest = null
+                            }
+                        }
                         if (epubLocatorRequest?.chapterIndex == uiState.currentChapterIndex) {
                             epubLocatorRequest = null
                         }
@@ -2423,15 +2430,55 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                             showThemeSheet = true
                         },
                         onCatalogProgressDragStart = {
-                            catalogDragReturnLocation = readViewRef.value
-                                ?.getCurrentLocation()
-                                ?.let { ReaderLinkLocation(it.first, it.second) }
+                            catalogDragReturnLocation = if (isBookLayout) {
+                                ReaderLinkLocation(
+                                    chapterIndex = uiState.currentChapterIndex,
+                                    pageIndex = uiState.currentPageIndex
+                                )
+                            } else {
+                                readViewRef.value
+                                    ?.getCurrentLocation()
+                                    ?.let { ReaderLinkLocation(it.first, it.second) }
+                            }
                         },
                         onCatalogProgressDragEnd = { finalProgress ->
                             if (isContinuousScrollMode) {
                                 mapGlobalProgress(finalProgress, uiState.chapterCount)?.let { target ->
                                     continuousScrollRequests.tryEmit(target.chapterIndex)
                                     viewModel.onContinuousScrollPosition(target.chapterIndex, 0f)
+                                }
+                            } else if (isBookLayout) {
+                                mapGlobalProgress(finalProgress, uiState.chapterCount)?.let { target ->
+                                    val source = catalogDragReturnLocation
+                                    val expectedPage = if (target.chapterIndex == uiState.currentChapterIndex) {
+                                        pageIndexForChapterFraction(
+                                            target.chapterFraction,
+                                            uiState.totalPages
+                                        )
+                                    } else {
+                                        0
+                                    }
+                                    val destinationDiffers = source != null &&
+                                        (source.chapterIndex != target.chapterIndex ||
+                                            source.pageIndex != expectedPage)
+
+                                    epubPendingFragment = null
+                                    epubSearchRequest = null
+                                    epubLocatorRequest = null
+                                    epubPageRequestToken++
+                                    epubPageRequest = EpubPageRequest(
+                                        token = epubPageRequestToken,
+                                        chapterIndex = target.chapterIndex,
+                                        pageIndex = 0,
+                                        chapterFraction = target.chapterFraction
+                                    )
+                                    if (target.chapterIndex != uiState.currentChapterIndex) {
+                                        viewModel.setChapter(target.chapterIndex)
+                                    }
+                                    if (destinationDiffers) {
+                                        linkReturnLocation = source
+                                        linkReturnToken += 1
+                                    }
                                 }
                             } else {
                                 val readView = readViewRef.value

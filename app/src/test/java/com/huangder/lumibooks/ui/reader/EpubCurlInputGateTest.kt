@@ -13,14 +13,22 @@ class EpubCurlInputGateTest {
     }
 
     @Test
-    fun busyAndLoadingTurnsAreDroppedWithoutQueueing() {
+    fun busyAndLoadingTurnsAreQueued() {
         assertEquals(
-            EpubCurlTurnDisposition.DROP,
+            EpubCurlTurnDisposition.QUEUE,
             epubCurlTurnDisposition(idle = false, targetExists = true, targetReady = true)
         )
         assertEquals(
-            EpubCurlTurnDisposition.DROP,
+            EpubCurlTurnDisposition.QUEUE,
             epubCurlTurnDisposition(idle = true, targetExists = true, targetReady = false)
+        )
+    }
+
+    @Test
+    fun busyTurnQueuesAgainstThePageThatWillBecomeCurrent() {
+        assertEquals(
+            EpubCurlTurnDisposition.QUEUE,
+            epubCurlTurnDisposition(idle = false, targetExists = false, targetReady = false)
         )
     }
 

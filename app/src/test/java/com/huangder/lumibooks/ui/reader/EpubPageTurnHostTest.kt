@@ -99,8 +99,56 @@ class EpubPageTurnHostTest {
     }
 
     @Test
-    fun onlyCurlPreloadsBitmaps() {
+    fun onlyCurlPreloadsImmutableBitmaps() {
         assertTrue(requiresEpubPreloadBitmap("curl"))
         assertFalse(requiresEpubPreloadBitmap("slide"))
+        assertFalse(requiresEpubPreloadBitmap("none"))
+    }
+
+    @Test
+    fun crossChapterTurnDetectionDistinguishesAdjacentPage() {
+        assertFalse(
+            isCrossChapterPageTurn(
+                current = EpubPageTarget(3, 8),
+                target = EpubPageTarget(3, 9)
+            )
+        )
+        assertTrue(
+            isCrossChapterPageTurn(
+                current = EpubPageTarget(3, 9),
+                target = EpubPageTarget(4, 0)
+            )
+        )
+    }
+
+    @Test
+    fun crossChapterDestinationPreparesItsFollowingPage() {
+        assertEquals(
+            EpubPageTarget(4, 1),
+            slideLookaheadFromDestination(
+                destination = EpubPageTarget(4, 0),
+                destinationPageCount = 6,
+                direction = 1
+            )
+        )
+        assertEquals(
+            EpubPageTarget(3, 4),
+            slideLookaheadFromDestination(
+                destination = EpubPageTarget(3, 5),
+                destinationPageCount = 6,
+                direction = -1
+            )
+        )
+    }
+
+    @Test
+    fun onePageDestinationHasNoSameChapterLookahead() {
+        assertNull(
+            slideLookaheadFromDestination(
+                destination = EpubPageTarget(4, 0),
+                destinationPageCount = 1,
+                direction = 1
+            )
+        )
     }
 }

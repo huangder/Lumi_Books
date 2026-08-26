@@ -181,7 +181,8 @@ internal data class EpubLocatorRequest(
 internal data class EpubPageRequest(
     val token: Int,
     val chapterIndex: Int,
-    val pageIndex: Int
+    val pageIndex: Int,
+    val chapterFraction: Float? = null
 )
 
 internal data class EpubSelectionInfo(
@@ -405,6 +406,29 @@ internal fun EpubWebViewReader(
                     pageRequest = null
                 )
 
+                fun activeConfigurationKey(chapterIndex: Int): String = configKey(
+                    chapterIndex = chapterIndex,
+                    fontSizeSp = latestFontSizeSp.value,
+                    fontType = latestFontType.value,
+                    fontFilePath = latestFontFilePath.value,
+                    textColorOverride = latestTextColorOverride.value,
+                    theme = latestTheme.value,
+                    textAlignment = latestTextAlignment.value,
+                    preservePublisherBackground = latestPreservePublisherBackground.value,
+                    bionicReadingEnabled = latestBionicReadingEnabled.value,
+                    chineseMode = latestChineseMode.value,
+                    continuousScroll = false,
+                    pageTransition = latestPageTransition.value,
+                    edgeTapMode = latestEdgeTapMode.value,
+                    marginTopDp = latestMarginTopDp.value,
+                    marginRightDp = latestMarginRightDp.value,
+                    marginBottomDp = latestMarginBottomDp.value,
+                    marginLeftDp = latestMarginLeftDp.value,
+                    initialFragment = null,
+                    locatorRequest = null,
+                    pageRequest = null
+                )
+
                 fun configurePreloadReader(view: EpubContentWebView, request: EpubPreloadRequest) {
                     val target = request.target
                     val configurationKey = preloadConfigurationKey(target.chapterIndex)
@@ -580,6 +604,7 @@ internal fun EpubWebViewReader(
                                         target,
                                         request.generation,
                                         actualPage,
+                                        actualCount,
                                         view
                                     )
                                     readyTtsPageViewByChapter[target.chapterIndex] = view
@@ -1078,49 +1103,71 @@ internal fun EpubWebViewReader(
 
                 allWebViews().forEach(::attachWebView)
 
+                pageTurnHost.onCapturedTapDirection = { x ->
+                    val relativeX = if (pageTurnHost.width > 0) {
+                        x / pageTurnHost.width.toFloat()
+                    } else {
+                        0.5f
+                    }
+                    when {
+                        relativeX < 0.3f ->
+                            latestEdgeTapMode.value.leftAction.toEpubTurnDirection()
+                        relativeX > 0.7f ->
+                            latestEdgeTapMode.value.rightAction.toEpubTurnDirection()
+                        else -> 0
+                    }
+                }
                 pageTurnHost.onPageCommit = { direction, target ->
-                    if (target.chapterIndex == latestChapterIndex.value) {
-                        val activeView = pageTurnHost.activeWebView
-                        val request = preloadRequestByView[activeView]
-                        val prepared = preparedPageByView[activeView]
-                        val promotedPreparedPage = prepared?.takeIf {
-                            pageTurnHost.isAwaitingPreparedActivePage(
-                                target.chapterIndex,
-                                target.pageIndex
-                            ) &&
-                                request != null &&
-                                request.generation == it.generation &&
-                                request.target == it.requestedTarget &&
-                                it.actualTarget == target
-                        }
-                        if (promotedPreparedPage != null) {
-                            activePageCount.value = promotedPreparedPage.pageCount
-                            pageTurnHost.setReverseAxis(promotedPreparedPage.reverseAxis)
-                            pageTurnHost.setCurrentPage(
+                    val activeView = pageTurnHost.activeWebView
+                    val request = preloadRequestByView[activeView]
+                    val prepared = preparedPageByView[activeView]
+                    val promotedPreparedPage = prepared?.takeIf {
+                        pageTurnHost.isAwaitingPreparedActivePage(
+                            target.chapterIndex,
+                            target.pageIndex
+                        ) &&
+                            request != null &&
+                            request.generation == it.generation &&
+                            request.target == it.requestedTarget &&
+                            it.actualTarget == target
+                    }
+                    val crossesChapter = target.chapterIndex != loadedChapter.value
+                    if (crossesChapter && promotedPreparedPage != null) {
+                        loadedChapter.value = target.chapterIndex
+                        activeDocumentUrl.value = session.chapterUrl(target.chapterIndex)
+                            .substringBefore('#')
+                        configuredKey.value = activeConfigurationKey(target.chapterIndex)
+                        chapterLoadPending.value = false
+                        readyChapter.value = target.chapterIndex
+                        latestChapterTurn.value(direction)
+                    }
+                    if (promotedPreparedPage != null) {
+                        activePageCount.value = promotedPreparedPage.pageCount
+                        pageTurnHost.setReverseAxis(promotedPreparedPage.reverseAxis)
+                        pageTurnHost.setCurrentPage(
+                            target.chapterIndex,
+                            target.pageIndex,
+                            promotedPreparedPage.pageCount
+                        ) {
+                            updateAdjacentPreloads(
                                 target.chapterIndex,
                                 target.pageIndex,
                                 promotedPreparedPage.pageCount
-                            ) {
-                                updateAdjacentPreloads(
-                                    target.chapterIndex,
-                                    target.pageIndex,
-                                    promotedPreparedPage.pageCount
-                                )
-                                latestPageChanged.value(
-                                    target.pageIndex,
-                                    promotedPreparedPage.pageCount,
-                                    promotedPreparedPage.locatorJson
-                                )
-                            }
-                        } else {
-                            activeView.evaluateJavascript(
-                                "window.LumiReader&&window.LumiReader.goToPage(" +
-                                    target.pageIndex + ");",
-                                null
+                            )
+                            latestPageChanged.value(
+                                target.pageIndex,
+                                promotedPreparedPage.pageCount,
+                                promotedPreparedPage.locatorJson
                             )
                         }
-                    } else {
+                    } else if (crossesChapter) {
                         latestChapterTurn.value(direction)
+                    } else {
+                        activeView.evaluateJavascript(
+                            "window.LumiReader&&window.LumiReader.goToPage(" +
+                                target.pageIndex + ");",
+                            null
+                        )
                     }
                 }
                 pageTurnHost.onSlideLookaheadRequested = { slot, target ->
@@ -1498,6 +1545,10 @@ private fun configureReader(
                 append(pageRequest.pageIndex.coerceAtLeast(0))
                 append(',')
                 append(pageRequest.token)
+                append(");")
+            } else if (pageRequest.chapterFraction != null) {
+                append("window.LumiReader.goToProgression(")
+                append(pageRequest.chapterFraction.coerceIn(0f, 1f))
                 append(");")
             } else {
                 append("window.LumiReader.goToPage(")
