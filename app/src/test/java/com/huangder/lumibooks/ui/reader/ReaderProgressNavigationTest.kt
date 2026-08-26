@@ -16,7 +16,9 @@ class ReaderProgressNavigationTest {
 
         assertEquals(0, pageIndexForChapterFraction(0f, 10))
         assertEquals(5, pageIndexForChapterFraction(0.5f, 10))
+        assertEquals(9, pageIndexForChapterFraction(0.999f, 10))
         assertEquals(9, pageIndexForChapterFraction(1f, 10))
+        assertEquals(0, pageIndexForChapterFraction(Float.NaN, 10))
     }
 
     @Test

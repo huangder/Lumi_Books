@@ -46,6 +46,8 @@ class EpubDocumentTransformerTest {
         assertNotNull(document.selectFirst("svg[viewBox]"))
         assertTrue(output.contains("window.LumiReader"))
         assertTrue(output.contains("syncToPage: syncToPage"))
+        assertTrue(output.contains("goToProgression: goToProgression"))
+        assertTrue(output.contains("Math.floor(normalized * state.total)"))
         assertTrue(output.contains("notificationSerial !== pageNotifySerial"))
         assertFalse(output.contains("ResizeObserver(document.body"))
         assertFalse(output.contains("MutationObserver(document.body"))

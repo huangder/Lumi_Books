@@ -181,7 +181,8 @@ internal data class EpubLocatorRequest(
 internal data class EpubPageRequest(
     val token: Int,
     val chapterIndex: Int,
-    val pageIndex: Int
+    val pageIndex: Int,
+    val chapterFraction: Float? = null
 )
 
 internal data class EpubSelectionInfo(
@@ -1522,6 +1523,10 @@ private fun configureReader(
                 append(pageRequest.pageIndex.coerceAtLeast(0))
                 append(',')
                 append(pageRequest.token)
+                append(");")
+            } else if (pageRequest.chapterFraction != null) {
+                append("window.LumiReader.goToProgression(")
+                append(pageRequest.chapterFraction.coerceIn(0f, 1f))
                 append(");")
             } else {
                 append("window.LumiReader.goToPage(")
