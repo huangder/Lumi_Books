@@ -242,6 +242,7 @@ import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
+import com.huangder.lumibooks.domain.model.ReaderTextAlignment
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.util.DownloadedFonts
 import com.huangder.lumibooks.util.epub.EpubRenderMode
@@ -1553,6 +1554,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     fontFilePath = epubFontFilePath,
                     textColorOverride = effectiveReaderTextColor,
                     theme = renderingTheme,
+                    textAlignment = uiState.textAlignment,
                     preservePublisherBackground = effectivePreserveEpubBackground,
                     bionicReadingEnabled = effectiveBionicReadingEnabled,
                     chineseMode = uiState.chineseMode,
@@ -1690,6 +1692,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     fontSize = uiState.fontSize,
                     lineHeight = uiState.lineHeight,
                     letterSpacingDp = uiState.letterSpacing,
+                    textAlignment = uiState.textAlignment,
                     typeface = continuousTypeface,
                     textColor = readerTextColorInt,
                     backgroundColor = readerBackgroundColorInt,
@@ -2050,6 +2053,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                         startPage = if (isContinuousScrollMode) lastPagedPage else uiState.currentPageIndex,
                         lineHeightMult = uiState.lineHeight,
                         letterSpacingDp = uiState.letterSpacing,
+                        textAlignment = uiState.textAlignment,
                         fontType = uiState.fontType,
                         customFontPath = uiState.customFontPath,
                         marginLeftDp = uiState.marginLeftDp,
@@ -2757,6 +2761,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 previewText = previewText,
                 currentLineHeight = uiState.lineHeight,
                 currentLetterSpacing = uiState.letterSpacing,
+                currentTextAlignment = uiState.textAlignment,
                 currentFontType = uiState.fontType,
                 customFontPath = uiState.customFontPath,
                 customFonts = uiState.customFonts,
@@ -2780,6 +2785,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                 fontDownloadFailed = uiState.fontDownloadFailed,
                 onLineHeightChange = { viewModel.saveLineHeight(it) },
                 onLetterSpacingChange = { viewModel.saveLetterSpacing(it) },
+                onTextAlignmentChange = viewModel::saveTextAlignment,
                 onFontTypeChange = { viewModel.saveFontType(it) },
                 onImportFont = { uri ->
                     scope.launch {
@@ -4590,6 +4596,7 @@ private fun ContinuousScrollReader(
     fontSize: Float,
     lineHeight: Float,
     letterSpacingDp: Float,
+    textAlignment: ReaderTextAlignment,
     typeface: android.graphics.Typeface,
     textColor: Int,
     backgroundColor: Int,
@@ -4627,7 +4634,7 @@ private fun ContinuousScrollReader(
     val searchHighlightAlpha = remember { Animatable(0f) }
     val loadedChapters = remember(chapterCount, contentRevision) { mutableStateMapOf<Int, Boolean>() }
     // 原始章节文本缓存：相邻章节提前拉取，衔接处不再出现“只有标题/空白、松手后突然加载”
-    val rawChapterTextCache = remember(chapterCount, contentRevision) {
+    val rawChapterTextCache = remember(chapterCount, contentRevision, textAlignment) {
         mutableStateMapOf<Int, CharSequence>()
     }
     // 跟踪各章节的实际测量高度，用于连续进度加权计算
@@ -4832,6 +4839,7 @@ private fun ContinuousScrollReader(
                 chapterIndex,
                 chineseMode,
                 contentRevision,
+                textAlignment,
                 fontSize,
                 paragraphSpacing,
                 firstLineIndent
@@ -4928,6 +4936,11 @@ private fun ContinuousScrollReader(
                                 .coerceIn(-0.5f, 0.5f)
                         } else {
                             0f
+                        }
+                        textView.justificationMode = if (textAlignment == ReaderTextAlignment.JUSTIFY) {
+                            android.text.Layout.JUSTIFICATION_MODE_INTER_WORD
+                        } else {
+                            android.text.Layout.JUSTIFICATION_MODE_NONE
                         }
                         textView.setReaderText(selectableText)
                     },

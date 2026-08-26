@@ -10,6 +10,7 @@ data class ReaderThemeSettings(
     val fontType: String = "system",
     val lineHeight: Float = 1.5f,
     val letterSpacing: Float = 0f,
+    val textAlignment: ReaderTextAlignment = ReaderTextAlignment.NATURAL,
     val paragraphSpacing: Float = 2f,
     val firstLineIndent: Float = 2f,
     val marginLeft: Float = 38f,
@@ -140,6 +141,7 @@ object ReaderThemeSuiteCodec {
         put("fontType", fontType)
         put("lineHeight", lineHeight.toDouble())
         put("letterSpacing", letterSpacing.toDouble())
+        put("textAlignment", textAlignment.key)
         put("paragraphSpacing", paragraphSpacing.toDouble())
         put("firstLineIndent", firstLineIndent.toDouble())
         put("marginLeft", marginLeft.toDouble())
@@ -155,6 +157,7 @@ object ReaderThemeSuiteCodec {
         fontType = optString("fontType", "system"),
         lineHeight = optDouble("lineHeight", 1.5).toFloat(),
         letterSpacing = optDouble("letterSpacing", 0.0).toFloat(),
+        textAlignment = ReaderTextAlignment.fromKey(optString("textAlignment")),
         paragraphSpacing = optDouble("paragraphSpacing", 2.0).toFloat(),
         firstLineIndent = optDouble("firstLineIndent", 2.0).toFloat(),
         marginLeft = optDouble("marginLeft", 38.0).toFloat(),

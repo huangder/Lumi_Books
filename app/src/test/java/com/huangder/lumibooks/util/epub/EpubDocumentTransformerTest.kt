@@ -62,6 +62,8 @@ class EpubDocumentTransformerTest {
         assertFalse(output.contains("cjkIndex += 2"))
         assertTrue(output.contains("@font-face"))
         assertTrue(output.contains("config.textColor"))
+        assertTrue(output.contains("config.textAlignment"))
+        assertTrue(output.contains("{text-align:' + textAlignment + ' !important;}"))
         assertTrue(output.contains("findText"))
         assertTrue(output.contains("version: 2"))
         assertTrue(output.contains("lumi-highlight-layer"))

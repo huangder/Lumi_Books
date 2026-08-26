@@ -109,6 +109,12 @@
     <string name="label_font_size">字級</string>
     <string name="label_line_height">行距</string>
     <string name="label_letter_spacing">字距</string>
+    <string name="label_text_alignment">對齊方式</string>
+    <string name="text_alignment_natural">自然對齊</string>
+    <string name="text_alignment_left">靠左對齊</string>
+    <string name="text_alignment_center">置中對齊</string>
+    <string name="text_alignment_right">靠右對齊</string>
+    <string name="text_alignment_justify">左右對齊</string>
     <string name="label_font_type">字型</string>
     <string name="label_margin_horiz">左右邊距</string>
     <string name="label_margin_vert">上下邊距</string>

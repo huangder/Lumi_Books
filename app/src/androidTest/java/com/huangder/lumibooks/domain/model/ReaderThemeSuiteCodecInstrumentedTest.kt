@@ -15,7 +15,8 @@ class ReaderThemeSuiteCodecInstrumentedTest {
                 backgroundSelection = "custom:paper",
                 textColor = 0xFF223344.toInt(),
                 fontSize = 20f,
-                letterSpacing = 4f
+                letterSpacing = 4f,
+                textAlignment = ReaderTextAlignment.CENTER
             )
         )
         val source = listOf(custom) + ReaderThemeSuites.defaults()
@@ -30,5 +31,14 @@ class ReaderThemeSuiteCodecInstrumentedTest {
     @Test
     fun codec_invalidJsonFallsBackWithoutCrashing() {
         assertTrue(ReaderThemeSuiteCodec.decode("not-json").isEmpty())
+    }
+
+    @Test
+    fun codec_missingTextAlignmentDefaultsToNatural() {
+        val decoded = ReaderThemeSuiteCodec.decode(
+            """[{"id":"legacy","name":"Legacy","settings":{"background":"day"}}]"""
+        )
+
+        assertEquals(ReaderTextAlignment.NATURAL, decoded.single().settings.textAlignment)
     }
 }

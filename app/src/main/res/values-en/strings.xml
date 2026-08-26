@@ -112,6 +112,12 @@
     <string name="label_font_size">Font Size</string>
     <string name="label_line_height">Line Height</string>
     <string name="label_letter_spacing">Letter Spacing</string>
+    <string name="label_text_alignment">Text alignment</string>
+    <string name="text_alignment_natural">Natural</string>
+    <string name="text_alignment_left">Left</string>
+    <string name="text_alignment_center">Center</string>
+    <string name="text_alignment_right">Right</string>
+    <string name="text_alignment_justify">Justified</string>
     <string name="label_font_type">Font Type</string>
     <string name="label_margin_horiz">Horizontal Margin</string>
     <string name="label_margin_vert">Vertical Margin</string>

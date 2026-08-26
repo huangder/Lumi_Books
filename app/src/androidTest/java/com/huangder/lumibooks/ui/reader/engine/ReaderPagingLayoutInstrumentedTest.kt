@@ -10,6 +10,8 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.huangder.lumibooks.util.parser.MobiParser
+import com.huangder.lumibooks.domain.model.ReaderTextAlignment
+import com.huangder.lumibooks.ui.reader.applyReaderTextAlignment
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -86,5 +88,44 @@ class ReaderPagingLayoutInstrumentedTest {
 
         assertTrue(headingAlignments.any { it.alignment == Layout.Alignment.ALIGN_CENTER })
         assertTrue(bodyAlignments.none { it.alignment == Layout.Alignment.ALIGN_CENTER })
+    }
+
+    @Test
+    fun naturalTextAlignmentPreservesPublisherAlignment() {
+        val source = SpannableStringBuilder("Heading\nBody\n")
+        source.setSpan(
+            AlignmentSpan.Standard(Layout.Alignment.ALIGN_CENTER),
+            0,
+            source.indexOf('\n') + 1,
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+
+        val formatted = applyReaderTextAlignment(source, ReaderTextAlignment.NATURAL) as Spanned
+
+        assertEquals(
+            Layout.Alignment.ALIGN_CENTER,
+            formatted.getSpans(0, 1, AlignmentSpan::class.java).single().alignment
+        )
+        assertTrue(formatted.getSpans(8, 9, AlignmentSpan::class.java).isEmpty())
+    }
+
+    @Test
+    fun explicitTextAlignmentOverridesEveryParagraph() {
+        val source = SpannableStringBuilder("Heading\nBody\n")
+        source.setSpan(
+            AlignmentSpan.Standard(Layout.Alignment.ALIGN_CENTER),
+            0,
+            source.indexOf('\n') + 1,
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+
+        val formatted = applyReaderTextAlignment(source, ReaderTextAlignment.RIGHT) as Spanned
+
+        listOf(0, 8).forEach { offset ->
+            assertEquals(
+                Layout.Alignment.ALIGN_OPPOSITE,
+                formatted.getSpans(offset, offset + 1, AlignmentSpan::class.java).single().alignment
+            )
+        }
     }
 }

@@ -5,6 +5,7 @@ import android.graphics.Typeface
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
+import com.huangder.lumibooks.domain.model.ReaderTextAlignment
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -25,6 +26,7 @@ class PageLayoutEngine {
         val visibleWidth: Int,
         val visibleHeight: Int,
         val textPaint: TextPaint,
+        val textAlignment: ReaderTextAlignment,
         val writingMode: ReaderWritingMode
     )
 
@@ -38,6 +40,7 @@ class PageLayoutEngine {
     private var lineSpacingExtra: Float = 8f
     private var lineSpacingMultiplier: Float = 1.0f
     private var letterSpacing: Float = 0f
+    private var textAlignment: ReaderTextAlignment = ReaderTextAlignment.NATURAL
     private var writingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL
 
     /**
@@ -99,6 +102,7 @@ class PageLayoutEngine {
         textColor: Int = 0xFF333333.toInt(),
         chapterCount: Int = 0,
         useDisplayDensityForSpans: Boolean = false,
+        textAlignment: ReaderTextAlignment = ReaderTextAlignment.NATURAL,
         writingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL
     ) {
         val changed = textWidth != width || textHeight != height ||
@@ -108,6 +112,7 @@ class PageLayoutEngine {
                 marginLeft != marginLeftPx || marginRight != marginRightPx ||
                 marginTop != marginTopPx || marginBottom != marginBottomPx ||
                 this.useDisplayDensityForSpans != useDisplayDensityForSpans ||
+                this.textAlignment != textAlignment ||
                 this.writingMode != writingMode
 
         textWidth = width
@@ -136,6 +141,7 @@ class PageLayoutEngine {
         ownTextPaint.typeface = tf
         this.chapterCount = chapterCount
         this.useDisplayDensityForSpans = useDisplayDensityForSpans
+        this.textAlignment = textAlignment
         this.writingMode = writingMode
 
         if (changed) {
@@ -164,6 +170,7 @@ class PageLayoutEngine {
                         density = activeTextPaint.density
                     }
                 },
+                textAlignment = textAlignment,
                 writingMode = writingMode
             )
         }
@@ -174,6 +181,13 @@ class PageLayoutEngine {
             .setIncludePad(false)
             .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
             .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)
+            .setJustificationMode(
+                if (input.textAlignment == ReaderTextAlignment.JUSTIFY) {
+                    Layout.JUSTIFICATION_MODE_INTER_WORD
+                } else {
+                    Layout.JUSTIFICATION_MODE_NONE
+                }
+            )
             .build()
 
         if (input.writingMode.isVertical) {

@@ -35,6 +35,19 @@ enum class ReaderWritingMode(val key: String) {
     }
 }
 
+enum class ReaderTextAlignment(val key: String) {
+    NATURAL("natural"),
+    LEFT("left"),
+    CENTER("center"),
+    RIGHT("right"),
+    JUSTIFY("justify");
+
+    companion object {
+        fun fromKey(key: String?): ReaderTextAlignment =
+            entries.firstOrNull { it.key == key } ?: NATURAL
+    }
+}
+
 enum class ReaderEdgeTapMode(
     val key: String,
     val leftAction: ReaderEdgeTapAction,

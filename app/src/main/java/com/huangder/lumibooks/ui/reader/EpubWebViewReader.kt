@@ -48,6 +48,7 @@ import org.json.JSONObject
 import com.huangder.lumibooks.domain.model.Note
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapAction
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
+import com.huangder.lumibooks.domain.model.ReaderTextAlignment
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.ByteArrayInputStream
@@ -228,6 +229,7 @@ internal fun EpubWebViewReader(
     fontFilePath: String?,
     textColorOverride: Int?,
     theme: String,
+    textAlignment: ReaderTextAlignment = ReaderTextAlignment.NATURAL,
     preservePublisherBackground: Boolean = true,
     bionicReadingEnabled: Boolean = false,
     chineseMode: String = "original",
@@ -276,6 +278,7 @@ internal fun EpubWebViewReader(
     val latestFontFilePath = rememberUpdatedState(fontFilePath)
     val latestTextColorOverride = rememberUpdatedState(textColorOverride)
     val latestTheme = rememberUpdatedState(theme)
+    val latestTextAlignment = rememberUpdatedState(textAlignment)
     val latestPreservePublisherBackground = rememberUpdatedState(preservePublisherBackground)
     val latestBionicReadingEnabled = rememberUpdatedState(bionicReadingEnabled)
     val latestChineseMode = rememberUpdatedState(chineseMode)
@@ -371,6 +374,7 @@ internal fun EpubWebViewReader(
                     fontFilePath = latestFontFilePath.value,
                     textColorOverride = latestTextColorOverride.value,
                     theme = latestTheme.value,
+                    textAlignment = latestTextAlignment.value,
                     preservePublisherBackground = latestPreservePublisherBackground.value,
                     bionicReadingEnabled = latestBionicReadingEnabled.value,
                     chineseMode = latestChineseMode.value,
@@ -415,6 +419,7 @@ internal fun EpubWebViewReader(
                         fontFilePath = latestFontFilePath.value,
                         textColorOverride = latestTextColorOverride.value,
                         theme = latestTheme.value,
+                        textAlignment = latestTextAlignment.value,
                         preservePublisherBackground = latestPreservePublisherBackground.value,
                         bionicReadingEnabled = latestBionicReadingEnabled.value,
                         chineseMode = latestChineseMode.value,
@@ -1017,6 +1022,7 @@ internal fun EpubWebViewReader(
                                 fontFilePath = latestFontFilePath.value,
                                 textColorOverride = latestTextColorOverride.value,
                                 theme = latestTheme.value,
+                                textAlignment = latestTextAlignment.value,
                                 preservePublisherBackground =
                                     latestPreservePublisherBackground.value,
                                 bionicReadingEnabled = latestBionicReadingEnabled.value,
@@ -1139,6 +1145,7 @@ internal fun EpubWebViewReader(
             }
             val nextConfigKey = configKey(
                 chapterIndex, fontSizeSp, fontType, fontFilePath, textColorOverride, theme,
+                textAlignment,
                 preservePublisherBackground, bionicReadingEnabled, chineseMode, continuousScroll,
                 pageTransition, edgeTapMode, marginTopDp, marginRightDp, marginBottomDp, marginLeftDp, initialFragment,
                 locatorRequest, pageRequest
@@ -1189,6 +1196,7 @@ internal fun EpubWebViewReader(
                     fontFilePath = fontFilePath,
                     textColorOverride = textColorOverride,
                     theme = theme,
+                    textAlignment = textAlignment,
                     preservePublisherBackground = preservePublisherBackground,
                     bionicReadingEnabled = bionicReadingEnabled,
                     chineseMode = chineseMode,
@@ -1331,6 +1339,7 @@ private fun configKey(
     fontFilePath: String?,
     textColorOverride: Int?,
     theme: String,
+    textAlignment: ReaderTextAlignment,
     preservePublisherBackground: Boolean,
     bionicReadingEnabled: Boolean,
     chineseMode: String,
@@ -1351,6 +1360,7 @@ private fun configKey(
     fontFilePath.orEmpty(),
     textColorOverride ?: -1,
     theme,
+    textAlignment.key,
     preservePublisherBackground,
     bionicReadingEnabled,
     chineseMode,
@@ -1374,6 +1384,7 @@ private fun configureReader(
     fontFilePath: String?,
     textColorOverride: Int?,
     theme: String,
+    textAlignment: ReaderTextAlignment,
     preservePublisherBackground: Boolean,
     bionicReadingEnabled: Boolean,
     chineseMode: String,
@@ -1411,6 +1422,7 @@ private fun configureReader(
     val chineseMapping = ChineseConverter.mappingStrings(chineseMode)
     val config = JSONObject()
         .put("theme", theme)
+        .put("textAlignment", textAlignment.key)
         .put("preservePublisherBackground", preservePublisherBackground)
         .put("bionicReading", bionicReadingEnabled)
         .put("chineseMode", chineseMode)

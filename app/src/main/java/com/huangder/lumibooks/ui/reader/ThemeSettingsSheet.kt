@@ -128,6 +128,7 @@ import com.huangder.lumibooks.util.epub.EpubRenderMode
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
+import com.huangder.lumibooks.domain.model.ReaderTextAlignment
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.domain.model.ReaderPageCorner
 import com.huangder.lumibooks.domain.model.CustomFontPreset
@@ -1853,6 +1854,7 @@ fun AdvancedSettingsSheet(
     previewText: String,
     currentLineHeight: Float,
     currentLetterSpacing: Float,
+    currentTextAlignment: ReaderTextAlignment = ReaderTextAlignment.NATURAL,
     currentFontType: String,
     customFontPath: String? = null,
     customFonts: List<com.huangder.lumibooks.domain.model.CustomFontPreset> = emptyList(),
@@ -1876,6 +1878,7 @@ fun AdvancedSettingsSheet(
     fontDownloadFailed: Boolean = false,
     onLineHeightChange: (Float) -> Unit,
     onLetterSpacingChange: (Float) -> Unit,
+    onTextAlignmentChange: (ReaderTextAlignment) -> Unit = {},
     onFontTypeChange: (String) -> Unit,
     onImportFont: (android.net.Uri) -> Unit = {},
     onDeleteCustomFont: (String) -> Unit = {},
@@ -2070,6 +2073,7 @@ fun AdvancedSettingsSheet(
                                     fontFamily = previewFont,
                                     lineHeight = (currentFontSizeSp * previewLineHeight).sp,
                                     letterSpacing = previewLetterSpacing.sp,
+                                    textAlign = currentTextAlignment.toComposeTextAlign(),
                                     textIndent = androidx.compose.ui.text.style.TextIndent(
                                         firstLine = (currentFontSizeSp * previewFirstLineIndent).sp
                                     )
@@ -2191,28 +2195,36 @@ fun AdvancedSettingsSheet(
                     Spacer(Modifier.height(12.dp))
                 }
 
-                if (!preservePublisherLayout) {
                 AdvancedSettingsGroup(eInkModeEnabled) {
-                    SettingSlider(stringResource(R.string.label_line_height), currentLineHeight, 1.0f..2.5f, 0.1f, { String.format("%.1fx", it) }, onLineHeightChange)
-                    Spacer(Modifier.height(12.dp))
-                    SettingSlider(stringResource(R.string.label_letter_spacing), currentLetterSpacing, 0f..10f, 0.5f, { String.format("%.1f sp", it) }, onLetterSpacingChange)
-                    Spacer(Modifier.height(12.dp))
-                    SettingSlider(
-                        stringResource(R.string.label_paragraph_spacing),
-                        currentParagraphSpacing,
-                        0f..30f,
-                        0.5f,
-                        {
-                            if (it % 1f == 0f) "${it.toInt()} dp"
-                            else String.format("%.1f dp", it)
-                        },
-                        onParagraphSpacingChange
+                    TextAlignmentSetting(
+                        selected = currentTextAlignment,
+                        forceSolidMenu = eInkModeEnabled || preservePublisherLayout,
+                        onSelected = onTextAlignmentChange
                     )
-                    Spacer(Modifier.height(12.dp))
-                    SettingSlider(stringResource(R.string.label_first_line_indent), currentFirstLineIndent, 0f..4f, 0.5f, { "${it} 字符" }, onFirstLineIndentChange)
                 }
                 Spacer(Modifier.height(12.dp))
 
+                if (!preservePublisherLayout) {
+                    AdvancedSettingsGroup(eInkModeEnabled) {
+                        SettingSlider(stringResource(R.string.label_line_height), currentLineHeight, 1.0f..2.5f, 0.1f, { String.format("%.1fx", it) }, onLineHeightChange)
+                        Spacer(Modifier.height(12.dp))
+                        SettingSlider(stringResource(R.string.label_letter_spacing), currentLetterSpacing, 0f..10f, 0.5f, { String.format("%.1f sp", it) }, onLetterSpacingChange)
+                        Spacer(Modifier.height(12.dp))
+                        SettingSlider(
+                            stringResource(R.string.label_paragraph_spacing),
+                            currentParagraphSpacing,
+                            0f..30f,
+                            0.5f,
+                            {
+                                if (it % 1f == 0f) "${it.toInt()} dp"
+                                else String.format("%.1f dp", it)
+                            },
+                            onParagraphSpacingChange
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        SettingSlider(stringResource(R.string.label_first_line_indent), currentFirstLineIndent, 0f..4f, 0.5f, { "${it} 字符" }, onFirstLineIndentChange)
+                    }
+                    Spacer(Modifier.height(12.dp))
                 }
                 AdvancedSettingsGroup(eInkModeEnabled) {
                     SettingSlider(stringResource(R.string.label_margin_top), currentMarginTop, 0f..120f, 2f, { "${it.toInt()} dp" }, onMarginTopChange)
@@ -2518,6 +2530,110 @@ private fun ReaderCornerSelectionRow(
 }
 
 @Composable
+private fun TextAlignmentSetting(
+    selected: ReaderTextAlignment,
+    forceSolidMenu: Boolean,
+    onSelected: (ReaderTextAlignment) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    var menuAnchorBounds by remember { mutableStateOf(Rect.Zero) }
+    val labeledOptions = ReaderTextAlignment.entries.map { alignment ->
+        alignment to readerTextAlignmentLabel(alignment)
+    }
+    val useLiquidGlassMenu = LocalAppTheme.current == "liquid_glass" && !forceSolidMenu
+    val liquidMenuHost = LocalLiquidGlassMenuHost.current
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(44.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = stringResource(R.string.label_text_alignment),
+            fontSize = 13.sp,
+            color = AppColors.TextPrimary,
+            modifier = Modifier.weight(1f)
+        )
+        Box {
+            Box(
+                modifier = Modifier
+                    .width(158.dp)
+                    .height(36.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(LightBgGray)
+                    .onGloballyPositioned { menuAnchorBounds = it.boundsInRoot() }
+                    .clickable {
+                        if (useLiquidGlassMenu && liquidMenuHost != null && menuAnchorBounds != Rect.Zero) {
+                            liquidMenuHost.show(
+                                LiquidGlassMenuSpec(
+                                    anchorBounds = menuAnchorBounds,
+                                    width = 158.dp,
+                                    items = labeledOptions.map { (alignment, label) ->
+                                        LiquidGlassMenuItem(
+                                            label = label,
+                                            selected = alignment == selected,
+                                            onClick = { onSelected(alignment) }
+                                        )
+                                    }
+                                )
+                            )
+                        } else {
+                            expanded = true
+                        }
+                    }
+                    .padding(horizontal = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = readerTextAlignmentLabel(selected),
+                    fontSize = 12.sp,
+                    color = AppColors.TextPrimary,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(end = 16.dp)
+                )
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = LightTextSecondary,
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .size(16.dp)
+                )
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                shape = RoundedCornerShape(18.dp),
+                containerColor = LightCardBg,
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp
+            ) {
+                labeledOptions.forEach { (alignment, label) ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = label,
+                                fontSize = 13.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        },
+                        onClick = {
+                            expanded = false
+                            onSelected(alignment)
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun ReaderEdgeTapModeSetting(
     selected: ReaderEdgeTapMode,
     forceSolidMenu: Boolean,
@@ -2761,6 +2877,25 @@ private fun readerEdgeTapModeLabel(mode: ReaderEdgeTapMode): String = stringReso
         ReaderEdgeTapMode.BOTH_NEXT -> R.string.reader_edge_tap_both_next
     }
 )
+
+@Composable
+private fun readerTextAlignmentLabel(alignment: ReaderTextAlignment): String = stringResource(
+    when (alignment) {
+        ReaderTextAlignment.NATURAL -> R.string.text_alignment_natural
+        ReaderTextAlignment.LEFT -> R.string.text_alignment_left
+        ReaderTextAlignment.CENTER -> R.string.text_alignment_center
+        ReaderTextAlignment.RIGHT -> R.string.text_alignment_right
+        ReaderTextAlignment.JUSTIFY -> R.string.text_alignment_justify
+    }
+)
+
+private fun ReaderTextAlignment.toComposeTextAlign(): TextAlign = when (this) {
+    ReaderTextAlignment.NATURAL -> TextAlign.Unspecified
+    ReaderTextAlignment.LEFT -> TextAlign.Left
+    ReaderTextAlignment.CENTER -> TextAlign.Center
+    ReaderTextAlignment.RIGHT -> TextAlign.Right
+    ReaderTextAlignment.JUSTIFY -> TextAlign.Justify
+}
 
 @Composable
 private fun readerCornerContentLabel(content: ReaderCornerContent): String = stringResource(

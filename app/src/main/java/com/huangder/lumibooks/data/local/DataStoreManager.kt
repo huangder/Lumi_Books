@@ -25,6 +25,7 @@ import com.huangder.lumibooks.domain.model.ReaderBackgroundPresetCodec
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
 import com.huangder.lumibooks.domain.model.ReaderPageCorner
+import com.huangder.lumibooks.domain.model.ReaderTextAlignment
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.domain.model.ReaderThemeSettings
 import com.huangder.lumibooks.domain.model.ReaderThemeSuite
@@ -67,6 +68,7 @@ class DataStoreManager @Inject constructor(
         private val FONT_SIZE = floatPreferencesKey("font_size")
         private val LINE_HEIGHT = floatPreferencesKey("line_height")
         private val LETTER_SPACING = floatPreferencesKey("letter_spacing")
+        private val TEXT_ALIGNMENT = stringPreferencesKey("text_alignment")
         private val FONT_TYPE = stringPreferencesKey("font_type")
         private val READER_THEME = stringPreferencesKey("reader_theme")
         private val MARGIN_HORIZ = floatPreferencesKey("margin_horiz")
@@ -192,6 +194,10 @@ class DataStoreManager @Inject constructor(
 
     val letterSpacing: Flow<Float> = context.dataStore.data.map { preferences ->
         preferences[LETTER_SPACING] ?: 0f
+    }
+
+    val textAlignment: Flow<ReaderTextAlignment> = context.dataStore.data.map { preferences ->
+        ReaderTextAlignment.fromKey(preferences[TEXT_ALIGNMENT])
     }
 
     val fontType: Flow<String> = context.dataStore.data.map { preferences ->
@@ -602,6 +608,13 @@ class DataStoreManager @Inject constructor(
         }
     }
 
+    suspend fun saveTextAlignment(alignment: ReaderTextAlignment) {
+        context.dataStore.edit { preferences ->
+            preferences[TEXT_ALIGNMENT] = alignment.key
+            preferences.updateActiveReaderThemeSuite { copy(textAlignment = alignment) }
+        }
+    }
+
     suspend fun saveFontType(fontType: String) {
         context.dataStore.edit { preferences ->
             preferences[FONT_TYPE] = fontType
@@ -887,6 +900,7 @@ class DataStoreManager @Inject constructor(
         context.dataStore.edit { preferences ->
             preferences[LINE_HEIGHT] = 1.5f
             preferences[LETTER_SPACING] = 0f
+            preferences[TEXT_ALIGNMENT] = ReaderTextAlignment.NATURAL.key
             preferences[FONT_TYPE] = "system"
             preferences[MARGIN_HORIZ] = 38f
             preferences[MARGIN_VERT] = 64f
@@ -913,6 +927,7 @@ class DataStoreManager @Inject constructor(
                     fontType = "system",
                     lineHeight = 1.5f,
                     letterSpacing = 0f,
+                    textAlignment = ReaderTextAlignment.NATURAL,
                     paragraphSpacing = 2f,
                     firstLineIndent = 2f,
                     marginLeft = 38f,
@@ -1578,6 +1593,7 @@ class DataStoreManager @Inject constructor(
         fontType = this[FONT_TYPE] ?: "system",
         lineHeight = this[LINE_HEIGHT] ?: 1.5f,
         letterSpacing = this[LETTER_SPACING] ?: 0f,
+        textAlignment = ReaderTextAlignment.fromKey(this[TEXT_ALIGNMENT]),
         paragraphSpacing = this[PARAGRAPH_SPACING] ?: 2f,
         firstLineIndent = this[FIRST_LINE_INDENT] ?: 2f,
         marginLeft = this[MARGIN_LEFT] ?: this[MARGIN_HORIZ] ?: 38f,
@@ -1604,6 +1620,7 @@ class DataStoreManager @Inject constructor(
         this[FONT_SIZE] = settings.fontSize
         this[LINE_HEIGHT] = settings.lineHeight
         this[LETTER_SPACING] = settings.letterSpacing
+        this[TEXT_ALIGNMENT] = settings.textAlignment.key
         this[FONT_TYPE] = settings.fontType
         this[MARGIN_LEFT] = settings.marginLeft
         this[MARGIN_RIGHT] = settings.marginRight

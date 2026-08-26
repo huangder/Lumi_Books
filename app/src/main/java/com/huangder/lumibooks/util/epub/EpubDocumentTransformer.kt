@@ -1643,7 +1643,9 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     var family = config.fontFamily ? String(config.fontFamily) : '';
     var fontUrl = config.fontUrl ? String(config.fontUrl) : '';
     var textColor = config.textColor ? String(config.textColor) : '';
-    if (!family && !textColor) {
+    var textAlignment = /^(left|center|right|justify)$/.test(String(config.textAlignment || '')) ?
+      String(config.textAlignment) : '';
+    if (!family && !textColor && !textAlignment) {
       if (existing) existing.remove();
       return;
     }
@@ -1657,6 +1659,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       'span,a,li,dt,dd,td,th,blockquote,figcaption,label';
     if (family) rules += textSelector + '{font-family:' + JSON.stringify(family) + ' !important;}';
     if (textColor) rules += textSelector + '{color:' + textColor + ' !important;}';
+    if (textAlignment) rules += textSelector + '{text-align:' + textAlignment + ' !important;}';
     style.textContent = rules;
     if (!existing) document.head.appendChild(style);
   }

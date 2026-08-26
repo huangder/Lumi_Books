@@ -109,6 +109,12 @@
     <string name="label_font_size">글꼴 크기</string>
     <string name="label_line_height">줄 간격</string>
     <string name="label_letter_spacing">자간</string>
+    <string name="label_text_alignment">텍스트 정렬</string>
+    <string name="text_alignment_natural">자연스럽게</string>
+    <string name="text_alignment_left">왼쪽 정렬</string>
+    <string name="text_alignment_center">가운데 정렬</string>
+    <string name="text_alignment_right">오른쪽 정렬</string>
+    <string name="text_alignment_justify">양쪽 정렬</string>
     <string name="label_font_type">글꼴 종류</string>
     <string name="label_margin_horiz">좌우 여백</string>
     <string name="label_margin_vert">상하 여백</string>
