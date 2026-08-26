@@ -19,6 +19,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
 import coil.load
+import com.huangder.lumibooks.domain.model.ReaderTextAlignment
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import java.io.File
 import kotlin.math.abs
@@ -447,6 +448,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
         marginBottomPx: Float = 32f,
         highlightColor: Int = 0x40007AFF.toInt(),
         accentColor: Int = 0xFF007AFF.toInt(),
+        textAlignment: ReaderTextAlignment = ReaderTextAlignment.NATURAL,
         writingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL,
         boldText: Boolean = false
     ) {
@@ -490,6 +492,14 @@ class PageContentView(context: Context) : FrameLayout(context) {
             if (textView.hyphenationFrequency != Layout.HYPHENATION_FREQUENCY_NONE) {
                 textView.hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NONE
             }
+        }
+        val justificationMode = if (textAlignment == ReaderTextAlignment.JUSTIFY) {
+            Layout.JUSTIFICATION_MODE_INTER_WORD
+        } else {
+            Layout.JUSTIFICATION_MODE_NONE
+        }
+        if (textView.justificationMode != justificationMode) {
+            textView.justificationMode = justificationMode
         }
         // 🔥 守卫：仅在 padding 实际变更时调用 setPadding，避免无谓的 requestLayout()
         val ml = marginLeftPx.toInt()

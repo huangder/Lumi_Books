@@ -13,6 +13,7 @@ import com.huangder.lumibooks.domain.model.Note
 import com.huangder.lumibooks.util.DownloadedFonts
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapAction
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
+import com.huangder.lumibooks.domain.model.ReaderTextAlignment
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.ui.reader.BionicReadingFormatter
 import com.huangder.lumibooks.ui.reader.mapGlobalProgress
@@ -192,6 +193,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var currentChapterCount: Int = 0
     private var currentLineHeightMult: Float = 1.5f
     private var currentLetterSpacingDp: Float = 0f
+    private var currentTextAlignment: ReaderTextAlignment = ReaderTextAlignment.NATURAL
     private var currentFontType: String = "system"
     private var currentCustomFontPath: String? = null
     private var currentMarginLeftDp: Float = 38f
@@ -448,6 +450,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 marginBottomPx = baseMarginBottom,
                 highlightColor = highlightColor,
                 accentColor = accentColor,
+                textAlignment = currentTextAlignment,
                 writingMode = currentWritingMode,
                 boldText = currentBoldText
             )
@@ -464,6 +467,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 marginBottomPx = baseMarginBottom,
                 highlightColor = highlightColor,
                 accentColor = accentColor,
+                textAlignment = currentTextAlignment,
                 writingMode = currentWritingMode,
                 boldText = currentBoldText
             )
@@ -516,6 +520,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         startPage: Int,
         lineHeightMult: Float = 1.5f,
         letterSpacingDp: Float = 0f,
+        textAlignment: ReaderTextAlignment = ReaderTextAlignment.NATURAL,
         fontType: String = "system",
         customFontPath: String? = null,
         marginLeftDp: Float = 38f,
@@ -545,6 +550,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             currentChapterCount = chapterCount
             currentLineHeightMult = lineHeightMult
             currentLetterSpacingDp = letterSpacingDp
+            currentTextAlignment = textAlignment
             currentFontType = fontType
             currentCustomFontPath = customFontPath
             currentMarginLeftDp = marginLeftDp
@@ -567,6 +573,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val fontSizeChanged = Math.abs(currentFontSizePx - fontSizePx) > 0.5f
         val lineHeightChanged = Math.abs(currentLineHeightMult - lineHeightMult) > 0.01f
         val letterSpacingChanged = Math.abs(currentLetterSpacingDp - letterSpacingDp) > 0.05f
+        val textAlignmentChanged = currentTextAlignment != textAlignment
         val fontTypeChanged = currentFontType != fontType
         val customFontPathChanged = currentCustomFontPath != customFontPath
         val marginChanged = Math.abs(currentMarginLeftDp - marginLeftDp) > 0.5f ||
@@ -590,7 +597,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         if (writingModeChanged) animationController.abortAnim()
         val sizeChanged = !isConfigured || configuredWidth != width || configuredHeight != height
         val needsRelayout = themeChanged || chapterCountChanged || fontSizeChanged || lineHeightChanged ||
-                letterSpacingChanged || fontTypeChanged || customFontPathChanged || marginChanged ||
+                letterSpacingChanged || textAlignmentChanged || fontTypeChanged || customFontPathChanged || marginChanged ||
                 overlayInsetChanged || paragraphSpacingChanged || bionicReadingChanged ||
                 paginationLayoutChanged || writingModeChanged || spreadModeChanged || sizeChanged
         // 旋转/进出双页/窗口 resize（含 ColorOS 小窗）时，重新分页必须基于“当前真实槽位”的章与页，
@@ -631,6 +638,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         currentChapterCount = chapterCount
         currentLineHeightMult = lineHeightMult
         currentLetterSpacingDp = letterSpacingDp
+        currentTextAlignment = textAlignment
         currentFontType = fontType
         currentCustomFontPath = customFontPath
         currentMarginLeftDp = marginLeftDp
@@ -702,6 +710,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             textColor = textColor,
             chapterCount = chapterCount,
             useDisplayDensityForSpans = useDisplayDensityForSpans,
+            textAlignment = textAlignment,
             writingMode = writingMode
         )
 
@@ -1651,6 +1660,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 startPage = pendingStartPage,
                 lineHeightMult = currentLineHeightMult,
                 letterSpacingDp = currentLetterSpacingDp,
+                textAlignment = currentTextAlignment,
                 fontType = currentFontType,
                 customFontPath = currentCustomFontPath,
                 marginLeftDp = currentMarginLeftDp,

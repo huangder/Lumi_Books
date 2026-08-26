@@ -25,6 +25,7 @@ import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
 import com.huangder.lumibooks.domain.model.ReaderPageCorner
+import com.huangder.lumibooks.domain.model.ReaderTextAlignment
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.domain.model.ReaderThemeSettings
 import com.huangder.lumibooks.domain.model.ReaderThemeSuite
@@ -144,6 +145,7 @@ data class ReaderUiState(
     val fontSize: Float = 16f,
     val lineHeight: Float = 1.5f,
     val letterSpacing: Float = 0f,
+    val textAlignment: ReaderTextAlignment = ReaderTextAlignment.NATURAL,
     val fontType: String = "system",
     val marginLeftDp: Float = 38f,
     val marginRightDp: Float = 38f,
@@ -510,6 +512,11 @@ class ReaderViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            dataStoreManager.textAlignment.collectLatest { alignment ->
+                _uiState.value = _uiState.value.copy(textAlignment = alignment)
+            }
+        }
+        viewModelScope.launch {
             dataStoreManager.fontType.collectLatest { ft ->
                 _uiState.value = _uiState.value.copy(fontType = ft)
                 // 旧版本已选仿宋的用户升级后无本地字体：后台自动补下（失败则保持系统字体降级）
@@ -719,6 +726,20 @@ class ReaderViewModel @Inject constructor(
             .withUpdatedActiveThemeSettings { copy(letterSpacing = ls) }
             .copy(letterSpacing = ls)
         viewModelScope.launch { dataStoreManager.saveLetterSpacing(ls) }
+    }
+
+    fun saveTextAlignment(alignment: ReaderTextAlignment) {
+        if (_uiState.value.textAlignment == alignment) return
+        _uiState.value = _uiState.value
+            .withUpdatedActiveThemeSettings { copy(textAlignment = alignment) }
+            .copy(
+                textAlignment = alignment,
+                contentRevision = _uiState.value.contentRevision + 1
+            )
+        viewModelScope.launch {
+            dataStoreManager.saveTextAlignment(alignment)
+            loadChapterContent()
+        }
     }
 
     fun saveFontType(ft: String) {
@@ -939,6 +960,7 @@ class ReaderViewModel @Inject constructor(
             fontSize = settings.fontSize,
             lineHeight = settings.lineHeight,
             letterSpacing = settings.letterSpacing,
+            textAlignment = settings.textAlignment,
             fontType = if (settings.fontType.startsWith("custom:") && resolvedCustomFontPath == null) {
                 "system"
             } else {
@@ -1607,6 +1629,7 @@ class ReaderViewModel @Inject constructor(
                 fontType = "system",
                 lineHeight = 1.5f,
                 letterSpacing = 0f,
+                textAlignment = ReaderTextAlignment.NATURAL,
                 paragraphSpacing = 2f,
                 firstLineIndent = 2f,
                 marginLeft = 38f,
@@ -1617,6 +1640,7 @@ class ReaderViewModel @Inject constructor(
         }.copy(
             lineHeight = 1.5f,
             letterSpacing = 0f,
+            textAlignment = ReaderTextAlignment.NATURAL,
             fontType = "system",
             marginLeftDp = 38f,
             marginRightDp = 38f,
@@ -1646,6 +1670,7 @@ class ReaderViewModel @Inject constructor(
     /** 从 URI 导入字体文件到内部存储，注册到自定义字体列表，返回新建的 CustomFontPreset */
     fun resetBookLayoutReaderSettings() {
         saveFontType("system")
+        saveTextAlignment(ReaderTextAlignment.NATURAL)
         saveMarginLeft(38f)
         saveMarginRight(38f)
         saveMarginTop(64f)
@@ -1741,6 +1766,7 @@ class ReaderViewModel @Inject constructor(
                     val readerDisplayMode = dataStoreManager.displayMode().first()
                     val paragraphSpacing = dataStoreManager.paragraphSpacing().first()
                     val firstLineIndent = dataStoreManager.firstLineIndent().first()
+                    val textAlignment = dataStoreManager.textAlignment.first()
                     val pdfPageMode = if (eInkModeEnabled) "horizontal" else dataStoreManager.pdfPageMode.first()
 
                     // 应用段间距和首行缩进到 parser
@@ -1803,6 +1829,7 @@ class ReaderViewModel @Inject constructor(
                         readerDisplayMode = readerDisplayMode,
                         paragraphSpacing = paragraphSpacing,
                         firstLineIndent = firstLineIndent,
+                        textAlignment = textAlignment,
                         pdfPageMode = pdfPageMode,
                         eInkModeEnabled = eInkModeEnabled,
                         twoPageSpreadEnabled = twoPageSpreadEnabled,
@@ -2351,13 +2378,14 @@ class ReaderViewModel @Inject constructor(
         }
 
         val state = _uiState.value
-        return ReaderParagraphFormatter.applyFirstLineIndent(
+        val formatted = ReaderParagraphFormatter.applyFirstLineIndent(
             text = chapterText,
             indentCharacters = state.firstLineIndent,
             textSizePx = state.fontSize * context.resources.displayMetrics.scaledDensity,
             paragraphSpacingPx = state.paragraphSpacing * context.resources.displayMetrics.density,
             skipFirstNonEmptyParagraph = skipFirstParagraphIndent
         )
+        return applyReaderTextAlignment(formatted, state.textAlignment)
     }
 
     internal fun resolveTxtEditorCharOffset(chapterIndex: Int, readerOffset: Int): Int {
