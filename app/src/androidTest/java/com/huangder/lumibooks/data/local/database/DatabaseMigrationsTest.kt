@@ -16,7 +16,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class DatabaseMigrationsTest {
     private lateinit var context: Context
-    private val databaseName = "migration-3-4-test.db"
+    private val databaseName = "database-migrations-test.db"
 
     @Before
     fun setUp() {
@@ -103,12 +103,71 @@ class DatabaseMigrationsTest {
         }
     }
 
+    @Test
+    fun migration6To7PreservesLibraryDataAndLeavesBooksAtRoot() {
+        openHelper(version = 6, createSchema = true).use { helper ->
+            helper.writableDatabase.apply {
+                execSQL(
+                    "INSERT INTO books " +
+                        "(id,title,author,filePath,coverPath,format,lastReadTime,readingProgress," +
+                        "createdAt,isFavorite,locatorJson) VALUES " +
+                        "('book-1','Title','Author','/book.epub',NULL,'EPUB',10,0.42,5,1,NULL)"
+                )
+                execSQL("INSERT INTO tags VALUES ('tag-1','Fiction','fiction',13,NULL)")
+                execSQL(
+                    "INSERT INTO notes " +
+                        "(id,bookId,chapterIndex,startPosition,endPosition,selectedText,note,color," +
+                        "createdAt,startLocatorJson,endLocatorJson,type) VALUES " +
+                        "(9,'book-1',3,12,24,'selected','note','#ffee00',12,NULL,NULL,'highlight')"
+                )
+            }
+        }
+
+        openHelper(version = 7, createSchema = false).use { helper ->
+            val db = helper.writableDatabase
+            db.query("SELECT title, isFavorite FROM books WHERE id='book-1'").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals("Title", cursor.getString(0))
+                assertEquals(1, cursor.getInt(1))
+            }
+            db.query("SELECT name, parentId FROM tags WHERE id='tag-1'").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals("Fiction", cursor.getString(0))
+                assertNull(cursor.getString(1))
+            }
+            db.query("SELECT note, type FROM notes WHERE id=9").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals("note", cursor.getString(0))
+                assertEquals("highlight", cursor.getString(1))
+            }
+            db.query("SELECT COUNT(*) FROM folders").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals(0, cursor.getInt(0))
+            }
+            db.query("SELECT COUNT(*) FROM book_folder_cross_refs").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals(0, cursor.getInt(0))
+            }
+            assertEquals(
+                setOf("index_folders_parentId"),
+                indexNames(db, "folders")
+            )
+            assertEquals(
+                setOf("index_book_folder_cross_refs_folderId"),
+                indexNames(db, "book_folder_cross_refs")
+            )
+        }
+    }
+
     private fun openHelper(version: Int, createSchema: Boolean): SupportSQLiteOpenHelper {
         val callback = object : SupportSQLiteOpenHelper.Callback(version) {
             override fun onCreate(db: SupportSQLiteDatabase) {
                 if (createSchema) {
                     createVersion3Schema(db)
                     if (version >= 4) DatabaseMigrations.MIGRATION_3_4.migrate(db)
+                    if (version >= 5) DatabaseMigrations.MIGRATION_4_5.migrate(db)
+                    if (version >= 6) DatabaseMigrations.MIGRATION_5_6.migrate(db)
+                    if (version >= 7) DatabaseMigrations.MIGRATION_6_7.migrate(db)
                 }
             }
 
@@ -116,6 +175,7 @@ class DatabaseMigrationsTest {
                 if (oldVersion < 4 && newVersion >= 4) DatabaseMigrations.MIGRATION_3_4.migrate(db)
                 if (oldVersion < 5 && newVersion >= 5) DatabaseMigrations.MIGRATION_4_5.migrate(db)
                 if (oldVersion < 6 && newVersion >= 6) DatabaseMigrations.MIGRATION_5_6.migrate(db)
+                if (oldVersion < 7 && newVersion >= 7) DatabaseMigrations.MIGRATION_6_7.migrate(db)
             }
         }
         val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)
@@ -123,6 +183,18 @@ class DatabaseMigrationsTest {
             .callback(callback)
             .build()
         return FrameworkSQLiteOpenHelperFactory().create(configuration)
+    }
+
+    private fun indexNames(db: SupportSQLiteDatabase, tableName: String): Set<String> {
+        val result = mutableSetOf<String>()
+        db.query("PRAGMA index_list(`$tableName`)").use { cursor ->
+            val nameIndex = cursor.getColumnIndexOrThrow("name")
+            while (cursor.moveToNext()) {
+                val name = cursor.getString(nameIndex)
+                if (!name.startsWith("sqlite_autoindex_")) result += name
+            }
+        }
+        return result
     }
 
     private fun createVersion3Schema(db: SupportSQLiteDatabase) {

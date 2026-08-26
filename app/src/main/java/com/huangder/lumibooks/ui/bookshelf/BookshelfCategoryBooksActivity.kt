@@ -105,15 +105,17 @@ class BookshelfCategoryBooksActivity : ComponentActivity() {
         private const val EXTRA_KIND = "bookshelf_category_kind"
         private const val EXTRA_TITLE = "bookshelf_category_title"
         private const val EXTRA_TAG_ID = "bookshelf_category_tag_id"
+        private const val EXTRA_FOLDER_ID = "bookshelf_category_folder_id"
 
         internal fun createIntent(context: Context, target: BookshelfCategoryTarget): Intent {
             val kind = when (target) {
                 is BookshelfCategoryTarget.All -> "all"
-                is BookshelfCategoryTarget.Downloaded -> "downloaded"
+                is BookshelfCategoryTarget.EpubMobi -> "epub_mobi"
                 is BookshelfCategoryTarget.Pdf -> "pdf"
                 is BookshelfCategoryTarget.Txt -> "txt"
                 is BookshelfCategoryTarget.Favorites -> "favorites"
                 is BookshelfCategoryTarget.Tag -> "tag"
+                is BookshelfCategoryTarget.Folder -> "folder"
             }
             return Intent(context, BookshelfCategoryBooksActivity::class.java)
                 .putExtra(EXTRA_KIND, kind)
@@ -122,6 +124,9 @@ class BookshelfCategoryBooksActivity : ComponentActivity() {
                     if (target is BookshelfCategoryTarget.Tag) {
                         putExtra(EXTRA_TAG_ID, target.id)
                     }
+                    if (target is BookshelfCategoryTarget.Folder) {
+                        putExtra(EXTRA_FOLDER_ID, target.id)
+                    }
                 }
         }
 
@@ -129,13 +134,16 @@ class BookshelfCategoryBooksActivity : ComponentActivity() {
             val title = getStringExtra(EXTRA_TITLE)?.takeIf { it.isNotBlank() } ?: return null
             return when (getStringExtra(EXTRA_KIND)) {
                 "all" -> BookshelfCategoryTarget.All(title)
-                "downloaded" -> BookshelfCategoryTarget.Downloaded(title)
+                "epub_mobi" -> BookshelfCategoryTarget.EpubMobi(title)
                 "pdf" -> BookshelfCategoryTarget.Pdf(title)
                 "txt" -> BookshelfCategoryTarget.Txt(title)
                 "favorites" -> BookshelfCategoryTarget.Favorites(title)
                 "tag" -> getStringExtra(EXTRA_TAG_ID)
                     ?.takeIf { it.isNotBlank() }
                     ?.let { BookshelfCategoryTarget.Tag(it, title) }
+                "folder" -> getStringExtra(EXTRA_FOLDER_ID)
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { BookshelfCategoryTarget.Folder(it, title) }
                 else -> null
             }
         }

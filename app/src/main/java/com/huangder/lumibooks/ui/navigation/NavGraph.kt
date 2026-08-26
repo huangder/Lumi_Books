@@ -59,6 +59,7 @@ import com.huangder.lumibooks.ui.components.LiquidGlassMenuHost
 import com.huangder.lumibooks.ui.home.HomeScreen
 import com.huangder.lumibooks.ui.home.ImportBooksActionSheet
 import com.huangder.lumibooks.ui.home.ImportBooksConfirmationSheet
+import com.huangder.lumibooks.ui.home.ImportDestinationSheet
 import com.huangder.lumibooks.ui.home.SelectedImportBook
 import com.huangder.lumibooks.ui.home.HomeViewModel
 import com.huangder.lumibooks.ui.home.ReadingGoalSheet
@@ -175,6 +176,7 @@ fun MainNavGraph(
     predictiveBackEnabled: Boolean = true,
     requestedOpenBookId: String? = null,
     requestedOpenBookshelf: Boolean = false,
+    requestedOpenFolderId: String? = null,
     onBeforeOpenDifferentBook: () -> Unit = {},
     onOpenBookRequestConsumed: () -> Unit = {},
     onOpenBookshelfRequestConsumed: () -> Unit = {}
@@ -192,9 +194,11 @@ fun MainNavGraph(
     var homeGoalSheetVisible by remember { mutableStateOf(false) }
     var showImportActions by remember { mutableStateOf(false) }
     var showImportConfirmation by remember { mutableStateOf(false) }
+    var showImportDestination by remember { mutableStateOf(false) }
     var selectedImportBooks by remember { mutableStateOf(emptyList<SelectedImportBook>()) }
     var selectedImportBookUris by remember { mutableStateOf(emptySet<String>()) }
     var importCopiesIntoApp by remember { mutableStateOf(true) }
+    var importRequestFolderId by remember { mutableStateOf<String?>(null) }
     var isPreparingImport by remember { mutableStateOf(false) }
     var importPreparationGeneration by remember { mutableIntStateOf(0) }
     var transientMessage by remember { mutableStateOf<String?>(null) }
@@ -238,7 +242,12 @@ fun MainNavGraph(
                 if (showImportActions && importPreparationGeneration == requestGeneration) {
                     isPreparingImport = false
                     val selected = candidates.map { candidate ->
-                        SelectedImportBook(uri = candidate.uri, name = candidate.name)
+                        SelectedImportBook(
+                            uri = candidate.uri,
+                            name = candidate.name,
+                            sourceDirectoryUri = candidate.sourceDirectoryUri,
+                            sourceDirectoryName = candidate.sourceDirectoryName
+                        )
                     }
                     if (selected.isNotEmpty()) {
                         selectedImportBooks = selected
@@ -294,7 +303,7 @@ fun MainNavGraph(
                 launchSingleTop = true
             }
         }
-        onOpenBookshelfRequestConsumed()
+        if (requestedOpenFolderId == null) onOpenBookshelfRequestConsumed()
     }
 
     // 监听路由变化，从阅读页/设置页返回时延迟显示 TabBar
@@ -437,6 +446,7 @@ fun MainNavGraph(
                         }
                     },
                     onImportClick = {
+                        importRequestFolderId = null
                         selectedImportBooks = emptyList()
                         selectedImportBookUris = emptySet()
                         importCopiesIntoApp = true
@@ -490,7 +500,8 @@ fun MainNavGraph(
                             pendingBookId = bookId
                         }
                     },
-                    onAddBook = {
+                    onAddBook = { folderId ->
+                        importRequestFolderId = folderId
                         selectedImportBooks = emptyList()
                         selectedImportBookUris = emptySet()
                         importCopiesIntoApp = true
@@ -499,6 +510,8 @@ fun MainNavGraph(
                         showImportActions = true
                         showImportConfirmation = false
                     },
+                    requestedFolderId = requestedOpenFolderId,
+                    onRequestedFolderConsumed = onOpenBookshelfRequestConsumed,
                     onMessage = { transientMessage = it },
                     onOverlayProgressChange = { progress ->
                         bookshelfOverlayProgress = progress.coerceIn(0f, 1f)
@@ -609,6 +622,7 @@ fun MainNavGraph(
                 contentAlignment = Alignment.Center
             ) {
                 val requestImport = {
+                    importRequestFolderId = null
                     selectedImportBooks = emptyList()
                     selectedImportBookUris = emptySet()
                     importCopiesIntoApp = true
@@ -699,7 +713,12 @@ fun MainNavGraph(
                         if (showImportActions && importPreparationGeneration == requestGeneration) {
                             isPreparingImport = false
                             val selected = candidates.map { candidate ->
-                                SelectedImportBook(uri = candidate.uri, name = candidate.name)
+                                SelectedImportBook(
+                                    uri = candidate.uri,
+                                    name = candidate.name,
+                                    sourceDirectoryUri = candidate.sourceDirectoryUri,
+                                    sourceDirectoryName = candidate.sourceDirectoryName
+                                )
                             }
                             if (selected.isNotEmpty()) {
                                 selectedImportBooks = selected
@@ -745,22 +764,100 @@ fun MainNavGraph(
                     showImportConfirmation = false
                 },
                 onConfirmImport = {
-                    val uris = selectedImportBooks
+                    val selected = selectedImportBooks
                         .filter { it.uri.toString() in selectedImportBookUris }
-                        .map { it.uri }
-                    if (uris.isNotEmpty()) {
+                    if (selected.isNotEmpty()) {
                         importPreparationGeneration++
                         isPreparingImport = false
-                        selectedImportBooks = emptyList()
-                        selectedImportBookUris = emptySet()
                         showImportConfirmation = false
-                        if (importCopiesIntoApp) {
-                            homeViewModel.importBooks(context, uris)
+                        if (!importCopiesIntoApp || importRequestFolderId != null) {
+                            showImportDestination = true
                         } else {
-                            homeViewModel.importAuthorizedBooks(context, uris)
+                            homeViewModel.importBooks(context, selected.map { it.uri })
+                            selectedImportBooks = emptyList()
+                            selectedImportBookUris = emptySet()
                         }
                     }
                 }
+            )
+        }
+
+        if (showImportDestination) {
+            val selected = selectedImportBooks
+                .filter { it.uri.toString() in selectedImportBookUris }
+            val sourceNames = selected.mapNotNull { it.sourceDirectoryName }.distinct()
+            val currentFolderName = importRequestFolderId
+                ?.let { id -> homeUiState.folders.firstOrNull { it.id == id }?.name }
+            val primaryLabel = if (importCopiesIntoApp) {
+                context.getString(
+                    R.string.import_to_current_folder,
+                    currentFolderName ?: context.getString(R.string.bookshelf_title)
+                )
+            } else if (sourceNames.size == 1) {
+                context.getString(R.string.import_to_authorized_folder, sourceNames.first())
+            } else {
+                context.getString(R.string.import_group_authorized_folders)
+            }
+            val primaryDetail = if (!importCopiesIntoApp && sourceNames.size > 1) {
+                context.getString(
+                    R.string.import_group_authorized_folders_detail,
+                    sourceNames.joinToString("、")
+                )
+            } else {
+                null
+            }
+            val clearPendingImport = {
+                selectedImportBooks = emptyList()
+                selectedImportBookUris = emptySet()
+                showImportDestination = false
+                importRequestFolderId = null
+            }
+            ImportDestinationSheet(
+                primaryLabel = primaryLabel,
+                primaryDetail = primaryDetail,
+                onPrimary = {
+                    if (importCopiesIntoApp) {
+                        homeViewModel.importBooks(
+                            context,
+                            selected.map { it.uri },
+                            importRequestFolderId
+                        )
+                    } else {
+                        homeViewModel.importAuthorizedBooks(
+                            context,
+                            selected.map { book ->
+                                com.huangder.lumibooks.ui.home.BookImportCandidate(
+                                    uri = book.uri,
+                                    name = book.name,
+                                    sourceDirectoryUri = book.sourceDirectoryUri,
+                                    sourceDirectoryName = book.sourceDirectoryName
+                                )
+                            },
+                            groupBySourceFolder = true
+                        )
+                    }
+                    clearPendingImport()
+                },
+                onRoot = {
+                    if (importCopiesIntoApp) {
+                        homeViewModel.importBooks(context, selected.map { it.uri })
+                    } else {
+                        homeViewModel.importAuthorizedBooks(
+                            context,
+                            selected.map { book ->
+                                com.huangder.lumibooks.ui.home.BookImportCandidate(
+                                    uri = book.uri,
+                                    name = book.name,
+                                    sourceDirectoryUri = book.sourceDirectoryUri,
+                                    sourceDirectoryName = book.sourceDirectoryName
+                                )
+                            },
+                            groupBySourceFolder = false
+                        )
+                    }
+                    clearPendingImport()
+                },
+                onDismiss = clearPendingImport
             )
         }
 

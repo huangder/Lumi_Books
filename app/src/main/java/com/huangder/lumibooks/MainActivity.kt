@@ -110,12 +110,14 @@ class MainActivity : ComponentActivity() {
     companion object {
         const val EXTRA_OPEN_BOOK_ID = "open_book_id"
         const val EXTRA_OPEN_DESTINATION = "open_destination"
+        const val EXTRA_OPEN_FOLDER_ID = "open_folder_id"
         const val DESTINATION_BOOKSHELF = "bookshelf"
     }
 
     private var systemDarkMode by mutableStateOf(false)
     private var requestedOpenBookId by mutableStateOf<String?>(null)
     private var requestedOpenBookshelf by mutableStateOf(false)
+    private var requestedOpenFolderId by mutableStateOf<String?>(null)
 
     /** 听书悬浮窗权限引导：退后台时发现未授权，回到前台后弹窗引导 */
     private var showFloatingPermissionDialog by mutableStateOf(false)
@@ -181,8 +183,12 @@ class MainActivity : ComponentActivity() {
             ?.getStringExtra(EXTRA_OPEN_BOOK_ID)
             ?.takeIf { it.isNotBlank() }
         requestedOpenBookId = requestedBookId
+        requestedOpenFolderId = intent
+            ?.getStringExtra(EXTRA_OPEN_FOLDER_ID)
+            ?.takeIf { it.isNotBlank() }
         requestedOpenBookshelf = requestedBookId == null &&
-            intent?.getStringExtra(EXTRA_OPEN_DESTINATION) == DESTINATION_BOOKSHELF
+            (requestedOpenFolderId != null ||
+                intent?.getStringExtra(EXTRA_OPEN_DESTINATION) == DESTINATION_BOOKSHELF)
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -482,9 +488,13 @@ class MainActivity : ComponentActivity() {
                                 predictiveBackEnabled = predictiveBackEnabled && !eInkModeEnabled,
                                 requestedOpenBookId = requestedOpenBookId,
                                 requestedOpenBookshelf = requestedOpenBookshelf,
+                                requestedOpenFolderId = requestedOpenFolderId,
                                 onBeforeOpenDifferentBook = ttsController::stop,
                                 onOpenBookRequestConsumed = { requestedOpenBookId = null },
-                                onOpenBookshelfRequestConsumed = { requestedOpenBookshelf = false }
+                                onOpenBookshelfRequestConsumed = {
+                                    requestedOpenBookshelf = false
+                                    requestedOpenFolderId = null
+                                }
                             )
                         }
 

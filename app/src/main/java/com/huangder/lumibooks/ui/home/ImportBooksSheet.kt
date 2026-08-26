@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
@@ -103,8 +104,91 @@ import com.huangder.lumibooks.domain.model.BookFormat
 /** A file waiting for confirmation in the multi-book import flow. */
 data class SelectedImportBook(
     val uri: Uri,
-    val name: String
+    val name: String,
+    val sourceDirectoryUri: String? = null,
+    val sourceDirectoryName: String? = null
 )
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ImportDestinationSheet(
+    primaryLabel: String,
+    primaryDetail: String? = null,
+    onPrimary: () -> Unit,
+    onRoot: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    ImportBooksContainer(expanded = false, onDismiss = onDismiss) { _ ->
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 22.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.import_destination_title),
+                color = AppColors.TextPrimary,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(18.dp))
+            ImportDestinationButton(
+                text = primaryLabel,
+                detail = primaryDetail,
+                onClick = onPrimary,
+                primary = true
+            )
+            Spacer(Modifier.height(12.dp))
+            ImportDestinationButton(
+                text = stringResource(R.string.import_to_root),
+                detail = null,
+                onClick = onRoot,
+                primary = false
+            )
+        }
+    }
+}
+
+@Composable
+private fun ImportDestinationButton(
+    text: String,
+    detail: String?,
+    onClick: () -> Unit,
+    primary: Boolean
+) {
+    LiquidGlassButton(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 58.dp),
+        shape = RoundedCornerShape(16.dp),
+        tintedColor = if (primary) AppColors.Accent else AppColors.BgGray,
+        prominentShadow = primary,
+        contentColor = if (primary) AppColors.OnAccent else AppColors.TextPrimary
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = text,
+                color = if (primary) AppColors.OnAccent else AppColors.TextPrimary,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            detail?.let {
+                Text(
+                    text = it,
+                    color = if (primary) AppColors.OnAccent.copy(alpha = 0.78f) else AppColors.TextSecondary,
+                    fontSize = 12.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

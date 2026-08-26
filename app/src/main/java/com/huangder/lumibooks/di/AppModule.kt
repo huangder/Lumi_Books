@@ -5,15 +5,18 @@ import androidx.room.Room
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.data.local.dao.BookDao
 import com.huangder.lumibooks.data.local.dao.BookmarkDao
+import com.huangder.lumibooks.data.local.dao.FolderDao
 import com.huangder.lumibooks.data.local.dao.NoteDao
 import com.huangder.lumibooks.data.local.dao.ReadingRecordDao
 import com.huangder.lumibooks.data.local.dao.TagDao
 import com.huangder.lumibooks.data.local.database.AppDatabase
 import com.huangder.lumibooks.data.local.database.DatabaseMigrations
 import com.huangder.lumibooks.data.repository.BookRepositoryImpl
+import com.huangder.lumibooks.data.repository.FolderRepositoryImpl
 import com.huangder.lumibooks.data.repository.ReadingRepositoryImpl
 import com.huangder.lumibooks.data.repository.TagRepositoryImpl
 import com.huangder.lumibooks.domain.repository.BookRepository
+import com.huangder.lumibooks.domain.repository.FolderRepository
 import com.huangder.lumibooks.domain.repository.ReadingRepository
 import com.huangder.lumibooks.domain.repository.TagRepository
 import com.huangder.lumibooks.tts.TtsController
@@ -43,7 +46,8 @@ object AppModule {
             DatabaseMigrations.MIGRATION_2_3,
             DatabaseMigrations.MIGRATION_3_4,
             DatabaseMigrations.MIGRATION_4_5,
-            DatabaseMigrations.MIGRATION_5_6
+            DatabaseMigrations.MIGRATION_5_6,
+            DatabaseMigrations.MIGRATION_6_7
         )
             .build()
     }
@@ -80,6 +84,10 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideFolderDao(database: AppDatabase): FolderDao = database.folderDao()
+
+    @Provides
+    @Singleton
     fun provideBookRepository(bookDao: BookDao): BookRepository {
         return BookRepositoryImpl(bookDao)
     }
@@ -99,6 +107,11 @@ object AppModule {
     fun provideTagRepository(tagDao: TagDao): TagRepository {
         return TagRepositoryImpl(tagDao)
     }
+
+    @Provides
+    @Singleton
+    fun provideFolderRepository(folderDao: FolderDao): FolderRepository =
+        FolderRepositoryImpl(folderDao)
 
     @Provides
     @Singleton

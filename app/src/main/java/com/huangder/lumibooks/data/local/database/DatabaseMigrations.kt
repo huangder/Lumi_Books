@@ -58,4 +58,29 @@ object DatabaseMigrations {
             db.execSQL("ALTER TABLE tags ADD COLUMN parentId TEXT DEFAULT NULL")
         }
     }
+
+    val MIGRATION_6_7 = object : Migration(6, 7) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `folders` (" +
+                    "`id` TEXT NOT NULL, `name` TEXT NOT NULL, `normalizedName` TEXT NOT NULL, " +
+                    "`parentId` TEXT, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`), " +
+                    "FOREIGN KEY(`parentId`) REFERENCES `folders`(`id`) " +
+                    "ON UPDATE NO ACTION ON DELETE CASCADE)"
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_folders_parentId` ON `folders` (`parentId`)")
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `book_folder_cross_refs` (" +
+                    "`bookId` TEXT NOT NULL, `folderId` TEXT NOT NULL, PRIMARY KEY(`bookId`), " +
+                    "FOREIGN KEY(`bookId`) REFERENCES `books`(`id`) " +
+                    "ON UPDATE NO ACTION ON DELETE CASCADE, " +
+                    "FOREIGN KEY(`folderId`) REFERENCES `folders`(`id`) " +
+                    "ON UPDATE NO ACTION ON DELETE CASCADE)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_book_folder_cross_refs_folderId` " +
+                    "ON `book_folder_cross_refs` (`folderId`)"
+            )
+        }
+    }
 }

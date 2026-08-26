@@ -10,11 +10,15 @@ import androidx.lifecycle.viewModelScope
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.domain.model.Book
+import com.huangder.lumibooks.domain.model.BookFolderLink
 import com.huangder.lumibooks.domain.model.BookTagLink
 import com.huangder.lumibooks.domain.model.BookFormat
+import com.huangder.lumibooks.domain.model.FolderNameValidator
+import com.huangder.lumibooks.domain.model.LibraryFolder
 import com.huangder.lumibooks.domain.model.LibraryTag
 import com.huangder.lumibooks.domain.model.TagNameValidator
 import com.huangder.lumibooks.domain.repository.BookRepository
+import com.huangder.lumibooks.domain.repository.FolderRepository
 import com.huangder.lumibooks.domain.repository.ReadingRepository
 import com.huangder.lumibooks.domain.repository.TagRepository
 import com.huangder.lumibooks.util.FileUtils
@@ -39,7 +43,12 @@ import javax.inject.Inject
 /** 每日阅读数据 */
 data class DailyReading(val date: String, val duration: Long, val dayLabel: String)
 
-data class BookImportCandidate(val uri: Uri, val name: String)
+data class BookImportCandidate(
+    val uri: Uri,
+    val name: String,
+    val sourceDirectoryUri: String? = null,
+    val sourceDirectoryName: String? = null
+)
 
 data class HomeUiState(
     val books: List<Book> = emptyList(),
@@ -58,6 +67,9 @@ data class HomeUiState(
     val error: String? = null,
     val tags: List<LibraryTag> = emptyList(),
     val bookTagLinks: List<BookTagLink> = emptyList(),
+    val folders: List<LibraryFolder> = emptyList(),
+    val bookFolderLinks: List<BookFolderLink> = emptyList(),
+    val folderMessage: String? = null,
     /** 当前日历周的阅读数据（周日至周六） */
     val weeklyData: List<DailyReading> = emptyList(),
     /** 连胜天数 */
@@ -75,6 +87,7 @@ enum class SortBy {
 class HomeViewModel @Inject constructor(
     private val bookRepository: BookRepository,
     private val tagRepository: TagRepository,
+    private val folderRepository: FolderRepository,
     private val readingRepository: ReadingRepository,
     private val dataStoreManager: DataStoreManager,
     private val application: Application,
@@ -103,6 +116,7 @@ class HomeViewModel @Inject constructor(
     init {
         loadBooks()
         loadTags()
+        loadFolders()
         loadTodayReadingTime()
         loadAvatar()
         loadWeeklyData()
@@ -146,6 +160,21 @@ class HomeViewModel @Inject constructor(
                     bookTagLinks = links
                 )
             }
+        }
+    }
+
+    private fun loadFolders() {
+        viewModelScope.launch {
+            combine(
+                folderRepository.getAllFolders(),
+                folderRepository.getAllBookFolderLinks()
+            ) { folders, links -> folders to links }
+                .collectLatest { (folders, links) ->
+                    _uiState.value = _uiState.value.copy(
+                        folders = folders,
+                        bookFolderLinks = links
+                    )
+                }
         }
     }
 
@@ -327,27 +356,62 @@ class HomeViewModel @Inject constructor(
      * 异步导入书籍：文件复制 + EPUB/PDF/TXT解析 + 数据库插入
      * 全部在 Dispatchers.IO 上执行，不阻塞主线程
      */
-    fun importBook(context: Context, uri: Uri) {
-        importBooks(context, listOf(uri))
+    fun importBook(context: Context, uri: Uri, targetFolderId: String? = null) {
+        importBooks(context, listOf(uri), targetFolderId)
     }
 
-    fun importBooks(context: Context, uris: List<Uri>) {
-        importBooks(context, uris, copyIntoApp = true)
+    fun importBooks(context: Context, uris: List<Uri>, targetFolderId: String? = null) {
+        importDocumentsAsync(
+            context = context,
+            documents = uris.mapNotNull { uri ->
+                val name = FileUtils.getFileNameFromUri(context, uri) ?: return@mapNotNull null
+                BookDocument(uri, name)
+            },
+            copyIntoApp = true,
+            targetFolderId = targetFolderId,
+            groupByAuthorizedSource = false
+        )
     }
 
-    fun importAuthorizedBooks(context: Context, uris: List<Uri>) {
-        importBooks(context, uris, copyIntoApp = false)
+    fun importAuthorizedBooks(
+        context: Context,
+        candidates: List<BookImportCandidate>,
+        groupBySourceFolder: Boolean
+    ) {
+        importDocumentsAsync(
+            context = context,
+            documents = candidates.map { candidate ->
+                BookDocument(
+                    uri = candidate.uri,
+                    name = candidate.name,
+                    sourceDirectoryUri = candidate.sourceDirectoryUri,
+                    sourceDirectoryName = candidate.sourceDirectoryName
+                )
+            },
+            copyIntoApp = false,
+            targetFolderId = null,
+            groupByAuthorizedSource = groupBySourceFolder
+        )
     }
 
-    private fun importBooks(context: Context, uris: List<Uri>, copyIntoApp: Boolean) {
-        if (uris.isEmpty()) return
+    private fun importDocumentsAsync(
+        context: Context,
+        documents: List<BookDocument>,
+        copyIntoApp: Boolean,
+        targetFolderId: String?,
+        groupByAuthorizedSource: Boolean
+    ) {
+        if (documents.isEmpty()) return
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(importMessage = context.getString(R.string.importing))
             val result = withContext(Dispatchers.IO) {
-                importDocuments(context, uris.mapNotNull { uri ->
-                    val name = FileUtils.getFileNameFromUri(context, uri) ?: return@mapNotNull null
-                    BookDocument(uri, name)
-                }, copyIntoApp = copyIntoApp)
+                importDocuments(
+                    context = context,
+                    documents = documents,
+                    copyIntoApp = copyIntoApp,
+                    targetFolderId = targetFolderId,
+                    groupByAuthorizedSource = groupByAuthorizedSource
+                )
             }
             _uiState.value = _uiState.value.copy(importMessage = result.toMessage(context))
         }
@@ -369,7 +433,7 @@ class HomeViewModel @Inject constructor(
             }
             result.fold(
                 onSuccess = { discovery ->
-                    onDiscovered(discovery.documents.map { BookImportCandidate(it.uri, it.name) })
+                    onDiscovered(discovery.documents.map { it.toCandidate() })
                     _uiState.value = _uiState.value.copy(
                         importMessage = discovery.messageWhenEmpty(context)
                     )
@@ -398,7 +462,7 @@ class HomeViewModel @Inject constructor(
             }
             result.fold(
                 onSuccess = { discovery ->
-                    onDiscovered(discovery.documents.map { BookImportCandidate(it.uri, it.name) })
+                    onDiscovered(discovery.documents.map { it.toCandidate() })
                     _uiState.value = _uiState.value.copy(
                         importMessage = discovery.messageWhenEmpty(context)
                     )
@@ -438,6 +502,7 @@ class HomeViewModel @Inject constructor(
 
     private fun discoverBooks(context: Context, treeUri: Uri): List<BookDocument> {
         val resolver = context.contentResolver
+        val sourceDirectoryName = resolveAuthorizedDirectoryName(context, treeUri)
         val pendingDirectories = ArrayDeque<String>()
         pendingDirectories += DocumentsContract.getTreeDocumentId(treeUri)
         val discovered = mutableListOf<BookDocument>()
@@ -462,8 +527,10 @@ class HomeViewModel @Inject constructor(
                         pendingDirectories += documentId
                     } else if (FileUtils.getFileExtension(name) in SUPPORTED_BOOK_EXTENSIONS) {
                         discovered += BookDocument(
-                            DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId),
-                            name
+                            uri = DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId),
+                            name = name,
+                            sourceDirectoryUri = treeUri.toString(),
+                            sourceDirectoryName = sourceDirectoryName
                         )
                     }
                 }
@@ -472,10 +539,34 @@ class HomeViewModel @Inject constructor(
         return discovered
     }
 
+    private fun resolveAuthorizedDirectoryName(context: Context, treeUri: Uri): String {
+        val resolver = context.contentResolver
+        val treeId = DocumentsContract.getTreeDocumentId(treeUri)
+        val rootDocument = DocumentsContract.buildDocumentUriUsingTree(treeUri, treeId)
+        val displayName = runCatching {
+            resolver.query(
+                rootDocument,
+                arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+        }.getOrNull()?.takeIf { it.isNotBlank() }
+        return displayName ?: Uri.decode(treeId)
+            .substringAfter(':', treeId)
+            .trim('/')
+            .substringAfterLast('/')
+            .ifBlank { context.getString(R.string.bookshelf_title) }
+    }
+
     private suspend fun importDocuments(
         context: Context,
         documents: List<BookDocument>,
-        copyIntoApp: Boolean
+        copyIntoApp: Boolean,
+        targetFolderId: String?,
+        groupByAuthorizedSource: Boolean
     ): ImportResult {
         var imported = 0
         var skipped = 0
@@ -488,6 +579,7 @@ class HomeViewModel @Inject constructor(
             }
             var importedLocation: String? = null
             var extractedCoverPath: String? = null
+            var insertedBook: Book? = null
             runCatching {
                 val location = if (copyIntoApp) {
                     FileUtils.copyFileToInternal(context, document.uri, document.name)?.absolutePath
@@ -507,9 +599,9 @@ class HomeViewModel @Inject constructor(
                 }
                 extractedCoverPath = coverPath
                 val now = System.currentTimeMillis()
-                bookRepository.insertBook(
-                    Book(
-                        id = FileUtils.generateBookId(),
+                val bookId = FileUtils.generateBookId()
+                val book = Book(
+                        id = bookId,
                         title = document.name.substringBeforeLast('.'),
                         author = context.getString(R.string.book_author_unknown),
                         filePath = location,
@@ -519,11 +611,25 @@ class HomeViewModel @Inject constructor(
                         readingProgress = 0f,
                         createdAt = now
                     )
-                )
+                bookRepository.insertBook(book)
+                insertedBook = book
+                val destinationFolderId = if (groupByAuthorizedSource) {
+                    document.sourceDirectoryName
+                        ?.let(FolderNameValidator::clean)
+                        ?.take(FolderNameValidator.MAX_LENGTH)
+                        ?.takeIf(FolderNameValidator::isValid)
+                        ?.let { folderRepository.getOrCreateRootFolder(it).id }
+                } else {
+                    targetFolderId
+                }
+                if (destinationFolderId != null) {
+                    folderRepository.moveBooks(setOf(bookId), destinationFolderId)
+                }
             }.onSuccess {
                 imported++
             }.onFailure {
                 failed++
+                insertedBook?.let { book -> runCatching { bookRepository.deleteBook(book) } }
                 if (copyIntoApp) {
                     importedLocation?.let { FileUtils.deleteAppManagedBookFile(context, it) }
                 }
@@ -533,7 +639,19 @@ class HomeViewModel @Inject constructor(
         return ImportResult(imported = imported, skipped = skipped, failed = failed)
     }
 
-    private data class BookDocument(val uri: Uri, val name: String)
+    private data class BookDocument(
+        val uri: Uri,
+        val name: String,
+        val sourceDirectoryUri: String? = null,
+        val sourceDirectoryName: String? = null
+    ) {
+        fun toCandidate() = BookImportCandidate(
+            uri = uri,
+            name = name,
+            sourceDirectoryUri = sourceDirectoryUri,
+            sourceDirectoryName = sourceDirectoryName
+        )
+    }
 
     private data class BookDiscoveryResult(
         val documents: List<BookDocument> = emptyList(),
@@ -643,6 +761,91 @@ class HomeViewModel @Inject constructor(
 
     fun clearTagMessage() {
         _uiState.value = _uiState.value.copy(tagMessage = null)
+    }
+
+    fun createFolder(
+        rawName: String,
+        parentId: String?,
+        onResult: (LibraryFolder?) -> Unit = {}
+    ) {
+        if (!validateFolderName(rawName)) {
+            onResult(null)
+            return
+        }
+        viewModelScope.launch {
+            runCatching { folderRepository.createFolder(rawName, parentId) }
+                .onSuccess { folder ->
+                    if (folder == null) showFolderMessage(application.getString(R.string.folder_name_exists))
+                    onResult(folder)
+                }
+                .onFailure {
+                    showFolderMessage(it.message ?: application.getString(R.string.error))
+                    onResult(null)
+                }
+        }
+    }
+
+    fun renameFolder(folderId: String, rawName: String, onResult: (Boolean) -> Unit = {}) {
+        if (!validateFolderName(rawName)) {
+            onResult(false)
+            return
+        }
+        viewModelScope.launch {
+            runCatching { folderRepository.renameFolder(folderId, rawName) }
+                .onSuccess { renamed ->
+                    if (!renamed) showFolderMessage(application.getString(R.string.folder_name_exists))
+                    onResult(renamed)
+                }
+                .onFailure {
+                    showFolderMessage(it.message ?: application.getString(R.string.error))
+                    onResult(false)
+                }
+        }
+    }
+
+    fun deleteFolder(folderId: String) {
+        viewModelScope.launch {
+            runCatching { folderRepository.deleteFolderTree(folderId) }
+                .onFailure { showFolderMessage(it.message ?: application.getString(R.string.error)) }
+        }
+    }
+
+    fun moveBooksToFolder(
+        bookIds: Set<String>,
+        targetFolderId: String?,
+        onResult: (Boolean) -> Unit = {}
+    ) {
+        if (bookIds.isEmpty()) {
+            onResult(false)
+            return
+        }
+        viewModelScope.launch {
+            runCatching { folderRepository.moveBooks(bookIds, targetFolderId) }
+                .onSuccess { onResult(true) }
+                .onFailure {
+                    showFolderMessage(it.message ?: application.getString(R.string.error))
+                    onResult(false)
+                }
+        }
+    }
+
+    fun clearFolderMessage() {
+        _uiState.value = _uiState.value.copy(folderMessage = null)
+    }
+
+    private fun validateFolderName(rawName: String): Boolean {
+        if (FolderNameValidator.isValid(rawName)) return true
+        val message = if (FolderNameValidator.clean(rawName).isEmpty()) {
+            application.getString(R.string.folder_name_required)
+        } else {
+            application.getString(R.string.folder_name_too_long, FolderNameValidator.MAX_LENGTH)
+        }
+        showFolderMessage(message)
+        return false
+    }
+
+    private fun showFolderMessage(message: String) {
+        _uiState.value = _uiState.value.copy(folderMessage = message)
     }
 
     private fun validateTagName(rawName: String): Boolean {

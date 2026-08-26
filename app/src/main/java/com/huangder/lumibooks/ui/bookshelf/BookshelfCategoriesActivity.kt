@@ -4,6 +4,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -11,6 +12,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,6 +36,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.KeyboardArrowRight
@@ -66,17 +69,19 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
-import com.huangder.lumibooks.MainActivity
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.domain.model.LibraryTag
+import com.huangder.lumibooks.domain.model.LibraryFolder
 import com.huangder.lumibooks.ui.components.ConfigurableActivityBack
+import com.huangder.lumibooks.ui.components.ConfigurableBackHandler
 import com.huangder.lumibooks.ui.components.EditInputDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassButton
@@ -154,6 +159,14 @@ class BookshelfCategoriesActivity : ComponentActivity() {
                                     )
                                 )
                             },
+                            onFolderSelected = { folder ->
+                                startActivity(
+                                    BookshelfCategoryBooksActivity.createIntent(
+                                        this@BookshelfCategoriesActivity,
+                                        BookshelfCategoryTarget.Folder(folder.id, folder.name)
+                                    )
+                                )
+                            },
                             onBack = { finish() }
                         )
                     }
@@ -175,11 +188,12 @@ internal sealed interface BookshelfCategoryTarget {
     val title: String
 
     data class All(override val title: String) : BookshelfCategoryTarget
-    data class Downloaded(override val title: String) : BookshelfCategoryTarget
+    data class EpubMobi(override val title: String) : BookshelfCategoryTarget
     data class Pdf(override val title: String) : BookshelfCategoryTarget
     data class Txt(override val title: String) : BookshelfCategoryTarget
     data class Favorites(override val title: String) : BookshelfCategoryTarget
     data class Tag(val id: String, override val title: String) : BookshelfCategoryTarget
+    data class Folder(val id: String, override val title: String) : BookshelfCategoryTarget
 }
 
 private data class CategoryRowModel(
@@ -191,20 +205,31 @@ private data class CategoryRowModel(
 @Composable
 private fun BookshelfCategoriesScreen(
     onTargetSelected: (BookshelfCategoryTarget) -> Unit,
+    onFolderSelected: (LibraryFolder) -> Unit,
     onBack: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
+    val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     val tagIdsByBook = remember(uiState.bookTagLinks) {
         uiState.bookTagLinks.groupBy { it.bookId }
             .mapValues { (_, links) -> links.mapTo(mutableSetOf()) { it.tagId } }
     }
+    var managedFolder by remember { mutableStateOf<LibraryFolder?>(null) }
+    var renameFolder by remember { mutableStateOf<LibraryFolder?>(null) }
+    var deleteFolder by remember { mutableStateOf<LibraryFolder?>(null) }
     val allTitle = stringResource(R.string.filter_all)
-    val downloadedTitle = stringResource(R.string.filter_downloaded)
+    val epubMobiTitle = stringResource(R.string.filter_epub_mobi)
     val favoritesTitle = stringResource(R.string.filter_favorites)
     val rows = buildList {
         add(CategoryRowModel(BookshelfCategoryTarget.All(allTitle), uiState.books.size, Icons.Outlined.MenuBook))
-        add(CategoryRowModel(BookshelfCategoryTarget.Downloaded(downloadedTitle), uiState.books.size, Icons.Outlined.FolderOpen))
+        add(
+            CategoryRowModel(
+                BookshelfCategoryTarget.EpubMobi(epubMobiTitle),
+                uiState.books.count(Book::isEpubMobi),
+                Icons.Outlined.FolderOpen
+            )
+        )
         add(CategoryRowModel(BookshelfCategoryTarget.Pdf("PDF"), uiState.books.count { it.format == BookFormat.PDF }, Icons.Outlined.Description))
         add(CategoryRowModel(BookshelfCategoryTarget.Txt("TXT"), uiState.books.count { it.format == BookFormat.TXT }, Icons.Outlined.Description))
         add(CategoryRowModel(BookshelfCategoryTarget.Favorites(favoritesTitle), uiState.books.count { it.isFavorite }, Icons.Outlined.FavoriteBorder))
@@ -213,9 +238,89 @@ private fun BookshelfCategoriesScreen(
         categories = rows,
         tags = uiState.tags,
         tagIdsByBook = tagIdsByBook,
+        folders = uiState.folders,
+        folderBookCounts = folderBookCounts(uiState.folders, uiState.bookFolderLinks),
         onBack = onBack,
-        onTargetSelected = onTargetSelected
+        onTargetSelected = onTargetSelected,
+        onFolderSelected = onFolderSelected,
+        onFolderLongClick = { managedFolder = it }
     )
+
+    managedFolder?.let { folder ->
+        LiquidGlassAlertDialog(
+            onDismissRequest = { managedFolder = null },
+            title = { Text(folder.name, fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    LiquidGlassTextButton(
+                        text = stringResource(R.string.rename_folder),
+                        onClick = {
+                            managedFolder = null
+                            renameFolder = folder
+                        }
+                    )
+                    LiquidGlassTextButton(
+                        text = stringResource(R.string.delete_folder),
+                        tintedColor = Color(0xFFD92D3A),
+                        onClick = {
+                            managedFolder = null
+                            deleteFolder = folder
+                        }
+                    )
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.cancel),
+                    onClick = { managedFolder = null }
+                )
+            }
+        )
+    }
+    LaunchedEffect(uiState.folderMessage) {
+        val message = uiState.folderMessage ?: return@LaunchedEffect
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        viewModel.clearFolderMessage()
+    }
+
+    renameFolder?.let { folder ->
+        FolderNameDialog(
+            title = stringResource(R.string.rename_folder),
+            initialName = folder.name,
+            onDismiss = { renameFolder = null },
+            onConfirm = { name ->
+                viewModel.renameFolder(folder.id, name) { renamed ->
+                    if (renamed) renameFolder = null
+                }
+            }
+        )
+    }
+
+    deleteFolder?.let { folder ->
+        val count = folderBookCounts(uiState.folders, uiState.bookFolderLinks)[folder.id] ?: 0
+        LiquidGlassAlertDialog(
+            onDismissRequest = { deleteFolder = null },
+            title = { Text(stringResource(R.string.delete_folder_title, folder.name)) },
+            text = { Text(stringResource(R.string.delete_folder_confirm, count)) },
+            confirmButton = {
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.delete),
+                    tintedColor = Color(0xFFD92D3A),
+                    onClick = {
+                        viewModel.deleteFolder(folder.id)
+                        deleteFolder = null
+                    }
+                )
+            },
+            dismissButton = {
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.cancel),
+                    onClick = { deleteFolder = null }
+                )
+            }
+        )
+    }
 }
 
 @Composable
@@ -225,6 +330,7 @@ internal fun BookshelfCategoryBooksRoute(
     onOpenBook: (Book) -> Unit,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
+    val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     val tagIdsByBook = remember(uiState.bookTagLinks) {
         uiState.bookTagLinks.groupBy { it.bookId }
@@ -235,17 +341,34 @@ internal fun BookshelfCategoryBooksRoute(
         uiState.bookTagLinks.groupBy { it.bookId }
             .mapValues { (_, links) -> links.mapNotNull { names[it.tagId] } }
     }
-    val selectedBooks = remember(selectedTarget, uiState.books, tagIdsByBook) {
+    val selectedBooks = remember(
+        selectedTarget,
+        uiState.books,
+        uiState.folders,
+        uiState.bookFolderLinks,
+        tagIdsByBook
+    ) {
         when (selectedTarget) {
             is BookshelfCategoryTarget.All -> uiState.books
-            is BookshelfCategoryTarget.Downloaded -> uiState.books
+            is BookshelfCategoryTarget.EpubMobi -> uiState.books.filter(Book::isEpubMobi)
             is BookshelfCategoryTarget.Pdf -> uiState.books.filter { it.format == BookFormat.PDF }
             is BookshelfCategoryTarget.Txt -> uiState.books.filter { it.format == BookFormat.TXT }
             is BookshelfCategoryTarget.Favorites -> uiState.books.filter { it.isFavorite }
             is BookshelfCategoryTarget.Tag -> uiState.books.filter {
                 selectedTarget.id in tagIdsByBook[it.id].orEmpty()
             }
+            is BookshelfCategoryTarget.Folder -> booksInFolderTree(
+                books = uiState.books,
+                links = uiState.bookFolderLinks,
+                folders = uiState.folders,
+                folderId = selectedTarget.id
+            )
         }
+    }
+    LaunchedEffect(uiState.folderMessage) {
+        val message = uiState.folderMessage ?: return@LaunchedEffect
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        viewModel.clearFolderMessage()
     }
 
     CategoryBooksPage(
@@ -268,9 +391,14 @@ private fun CategoryListPage(
     categories: List<CategoryRowModel>,
     tags: List<LibraryTag>,
     tagIdsByBook: Map<String, Set<String>>,
+    folders: List<LibraryFolder>,
+    folderBookCounts: Map<String, Int>,
     onBack: () -> Unit,
-    onTargetSelected: (BookshelfCategoryTarget) -> Unit
+    onTargetSelected: (BookshelfCategoryTarget) -> Unit,
+    onFolderSelected: (LibraryFolder) -> Unit,
+    onFolderLongClick: (LibraryFolder) -> Unit
 ) {
+    val folderRows = remember(folders) { flattenFolderTree(folders) }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -296,6 +424,33 @@ private fun CategoryListPage(
                     icon = row.icon,
                     onClick = { onTargetSelected(row.target) }
                 )
+            }
+            item {
+                CategorySectionTitle(
+                    text = stringResource(R.string.bookshelf_custom_categories),
+                    modifier = Modifier.padding(top = 18.dp)
+                )
+            }
+            if (folderRows.isEmpty()) {
+                item {
+                    Text(
+                        text = stringResource(R.string.no_custom_categories),
+                        color = AppColors.TextSecondary,
+                        fontSize = AppType.BodySmall,
+                        modifier = Modifier.padding(vertical = AppSpace.md)
+                    )
+                }
+            } else {
+                items(folderRows, key = { "folder_${it.folder.id}" }) { row ->
+                    CategoryRow(
+                        title = row.folder.name,
+                        count = folderBookCounts[row.folder.id] ?: 0,
+                        icon = Icons.Outlined.FolderOpen,
+                        startIndent = (row.depth * 20).dp,
+                        onClick = { onFolderSelected(row.folder) },
+                        onLongClick = { onFolderLongClick(row.folder) }
+                    )
+                }
             }
             item {
                 CategorySectionTitle(
@@ -371,15 +526,18 @@ private fun CategoryRow(
     title: String,
     count: Int,
     icon: ImageVector,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+    startIndent: Dp = 0.dp
 ) {
     Surface(
         shape = RoundedCornerShape(22.dp),
         color = AppColors.CardBg,
-        onClick = onClick,
         modifier = Modifier
+            .padding(start = startIndent)
             .fillMaxWidth()
             .height(64.dp)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
         Row(
             modifier = Modifier
@@ -412,6 +570,23 @@ private fun CategoryRow(
     }
 }
 
+private data class FolderTreeRow(val folder: LibraryFolder, val depth: Int)
+
+private fun flattenFolderTree(folders: List<LibraryFolder>): List<FolderTreeRow> {
+    val children = folders.groupBy { it.parentId }
+    val rows = mutableListOf<FolderTreeRow>()
+    val visited = mutableSetOf<String>()
+    fun append(parentId: String?, depth: Int) {
+        children[parentId].orEmpty().forEach { folder ->
+            if (!visited.add(folder.id)) return@forEach
+            rows += FolderTreeRow(folder, depth)
+            append(folder.id, depth + 1)
+        }
+    }
+    append(null, 0)
+    return rows
+}
+
 @Composable
 private fun CategoryBooksPage(
     title: String,
@@ -437,6 +612,7 @@ private fun CategoryBooksPage(
     var pendingDeleteBooks by remember { mutableStateOf(emptyList<Book>()) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showBatchTagSheet by remember { mutableStateOf(false) }
+    var showBatchMoveSheet by remember { mutableStateOf(false) }
     var tagTargetBook by remember { mutableStateOf<Book?>(null) }
     var editingBook by remember { mutableStateOf<Book?>(null) }
     var coverTargetBook by remember { mutableStateOf<Book?>(null) }
@@ -470,6 +646,10 @@ private fun CategoryBooksPage(
     LaunchedEffect(books) {
         val ids = books.mapTo(mutableSetOf()) { it.id }
         selectedBookIds = selectedBookIds.intersect(ids)
+    }
+    ConfigurableBackHandler(enabled = isEditing) {
+        isEditing = false
+        selectedBookIds = emptySet()
     }
 
     ProvideLiquidGlassBackdrop(null) {
@@ -532,6 +712,7 @@ private fun CategoryBooksPage(
                 },
                 onDelete = { showDeleteConfirm = true },
                 onTags = { showBatchTagSheet = true },
+                onMove = { showBatchMoveSheet = true },
                 modifier = Modifier
                     .zIndex(2f)
                     .onGloballyPositioned { headerHeightPx = it.size.height }
@@ -604,6 +785,36 @@ private fun CategoryBooksPage(
             }
         )
     }
+    if (showBatchMoveSheet) {
+        FolderMoveSheet(
+            folders = viewModel.uiState.value.folders,
+            selectedBookCount = selectedBookIds.size,
+            sourceFolderId = "__mixed_category__",
+            onDismiss = { showBatchMoveSheet = false },
+            onCreateFolder = { name, parentId -> viewModel.createFolder(name, parentId) },
+            onMove = { targetFolderId ->
+                viewModel.moveBooksToFolder(selectedBookIds, targetFolderId) { success ->
+                    if (success) {
+                        val targetName = targetFolderId
+                            ?.let { id -> viewModel.uiState.value.folders.firstOrNull { it.id == id }?.name }
+                            ?: context.getString(R.string.bookshelf_title)
+                        Toast.makeText(
+                            context,
+                            context.getString(
+                                R.string.folder_move_success,
+                                selectedBookIds.size,
+                                targetName
+                            ),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        showBatchMoveSheet = false
+                        selectedBookIds = emptySet()
+                        isEditing = false
+                    }
+                }
+            }
+        )
+    }
     editingBook?.let { book ->
         LiquidGlassDialog(
             onDismissRequest = { editingBook = null },
@@ -668,6 +879,7 @@ private fun CategoryBooksHeader(
     onEditToggle: () -> Unit,
     onDelete: () -> Unit,
     onTags: () -> Unit,
+    onMove: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
@@ -714,6 +926,19 @@ private fun CategoryBooksHeader(
                 imageVector = Icons.Outlined.Label,
                 contentDescription = stringResource(R.string.tag_sheet_title),
                 onClick = onTags,
+                enabled = selectedCount > 0,
+                size = 46.dp,
+                iconSize = 21.dp,
+                contentColor = AppColors.TextPrimary,
+                normalContainerColor = AppColors.CardBg,
+                liquidContainerColor = AppColors.CardBg,
+                liquidScrimColor = AppColors.CardBg.copy(alpha = 0.58f)
+            )
+            Spacer(Modifier.width(10.dp))
+            LiquidGlassIconButton(
+                imageVector = Icons.Outlined.DriveFileMove,
+                contentDescription = stringResource(R.string.move_books),
+                onClick = onMove,
                 enabled = selectedCount > 0,
                 size = 46.dp,
                 iconSize = 21.dp,
