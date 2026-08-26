@@ -280,8 +280,11 @@
     <string name="cover_source_pick_image">Choose Image</string>
     <string name="cover_source_pick_image_desc">Pick an image from your device</string>
     <string name="cover_source_web_search">Search the Web</string>
-    <string name="cover_source_web_search_desc">Find a cover with Bing</string>
+    <string name="cover_source_web_search_desc">Find a cover with multiple search engines</string>
     <string name="cover_search_hint">Search or enter URL</string>
+    <string name="cover_search_engine_bing">Bing</string>
+    <string name="cover_search_engine_baidu">Baidu</string>
+    <string name="cover_search_engine_google">Google</string>
     <string name="cover_pick_region">Pick Cover</string>
     <string name="cover_updated">Cover updated</string>
     <string name="cover_capture_failed">Failed to capture the cover region</string>

@@ -252,8 +252,11 @@
     <string name="cover_source_pick_image">이미지 선택</string>
     <string name="cover_source_pick_image_desc">기기 갤러리에서 선택</string>
     <string name="cover_source_web_search">웹 검색</string>
-    <string name="cover_source_web_search_desc">Bing으로 표지 검색</string>
+    <string name="cover_source_web_search_desc">여러 검색 엔진으로 표지 검색</string>
     <string name="cover_search_hint">검색어 또는 URL 입력</string>
+    <string name="cover_search_engine_bing">Bing</string>
+    <string name="cover_search_engine_baidu">Baidu</string>
+    <string name="cover_search_engine_google">Google</string>
     <string name="cover_pick_region">표지 선택</string>
     <string name="cover_updated">표지가 업데이트되었습니다</string>
     <string name="cover_capture_failed">표지 영역을 캡처할 수 없습니다</string>

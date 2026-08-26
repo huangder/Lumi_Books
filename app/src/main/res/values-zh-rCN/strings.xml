@@ -258,8 +258,11 @@
     <string name="cover_source_pick_image">选择图片</string>
     <string name="cover_source_pick_image_desc">从本地相册选择图片</string>
     <string name="cover_source_web_search">网络搜索</string>
-    <string name="cover_source_web_search_desc">通过必应搜索本书封面</string>
+    <string name="cover_source_web_search_desc">通过多个搜索引擎查找本书封面</string>
     <string name="cover_search_hint">搜索或输入网址</string>
+    <string name="cover_search_engine_bing">Bing</string>
+    <string name="cover_search_engine_baidu">百度</string>
+    <string name="cover_search_engine_google">Google</string>
     <string name="cover_pick_region">选取封面</string>
     <string name="cover_updated">封面已更新</string>
     <string name="cover_capture_failed">无法捕获封面区域</string>

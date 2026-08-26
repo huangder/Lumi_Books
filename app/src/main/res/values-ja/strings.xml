@@ -252,8 +252,11 @@
     <string name="cover_source_pick_image">画像を選択</string>
     <string name="cover_source_pick_image_desc">端末のギャラリーから選択</string>
     <string name="cover_source_web_search">Webで検索</string>
-    <string name="cover_source_web_search_desc">Bingで表紙を検索</string>
+    <string name="cover_source_web_search_desc">複数の検索エンジンで表紙を検索</string>
     <string name="cover_search_hint">検索語またはURLを入力</string>
+    <string name="cover_search_engine_bing">Bing</string>
+    <string name="cover_search_engine_baidu">Baidu</string>
+    <string name="cover_search_engine_google">Google</string>
     <string name="cover_pick_region">表紙を選択</string>
     <string name="cover_updated">表紙を更新しました</string>
     <string name="cover_capture_failed">表紙領域をキャプチャできません</string>

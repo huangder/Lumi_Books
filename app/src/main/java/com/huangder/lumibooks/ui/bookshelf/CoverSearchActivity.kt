@@ -6,7 +6,6 @@ import android.content.ContextWrapper
 import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Bitmap
-import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -27,8 +26,10 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -87,6 +88,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -117,7 +120,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 
 /**
- * 封面网络搜索页：内嵌轻量浏览器（Bing 图片搜索），
+ * 封面网络搜索页：内嵌轻量浏览器（Bing、百度、Google 图片搜索），
  * 「选取封面」开关 3:4 固定比例裁剪框，勾选确认后以 PixelCopy 截取屏幕区域保存为自定义封面。
  *
  * intent extra:
@@ -233,6 +236,7 @@ private fun CoverSearchScreen(
     var capturing by remember { mutableStateOf(false) }
     var showSuccess by remember { mutableStateOf(false) }
     var queryText by remember { mutableStateOf(bookTitle) }
+    var selectedEngine by remember { mutableStateOf(CoverSearchEngine.BING) }
 
     val webView = remember {
         WebView(context).apply {
@@ -253,11 +257,9 @@ private fun CoverSearchScreen(
 
                 override fun onPageFinished(view: WebView, url: String) {
                     isLoading = false
-                    // 搜索结果页反向同步搜索词
-                    if (url.contains("bing.com")) {
-                        runCatching {
-                            Uri.parse(url).getQueryParameter("q")?.takeIf { it.isNotBlank() }?.let { queryText = it }
-                        }
+                    CoverSearchEngine.fromUrl(url)?.let { engine ->
+                        selectedEngine = engine
+                        engine.queryFromUrl(url)?.let { query -> queryText = query }
                     }
                 }
             }
@@ -266,7 +268,7 @@ private fun CoverSearchScreen(
                     pageProgress = newProgress
                 }
             }
-            loadUrl(buildImageSearchUrl("$bookTitle $querySuffix"))
+            loadUrl(selectedEngine.buildImageSearchUrl("$bookTitle $querySuffix"))
         }
     }
     DisposableEffect(webView) {
@@ -369,7 +371,7 @@ private fun CoverSearchScreen(
                 onSearch = {
                     keyboardController?.hide()
                     val trimmed = queryText.trim()
-                    if (trimmed.isNotEmpty()) webView.loadUrl(buildImageSearchUrl(trimmed))
+                    if (trimmed.isNotEmpty()) webView.loadUrl(selectedEngine.buildImageSearchUrl(trimmed))
                 },
                 onBack = onExit,
                 onReload = { webView.reload() }
@@ -379,6 +381,14 @@ private fun CoverSearchScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
+                    .padding(horizontal = AppSpace.md - AppSpace.xs)
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(AppColors.BgGray)
+                    .border(
+                        width = 1.dp,
+                        color = AppColors.Divider.copy(alpha = 0.65f),
+                        shape = RoundedCornerShape(22.dp)
+                    )
                     .onGloballyPositioned { coordinates ->
                         containerSize = Size(
                             coordinates.size.width.toFloat(),
@@ -437,35 +447,130 @@ private fun CoverSearchScreen(
                     }
                 }
             }
-        }
 
-        // 右下角操作按钮组：勾（确认，裁剪模式出现）+ 选取封面（开关）
+            CoverSearchBottomBar(
+                selectedEngine = selectedEngine,
+                cropMode = cropMode,
+                showConfirm = cropMode && !showSuccess,
+                hidden = capturing,
+                onEngineSelected = { engine ->
+                    selectedEngine = engine
+                    keyboardController?.hide()
+                    queryText.trim().takeIf { it.isNotEmpty() }?.let { query ->
+                        webView.loadUrl(engine.buildImageSearchUrl(query))
+                    }
+                },
+                onToggleCrop = {
+                    keyboardController?.hide()
+                    cropMode = !cropMode
+                },
+                onConfirmCrop = confirmCrop
+            )
+        }
+    }
+}
+
+@Composable
+private fun CoverSearchBottomBar(
+    selectedEngine: CoverSearchEngine,
+    cropMode: Boolean,
+    showConfirm: Boolean,
+    hidden: Boolean,
+    onEngineSelected: (CoverSearchEngine) -> Unit,
+    onToggleCrop: () -> Unit,
+    onConfirmCrop: () -> Unit
+) {
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .imePadding()
+            .padding(horizontal = AppSpace.md - AppSpace.xs, vertical = AppSpace.sm + AppSpace.xs)
+            .graphicsLayer { alpha = if (hidden) 0f else 1f },
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Row(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .navigationBarsPadding()
-                .imePadding()
-                .padding(end = 18.dp, bottom = 18.dp)
-                .graphicsLayer { alpha = if (capturing) 0f else 1f },
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(AppSpace.sm),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            AnimatedVisibility(
-                visible = cropMode && !showSuccess,
-                enter = scaleIn(
-                    initialScale = 0.7f,
-                    animationSpec = spring(dampingRatio = 0.75f, stiffness = 420f)
-                ) + fadeIn(tween(140)),
-                exit = scaleOut(targetScale = 0.8f, animationSpec = tween(160)) + fadeOut(tween(120))
+            CoverSearchEngine.entries.forEach { engine ->
+                val selected = engine == selectedEngine
+                val label = when (engine) {
+                    CoverSearchEngine.BING -> stringResource(R.string.cover_search_engine_bing)
+                    CoverSearchEngine.BAIDU -> stringResource(R.string.cover_search_engine_baidu)
+                    CoverSearchEngine.GOOGLE -> stringResource(R.string.cover_search_engine_google)
+                }
+                val shape = RoundedCornerShape(50)
+                LiquidGlassSurface(
+                    shape = shape,
+                    fallbackColor = if (selected) AppColors.Accent else AppColors.CardBg,
+                    contentScrimColor = if (isLiquidGlass) {
+                        if (selected) {
+                            AppColors.Accent.copy(alpha = 0.86f)
+                        } else {
+                            AppColors.CardBg.copy(alpha = 0.82f)
+                        }
+                    } else {
+                        Color.Transparent
+                    },
+                    transparencyOverride = 0.28f.takeIf { isLiquidGlass },
+                    outlineWidth = if (isLiquidGlass) 0.55.dp else 0.dp,
+                    highlightAlpha = if (isLiquidGlass) 0.12f else 0f,
+                    onClick = { onEngineSelected(engine) },
+                    decorationModifier = if (isLiquidGlass) {
+                        Modifier
+                    } else {
+                        Modifier
+                            .shadow(
+                                elevation = 5.dp,
+                                shape = shape,
+                                ambientColor = Color.Black.copy(alpha = 0.08f),
+                                spotColor = Color.Black.copy(alpha = 0.12f)
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = if (selected) Color.Transparent else AppColors.Divider.copy(alpha = 0.55f),
+                                shape = shape
+                            )
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                        .semantics { this.selected = selected }
+                ) {
+                    Text(
+                        text = label,
+                        color = if (selected) AppColors.OnAccent else AppColors.TextPrimary,
+                        fontSize = AppType.BodySmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = showConfirm,
+            enter = expandHorizontally(expandFrom = Alignment.End, animationSpec = tween(220)) + scaleIn(
+                initialScale = 0.7f,
+                animationSpec = spring(dampingRatio = 0.75f, stiffness = 420f)
+            ) + fadeIn(tween(140)),
+            exit = shrinkHorizontally(shrinkTowards = Alignment.End, animationSpec = tween(190)) +
+                scaleOut(targetScale = 0.8f, animationSpec = tween(160)) + fadeOut(tween(120))
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // 实色确认按钮（玻璃效果无法采样 WebView 内容，右下角统一用实色）
+                Spacer(Modifier.size(AppSpace.sm))
                 Box(
                     modifier = Modifier
                         .size(48.dp)
-                        .shadow(8.dp, CircleShape)
+                        .shadow(6.dp, CircleShape)
                         .clip(CircleShape)
                         .background(AppColors.Accent)
-                        .clickable(onClick = confirmCrop),
+                        .clickable(onClick = onConfirmCrop),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -476,37 +581,50 @@ private fun CoverSearchScreen(
                     )
                 }
             }
-            Row(
-                modifier = Modifier
-                    .shadow(8.dp, RoundedCornerShape(50))
-                    .clip(RoundedCornerShape(50))
-                    .background(if (cropMode) AppColors.Accent else AppColors.CardBg)
+        }
+
+        Spacer(Modifier.size(AppSpace.sm))
+        val cropShape = CircleShape
+        LiquidGlassSurface(
+            shape = cropShape,
+            fallbackColor = if (cropMode) AppColors.Accent else AppColors.CardBg,
+            contentScrimColor = if (isLiquidGlass) {
+                if (cropMode) {
+                    AppColors.Accent.copy(alpha = 0.86f)
+                } else {
+                    AppColors.CardBg.copy(alpha = 0.82f)
+                }
+            } else {
+                Color.Transparent
+            },
+            transparencyOverride = 0.28f.takeIf { isLiquidGlass },
+            outlineWidth = if (isLiquidGlass) 0.55.dp else 0.dp,
+            highlightAlpha = if (isLiquidGlass) 0.12f else 0f,
+            onClick = onToggleCrop,
+            decorationModifier = if (isLiquidGlass) {
+                Modifier
+            } else {
+                Modifier
+                    .shadow(
+                        elevation = 5.dp,
+                        shape = cropShape,
+                        ambientColor = Color.Black.copy(alpha = 0.08f),
+                        spotColor = Color.Black.copy(alpha = 0.12f)
+                    )
                     .border(
                         width = 1.dp,
-                        color = if (cropMode) Color.Transparent else AppColors.Divider.copy(alpha = 0.6f),
-                        shape = RoundedCornerShape(50)
+                        color = if (cropMode) Color.Transparent else AppColors.Divider.copy(alpha = 0.55f),
+                        shape = cropShape
                     )
-                    .clickable {
-                        keyboardController?.hide()
-                        cropMode = !cropMode
-                    }
-                    .padding(horizontal = 18.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.CropFree,
-                    contentDescription = null,
-                    tint = if (cropMode) AppColors.OnAccent else AppColors.TextPrimary,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(Modifier.size(8.dp))
-                Text(
-                    text = stringResource(R.string.cover_pick_region),
-                    color = if (cropMode) AppColors.OnAccent else AppColors.TextPrimary,
-                    fontSize = AppType.BodySmall,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
+            },
+            modifier = Modifier.size(48.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.CropFree,
+                contentDescription = stringResource(R.string.cover_pick_region),
+                tint = if (cropMode) AppColors.OnAccent else AppColors.TextPrimary,
+                modifier = Modifier.size(22.dp)
+            )
         }
     }
 }
@@ -593,10 +711,6 @@ private fun CoverSearchTopBar(
             onClick = onReload
         )
     }
-}
-
-private fun buildImageSearchUrl(query: String): String {
-    return "https://www.bing.com/images/search?q=" + Uri.encode(query)
 }
 
 private tailrec fun Context.findActivity(): Activity? {
