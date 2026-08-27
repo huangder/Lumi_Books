@@ -1164,6 +1164,7 @@ private fun ThemeColorSlider(
     com.huangder.lumibooks.ui.components.PillSlider(
         value = value,
         onValueChange = onValueChange,
+        onDragValueChange = onValueChange,
         valueRange = range,
         step = 1f,
         opaqueLiquidThumb = true
