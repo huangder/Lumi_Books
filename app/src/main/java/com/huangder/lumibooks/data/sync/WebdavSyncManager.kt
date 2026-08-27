@@ -287,7 +287,8 @@ class WebdavSyncManager @Inject constructor(
                 serverUrl = serverUrl,
                 username = username,
                 password = password,
-                syncPath = syncPath
+                syncPath = syncPath,
+                atomic = false
             )
 
             val now = System.currentTimeMillis()
@@ -357,7 +358,8 @@ class WebdavSyncManager @Inject constructor(
                         serverUrl = n.serverUrl,
                         username = n.username,
                         password = password,
-                        syncPath = n.syncPath
+                        syncPath = n.syncPath,
+                        atomic = false
                     )
                 }
             } catch (_: Exception) {
@@ -534,7 +536,8 @@ class WebdavSyncManager @Inject constructor(
                 serverUrl = config.serverUrl,
                 username = config.username,
                 password = password,
-                syncPath = config.syncPath
+                syncPath = config.syncPath,
+                atomic = true
             )
             bookIds.mapNotNull(deleted::get).forEach { entry ->
                 cleanupDeletedRemoteFiles(
@@ -1175,26 +1178,42 @@ class WebdavSyncManager @Inject constructor(
         serverUrl: String,
         username: String,
         password: String,
-        syncPath: String
+        syncPath: String,
+        atomic: Boolean = false
     ) {
         val finalUrl = "$serverUrl/$syncPath/manifest.json"
+        val payload = manifest.copy(version = SyncManifest.CURRENT_VERSION)
+            .toJson()
+            .toByteArray(Charsets.UTF_8)
+
+        if (!atomic) {
+            // PUT is supported by WebDAV providers that do not implement MOVE (for example,
+            // some hosted services). Ordinary sync can safely replace the manifest directly;
+            // destructive remote deletion uses the atomic branch below.
+            webdavClient.upload(finalUrl, payload, username, password, "application/json")
+            return
+        }
+
         val temporaryUrl = "$serverUrl/$syncPath/manifest.json.next"
-        webdavClient.upload(
-            temporaryUrl,
-            manifest.copy(version = SyncManifest.CURRENT_VERSION)
-                .toJson()
-                .toByteArray(Charsets.UTF_8),
-            username,
-            password,
-            "application/json"
-        )
-        webdavClient.move(
-            sourceUrl = temporaryUrl,
-            destinationUrl = finalUrl,
-            username = username,
-            password = password,
-            overwrite = true
-        )
+        webdavClient.upload(temporaryUrl, payload, username, password, "application/json")
+        try {
+            webdavClient.move(
+                sourceUrl = temporaryUrl,
+                destinationUrl = finalUrl,
+                username = username,
+                password = password,
+                overwrite = true
+            )
+        } catch (error: Exception) {
+            // Do not leave a misleading temporary manifest behind. The caller uses this
+            // failure to keep local records unchanged.
+            runCatching {
+                webdavClient.delete(temporaryUrl, username, password)
+            }.onFailure { cleanupError ->
+                Log.w("WebDAV", "Unable to clean temporary manifest: ${cleanupError.message}")
+            }
+            throw error
+        }
     }
 
     private suspend fun enrichDownloadedBook(
