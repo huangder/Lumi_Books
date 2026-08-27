@@ -1,20 +1,12 @@
 package com.huangder.lumibooks.ui.reader.engine
 
 import kotlin.math.hypot
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CurlReflectionGeometryTest {
-    @Test
-    fun paperBackgroundUsesSameDimToneAsFoldedBitmap() {
-        assertEquals(
-            0xF4F0E0C8.toInt(),
-            ColorMatrixPaperTone.dim(0xFFFFEED4.toInt())
-        )
-    }
-
     @Test
     fun reflectionMapsOriginalCornerToDraggedEdge() {
         val frame = CurlReflectionFrame()

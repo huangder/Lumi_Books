@@ -95,6 +95,7 @@ class PageLayoutEngine {
         letterSpacingPx: Float = 0f,
         fontType: String = "system",
         customTypeface: android.graphics.Typeface? = null,
+        fontWeight: Int = 400,
         marginLeftPx: Float = 48f,
         marginRightPx: Float = 48f,
         marginTopPx: Float = 32f,
@@ -105,6 +106,19 @@ class PageLayoutEngine {
         textAlignment: ReaderTextAlignment = ReaderTextAlignment.NATURAL,
         writingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL
     ) {
+        val baseTypeface = when {
+            fontType == "serif" -> Typeface.SERIF
+            fontType == "sans_serif" -> Typeface.SANS_SERIF
+            fontType == "monospace" -> Typeface.MONOSPACE
+            fontType == "fangsong" || fontType == "kaiti" || fontType.startsWith("custom") ->
+                customTypeface ?: Typeface.DEFAULT
+            else -> Typeface.DEFAULT
+        }
+        val tf = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            Typeface.create(baseTypeface, fontWeight.coerceIn(100, 900), false)
+        } else {
+            Typeface.create(baseTypeface, if (fontWeight >= 600) Typeface.BOLD else Typeface.NORMAL)
+        }
         val changed = textWidth != width || textHeight != height ||
                 ownTextPaint.textSize != fontSizePx || lineSpacingExtra != lineSpacingPx ||
                 lineSpacingMultiplier != lineSpacingMult ||
@@ -113,7 +127,7 @@ class PageLayoutEngine {
                 marginTop != marginTopPx || marginBottom != marginBottomPx ||
                 this.useDisplayDensityForSpans != useDisplayDensityForSpans ||
                 this.textAlignment != textAlignment ||
-                this.writingMode != writingMode
+                this.writingMode != writingMode || ownTextPaint.typeface != tf
 
         textWidth = width
         textHeight = height
@@ -129,15 +143,6 @@ class PageLayoutEngine {
         ownTextPaint.color = textColor
         ownTextPaint.linkColor = textColor   // 🔥 同步：避免主题切换后 URLSpan 颜色不同步
 
-        // 字体
-        val tf = when {
-            fontType == "serif" -> Typeface.SERIF
-            fontType == "sans_serif" -> Typeface.SANS_SERIF
-            fontType == "monospace" -> Typeface.MONOSPACE
-            fontType == "fangsong" || fontType == "kaiti" || fontType.startsWith("custom") ->
-                customTypeface ?: Typeface.DEFAULT
-            else -> Typeface.DEFAULT
-        }
         ownTextPaint.typeface = tf
         this.chapterCount = chapterCount
         this.useDisplayDensityForSpans = useDisplayDensityForSpans

@@ -2,6 +2,8 @@ package com.huangder.lumibooks.ui.reader.engine
 
 import android.content.Context
 import android.graphics.Typeface
+import android.graphics.RenderEffect
+import android.graphics.Shader
 import android.text.Layout
 import android.text.Selection
 import android.text.Spannable
@@ -116,15 +118,40 @@ class PageContentView(context: Context) : FrameLayout(context) {
     }
 
     private var readerBackgroundImagePath: String? = null
+    private var readerBackgroundImageOpacity: Float = 1f
+    private var readerBackgroundImageBlurDp: Float = 0f
     private var currentBgColor: Int = 0
 
-    fun setReaderBackground(color: Int, imagePath: String?) {
+    fun setReaderBackground(
+        color: Int,
+        imagePath: String?,
+        imageOpacity: Float = 1f,
+        imageBlurDp: Float = 0f
+    ) {
         currentBgColor = color
         setBackgroundColor(color)
         backgroundImageView.setBackgroundColor(color)
-        if (readerBackgroundImagePath == imagePath) return
+        val opacity = imageOpacity.coerceIn(0f, 1f)
+        val blurDp = imageBlurDp.coerceIn(0f, 40f)
+        val imageChanged = readerBackgroundImagePath != imagePath
+        val effectChanged = readerBackgroundImageOpacity != opacity ||
+            readerBackgroundImageBlurDp != blurDp
+        if (!imageChanged && !effectChanged) return
 
         readerBackgroundImagePath = imagePath
+        readerBackgroundImageOpacity = opacity
+        readerBackgroundImageBlurDp = blurDp
+        backgroundImageView.alpha = opacity
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            val radiusPx = blurDp * resources.displayMetrics.density
+            backgroundImageView.setRenderEffect(
+                if (radiusPx >= 0.5f) {
+                    RenderEffect.createBlurEffect(radiusPx, radiusPx, Shader.TileMode.CLAMP)
+                } else {
+                    null
+                }
+            )
+        }
         val imageFile = imagePath?.let(::File)?.takeIf { it.exists() }
         if (imageFile == null) {
             backgroundImageView.load(null)
@@ -148,7 +175,11 @@ class PageContentView(context: Context) : FrameLayout(context) {
     internal fun stripBackgroundForFade() {
         setBackgroundColor(android.graphics.Color.TRANSPARENT)
         // 图片背景保持可见：淡入淡出期间作为静止底层，避免露出 ReadView 的白色底色
-        backgroundImageView.alpha = if (backgroundImageView.visibility == View.VISIBLE) 1f else 0f
+        backgroundImageView.alpha = if (backgroundImageView.visibility == View.VISIBLE) {
+            readerBackgroundImageOpacity
+        } else {
+            0f
+        }
     }
 
     /**
@@ -172,7 +203,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
     /** 渐变动画结束 / abort 时恢复背景色；图片背景由下一次 setReaderBackground 完整恢复。 */
     internal fun restoreBackgroundForFade(bgColor: Int) {
         setBackgroundColor(bgColor)
-        backgroundImageView.alpha = 1f
+        backgroundImageView.alpha = readerBackgroundImageOpacity
         textView.alpha = 1f
         justifiedView.alpha = 1f
         verticalTextView.alpha = 1f

@@ -14,6 +14,7 @@ import com.huangder.lumibooks.util.DownloadedFonts
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapAction
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
 import com.huangder.lumibooks.domain.model.ReaderTextAlignment
+import com.huangder.lumibooks.domain.model.ReaderPageAnimationSettings
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.ui.reader.BionicReadingFormatter
 import com.huangder.lumibooks.ui.reader.mapGlobalProgress
@@ -198,11 +199,14 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var currentTopOverlayInsetDp: Float = 0f
     private var currentBottomOverlayInsetDp: Float = 0f
     private var currentParagraphSpacingDp: Float = 0f
-    private var currentBoldText: Boolean = false
+    private var currentBodyFontWeight: Int = 400
     private var currentBionicReadingEnabled: Boolean = false
     private var currentUseDisplayDensityForSpans: Boolean = false
     private var currentChineseMode: String = "original"
     private var currentPageTransition: String = "slide"
+    private var slideTransitionDurationMs = ReaderPageAnimationSettings.SLIDE_DEFAULT_MS
+    private var fadeTransitionDurationMs = ReaderPageAnimationSettings.FADE_DEFAULT_MS
+    private var curlTransitionDurationMs = ReaderPageAnimationSettings.CURL_DEFAULT_MS
     private var currentEdgeTapMode: ReaderEdgeTapMode = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT
     private var currentWritingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL
     /** 双页开关（不含方向）：设备/设置允许时 true，是否启用由实测宽高决定 */
@@ -211,6 +215,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var currentTwoPageSpread: Boolean = false
     private var currentReaderBackgroundColor: Int? = null
     private var currentReaderBackgroundImagePath: String? = null
+    private var currentReaderBackgroundImageOpacity: Float = 1f
+    private var currentReaderBackgroundImageBlurDp: Float = 0f
     private var currentReaderTextColor: Int? = null
     private var pendingStartChapter: Int = 0
     private var pendingStartPage: Int = 0
@@ -280,7 +286,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         }
 
         // 初始化动画控制器
-        animationController = SlidePageAnim(animationSurface)
+        animationController = SlidePageAnim(animationSurface, slideTransitionDurationMs)
 
         animationController.onCanFlip = { dir ->
             if (isJumpSettling) false else when (dir) {
@@ -426,6 +432,13 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             }
             else -> android.graphics.Typeface.DEFAULT
         }
+        val weightedTypeface = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            android.graphics.Typeface.create(customTypeface, currentBodyFontWeight, false)
+        } else {
+            customTypeface
+        }
+        val useFakeBold = android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.P &&
+            currentBodyFontWeight >= 600
         // 全部槽位都配置，确保翻页时样式一致；双页时左/右半页镜像边距
         for ((left, right) in listOf(
             prevPageView to prevPageRightView,
@@ -438,7 +451,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 lineHeightMult = currentLineHeightMult,
                 lineSpacingExtraPx = lineSpacingExtra,
                 letterSpacingPx = currentLetterSpacingDp * density,
-                typeface = customTypeface,
+                typeface = weightedTypeface,
                 marginLeftPx = marginLeft,
                 marginTopPx = baseMarginTop,
                 marginRightPx = if (currentTwoPageSpread) gutterMargin else marginRight,
@@ -447,7 +460,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 accentColor = accentColor,
                 textAlignment = currentTextAlignment,
                 writingMode = currentWritingMode,
-                boldText = currentBoldText
+                boldText = useFakeBold
             )
             right.configure(
                 fontSizePx = currentFontSizePx,
@@ -455,7 +468,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 lineHeightMult = currentLineHeightMult,
                 lineSpacingExtraPx = lineSpacingExtra,
                 letterSpacingPx = currentLetterSpacingDp * density,
-                typeface = customTypeface,
+                typeface = weightedTypeface,
                 marginLeftPx = if (currentTwoPageSpread) gutterMargin else marginLeft,
                 marginTopPx = baseMarginTop,
                 marginRightPx = marginRight,
@@ -464,10 +477,20 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 accentColor = accentColor,
                 textAlignment = currentTextAlignment,
                 writingMode = currentWritingMode,
-                boldText = currentBoldText
+                boldText = useFakeBold
             )
-            left.setReaderBackground(bgColor, currentReaderBackgroundImagePath)
-            right.setReaderBackground(bgColor, currentReaderBackgroundImagePath)
+            left.setReaderBackground(
+                bgColor,
+                currentReaderBackgroundImagePath,
+                currentReaderBackgroundImageOpacity,
+                currentReaderBackgroundImageBlurDp
+            )
+            right.setReaderBackground(
+                bgColor,
+                currentReaderBackgroundImagePath,
+                currentReaderBackgroundImageOpacity,
+                currentReaderBackgroundImageBlurDp
+            )
         }
         setBackgroundColor(bgColor)
         prevGutterView.setBackgroundColor(bgColor)
@@ -476,16 +499,26 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         this.bgColor = bgColor
     }
 
-    fun setReaderBackground(backgroundColor: Int, textColor: Int, imagePath: String?) {
+    fun setReaderBackground(
+        backgroundColor: Int,
+        textColor: Int,
+        imagePath: String?,
+        imageOpacity: Float = 1f,
+        imageBlurDp: Float = 0f
+    ) {
         if (currentReaderBackgroundColor == backgroundColor &&
             currentReaderTextColor == textColor &&
-            currentReaderBackgroundImagePath == imagePath
+            currentReaderBackgroundImagePath == imagePath &&
+            currentReaderBackgroundImageOpacity == imageOpacity &&
+            currentReaderBackgroundImageBlurDp == imageBlurDp
         ) return
 
         animationController.abortAnim()
         currentReaderBackgroundColor = backgroundColor
         currentReaderTextColor = textColor
         currentReaderBackgroundImagePath = imagePath
+        currentReaderBackgroundImageOpacity = imageOpacity.coerceIn(0f, 1f)
+        currentReaderBackgroundImageBlurDp = imageBlurDp.coerceIn(0f, 40f)
         configureCurrentPageView()
         invalidate()
     }
@@ -698,6 +731,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             letterSpacingPx = lsPx,
             fontType = fontType,
             customTypeface = customTypeface,
+            fontWeight = currentBodyFontWeight,
             marginLeftPx = marginLeft,
             marginRightPx = if (resolvedSpread) gutterMargin else marginRight,
             marginTopPx = baseMarginTop,
@@ -892,9 +926,15 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
     /** 正文字重开关（PR #19 #24）：仅横排分页生效 */
     fun setBoldText(enabled: Boolean) {
-        if (currentBoldText == enabled) return
-        currentBoldText = enabled
+        setBodyFontWeight(if (enabled) 700 else 400)
+    }
+
+    fun setBodyFontWeight(weight: Int) {
+        val normalized = weight.coerceIn(100, 900)
+        if (currentBodyFontWeight == normalized) return
+        currentBodyFontWeight = normalized
         configureCurrentPageView()
+        forceRelayout()
     }
 
     /** 设置翻页动画类型 */
@@ -909,10 +949,10 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
         val newController = when (mode) {
             "none", "instant", "no_animation" -> NoPageAnim(animationSurface)
-            "fade" -> FadePageAnim(animationSurface)
+            "fade" -> FadePageAnim(animationSurface, fadeTransitionDurationMs)
             "scroll" -> ScrollPageAnim(animationSurface)
-            "curl" -> CurlPageAnim(animationSurface)
-            else -> SlidePageAnim(animationSurface)
+            "curl" -> CurlPageAnim(animationSurface, baseDurationMs = curlTransitionDurationMs)
+            else -> SlidePageAnim(animationSurface, slideTransitionDurationMs)
         }
         // 重新绑定回调
         newController.onCanFlip = animationController.onCanFlip
@@ -936,6 +976,22 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         // 重置页面位置状态（防止切换时残留偏移）
         resetPageViewPositions()
         invalidate()
+    }
+
+    /** Updates the selected transition's timing without restarting an in-flight turn. */
+    fun setPageTransitionTiming(mode: String, durationMs: Int) {
+        val sanitized = ReaderPageAnimationSettings.sanitizeDuration(mode, durationMs)
+        when (mode) {
+            ReaderPageAnimationSettings.MODE_FADE -> fadeTransitionDurationMs = sanitized
+            ReaderPageAnimationSettings.MODE_CURL -> curlTransitionDurationMs = sanitized
+            else -> slideTransitionDurationMs = sanitized
+        }
+        if (mode != currentPageTransition) return
+        when (val controller = animationController) {
+            is SlidePageAnim -> controller.setBaseDuration(sanitized)
+            is FadePageAnim -> controller.setBaseDuration(sanitized)
+            is CurlPageAnim -> controller.setBaseDuration(sanitized)
+        }
     }
 
     private fun resetPageViewPositions() {

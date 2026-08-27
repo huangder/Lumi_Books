@@ -231,6 +231,7 @@ internal fun EpubWebViewReader(
     fontSizeSp: Float,
     fontType: String,
     fontFilePath: String?,
+    bodyFontWeight: Int = 400,
     textColorOverride: Int?,
     theme: String,
     textAlignment: ReaderTextAlignment = ReaderTextAlignment.NATURAL,
@@ -242,6 +243,7 @@ internal fun EpubWebViewReader(
     initialFragment: String? = null,
     continuousScroll: Boolean = false,
     pageTransition: String = "slide",
+    pageTransitionDurationMs: Int = 260,
     marginTopDp: Float = 0f,
     marginRightDp: Float = 0f,
     marginBottomDp: Float = 0f,
@@ -280,6 +282,7 @@ internal fun EpubWebViewReader(
     val latestFontSizeSp = rememberUpdatedState(fontSizeSp)
     val latestFontType = rememberUpdatedState(fontType)
     val latestFontFilePath = rememberUpdatedState(fontFilePath)
+    val latestBodyFontWeight = rememberUpdatedState(bodyFontWeight)
     val latestTextColorOverride = rememberUpdatedState(textColorOverride)
     val latestTheme = rememberUpdatedState(theme)
     val latestTextAlignment = rememberUpdatedState(textAlignment)
@@ -291,6 +294,7 @@ internal fun EpubWebViewReader(
     val latestInitialFragment = rememberUpdatedState(initialFragment)
     val latestContinuousScroll = rememberUpdatedState(continuousScroll)
     val latestPageTransition = rememberUpdatedState(pageTransition)
+    val latestPageTransitionDurationMs = rememberUpdatedState(pageTransitionDurationMs)
     val latestMarginTopDp = rememberUpdatedState(marginTopDp)
     val latestMarginRightDp = rememberUpdatedState(marginRightDp)
     val latestMarginBottomDp = rememberUpdatedState(marginBottomDp)
@@ -388,6 +392,7 @@ internal fun EpubWebViewReader(
                     fontSizeSp = latestFontSizeSp.value,
                     fontType = latestFontType.value,
                     fontFilePath = latestFontFilePath.value,
+                    bodyFontWeight = latestBodyFontWeight.value,
                     textColorOverride = latestTextColorOverride.value,
                     theme = latestTheme.value,
                     textAlignment = latestTextAlignment.value,
@@ -396,6 +401,7 @@ internal fun EpubWebViewReader(
                     chineseMode = latestChineseMode.value,
                     continuousScroll = false,
                     pageTransition = "none",
+                    pageTransitionDurationMs = latestPageTransitionDurationMs.value,
                     edgeTapMode = latestEdgeTapMode.value,
                     marginTopDp = latestMarginTopDp.value,
                     marginRightDp = latestMarginRightDp.value,
@@ -411,6 +417,7 @@ internal fun EpubWebViewReader(
                     fontSizeSp = latestFontSizeSp.value,
                     fontType = latestFontType.value,
                     fontFilePath = latestFontFilePath.value,
+                    bodyFontWeight = latestBodyFontWeight.value,
                     textColorOverride = latestTextColorOverride.value,
                     theme = latestTheme.value,
                     textAlignment = latestTextAlignment.value,
@@ -419,6 +426,7 @@ internal fun EpubWebViewReader(
                     chineseMode = latestChineseMode.value,
                     continuousScroll = false,
                     pageTransition = latestPageTransition.value,
+                    pageTransitionDurationMs = latestPageTransitionDurationMs.value,
                     edgeTapMode = latestEdgeTapMode.value,
                     marginTopDp = latestMarginTopDp.value,
                     marginRightDp = latestMarginRightDp.value,
@@ -456,6 +464,7 @@ internal fun EpubWebViewReader(
                         chapterIndex = target.chapterIndex,
                         fontType = latestFontType.value,
                         fontFilePath = latestFontFilePath.value,
+                        bodyFontWeight = latestBodyFontWeight.value,
                         textColorOverride = latestTextColorOverride.value,
                         theme = latestTheme.value,
                         textAlignment = latestTextAlignment.value,
@@ -468,6 +477,7 @@ internal fun EpubWebViewReader(
                         continuousScroll = false,
                         nativePagingEnabled = true,
                         pageTransition = "none",
+                        pageTransitionDurationMs = latestPageTransitionDurationMs.value,
                         edgeTapMode = latestEdgeTapMode.value,
                         marginTopDp = latestMarginTopDp.value,
                         marginRightDp = latestMarginRightDp.value,
@@ -1065,6 +1075,7 @@ internal fun EpubWebViewReader(
                                 chapterIndex = sourceChapter,
                                 fontType = latestFontType.value,
                                 fontFilePath = latestFontFilePath.value,
+                                bodyFontWeight = latestBodyFontWeight.value,
                                 textColorOverride = latestTextColorOverride.value,
                                 theme = latestTheme.value,
                                 textAlignment = latestTextAlignment.value,
@@ -1082,6 +1093,7 @@ internal fun EpubWebViewReader(
                                 } else {
                                     latestPageTransition.value
                                 },
+                                pageTransitionDurationMs = latestPageTransitionDurationMs.value,
                                 edgeTapMode = latestEdgeTapMode.value,
                                 marginTopDp = latestMarginTopDp.value,
                                 marginRightDp = latestMarginRightDp.value,
@@ -1195,7 +1207,9 @@ internal fun EpubWebViewReader(
             )
             pageTurnHost.setNativePagingEnabled(nativePageTurn)
             pageTurnHost.setNativeTouchPagingEnabled(nativePageTurn)
-            if (nativePageTurn) pageTurnHost.setTransition(pageTransition)
+            if (nativePageTurn) {
+                pageTurnHost.setTransition(pageTransition, latestPageTransitionDurationMs.value)
+            }
             val fallbackBackground = when (theme) {
                 "night" -> Color.rgb(0x11, 0x11, 0x11)
                 "sepia_dark" -> Color.rgb(0x2B, 0x21, 0x18)
@@ -1211,11 +1225,28 @@ internal fun EpubWebViewReader(
                 ((fontSizeSp / 16f) * 100f).toInt().coerceIn(50, 300)
             }
             val nextConfigKey = configKey(
-                chapterIndex, fontSizeSp, fontType, fontFilePath, textColorOverride, theme,
-                textAlignment,
-                preservePublisherBackground, bionicReadingEnabled, chineseMode, continuousScroll,
-                pageTransition, edgeTapMode, marginTopDp, marginRightDp, marginBottomDp, marginLeftDp, initialFragment,
-                locatorRequest, pageRequest
+                chapterIndex = chapterIndex,
+                fontSizeSp = fontSizeSp,
+                fontType = fontType,
+                fontFilePath = fontFilePath,
+                bodyFontWeight = bodyFontWeight,
+                textColorOverride = textColorOverride,
+                theme = theme,
+                textAlignment = textAlignment,
+                preservePublisherBackground = preservePublisherBackground,
+                bionicReadingEnabled = bionicReadingEnabled,
+                chineseMode = chineseMode,
+                continuousScroll = continuousScroll,
+                pageTransition = pageTransition,
+                pageTransitionDurationMs = pageTransitionDurationMs,
+                edgeTapMode = edgeTapMode,
+                marginTopDp = marginTopDp,
+                marginRightDp = marginRightDp,
+                marginBottomDp = marginBottomDp,
+                marginLeftDp = marginLeftDp,
+                initialFragment = initialFragment,
+                locatorRequest = locatorRequest,
+                pageRequest = pageRequest
             )
             if (loadedChapter.value != chapterIndex) {
                 val firstLoad = loadedChapter.value < 0
@@ -1261,6 +1292,7 @@ internal fun EpubWebViewReader(
                     chapterIndex = chapterIndex,
                     fontType = fontType,
                     fontFilePath = fontFilePath,
+                    bodyFontWeight = bodyFontWeight,
                     textColorOverride = textColorOverride,
                     theme = theme,
                     textAlignment = textAlignment,
@@ -1273,6 +1305,7 @@ internal fun EpubWebViewReader(
                     continuousScroll = continuousScroll,
                     nativePagingEnabled = nativePageTurn,
                     pageTransition = if (nativePageTurn) "none" else pageTransition,
+                    pageTransitionDurationMs = pageTransitionDurationMs,
                     edgeTapMode = edgeTapMode,
                     marginTopDp = marginTopDp,
                     marginRightDp = marginRightDp,
@@ -1406,6 +1439,7 @@ private fun configKey(
     fontSizeSp: Float,
     fontType: String,
     fontFilePath: String?,
+    bodyFontWeight: Int,
     textColorOverride: Int?,
     theme: String,
     textAlignment: ReaderTextAlignment,
@@ -1414,6 +1448,7 @@ private fun configKey(
     chineseMode: String,
     continuousScroll: Boolean,
     pageTransition: String,
+    pageTransitionDurationMs: Int,
     edgeTapMode: ReaderEdgeTapMode,
     marginTopDp: Float,
     marginRightDp: Float,
@@ -1427,6 +1462,7 @@ private fun configKey(
     fontSizeSp,
     fontType,
     fontFilePath.orEmpty(),
+    bodyFontWeight,
     textColorOverride ?: -1,
     theme,
     textAlignment.key,
@@ -1435,6 +1471,7 @@ private fun configKey(
     chineseMode,
     continuousScroll,
     pageTransition,
+    pageTransitionDurationMs,
     edgeTapMode.key,
     marginTopDp,
     marginRightDp,
@@ -1451,6 +1488,7 @@ private fun configureReader(
     chapterIndex: Int,
     fontType: String,
     fontFilePath: String?,
+    bodyFontWeight: Int,
     textColorOverride: Int?,
     theme: String,
     textAlignment: ReaderTextAlignment,
@@ -1463,6 +1501,7 @@ private fun configureReader(
     continuousScroll: Boolean,
     nativePagingEnabled: Boolean,
     pageTransition: String,
+    pageTransitionDurationMs: Int,
     edgeTapMode: ReaderEdgeTapMode,
     marginTopDp: Float,
     marginRightDp: Float,
@@ -1499,12 +1538,14 @@ private fun configureReader(
         .put("chineseTarget", chineseMapping?.second.orEmpty())
         .putOpt("fontFamily", fontFamily)
         .putOpt("fontUrl", readerFontUrl)
+        .put("bodyFontWeight", bodyFontWeight.coerceIn(100, 900))
         .putOpt("textColor", textColorOverride?.let { String.format("#%06X", it and 0xFFFFFF) })
         .put("progression", progression)
         .put("progressionValue", restoreProgression.coerceIn(0f, 1f))
         .put("flow", if (continuousScroll) "scrolled" else "paginated")
         .put("nativePaging", nativePagingEnabled)
         .put("transition", pageTransition)
+        .put("transitionDurationMs", pageTransitionDurationMs.coerceIn(100, 1200))
         .put("edgeTapLeft", edgeTapMode.leftAction.toEpubTurnDirection())
         .put("edgeTapRight", edgeTapMode.rightAction.toEpubTurnDirection())
         .put("canTurnPrevious", chapterIndex > 0)

@@ -25,6 +25,7 @@ import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
 import com.huangder.lumibooks.domain.model.ReaderPageCorner
+import com.huangder.lumibooks.domain.model.ReaderPageAnimationSettings
 import com.huangder.lumibooks.domain.model.ReaderTextAlignment
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.domain.model.ReaderThemeSettings
@@ -163,6 +164,9 @@ data class ReaderUiState(
     /** 上次远程字体下载失败（按钮显示失败文案，点击重试） */
     val fontDownloadFailed: Boolean = false,
     val readerBackgroundSelection: String = "day",
+    val readerBackgroundColorSelection: String = "day",
+    val readerBackgroundImageOpacity: Float = 1f,
+    val readerBackgroundImageBlurDp: Float = 0f,
     val customReaderBackgrounds: List<ReaderBackgroundPreset> = emptyList(),
     val preserveEpubBackground: Boolean = true,
     val readerTextColor: Int? = null,
@@ -189,6 +193,7 @@ data class ReaderUiState(
     val chineseMode: String = "original",
     /** 翻页效果："slide" | "scroll" | "fade" */
     val pageTransition: String = "slide",
+    val pageAnimationSettings: ReaderPageAnimationSettings = ReaderPageAnimationSettings(),
     /** 阅读页显示效果："auto" | "day" | "night" */
     val readerDisplayMode: String = "auto",
     /** 段间距（dp），默认 8 */
@@ -573,6 +578,33 @@ class ReaderViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            dataStoreManager.readerBackgroundColorSelection.collectLatest { selection ->
+                _uiState.value = _uiState.value.copy(readerBackgroundColorSelection = selection)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.readerBackgroundImageOpacity.collectLatest { opacity ->
+                _uiState.value = _uiState.value.copy(readerBackgroundImageOpacity = opacity)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.readerBackgroundImageBlurDp.collectLatest { blurDp ->
+                _uiState.value = _uiState.value.copy(readerBackgroundImageBlurDp = blurDp)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.readerPageAnimationSettings.collectLatest { settings ->
+                _uiState.value = _uiState.value.copy(pageAnimationSettings = settings)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.pageTransition().collectLatest { mode ->
+                if (!_uiState.value.eInkModeEnabled) {
+                    _uiState.value = _uiState.value.copy(pageTransition = mode)
+                }
+            }
+        }
+        viewModelScope.launch {
             dataStoreManager.preserveEpubBackground.collectLatest { preserve ->
                 _uiState.value = _uiState.value.copy(preserveEpubBackground = preserve)
             }
@@ -824,7 +856,12 @@ class ReaderViewModel @Inject constructor(
     fun saveReaderTheme(theme: String) {
         val updatedSuites = _uiState.value.readerThemeSuites.map { suite ->
             if (suite.id == _uiState.value.activeReaderThemeSuiteId) {
-                suite.copy(settings = suite.settings.copy(backgroundSelection = theme))
+                suite.copy(
+                    settings = suite.settings.copy(
+                        backgroundSelection = theme,
+                        backgroundColorSelection = theme
+                    )
+                )
             } else {
                 suite
             }
@@ -832,6 +869,7 @@ class ReaderViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(
             readerTheme = theme,
             readerBackgroundSelection = theme,
+            readerBackgroundColorSelection = theme,
             readerThemeSuites = updatedSuites
         )
         viewModelScope.launch {
@@ -984,6 +1022,10 @@ class ReaderViewModel @Inject constructor(
                 .takeIf { it in ReaderThemeSuites.BUILT_IN_IDS }
                 ?: ReaderThemeSuites.DAY_ID,
             readerBackgroundSelection = settings.backgroundSelection,
+            readerBackgroundColorSelection = settings.backgroundColorSelection,
+            readerBackgroundImageOpacity = settings.backgroundImageOpacity,
+            readerBackgroundImageBlurDp = settings.backgroundImageBlurDp,
+            bodyFontWeight = settings.bodyFontWeight,
             readerTextColor = settings.textColor
         )
     }
@@ -1007,9 +1049,21 @@ class ReaderViewModel @Inject constructor(
         }
         if (_uiState.value.customReaderBackgrounds.none { it.selectionKey == selection }) return
 
+        val selectedPreset = _uiState.value.customReaderBackgrounds.first {
+            it.selectionKey == selection
+        }
         val updatedSuites = _uiState.value.readerThemeSuites.map { suite ->
             if (suite.id == _uiState.value.activeReaderThemeSuiteId) {
-                suite.copy(settings = suite.settings.copy(backgroundSelection = selection))
+                suite.copy(
+                    settings = suite.settings.copy(
+                        backgroundSelection = selection,
+                        backgroundColorSelection = if (selectedPreset.type == ReaderBackgroundType.COLOR) {
+                            selection
+                        } else {
+                            suite.settings.backgroundColorSelection
+                        }
+                    )
+                )
             } else {
                 suite
             }
@@ -1017,6 +1071,11 @@ class ReaderViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(
             readerTheme = "day",
             readerBackgroundSelection = selection,
+            readerBackgroundColorSelection = if (selectedPreset.type == ReaderBackgroundType.COLOR) {
+                selection
+            } else {
+                _uiState.value.readerBackgroundColorSelection
+            },
             readerThemeSuites = updatedSuites
         )
         viewModelScope.launch {
@@ -1066,20 +1125,31 @@ class ReaderViewModel @Inject constructor(
         val wasSelected = state.readerBackgroundSelection == removed.selectionKey
         val repairedSuites = state.readerThemeSuites.map { suite ->
             if (suite.settings.backgroundSelection == removed.selectionKey) {
-                suite.copy(settings = suite.settings.copy(backgroundSelection = ReaderThemeSuites.DAY_ID))
+                suite.copy(
+                    settings = suite.settings.copy(
+                        backgroundSelection = suite.settings.backgroundColorSelection
+                    )
+                )
             } else {
                 suite
             }
         }
+        val restoredSelection = repairedSuites
+            .firstOrNull { it.id == state.activeReaderThemeSuiteId }
+            ?.settings
+            ?.backgroundSelection
+            ?: ReaderThemeSuites.DAY_ID
+        val restoredTheme = restoredSelection.takeIf { it in ReaderThemeSuites.BUILT_IN_IDS }
+            ?: ReaderThemeSuites.DAY_ID
         _uiState.value = state.copy(
             customReaderBackgrounds = remaining,
             readerThemeSuites = repairedSuites,
-            readerTheme = if (wasSelected) "day" else state.readerTheme,
-            readerBackgroundSelection = if (wasSelected) "day" else state.readerBackgroundSelection
+            readerTheme = if (wasSelected) restoredTheme else state.readerTheme,
+            readerBackgroundSelection = if (wasSelected) restoredSelection else state.readerBackgroundSelection
         )
         viewModelScope.launch {
-            val nextTheme = if (wasSelected) "day" else state.readerTheme
-            val nextSelection = if (wasSelected) "day" else state.readerBackgroundSelection
+            val nextTheme = if (wasSelected) restoredTheme else state.readerTheme
+            val nextSelection = if (wasSelected) restoredSelection else state.readerBackgroundSelection
             dataStoreManager.saveReaderBackgroundState(nextTheme, nextSelection, remaining)
             dataStoreManager.saveReaderThemeSuiteState(
                 repairedSuites,
@@ -1096,7 +1166,16 @@ class ReaderViewModel @Inject constructor(
         val updated = _uiState.value.customReaderBackgrounds + preset
         val updatedSuites = _uiState.value.readerThemeSuites.map { suite ->
             if (suite.id == _uiState.value.activeReaderThemeSuiteId) {
-                suite.copy(settings = suite.settings.copy(backgroundSelection = preset.selectionKey))
+                suite.copy(
+                    settings = suite.settings.copy(
+                        backgroundSelection = preset.selectionKey,
+                        backgroundColorSelection = if (preset.type == ReaderBackgroundType.COLOR) {
+                            preset.selectionKey
+                        } else {
+                            suite.settings.backgroundColorSelection
+                        }
+                    )
+                )
             } else {
                 suite
             }
@@ -1105,7 +1184,12 @@ class ReaderViewModel @Inject constructor(
             customReaderBackgrounds = updated,
             readerThemeSuites = updatedSuites,
             readerTheme = "day",
-            readerBackgroundSelection = preset.selectionKey
+            readerBackgroundSelection = preset.selectionKey,
+            readerBackgroundColorSelection = if (preset.type == ReaderBackgroundType.COLOR) {
+                preset.selectionKey
+            } else {
+                _uiState.value.readerBackgroundColorSelection
+            }
         )
         viewModelScope.launch {
             dataStoreManager.saveReaderBackgroundState("day", preset.selectionKey, updated)
@@ -2219,6 +2303,8 @@ class ReaderViewModel @Inject constructor(
             context.getString(R.string.external_tts_error_service)
         error is ExternalTtsException.InvalidConfiguration ->
             context.getString(R.string.external_tts_error_configuration)
+        error is SystemTtsException.EngineUnavailable ->
+            context.getString(R.string.tts_engine_unavailable_error)
         error is SystemTtsException.Initialization ||
             error is SystemTtsException.LanguageUnavailable ->
             context.getString(R.string.tts_unavailable)

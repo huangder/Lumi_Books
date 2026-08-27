@@ -5,9 +5,13 @@ import org.json.JSONObject
 
 data class ReaderThemeSettings(
     val backgroundSelection: String = ReaderThemeSuites.DAY_ID,
+    val backgroundColorSelection: String = ReaderThemeSuites.DAY_ID,
+    val backgroundImageOpacity: Float = 1f,
+    val backgroundImageBlurDp: Float = 0f,
     val textColor: Int? = null,
     val fontSize: Float = 16f,
     val fontType: String = "system",
+    val bodyFontWeight: Int = 400,
     val lineHeight: Float = 1.5f,
     val letterSpacing: Float = 0f,
     val textAlignment: ReaderTextAlignment = ReaderTextAlignment.NATURAL,
@@ -41,13 +45,35 @@ object ReaderThemeSuites {
     val BUILT_IN_IDS = listOf(DAY_ID, NIGHT_ID, SEPIA_ID, GREEN_ID)
 
     fun defaults(): List<ReaderThemeSuite> = listOf(
-        ReaderThemeSuite(DAY_ID, settings = ReaderThemeSettings(backgroundSelection = DAY_ID)),
-        ReaderThemeSuite(NIGHT_ID, settings = ReaderThemeSettings(backgroundSelection = NIGHT_ID)),
+        ReaderThemeSuite(
+            DAY_ID,
+            settings = ReaderThemeSettings(
+                backgroundSelection = DAY_ID,
+                backgroundColorSelection = DAY_ID
+            )
+        ),
+        ReaderThemeSuite(
+            NIGHT_ID,
+            settings = ReaderThemeSettings(
+                backgroundSelection = NIGHT_ID,
+                backgroundColorSelection = NIGHT_ID
+            )
+        ),
         ReaderThemeSuite(
             SEPIA_ID,
-            settings = ReaderThemeSettings(backgroundSelection = SEPIA_ID, fontType = "serif")
+            settings = ReaderThemeSettings(
+                backgroundSelection = SEPIA_ID,
+                backgroundColorSelection = SEPIA_ID,
+                fontType = "serif"
+            )
         ),
-        ReaderThemeSuite(GREEN_ID, settings = ReaderThemeSettings(backgroundSelection = GREEN_ID))
+        ReaderThemeSuite(
+            GREEN_ID,
+            settings = ReaderThemeSettings(
+                backgroundSelection = GREEN_ID,
+                backgroundColorSelection = GREEN_ID
+            )
+        ),
     )
 
     fun newCustom(id: String, name: String): ReaderThemeSuite = ReaderThemeSuite(
@@ -85,8 +111,12 @@ object ReaderThemeSuites {
 
     private fun ReaderThemeSettings.sanitized() = copy(
         backgroundSelection = backgroundSelection.takeIf(String::isNotBlank) ?: DAY_ID,
+        backgroundColorSelection = backgroundColorSelection.takeIf(String::isNotBlank) ?: DAY_ID,
+        backgroundImageOpacity = backgroundImageOpacity.coerceIn(0f, 1f),
+        backgroundImageBlurDp = backgroundImageBlurDp.coerceIn(0f, 40f),
         fontSize = fontSize.coerceIn(12f, 28f),
         fontType = fontType.takeIf(String::isNotBlank) ?: "system",
+        bodyFontWeight = bodyFontWeight.coerceIn(100, 900),
         lineHeight = lineHeight.coerceIn(1f, 2.5f),
         letterSpacing = letterSpacing.coerceIn(0f, 10f),
         paragraphSpacing = paragraphSpacing.coerceIn(0f, 30f),
@@ -136,9 +166,13 @@ object ReaderThemeSuiteCodec {
 
     private fun ReaderThemeSettings.toJson() = JSONObject().apply {
         put("background", backgroundSelection)
+        put("backgroundColor", backgroundColorSelection)
+        put("backgroundImageOpacity", backgroundImageOpacity.toDouble())
+        put("backgroundImageBlurDp", backgroundImageBlurDp.toDouble())
         textColor?.let { put("textColor", it) }
         put("fontSize", fontSize.toDouble())
         put("fontType", fontType)
+        put("bodyFontWeight", bodyFontWeight)
         put("lineHeight", lineHeight.toDouble())
         put("letterSpacing", letterSpacing.toDouble())
         put("textAlignment", textAlignment.key)
@@ -150,11 +184,20 @@ object ReaderThemeSuiteCodec {
         put("marginBottom", marginBottom.toDouble())
     }
 
-    private fun JSONObject.toThemeSettings() = ReaderThemeSettings(
-        backgroundSelection = optString("background", ReaderThemeSuites.DAY_ID),
+    private fun JSONObject.toThemeSettings(): ReaderThemeSettings {
+        val background = optString("background", ReaderThemeSuites.DAY_ID)
+        return ReaderThemeSettings(
+        backgroundSelection = background,
+        backgroundColorSelection = optString(
+            "backgroundColor",
+            background.takeUnless { it.startsWith("custom:") } ?: ReaderThemeSuites.DAY_ID
+        ),
+        backgroundImageOpacity = optDouble("backgroundImageOpacity", 1.0).toFloat(),
+        backgroundImageBlurDp = optDouble("backgroundImageBlurDp", 0.0).toFloat(),
         textColor = if (has("textColor") && !isNull("textColor")) optInt("textColor") else null,
         fontSize = optDouble("fontSize", 16.0).toFloat(),
         fontType = optString("fontType", "system"),
+        bodyFontWeight = optInt("bodyFontWeight", 400),
         lineHeight = optDouble("lineHeight", 1.5).toFloat(),
         letterSpacing = optDouble("letterSpacing", 0.0).toFloat(),
         textAlignment = ReaderTextAlignment.fromKey(optString("textAlignment")),
@@ -164,7 +207,8 @@ object ReaderThemeSuiteCodec {
         marginRight = optDouble("marginRight", 38.0).toFloat(),
         marginTop = optDouble("marginTop", 64.0).toFloat(),
         marginBottom = optDouble("marginBottom", 64.0).toFloat()
-    )
+        )
+    }
 }
 
 fun normalizeReaderThemeSuiteName(name: String): String = name.trim()

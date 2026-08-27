@@ -26,6 +26,7 @@ import com.huangder.lumibooks.ui.reader.engine.RenderResourceLease
 import com.huangder.lumibooks.ui.reader.engine.RenderResourcePool
 import com.huangder.lumibooks.ui.reader.engine.SlidePageAnim
 import com.huangder.lumibooks.ui.reader.engine.isCurlSwipeIntent
+import com.huangder.lumibooks.domain.model.ReaderPageAnimationSettings
 import kotlin.math.abs
 
 internal data class EpubPageTarget(
@@ -180,6 +181,7 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
     )
     private var controller: PageAnimationController = SlidePageAnim(liveSlideSurface)
     private var transition = "slide"
+    private var transitionDurationMs = ReaderPageAnimationSettings.SLIDE_DEFAULT_MS
     private var nativePagingEnabled = true
     private var nativeTouchPagingEnabled = true
     private var reverseAxis = false
@@ -291,9 +293,23 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         nativeTouchPagingEnabled = enabled
     }
 
-    fun setTransition(mode: String) {
+    fun setTransition(
+        mode: String,
+        durationMs: Int = ReaderPageAnimationSettings.defaultFor(mode)
+    ) {
         val normalized = if (mode == "curl") "curl" else "slide"
-        if (normalized == transition) return
+        val sanitizedDuration = ReaderPageAnimationSettings.sanitizeDuration(
+            normalized,
+            durationMs
+        )
+        if (normalized == transition) {
+            transitionDurationMs = sanitizedDuration
+            when (val current = controller) {
+                is SlidePageAnim -> current.setBaseDuration(sanitizedDuration)
+                is CurlPageAnim -> current.setBaseDuration(sanitizedDuration)
+            }
+            return
+        }
         val previousTargetBeforeChange = previousTarget
         val nextTargetBeforeChange = nextTarget
         controller.abortAnim()
@@ -307,10 +323,15 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         waitingGestureDirection = PageAnimationController.Direction.NONE
         clearPendingSlideInput()
         transition = normalized
+        transitionDurationMs = sanitizedDuration
         controller = if (normalized == "curl") {
-            CurlPageAnim(snapshotSurface, trackCornerTouchDirectly = true)
+            CurlPageAnim(
+                snapshotSurface,
+                trackCornerTouchDirectly = true,
+                baseDurationMs = transitionDurationMs
+            )
         } else {
-            SlidePageAnim(liveSlideSurface)
+            SlidePageAnim(liveSlideSurface, transitionDurationMs)
         }
         bindControllerCallbacks()
         resetAnimationOverlay()

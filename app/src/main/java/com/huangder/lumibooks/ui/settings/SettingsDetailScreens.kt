@@ -254,6 +254,64 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     DetailCard {
+        Row(
+            modifier = Modifier.fillMaxWidth().clickable {
+                context.startActivity(
+                    Intent(context, ReaderSettingsPreviewActivity::class.java)
+                        .putExtra(
+                            ReaderSettingsPreviewActivity.EXTRA_MODE,
+                            ReaderSettingsPreviewActivity.MODE_THEMES
+                        )
+                )
+            }.padding(AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Outlined.Palette, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.width(AppSpace.md))
+            Column(Modifier.weight(1f)) {
+                Text("主题套装设置", fontSize = AppType.Body, color = AppColors.TextPrimary)
+                Text("管理、排序并预览阅读主题", fontSize = AppType.Caption, color = AppColors.TextSecondary)
+            }
+            Icon(Icons.Outlined.ChevronRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+        }
+        SettingsDivider()
+        Row(
+            modifier = Modifier.fillMaxWidth().clickable(enabled = !uiState.eInkModeEnabled) {
+                context.startActivity(
+                    Intent(context, ReaderSettingsPreviewActivity::class.java)
+                        .putExtra(
+                            ReaderSettingsPreviewActivity.EXTRA_MODE,
+                            ReaderSettingsPreviewActivity.MODE_ANIMATIONS
+                        )
+                )
+            }.padding(AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Outlined.Animation,
+                null,
+                tint = if (uiState.eInkModeEnabled) AppColors.TextSecondary.copy(alpha = 0.4f) else AppColors.TextSecondary,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(Modifier.width(AppSpace.md))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "翻页动画设置",
+                    fontSize = AppType.Body,
+                    color = AppColors.TextPrimary.copy(alpha = if (uiState.eInkModeEnabled) 0.4f else 1f)
+                )
+                Text(
+                    if (uiState.eInkModeEnabled) "墨水屏模式下不可用" else "预览动画并调整翻页速度",
+                    fontSize = AppType.Caption,
+                    color = AppColors.TextSecondary
+                )
+            }
+            Icon(Icons.Outlined.ChevronRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+        }
+    }
+
+    Spacer(Modifier.height(12.dp))
+    DetailCard {
         // 正文字重
         Row(
             modifier = Modifier

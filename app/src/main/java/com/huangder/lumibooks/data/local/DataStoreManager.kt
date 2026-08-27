@@ -22,6 +22,7 @@ import com.huangder.lumibooks.domain.model.WebdavConfig
 import com.huangder.lumibooks.domain.model.WebdavSyncContent
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPresetCodec
+import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
 import com.huangder.lumibooks.domain.model.ReaderPageCorner
@@ -33,6 +34,7 @@ import com.huangder.lumibooks.domain.model.ReaderThemeSuite
 import com.huangder.lumibooks.domain.model.ReaderThemeSuiteCodec
 import com.huangder.lumibooks.domain.model.ReaderThemeSuiteState
 import com.huangder.lumibooks.domain.model.ReaderThemeSuites
+import com.huangder.lumibooks.domain.model.ReaderPageAnimationSettings
 import com.huangder.lumibooks.domain.model.defaultReaderCornerContent
 import com.huangder.lumibooks.util.LaunchThemeController
 import com.huangder.lumibooks.util.epub.EpubRenderMode
@@ -84,12 +86,19 @@ class DataStoreManager @Inject constructor(
         private val CUSTOM_FONTS = stringPreferencesKey("custom_fonts")
         private val REMOTE_FONT_VERSIONS = stringPreferencesKey("remote_font_versions")
         private val READER_BACKGROUND_SELECTION = stringPreferencesKey("reader_background_selection")
+        private val READER_BACKGROUND_COLOR_SELECTION = stringPreferencesKey("reader_background_color_selection")
+        private val READER_BACKGROUND_IMAGE_OPACITY = floatPreferencesKey("reader_background_image_opacity")
+        private val READER_BACKGROUND_IMAGE_BLUR_DP = floatPreferencesKey("reader_background_image_blur_dp")
         private val CUSTOM_READER_BACKGROUNDS = stringPreferencesKey("custom_reader_backgrounds")
         private val PRESERVE_EPUB_BACKGROUND = booleanPreferencesKey("preserve_epub_background")
         private val READER_TEXT_COLOR = intPreferencesKey("reader_text_color")
         private val READER_THEME_SUITES = stringPreferencesKey("reader_theme_suites")
         private val ACTIVE_READER_THEME_SUITE_ID = stringPreferencesKey("active_reader_theme_suite_id")
         private val READER_THEME_SUITES_VERSION = intPreferencesKey("reader_theme_suites_version")
+        private val PAGE_TRANSITION = stringPreferencesKey("page_transition")
+        private val PAGE_TRANSITION_SLIDE_DURATION_MS = intPreferencesKey("page_transition_slide_duration_ms")
+        private val PAGE_TRANSITION_FADE_DURATION_MS = intPreferencesKey("page_transition_fade_duration_ms")
+        private val PAGE_TRANSITION_CURL_DURATION_MS = intPreferencesKey("page_transition_curl_duration_ms")
         private val CUSTOM_HIGHLIGHT_COLORS = stringPreferencesKey("custom_highlight_colors")
         private val CUSTOM_HIGHLIGHT_PALETTES = stringPreferencesKey("custom_highlight_palettes")
         private val ACTIVE_HIGHLIGHT_PALETTE_ID = stringPreferencesKey("active_highlight_palette_id")
@@ -256,6 +265,13 @@ class DataStoreManager @Inject constructor(
         preferences[READER_BACKGROUND_SELECTION] ?: preferences[READER_THEME] ?: "day"
     }
 
+    val readerBackgroundColorSelection: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[READER_BACKGROUND_COLOR_SELECTION]
+            ?: preferences.resolveLegacyBackgroundColorSelection(
+                preferences[READER_BACKGROUND_SELECTION] ?: ReaderThemeSuites.DAY_ID
+            )
+    }
+
     val customReaderBackgrounds: Flow<List<ReaderBackgroundPreset>> =
         context.dataStore.data.map { preferences ->
             ReaderBackgroundPresetCodec.decode(preferences[CUSTOM_READER_BACKGROUNDS])
@@ -333,6 +349,35 @@ class DataStoreManager @Inject constructor(
     val readerTextColor: Flow<Int?> = context.dataStore.data.map { preferences ->
         preferences[READER_TEXT_COLOR]
     }
+
+    val readerBackgroundImageOpacity: Flow<Float> = context.dataStore.data.map { preferences ->
+        (preferences[READER_BACKGROUND_IMAGE_OPACITY] ?: 1f).coerceIn(0f, 1f)
+    }
+
+    val readerBackgroundImageBlurDp: Flow<Float> = context.dataStore.data.map { preferences ->
+        (preferences[READER_BACKGROUND_IMAGE_BLUR_DP] ?: 0f).coerceIn(0f, 40f)
+    }
+
+    val readerPageAnimationSettings: Flow<ReaderPageAnimationSettings> =
+        context.dataStore.data.map { preferences ->
+            ReaderPageAnimationSettings(
+                slideDurationMs = ReaderPageAnimationSettings.sanitizeDuration(
+                    ReaderPageAnimationSettings.MODE_SLIDE,
+                    preferences[PAGE_TRANSITION_SLIDE_DURATION_MS]
+                        ?: ReaderPageAnimationSettings.SLIDE_DEFAULT_MS
+                ),
+                fadeDurationMs = ReaderPageAnimationSettings.sanitizeDuration(
+                    ReaderPageAnimationSettings.MODE_FADE,
+                    preferences[PAGE_TRANSITION_FADE_DURATION_MS]
+                        ?: ReaderPageAnimationSettings.FADE_DEFAULT_MS
+                ),
+                curlDurationMs = ReaderPageAnimationSettings.sanitizeDuration(
+                    ReaderPageAnimationSettings.MODE_CURL,
+                    preferences[PAGE_TRANSITION_CURL_DURATION_MS]
+                        ?: ReaderPageAnimationSettings.CURL_DEFAULT_MS
+                )
+            )
+        }
 
     val readerThemeSuiteState: Flow<ReaderThemeSuiteState> = context.dataStore.data.map { preferences ->
         val suites = readThemeSuites(preferences)
@@ -710,7 +755,9 @@ class DataStoreManager @Inject constructor(
         context.dataStore.edit { preferences ->
             preferences[READER_THEME] = theme
             preferences[READER_BACKGROUND_SELECTION] = theme
-            preferences.updateActiveReaderThemeSuite { copy(backgroundSelection = theme) }
+            preferences.updateActiveReaderThemeSuite {
+                copy(backgroundSelection = theme, backgroundColorSelection = theme)
+            }
         }
     }
 
@@ -783,7 +830,16 @@ class DataStoreManager @Inject constructor(
     suspend fun saveReaderBackgroundSelection(selection: String) {
         context.dataStore.edit { preferences ->
             preferences[READER_BACKGROUND_SELECTION] = selection
-            preferences.updateActiveReaderThemeSuite { copy(backgroundSelection = selection) }
+            preferences.updateActiveReaderThemeSuite {
+                copy(
+                    backgroundSelection = selection,
+                    backgroundColorSelection = if (selection.startsWith("custom:")) {
+                        backgroundColorSelection
+                    } else {
+                        selection
+                    }
+                )
+            }
         }
     }
 
@@ -890,7 +946,11 @@ class DataStoreManager @Inject constructor(
     }
 
     suspend fun saveBodyFontWeight(weight: Int) {
-        context.dataStore.edit { preferences -> preferences[BODY_FONT_WEIGHT] = weight.coerceIn(100, 900) }
+        context.dataStore.edit { preferences ->
+            val sanitized = weight.coerceIn(100, 900)
+            preferences[BODY_FONT_WEIGHT] = sanitized
+            preferences.updateActiveReaderThemeSuite { copy(bodyFontWeight = sanitized) }
+        }
     }
 
     suspend fun saveApplyToBodyOnly(enabled: Boolean) {
@@ -984,12 +1044,35 @@ class DataStoreManager @Inject constructor(
         context.dataStore.edit { preferences ->
             val currentVersion = preferences[READER_THEME_SUITES_VERSION] ?: 0
             if (currentVersion >= 1 && preferences[READER_THEME_SUITES] != null) {
-                val normalized = readThemeSuites(preferences)
-                preferences[READER_THEME_SUITES] = ReaderThemeSuiteCodec.encode(normalized)
+                var normalized = readThemeSuites(preferences)
                 val activeId = preferences[ACTIVE_READER_THEME_SUITE_ID]
                     ?.takeIf { id -> normalized.any { it.id == id } }
                     ?: ReaderThemeSuites.DAY_ID
+                if (currentVersion < 2) {
+                    val legacy = preferences.toReaderThemeSettings(
+                        normalized.firstOrNull { it.id == activeId }
+                            ?.settings
+                            ?.backgroundSelection
+                            ?: ReaderThemeSuites.DAY_ID
+                    )
+                    normalized = normalized.map { suite ->
+                        if (suite.id == activeId) {
+                            suite.copy(
+                                settings = suite.settings.copy(
+                                    backgroundColorSelection = legacy.backgroundColorSelection,
+                                    backgroundImageOpacity = legacy.backgroundImageOpacity,
+                                    backgroundImageBlurDp = legacy.backgroundImageBlurDp,
+                                    bodyFontWeight = legacy.bodyFontWeight
+                                )
+                            )
+                        } else {
+                            suite
+                        }
+                    }
+                }
+                preferences[READER_THEME_SUITES] = ReaderThemeSuiteCodec.encode(normalized)
                 preferences[ACTIVE_READER_THEME_SUITE_ID] = activeId
+                preferences[READER_THEME_SUITES_VERSION] = 2
                 return@edit
             }
 
@@ -1000,7 +1083,7 @@ class DataStoreManager @Inject constructor(
             val migrated = ReaderThemeSuites.fromLegacy(currentSettings)
             preferences[READER_THEME_SUITES] = ReaderThemeSuiteCodec.encode(migrated.suites)
             preferences[ACTIVE_READER_THEME_SUITE_ID] = migrated.activeSuiteId
-            preferences[READER_THEME_SUITES_VERSION] = 1
+            preferences[READER_THEME_SUITES_VERSION] = 2
         }
     }
 
@@ -1015,12 +1098,49 @@ class DataStoreManager @Inject constructor(
                 ?: ReaderThemeSuites.DAY_ID
             preferences[READER_THEME_SUITES] = ReaderThemeSuiteCodec.encode(normalized)
             preferences[ACTIVE_READER_THEME_SUITE_ID] = resolvedActiveId
-            preferences[READER_THEME_SUITES_VERSION] = 1
+            preferences[READER_THEME_SUITES_VERSION] = 2
             if (applyActiveSuite) {
                 normalized.firstOrNull { it.id == resolvedActiveId }
                     ?.settings
                     ?.let { settings -> preferences.applyReaderThemeSettings(settings) }
             }
+        }
+    }
+
+    /** Saves one suite without changing which suite is active. */
+    suspend fun updateReaderThemeSuite(suiteId: String, settings: ReaderThemeSettings) {
+        context.dataStore.edit { preferences ->
+            val suites = readThemeSuites(preferences)
+            if (suites.none { it.id == suiteId }) return@edit
+            val updated = ReaderThemeSuites.normalized(suites.map { suite ->
+                if (suite.id == suiteId) suite.copy(settings = settings) else suite
+            })
+            preferences[READER_THEME_SUITES] = ReaderThemeSuiteCodec.encode(updated)
+            preferences[READER_THEME_SUITES_VERSION] = 2
+            if (preferences[ACTIVE_READER_THEME_SUITE_ID] == suiteId) {
+                preferences.applyReaderThemeSettings(updated.first { it.id == suiteId }.settings)
+            }
+        }
+    }
+
+    suspend fun renameReaderThemeSuite(suiteId: String, name: String) {
+        val normalizedName = name.trim()
+        if (normalizedName.isBlank()) return
+        context.dataStore.edit { preferences ->
+            val updated = readThemeSuites(preferences).map { suite ->
+                if (suite.id == suiteId && !suite.isBuiltIn) suite.copy(customName = normalizedName)
+                else suite
+            }
+            preferences[READER_THEME_SUITES] = ReaderThemeSuiteCodec.encode(updated)
+        }
+    }
+
+    /** Activates and applies an already persisted suite. */
+    suspend fun setActiveReaderThemeSuite(suiteId: String) {
+        context.dataStore.edit { preferences ->
+            val suite = readThemeSuites(preferences).firstOrNull { it.id == suiteId } ?: return@edit
+            preferences[ACTIVE_READER_THEME_SUITE_ID] = suite.id
+            preferences.applyReaderThemeSettings(suite.settings)
         }
     }
 
@@ -1037,9 +1157,22 @@ class DataStoreManager @Inject constructor(
         presets: List<ReaderBackgroundPreset>? = null
     ) {
         context.dataStore.edit { preferences ->
+            val availablePresets = presets ?: ReaderBackgroundPresetCodec.decode(
+                preferences[CUSTOM_READER_BACKGROUNDS]
+            )
+            val selectedType = availablePresets.firstOrNull { it.selectionKey == selection }?.type
             preferences[READER_THEME] = theme
             preferences[READER_BACKGROUND_SELECTION] = selection
-            preferences.updateActiveReaderThemeSuite { copy(backgroundSelection = selection) }
+            preferences.updateActiveReaderThemeSuite {
+                copy(
+                    backgroundSelection = selection,
+                    backgroundColorSelection = if (selectedType == ReaderBackgroundType.IMAGE) {
+                        backgroundColorSelection
+                    } else {
+                        selection
+                    }
+                )
+            }
             if (presets != null) {
                 preferences[CUSTOM_READER_BACKGROUNDS] = ReaderBackgroundPresetCodec.encode(presets)
             }
@@ -1169,15 +1302,27 @@ class DataStoreManager @Inject constructor(
         context.dataStore.edit { it[key] = mode }
     }
 
-    /** 翻页效果："slide" | "scroll" | "fade" */
-    fun pageTransition(): Flow<String> {
-        val key = stringPreferencesKey("page_transition")
-        return context.dataStore.data.map { it[key] ?: "slide" }
-    }
+    /** 翻页效果："slide" | "scroll" | "fade" | "curl" */
+    fun pageTransition(): Flow<String> = context.dataStore.data.map { it[PAGE_TRANSITION] ?: "slide" }
 
     suspend fun savePageTransition(mode: String) {
-        val key = stringPreferencesKey("page_transition")
-        context.dataStore.edit { it[key] = mode }
+        context.dataStore.edit { it[PAGE_TRANSITION] = mode }
+    }
+
+    suspend fun savePageTransitionDuration(mode: String, durationMs: Int) {
+        val normalizedMode = when (mode) {
+            ReaderPageAnimationSettings.MODE_FADE -> ReaderPageAnimationSettings.MODE_FADE
+            ReaderPageAnimationSettings.MODE_CURL -> ReaderPageAnimationSettings.MODE_CURL
+            else -> ReaderPageAnimationSettings.MODE_SLIDE
+        }
+        val key = when (normalizedMode) {
+            ReaderPageAnimationSettings.MODE_FADE -> PAGE_TRANSITION_FADE_DURATION_MS
+            ReaderPageAnimationSettings.MODE_CURL -> PAGE_TRANSITION_CURL_DURATION_MS
+            else -> PAGE_TRANSITION_SLIDE_DURATION_MS
+        }
+        context.dataStore.edit { preferences ->
+            preferences[key] = ReaderPageAnimationSettings.sanitizeDuration(normalizedMode, durationMs)
+        }
     }
 
     /** 阅读页显示效果："auto" | "day" | "night" */
@@ -1612,9 +1757,14 @@ class DataStoreManager @Inject constructor(
             ?: ReaderThemeSuites.DAY_ID
     ) = ReaderThemeSettings(
         backgroundSelection = backgroundSelection,
+        backgroundColorSelection = this[READER_BACKGROUND_COLOR_SELECTION]
+            ?: resolveLegacyBackgroundColorSelection(backgroundSelection),
+        backgroundImageOpacity = this[READER_BACKGROUND_IMAGE_OPACITY] ?: 1f,
+        backgroundImageBlurDp = this[READER_BACKGROUND_IMAGE_BLUR_DP] ?: 0f,
         textColor = this[READER_TEXT_COLOR],
         fontSize = this[FONT_SIZE] ?: 16f,
         fontType = this[FONT_TYPE] ?: "system",
+        bodyFontWeight = this[BODY_FONT_WEIGHT] ?: 400,
         lineHeight = this[LINE_HEIGHT] ?: 1.5f,
         letterSpacing = this[LETTER_SPACING] ?: 0f,
         textAlignment = ReaderTextAlignment.fromKey(this[TEXT_ALIGNMENT]),
@@ -1640,12 +1790,23 @@ class DataStoreManager @Inject constructor(
         this[READER_THEME_SUITES] = ReaderThemeSuiteCodec.encode(updated)
     }
 
+    private fun Preferences.resolveLegacyBackgroundColorSelection(selection: String): String {
+        val preset = ReaderBackgroundPresetCodec.decode(this[CUSTOM_READER_BACKGROUNDS])
+            .firstOrNull { it.selectionKey == selection }
+        return when (preset?.type) {
+            ReaderBackgroundType.COLOR -> selection
+            ReaderBackgroundType.IMAGE -> ReaderThemeSuites.DAY_ID
+            null -> selection.takeUnless { it.startsWith("custom:") } ?: ReaderThemeSuites.DAY_ID
+        }
+    }
+
     private fun MutablePreferences.applyReaderThemeSettings(settings: ReaderThemeSettings) {
         this[FONT_SIZE] = settings.fontSize
         this[LINE_HEIGHT] = settings.lineHeight
         this[LETTER_SPACING] = settings.letterSpacing
         this[TEXT_ALIGNMENT] = settings.textAlignment.key
         this[FONT_TYPE] = settings.fontType
+        this[BODY_FONT_WEIGHT] = settings.bodyFontWeight
         this[MARGIN_LEFT] = settings.marginLeft
         this[MARGIN_RIGHT] = settings.marginRight
         this[MARGIN_TOP] = settings.marginTop
@@ -1655,6 +1816,9 @@ class DataStoreManager @Inject constructor(
         this[PARAGRAPH_SPACING] = settings.paragraphSpacing
         this[FIRST_LINE_INDENT] = settings.firstLineIndent
         this[READER_BACKGROUND_SELECTION] = settings.backgroundSelection
+        this[READER_BACKGROUND_COLOR_SELECTION] = settings.backgroundColorSelection
+        this[READER_BACKGROUND_IMAGE_OPACITY] = settings.backgroundImageOpacity
+        this[READER_BACKGROUND_IMAGE_BLUR_DP] = settings.backgroundImageBlurDp
         this[READER_THEME] = settings.backgroundSelection
             .takeIf { it in ReaderThemeSuites.BUILT_IN_IDS }
             ?: ReaderThemeSuites.DAY_ID

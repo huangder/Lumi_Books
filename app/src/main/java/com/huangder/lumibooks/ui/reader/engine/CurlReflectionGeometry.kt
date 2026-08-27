@@ -11,7 +11,6 @@ internal class CurlReflectionFrame {
     fun mapY(x: Float, y: Float): Float =
         matrixValues[3] * x + matrixValues[4] * y + matrixValues[5]
 }
-
 /** Reflection across the fold line halfway between the original and dragged page edges. */
 internal object CurlReflectionGeometry {
     private const val MIN_DISTANCE_SQUARED = 0.01f
@@ -45,19 +44,16 @@ internal object CurlReflectionGeometry {
         values[8] = 1f
         return values.all { it.isFinite() }
     }
-}
 
-internal object CurlLayerPolicy {
-    fun <T> foldedBack(turningPage: T?, @Suppress("UNUSED_PARAMETER") underPage: T?): T? =
-        turningPage
-}
-
-internal object ColorMatrixPaperTone {
-    fun dim(color: Int): Int {
-        val alpha = (((color ushr 24) and 0xFF) * 0.96f).toInt().coerceIn(0, 255)
-        val red = (((color ushr 16) and 0xFF) * 0.91f + 8f).toInt().coerceIn(0, 255)
-        val green = (((color ushr 8) and 0xFF) * 0.91f + 8f).toInt().coerceIn(0, 255)
-        val blue = ((color and 0xFF) * 0.91f + 8f).toInt().coerceIn(0, 255)
-        return (alpha shl 24) or (red shl 16) or (green shl 8) or blue
+    /** Return a reflection frame, or null for a degenerate fold line. */
+    fun between(
+        cornerX: Float,
+        cornerY: Float,
+        touchX: Float,
+        touchY: Float
+    ): CurlReflectionFrame? {
+        val frame = CurlReflectionFrame()
+        return if (evaluate(cornerX, cornerY, touchX, touchY, frame)) frame else null
     }
 }
+// End of reflection geometry.

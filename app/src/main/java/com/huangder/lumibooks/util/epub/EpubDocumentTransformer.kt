@@ -380,7 +380,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     writingMode: 'horizontal-tb', reverseAxis: false, pageStep: 1, pageOffsets: [0],
     viewportWidth: 0, viewportHeight: 0, paginating: false, configured: false, mediaSettled: false,
     pendingProgression: undefined, publisherBox: null, publisherBackground: null, scrollGuard: false, initialFragmentApplied: false,
-    transition: 'slide', nativePaging: false, animationTimer: 0, suppressClickUntil: 0, preservePublisherBackground: true,
+    transition: 'slide', transitionDurationMs: 260, nativePaging: false, animationTimer: 0, suppressClickUntil: 0, preservePublisherBackground: true,
     edgeTapLeft: -1, edgeTapRight: 1, canTurnPrevious: true, canTurnNext: true,
     bionicReading: false, chineseMode: 'original', chineseMap: null, pendingPreparedPage: null, prepareSerial: 0,
     highlightItems: [], searchHighlight: null,
@@ -916,7 +916,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
 
   function animatePageStage(commit, notify) {
     if (!pageStageActive) return;
-    var baseDuration = state.transition === 'curl' ? 360 : 260;
+    var baseDuration = state.transitionDurationMs;
     var remaining = commit ? 1 - pageStageProgress : pageStageProgress;
     var duration = Math.max(110, Math.round(baseDuration * Math.max(0.3, remaining)));
     if (pageStageDurationOverride > 0) {
@@ -978,16 +978,18 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       var x = pageX(state.page);
       window.scrollTo(0, 0);
       if (shouldAnimate && state.transition === 'fade') {
-        body.style.transition = 'opacity 90ms ease-out';
+        var fadeOutDuration = Math.max(1, Math.round(state.transitionDurationMs / 2));
+        var fadeInDuration = Math.max(1, state.transitionDurationMs - fadeOutDuration);
+        body.style.transition = 'opacity ' + fadeOutDuration + 'ms ease-out';
         body.style.opacity = '0';
         state.animationTimer = setTimeout(function () {
           body.style.transition = 'none';
           body.style.transform = 'translate3d(' + x + 'px,0,0)';
           void body.offsetWidth;
-          body.style.transition = 'opacity 140ms ease-in';
+          body.style.transition = 'opacity ' + fadeInDuration + 'ms ease-in';
           body.style.opacity = '1';
-          state.animationTimer = setTimeout(function () { body.style.transition = 'none'; }, 160);
-        }, 90);
+          state.animationTimer = setTimeout(function () { body.style.transition = 'none'; }, fadeInDuration);
+        }, fadeOutDuration);
       } else {
         body.style.opacity = '1';
         body.style.transition = 'none';
@@ -1643,9 +1645,10 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     var family = config.fontFamily ? String(config.fontFamily) : '';
     var fontUrl = config.fontUrl ? String(config.fontUrl) : '';
     var textColor = config.textColor ? String(config.textColor) : '';
+    var bodyFontWeight = Math.max(100, Math.min(900, Math.round(Number(config.bodyFontWeight) || 400)));
     var textAlignment = /^(left|center|right|justify)$/.test(String(config.textAlignment || '')) ?
       String(config.textAlignment) : '';
-    if (!family && !textColor && !textAlignment) {
+    if (!family && !textColor && !textAlignment && bodyFontWeight === 400) {
       if (existing) existing.remove();
       return;
     }
@@ -1659,6 +1662,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       'span,a,li,dt,dd,td,th,blockquote,figcaption,label';
     if (family) rules += textSelector + '{font-family:' + JSON.stringify(family) + ' !important;}';
     if (textColor) rules += textSelector + '{color:' + textColor + ' !important;}';
+    if (bodyFontWeight !== 400) rules += textSelector + '{font-weight:' + bodyFontWeight + ' !important;}';
     if (textAlignment) rules += textSelector + '{text-align:' + textAlignment + ' !important;}';
     style.textContent = rules;
     if (!existing) document.head.appendChild(style);
@@ -1673,6 +1677,8 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     state.flow = config.flow === 'scrolled' ? 'scrolled' : 'paginated';
     state.transition = config.transition === 'fade' ? 'fade' :
       (config.transition === 'none' ? 'none' : (config.transition === 'curl' ? 'curl' : 'slide'));
+    state.transitionDurationMs = Math.max(100, Math.min(1200,
+      Math.round(Number(config.transitionDurationMs) || (state.transition === 'fade' ? 400 : (state.transition === 'curl' ? 800 : 260)))));
     state.nativePaging = config.nativePaging === true;
     state.edgeTapLeft = Number(config.edgeTapLeft) > 0 ? 1 : -1;
     state.edgeTapRight = Number(config.edgeTapRight) < 0 ? -1 : 1;

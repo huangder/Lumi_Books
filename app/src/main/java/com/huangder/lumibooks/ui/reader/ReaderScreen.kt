@@ -1283,7 +1283,21 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
     }
 
     val selectedCustomBackground = if (eInkMode) null else selectedReaderBackgroundForTheme
+    val selectedImageBaseBackground = uiState.customReaderBackgrounds.firstOrNull {
+        it.selectionKey == uiState.readerBackgroundColorSelection &&
+            it.type == ReaderBackgroundType.COLOR
+    }
+    val imageBaseColor = when {
+        selectedImageBaseBackground != null -> runCatching {
+            android.graphics.Color.parseColor(selectedImageBaseBackground.value)
+        }.getOrDefault(0xFFFBFBFC.toInt())
+        uiState.readerBackgroundColorSelection == "night" -> 0xFF1a1a1a.toInt()
+        uiState.readerBackgroundColorSelection == "sepia" -> 0xFFf5e6d3.toInt()
+        uiState.readerBackgroundColorSelection == "green" -> 0xFFe8f5e9.toInt()
+        else -> 0xFFFBFBFC.toInt()
+    }
     val readerBackgroundColorInt = when {
+        selectedCustomBackground?.type == ReaderBackgroundType.IMAGE -> imageBaseColor
         selectedCustomBackground?.type == ReaderBackgroundType.COLOR -> {
             val base = runCatching { android.graphics.Color.parseColor(selectedCustomBackground.value) }
                 .getOrDefault(0xFFFBFBFC.toInt())
@@ -1535,6 +1549,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     fontSizeSp = uiState.fontSize,
                     fontType = uiState.fontType,
                     fontFilePath = epubFontFilePath,
+                    bodyFontWeight = uiState.bodyFontWeight,
                     textColorOverride = effectiveReaderTextColor,
                     theme = renderingTheme,
                     textAlignment = uiState.textAlignment,
@@ -1546,6 +1561,9 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     initialFragment = epubPendingFragment,
                     continuousScroll = isBookLayoutContinuousScroll,
                     pageTransition = if (isBookLayoutContinuousScroll) "none" else effectivePageTransition,
+                    pageTransitionDurationMs = uiState.pageAnimationSettings.durationFor(
+                        effectivePageTransition
+                    ),
                     marginTopDp = uiState.marginTopDp,
                     marginRightDp = uiState.marginRightDp,
                     marginBottomDp = uiState.marginBottomDp,
@@ -1687,6 +1705,8 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     textColor = readerTextColorInt,
                     backgroundColor = readerBackgroundColorInt,
                     backgroundImagePath = readerBackgroundImagePath,
+                    backgroundImageOpacity = uiState.readerBackgroundImageOpacity,
+                    backgroundImageBlurDp = uiState.readerBackgroundImageBlurDp,
                     marginLeft = uiState.marginLeftDp,
                     marginRight = uiState.marginRightDp,
                     marginTop = uiState.marginTopDp,
@@ -1776,7 +1796,7 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     chineseMode = uiState.chineseMode,
                     ttsCurrentSentence = uiState.ttsCurrentSentence,
                     comicModeEnabled = uiState.comicModeEnabled,
-                    boldTextEnabled = uiState.bodyFontWeight >= 600
+                    bodyFontWeight = uiState.bodyFontWeight
                 )
             } else if (uiState.useNewEngine) {
             AndroidView(
@@ -2062,7 +2082,9 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     readView.setReaderBackground(
                         backgroundColor = readerBackgroundColorInt,
                         textColor = readerTextColorInt,
-                        imagePath = readerBackgroundImagePath
+                        imagePath = readerBackgroundImagePath,
+                        imageOpacity = uiState.readerBackgroundImageOpacity,
+                        imageBlurDp = uiState.readerBackgroundImageBlurDp
                     )
                     readView.setSavedNotes(renderedReaderNotes)
                     readView.ttsHighlightRange = uiState.ttsCurrentSentence?.let {
@@ -2071,8 +2093,12 @@ fun ReaderScreen(bookId: String, onNavigateBack: () -> Unit, onPageReady: () -> 
                     // 简繁转换
                     readView.setChineseMode(uiState.chineseMode)
                     // 正文字重（PR #19 #24）
-                    readView.setBoldText(uiState.bodyFontWeight >= 600)
+                    readView.setBodyFontWeight(uiState.bodyFontWeight)
                     // 翻页效果
+                    readView.setPageTransitionTiming(
+                        effectivePageTransition,
+                        uiState.pageAnimationSettings.durationFor(effectivePageTransition)
+                    )
                     readView.setPageTransition(if (isContinuousScrollMode) lastPagedTransition else effectivePageTransition)
                     // 左右边缘点击翻页方向（不影响滑动手势）
                     readView.setEdgeTapMode(uiState.readerEdgeTapMode)
@@ -4631,6 +4657,8 @@ private fun ContinuousScrollReader(
     textColor: Int,
     backgroundColor: Int,
     backgroundImagePath: String?,
+    backgroundImageOpacity: Float,
+    backgroundImageBlurDp: Float,
     marginLeft: Float,
     marginRight: Float,
     marginTop: Float,
@@ -4655,7 +4683,7 @@ private fun ContinuousScrollReader(
     chineseMode: String = "original",
     ttsCurrentSentence: TtsSentencePosition? = null,
     comicModeEnabled: Boolean = false,
-    boldTextEnabled: Boolean = false
+    bodyFontWeight: Int = 400
 ) {
     if (chapterCount <= 0) return
 
@@ -4831,10 +4859,36 @@ private fun ContinuousScrollReader(
                 factory = { context ->
                     ImageView(context).apply {
                         scaleType = ImageView.ScaleType.CENTER_CROP
+                        alpha = backgroundImageOpacity.coerceIn(0f, 1f)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            val radius = backgroundImageBlurDp.coerceIn(0f, 40f) *
+                                resources.displayMetrics.density
+                            setRenderEffect(
+                                if (radius >= 0.5f) android.graphics.RenderEffect.createBlurEffect(
+                                    radius,
+                                    radius,
+                                    android.graphics.Shader.TileMode.CLAMP
+                                ) else null
+                            )
+                        }
                         load(java.io.File(backgroundImagePath))
                     }
                 },
-                update = { imageView -> imageView.load(java.io.File(backgroundImagePath)) },
+                update = { imageView ->
+                    imageView.alpha = backgroundImageOpacity.coerceIn(0f, 1f)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        val radius = backgroundImageBlurDp.coerceIn(0f, 40f) *
+                            imageView.resources.displayMetrics.density
+                        imageView.setRenderEffect(
+                            if (radius >= 0.5f) android.graphics.RenderEffect.createBlurEffect(
+                                radius,
+                                radius,
+                                android.graphics.Shader.TileMode.CLAMP
+                            ) else null
+                        )
+                    }
+                    imageView.load(java.io.File(backgroundImagePath))
+                },
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -4950,12 +5004,19 @@ private fun ContinuousScrollReader(
                         }
                         textView.setTextColor(textColor)
                         textView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, fontSize)
-                        if (textView.paint.isFakeBoldText != boldTextEnabled) {
-                            textView.paint.isFakeBoldText = boldTextEnabled
+                        val normalizedWeight = bodyFontWeight.coerceIn(100, 900)
+                        val useFakeBold = Build.VERSION.SDK_INT < Build.VERSION_CODES.P &&
+                            normalizedWeight >= 600
+                        if (textView.paint.isFakeBoldText != useFakeBold) {
+                            textView.paint.isFakeBoldText = useFakeBold
                             textView.invalidate()
                         }
                         textView.setLineSpacing(0f, lineHeight)
-                        textView.typeface = typeface
+                        textView.typeface = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                            android.graphics.Typeface.create(typeface, normalizedWeight, false)
+                        } else {
+                            typeface
+                        }
                         val fontSizePx = android.util.TypedValue.applyDimension(
                             android.util.TypedValue.COMPLEX_UNIT_SP,
                             fontSize,

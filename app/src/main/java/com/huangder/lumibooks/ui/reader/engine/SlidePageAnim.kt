@@ -16,7 +16,14 @@ import kotlin.math.roundToInt
  * - NEXT：当前页全速左滑，下一页 30% 视差滑入
  * - 阴影在 dispatchDraw 中绘制
  */
-class SlidePageAnim(readView: PageAnimationSurface) : PageAnimationController(readView) {
+class SlidePageAnim(
+    readView: PageAnimationSurface,
+    private var baseDurationMs: Int = ANIM_DURATION
+) : PageAnimationController(readView) {
+
+    fun setBaseDuration(durationMs: Int) {
+        baseDurationMs = durationMs.coerceIn(100, 1000)
+    }
 
     companion object {
         private const val SHADOW_WIDTH_PX = 250
@@ -262,7 +269,8 @@ class SlidePageAnim(readView: PageAnimationSurface) : PageAnimationController(re
         val dx = (toX - fromX).toInt()
         if (dx == 0) { direction = Direction.NONE; return }
         isRunning = true
-        scroller.startScroll(fromX.toInt(), 0, dx, 0, ANIM_DURATION)
+        val capturedDurationMs = baseDurationMs
+        scroller.startScroll(fromX.toInt(), 0, dx, 0, capturedDurationMs)
         readView.postInvalidateOnAnimation()
     }
 
