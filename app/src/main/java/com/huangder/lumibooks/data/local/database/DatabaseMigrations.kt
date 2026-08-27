@@ -89,4 +89,16 @@ object DatabaseMigrations {
             db.execSQL("ALTER TABLE folders ADD COLUMN coverPath TEXT DEFAULT NULL")
         }
     }
+
+    val MIGRATION_8_9 = object : Migration(8, 9) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE books ADD COLUMN isCloudOnly INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE books ADD COLUMN remoteLibraryKey TEXT DEFAULT NULL")
+            db.execSQL("ALTER TABLE books ADD COLUMN remoteFileName TEXT DEFAULT NULL")
+            db.execSQL("ALTER TABLE books ADD COLUMN remoteFileSize INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE books ADD COLUMN remoteFileSha256 TEXT DEFAULT NULL")
+            db.execSQL("ALTER TABLE books ADD COLUMN metadataUpdatedAt INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("UPDATE books SET metadataUpdatedAt = createdAt WHERE metadataUpdatedAt = 0")
+        }
+    }
 }

@@ -9,7 +9,11 @@ interface BookRepository {
     suspend fun getBookById(bookId: String): Book?
     suspend fun insertBook(book: Book)
     suspend fun updateBook(book: Book)
+    suspend fun updateBookMetadata(book: Book)
     suspend fun deleteBook(book: Book)
+    suspend fun markBookCloudOnly(bookId: String)
+    suspend fun markBookDownloaded(bookId: String, filePath: String)
+    suspend fun clearRemoteAssociation(bookId: String)
     suspend fun updateLastReadTime(bookId: String, timestamp: Long)
     suspend fun updateReadingProgress(bookId: String, progress: Float, locatorJson: String? = null)
 }

@@ -78,11 +78,13 @@ import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.domain.model.DEFAULT_APP_ACCENT_HEX
 import com.huangder.lumibooks.domain.model.Book
+import com.huangder.lumibooks.domain.model.BookDeleteMode
 import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.domain.model.FolderMoveResult
 import com.huangder.lumibooks.domain.model.LibraryTag
 import com.huangder.lumibooks.domain.model.LibraryFolder
 import com.huangder.lumibooks.ui.components.ConfigurableActivityBack
+import com.huangder.lumibooks.ui.components.CloudAwareBookDeleteDialog
 import com.huangder.lumibooks.ui.components.ConfigurableBackHandler
 import com.huangder.lumibooks.ui.components.EditInputDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
@@ -640,6 +642,7 @@ private fun CategoryBooksPage(
     var expandedListBookId by remember { mutableStateOf<String?>(null) }
     var deletingBookIds by remember { mutableStateOf(emptySet<String>()) }
     var pendingDeleteBooks by remember { mutableStateOf(emptyList<Book>()) }
+    var pendingDeleteMode by remember { mutableStateOf(BookDeleteMode.LOCAL_ONLY) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showBatchTagSheet by remember { mutableStateOf(false) }
     var showBatchMoveSheet by remember { mutableStateOf(false) }
@@ -666,9 +669,10 @@ private fun CategoryBooksPage(
             if (contextMenuState.phase != ContextMenuPhase.Idle) {
                 snapshotFlow { contextMenuState.phase }.first { it == ContextMenuPhase.Idle }
             }
-            viewModel.deleteBooks(pendingDeleteBooks)
+            viewModel.deleteBooks(pendingDeleteBooks, pendingDeleteMode)
             deletingBookIds = emptySet()
             pendingDeleteBooks = emptyList()
+            pendingDeleteMode = BookDeleteMode.LOCAL_ONLY
             selectedBookIds = emptySet()
             isEditing = false
         }
@@ -699,6 +703,7 @@ private fun CategoryBooksPage(
                 selectedBookIds = selectedBookIds,
                 contextMenuState = contextMenuState,
                 syncedBookIds = syncedBookIds,
+                downloadStates = viewModel.uiState.value.downloadStates,
                 expandedListBookId = expandedListBookId,
                 topPadding = collectionTopPadding,
                 bottomPadding = 32.dp,
@@ -716,7 +721,7 @@ private fun CategoryBooksPage(
                 onEditInfo = { editingBook = it },
                 onDelete = {
                     pendingDeleteBooks = listOf(it)
-                    deletingBookIds = setOf(it.id)
+                    showDeleteConfirm = true
                 },
                 onFavorite = { viewModel.updateBook(it.copy(isFavorite = !it.isFavorite)) },
                 onCustomCover = { coverSourceBook = it },
@@ -740,7 +745,10 @@ private fun CategoryBooksPage(
                     isEditing = !isEditing
                     if (!isEditing) selectedBookIds = emptySet()
                 },
-                onDelete = { showDeleteConfirm = true },
+                onDelete = {
+                    pendingDeleteBooks = books.filter { it.id in selectedBookIds }
+                    showDeleteConfirm = true
+                },
                 onTags = { showBatchTagSheet = true },
                 onMove = { showBatchMoveSheet = true },
                 modifier = Modifier
@@ -752,7 +760,7 @@ private fun CategoryBooksPage(
                 state = contextMenuState,
                 onDelete = {
                     pendingDeleteBooks = listOf(it)
-                    deletingBookIds = setOf(it.id)
+                    showDeleteConfirm = true
                 },
                 onFavorite = { viewModel.updateBook(it.copy(isFavorite = !it.isFavorite)) },
                 onCustomCover = { coverSourceBook = it },
@@ -872,29 +880,21 @@ private fun CategoryBooksPage(
         }
     }
     if (showDeleteConfirm) {
-        LiquidGlassAlertDialog(
-            onDismissRequest = { showDeleteConfirm = false },
-            title = { Text(stringResource(R.string.delete_selected_books_title)) },
-            text = {
-                Text(stringResource(R.string.delete_selected_books_confirm, selectedBookIds.size))
+        val targets = pendingDeleteBooks.ifEmpty {
+            books.filter { it.id in selectedBookIds }
+        }
+        CloudAwareBookDeleteDialog(
+            bookCount = targets.size,
+            hasRemoteBooks = targets.any { it.remoteFileName != null },
+            onDismiss = {
+                showDeleteConfirm = false
+                pendingDeleteBooks = emptyList()
             },
-            confirmButton = {
-                LiquidGlassTextButton(
-                    text = stringResource(R.string.delete),
-                    tintedColor = Color(0xFFD92D3A),
-                    onClick = {
-                        val selected = books.filter { it.id in selectedBookIds }
-                        pendingDeleteBooks = selected
-                        deletingBookIds = selectedBookIds
-                        showDeleteConfirm = false
-                    }
-                )
-            },
-            dismissButton = {
-                LiquidGlassTextButton(
-                    text = stringResource(R.string.cancel),
-                    onClick = { showDeleteConfirm = false }
-                )
+            onDelete = { mode ->
+                pendingDeleteMode = mode
+                pendingDeleteBooks = targets
+                deletingBookIds = targets.mapTo(mutableSetOf()) { it.id }
+                showDeleteConfirm = false
             }
         )
     }

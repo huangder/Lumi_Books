@@ -113,6 +113,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.huangder.lumibooks.domain.model.Book
+import com.huangder.lumibooks.domain.model.BookDeleteMode
+import com.huangder.lumibooks.data.sync.BookDownloadState
 import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.domain.model.FolderMoveResult
 import com.huangder.lumibooks.domain.model.LibraryFolder
@@ -120,6 +122,8 @@ import com.huangder.lumibooks.ui.animation.AppEasing
 import com.huangder.lumibooks.ui.animation.OverscrollBounce
 import com.huangder.lumibooks.ui.animation.PageEntranceItem
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
+import com.huangder.lumibooks.ui.components.BookCoverProgressOverlay
+import com.huangder.lumibooks.ui.components.CloudAwareBookDeleteDialog
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.components.LocalLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
@@ -190,6 +194,7 @@ fun BookshelfScreen(
     var showBatchDeleteConfirm by remember { mutableStateOf(false) }
     var deletingBookIds by remember { mutableStateOf(emptySet<String>()) }
     var booksPendingDeletion by remember { mutableStateOf(emptyList<Book>()) }
+    var pendingDeleteMode by remember { mutableStateOf(BookDeleteMode.LOCAL_ONLY) }
     var isSearchActive by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var expandedSearchBookId by remember { mutableStateOf<String?>(null) }
@@ -301,9 +306,10 @@ fun BookshelfScreen(
                 snapshotFlow { contextMenuState.phase }
                     .first { it == ContextMenuPhase.Idle }
             }
-            viewModel.deleteBooks(booksPendingDeletion)
+            viewModel.deleteBooks(booksPendingDeletion, pendingDeleteMode)
             deletingBookIds = emptySet()
             booksPendingDeletion = emptyList()
+            pendingDeleteMode = BookDeleteMode.LOCAL_ONLY
             selectedBookIds = emptySet()
             isEditing = false
         }
@@ -519,7 +525,7 @@ fun BookshelfScreen(
     val deleteBookFromList: (Book) -> Unit = { book ->
         expandedListBookId = null
         booksPendingDeletion = listOf(book)
-        deletingBookIds = setOf(book.id)
+        showBatchDeleteConfirm = true
     }
     val chooseCoverFromList: (Book) -> Unit = { book ->
         expandedListBookId = null
@@ -629,6 +635,7 @@ fun BookshelfScreen(
                         contextMenuState = contextMenuState,
                         folderContextMenuState = folderContextMenuState,
                         syncedBookIds = uiState.syncedBookIds,
+                        downloadStates = uiState.downloadStates,
                         expandedListBookId = expandedListBookId,
                         expandedListFolderId = expandedListFolderId,
                         topPadding = liquidCollectionTopPadding,
@@ -688,7 +695,10 @@ fun BookshelfScreen(
                             expandedListFolderId = null
                             if (!isEditing) selectedBookIds = emptySet()
                         },
-                        onDeleteSelected = { showBatchDeleteConfirm = true },
+                        onDeleteSelected = {
+                            booksPendingDeletion = uiState.books.filter { it.id in selectedBookIds }
+                            showBatchDeleteConfirm = true
+                        },
                         onTagSelected = { showBatchTagSheet = true },
                         onMoveSelected = { showBatchMoveSheet = true },
                         folderPath = currentPath,
@@ -728,6 +738,7 @@ fun BookshelfScreen(
                         contextMenuState = contextMenuState,
                         folderContextMenuState = folderContextMenuState,
                         syncedBookIds = uiState.syncedBookIds,
+                        downloadStates = uiState.downloadStates,
                         expandedListBookId = expandedListBookId,
                         expandedListFolderId = expandedListFolderId,
                         topPadding = if (isEditing) 12.dp else 0.dp,
@@ -797,7 +808,10 @@ fun BookshelfScreen(
                         expandedListFolderId = null
                         if (!isEditing) selectedBookIds = emptySet()
                     },
-                    onDeleteSelected = { showBatchDeleteConfirm = true },
+                    onDeleteSelected = {
+                        booksPendingDeletion = uiState.books.filter { it.id in selectedBookIds }
+                        showBatchDeleteConfirm = true
+                    },
                     onTagSelected = { showBatchTagSheet = true },
                     onMoveSelected = { showBatchMoveSheet = true },
                     folderPath = currentPath,
@@ -853,6 +867,7 @@ fun BookshelfScreen(
                 expandedBookId = expandedSearchBookId,
                 deletingBookIds = deletingBookIds,
                 syncedBookIds = uiState.syncedBookIds,
+                downloadStates = uiState.downloadStates,
                 onQueryChange = { searchQuery = it },
                 onDismiss = {
                     isSearchActive = false
@@ -870,7 +885,7 @@ fun BookshelfScreen(
                 onDelete = { book ->
                     expandedSearchBookId = null
                     booksPendingDeletion = listOf(book)
-                    deletingBookIds = setOf(book.id)
+                    showBatchDeleteConfirm = true
                 },
                 onFavorite = { book ->
                     viewModel.updateBook(book.copy(isFavorite = !book.isFavorite))
@@ -901,7 +916,7 @@ fun BookshelfScreen(
             state = contextMenuState,
             onDelete = { book ->
                 booksPendingDeletion = listOf(book)
-                deletingBookIds = setOf(book.id)
+                showBatchDeleteConfirm = true
             },
             onFavorite = { book ->
                 pendingContextMenuAction = PendingBookMenuAction(PendingBookMenuActionType.Favorite, book)
@@ -1146,40 +1161,21 @@ fun BookshelfScreen(
         }
 
         if (showBatchDeleteConfirm) {
-            LiquidGlassAlertDialog(
-                onDismissRequest = { showBatchDeleteConfirm = false },
-                title = {
-                    Text(
-                        text = stringResource(R.string.delete_selected_books_title),
-                        fontWeight = FontWeight.Bold
-                    )
+            val targets = booksPendingDeletion.ifEmpty {
+                uiState.books.filter { it.id in selectedBookIds }
+            }
+            CloudAwareBookDeleteDialog(
+                bookCount = targets.size,
+                hasRemoteBooks = targets.any { it.remoteFileName != null },
+                onDismiss = {
+                    showBatchDeleteConfirm = false
+                    booksPendingDeletion = emptyList()
                 },
-                text = {
-                    Text(
-                        text = stringResource(
-                            R.string.delete_selected_books_confirm,
-                            selectedBookIds.size
-                        )
-                    )
-                },
-                confirmButton = {
-                    LiquidGlassTextButton(
-                        text = stringResource(R.string.delete),
-                        tintedColor = Color(0xFFD92D3A),
-                        onClick = {
-                            val selectedBooks = uiState.books.filter { it.id in selectedBookIds }
-                            showBatchDeleteConfirm = false
-                            booksPendingDeletion = selectedBooks
-                            deletingBookIds = selectedBooks.mapTo(mutableSetOf()) { it.id }
-                        }
-                    )
-                },
-                dismissButton = {
-                    LiquidGlassTextButton(
-                        text = stringResource(R.string.cancel),
-                        onClick = { showBatchDeleteConfirm = false },
-                        contentColor = AppColors.TextSecondary
-                    )
+                onDelete = { mode ->
+                    pendingDeleteMode = mode
+                    booksPendingDeletion = targets
+                    deletingBookIds = targets.mapTo(mutableSetOf()) { it.id }
+                    showBatchDeleteConfirm = false
                 }
             )
         }
@@ -1201,6 +1197,7 @@ internal fun BookshelfCollection(
     contextMenuState: BookContextMenuState,
     folderContextMenuState: FolderContextMenuState = rememberFolderContextMenuState(),
     syncedBookIds: Set<String>,
+    downloadStates: Map<String, BookDownloadState> = emptyMap(),
     expandedListBookId: String?,
     expandedListFolderId: String? = null,
     topPadding: Dp,
@@ -1348,6 +1345,7 @@ internal fun BookshelfCollection(
                             expanded = !isEditing && expandedListBookId == book.id,
                             isDeleting = book.id in deletingBookIds,
                             isSynced = book.id in syncedBookIds,
+                            downloadState = downloadStates[book.id],
                             onExpandedChange = {
                                 onExpandedBookChange(
                                     if (expandedListBookId == book.id) null else book.id
@@ -1414,6 +1412,7 @@ internal fun BookshelfCollection(
                             isSelected = book.id in selectedBookIds,
                             contextMenuState = contextMenuState,
                             syncedBookIds = syncedBookIds,
+                            downloadState = downloadStates[book.id],
                             onHaptic = onHaptic,
                             onSelectionToggle = { onSelectionToggle(book) },
                             onClick = { bounds -> onBookClick(book, bounds) }
@@ -1977,6 +1976,7 @@ private fun AnimatedBookGridItem(
     isSelected: Boolean,
     contextMenuState: BookContextMenuState,
     syncedBookIds: Set<String>,
+    downloadState: BookDownloadState?,
     onHaptic: () -> Unit,
     onSelectionToggle: () -> Unit,
     onClick: (Rect?) -> Unit
@@ -2016,6 +2016,7 @@ private fun AnimatedBookGridItem(
             isSelected = isSelected,
             contextMenuState = contextMenuState,
             syncedBookIds = syncedBookIds,
+            downloadState = downloadState,
             onHaptic = onHaptic,
             onSelectionToggle = onSelectionToggle,
             onClick = onClick
@@ -2033,6 +2034,7 @@ private fun BookGridItem(
     isSelected: Boolean,
     contextMenuState: BookContextMenuState,
     syncedBookIds: Set<String>,
+    downloadState: BookDownloadState?,
     onHaptic: () -> Unit,
     onSelectionToggle: () -> Unit,
     onClick: (Rect?) -> Unit
@@ -2156,38 +2158,7 @@ private fun BookGridItem(
                     )
                 }
             }
-            // 进度指示
-            if (book.readingProgress > 0f) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(6.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color.Black.copy(alpha = 0.6f))
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        text = formatProgressPercent(book.readingProgress),
-                        fontSize = 10.sp,
-                        color = Color.White
-                    )
-                }
-                // 底部进度条
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .height(3.dp)
-                        .background(Color.Black.copy(alpha = 0.15f))
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(book.readingProgress)
-                            .height(3.dp)
-                            .background(AppColors.Accent)
-                    )
-                }
-            }
+            BookCoverProgressOverlay(book = book, downloadState = downloadState)
         }
 
         Spacer(Modifier.height(AppSpace.sm))

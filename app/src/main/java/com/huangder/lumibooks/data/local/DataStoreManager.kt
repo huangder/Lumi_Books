@@ -1417,6 +1417,17 @@ class DataStoreManager @Inject constructor(
         }
     }
 
+    suspend fun clearWebdavConfig() {
+        context.dataStore.edit { preferences ->
+            preferences[WEBDAV_ENABLED] = false
+            preferences.remove(WEBDAV_SERVER_URL)
+            preferences.remove(WEBDAV_USERNAME)
+            preferences.remove(WEBDAV_SYNC_PATH)
+            preferences.remove(WEBDAV_LAST_SYNC_TIME)
+            preferences.remove(WEBDAV_SYNCED_BOOK_IDS)
+        }
+    }
+
     suspend fun updateWebdavLastSyncTime(timeMillis: Long) {
         context.dataStore.edit { preferences ->
             preferences[WEBDAV_LAST_SYNC_TIME] = timeMillis

@@ -40,6 +40,18 @@ interface BookDao {
     @Update
     suspend fun updateBook(book: BookEntity)
 
+    @Query("UPDATE books SET filePath = '', isCloudOnly = 1 WHERE id = :bookId")
+    suspend fun markBookCloudOnly(bookId: String)
+
+    @Query("UPDATE books SET filePath = :filePath, isCloudOnly = 0 WHERE id = :bookId")
+    suspend fun markBookDownloaded(bookId: String, filePath: String)
+
+    @Query(
+        "UPDATE books SET isCloudOnly = 0, remoteLibraryKey = NULL, remoteFileName = NULL, " +
+            "remoteFileSize = 0, remoteFileSha256 = NULL WHERE id = :bookId"
+    )
+    suspend fun clearRemoteAssociation(bookId: String)
+
     @Delete
     suspend fun deleteBook(book: BookEntity)
 

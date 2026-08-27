@@ -200,6 +200,57 @@ class DatabaseMigrationsTest {
         }
     }
 
+    @Test
+    fun migration8To9KeepsLibraryRelationsAndMarksLegacyBooksLocal() {
+        openHelper(version = 8, createSchema = true).use { helper ->
+            helper.writableDatabase.apply {
+                execSQL(
+                    "INSERT INTO books " +
+                        "(id,title,author,filePath,coverPath,format,lastReadTime,readingProgress," +
+                        "createdAt,isFavorite,locatorJson) VALUES " +
+                        "('book-1','Title','Author','/book.epub','/cover.jpg','EPUB',10,0.42,5,1,NULL)"
+                )
+                execSQL("INSERT INTO tags VALUES ('tag-1','Fiction','fiction',13,NULL)")
+                execSQL("INSERT INTO book_tag_cross_refs VALUES ('book-1','tag-1')")
+                execSQL("INSERT INTO folders VALUES ('folder-1','Folder','folder',NULL,20,'/folder.jpg')")
+                execSQL("INSERT INTO book_folder_cross_refs VALUES ('book-1','folder-1')")
+                execSQL(
+                    "INSERT INTO bookmarks " +
+                        "(id,bookId,chapterIndex,position,title,createdAt,locatorJson) VALUES " +
+                        "(7,'book-1',3,0.65,'Bookmark',11,NULL)"
+                )
+            }
+        }
+
+        openHelper(version = 9, createSchema = false).use { helper ->
+            val db = helper.writableDatabase
+            db.query(
+                "SELECT isCloudOnly,remoteLibraryKey,remoteFileName,remoteFileSize," +
+                    "remoteFileSha256,metadataUpdatedAt FROM books WHERE id='book-1'"
+            ).use { cursor ->
+                cursor.moveToFirst()
+                assertEquals(0, cursor.getInt(0))
+                assertNull(cursor.getString(1))
+                assertNull(cursor.getString(2))
+                assertEquals(0L, cursor.getLong(3))
+                assertNull(cursor.getString(4))
+                assertEquals(5L, cursor.getLong(5))
+            }
+            db.query("SELECT tagId FROM book_tag_cross_refs WHERE bookId='book-1'").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals("tag-1", cursor.getString(0))
+            }
+            db.query("SELECT folderId FROM book_folder_cross_refs WHERE bookId='book-1'").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals("folder-1", cursor.getString(0))
+            }
+            db.query("SELECT position FROM bookmarks WHERE id=7").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals(0.65f, cursor.getFloat(0), 0.0001f)
+            }
+        }
+    }
+
     private fun openHelper(version: Int, createSchema: Boolean): SupportSQLiteOpenHelper {
         val callback = object : SupportSQLiteOpenHelper.Callback(version) {
             override fun onCreate(db: SupportSQLiteDatabase) {
@@ -210,6 +261,7 @@ class DatabaseMigrationsTest {
                     if (version >= 6) DatabaseMigrations.MIGRATION_5_6.migrate(db)
                     if (version >= 7) DatabaseMigrations.MIGRATION_6_7.migrate(db)
                     if (version >= 8) DatabaseMigrations.MIGRATION_7_8.migrate(db)
+                    if (version >= 9) DatabaseMigrations.MIGRATION_8_9.migrate(db)
                 }
             }
 
@@ -219,6 +271,7 @@ class DatabaseMigrationsTest {
                 if (oldVersion < 6 && newVersion >= 6) DatabaseMigrations.MIGRATION_5_6.migrate(db)
                 if (oldVersion < 7 && newVersion >= 7) DatabaseMigrations.MIGRATION_6_7.migrate(db)
                 if (oldVersion < 8 && newVersion >= 8) DatabaseMigrations.MIGRATION_7_8.migrate(db)
+                if (oldVersion < 9 && newVersion >= 9) DatabaseMigrations.MIGRATION_8_9.migrate(db)
             }
         }
         val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)
@@ -269,5 +322,10 @@ class DatabaseMigrationsTest {
         db.execSQL(
             "CREATE UNIQUE INDEX index_tags_normalizedName ON tags (normalizedName)"
         )
+        db.execSQL(
+            "CREATE TABLE book_tag_cross_refs (" +
+                "bookId TEXT NOT NULL, tagId TEXT NOT NULL, PRIMARY KEY(bookId, tagId))"
+        )
+        db.execSQL("CREATE INDEX index_book_tag_cross_refs_tagId ON book_tag_cross_refs (tagId)")
     }
 }

@@ -37,8 +37,24 @@ class BookRepositoryImpl @Inject constructor(
         bookDao.updateBook(book.toEntity())
     }
 
+    override suspend fun updateBookMetadata(book: Book) {
+        bookDao.updateBook(book.copy(metadataUpdatedAt = System.currentTimeMillis()).toEntity())
+    }
+
     override suspend fun deleteBook(book: Book) {
         bookDao.deleteBookWithRelatedData(book.id)
+    }
+
+    override suspend fun markBookCloudOnly(bookId: String) {
+        bookDao.markBookCloudOnly(bookId)
+    }
+
+    override suspend fun markBookDownloaded(bookId: String, filePath: String) {
+        bookDao.markBookDownloaded(bookId, filePath)
+    }
+
+    override suspend fun clearRemoteAssociation(bookId: String) {
+        bookDao.clearRemoteAssociation(bookId)
     }
 
     override suspend fun updateLastReadTime(bookId: String, timestamp: Long) {
@@ -61,7 +77,13 @@ class BookRepositoryImpl @Inject constructor(
             readingProgress = readingProgress,
             locatorJson = locatorJson,
             createdAt = createdAt,
-            isFavorite = isFavorite
+            isFavorite = isFavorite,
+            isCloudOnly = isCloudOnly,
+            remoteLibraryKey = remoteLibraryKey,
+            remoteFileName = remoteFileName,
+            remoteFileSize = remoteFileSize,
+            remoteFileSha256 = remoteFileSha256,
+            metadataUpdatedAt = metadataUpdatedAt
         )
     }
 
@@ -77,7 +99,13 @@ class BookRepositoryImpl @Inject constructor(
             readingProgress = readingProgress,
             locatorJson = locatorJson,
             createdAt = createdAt,
-            isFavorite = isFavorite
+            isFavorite = isFavorite,
+            isCloudOnly = isCloudOnly,
+            remoteLibraryKey = remoteLibraryKey,
+            remoteFileName = remoteFileName,
+            remoteFileSize = remoteFileSize,
+            remoteFileSha256 = remoteFileSha256,
+            metadataUpdatedAt = metadataUpdatedAt
         )
     }
 }

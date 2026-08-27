@@ -12,6 +12,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okio.BufferedSink
 import org.w3c.dom.Element
 import java.io.ByteArrayInputStream
+import java.io.File
+import java.io.FileOutputStream
 import java.io.InputStream
 import java.net.URL
 import java.security.MessageDigest
@@ -163,6 +165,53 @@ class WebdavClient @Inject constructor() {
         ByteArrayInputStream(bytes)
     }
 
+    @Throws(WebdavException::class)
+    suspend fun downloadToFile(
+        url: String,
+        destination: File,
+        username: String,
+        password: String,
+        expectedSize: Long = 0L,
+        onProgress: (bytesRead: Long, totalBytes: Long) -> Unit = { _, _ -> }
+    ): WebdavDownloadResult = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url(url)
+            .header("Authorization", authHeader(username, password))
+            .get()
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw WebdavException("Download failed — HTTP ${response.code}", statusCode = response.code)
+            }
+            val body = response.body ?: throw WebdavException("Download failed — empty response")
+            val totalBytes = expectedSize.takeIf { it > 0L }
+                ?: body.contentLength().takeIf { it > 0L }
+                ?: 0L
+            val digest = MessageDigest.getInstance("SHA-256")
+            var bytesRead = 0L
+            destination.parentFile?.mkdirs()
+            body.byteStream().buffered().use { input ->
+                FileOutputStream(destination).buffered().use { output ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count == -1) break
+                        output.write(buffer, 0, count)
+                        digest.update(buffer, 0, count)
+                        bytesRead += count
+                        onProgress(bytesRead, totalBytes)
+                    }
+                }
+            }
+            WebdavDownloadResult(
+                sha256 = digest.digest().joinToString("") { "%02x".format(it) },
+                bytesWritten = bytesRead,
+                totalBytes = totalBytes
+            )
+        }
+    }
+
     // ── PUT (upload) ────────────────────────────────────────────────
 
     @Throws(WebdavException::class)
@@ -184,6 +233,32 @@ class WebdavClient @Inject constructor() {
             throw uploadException("PUT", request.url.toString(), response)
         }
         response.close()
+    }
+
+    /** Atomically replace a WebDAV resource when the server supports the standard MOVE method. */
+    @Throws(WebdavException::class)
+    suspend fun move(
+        sourceUrl: String,
+        destinationUrl: String,
+        username: String,
+        password: String,
+        overwrite: Boolean = true
+    ) = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url(sourceUrl)
+            .header("Authorization", authHeader(username, password))
+            .header("Destination", destinationUrl)
+            .header("Overwrite", if (overwrite) "T" else "F")
+            .method("MOVE", null)
+            .build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw WebdavException(
+                    "MOVE failed — HTTP ${response.code}",
+                    statusCode = response.code
+                )
+            }
+        }
     }
 
     @Throws(WebdavException::class)
@@ -436,6 +511,12 @@ class WebdavClient @Inject constructor() {
 data class WebdavUploadResult(
     val sha256: String,
     val bytesWritten: Long
+)
+
+data class WebdavDownloadResult(
+    val sha256: String,
+    val bytesWritten: Long,
+    val totalBytes: Long
 )
 
 data class WebdavResource(

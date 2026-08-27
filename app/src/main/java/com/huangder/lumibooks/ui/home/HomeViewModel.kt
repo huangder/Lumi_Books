@@ -9,7 +9,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.local.DataStoreManager
+import com.huangder.lumibooks.data.sync.BookDownloadState
 import com.huangder.lumibooks.domain.model.Book
+import com.huangder.lumibooks.domain.model.BookDeleteMode
 import com.huangder.lumibooks.domain.model.BookFolderLink
 import com.huangder.lumibooks.domain.model.BookTagLink
 import com.huangder.lumibooks.domain.model.BookFormat
@@ -28,8 +30,11 @@ import com.huangder.lumibooks.util.parser.BookParserFactory
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.combine
@@ -77,7 +82,9 @@ data class HomeUiState(
     val streakDays: Int = 0,
     /** WebDAV 同步已完成的书籍 ID 集合，用于在书架标题旁显示云图标 */
     val syncedBookIds: Set<String> = emptySet(),
-    val isWebdavSyncing: Boolean = false
+    val isWebdavSyncing: Boolean = false,
+    val downloadStates: Map<String, BookDownloadState> = emptyMap(),
+    val isBookDeleteInProgress: Boolean = false
 )
 
 enum class SortBy {
@@ -102,6 +109,8 @@ class HomeViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
+    private val _downloadedBooks = MutableSharedFlow<Book>(extraBufferCapacity = 1)
+    val downloadedBooks: SharedFlow<Book> = _downloadedBooks.asSharedFlow()
 
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
     private val dayLabels = listOf(
@@ -135,6 +144,9 @@ class HomeViewModel @Inject constructor(
                     val sortedBooks = sortBooks(books, _uiState.value.sortBy)
                     _uiState.value = _uiState.value.copy(
                         books = sortedBooks,
+                        syncedBookIds = books.asSequence()
+                            .filter { it.remoteFileName != null }
+                            .mapTo(mutableSetOf()) { it.id },
                         isLoading = false,
                         error = null
                     )
@@ -277,13 +289,24 @@ class HomeViewModel @Inject constructor(
 
     private fun loadWebdavSyncStatus() {
         viewModelScope.launch {
-            dataStoreManager.webdavSyncedBookIds.collectLatest { ids ->
-                _uiState.value = _uiState.value.copy(syncedBookIds = ids)
+            webdavSyncManager.isSyncing.collectLatest { syncing ->
+                _uiState.value = _uiState.value.copy(isWebdavSyncing = syncing)
             }
         }
         viewModelScope.launch {
-            webdavSyncManager.isSyncing.collectLatest { syncing ->
-                _uiState.value = _uiState.value.copy(isWebdavSyncing = syncing)
+            webdavSyncManager.downloadStates.collectLatest { states ->
+                _uiState.value = _uiState.value.copy(downloadStates = states)
+            }
+        }
+    }
+
+    fun downloadCloudBook(bookId: String) {
+        viewModelScope.launch {
+            val result = webdavSyncManager.downloadBook(bookId)
+            if (result.success && result.book != null) {
+                _downloadedBooks.emit(result.book)
+            } else {
+                _uiState.value = _uiState.value.copy(error = result.message)
             }
         }
     }
@@ -957,7 +980,7 @@ class HomeViewModel @Inject constructor(
                     FileUtils.copyCoverImage(application, uri, book.id)
                 } ?: error("Unable to copy the selected cover image")
 
-                bookRepository.updateBook(book.copy(coverPath = newCoverPath))
+                bookRepository.updateBookMetadata(book.copy(coverPath = newCoverPath))
                 withContext(Dispatchers.IO) {
                     FileUtils.deleteOtherCustomCovers(application, book.id, newCoverPath)
                 }
@@ -976,7 +999,7 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val originalCover = extractOriginalCover(application, book)
-                bookRepository.updateBook(book.copy(coverPath = originalCover))
+                bookRepository.updateBookMetadata(book.copy(coverPath = originalCover))
                 withContext(Dispatchers.IO) {
                     FileUtils.deleteCustomCover(application, book.id)
                 }
@@ -990,7 +1013,7 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val originalCover = extractOriginalCover(context.applicationContext, book)
-                bookRepository.updateBook(book.copy(coverPath = originalCover))
+                bookRepository.updateBookMetadata(book.copy(coverPath = originalCover))
             } catch (error: Exception) {
                 _uiState.value = _uiState.value.copy(error = error.message)
             }
@@ -1008,24 +1031,49 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun deleteBook(book: Book) {
-        deleteBooks(listOf(book))
+    fun deleteBook(book: Book, mode: BookDeleteMode = BookDeleteMode.LOCAL_ONLY) {
+        deleteBooks(listOf(book), mode)
     }
 
-    fun deleteBooks(books: List<Book>) {
+    fun deleteBooks(
+        books: List<Book>,
+        mode: BookDeleteMode = BookDeleteMode.LOCAL_ONLY
+    ) {
         val booksToDelete = books.distinctBy { it.id }
         if (booksToDelete.isEmpty()) return
         viewModelScope.launch {
-            val failures = deleteBooksAndManagedData(booksToDelete)
+            _uiState.value = _uiState.value.copy(isBookDeleteInProgress = true)
+            if (mode == BookDeleteMode.LOCAL_AND_CLOUD) {
+                val remoteIds = booksToDelete.asSequence()
+                    .filter { it.remoteFileName != null }
+                    .mapTo(mutableSetOf()) { it.id }
+                if (remoteIds.isNotEmpty()) {
+                    val remoteResult = webdavSyncManager.deleteRemoteBooks(remoteIds)
+                    if (!remoteResult.success) {
+                        _uiState.value = _uiState.value.copy(
+                            error = remoteResult.message,
+                            isBookDeleteInProgress = false
+                        )
+                        return@launch
+                    }
+                }
+            }
+            val failures = deleteBooksAndManagedData(booksToDelete, mode)
             if (failures.isNotEmpty()) {
                 _uiState.value = _uiState.value.copy(
-                    error = failures.joinToString(separator = "\n")
+                    error = failures.joinToString(separator = "\n"),
+                    isBookDeleteInProgress = false
                 )
+            } else {
+                _uiState.value = _uiState.value.copy(isBookDeleteInProgress = false)
             }
         }
     }
 
-    private suspend fun deleteBooksAndManagedData(books: List<Book>): List<String> {
+    private suspend fun deleteBooksAndManagedData(
+        books: List<Book>,
+        mode: BookDeleteMode
+    ): List<String> {
         val librarySnapshot = _uiState.value.books
         val requestedIds = books.mapTo(mutableSetOf()) { it.id }
         val pathsUsedByRemainingBooks = librarySnapshot.asSequence()
@@ -1036,21 +1084,30 @@ class HomeViewModel @Inject constructor(
         val failures = mutableListOf<String>()
 
         books.forEach { book ->
+            val keepCloudPlaceholder = mode == BookDeleteMode.LOCAL_ONLY &&
+                book.remoteFileName != null
+            if (keepCloudPlaceholder && book.isCloudOnly) return@forEach
             try {
-                val shouldDeletePhysicalFile = book.filePath !in pathsUsedByRemainingBooks
+                val shouldDeletePhysicalFile = book.filePath.isNotBlank() &&
+                    book.filePath !in pathsUsedByRemainingBooks
                 if (shouldDeletePhysicalFile) {
                     val fileDeleted = withContext(Dispatchers.IO) {
                         FileUtils.deleteAppManagedBookFile(application, book.filePath)
                     }
-                    check(fileDeleted) { "?????${book.title}????????" }
+                    check(fileDeleted) { "Unable to delete the local file for ${book.title}" }
                 }
 
-                // Room transaction removes the book and all database rows that reference it.
-                // Authorized-directory content:// documents are intentionally not touched.
-                bookRepository.deleteBook(book)
-                deletedIds += book.id
+                if (keepCloudPlaceholder) {
+                    bookRepository.markBookCloudOnly(book.id)
+                    withContext(Dispatchers.IO) {
+                        FileUtils.deleteTxtIndexCache(application, book.filePath)
+                    }
+                } else {
+                    bookRepository.deleteBook(book)
+                    deletedIds += book.id
+                }
             } catch (error: Exception) {
-                failures += error.message ?: "???${book.title}???"
+                failures += error.message ?: "Unable to delete ${book.title}"
             }
         }
 
@@ -1073,10 +1130,6 @@ class HomeViewModel @Inject constructor(
                     }
             }
 
-            runCatching {
-                val syncedIds = dataStoreManager.webdavSyncedBookIds.first()
-                dataStoreManager.saveWebdavSyncedBookIds(syncedIds - deletedIds)
-            }
         }
 
         return failures
@@ -1085,7 +1138,7 @@ class HomeViewModel @Inject constructor(
     fun updateBook(book: Book) {
         viewModelScope.launch {
             try {
-                bookRepository.updateBook(book)
+                bookRepository.updateBookMetadata(book)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = e.message)
             }

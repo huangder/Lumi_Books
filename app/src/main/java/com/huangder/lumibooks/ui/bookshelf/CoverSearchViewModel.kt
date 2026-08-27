@@ -51,7 +51,7 @@ class CoverSearchViewModel @Inject constructor(
                     FileUtils.saveCoverBitmap(getApplication(), bitmap, book.id)
                 } ?: error("Unable to save the captured cover image")
 
-                bookRepository.updateBook(book.copy(coverPath = newCoverPath))
+                bookRepository.updateBookMetadata(book.copy(coverPath = newCoverPath))
                 withContext(Dispatchers.IO) {
                     FileUtils.deleteOtherCustomCovers(getApplication(), book.id, newCoverPath)
                 }

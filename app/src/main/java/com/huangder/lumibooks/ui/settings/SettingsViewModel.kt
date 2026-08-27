@@ -1086,6 +1086,13 @@ class SettingsViewModel @Inject constructor(
 
     fun enableWebdav(config: com.huangder.lumibooks.domain.model.WebdavConfig, password: String) {
         viewModelScope.launch {
+            val previous = _uiState.value.webdavConfig.normalized()
+            val next = config.normalized()
+            val libraryChanged = previous.serverUrl.isNotBlank() &&
+                (previous.serverUrl != next.serverUrl ||
+                    previous.username != next.username ||
+                    previous.syncPath != next.syncPath)
+            if (libraryChanged) webdavSyncManager.detachLibrary(previous)
             if (password.isNotBlank()) {
                 webdavTokenStore.save(password)
             }
@@ -1104,8 +1111,9 @@ class SettingsViewModel @Inject constructor(
 
     fun clearWebdavConfig() {
         viewModelScope.launch {
+            webdavSyncManager.detachLibrary(_uiState.value.webdavConfig)
             webdavTokenStore.clear()
-            dataStoreManager.disableWebdav()
+            dataStoreManager.clearWebdavConfig()
         }
     }
 

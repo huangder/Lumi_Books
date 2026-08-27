@@ -77,9 +77,13 @@ import java.util.Calendar
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.huangder.lumibooks.domain.model.Book
+import com.huangder.lumibooks.domain.model.BookDeleteMode
+import com.huangder.lumibooks.data.sync.BookDownloadState
 import com.huangder.lumibooks.ui.animation.OverscrollBounce
 import com.huangder.lumibooks.ui.animation.cardPressEffect
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
+import com.huangder.lumibooks.ui.components.BookCoverProgressOverlay
+import com.huangder.lumibooks.ui.components.CloudAwareBookDeleteDialog
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuItem
@@ -183,9 +187,10 @@ fun HomeScreen(
                         PageEntranceItem(play = playEntranceAnimation, index = 2) {
                             ContinueReadingCard(
                                 book = lastReadBook,
+                                downloadState = uiState.downloadStates[lastReadBook.id],
                                 onClick = { bounds -> onNavigateToReader(lastReadBook.id, lastReadBook.coverPath, lastReadBook.title, bounds) },
                                 onToggleFavorite = { viewModel.updateBook(lastReadBook.copy(isFavorite = !lastReadBook.isFavorite)) },
-                                onDelete = { viewModel.deleteBook(lastReadBook) },
+                                onDelete = { mode -> viewModel.deleteBook(lastReadBook, mode) },
                                 modifier = Modifier.padding(horizontal = AppSpace.lg)
                             )
                         }
@@ -201,6 +206,7 @@ fun HomeScreen(
                                 Spacer(Modifier.height(AppSpace.md))
                                 BooksReadGrid(
                                     books = recentBooks,
+                                    downloadStates = uiState.downloadStates,
                                     modifier = Modifier.padding(horizontal = AppSpace.lg),
                                     isTablet = isTablet,
                                     onBookClick = { book, bounds ->
@@ -395,9 +401,10 @@ private fun ImportHint(onImportClick: () -> Unit) {
 @Composable
 private fun ContinueReadingCard(
     book: Book,
+    downloadState: BookDownloadState?,
     onClick: (Rect?) -> Unit,
     onToggleFavorite: () -> Unit,
-    onDelete: () -> Unit,
+    onDelete: (BookDeleteMode) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
@@ -425,17 +432,26 @@ private fun ContinueReadingCard(
         verticalAlignment = Alignment.CenterVertically
     ) {
         // 封面（3:4 比例）
-        AsyncImage(
-            model = book.coverPath,
-            contentDescription = book.title,
+        Box(
             modifier = Modifier
                 .width(72.dp)
                 .aspectRatio(0.75f)
                 .onGloballyPositioned { coverBounds = it.boundsInRoot() }
                 .clip(RoundedCornerShape(AppRadius.sm))
-                .background(AppColors.BgGray),
-            contentScale = ContentScale.Crop
-        )
+                .background(AppColors.BgGray)
+        ) {
+            AsyncImage(
+                model = book.coverPath,
+                contentDescription = book.title,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+            BookCoverProgressOverlay(
+                book = book,
+                downloadState = downloadState,
+                compact = true
+            )
+        }
         Spacer(Modifier.width(AppSpace.md))
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -456,7 +472,14 @@ private fun ContinueReadingCard(
             )
             Spacer(Modifier.height(AppSpace.xs))
             Text(
-                text = stringResource(R.string.book_progress, (book.readingProgress * 100).toInt()),
+                text = if (downloadState is BookDownloadState.Downloading) {
+                    stringResource(
+                        R.string.book_download_progress,
+                        (downloadState.progress * 100f).toInt().coerceIn(0, 100)
+                    )
+                } else {
+                    stringResource(R.string.book_progress, (book.readingProgress * 100).toInt())
+                },
                 fontSize = AppType.Caption,
                 color = AppColors.TextSecondary
             )
@@ -546,25 +569,13 @@ private fun ContinueReadingCard(
 
     // 删除确认弹窗
     if (showDeleteConfirm) {
-        LiquidGlassAlertDialog(
-            onDismissRequest = { showDeleteConfirm = false },
-            title = { Text(stringResource(R.string.delete_book_title), fontWeight = FontWeight.Bold) },
-            text = { Text(stringResource(R.string.delete_book_confirm, book.title)) },
-            confirmButton = {
-                LiquidGlassTextButton(
-                    text = stringResource(R.string.delete_book),
-                    tintedColor = AppColors.Accent,
-                    onClick = {
-                    showDeleteConfirm = false
-                    onDelete()
-                })
-            },
-            dismissButton = {
-                LiquidGlassTextButton(
-                    text = stringResource(R.string.cancel),
-                    onClick = { showDeleteConfirm = false },
-                    contentColor = AppColors.TextSecondary
-                )
+        CloudAwareBookDeleteDialog(
+            bookCount = 1,
+            hasRemoteBooks = book.remoteFileName != null,
+            onDismiss = { showDeleteConfirm = false },
+            onDelete = { mode ->
+                showDeleteConfirm = false
+                onDelete(mode)
             }
         )
     }
@@ -844,6 +855,7 @@ private fun WeeklyCheckIn(weeklyData: List<DailyReading> = emptyList(), dailyGoa
 @Composable
 private fun BooksReadGrid(
     books: List<Book>,
+    downloadStates: Map<String, BookDownloadState>,
     modifier: Modifier = Modifier,
     isTablet: Boolean = false,
     onBookClick: (Book, Rect?) -> Unit
@@ -885,6 +897,11 @@ private fun BooksReadGrid(
                     contentDescription = book.title,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
+                )
+                BookCoverProgressOverlay(
+                    book = book,
+                    downloadState = downloadStates[book.id],
+                    compact = true
                 )
             }
         }

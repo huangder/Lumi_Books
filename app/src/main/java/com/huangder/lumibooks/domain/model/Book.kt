@@ -11,7 +11,13 @@ data class Book(
     val readingProgress: Float,
     val locatorJson: String? = null,
     val createdAt: Long,
-    val isFavorite: Boolean = false
+    val isFavorite: Boolean = false,
+    val isCloudOnly: Boolean = false,
+    val remoteLibraryKey: String? = null,
+    val remoteFileName: String? = null,
+    val remoteFileSize: Long = 0L,
+    val remoteFileSha256: String? = null,
+    val metadataUpdatedAt: Long = createdAt
 )
 
 enum class BookFormat {

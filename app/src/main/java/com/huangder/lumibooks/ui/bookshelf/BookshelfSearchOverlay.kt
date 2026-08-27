@@ -101,6 +101,8 @@ import coil.request.ImageRequest
 import androidx.compose.ui.platform.LocalContext
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.Book
+import com.huangder.lumibooks.data.sync.BookDownloadState
+import com.huangder.lumibooks.ui.components.BookCoverProgressOverlay
 import com.huangder.lumibooks.domain.model.LibraryFolder
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.animation.HorizontalOverscrollBounce
@@ -182,6 +184,7 @@ internal fun BookshelfSearchOverlay(
     expandedBookId: String?,
     deletingBookIds: Set<String>,
     syncedBookIds: Set<String>,
+    downloadStates: Map<String, BookDownloadState>,
     onQueryChange: (String) -> Unit,
     onDismiss: () -> Unit,
     onExpandedBookChange: (String?) -> Unit,
@@ -365,6 +368,7 @@ internal fun BookshelfSearchOverlay(
                                     expanded = expandedBookId == book.id,
                                     isDeleting = book.id in deletingBookIds,
                                     isSynced = book.id in syncedBookIds,
+                                    downloadState = downloadStates[book.id],
                                     onExpandedChange = {
                                         onExpandedBookChange(if (expandedBookId == book.id) null else book.id)
                                     },
@@ -475,6 +479,7 @@ internal fun BookshelfSearchResultItem(
     expanded: Boolean,
     isDeleting: Boolean,
     isSynced: Boolean = false,
+    downloadState: BookDownloadState? = null,
     onExpandedChange: () -> Unit,
     onClick: () -> Unit,
     onEditInfo: () -> Unit,
@@ -525,6 +530,7 @@ internal fun BookshelfSearchResultItem(
             tagNames = tagNames,
             selected = selected,
             isSynced = isSynced,
+            downloadState = downloadState,
             modifier = Modifier.combinedClickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() },
@@ -581,6 +587,7 @@ private fun BookshelfSearchResultCard(
     tagNames: List<String>,
     selected: Boolean = false,
     isSynced: Boolean = false,
+    downloadState: BookDownloadState? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -644,40 +651,11 @@ private fun BookshelfSearchResultCard(
                     )
                 }
 
-                val readingProgress = book.readingProgress
-                    .takeIf { it.isFinite() }
-                    ?.coerceIn(0f, 1f)
-                    ?: 0f
-                if (readingProgress > 0f) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(end = 5.dp, bottom = 6.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Color.Black.copy(alpha = 0.62f))
-                            .padding(horizontal = 5.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = formatProgressPercent(readingProgress),
-                            color = Color.White,
-                            fontSize = 9.sp
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .height(3.dp)
-                            .background(Color.Black.copy(alpha = 0.15f))
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(readingProgress)
-                                .height(3.dp)
-                                .background(AppColors.Accent)
-                        )
-                    }
-                }
+                BookCoverProgressOverlay(
+                    book = book,
+                    downloadState = downloadState,
+                    compact = true
+                )
             }
 
             Spacer(Modifier.width(16.dp))

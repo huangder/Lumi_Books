@@ -55,6 +55,7 @@ import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
 import com.huangder.lumibooks.ui.components.ImmersiveMode
 import com.huangder.lumibooks.ui.components.MainSystemBarStyle
 import com.huangder.lumibooks.ui.components.ConfigurableNavigationBack
+import com.huangder.lumibooks.ui.components.CloudBookDownloadDialog
 import com.huangder.lumibooks.ui.components.LocalPredictiveBackEnabled
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuHost
 import com.huangder.lumibooks.ui.home.HomeScreen
@@ -71,6 +72,7 @@ import com.huangder.lumibooks.ui.reader.ReaderScreen
 import com.huangder.lumibooks.ui.reader.ReaderViewModel
 import com.huangder.lumibooks.ui.statistics.StatisticsScreen
 import com.huangder.lumibooks.domain.model.BookFormat
+import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalAppAccentHex
@@ -206,6 +208,8 @@ fun MainNavGraph(
     var isPreparingImport by remember { mutableStateOf(false) }
     var importPreparationGeneration by remember { mutableIntStateOf(0) }
     var transientMessage by remember { mutableStateOf<String?>(null) }
+    var pendingCloudBook by remember { mutableStateOf<Book?>(null) }
+    var autoOpenDownloadedBookId by remember { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     val entranceTracker = remember { PageEntranceTracker() }
     val hazeState = remember { HazeState() }
@@ -268,6 +272,40 @@ fun MainNavGraph(
         }
     }
     val homeUiState by homeViewModel.uiState.collectAsState()
+    val openLocalBook: (Book) -> Unit = { book ->
+        if (eInkMode) {
+            navController.navigate(Screen.Reader.createRoute(book.id))
+        } else {
+            transitionCover = book.coverPath
+            transitionTitle = book.title
+            readerReady = false
+            showTransition = true
+            pendingBookId = book.id
+        }
+    }
+    val requestOpenBook: (String, String?, String) -> Unit = { bookId, coverPath, title ->
+        val book = homeUiState.books.firstOrNull { it.id == bookId }
+            ?: Book(
+                id = bookId,
+                title = title,
+                author = "",
+                filePath = "",
+                coverPath = coverPath,
+                format = BookFormat.TXT,
+                lastReadTime = 0L,
+                readingProgress = 0f,
+                createdAt = 0L
+            )
+        if (book.isCloudOnly) {
+            if (homeUiState.downloadStates[book.id] is com.huangder.lumibooks.data.sync.BookDownloadState.Downloading) {
+                autoOpenDownloadedBookId = book.id
+            } else {
+                pendingCloudBook = book
+            }
+        } else {
+            openLocalBook(book)
+        }
+    }
     val snackbarMessage = transientMessage
         ?: homeUiState.importMessage
         ?: homeUiState.tagMessage
@@ -287,14 +325,30 @@ fun MainNavGraph(
         }
     }
 
-    LaunchedEffect(requestedOpenBookId) {
+    LaunchedEffect(homeViewModel) {
+        homeViewModel.downloadedBooks.collect { book ->
+            if (autoOpenDownloadedBookId == book.id) {
+                autoOpenDownloadedBookId = null
+                pendingCloudBook = null
+                openLocalBook(book)
+            }
+        }
+    }
+
+    LaunchedEffect(requestedOpenBookId, homeUiState.isLoading) {
         val requestedId = requestedOpenBookId ?: return@LaunchedEffect
+        if (homeUiState.isLoading) return@LaunchedEffect
         val currentReaderBookId = navController.currentBackStackEntry
             ?.arguments
             ?.getString("bookId")
         if (currentReaderBookId != requestedId) {
             onBeforeOpenDifferentBook()
-            navController.navigate(Screen.Reader.createRoute(requestedId))
+            val requestedBook = homeUiState.books.firstOrNull { it.id == requestedId }
+            requestOpenBook(
+                requestedId,
+                requestedBook?.coverPath,
+                requestedBook?.title.orEmpty()
+            )
         }
         onOpenBookRequestConsumed()
     }
@@ -420,18 +474,10 @@ fun MainNavGraph(
                     enabled = entranceAnimationsEnabled,
                     tracker = entranceTracker
                 )
-                HomeScreen(
+                    HomeScreen(
                     playEntranceAnimation = playEntranceAnimation,
                     onNavigateToReader = { bookId, coverPath, title, _ ->
-                        if (eInkMode) {
-                            navController.navigate(Screen.Reader.createRoute(bookId))
-                        } else {
-                            transitionCover = coverPath
-                            transitionTitle = title
-                            readerReady = false
-                            showTransition = true
-                            pendingBookId = bookId
-                        }
+                        requestOpenBook(bookId, coverPath, title)
                     },
                     onTabBarVisibleChange = { visible -> tabBarVisible = visible },
                     onNavigateToStatistics = {
@@ -495,15 +541,7 @@ fun MainNavGraph(
                 BookshelfScreen(
                     playEntranceAnimation = playEntranceAnimation,
                     onNavigateToReader = { bookId, coverPath, title, _ ->
-                        if (eInkMode) {
-                            navController.navigate(Screen.Reader.createRoute(bookId))
-                        } else {
-                            transitionCover = coverPath
-                            transitionTitle = title
-                            readerReady = false
-                            showTransition = true
-                            pendingBookId = bookId
-                        }
+                        requestOpenBook(bookId, coverPath, title)
                     },
                     onAddBook = { folderId ->
                         importRequestFolderId = folderId
@@ -580,7 +618,12 @@ fun MainNavGraph(
                     onLoadingComplete = { readerReady = true },
                     onOpenBook = { targetBookId ->
                         onBeforeOpenDifferentBook()
-                        navController.navigate(Screen.Reader.createRoute(targetBookId))
+                        val target = homeUiState.books.firstOrNull { it.id == targetBookId }
+                        requestOpenBook(
+                            targetBookId,
+                            target?.coverPath,
+                            target?.title.orEmpty()
+                        )
                     }
                 )
             }
@@ -791,6 +834,18 @@ fun MainNavGraph(
                             selectedImportBookUris = emptySet()
                         }
                     }
+                }
+            )
+        }
+
+        pendingCloudBook?.let { book ->
+            CloudBookDownloadDialog(
+                book = book,
+                onDismiss = { pendingCloudBook = null },
+                onDownload = {
+                    autoOpenDownloadedBookId = book.id
+                    pendingCloudBook = null
+                    homeViewModel.downloadCloudBook(book.id)
                 }
             )
         }
