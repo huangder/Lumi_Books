@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -84,7 +85,6 @@ import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material.icons.outlined.SystemUpdateAlt
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -140,6 +140,7 @@ import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
 import com.huangder.lumibooks.ui.theme.LocalUseMaterial3Theme
 import com.huangder.lumibooks.tts.ExternalTtsConfig
+import com.huangder.lumibooks.tts.TtsProviderSelection
 import com.huangder.lumibooks.ui.theme.fangSongFamily
 import com.huangder.lumibooks.ui.components.LiquidGlassSwitch
 import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
@@ -253,6 +254,7 @@ fun DetailPage(title: String, onBack: () -> Unit, content: @Composable () -> Uni
 fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    LaunchedEffect(Unit) { viewModel.refreshInstalledTtsEngines() }
     DetailCard {
         Row(
             modifier = Modifier.fillMaxWidth().clickable {
@@ -417,6 +419,139 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
                 onCheckedChange = { viewModel.saveTtsFloatingWindow(it) }
             )
         }
+    }
+
+    Spacer(Modifier.height(12.dp))
+
+    val aiConfigured = uiState.externalTtsSettings.enabled &&
+        uiState.externalTtsHasToken &&
+        uiState.externalTtsSettings.hasRequiredFields &&
+        uiState.externalTtsSettings.consentVersion >= ExternalTtsConfig.CONSENT_VERSION
+    val selectedEngineLabel = when (val selection = uiState.ttsProviderSelection) {
+        TtsProviderSelection.SystemDefault -> stringResource(R.string.tts_engine_system_default)
+        TtsProviderSelection.AiModel -> stringResource(R.string.tts_engine_ai_model)
+        is TtsProviderSelection.AndroidEngine -> uiState.installedTtsEngines
+            .firstOrNull { it.packageName == selection.packageName }
+            ?.label
+            ?: stringResource(R.string.tts_engine_unavailable)
+    }
+    var showEngineDialog by remember { mutableStateOf(false) }
+    DetailCard {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { showEngineDialog = true }
+                .padding(AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Outlined.RecordVoiceOver,
+                contentDescription = null,
+                tint = AppColors.TextSecondary,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(Modifier.width(AppSpace.md))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.tts_engine_selection),
+                    fontSize = AppType.Body,
+                    color = AppColors.TextPrimary
+                )
+                Text(
+                    selectedEngineLabel,
+                    fontSize = AppType.Caption,
+                    color = AppColors.TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Icon(
+                Icons.Outlined.ChevronRight,
+                contentDescription = null,
+                tint = AppColors.TextSecondary,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+
+    if (showEngineDialog) {
+        val selectedPackage =
+            (uiState.ttsProviderSelection as? TtsProviderSelection.AndroidEngine)?.packageName
+        val selectedPackageMissing = selectedPackage != null &&
+            uiState.installedTtsEngines.none { it.packageName == selectedPackage }
+        LiquidGlassAlertDialog(
+            onDismissRequest = { showEngineDialog = false },
+            title = {
+                Text(
+                    text = stringResource(R.string.tts_engine_select_dialog_title),
+                    fontSize = AppType.Section,
+                    fontWeight = FontWeight.Bold,
+                    color = AppColors.TextPrimary
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 440.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    TtsProviderOptionRow(
+                        title = stringResource(R.string.tts_engine_ai_model),
+                        supportingText = if (aiConfigured) null else {
+                            stringResource(R.string.tts_engine_ai_not_configured)
+                        },
+                        selected = uiState.ttsProviderSelection == TtsProviderSelection.AiModel,
+                        onClick = {
+                            showEngineDialog = false
+                            if (aiConfigured) {
+                                viewModel.saveTtsProviderSelection(TtsProviderSelection.AiModel)
+                            } else {
+                                context.startActivity(
+                                    Intent(context, DetailActivity::class.java)
+                                        .putExtra("category", "external_tts_config")
+                                )
+                            }
+                        }
+                    )
+                    TtsProviderOptionRow(
+                        title = stringResource(R.string.tts_engine_system_default),
+                        selected = uiState.ttsProviderSelection == TtsProviderSelection.SystemDefault,
+                        onClick = {
+                            viewModel.saveTtsProviderSelection(TtsProviderSelection.SystemDefault)
+                            showEngineDialog = false
+                        }
+                    )
+                    if (selectedPackageMissing) {
+                        TtsProviderOptionRow(
+                            title = stringResource(R.string.tts_engine_unavailable),
+                            supportingText = selectedPackage,
+                            selected = true,
+                            onClick = {}
+                        )
+                    }
+                    uiState.installedTtsEngines.forEach { engine ->
+                        val selection = TtsProviderSelection.AndroidEngine(engine.packageName)
+                        TtsProviderOptionRow(
+                            title = engine.label,
+                            supportingText = engine.packageName,
+                            selected = uiState.ttsProviderSelection == selection,
+                            onClick = {
+                                viewModel.saveTtsProviderSelection(selection)
+                                showEngineDialog = false
+                            }
+                        )
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.cancel),
+                    onClick = { showEngineDialog = false }
+                )
+            }
+        )
     }
 
     Spacer(Modifier.height(12.dp))
@@ -780,6 +915,37 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
                 showAccentColorDialog = false
             }
         )
+    }
+}
+
+@Composable
+private fun TtsProviderOptionRow(
+    title: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    supportingText: String? = null
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(selected = selected, onClick = onClick)
+        Spacer(Modifier.width(AppSpace.sm))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, fontSize = AppType.Body, color = AppColors.TextPrimary)
+            supportingText?.let {
+                Text(
+                    text = it,
+                    fontSize = AppType.Caption,
+                    color = AppColors.TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
     }
 }
 

@@ -7,6 +7,16 @@ import java.util.Locale
 
 class TtsLocaleResolverTest {
     @Test
+    fun `system default lets Lumi manage locale`() {
+        assertEquals(true, TtsLocaleResolver.shouldManageLocale(null))
+    }
+
+    @Test
+    fun `explicit Android engine manages its own locale`() {
+        assertEquals(false, TtsLocaleResolver.shouldManageLocale("com.example.multitts"))
+    }
+
+    @Test
     fun `traditional Chinese falls back to engine simplified Chinese locale`() {
         val candidates = TtsLocaleResolver.candidates(
             requested = Locale.TRADITIONAL_CHINESE,

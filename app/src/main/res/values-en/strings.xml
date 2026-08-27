@@ -166,6 +166,10 @@
     <string name="tts_engine_selection">Speech engine</string>
     <string name="tts_engine_system_default">System default</string>
     <string name="tts_engine_select_dialog_title">Select speech engine</string>
+    <string name="tts_engine_ai_model">AI model</string>
+    <string name="tts_engine_ai_not_configured">Not configured. Tap to set up.</string>
+    <string name="tts_engine_unavailable">Selected engine unavailable</string>
+    <string name="tts_engine_unavailable_error">The selected speech engine is unavailable. Choose another in Reading settings.</string>
     <string name="body_font_weight">Body text weight</string>
     <string name="body_font_weight_desc">Use a bold weight for body text</string>
     <string name="apply_to_body_only">Apply typography to body only</string>
@@ -701,7 +705,9 @@
     <string name="title_external_tts">Third-party TTS service</string>
     <string name="title_external_tts_configuration">Configure third-party TTS service</string>
     <string name="external_tts_enabled_status">Enabled</string>
-    <string name="external_tts_not_configured">Not enabled (reading uses the system engine)</string>
+    <string name="external_tts_selected_status">Currently in use</string>
+    <string name="external_tts_configured_status">Configured</string>
+    <string name="external_tts_not_configured">Not configured</string>
     <string name="external_tts_service_status">Current status</string>
     <string name="external_tts_configure">Configure third-party TTS service</string>
     <string name="external_tts_choose_protocol">Choose a third-party TTS protocol</string>

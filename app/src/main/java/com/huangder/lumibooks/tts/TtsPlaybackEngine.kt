@@ -45,6 +45,11 @@ interface TtsPlaybackEngine {
     fun shutdown()
 }
 
+interface AndroidTtsPlaybackEngine : TtsPlaybackEngine {
+    /** Selects Android's default engine when null, or one exact installed engine package. */
+    suspend fun selectEngine(packageName: String?)
+}
+
 interface TtsPlaybackListener {
     fun onStart(utteranceId: String)
 

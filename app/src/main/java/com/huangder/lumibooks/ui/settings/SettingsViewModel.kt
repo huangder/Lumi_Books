@@ -49,6 +49,9 @@ import com.huangder.lumibooks.tts.ExternalTtsProtocol
 import com.huangder.lumibooks.tts.ExternalTtsSettings
 import com.huangder.lumibooks.tts.ExternalTtsEngine
 import com.huangder.lumibooks.tts.ExternalTtsTokenStore
+import com.huangder.lumibooks.tts.TtsController
+import com.huangder.lumibooks.tts.TtsEngine
+import com.huangder.lumibooks.tts.TtsProviderSelection
 import com.huangder.lumibooks.mineru.MineruTokenStore
 
 @HiltViewModel
@@ -58,6 +61,8 @@ class SettingsViewModel @Inject constructor(
     private val mineruTokenStore: MineruTokenStore,
     private val externalTtsTokenStore: ExternalTtsTokenStore,
     private val externalTtsEngine: ExternalTtsEngine,
+    private val ttsEngine: TtsEngine,
+    private val ttsController: TtsController,
     private val mineruManualImportManager: MineruManualImportManager,
     private val externalTtsAudioCache: ExternalTtsAudioCache,
     private val webdavSyncManager: com.huangder.lumibooks.data.sync.WebdavSyncManager,
@@ -75,6 +80,7 @@ class SettingsViewModel @Inject constructor(
     init {
         collectAllPreferences()
         calculateStorageBreakdown()
+        refreshInstalledTtsEngines()
     }
 
     private fun collectAllPreferences() {
@@ -277,6 +283,11 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            dataStoreManager.ttsProviderSelection.collectLatest { selection ->
+                _uiState.value = _uiState.value.copy(ttsProviderSelection = selection)
+            }
+        }
+        viewModelScope.launch {
             dataStoreManager.bodyFontWeight.collectLatest { bodyFontWeight ->
                 _uiState.value = _uiState.value.copy(bodyFontWeight = bodyFontWeight)
             }
@@ -386,6 +397,21 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.saveAppTheme(theme)
         }
+    }
+
+    fun saveTtsProviderSelection(selection: TtsProviderSelection) {
+        viewModelScope.launch {
+            if (_uiState.value.ttsProviderSelection != selection) {
+                ttsController.stop()
+                dataStoreManager.saveTtsProviderSelection(selection)
+            }
+        }
+    }
+
+    fun refreshInstalledTtsEngines() {
+        _uiState.value = _uiState.value.copy(
+            installedTtsEngines = ttsEngine.getInstalledEngines()
+        )
     }
 
     fun saveAppAccentColor(color: String) {
@@ -629,6 +655,7 @@ class SettingsViewModel @Inject constructor(
                 consentVersion = ExternalTtsConfig.CONSENT_VERSION,
                 consentAcceptedAt = System.currentTimeMillis()
             )
+            ttsController.stop()
             dataStoreManager.saveExternalTtsSettings(finalSettings)
             withContext(Dispatchers.Main) {
                 _uiState.value = _uiState.value.copy(
@@ -642,6 +669,9 @@ class SettingsViewModel @Inject constructor(
 
     fun disableExternalTts(clearKey: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
+            if (_uiState.value.ttsProviderSelection == TtsProviderSelection.AiModel) {
+                ttsController.stop()
+            }
             if (clearKey) externalTtsTokenStore.clear()
             dataStoreManager.disableExternalTts()
             _uiState.value = _uiState.value.copy(
@@ -654,6 +684,9 @@ class SettingsViewModel @Inject constructor(
     fun clearExternalTtsToken() {
         viewModelScope.launch(Dispatchers.IO) {
             val wasEnabled = _uiState.value.externalTtsSettings.enabled
+            if (_uiState.value.ttsProviderSelection == TtsProviderSelection.AiModel) {
+                ttsController.stop()
+            }
             externalTtsTokenStore.clear()
             if (wasEnabled) {
                 dataStoreManager.disableExternalTts()

@@ -642,7 +642,9 @@
     <string name="title_external_tts">サードパーティ TTS サービス</string>
     <string name="title_external_tts_configuration">サードパーティ TTS サービスを設定</string>
     <string name="external_tts_enabled_status">有効</string>
-    <string name="external_tts_not_configured">無効（読み上げはシステムエンジンを使用）</string>
+    <string name="external_tts_selected_status">現在使用中</string>
+    <string name="external_tts_configured_status">設定済み</string>
+    <string name="external_tts_not_configured">未設定</string>
     <string name="external_tts_service_status">現在の状態</string>
     <string name="external_tts_configure">サードパーティ TTS サービスを設定</string>
     <string name="external_tts_choose_protocol">サードパーティ TTS プロトコルを選択</string>
@@ -959,6 +961,10 @@
     <string name="tts_engine_select_dialog_title">音声エンジンを選択</string>
     <string name="tts_engine_selection">音声エンジン</string>
     <string name="tts_engine_system_default">システムのデフォルト</string>
+    <string name="tts_engine_ai_model">AI モデル</string>
+    <string name="tts_engine_ai_not_configured">未設定です。タップして設定します。</string>
+    <string name="tts_engine_unavailable">選択したエンジンは利用できません</string>
+    <string name="tts_engine_unavailable_error">選択した音声エンジンは利用できません。読書設定で選び直してください。</string>
     <string name="tts_floating_channel">読み上げフローティングウィンドウ</string>
     <string name="tts_floating_channel_desc">読み上げフローティング字幕の通知</string>
     <string name="tts_floating_loading">読み上げ中...</string>

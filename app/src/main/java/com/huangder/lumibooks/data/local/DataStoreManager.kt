@@ -43,6 +43,7 @@ import com.huangder.lumibooks.tts.ExternalTtsResumePosition
 import com.huangder.lumibooks.tts.ExternalTtsSettings
 import com.huangder.lumibooks.tts.ExternalTtsConfig
 import com.huangder.lumibooks.tts.TtsSettingsStore
+import com.huangder.lumibooks.tts.TtsProviderSelection
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -105,6 +106,7 @@ class DataStoreManager @Inject constructor(
         private val SELECTION_MENU_ITEMS = stringPreferencesKey("selection_menu_items")
         private val TTS_FLOATING_WINDOW = booleanPreferencesKey("tts_floating_window")
         private val PREFERRED_TTS_ENGINE = stringPreferencesKey("preferred_tts_engine")
+        private val TTS_PROVIDER_SELECTION = stringPreferencesKey("tts_provider_selection")
         private val BODY_FONT_WEIGHT = intPreferencesKey("body_font_weight")
         private val APPLY_TO_BODY_ONLY = booleanPreferencesKey("apply_to_body_only")
         private val PARAGRAPH_SPACING = floatPreferencesKey("paragraph_spacing")
@@ -339,6 +341,14 @@ class DataStoreManager @Inject constructor(
     }
 
     val preferredTtsEngine: Flow<String?> = context.dataStore.data.map { it[PREFERRED_TTS_ENGINE] }
+    override val ttsProviderSelection: Flow<TtsProviderSelection> = context.dataStore.data.map { preferences ->
+        TtsProviderSelection.resolve(
+            storedValue = preferences[TTS_PROVIDER_SELECTION],
+            legacyEnginePackage = preferences[PREFERRED_TTS_ENGINE],
+            externalTtsConfigured = (preferences[EXTERNAL_TTS_ENABLED] ?: false) &&
+                (preferences[EXTERNAL_TTS_CONSENT_VERSION] ?: 0) >= ExternalTtsConfig.CONSENT_VERSION
+        )
+    }
     val bodyFontWeight: Flow<Int> = context.dataStore.data.map { it[BODY_FONT_WEIGHT] ?: 400 }
     val applyToBodyOnly: Flow<Boolean> = context.dataStore.data.map { it[APPLY_TO_BODY_ONLY] ?: false }
 
@@ -1372,6 +1382,12 @@ class DataStoreManager @Inject constructor(
         }
     }
 
+    override suspend fun saveTtsProviderSelection(selection: TtsProviderSelection) {
+        context.dataStore.edit { preferences ->
+            preferences[TTS_PROVIDER_SELECTION] = selection.storedValue
+        }
+    }
+
     suspend fun saveAppAccentColor(color: String) {
         context.dataStore.edit { preferences ->
             preferences[APP_ACCENT_COLOR] = normalizeAppAccentHex(color)
@@ -1512,12 +1528,21 @@ class DataStoreManager @Inject constructor(
             preferences[EXTERNAL_TTS_ALLOW_HTTP] = normalized.allowHttp
             preferences[EXTERNAL_TTS_CONSENT_VERSION] = normalized.consentVersion
             preferences[EXTERNAL_TTS_CONSENT_ACCEPTED_AT] = normalized.consentAcceptedAt
+            if (normalized.enabled &&
+                normalized.consentVersion >= ExternalTtsConfig.CONSENT_VERSION
+            ) {
+                preferences[TTS_PROVIDER_SELECTION] = TtsProviderSelection.AiModel.storedValue
+            }
         }
     }
 
     suspend fun disableExternalTts() {
         context.dataStore.edit { preferences ->
             preferences[EXTERNAL_TTS_ENABLED] = false
+            val selected = TtsProviderSelection.fromStoredValue(preferences[TTS_PROVIDER_SELECTION])
+            if (selected == TtsProviderSelection.AiModel) {
+                preferences[TTS_PROVIDER_SELECTION] = TtsProviderSelection.SystemDefault.storedValue
+            }
         }
     }
 

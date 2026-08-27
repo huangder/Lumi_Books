@@ -40,6 +40,9 @@ sealed class SystemTtsException(message: String, cause: Throwable? = null) :
     class LanguageUnavailable(val requestedLocale: Locale) :
         SystemTtsException("System TTS language is unavailable: ${requestedLocale.toLanguageTag()}")
 
+    class EngineUnavailable(val packageName: String) :
+        SystemTtsException("Android TTS engine is unavailable: $packageName")
+
     class Playback(val errorCode: Int? = null) :
         SystemTtsException(
             if (errorCode == null) "System TTS playback failed"
@@ -49,7 +52,7 @@ sealed class SystemTtsException(message: String, cause: Throwable? = null) :
 
 class TtsEngine(
     @ApplicationContext context: Context
-) : TtsPlaybackEngine {
+) : AndroidTtsPlaybackEngine {
     override val isExternal: Boolean = false
 
     companion object {
@@ -63,6 +66,8 @@ class TtsEngine(
     private val initializeMutex = Mutex()
     private var engine: TextToSpeech? = null
     private var enginePackageName: String? = null
+    private var requestedEnginePackageName: String? = null
+    private var initializedRequestPackageName: String? = null
     private var selectedLocale: Locale? = null
     private var utteranceListener: UtteranceProgressListener? = null
     private var pendingSpeechRate = 1f
@@ -76,15 +81,19 @@ class TtsEngine(
     val engineStatus: StateFlow<TtsEngineStatus> = _engineStatus.asStateFlow()
 
     @Suppress("DEPRECATION")
-    fun getInstalledEngines(): List<Pair<String, String>> = runCatching {
+    fun getInstalledEngines(): List<InstalledTtsEngine> = runCatching {
         val packageManager = appContext.packageManager
         packageManager.queryIntentServices(Intent(TextToSpeech.Engine.INTENT_ACTION_TTS_SERVICE), 0)
             .mapNotNull { info ->
                 val service = info.serviceInfo ?: return@mapNotNull null
-                service.packageName to runCatching { service.loadLabel(packageManager).toString() }
-                    .getOrDefault(service.packageName)
+                InstalledTtsEngine(
+                    packageName = service.packageName,
+                    label = runCatching { service.loadLabel(packageManager).toString() }
+                        .getOrDefault(service.packageName)
+                )
             }
-            .distinctBy { it.first }
+            .distinctBy { it.packageName }
+            .sortedBy { it.label.lowercase(Locale.getDefault()) }
     }.getOrElse { error ->
         Log.w(TAG, "Unable to enumerate installed TTS engines", error)
         emptyList()
@@ -92,17 +101,34 @@ class TtsEngine(
 
     override suspend fun initialize(): Result<Unit> = initialize(Locale.getDefault())
 
+    override suspend fun selectEngine(packageName: String?) = initializeMutex.withLock {
+        val normalized = packageName?.trim()?.takeIf(String::isNotEmpty)
+        if (requestedEnginePackageName == normalized) return@withLock
+        requestedEnginePackageName = normalized
+        withContext(Dispatchers.Main.immediate) { shutdownEngine() }
+        _engineStatus.value = TtsEngineStatus.UNINITIALIZED
+    }
+
     suspend fun initialize(locale: Locale = Locale.getDefault()): Result<Unit> = initializeMutex.withLock {
-        if (_engineStatus.value == TtsEngineStatus.READY && engine != null) {
+        if (_engineStatus.value == TtsEngineStatus.READY &&
+            engine != null &&
+            initializedRequestPackageName == requestedEnginePackageName
+        ) {
             return@withLock Result.success(Unit)
         }
 
         shutdownEngine()
         _engineStatus.value = TtsEngineStatus.INITIALIZING
         val packages = installedEnginePackages()
+        val requestedPackage = requestedEnginePackageName
+        if (requestedPackage != null && requestedPackage !in packages) {
+            _engineStatus.value = TtsEngineStatus.FAILED
+            return@withLock Result.failure(SystemTtsException.EngineUnavailable(requestedPackage))
+        }
         // The null entry asks Android for the user's default engine. Explicit packages are a
         // vendor-neutral fallback when that engine is temporarily unavailable or misconfigured.
-        val candidates = listOf<String?>(null) + packages
+        val candidates = requestedPackage?.let { listOf<String?>(it) }
+            ?: (listOf<String?>(null) + packages)
         var lastFailure: Throwable? = null
 
         candidates.forEachIndexed { index, packageName ->
@@ -116,10 +142,14 @@ class TtsEngine(
                 null
             } ?: return@forEachIndexed
 
-            val chosenLocale = withContext(Dispatchers.Main.immediate) {
-                selectSupportedLocale(created, locale)
+            val chosenLocale = if (requestedPackage == null) {
+                withContext(Dispatchers.Main.immediate) {
+                    selectSupportedLocale(created, locale)
+                }
+            } else {
+                null
             }
-            if (chosenLocale == null) {
+            if (requestedPackage == null && chosenLocale == null) {
                 lastFailure = SystemTtsException.LanguageUnavailable(locale)
                 Log.w(
                     TAG,
@@ -139,22 +169,27 @@ class TtsEngine(
             enginePackageName = packageName ?: runCatching { created.defaultEngine }
                 .getOrNull()
                 ?.takeIf { it.isNotBlank() }
+            initializedRequestPackageName = requestedPackage
             selectedLocale = chosenLocale
             _engineStatus.value = TtsEngineStatus.READY
             Log.i(
                 TAG,
                 "Initialization ready: package=${enginePackageName ?: "<default>"} " +
-                    "requested=${locale.toLanguageTag()} selected=${chosenLocale.toLanguageTag()}"
+                    "requestedLocale=${locale.toLanguageTag()} " +
+                    "selectedLocale=${chosenLocale?.toLanguageTag() ?: "<engine-managed>"}"
             )
             return@withLock Result.success(Unit)
         }
 
         shutdownEngine()
         _engineStatus.value = TtsEngineStatus.FAILED
-        val failure = when (val error = lastFailure) {
+        val failure = when {
+            requestedPackage != null -> SystemTtsException.EngineUnavailable(requestedPackage)
+            else -> when (val error = lastFailure) {
             is SystemTtsException.LanguageUnavailable -> error
             null -> SystemTtsException.Initialization()
             else -> SystemTtsException.Initialization(error)
+            }
         }
         Result.failure(failure)
     }
@@ -249,7 +284,11 @@ class TtsEngine(
             val activeEngine = engine
                 ?: return@withContext Result.failure(SystemTtsException.Initialization())
 
-            val textLocale = TtsLocaleResolver.localeForText(text, Locale.getDefault())
+            val textLocale = if (TtsLocaleResolver.shouldManageLocale(requestedEnginePackageName)) {
+                TtsLocaleResolver.localeForText(text, Locale.getDefault())
+            } else {
+                null
+            }
             val currentLocale = selectedLocale
             if (textLocale != null && currentLocale?.language != textLocale.language) {
                 selectSupportedLocale(activeEngine, textLocale)?.let { selectedLocale = it }
@@ -324,6 +363,7 @@ class TtsEngine(
         engine?.shutdown()
         engine = null
         enginePackageName = null
+        initializedRequestPackageName = null
         selectedLocale = null
     }
 
@@ -334,6 +374,9 @@ class TtsEngine(
 }
 
 internal object TtsLocaleResolver {
+    fun shouldManageLocale(requestedEnginePackageName: String?): Boolean =
+        requestedEnginePackageName == null
+
     fun candidates(
         requested: Locale,
         engineDefaults: Collection<Locale>,

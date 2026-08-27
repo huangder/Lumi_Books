@@ -175,6 +175,10 @@
     <string name="tts_engine_selection">语音引擎</string>
     <string name="tts_engine_system_default">系统默认</string>
     <string name="tts_engine_select_dialog_title">选择语音引擎</string>
+    <string name="tts_engine_ai_model">AI 大模型</string>
+    <string name="tts_engine_ai_not_configured">尚未配置，点击前往设置</string>
+    <string name="tts_engine_unavailable">已选引擎不可用</string>
+    <string name="tts_engine_unavailable_error">所选语音引擎不可用，请在阅读设置中重新选择</string>
     <string name="body_font_weight">正文字重</string>
     <string name="body_font_weight_desc">开启后正文使用加粗字重</string>
     <string name="apply_to_body_only">排版仅作用于正文</string>
@@ -733,7 +737,9 @@
     <string name="title_external_tts">第三方 TTS 服务</string>
     <string name="title_external_tts_configuration">配置第三方 TTS 服务</string>
     <string name="external_tts_enabled_status">已启用</string>
-    <string name="external_tts_not_configured">未启用（朗读使用系统引擎）</string>
+    <string name="external_tts_selected_status">当前使用中</string>
+    <string name="external_tts_configured_status">已配置</string>
+    <string name="external_tts_not_configured">未配置</string>
     <string name="external_tts_service_status">当前状态</string>
     <string name="external_tts_configure">配置第三方 TTS 服务</string>
     <string name="external_tts_choose_protocol">选择第三方 TTS 协议</string>

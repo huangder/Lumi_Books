@@ -333,7 +333,11 @@ fun ThirdPartyServicesDetail(viewModel: SettingsViewModel) {
             icon = Icons.Outlined.Cloud,
             label = stringResource(R.string.category_external_tts),
             supportingText = when {
-                uiState.externalTtsSettings.enabled -> stringResource(R.string.external_tts_enabled_status)
+                uiState.externalTtsSettings.enabled &&
+                    uiState.ttsProviderSelection == com.huangder.lumibooks.tts.TtsProviderSelection.AiModel ->
+                    stringResource(R.string.external_tts_selected_status)
+                uiState.externalTtsSettings.enabled ->
+                    stringResource(R.string.external_tts_configured_status)
                 else -> stringResource(R.string.external_tts_not_configured)
             }
         ) {

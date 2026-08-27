@@ -24,11 +24,9 @@ class TtsController(
     private val textExtractor: TtsTextExtractor,
     private val dataStoreManager: TtsSettingsStore
 ) {
-    private val configuredEngine: TtsPlaybackEngine
-        get() = if (externalTtsEnabled) externalTtsEngine else systemTtsEngine
     private var sessionEngine: TtsPlaybackEngine? = null
     private val activeEngine: TtsPlaybackEngine
-        get() = sessionEngine ?: configuredEngine
+        get() = sessionEngine ?: systemTtsEngine
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val _playbackState = MutableStateFlow(TtsPlaybackState.IDLE)
@@ -61,7 +59,6 @@ class TtsController(
     private var sessionGeneration = 0L
     private var utteranceSequence = 0L
     private var pageLoadToken = 0L
-    private var externalTtsEnabled = false
     private var pageContentError: Throwable? = null
     private var pendingResume: ExternalTtsResumePosition? = null
     private var crossPageMerge: CrossPageMergeState? = null
@@ -131,12 +128,6 @@ class TtsController(
                 externalTtsEngine.setPitch(pitch.coerceIn(0.5f, 2f))
             }
         }
-        scope.launch {
-            dataStoreManager.externalTtsSettings.collectLatest { settings ->
-                externalTtsEnabled = settings.enabled &&
-                    settings.consentVersion >= ExternalTtsConfig.CONSENT_VERSION
-            }
-        }
     }
 
     suspend fun start(
@@ -147,10 +138,13 @@ class TtsController(
     ): Result<Unit> = withContext(Dispatchers.Main.immediate) {
         stopInternal()
         val generation = ++sessionGeneration
-        val settings = dataStoreManager.externalTtsSettings.first()
-        externalTtsEnabled = settings.enabled &&
-            settings.consentVersion >= ExternalTtsConfig.CONSENT_VERSION
-        sessionEngine = configuredEngine
+        val selection = dataStoreManager.ttsProviderSelection.first()
+        val selectedEngine = selectPlaybackEngine(selection)
+        if (selectedEngine.isFailure) {
+            source.close()
+            return@withContext Result.failure(checkNotNull(selectedEngine.exceptionOrNull()))
+        }
+        sessionEngine = selectedEngine.getOrThrow()
         pageSource = source
         _activeBookId.value = bookId
         _playbackState.value = TtsPlaybackState.INITIALIZING
@@ -164,7 +158,7 @@ class TtsController(
             return@withContext initializeResult
         }
 
-        val storedResume = if (externalTtsEnabled) {
+        val storedResume = if (engine.isExternal) {
             dataStoreManager.externalTtsResumePosition(bookId).first()
         } else {
             null
@@ -201,6 +195,24 @@ class TtsController(
             return@withContext Result.failure(error)
         }
         Result.success(Unit)
+    }
+
+    private suspend fun selectPlaybackEngine(
+        selection: TtsProviderSelection
+    ): Result<TtsPlaybackEngine> = runCatching {
+        when (selection) {
+            TtsProviderSelection.AiModel -> externalTtsEngine
+            TtsProviderSelection.SystemDefault -> {
+                (systemTtsEngine as? AndroidTtsPlaybackEngine)?.selectEngine(null)
+                systemTtsEngine
+            }
+            is TtsProviderSelection.AndroidEngine -> {
+                val androidEngine = systemTtsEngine as? AndroidTtsPlaybackEngine
+                    ?: throw SystemTtsException.EngineUnavailable(selection.packageName)
+                androidEngine.selectEngine(selection.packageName)
+                systemTtsEngine
+            }
+        }
     }
 
     fun pause() {

@@ -44,6 +44,7 @@ class TtsControllerTest {
             assertEquals(listOf("One.", "Two.", "Three."), engine.spokenTexts)
         } finally {
             controller.shutdown()
+            runCurrent()
             Dispatchers.resetMain()
         }
     }
@@ -69,6 +70,7 @@ class TtsControllerTest {
             assertEquals(listOf("Old.", "New."), engine.spokenTexts)
         } finally {
             controller.shutdown()
+            runCurrent()
             Dispatchers.resetMain()
         }
     }
@@ -98,6 +100,7 @@ class TtsControllerTest {
             assertEquals(listOf("One.", "One.", "Two."), engine.spokenTexts)
         } finally {
             controller.shutdown()
+            runCurrent()
             Dispatchers.resetMain()
         }
     }
@@ -134,6 +137,7 @@ class TtsControllerTest {
             assertEquals(1, source.requests.count { it == TtsPageLocation(0, 1) })
         } finally {
             controller.shutdown()
+            runCurrent()
             Dispatchers.resetMain()
         }
     }
@@ -166,15 +170,99 @@ class TtsControllerTest {
             assertEquals(TtsPageLocation(0, 1), second.location)
         } finally {
             controller.shutdown()
+            runCurrent()
             Dispatchers.resetMain()
         }
     }
 
-    private fun controller(engine: FakePlaybackEngine) = TtsController(
-        systemTtsEngine = engine,
-        externalTtsEngine = FakePlaybackEngine(isExternal = true),
+    @Test
+    fun aiProviderRoutesPlaybackToExternalEngine() = runTest {
+        val main = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(main)
+        val systemEngine = FakePlaybackEngine()
+        val externalEngine = FakePlaybackEngine(isExternal = true)
+        val controller = controller(
+            systemEngine = systemEngine,
+            externalEngine = externalEngine,
+            settingsStore = FakeSettingsStore(TtsProviderSelection.AiModel)
+        )
+        try {
+            assertTrue(
+                controller.start("book", FakePageSource(page(0, "AI speech.")), 0, 0).isSuccess
+            )
+
+            assertEquals(emptyList<String>(), systemEngine.spokenTexts)
+            assertEquals(listOf("AI speech."), externalEngine.spokenTexts)
+            assertEquals(emptyList<String?>(), systemEngine.selectedEnginePackages)
+        } finally {
+            controller.shutdown()
+            runCurrent()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun systemDefaultProviderClearsExplicitEngineAndUsesSystemPlayback() = runTest {
+        val main = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(main)
+        val systemEngine = FakePlaybackEngine()
+        val externalEngine = FakePlaybackEngine(isExternal = true)
+        val controller = controller(
+            systemEngine = systemEngine,
+            externalEngine = externalEngine,
+            settingsStore = FakeSettingsStore(TtsProviderSelection.SystemDefault)
+        )
+        try {
+            assertTrue(
+                controller.start("book", FakePageSource(page(0, "System speech.")), 0, 0).isSuccess
+            )
+
+            assertEquals(listOf<String?>(null), systemEngine.selectedEnginePackages)
+            assertEquals(listOf("System speech."), systemEngine.spokenTexts)
+            assertEquals(emptyList<String>(), externalEngine.spokenTexts)
+        } finally {
+            controller.shutdown()
+            runCurrent()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun explicitAndroidProviderPassesPackageAndUsesSystemPlayback() = runTest {
+        val main = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(main)
+        val systemEngine = FakePlaybackEngine()
+        val externalEngine = FakePlaybackEngine(isExternal = true)
+        val packageName = "com.example.multitts"
+        val controller = controller(
+            systemEngine = systemEngine,
+            externalEngine = externalEngine,
+            settingsStore = FakeSettingsStore(TtsProviderSelection.AndroidEngine(packageName))
+        )
+        try {
+            assertTrue(
+                controller.start("book", FakePageSource(page(0, "MultiTTS speech.")), 0, 0).isSuccess
+            )
+
+            assertEquals(listOf(packageName), systemEngine.selectedEnginePackages)
+            assertEquals(listOf("MultiTTS speech."), systemEngine.spokenTexts)
+            assertEquals(emptyList<String>(), externalEngine.spokenTexts)
+        } finally {
+            controller.shutdown()
+            runCurrent()
+            Dispatchers.resetMain()
+        }
+    }
+
+    private fun controller(
+        systemEngine: FakePlaybackEngine,
+        externalEngine: FakePlaybackEngine = FakePlaybackEngine(isExternal = true),
+        settingsStore: FakeSettingsStore = FakeSettingsStore()
+    ) = TtsController(
+        systemTtsEngine = systemEngine,
+        externalTtsEngine = externalEngine,
         textExtractor = TtsTextExtractor(),
-        dataStoreManager = FakeSettingsStore()
+        dataStoreManager = settingsStore
     )
 
     private fun page(
@@ -207,10 +295,15 @@ class TtsControllerTest {
 
     private class FakePlaybackEngine(
         override val isExternal: Boolean = false
-    ) : TtsPlaybackEngine {
+    ) : AndroidTtsPlaybackEngine {
         private lateinit var listener: TtsPlaybackListener
         val spokenTexts = mutableListOf<String>()
+        val selectedEnginePackages = mutableListOf<String?>()
         var lastUtteranceId = ""
+
+        override suspend fun selectEngine(packageName: String?) {
+            selectedEnginePackages += packageName
+        }
 
         override suspend fun initialize(): Result<Unit> = Result.success(Unit)
 
@@ -234,9 +327,12 @@ class TtsControllerTest {
         override fun shutdown() = Unit
     }
 
-    private class FakeSettingsStore : TtsSettingsStore {
+    private class FakeSettingsStore(
+        providerSelection: TtsProviderSelection = TtsProviderSelection.SystemDefault
+    ) : TtsSettingsStore {
         override val ttsSpeechRate = MutableStateFlow(1f)
         override val ttsPitch = MutableStateFlow(1f)
+        override val ttsProviderSelection = MutableStateFlow(providerSelection)
         override val externalTtsSettings = MutableStateFlow(ExternalTtsSettings())
         private val resumePositions = mutableMapOf<String, MutableStateFlow<ExternalTtsResumePosition?>>()
 
@@ -249,6 +345,10 @@ class TtsControllerTest {
 
         override suspend fun saveTtsPitch(pitch: Float) {
             ttsPitch.value = pitch
+        }
+
+        override suspend fun saveTtsProviderSelection(selection: TtsProviderSelection) {
+            ttsProviderSelection.value = selection
         }
 
         override suspend fun saveExternalTtsResumePosition(position: ExternalTtsResumePosition) {

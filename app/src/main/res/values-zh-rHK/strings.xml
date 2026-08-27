@@ -642,7 +642,9 @@
     <string name="title_external_tts">第三方 TTS 服務</string>
     <string name="title_external_tts_configuration">設定第三方 TTS 服務</string>
     <string name="external_tts_enabled_status">已啟用</string>
-    <string name="external_tts_not_configured">未啟用（朗讀使用系統引擎）</string>
+    <string name="external_tts_selected_status">目前使用中</string>
+    <string name="external_tts_configured_status">已設定</string>
+    <string name="external_tts_not_configured">未設定</string>
     <string name="external_tts_service_status">目前狀態</string>
     <string name="external_tts_configure">設定第三方 TTS 服務</string>
     <string name="external_tts_choose_protocol">選擇第三方 TTS 協定</string>
@@ -959,6 +961,10 @@
     <string name="tts_engine_select_dialog_title">選擇語音引擎</string>
     <string name="tts_engine_selection">語音引擎</string>
     <string name="tts_engine_system_default">系統預設</string>
+    <string name="tts_engine_ai_model">AI 大模型</string>
+    <string name="tts_engine_ai_not_configured">尚未設定，點按前往設定</string>
+    <string name="tts_engine_unavailable">所選引擎無法使用</string>
+    <string name="tts_engine_unavailable_error">所選語音引擎無法使用，請在閱讀設定中重新選擇</string>
     <string name="tts_floating_channel">聽書懸浮視窗</string>
     <string name="tts_floating_channel_desc">聽書懸浮視窗字幕通知</string>
     <string name="tts_floating_loading">正在朗讀...</string>
