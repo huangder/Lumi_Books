@@ -15,7 +15,7 @@
 > A clean, elegant Android local ebook reader. Supports EPUB, PDF, TXT. Privacy-first, local-first.
 
 [![Version](https://img.shields.io/badge/version-1.7.8-coral)](https://github.com/huangder/Lumi_Books/releases)
-[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![License](https://img.shields.io/badge/license-GPLv3-green)](LICENSE)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-blue)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3.10-purple)](https://kotlinlang.org)
 [![Sponsor](https://img.shields.io/badge/%E2%9D%A4%EF%B8%8F-Sponsor-ff385c)](https://huangder.top/sponsor.html)
@@ -135,7 +135,7 @@ See [Changelog](https://huangder.top/changelog.html)
 
 ## 📜 License
 
-Lumi's original code is open-sourced under the [MIT License](LICENSE). Third-party dependencies and adaptations follow their respective licenses. The Liquid Glass implementation is adapted from [AndroidLiquidGlass / Backdrop](https://github.com/Kyant0/AndroidLiquidGlass) under Apache 2.0. © 2026 Huangder
+Lumi's original code is open-sourced under the [GNU GPLv3](LICENSE). Third-party dependencies and adaptations follow their respective licenses. The curl page-turn implementation is adapted from the GPLv3 project [legado-E](https://github.com/Luoyacheng/legado-E); the Liquid Glass implementation is adapted from [AndroidLiquidGlass / Backdrop](https://github.com/Kyant0/AndroidLiquidGlass) under Apache 2.0. © 2026 Huangder
 
 ---
 

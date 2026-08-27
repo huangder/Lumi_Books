@@ -15,7 +15,7 @@
 > 简洁优雅的 Android 本地电子书阅读器，支持 EPUB、PDF、TXT 格式。隐私优先，本地优先。
 
 [![Version](https://img.shields.io/badge/version-1.7.8-coral)](https://github.com/huangder/Lumi_Books/releases)
-[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![License](https://img.shields.io/badge/license-GPLv3-green)](LICENSE)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-blue)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3.10-purple)](https://kotlinlang.org)
 [![Sponsor](https://img.shields.io/badge/%E2%9D%A4%EF%B8%8F-%E8%B5%9E%E5%8A%A9-ff385c)](https://huangder.top/sponsor.html)
@@ -140,7 +140,7 @@
 
 ## 📜 许可证
 
-Lumi 原创代码采用 [MIT License](LICENSE) 开源。第三方依赖及改编代码继续遵循各自许可证；其中液态玻璃使用并改编自 Apache 2.0 许可的 [AndroidLiquidGlass / Backdrop](https://github.com/Kyant0/AndroidLiquidGlass)。© 2026 Huangder
+Lumi 原创代码采用 [GNU GPLv3](LICENSE) 开源。第三方依赖及改编代码继续遵循各自许可证；卷曲翻页实现改编自 GPLv3 项目 [legado-E](https://github.com/Luoyacheng/legado-E)，液态玻璃使用并改编自 Apache 2.0 许可的 [AndroidLiquidGlass / Backdrop](https://github.com/Kyant0/AndroidLiquidGlass)。© 2026 Huangder
 
 ---
 

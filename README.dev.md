@@ -15,7 +15,7 @@
 > Android 本地电子书阅读器的技术文档。面向贡献者与二次开发者。
 
 [![Version](https://img.shields.io/badge/version-1.7.8-coral)](https://github.com/huangder/Lumi_Books/releases)
-[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![License](https://img.shields.io/badge/license-GPLv3-green)](LICENSE)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-blue)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3.10-purple)](https://kotlinlang.org)
 
@@ -86,7 +86,7 @@ Lumi 采用 **MVVM + Repository** 架构，结合 Hilt 依赖注入：
 
 ```
 android_books/
-├── LICENSE                     # MIT 许可证与第三方组件声明
+├── LICENSE                     # GPLv3 许可证与第三方组件声明
 ├── README.md                   # 用户版说明
 ├── README.dev.md               # 开发者版说明（本文件）
 ├── build.gradle.kts            # 顶层构建配置
@@ -216,7 +216,7 @@ Release 构建需要在 `app/` 下放置 `keystore.properties` 或在 `build.gra
 
 ## 📜 许可证
 
-Lumi 原创代码采用 [MIT License](LICENSE) 开源。
+Lumi 原创代码采用 [GNU GPLv3](LICENSE) 开源。
 
 第三方依赖及改编代码继续遵循各自许可证：
 
@@ -227,6 +227,7 @@ Lumi 原创代码采用 [MIT License](LICENSE) 开源。
 | [PDFBox Android](https://github.com/TomRoush/PdfBox-Android) | Apache 2.0 | PDF 文字提取 |
 | [CommonMark](https://github.com/commonmark/commonmark-java) | BSD 2-Clause | Markdown 解析 |
 | [Jsoup](https://jsoup.org/) | MIT | HTML 解析 |
+| [legado-E SimulationPageDelegate](https://github.com/Luoyacheng/legado-E) | GPLv3 | 卷曲翻页几何与绘制改编 |
 | [Coil](https://coil-kt.github.io/coil/) | Apache 2.0 | 图片加载 |
 | [OkHttp](https://square.github.io/okhttp/) | Apache 2.0 | HTTP 客户端 |
 

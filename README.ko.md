@@ -15,7 +15,7 @@
 > 깔끔하고 우아한 Android 로컬 전자책 리더. EPUB, PDF, TXT 지원. 개인정보 보호 최우선, 완전 오프라인.
 
 [![Version](https://img.shields.io/badge/version-1.7.8-coral)](https://github.com/huangder/Lumi_Books/releases)
-[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![License](https://img.shields.io/badge/license-GPLv3-green)](LICENSE)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-blue)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3.10-purple)](https://kotlinlang.org)
 [![Sponsor](https://img.shields.io/badge/%E2%9D%A4%EF%B8%8F-%ED%9B%84%EC%9B%90-ff385c)](https://huangder.top/sponsor.html)
@@ -135,7 +135,7 @@
 
 ## 📜 라이선스
 
-Lumi의 오리지널 코드는 [MIT License](LICENSE)에 따라 오픈소스로 공개됩니다. 서드파티 종속성 및 개작 코드는 각각의 라이선스를 따릅니다. Liquid Glass 구현은 Apache 2.0 라이선스의 [AndroidLiquidGlass / Backdrop](https://github.com/Kyant0/AndroidLiquidGlass)을 개작하여 사용합니다. © 2026 Huangder
+Lumi의 오리지널 코드는 [GNU GPLv3](LICENSE)에 따라 오픈소스로 공개됩니다. 서드파티 종속성 및 개작 코드는 각각의 라이선스를 따릅니다. 컬 페이지 넘김은 GPLv3 프로젝트 [legado-E](https://github.com/Luoyacheng/legado-E)를 개작했으며, Liquid Glass 구현은 Apache 2.0 라이선스의 [AndroidLiquidGlass / Backdrop](https://github.com/Kyant0/AndroidLiquidGlass)을 개작하여 사용합니다. © 2026 Huangder
 
 ---
 

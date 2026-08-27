@@ -15,7 +15,7 @@
 > シンプルでエレガントな Android ローカル電子書籍リーダー。EPUB、PDF、TXT 対応。プライバシー最優先、完全オフライン。
 
 [![Version](https://img.shields.io/badge/version-1.7.8-coral)](https://github.com/huangder/Lumi_Books/releases)
-[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![License](https://img.shields.io/badge/license-GPLv3-green)](LICENSE)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-blue)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3.10-purple)](https://kotlinlang.org)
 [![Sponsor](https://img.shields.io/badge/%E2%9D%A4%EF%B8%8F-%E3%82%B9%E3%83%9D%E3%83%B3%E3%82%B5%E3%83%BC-ff385c)](https://huangder.top/sponsor.html)
@@ -135,7 +135,7 @@
 
 ## 📜 ライセンス
 
-Lumi のオリジナルコードは [MIT License](LICENSE) の下でオープンソース公開されています。サードパーティ依存ライブラリと改変コードはそれぞれのライセンスに従います。Liquid Glass の実装は Apache 2.0 ライセンスの [AndroidLiquidGlass / Backdrop](https://github.com/Kyant0/AndroidLiquidGlass) を改変して使用しています。© 2026 Huangder
+Lumi のオリジナルコードは [GNU GPLv3](LICENSE) の下でオープンソース公開されています。サードパーティ依存ライブラリと改変コードはそれぞれのライセンスに従います。カールページめくりは GPLv3 の [legado-E](https://github.com/Luoyacheng/legado-E) を改変し、Liquid Glass の実装は Apache 2.0 ライセンスの [AndroidLiquidGlass / Backdrop](https://github.com/Kyant0/AndroidLiquidGlass) を改変して使用しています。© 2026 Huangder
 
 ---
 

@@ -15,7 +15,7 @@
 > Lumi Android 전자책 리더의 기술 문서. 기여자 및 개발자 대상.
 
 [![Version](https://img.shields.io/badge/version-1.7.8-coral)](https://github.com/huangder/Lumi_Books/releases)
-[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![License](https://img.shields.io/badge/license-GPLv3-green)](LICENSE)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-blue)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3.10-purple)](https://kotlinlang.org)
 
@@ -86,7 +86,7 @@ Lumi는 **MVVM + Repository** 아키텍처와 Hilt 의존성 주입을 채택하
 
 ```
 android_books/
-├── LICENSE                     # MIT 라이선스 & 서드파티 고지
+├── LICENSE                     # GPLv3 라이선스 & 서드파티 고지
 ├── README.md                   # 사용자용 README
 ├── README.dev.md               # 개발자 가이드（본 파일）
 ├── build.gradle.kts            # 루트 빌드 설정
@@ -214,7 +214,7 @@ Issue와 Pull Request를 환영합니다.
 
 ## 📜 라이선스
 
-Lumi의 오리지널 코드는 [MIT License](LICENSE)에 따라 오픈소스로 공개됩니다.
+Lumi의 오리지널 코드는 [GNU GPLv3](LICENSE)에 따라 오픈소스로 공개됩니다.
 
 서드파티 종속성 및 개작 코드는 각각의 라이선스를 따릅니다：
 
@@ -225,6 +225,7 @@ Lumi의 오리지널 코드는 [MIT License](LICENSE)에 따라 오픈소스로 
 | [PDFBox Android](https://github.com/TomRoush/PdfBox-Android) | Apache 2.0 | PDF 텍스트 추출 |
 | [CommonMark](https://github.com/commonmark/commonmark-java) | BSD 2-Clause | Markdown 파싱 |
 | [Jsoup](https://jsoup.org/) | MIT | HTML 파싱 |
+| [legado-E SimulationPageDelegate](https://github.com/Luoyacheng/legado-E) | GPLv3 | 컬 페이지 넘김 기하 및 렌더링 개작 |
 | [Coil](https://coil-kt.github.io/coil/) | Apache 2.0 | 이미지 로딩 |
 | [OkHttp](https://square.github.io/okhttp/) | Apache 2.0 | HTTP 클라이언트 |
 

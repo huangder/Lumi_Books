@@ -15,7 +15,7 @@
 > Technical documentation for the Lumi Android ebook reader. For contributors and developers.
 
 [![Version](https://img.shields.io/badge/version-1.7.8-coral)](https://github.com/huangder/Lumi_Books/releases)
-[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![License](https://img.shields.io/badge/license-GPLv3-green)](LICENSE)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-blue)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3.10-purple)](https://kotlinlang.org)
 
@@ -86,7 +86,7 @@ Lumi follows **MVVM + Repository** architecture with Hilt dependency injection:
 
 ```
 android_books/
-├── LICENSE                     # MIT License & third-party notices
+├── LICENSE                     # GPLv3 License & third-party notices
 ├── README.md                   # User-facing README
 ├── README.dev.md               # Developer guide (this file)
 ├── build.gradle.kts            # Root build config
@@ -214,7 +214,7 @@ Issues and pull requests are welcome.
 
 ## 📜 License
 
-Lumi's original code is open-sourced under the [MIT License](LICENSE).
+Lumi's original code is open-sourced under the [GNU GPLv3](LICENSE).
 
 Third-party dependencies and adaptations follow their respective licenses:
 
@@ -225,6 +225,7 @@ Third-party dependencies and adaptations follow their respective licenses:
 | [PDFBox Android](https://github.com/TomRoush/PdfBox-Android) | Apache 2.0 | PDF text extraction |
 | [CommonMark](https://github.com/commonmark/commonmark-java) | BSD 2-Clause | Markdown parsing |
 | [Jsoup](https://jsoup.org/) | MIT | HTML parsing |
+| [legado-E SimulationPageDelegate](https://github.com/Luoyacheng/legado-E) | GPLv3 | Curl geometry and rendering adaptation |
 | [Coil](https://coil-kt.github.io/coil/) | Apache 2.0 | Image loading |
 | [OkHttp](https://square.github.io/okhttp/) | Apache 2.0 | HTTP client |
 
