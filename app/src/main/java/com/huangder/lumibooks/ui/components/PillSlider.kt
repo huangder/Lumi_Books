@@ -85,6 +85,7 @@ fun PillSlider(
     trackHeight: Dp = 28.dp,
     activeColor: Color = AppColors.ControlActive,
     inactiveColor: Color = AppColors.BgGray,
+    opaqueLiquidThumb: Boolean = false,
     onDragValueChange: ((Float) -> Unit)? = null
 ) {
     val rangeLength = valueRange.endInclusive - valueRange.start
@@ -316,10 +317,14 @@ fun PillSlider(
             .size(width = LiquidSliderThumbWidth, height = LiquidSliderThumbHeight)
             .offset { IntOffset(thumbX.roundToInt(), 0) }
         val idleThumbAlpha = if (isDark) 0.34f else 0.68f
-        val thumbScrim = Color.White.copy(
-            alpha = idleThumbAlpha + (0.10f - idleThumbAlpha) * pressProgress
-        )
-        val thumbVisual = if (thumbBackdrop != null) {
+        val thumbScrim = if (opaqueLiquidThumb) {
+            Color.White
+        } else {
+            Color.White.copy(
+                alpha = idleThumbAlpha + (0.10f - idleThumbAlpha) * pressProgress
+            )
+        }
+        val thumbVisual = if (thumbBackdrop != null && !opaqueLiquidThumb) {
             Modifier.drawBackdrop(
                 backdrop = thumbBackdrop,
                 shape = { CircleShape },

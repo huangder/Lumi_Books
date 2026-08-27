@@ -12,11 +12,18 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import com.huangder.lumibooks.domain.model.DEFAULT_APP_ACCENT_HEX
+import com.huangder.lumibooks.domain.model.appAccentContentArgb
+import com.huangder.lumibooks.domain.model.blendAppAccentArgb
+import com.huangder.lumibooks.domain.model.deriveDarkAppAccentArgb
+import com.huangder.lumibooks.domain.model.normalizeAppAccentHex
+import com.huangder.lumibooks.domain.model.parseAppAccentArgb
 
 private val LightColorScheme = lightColorScheme(
     primary = PrimaryLight,
@@ -102,11 +109,28 @@ private val DarkColorScheme = darkColorScheme(
     outline = Color(0xFF636366)
 )
 
+private fun lightAppColorScheme(accentArgb: Int, darkAccentArgb: Int) = LightColorScheme.copy(
+    primary = Color(accentArgb),
+    onPrimary = Color(appAccentContentArgb(accentArgb)),
+    primaryContainer = Color(blendAppAccentArgb(0xFFFFFFFF.toInt(), accentArgb, 0.14f)),
+    onPrimaryContainer = Color.Black,
+    inversePrimary = Color(darkAccentArgb)
+)
+
+private fun darkAppColorScheme(accentArgb: Int, lightAccentArgb: Int) = DarkColorScheme.copy(
+    primary = Color(accentArgb),
+    onPrimary = Color(appAccentContentArgb(accentArgb)),
+    primaryContainer = Color(blendAppAccentArgb(0xFF1C1C1E.toInt(), accentArgb, 0.24f)),
+    onPrimaryContainer = Color.White,
+    inversePrimary = Color(lightAccentArgb)
+)
+
 @Composable
 fun EBookReaderTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = false,
     appTheme: String = "lumi",
+    appAccentColor: String = DEFAULT_APP_ACCENT_HEX,
     liquidGlassTransparency: Float = 0.55f,
     liquidGlassHdrHighlightEnabled: Boolean = false,
     eInkMode: Boolean = false,
@@ -120,6 +144,9 @@ fun EBookReaderTheme(
     val liquidGlassCapability = rememberLiquidGlassCapability(eInkMode, view)
     val effectiveAppTheme = effectiveAppTheme(appTheme, liquidGlassCapability)
     val effectiveHdrHighlightEnabled = liquidGlassHdrHighlightEnabled && !eInkMode
+    val normalizedAccentHex = normalizeAppAccentHex(appAccentColor)
+    val lightAccentArgb = remember(normalizedAccentHex) { parseAppAccentArgb(normalizedAccentHex) }
+    val darkAccentArgb = remember(lightAccentArgb) { deriveDarkAppAccentArgb(lightAccentArgb) }
 
     val colorScheme = when {
         eInkMode -> EInkColorScheme
@@ -127,8 +154,20 @@ fun EBookReaderTheme(
             val context = LocalContext.current
             if (effectiveDarkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
-        effectiveDarkTheme -> DarkColorScheme
-        else -> LightColorScheme
+        effectiveDynamicColor -> if (effectiveDarkTheme) DarkColorScheme else LightColorScheme
+        effectiveDarkTheme -> darkAppColorScheme(darkAccentArgb, lightAccentArgb)
+        else -> lightAppColorScheme(lightAccentArgb, darkAccentArgb)
+    }
+    val effectiveAccentColor = when {
+        eInkMode -> Color.Black
+        effectiveDynamicColor -> colorScheme.primary
+        effectiveDarkTheme -> Color(darkAccentArgb)
+        else -> Color(lightAccentArgb)
+    }
+    val effectiveOnAccentColor = when {
+        eInkMode -> Color.White
+        effectiveDynamicColor -> colorScheme.onPrimary
+        else -> Color(appAccentContentArgb(effectiveAccentColor.toArgb()))
     }
 
     val hdrHighlightRequested = effectiveAppTheme == "liquid_glass" && effectiveHdrHighlightEnabled
@@ -159,6 +198,9 @@ fun EBookReaderTheme(
         LocalIsDarkTheme provides effectiveDarkTheme,
         LocalUseMaterial3Theme provides effectiveDynamicColor,
         LocalAppTheme provides effectiveAppTheme,
+        LocalAppAccentHex provides normalizedAccentHex,
+        LocalAppAccentColor provides effectiveAccentColor,
+        LocalOnAppAccentColor provides effectiveOnAccentColor,
         LocalLiquidGlassCapability provides liquidGlassCapability,
         LocalEInkMode provides eInkMode,
         LocalMotionEnabled provides (!eInkMode && motionPreference == MotionPreference.STANDARD),

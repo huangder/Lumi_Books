@@ -72,6 +72,7 @@ import com.huangder.lumibooks.ui.statistics.StatisticsScreen
 import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.LocalAppAccentHex
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.LocalGlobalFontMode
@@ -105,6 +106,7 @@ private fun ReaderRouter(
     val isPdf = uiState.book?.format?.name == "PDF"
     val isAppDarkTheme = LocalIsDarkTheme.current
     val appTheme = LocalAppTheme.current
+    val appAccentColor = LocalAppAccentHex.current
     val liquidGlassTransparency = LocalLiquidGlassTransparency.current
     val liquidGlassHdrHighlightEnabled = LocalLiquidGlassHdrHighlightEnabled.current
     val useMaterial3Theme = LocalUseMaterial3Theme.current
@@ -117,6 +119,7 @@ private fun ReaderRouter(
         darkTheme = isAppDarkTheme,
         dynamicColor = useMaterial3Theme,
         appTheme = appTheme,
+        appAccentColor = appAccentColor,
         liquidGlassTransparency = liquidGlassTransparency,
         liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled && !eInkMode,
         eInkMode = eInkMode,

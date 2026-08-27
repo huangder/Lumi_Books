@@ -81,6 +81,7 @@ class WebViewActivity : ComponentActivity() {
         val liquidGlassTransparency = runBlocking {
             dataStoreManager.liquidGlassTransparency.first()
         }
+        val appAccentColor = runBlocking { dataStoreManager.appAccentColor.first() }
         val globalFontMode = runBlocking {
             dataStoreManager.globalFontMode.first()
         }
@@ -101,6 +102,7 @@ class WebViewActivity : ComponentActivity() {
                 darkTheme = isDark,
                 dynamicColor = resolvedAppTheme == "material3",
                 appTheme = resolvedAppTheme,
+                appAccentColor = appAccentColor,
                 liquidGlassTransparency = liquidGlassTransparency,
                 liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled,
                 globalFontMode = globalFontMode

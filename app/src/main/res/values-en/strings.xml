@@ -10,9 +10,14 @@
     <string name="label_global_font">Global font</string>
     <string name="global_font_default">Default font</string>
     <string name="global_font_system">System font</string>
-    <string name="app_theme_lumi">Lumi Pink</string>
+    <string name="app_theme_lumi">Default</string>
     <string name="app_theme_material3">Material 3</string>
     <string name="app_theme_liquid_glass">Liquid Glass</string>
+    <string name="label_app_accent_color">Theme color</string>
+    <string name="app_accent_color_dialog_title">Set theme color</string>
+    <string name="app_accent_color_hex">Color value (#RRGGBB)</string>
+    <string name="app_accent_color_invalid">Enter a valid six-digit hex color</string>
+    <string name="app_accent_color_reset">Reset to Lumi Pink</string>
     <string name="liquid_glass_transparency">Glass clarity</string>
     <string name="liquid_glass_hdr_highlight">HDR touch highlight</string>
     <string name="app_name">LUMI</string>

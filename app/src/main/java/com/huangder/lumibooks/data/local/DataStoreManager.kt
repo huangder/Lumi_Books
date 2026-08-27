@@ -26,6 +26,7 @@ import com.huangder.lumibooks.domain.model.ReaderCornerContent
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
 import com.huangder.lumibooks.domain.model.ReaderPageCorner
 import com.huangder.lumibooks.domain.model.ReaderTextAlignment
+import com.huangder.lumibooks.domain.model.normalizeAppAccentHex
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.domain.model.ReaderThemeSettings
 import com.huangder.lumibooks.domain.model.ReaderThemeSuite
@@ -121,6 +122,7 @@ class DataStoreManager @Inject constructor(
 
         // 应用设置
         private val APP_THEME = stringPreferencesKey("app_theme")
+        private val APP_ACCENT_COLOR = stringPreferencesKey("app_accent_color")
         private val GLOBAL_FONT_MODE = stringPreferencesKey("global_font_mode")
         private val LIQUID_GLASS_TRANSPARENCY = floatPreferencesKey("liquid_glass_transparency")
         private val LIQUID_GLASS_HDR_HIGHLIGHT_ENABLED = booleanPreferencesKey("liquid_glass_hdr_highlight_enabled")
@@ -405,6 +407,10 @@ class DataStoreManager @Inject constructor(
     // 应用设置
     val appTheme: Flow<String> = context.dataStore.data.map { preferences ->
         preferences[APP_THEME] ?: "lumi"
+    }
+
+    val appAccentColor: Flow<String> = context.dataStore.data.map { preferences ->
+        normalizeAppAccentHex(preferences[APP_ACCENT_COLOR])
     }
 
     val globalFontMode: Flow<String> = context.dataStore.data.map { preferences ->
@@ -1218,6 +1224,12 @@ class DataStoreManager @Inject constructor(
     suspend fun saveAppTheme(theme: String) {
         context.dataStore.edit { preferences ->
             preferences[APP_THEME] = theme
+        }
+    }
+
+    suspend fun saveAppAccentColor(color: String) {
+        context.dataStore.edit { preferences ->
+            preferences[APP_ACCENT_COLOR] = normalizeAppAccentHex(color)
         }
     }
 

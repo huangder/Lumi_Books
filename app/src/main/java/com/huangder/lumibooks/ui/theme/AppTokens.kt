@@ -11,12 +11,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.R
+import com.huangder.lumibooks.domain.model.DEFAULT_APP_ACCENT_HEX
+import com.huangder.lumibooks.domain.model.parseAppAccentArgb
 import com.huangder.lumibooks.util.DownloadedFonts
 
 /** 全局深色模式状态，由 MainActivity 根据 DataStore 设置注入 */
 val LocalIsDarkTheme = staticCompositionLocalOf { false }
 val LocalUseMaterial3Theme = staticCompositionLocalOf { false }
 val LocalAppTheme = staticCompositionLocalOf { "lumi" }
+val LocalAppAccentHex = staticCompositionLocalOf { DEFAULT_APP_ACCENT_HEX }
+val LocalAppAccentColor = staticCompositionLocalOf { Color(parseAppAccentArgb(DEFAULT_APP_ACCENT_HEX)) }
+val LocalOnAppAccentColor = staticCompositionLocalOf { Color.White }
 val LocalLiquidGlassTransparency = staticCompositionLocalOf { 0.55f }
 val LocalLiquidGlassHdrHighlightEnabled = staticCompositionLocalOf { false }
 val LocalLiquidGlassCapability = staticCompositionLocalOf {
@@ -80,19 +85,8 @@ object AppColors {
     private val DarkBgGray = Color(0xFF2C2C2E)
     private val DarkDivider = Color(0xFF38383A)
 
-    // 强调色（粉红/珊瑚 #E85D5D）
-    private val LightAccent = Color(0xFFE85D5D)
-    private val DarkAccent = Color(0xFFFF8A80)
-    val Accent: Color @Composable get() = if (LocalEInkMode.current) {
-        Color.Black
-    } else if (LocalUseMaterial3Theme.current) {
-        MaterialTheme.colorScheme.primary
-    } else if (LocalIsDarkTheme.current) DarkAccent else LightAccent
-    val OnAccent: Color @Composable get() = if (LocalEInkMode.current) {
-        Color.White
-    } else if (LocalUseMaterial3Theme.current) {
-        MaterialTheme.colorScheme.onPrimary
-    } else Color.White
+    val Accent: Color @Composable get() = LocalAppAccentColor.current
+    val OnAccent: Color @Composable get() = LocalOnAppAccentColor.current
     val ControlActive: Color @Composable get() = if (LocalEInkMode.current) {
         Color.Black
     } else if (LocalUseMaterial3Theme.current) {
@@ -108,7 +102,7 @@ object AppColors {
         Color.Black.copy(alpha = 0.18f)
     } else Color(0x06000000)
 
-    // Material 3 模式使用系统动态色板；Lumi 模式保留原有粉色方案。
+    // Material 3 uses the system palette; Default and Liquid Glass use the configured accent.
     val WindowBg: Color @Composable get() = if (LocalEInkMode.current) Color.White else if (LocalUseMaterial3Theme.current) MaterialTheme.colorScheme.background else if (LocalIsDarkTheme.current) DarkWindowBg else LightWindowBg
     val CardBg: Color @Composable get() = if (LocalEInkMode.current) Color.White else if (LocalUseMaterial3Theme.current) MaterialTheme.colorScheme.surfaceContainerLow else if (LocalIsDarkTheme.current) DarkCardBg else LightCardBg
     val TextPrimary: Color @Composable get() = if (LocalEInkMode.current) Color.Black else if (LocalUseMaterial3Theme.current) MaterialTheme.colorScheme.onBackground else if (LocalIsDarkTheme.current) DarkTextPrimary else LightTextPrimary

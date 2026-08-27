@@ -42,6 +42,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -96,6 +97,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -122,6 +124,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import com.huangder.lumibooks.R
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalContext
@@ -155,6 +159,10 @@ import com.huangder.lumibooks.ui.components.LiquidGlassMenuSpec
 import com.huangder.lumibooks.ui.components.LocalLiquidGlassMenuHost
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.domain.model.HighlightPalette
+import com.huangder.lumibooks.domain.model.DEFAULT_APP_ACCENT_HEX
+import com.huangder.lumibooks.domain.model.appAccentHex
+import com.huangder.lumibooks.domain.model.normalizeAppAccentHex
+import com.huangder.lumibooks.domain.model.parseAppAccentArgb
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassCapability
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -166,7 +174,9 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 fun DetailPage(title: String, onBack: () -> Unit, content: @Composable () -> Unit) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val pageBackdrop = rememberLayerBackdrop()
+    val pageControlsBackdrop = rememberLayerBackdrop()
     val activeBackdrop = pageBackdrop.takeIf { isLiquidGlass }
+    val activeControlsBackdrop = pageControlsBackdrop.takeIf { isLiquidGlass }
 
     LiquidGlassMenuHost(
         modifier = Modifier
@@ -178,16 +188,22 @@ fun DetailPage(title: String, onBack: () -> Unit, content: @Composable () -> Uni
             modifier = Modifier.fillMaxSize(),
             backdrop = activeBackdrop
         ) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                // Keep the backdrop source separate from glass controls. Capturing controls that
-                // draw this same backdrop creates a recursive HWUI RenderNode tree on some devices.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(activeBackdrop?.let { Modifier.layerBackdrop(it) } ?: Modifier)
+            ) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
+                        .then(
+                            activeControlsBackdrop?.let { Modifier.layerBackdrop(it) } ?: Modifier
+                        )
                         .background(AppColors.WindowBg)
-                        .then(activeBackdrop?.let { Modifier.layerBackdrop(it) } ?: Modifier)
                 )
-                ProvideLiquidGlassBackdrop(activeBackdrop) {
+                // Page overlays sample the completed pageBackdrop. Inline controls use the
+                // background-only source so they never capture surfaces drawing that same source.
+                ProvideLiquidGlassBackdrop(activeControlsBackdrop) {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -407,6 +423,7 @@ private fun ReadingSettingsBasicDetail(viewModel: SettingsViewModel) {
 @Composable
 fun DisplayDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
+    var showAccentColorDialog by rememberSaveable { mutableStateOf(false) }
     val liquidGlassCapability = LocalLiquidGlassCapability.current
     val liquidGlassSupported = liquidGlassCapability.supported
     val appThemeOptions = listOf(
@@ -452,6 +469,13 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
             onSelect = viewModel::saveAppTheme
         )
         SettingsDivider()
+        if (uiState.appTheme != "material3" && !uiState.eInkModeEnabled) {
+            ThemeColorSettingRow(
+                colorHex = uiState.appAccentColor,
+                onClick = { showAccentColorDialog = true }
+            )
+            SettingsDivider()
+        }
         DropdownSettingRow(
             icon = Icons.Outlined.FontDownload,
             label = stringResource(R.string.label_global_font),
@@ -688,6 +712,238 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
             onSelect = viewModel::saveReaderTheme
         )
     }
+
+    if (showAccentColorDialog) {
+        ThemeColorDialog(
+            initialColorHex = uiState.appAccentColor,
+            onDismiss = { showAccentColorDialog = false },
+            onConfirm = { color ->
+                viewModel.saveAppAccentColor(color)
+                showAccentColorDialog = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun ThemeColorSettingRow(
+    colorHex: String,
+    onClick: () -> Unit
+) {
+    val normalized = normalizeAppAccentHex(colorHex)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(AppSpace.md),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            Icons.Outlined.Palette,
+            contentDescription = null,
+            tint = AppColors.TextSecondary,
+            modifier = Modifier.size(22.dp)
+        )
+        Spacer(Modifier.width(AppSpace.md))
+        Text(
+            stringResource(R.string.label_app_accent_color),
+            fontSize = AppType.Body,
+            color = AppColors.TextPrimary,
+            modifier = Modifier.weight(1f)
+        )
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .clip(CircleShape)
+                .background(Color(parseAppAccentArgb(normalized)))
+                .border(1.dp, AppColors.Divider, CircleShape)
+        )
+        Spacer(Modifier.width(AppSpace.sm))
+        Text(normalized, fontSize = AppType.BodySmall, color = AppColors.TextSecondary)
+        Spacer(Modifier.width(AppSpace.xs))
+        Icon(
+            Icons.Outlined.ChevronRight,
+            contentDescription = null,
+            tint = AppColors.TextSecondary,
+            modifier = Modifier.size(20.dp)
+        )
+    }
+}
+
+@Composable
+private fun ThemeColorDialog(
+    initialColorHex: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    val initialArgb = remember(initialColorHex) { parseAppAccentArgb(initialColorHex) }
+    val initialHsv = remember(initialArgb) {
+        FloatArray(3).also { android.graphics.Color.colorToHSV(initialArgb, it) }
+    }
+    var hue by remember(initialArgb) { mutableFloatStateOf(initialHsv[0]) }
+    var saturation by remember(initialArgb) { mutableFloatStateOf(initialHsv[1] * 100f) }
+    var brightness by remember(initialArgb) { mutableFloatStateOf(initialHsv[2] * 100f) }
+    var hexInput by remember(initialArgb) { mutableStateOf(appAccentHex(initialArgb)) }
+    val isHexValid = hexInput.trim().matches(Regex("^#?[0-9A-Fa-f]{6}$"))
+    val previewArgb = android.graphics.Color.HSVToColor(
+        floatArrayOf(hue, saturation / 100f, brightness / 100f)
+    )
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val shape = remember(density) { G2ContinuousCornerShape(with(density) { 30.dp.toPx() }) }
+
+    fun updateHexFromSliders() {
+        hexInput = appAccentHex(
+            android.graphics.Color.HSVToColor(
+                floatArrayOf(hue, saturation / 100f, brightness / 100f)
+            )
+        )
+    }
+
+    fun updateFromArgb(argb: Int) {
+        val hsv = FloatArray(3).also { android.graphics.Color.colorToHSV(argb, it) }
+        hue = hsv[0]
+        saturation = hsv[1] * 100f
+        brightness = hsv[2] * 100f
+        hexInput = appAccentHex(argb)
+    }
+
+    LiquidGlassDialog(
+        onDismissRequest = onDismiss,
+        modifier = Modifier
+            .fillMaxWidth()
+            .widthIn(max = 380.dp)
+            .imePadding(),
+        shape = shape,
+        contentScrimColor = AppColors.CardBg.copy(alpha = 0.82f),
+        backgroundScrimColor = Color.Black.copy(alpha = 0.20f),
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(AppSpace.lg)
+                .verticalScroll(rememberScrollState())
+        ) {
+            Text(
+                stringResource(R.string.app_accent_color_dialog_title),
+                fontSize = AppType.Section,
+                fontWeight = FontWeight.Bold,
+                color = AppColors.TextPrimary
+            )
+            Spacer(Modifier.height(AppSpace.md))
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .size(64.dp)
+                    .clip(CircleShape)
+                    .background(Color(previewArgb))
+                    .border(1.dp, AppColors.Divider, CircleShape)
+            )
+            Spacer(Modifier.height(AppSpace.md))
+            ThemeColorSlider(
+                label = stringResource(R.string.background_hue),
+                value = hue,
+                range = 0f..360f,
+                onValueChange = {
+                    hue = it
+                    updateHexFromSliders()
+                }
+            )
+            ThemeColorSlider(
+                label = stringResource(R.string.background_saturation),
+                value = saturation,
+                range = 0f..100f,
+                onValueChange = {
+                    saturation = it
+                    updateHexFromSliders()
+                }
+            )
+            ThemeColorSlider(
+                label = stringResource(R.string.background_lightness),
+                value = brightness,
+                range = 0f..100f,
+                onValueChange = {
+                    brightness = it
+                    updateHexFromSliders()
+                }
+            )
+            Spacer(Modifier.height(AppSpace.sm))
+            OutlinedTextField(
+                value = hexInput,
+                onValueChange = { value ->
+                    hexInput = value.take(7)
+                    if (value.trim().matches(Regex("^#?[0-9A-Fa-f]{6}$"))) {
+                        val normalized = normalizeAppAccentHex(value)
+                        val hsv = FloatArray(3).also {
+                            android.graphics.Color.colorToHSV(parseAppAccentArgb(normalized), it)
+                        }
+                        hue = hsv[0]
+                        saturation = hsv[1] * 100f
+                        brightness = hsv[2] * 100f
+                    }
+                },
+                label = { Text(stringResource(R.string.app_accent_color_hex)) },
+                supportingText = if (hexInput.isNotBlank() && !isHexValid) {
+                    { Text(stringResource(R.string.app_accent_color_invalid)) }
+                } else {
+                    null
+                },
+                isError = hexInput.isNotBlank() && !isHexValid,
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Ascii,
+                    imeAction = ImeAction.Done
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(AppSpace.md))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(AppSpace.sm),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.app_accent_color_reset),
+                    onClick = { updateFromArgb(parseAppAccentArgb(DEFAULT_APP_ACCENT_HEX)) }
+                )
+                Spacer(Modifier.weight(1f))
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.cancel),
+                    onClick = onDismiss
+                )
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.confirm),
+                    onClick = { onConfirm(normalizeAppAccentHex(hexInput)) },
+                    enabled = isHexValid,
+                    tintedColor = if (isHexValid) Color(previewArgb) else null,
+                    contentColor = if (isHexValid) {
+                        Color(com.huangder.lumibooks.domain.model.appAccentContentArgb(previewArgb))
+                    } else {
+                        AppColors.TextSecondary
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThemeColorSlider(
+    label: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    onValueChange: (Float) -> Unit
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, fontSize = AppType.BodySmall, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
+        Text("${value.toInt()}", fontSize = AppType.Caption, color = AppColors.TextSecondary)
+    }
+    com.huangder.lumibooks.ui.components.PillSlider(
+        value = value,
+        onValueChange = onValueChange,
+        valueRange = range,
+        step = 1f,
+        opaqueLiquidThumb = true
+    )
 }
 
 // ─── 阅读目标 ────────────────────────────────────────────────

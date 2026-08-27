@@ -9,6 +9,7 @@ import coil.Coil
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.domain.repository.BookRepository
+import com.huangder.lumibooks.domain.model.normalizeAppAccentHex
 import com.huangder.lumibooks.util.FileUtils
 import com.huangder.lumibooks.util.UpdateChecker
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -125,6 +126,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.appTheme.collectLatest { theme ->
                 _uiState.value = _uiState.value.copy(appTheme = theme)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.appAccentColor.collectLatest { color ->
+                _uiState.value = _uiState.value.copy(appAccentColor = color)
             }
         }
         viewModelScope.launch {
@@ -379,6 +385,15 @@ class SettingsViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(appTheme = theme)
         viewModelScope.launch {
             dataStoreManager.saveAppTheme(theme)
+        }
+    }
+
+    fun saveAppAccentColor(color: String) {
+        val normalized = normalizeAppAccentHex(color)
+        if (_uiState.value.appAccentColor == normalized) return
+        _uiState.value = _uiState.value.copy(appAccentColor = normalized)
+        viewModelScope.launch {
+            dataStoreManager.saveAppAccentColor(normalized)
         }
     }
 

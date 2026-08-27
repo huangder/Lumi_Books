@@ -7,9 +7,14 @@
     <string name="label_global_font">全域字型</string>
     <string name="global_font_default">預設字型</string>
     <string name="global_font_system">系統字型</string>
-    <string name="app_theme_lumi">Lumi 粉</string>
+    <string name="app_theme_lumi">預設</string>
     <string name="app_theme_material3">Material 3</string>
     <string name="app_theme_liquid_glass">液態玻璃</string>
+    <string name="label_app_accent_color">主題色</string>
+    <string name="app_accent_color_dialog_title">設定主題色</string>
+    <string name="app_accent_color_hex">顏色值 (#RRGGBB)</string>
+    <string name="app_accent_color_invalid">請輸入有效的六位十六進位顏色值</string>
+    <string name="app_accent_color_reset">恢復 Lumi 粉</string>
     <string name="liquid_glass_transparency">玻璃通透度</string>
     <string name="liquid_glass_hdr_highlight">HDR 按壓高光</string>
     <string name="app_name">LUMI</string>

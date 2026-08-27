@@ -78,6 +78,7 @@ import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
@@ -111,13 +112,14 @@ import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassTransparency
 import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
+import com.huangder.lumibooks.domain.model.blendAppAccentArgb
 import com.huangder.lumibooks.util.LocaleHelper
 import java.util.Locale
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.delay
 
 // 设计规范颜色 - 浅色模式
-private val AccentColor = Color(0xFFE85D5D)
+private val AccentColor: Color @Composable get() = AppColors.Accent
 private val LightTextSecondary = Color(0xFF6E6E73)
 private val LightBgGray = Color(0xFFF2F2F7)
 private val LightBackground = Color(0xFFFBFBFC)
@@ -128,9 +130,6 @@ private val DarkTextSecondary = Color(0xFF98989D)
 private val DarkBgGray = Color(0xFF2C2C2E)
 private val DarkBackground = Color(0xFF000000)
 private val DarkCardBg = Color(0xFF1C1C1E)
-private val WelcomePink = Color(0xFFFC6161)
-private val WelcomeDarkPink = Color(0xFF6F202A)
-private val WelcomeDarkBackground = Color(0xFF140B0D)
 
 private enum class WelcomePage {
     LANGUAGE_SETUP,
@@ -761,7 +760,7 @@ private fun WelcomeActionButton(
     modifier: Modifier = Modifier
 ) {
     val shape = RoundedCornerShape(28.dp)
-    val contentColor = if (primary) Color.White else textPrimary
+    val contentColor = if (primary) AppColors.OnAccent else textPrimary
 
     if (forceLiquidGlass) {
         CompositionLocalProvider(
@@ -980,13 +979,12 @@ private fun WelcomeIntroductionPage(
     var showTermsOfService by remember { mutableStateOf(false) }
     val privacyColor = when {
         isEInkMode -> Color.Black
-        isDark -> Color(0xFFFFA0A8).copy(alpha = 0.62f)
-        else -> WelcomePink.copy(alpha = 0.58f)
+        isDark -> AccentColor.copy(alpha = 0.62f)
+        else -> AccentColor.copy(alpha = 0.58f)
     }
     val linkColor = when {
         isEInkMode -> Color.Black
-        isDark -> Color(0xFFFFBCC2)
-        else -> WelcomePink
+        else -> AccentColor
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -1291,7 +1289,7 @@ private fun SupportWelcomeButton(
 
     val shape = RoundedCornerShape(28.dp)
     val glassColor = when {
-        primary -> Color(0xFFFF5E78)
+        primary -> AccentColor
         isDark -> Color(0xFF2D2D31)
         else -> Color(0xFFFFFFFF)
     }
@@ -1300,7 +1298,12 @@ private fun SupportWelcomeButton(
     } else {
         glassColor.copy(alpha = if (isDark) 0.28f else 0.48f)
     }
-    val shadowColor = if (primary) Color(0xFFFF7188) else Color.Black
+    val shadowColor = if (primary) AccentColor else Color.Black
+    val contentColor = when {
+        primary -> AppColors.OnAccent
+        isDark -> Color.White
+        else -> Color.Black
+    }
 
     CompositionLocalProvider(
         LocalAppTheme provides "liquid_glass",
@@ -1326,7 +1329,7 @@ private fun SupportWelcomeButton(
         ) {
             Text(
                 text = text,
-                color = if (primary || isDark) Color.White else Color.Black,
+                color = contentColor,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold
             )
@@ -1401,6 +1404,15 @@ private fun WelcomeGradientBackground(
     isEInkMode: Boolean
 ) {
     val motionEnabled = LocalMotionEnabled.current && !isEInkMode
+    val accentColor = AccentColor
+    val accentArgb = accentColor.toArgb()
+    val backgroundColor = if (isDark) {
+        Color(blendAppAccentArgb(0xFF000000.toInt(), accentArgb, 0.10f))
+    } else {
+        Color(blendAppAccentArgb(0xFFFFFFFF.toInt(), accentArgb, 0.04f))
+    }
+    val darkTopColor = Color(blendAppAccentArgb(0xFF000000.toInt(), accentArgb, 0.48f))
+    val darkMiddleColor = Color(blendAppAccentArgb(0xFF000000.toInt(), accentArgb, 0.26f))
     val progress = if (motionEnabled) {
         val transition = rememberInfiniteTransition(label = "welcomeGradientFlow")
         val first by transition.animateFloat(
@@ -1441,11 +1453,11 @@ private fun WelcomeGradientBackground(
             return@Canvas
         }
 
-        drawRect(if (isDark) WelcomeDarkBackground else Color(0xFFFFF9FA))
+        drawRect(backgroundColor)
         drawRect(
             brush = Brush.verticalGradient(
-                0f to if (isDark) WelcomeDarkPink else WelcomePink,
-                0.52f to if (isDark) Color(0xFF3A171D) else WelcomePink.copy(alpha = 0.62f),
+                0f to if (isDark) darkTopColor else accentColor,
+                0.52f to if (isDark) darkMiddleColor else accentColor.copy(alpha = 0.62f),
                 1f to Color.Transparent,
                 startY = 0f,
                 endY = size.height
@@ -1464,12 +1476,12 @@ private fun WelcomeGradientBackground(
             y = size.height * (startY + (endY - startY) * value)
         )
 
-        fun drawPinkField(center: Offset, radius: Float, alpha: Float) {
+        fun drawAccentField(center: Offset, radius: Float, alpha: Float) {
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        WelcomePink.copy(alpha = alpha),
-                        WelcomePink.copy(alpha = alpha * 0.42f),
+                        accentColor.copy(alpha = alpha),
+                        accentColor.copy(alpha = alpha * 0.42f),
                         Color.Transparent
                     ),
                     center = center,
@@ -1484,16 +1496,16 @@ private fun WelcomeGradientBackground(
         val firstCenter = center(-0.08f, 0.20f, 0.05f, 0.28f, progress.first)
         val secondCenter = center(0.88f, 0.35f, 0.74f, 0.47f, progress.second)
         val thirdCenter = center(0.18f, 0.70f, 0.34f, 0.63f, progress.third)
-        drawPinkField(firstCenter, longestSide * 0.68f, 0.58f * darkAlphaScale)
-        drawPinkField(secondCenter, longestSide * 0.62f, 0.54f * darkAlphaScale)
-        drawPinkField(thirdCenter, longestSide * 0.74f, 0.38f * darkAlphaScale)
+        drawAccentField(firstCenter, longestSide * 0.68f, 0.58f * darkAlphaScale)
+        drawAccentField(secondCenter, longestSide * 0.62f, 0.54f * darkAlphaScale)
+        drawAccentField(thirdCenter, longestSide * 0.74f, 0.38f * darkAlphaScale)
 
         val highlightCenter = center(0.82f, 0.48f, 0.68f, 0.57f, progress.second)
         val highlightRadius = longestSide * 0.52f
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    if (isDark) Color(0xFFFFD8DD).copy(alpha = 0.08f) else Color.White.copy(alpha = 0.72f),
+                    Color.White.copy(alpha = if (isDark) 0.08f else 0.72f),
                     Color.Transparent
                 ),
                 center = highlightCenter,
@@ -1531,13 +1543,14 @@ private fun WelcomeStartButton(
     val shape = RoundedCornerShape(26.dp)
     val containerColor = when {
         isEInkMode -> Color.White
-        isDark -> Color(0xFF241417).copy(alpha = 0.55f)
+        isDark -> Color(
+            blendAppAccentArgb(0xFF000000.toInt(), AccentColor.toArgb(), 0.14f)
+        ).copy(alpha = 0.55f)
         else -> Color.White.copy(alpha = 0.48f)
     }
     val contentColor = when {
         isEInkMode -> Color.Black
-        isDark -> Color(0xFFFFA0A8)
-        else -> WelcomePink
+        else -> AccentColor
     }
     val borderColor = if (isEInkMode) Color.Black else Color.White.copy(alpha = 0.90f)
 
@@ -1551,8 +1564,8 @@ private fun WelcomeStartButton(
                 elevation = if (isEInkMode) 0.dp else 20.dp,
                 shape = shape,
                 clip = false,
-                ambientColor = WelcomePink.copy(alpha = 0.18f),
-                spotColor = WelcomePink.copy(alpha = 0.18f)
+                ambientColor = AccentColor.copy(alpha = 0.18f),
+                spotColor = AccentColor.copy(alpha = 0.18f)
             )
             .clip(shape)
             .background(containerColor)

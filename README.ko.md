@@ -84,7 +84,7 @@
 - 저장 공간 사용량 시각화
 
 ### 🎨 테마 & 외관
-- **세 가지 앱 테마**：Lumi Pink（기본값）, Material 3（다이나믹 컬러）, Liquid Glass（리퀴드 글래스）
+- **세 가지 앱 테마**：기본（테마 색상 변경 가능, 초기 색상은 Lumi 핑크）, Material 3（다이나믹 컬러）, Liquid Glass（리퀴드 글래스）
 - Liquid Glass：투명도 조절 + HDR 터치 하이라이트
 - 다크 모드（시스템 연동 / 라이트 / 다크）
 - Motion Pro 애니메이션（베타）

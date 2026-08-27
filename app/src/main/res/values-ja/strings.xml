@@ -7,9 +7,14 @@
     <string name="label_global_font">アプリ全体のフォント</string>
     <string name="global_font_default">デフォルトフォント</string>
     <string name="global_font_system">システムフォント</string>
-    <string name="app_theme_lumi">Lumi ピンク</string>
+    <string name="app_theme_lumi">デフォルト</string>
     <string name="app_theme_material3">Material 3</string>
     <string name="app_theme_liquid_glass">リキッドガラス</string>
+    <string name="label_app_accent_color">テーマカラー</string>
+    <string name="app_accent_color_dialog_title">テーマカラーを設定</string>
+    <string name="app_accent_color_hex">カラーコード (#RRGGBB)</string>
+    <string name="app_accent_color_invalid">6桁の有効なカラーコードを入力してください</string>
+    <string name="app_accent_color_reset">Lumi ピンクに戻す</string>
     <string name="liquid_glass_transparency">ガラスの透明度</string>
     <string name="liquid_glass_hdr_highlight">HDR タッチハイライト</string>
     <string name="app_name">LUMI</string>

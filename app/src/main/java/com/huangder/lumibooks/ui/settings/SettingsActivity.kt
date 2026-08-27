@@ -61,9 +61,11 @@ class SettingsActivity : ComponentActivity() {
         val initialHdrHighlightEnabled = runBlocking {
             dataStoreManager.liquidGlassHdrHighlightEnabled.first()
         }
+        val initialAppAccentColor = runBlocking { dataStoreManager.appAccentColor.first() }
 
         setContent {
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = initialAppTheme)
+            val appAccentColor by dataStoreManager.appAccentColor.collectAsState(initial = initialAppAccentColor)
             val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = "system")
             val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = initialTransparency)
             val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = initialHdrHighlightEnabled)
@@ -82,6 +84,7 @@ class SettingsActivity : ComponentActivity() {
                 darkTheme = isDark,
                 dynamicColor = effectiveAppTheme == "material3",
                 appTheme = effectiveAppTheme,
+                appAccentColor = appAccentColor,
                 liquidGlassTransparency = liquidGlassTransparency,
                 liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled,
                 globalFontMode = globalFontMode,

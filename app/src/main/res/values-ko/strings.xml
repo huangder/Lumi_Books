@@ -7,9 +7,14 @@
     <string name="label_global_font">전역 글꼴</string>
     <string name="global_font_default">기본 글꼴</string>
     <string name="global_font_system">시스템 글꼴</string>
-    <string name="app_theme_lumi">Lumi 핑크</string>
+    <string name="app_theme_lumi">기본</string>
     <string name="app_theme_material3">Material 3</string>
     <string name="app_theme_liquid_glass">리퀴드 글래스</string>
+    <string name="label_app_accent_color">테마 색상</string>
+    <string name="app_accent_color_dialog_title">테마 색상 설정</string>
+    <string name="app_accent_color_hex">색상 값 (#RRGGBB)</string>
+    <string name="app_accent_color_invalid">유효한 6자리 16진수 색상을 입력하세요</string>
+    <string name="app_accent_color_reset">Lumi 핑크로 재설정</string>
     <string name="liquid_glass_transparency">유리 투명도</string>
     <string name="liquid_glass_hdr_highlight">HDR 터치 하이라이트</string>
     <string name="app_name">LUMI</string>

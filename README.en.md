@@ -84,7 +84,7 @@
 - Storage usage visualization
 
 ### 🎨 Themes & Appearance
-- **Three app themes**: Lumi Pink (default), Material 3 (dynamic color), Liquid Glass
+- **Three app themes**: Default (customizable, initially Lumi Pink), Material 3 (dynamic color), Liquid Glass
 - Liquid Glass: adjustable transparency + HDR touch highlight
 - Dark mode (follow system / light / dark)
 - Motion Pro animations (Beta)

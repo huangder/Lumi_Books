@@ -87,7 +87,7 @@
 - 存储空间可视化
 
 ### 🎨 主题与外观
-- **三套应用主题**：Lumi Pink（默认）、Material 3（动态取色）、Liquid Glass（液态玻璃）
+- **三套应用主题**：默认（主题色可自定义，初始为 Lumi 粉）、Material 3（动态取色）、Liquid Glass（液态玻璃）
 - 液态玻璃：可调透明度 + HDR 触摸高亮
 - 深色模式（跟随系统 / 浅色 / 深色）
 - Motion Pro 动效（Beta）

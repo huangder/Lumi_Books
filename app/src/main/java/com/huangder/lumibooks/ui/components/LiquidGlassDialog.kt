@@ -310,7 +310,14 @@ fun LiquidGlassDialog(
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val host = LocalLiquidGlassDialogHost.current
-    val sourceBackdrop = backdrop ?: LocalLiquidGlassBackdrop.current
+    // Hosted dialogs belong to the host's overlay layer, whose backdrop captures the
+    // completed page below it. Falling back to a control-local backdrop here can sample
+    // only the flat window background and, when nested, create a recursive RenderNode tree.
+    val sourceBackdrop = backdrop ?: if (host == null || !isLiquidGlass) {
+        LocalLiquidGlassBackdrop.current
+    } else {
+        null
+    }
     val id = remember { Any() }
     val latestDismiss by rememberUpdatedState(onDismissRequest)
     val latestContent by rememberUpdatedState(content)
