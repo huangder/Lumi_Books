@@ -1204,15 +1204,39 @@ class WebdavSyncManager @Inject constructor(
                 password = password,
                 overwrite = true
             )
-        } catch (error: Exception) {
-            // Do not leave a misleading temporary manifest behind. The caller uses this
-            // failure to keep local records unchanged.
-            runCatching {
-                webdavClient.delete(temporaryUrl, username, password)
-            }.onFailure { cleanupError ->
-                Log.w("WebDAV", "Unable to clean temporary manifest: ${cleanupError.message}")
+        } catch (error: WebdavException) {
+            if (error.statusCode in MOVE_UNSUPPORTED_STATUS_CODES) {
+                // A number of hosted WebDAV services expose PUT/DELETE but reject MOVE. Keep
+                // deletion usable there while still preferring the atomic operation whenever
+                // the server supports it. The local record is changed only after this PUT
+                // succeeds, just like the normal sync path.
+                Log.w("WebDAV", "MOVE is unavailable (HTTP ${error.statusCode}); falling back to PUT")
+                try {
+                    webdavClient.upload(finalUrl, payload, username, password, "application/json")
+                    cleanupTemporaryManifest(temporaryUrl, username, password)
+                    return
+                } catch (fallbackError: Exception) {
+                    cleanupTemporaryManifest(temporaryUrl, username, password)
+                    throw fallbackError
+                }
             }
+            cleanupTemporaryManifest(temporaryUrl, username, password)
             throw error
+        } catch (error: Exception) {
+            cleanupTemporaryManifest(temporaryUrl, username, password)
+            throw error
+        }
+    }
+
+    private suspend fun cleanupTemporaryManifest(
+        temporaryUrl: String,
+        username: String,
+        password: String
+    ) {
+        runCatching {
+            webdavClient.delete(temporaryUrl, username, password)
+        }.onFailure { cleanupError ->
+            Log.w("WebDAV", "Unable to clean temporary manifest: ${cleanupError.message}")
         }
     }
 
@@ -1275,6 +1299,10 @@ class WebdavSyncManager @Inject constructor(
         val digest = MessageDigest.getInstance("SHA-256")
         digest.update(data)
         return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    private companion object {
+        val MOVE_UNSUPPORTED_STATUS_CODES = setOf(403, 405, 501)
     }
 }
 
