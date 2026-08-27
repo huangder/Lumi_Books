@@ -1006,4 +1006,15 @@
     <string name="import_to_authorized_folder">匯入到「%1$s」</string>
     <string name="import_group_authorized_folders">依授權資料夾分類</string>
     <string name="import_group_authorized_folders_detail">將分別匯入到：%1$s</string>
+    <string name="move_folder">移動資料夾</string>
+    <string name="set_folder_cover">設定資料夾封面</string>
+    <string name="change_folder_cover">更換資料夾封面</string>
+    <string name="remove_folder_cover">移除資料夾封面</string>
+    <string name="folder_cover_updated">資料夾封面已更新</string>
+    <string name="folder_cover_removed">資料夾封面已移除</string>
+    <string name="folder_relocation_success">資料夾已移動</string>
+    <string name="folder_relocation_no_change">資料夾已在這個位置</string>
+    <string name="folder_source_missing">資料夾已不存在</string>
+    <string name="folder_target_missing">目標資料夾已不存在</string>
+    <string name="folder_invalid_target">不能將資料夾移入自身或其子資料夾</string>
 </resources>

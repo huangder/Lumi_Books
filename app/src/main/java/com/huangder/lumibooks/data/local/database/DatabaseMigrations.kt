@@ -83,4 +83,10 @@ object DatabaseMigrations {
             )
         }
     }
+
+    val MIGRATION_7_8 = object : Migration(7, 8) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE folders ADD COLUMN coverPath TEXT DEFAULT NULL")
+        }
+    }
 }

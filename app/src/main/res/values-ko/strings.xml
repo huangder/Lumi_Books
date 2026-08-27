@@ -1006,4 +1006,15 @@
     <string name="import_to_authorized_folder">“%1$s”(으)로 가져오기</string>
     <string name="import_group_authorized_folders">승인된 폴더별로 분류</string>
     <string name="import_group_authorized_folders_detail">각 폴더로 가져오기: %1$s</string>
+    <string name="move_folder">폴더 이동</string>
+    <string name="set_folder_cover">폴더 표지 설정</string>
+    <string name="change_folder_cover">폴더 표지 변경</string>
+    <string name="remove_folder_cover">폴더 표지 제거</string>
+    <string name="folder_cover_updated">폴더 표지를 업데이트했습니다</string>
+    <string name="folder_cover_removed">폴더 표지를 제거했습니다</string>
+    <string name="folder_relocation_success">폴더를 이동했습니다</string>
+    <string name="folder_relocation_no_change">폴더가 이미 이 위치에 있습니다</string>
+    <string name="folder_source_missing">폴더가 더 이상 존재하지 않습니다</string>
+    <string name="folder_target_missing">대상 폴더가 더 이상 존재하지 않습니다</string>
+    <string name="folder_invalid_target">폴더를 자기 자신이나 하위 폴더로 이동할 수 없습니다</string>
 </resources>

@@ -1008,4 +1008,15 @@
     <string name="import_to_authorized_folder">Import to “%1$s”</string>
     <string name="import_group_authorized_folders">Organize by authorized folder</string>
     <string name="import_group_authorized_folders_detail">Import separately to: %1$s</string>
+    <string name="move_folder">Move folder</string>
+    <string name="set_folder_cover">Set folder cover</string>
+    <string name="change_folder_cover">Change folder cover</string>
+    <string name="remove_folder_cover">Remove folder cover</string>
+    <string name="folder_cover_updated">Folder cover updated</string>
+    <string name="folder_cover_removed">Folder cover removed</string>
+    <string name="folder_relocation_success">Folder moved</string>
+    <string name="folder_relocation_no_change">The folder is already here</string>
+    <string name="folder_source_missing">The folder no longer exists</string>
+    <string name="folder_target_missing">The destination folder no longer exists</string>
+    <string name="folder_invalid_target">A folder cannot be moved into itself or its subfolder</string>
 </resources>

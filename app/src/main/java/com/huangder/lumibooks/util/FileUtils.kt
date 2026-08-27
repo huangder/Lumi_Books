@@ -93,11 +93,19 @@ object FileUtils {
      * @return 复制后的文件路径，失败返回 null
      */
     fun copyCoverImage(context: Context, uri: Uri, bookId: String): String? {
+        return copyCustomCover(context, uri, "custom_${bookId}_")
+    }
+
+    fun copyFolderCoverImage(context: Context, uri: Uri, folderId: String): String? {
+        return copyCustomCover(context, uri, "folder_custom_${folderId}_")
+    }
+
+    private fun copyCustomCover(context: Context, uri: Uri, filePrefix: String): String? {
         var destination: File? = null
         return try {
             val inputStream = context.contentResolver.openInputStream(uri) ?: return null
             val coversDir = getCoversDirectory(context)
-            val destinationFile = File(coversDir, "custom_${bookId}_${System.currentTimeMillis()}.jpg")
+            val destinationFile = File(coversDir, "$filePrefix${System.currentTimeMillis()}.jpg")
             destination = destinationFile
             inputStream.use { input ->
                 FileOutputStream(destinationFile).use { output ->
@@ -143,12 +151,38 @@ object FileUtils {
     }
 
     fun deleteOtherCustomCovers(context: Context, bookId: String, keepLocation: String?) {
+        deleteCustomCovers(context, "custom_${bookId}_", keepLocation)
+    }
+
+    fun deleteFolderCustomCover(context: Context, folderId: String) {
+        deleteOtherFolderCustomCovers(context, folderId, keepLocation = null)
+    }
+
+    fun deleteFolderCoverPaths(context: Context, coverPaths: Iterable<String>) {
+        val coversDirectory = getCoversDirectory(context)
+        coverPaths.forEach { path ->
+            val file = File(path)
+            if (file.name.startsWith("folder_custom_") && isInsideDirectory(file, coversDirectory)) {
+                deleteFile(file)
+            }
+        }
+    }
+
+    fun deleteOtherFolderCustomCovers(
+        context: Context,
+        folderId: String,
+        keepLocation: String?
+    ) {
+        deleteCustomCovers(context, "folder_custom_${folderId}_", keepLocation)
+    }
+
+    private fun deleteCustomCovers(context: Context, filePrefix: String, keepLocation: String?) {
         runCatching {
             val keepFile = keepLocation?.let(::File)?.canonicalFile
             val coversDir = getCoversDirectory(context)
             coversDir.listFiles()
                 ?.filter { cover ->
-                    cover.name.startsWith("custom_${bookId}_") &&
+                    cover.name.startsWith(filePrefix) &&
                         runCatching { cover.canonicalFile != keepFile }.getOrDefault(true)
                 }
                 ?.forEach { cover -> runCatching { cover.delete() } }

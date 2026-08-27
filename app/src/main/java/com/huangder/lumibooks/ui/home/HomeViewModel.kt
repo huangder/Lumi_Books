@@ -14,6 +14,7 @@ import com.huangder.lumibooks.domain.model.BookFolderLink
 import com.huangder.lumibooks.domain.model.BookTagLink
 import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.domain.model.FolderNameValidator
+import com.huangder.lumibooks.domain.model.FolderMoveResult
 import com.huangder.lumibooks.domain.model.LibraryFolder
 import com.huangder.lumibooks.domain.model.LibraryTag
 import com.huangder.lumibooks.domain.model.TagNameValidator
@@ -806,7 +807,88 @@ class HomeViewModel @Inject constructor(
     fun deleteFolder(folderId: String) {
         viewModelScope.launch {
             runCatching { folderRepository.deleteFolderTree(folderId) }
+                .onSuccess { coverPaths ->
+                    withContext(Dispatchers.IO) {
+                        FileUtils.deleteFolderCoverPaths(application, coverPaths)
+                    }
+                }
                 .onFailure { showFolderMessage(it.message ?: application.getString(R.string.error)) }
+        }
+    }
+
+    fun updateFolderCover(
+        folder: LibraryFolder,
+        uri: Uri,
+        onResult: (Boolean) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            var newCoverPath: String? = null
+            runCatching {
+                newCoverPath = withContext(Dispatchers.IO) {
+                    FileUtils.copyFolderCoverImage(application, uri, folder.id)
+                } ?: error("Unable to copy the selected folder cover")
+                check(folderRepository.updateFolderCover(folder.id, newCoverPath)) {
+                    "Folder no longer exists"
+                }
+                withContext(Dispatchers.IO) {
+                    FileUtils.deleteOtherFolderCustomCovers(application, folder.id, newCoverPath)
+                }
+            }.onSuccess {
+                showFolderMessage(application.getString(R.string.folder_cover_updated))
+                onResult(true)
+            }.onFailure { error ->
+                newCoverPath?.let { failedCover ->
+                    withContext(Dispatchers.IO) {
+                        FileUtils.deleteAppOwnedFile(application, failedCover)
+                    }
+                }
+                showFolderMessage(error.message ?: application.getString(R.string.error))
+                onResult(false)
+            }
+        }
+    }
+
+    fun removeFolderCover(folder: LibraryFolder, onResult: (Boolean) -> Unit = {}) {
+        viewModelScope.launch {
+            runCatching {
+                check(folderRepository.updateFolderCover(folder.id, null)) {
+                    "Folder no longer exists"
+                }
+                withContext(Dispatchers.IO) {
+                    FileUtils.deleteFolderCustomCover(application, folder.id)
+                }
+            }.onSuccess {
+                showFolderMessage(application.getString(R.string.folder_cover_removed))
+                onResult(true)
+            }.onFailure { error ->
+                showFolderMessage(error.message ?: application.getString(R.string.error))
+                onResult(false)
+            }
+        }
+    }
+
+    fun moveFolder(
+        folderId: String,
+        targetParentId: String?,
+        onResult: (FolderMoveResult) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            runCatching { folderRepository.moveFolder(folderId, targetParentId) }
+                .onSuccess { result ->
+                    val message = when (result) {
+                        FolderMoveResult.Success -> R.string.folder_relocation_success
+                        FolderMoveResult.NoChange -> R.string.folder_relocation_no_change
+                        FolderMoveResult.SourceNotFound -> R.string.folder_source_missing
+                        FolderMoveResult.TargetNotFound -> R.string.folder_target_missing
+                        FolderMoveResult.InvalidTarget -> R.string.folder_invalid_target
+                        FolderMoveResult.DuplicateName -> R.string.folder_name_exists
+                    }
+                    showFolderMessage(application.getString(message))
+                    onResult(result)
+                }
+                .onFailure { error ->
+                    showFolderMessage(error.message ?: application.getString(R.string.error))
+                }
         }
     }
 

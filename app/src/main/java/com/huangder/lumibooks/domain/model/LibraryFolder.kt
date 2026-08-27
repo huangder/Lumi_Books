@@ -6,8 +6,18 @@ data class LibraryFolder(
     val id: String,
     val name: String,
     val parentId: String?,
-    val createdAt: Long
+    val createdAt: Long,
+    val coverPath: String? = null
 )
+
+enum class FolderMoveResult {
+    Success,
+    NoChange,
+    SourceNotFound,
+    TargetNotFound,
+    InvalidTarget,
+    DuplicateName
+}
 
 data class BookFolderLink(
     val bookId: String,

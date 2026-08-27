@@ -1006,4 +1006,15 @@
     <string name="import_to_authorized_folder">「%1$s」にインポート</string>
     <string name="import_group_authorized_folders">認証済みフォルダ別に分類</string>
     <string name="import_group_authorized_folders_detail">次のフォルダに分けてインポート：%1$s</string>
+    <string name="move_folder">フォルダを移動</string>
+    <string name="set_folder_cover">フォルダ表紙を設定</string>
+    <string name="change_folder_cover">フォルダ表紙を変更</string>
+    <string name="remove_folder_cover">フォルダ表紙を削除</string>
+    <string name="folder_cover_updated">フォルダ表紙を更新しました</string>
+    <string name="folder_cover_removed">フォルダ表紙を削除しました</string>
+    <string name="folder_relocation_success">フォルダを移動しました</string>
+    <string name="folder_relocation_no_change">フォルダはすでにこの場所にあります</string>
+    <string name="folder_source_missing">フォルダは存在しません</string>
+    <string name="folder_target_missing">移動先フォルダは存在しません</string>
+    <string name="folder_invalid_target">自身またはサブフォルダには移動できません</string>
 </resources>

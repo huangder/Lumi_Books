@@ -159,6 +159,47 @@ class DatabaseMigrationsTest {
         }
     }
 
+    @Test
+    fun migration7To8PreservesFoldersAndBookOwnershipWithNullCovers() {
+        openHelper(version = 7, createSchema = true).use { helper ->
+            helper.writableDatabase.apply {
+                execSQL(
+                    "INSERT INTO books " +
+                        "(id,title,author,filePath,coverPath,format,lastReadTime,readingProgress," +
+                        "createdAt,isFavorite,locatorJson) VALUES " +
+                        "('book-1','Title','Author','/book.epub',NULL,'EPUB',10,0.42,5,0,NULL)"
+                )
+                execSQL("INSERT INTO folders VALUES ('root','Root','root',NULL,20)")
+                execSQL("INSERT INTO folders VALUES ('child','Child','child','root',21)")
+                execSQL("INSERT INTO book_folder_cross_refs VALUES ('book-1','child')")
+            }
+        }
+
+        openHelper(version = 8, createSchema = false).use { helper ->
+            val db = helper.writableDatabase
+            db.query(
+                "SELECT id,name,normalizedName,parentId,coverPath FROM folders ORDER BY createdAt"
+            ).use { cursor ->
+                cursor.moveToFirst()
+                assertEquals("root", cursor.getString(0))
+                assertEquals("Root", cursor.getString(1))
+                assertEquals("root", cursor.getString(2))
+                assertNull(cursor.getString(3))
+                assertNull(cursor.getString(4))
+                cursor.moveToNext()
+                assertEquals("child", cursor.getString(0))
+                assertEquals("Child", cursor.getString(1))
+                assertEquals("child", cursor.getString(2))
+                assertEquals("root", cursor.getString(3))
+                assertNull(cursor.getString(4))
+            }
+            db.query("SELECT folderId FROM book_folder_cross_refs WHERE bookId='book-1'").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals("child", cursor.getString(0))
+            }
+        }
+    }
+
     private fun openHelper(version: Int, createSchema: Boolean): SupportSQLiteOpenHelper {
         val callback = object : SupportSQLiteOpenHelper.Callback(version) {
             override fun onCreate(db: SupportSQLiteDatabase) {
@@ -168,6 +209,7 @@ class DatabaseMigrationsTest {
                     if (version >= 5) DatabaseMigrations.MIGRATION_4_5.migrate(db)
                     if (version >= 6) DatabaseMigrations.MIGRATION_5_6.migrate(db)
                     if (version >= 7) DatabaseMigrations.MIGRATION_6_7.migrate(db)
+                    if (version >= 8) DatabaseMigrations.MIGRATION_7_8.migrate(db)
                 }
             }
 
@@ -176,6 +218,7 @@ class DatabaseMigrationsTest {
                 if (oldVersion < 5 && newVersion >= 5) DatabaseMigrations.MIGRATION_4_5.migrate(db)
                 if (oldVersion < 6 && newVersion >= 6) DatabaseMigrations.MIGRATION_5_6.migrate(db)
                 if (oldVersion < 7 && newVersion >= 7) DatabaseMigrations.MIGRATION_6_7.migrate(db)
+                if (oldVersion < 8 && newVersion >= 8) DatabaseMigrations.MIGRATION_7_8.migrate(db)
             }
         }
         val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)

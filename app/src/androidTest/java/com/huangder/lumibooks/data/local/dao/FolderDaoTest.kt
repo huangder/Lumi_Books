@@ -7,6 +7,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.huangder.lumibooks.data.local.database.AppDatabase
 import com.huangder.lumibooks.data.local.entity.BookEntity
 import com.huangder.lumibooks.data.local.entity.FolderEntity
+import com.huangder.lumibooks.domain.model.FolderMoveResult
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -81,11 +82,80 @@ class FolderDaoTest {
         insertBook("book-1")
         dao.moveBooks(setOf("book-1"), child.id)
 
-        dao.deleteFolder(root.id)
+        val removedCoverPaths = dao.deleteFolderTree(root.id)
 
+        assertEquals(emptyList<String>(), removedCoverPaths)
         assertEquals(emptyList<Any>(), dao.getAllFolders().first())
         assertEquals(emptyList<Any>(), dao.getAllBookFolderLinks().first())
         assertNotNull(database.bookDao().getBookById("book-1"))
+    }
+
+    @Test
+    fun movingFolderAcrossLevelsAndBackToRootKeepsBookOwnership() = runBlocking {
+        val first = folder("first", "First", "first")
+        val second = folder("second", "Second", "second")
+        val child = folder("child", "Child", "child", parentId = first.id)
+        dao.createFolderIfAvailable(first)
+        dao.createFolderIfAvailable(second)
+        dao.createFolderIfAvailable(child)
+        insertBook("book-1")
+        dao.moveBooks(setOf("book-1"), child.id)
+
+        assertEquals(FolderMoveResult.Success, dao.moveFolder(child.id, second.id))
+        assertEquals(second.id, dao.getFolderById(child.id)?.parentId)
+        assertEquals(child.id, dao.getAllBookFolderLinks().first().single().folderId)
+
+        assertEquals(FolderMoveResult.Success, dao.moveFolder(child.id, null))
+        assertNull(dao.getFolderById(child.id)?.parentId)
+        assertEquals(child.id, dao.getAllBookFolderLinks().first().single().folderId)
+    }
+
+    @Test
+    fun movingFolderRejectsNoChangeMissingTargetsSelfAndDescendants() = runBlocking {
+        val root = folder("root", "Root", "root")
+        val child = folder("child", "Child", "child", parentId = root.id)
+        dao.createFolderIfAvailable(root)
+        dao.createFolderIfAvailable(child)
+
+        assertEquals(FolderMoveResult.NoChange, dao.moveFolder(child.id, root.id))
+        assertEquals(FolderMoveResult.SourceNotFound, dao.moveFolder("missing", null))
+        assertEquals(FolderMoveResult.TargetNotFound, dao.moveFolder(root.id, "missing"))
+        assertEquals(FolderMoveResult.InvalidTarget, dao.moveFolder(root.id, root.id))
+        assertEquals(FolderMoveResult.InvalidTarget, dao.moveFolder(root.id, child.id))
+        assertNull(dao.getFolderById(root.id)?.parentId)
+        assertEquals(root.id, dao.getFolderById(child.id)?.parentId)
+    }
+
+    @Test
+    fun movingFolderRejectsCaseInsensitiveSiblingNameConflict() = runBlocking {
+        val destination = folder("destination", "Destination", "destination")
+        val moving = folder("moving", "Fiction", "fiction")
+        val conflict = folder("conflict", "FICTION", "fiction", parentId = destination.id)
+        dao.createFolderIfAvailable(destination)
+        dao.createFolderIfAvailable(moving)
+        dao.createFolderIfAvailable(conflict)
+
+        assertEquals(FolderMoveResult.DuplicateName, dao.moveFolder(moving.id, destination.id))
+        assertNull(dao.getFolderById(moving.id)?.parentId)
+    }
+
+    @Test
+    fun deletingFolderTreeReturnsEveryCustomCoverPath() = runBlocking {
+        val root = folder("root", "Root", "root", coverPath = "/covers/root.jpg")
+        val child = folder(
+            "child",
+            "Child",
+            "child",
+            parentId = root.id,
+            coverPath = "/covers/child.jpg"
+        )
+        dao.createFolderIfAvailable(root)
+        dao.createFolderIfAvailable(child)
+
+        assertEquals(
+            setOf("/covers/root.jpg", "/covers/child.jpg"),
+            dao.deleteFolderTree(root.id).toSet()
+        )
     }
 
     private suspend fun insertBook(id: String) {
@@ -108,12 +178,14 @@ class FolderDaoTest {
         id: String,
         name: String,
         normalizedName: String,
-        parentId: String? = null
+        parentId: String? = null,
+        coverPath: String? = null
     ) = FolderEntity(
         id = id,
         name = name,
         normalizedName = normalizedName,
         parentId = parentId,
-        createdAt = 0L
+        createdAt = 0L,
+        coverPath = coverPath
     )
 }

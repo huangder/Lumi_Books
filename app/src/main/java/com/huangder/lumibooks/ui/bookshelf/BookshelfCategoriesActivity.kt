@@ -79,6 +79,7 @@ import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.domain.model.DEFAULT_APP_ACCENT_HEX
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.model.BookFormat
+import com.huangder.lumibooks.domain.model.FolderMoveResult
 import com.huangder.lumibooks.domain.model.LibraryTag
 import com.huangder.lumibooks.domain.model.LibraryFolder
 import com.huangder.lumibooks.ui.components.ConfigurableActivityBack
@@ -213,6 +214,7 @@ private fun BookshelfCategoriesScreen(
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
     val uiState by viewModel.uiState.collectAsState()
     val tagIdsByBook = remember(uiState.bookTagLinks) {
         uiState.bookTagLinks.groupBy { it.bookId }
@@ -221,6 +223,15 @@ private fun BookshelfCategoriesScreen(
     var managedFolder by remember { mutableStateOf<LibraryFolder?>(null) }
     var renameFolder by remember { mutableStateOf<LibraryFolder?>(null) }
     var deleteFolder by remember { mutableStateOf<LibraryFolder?>(null) }
+    var relocateFolder by remember { mutableStateOf<LibraryFolder?>(null) }
+    var folderCoverTarget by remember { mutableStateOf<LibraryFolder?>(null) }
+    val folderCoverPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        val folder = folderCoverTarget
+        folderCoverTarget = null
+        if (uri != null && folder != null) viewModel.updateFolderCover(folder, uri)
+    }
     val allTitle = stringResource(R.string.filter_all)
     val epubMobiTitle = stringResource(R.string.filter_epub_mobi)
     val favoritesTitle = stringResource(R.string.filter_favorites)
@@ -246,38 +257,40 @@ private fun BookshelfCategoriesScreen(
         onBack = onBack,
         onTargetSelected = onTargetSelected,
         onFolderSelected = onFolderSelected,
-        onFolderLongClick = { managedFolder = it }
+        onFolderLongClick = {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            managedFolder = it
+        }
     )
 
     managedFolder?.let { folder ->
-        LiquidGlassAlertDialog(
-            onDismissRequest = { managedFolder = null },
-            title = { Text(folder.name, fontWeight = FontWeight.Bold) },
-            text = {
-                Column {
-                    LiquidGlassTextButton(
-                        text = stringResource(R.string.rename_folder),
-                        onClick = {
-                            managedFolder = null
-                            renameFolder = folder
-                        }
-                    )
-                    LiquidGlassTextButton(
-                        text = stringResource(R.string.delete_folder),
-                        tintedColor = Color(0xFFD92D3A),
-                        onClick = {
-                            managedFolder = null
-                            deleteFolder = folder
-                        }
-                    )
-                }
+        FolderActionsSheet(
+            folder = folder,
+            onDismiss = { managedFolder = null },
+            onRename = {
+                managedFolder = null
+                renameFolder = folder
             },
-            confirmButton = {},
-            dismissButton = {
-                LiquidGlassTextButton(
-                    text = stringResource(R.string.cancel),
-                    onClick = { managedFolder = null }
-                )
+            onSetCover = {
+                managedFolder = null
+                folderCoverTarget = folder
+                runCatching { folderCoverPicker.launch("image/*") }
+                    .onFailure {
+                        folderCoverTarget = null
+                        Toast.makeText(context, it.message ?: "Unable to open the image picker", Toast.LENGTH_SHORT).show()
+                    }
+            },
+            onRemoveCover = {
+                managedFolder = null
+                viewModel.removeFolderCover(folder)
+            },
+            onMove = {
+                managedFolder = null
+                relocateFolder = folder
+            },
+            onDelete = {
+                managedFolder = null
+                deleteFolder = folder
             }
         )
     }
@@ -295,6 +308,20 @@ private fun BookshelfCategoriesScreen(
             onConfirm = { name ->
                 viewModel.renameFolder(folder.id, name) { renamed ->
                     if (renamed) renameFolder = null
+                }
+            }
+        )
+    }
+
+    relocateFolder?.let { folder ->
+        FolderRelocationSheet(
+            folders = uiState.folders,
+            sourceFolder = folder,
+            onDismiss = { relocateFolder = null },
+            onCreateFolder = { name, parentId -> viewModel.createFolder(name, parentId) },
+            onMove = { targetParentId ->
+                viewModel.moveFolder(folder.id, targetParentId) { result ->
+                    if (result == FolderMoveResult.Success) relocateFolder = null
                 }
             }
         )

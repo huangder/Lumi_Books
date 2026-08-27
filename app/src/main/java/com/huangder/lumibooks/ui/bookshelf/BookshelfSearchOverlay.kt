@@ -56,9 +56,11 @@ import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.HideImage
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
@@ -99,6 +101,7 @@ import coil.request.ImageRequest
 import androidx.compose.ui.platform.LocalContext
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.Book
+import com.huangder.lumibooks.domain.model.LibraryFolder
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.animation.HorizontalOverscrollBounce
 import com.huangder.lumibooks.ui.theme.AppColors
@@ -852,7 +855,77 @@ private fun SearchResultActionRow(
 }
 
 @Composable
-private fun SearchActionButton(
+internal fun FolderListActionRow(
+    folder: LibraryFolder,
+    visible: Boolean,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+    onSetCover: () -> Unit,
+    onRemoveCover: () -> Unit,
+    onMove: () -> Unit
+) {
+    HorizontalOverscrollBounce(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SearchActionButton(
+                icon = Icons.Outlined.Edit,
+                contentDescription = stringResource(R.string.rename_folder),
+                visible = visible,
+                animationIndex = 0,
+                onClick = onRename
+            )
+            SearchActionButton(
+                icon = Icons.Outlined.Delete,
+                contentDescription = stringResource(R.string.delete_folder),
+                visible = visible,
+                animationIndex = 1,
+                onClick = onDelete
+            )
+            SearchActionButton(
+                icon = Icons.Outlined.Image,
+                contentDescription = stringResource(
+                    if (folder.coverPath == null) R.string.set_folder_cover else R.string.change_folder_cover
+                ),
+                label = stringResource(
+                    if (folder.coverPath == null) R.string.set_folder_cover else R.string.change_folder_cover
+                ),
+                width = 118.dp,
+                visible = visible,
+                animationIndex = 2,
+                onClick = onSetCover
+            )
+            if (folder.coverPath != null) {
+                SearchActionButton(
+                    icon = Icons.Outlined.HideImage,
+                    contentDescription = stringResource(R.string.remove_folder_cover),
+                    label = stringResource(R.string.remove_folder_cover),
+                    width = 118.dp,
+                    visible = visible,
+                    animationIndex = 3,
+                    onClick = onRemoveCover
+                )
+            }
+            SearchActionButton(
+                icon = Icons.Outlined.DriveFileMove,
+                contentDescription = stringResource(R.string.move_folder),
+                label = stringResource(R.string.move_folder),
+                width = 92.dp,
+                visible = visible,
+                animationIndex = if (folder.coverPath == null) 3 else 4,
+                onClick = onMove
+            )
+        }
+    }
+}
+
+@Composable
+internal fun SearchActionButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     contentDescription: String,
     onClick: () -> Unit,

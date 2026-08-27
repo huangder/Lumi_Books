@@ -7,6 +7,7 @@ import androidx.room.Transaction
 import androidx.room.Upsert
 import com.huangder.lumibooks.data.local.entity.BookFolderCrossRefEntity
 import com.huangder.lumibooks.data.local.entity.FolderEntity
+import com.huangder.lumibooks.domain.model.FolderMoveResult
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -35,8 +36,24 @@ abstract class FolderDao {
     @Query("UPDATE folders SET name = :name, normalizedName = :normalizedName WHERE id = :folderId")
     abstract suspend fun updateFolderName(folderId: String, name: String, normalizedName: String)
 
+    @Query("UPDATE folders SET coverPath = :coverPath WHERE id = :folderId")
+    abstract suspend fun updateFolderCover(folderId: String, coverPath: String?): Int
+
+    @Query("UPDATE folders SET parentId = :parentId WHERE id = :folderId")
+    abstract suspend fun updateFolderParent(folderId: String, parentId: String?)
+
+    @Query(
+        "WITH RECURSIVE folder_tree(id, coverPath) AS (" +
+            "SELECT id, coverPath FROM folders WHERE id = :folderId " +
+            "UNION ALL " +
+            "SELECT child.id, child.coverPath FROM folders child " +
+            "JOIN folder_tree parent ON child.parentId = parent.id) " +
+            "SELECT coverPath FROM folder_tree WHERE coverPath IS NOT NULL"
+    )
+    abstract suspend fun getCoverPathsInTree(folderId: String): List<String>
+
     @Query("DELETE FROM folders WHERE id = :folderId")
-    abstract suspend fun deleteFolder(folderId: String)
+    protected abstract suspend fun deleteFolderRow(folderId: String)
 
     @Upsert
     abstract suspend fun upsertBookFolderLinks(links: List<BookFolderCrossRefEntity>)
@@ -81,5 +98,33 @@ abstract class FolderDao {
         }
         checkNotNull(getFolderById(targetFolderId)) { "Folder no longer exists" }
         upsertBookFolderLinks(bookIds.map { BookFolderCrossRefEntity(it, targetFolderId) })
+    }
+
+    @Transaction
+    open suspend fun moveFolder(folderId: String, targetParentId: String?): FolderMoveResult {
+        val folder = getFolderById(folderId) ?: return FolderMoveResult.SourceNotFound
+        if (targetParentId == folderId) return FolderMoveResult.InvalidTarget
+        if (folder.parentId == targetParentId) return FolderMoveResult.NoChange
+
+        var cursor = targetParentId
+        val visited = mutableSetOf<String>()
+        while (cursor != null) {
+            if (cursor == folderId || !visited.add(cursor)) return FolderMoveResult.InvalidTarget
+            val target = getFolderById(cursor) ?: return FolderMoveResult.TargetNotFound
+            cursor = target.parentId
+        }
+
+        val conflict = getFolderByNormalizedName(folder.normalizedName, targetParentId)
+        if (conflict != null && conflict.id != folderId) return FolderMoveResult.DuplicateName
+
+        updateFolderParent(folderId, targetParentId)
+        return FolderMoveResult.Success
+    }
+
+    @Transaction
+    open suspend fun deleteFolderTree(folderId: String): List<String> {
+        val coverPaths = getCoverPathsInTree(folderId)
+        deleteFolderRow(folderId)
+        return coverPaths
     }
 }

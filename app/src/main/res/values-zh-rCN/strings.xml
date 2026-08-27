@@ -1006,4 +1006,15 @@
     <string name="import_to_authorized_folder">导入到“%1$s”</string>
     <string name="import_group_authorized_folders">按授权文件夹归类</string>
     <string name="import_group_authorized_folders_detail">将分别导入到：%1$s</string>
+    <string name="move_folder">移动文件夹</string>
+    <string name="set_folder_cover">设置文件夹封面</string>
+    <string name="change_folder_cover">更换文件夹封面</string>
+    <string name="remove_folder_cover">移除文件夹封面</string>
+    <string name="folder_cover_updated">文件夹封面已更新</string>
+    <string name="folder_cover_removed">文件夹封面已移除</string>
+    <string name="folder_relocation_success">文件夹已移动</string>
+    <string name="folder_relocation_no_change">文件夹已在这个位置</string>
+    <string name="folder_source_missing">文件夹已不存在</string>
+    <string name="folder_target_missing">目标文件夹已不存在</string>
+    <string name="folder_invalid_target">不能将文件夹移入自身或其子文件夹</string>
 </resources>
