@@ -41,6 +41,11 @@ import androidx.compose.material.icons.rounded.AutoStories
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Leaderboard
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarDefaults
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -120,6 +125,35 @@ val tabs = listOf(
 )
 
 @Composable
+fun Material3BottomNavigationBar(
+    selectedIndex: Int,
+    onTabSelected: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    NavigationBar(
+        modifier = modifier.fillMaxWidth(),
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        tonalElevation = NavigationBarDefaults.Elevation,
+        windowInsets = NavigationBarDefaults.windowInsets
+    ) {
+        tabs.forEachIndexed { index, tab ->
+            NavigationBarItem(
+                selected = selectedIndex == index,
+                onClick = { onTabSelected(index) },
+                icon = {
+                    Icon(
+                        imageVector = if (selectedIndex == index) tab.selectedIcon else tab.unselectedIcon,
+                        contentDescription = stringResource(tab.titleRes)
+                    )
+                },
+                label = { Text(stringResource(tab.titleRes), maxLines = 1) },
+                alwaysShowLabel = true
+            )
+        }
+    }
+}
+
+@Composable
 fun FloatingTabBar(
     selectedIndex: Int,
     onTabSelected: (Int) -> Unit,
@@ -134,7 +168,7 @@ fun FloatingTabBar(
     val motionEnabled = LocalMotionEnabled.current
     val density = LocalDensity.current
     val barHeight = if (isLiquidGlass) 72.dp else 56.dp
-    val accent = if (isDark) AppColors.Accent else Color(0xFFFF6868)
+    val accent = AppColors.Accent
     // Automatic backdrop sampling is intentionally disabled. PixelCopy and draw
     // observation both add work to every animated frame on affected devices.
     val adaptiveBackgroundIsDark = isDark

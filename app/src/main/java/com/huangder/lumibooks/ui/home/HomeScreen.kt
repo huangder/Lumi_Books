@@ -18,8 +18,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -39,6 +41,8 @@ import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -87,6 +91,7 @@ import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.LocalUseMaterial3Theme
 import com.huangder.lumibooks.ui.theme.SansSerif
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.ui.animation.PageEntranceItem
@@ -108,11 +113,17 @@ fun HomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val isMaterial3 = LocalUseMaterial3Theme.current
     val isTablet = LocalConfiguration.current.smallestScreenWidthDp >= 600
     val topBlurBackdrop = rememberLayerBackdrop()
     val statusBarTopPadding = WindowInsets.statusBars
         .asPaddingValues()
         .calculateTopPadding()
+    val bottomContentPadding = if (isMaterial3) {
+        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 96.dp
+    } else {
+        120.dp
+    }
     val context = LocalContext.current
     var localShowGoalSheet by remember { mutableStateOf(false) }
     val showGoalSheet = if (renderReadingGoalSheet) localShowGoalSheet else showReadingGoalSheet
@@ -218,7 +229,7 @@ fun HomeScreen(
                 }
 
                 item(key = "bottom_spacing") {
-                    Spacer(Modifier.height(120.dp))
+                    Spacer(Modifier.height(bottomContentPadding))
                 }
             }
         } // OverscrollBounce 结束
@@ -245,18 +256,41 @@ fun HomeScreen(
                 index = 5,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 24.dp, bottom = 100.dp)
+                    .then(
+                        if (isMaterial3) {
+                            Modifier
+                                .navigationBarsPadding()
+                                .padding(end = 24.dp, bottom = 96.dp)
+                        } else {
+                            Modifier.padding(end = 24.dp, bottom = 100.dp)
+                        }
+                    )
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(56.dp)
-                        .shadow(8.dp, CircleShape, ambientColor = AppColors.Shadow)
-                        .clip(CircleShape)
-                        .background(Color.Black)
-                        .clickable(onClick = onImportClick),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.Add, stringResource(R.string.import_books), tint = Color.White, modifier = Modifier.size(24.dp))
+                if (isMaterial3) {
+                    FloatingActionButton(
+                        onClick = onImportClick,
+                        modifier = Modifier.size(56.dp),
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    ) {
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = stringResource(R.string.import_books),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .shadow(8.dp, CircleShape, ambientColor = AppColors.Shadow)
+                            .clip(CircleShape)
+                            .background(Color.Black)
+                            .clickable(onClick = onImportClick),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Add, stringResource(R.string.import_books), tint = Color.White, modifier = Modifier.size(24.dp))
+                    }
                 }
             }
         }

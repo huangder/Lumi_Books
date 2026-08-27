@@ -26,6 +26,9 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -132,6 +135,7 @@ import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
+import com.huangder.lumibooks.ui.theme.LocalUseMaterial3Theme
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.R
 import androidx.compose.ui.res.stringResource
@@ -165,6 +169,12 @@ fun BookshelfScreen(
     val contextMenuState = rememberBookContextMenuState()
     val eInkMode = LocalEInkMode.current
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !eInkMode
+    val isMaterial3 = LocalUseMaterial3Theme.current
+    val collectionBottomPadding = if (isMaterial3) {
+        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 96.dp
+    } else {
+        24.dp
+    }
     val density = LocalDensity.current
     val bookshelfBackdrop = rememberLayerBackdrop()
     val bookshelfTopBlurBackdrop = rememberLayerBackdrop()
@@ -622,7 +632,7 @@ fun BookshelfScreen(
                         syncedBookIds = uiState.syncedBookIds,
                         expandedListBookId = expandedListBookId,
                         topPadding = if (isEditing) 12.dp else 0.dp,
-                        bottomPadding = 24.dp,
+                        bottomPadding = collectionBottomPadding,
                         onHaptic = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
                         onSelectionToggle = toggleBookSelection,
                         onExpandedBookChange = { expandedListBookId = it },

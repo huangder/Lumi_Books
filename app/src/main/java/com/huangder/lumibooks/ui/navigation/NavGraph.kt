@@ -49,6 +49,7 @@ import com.huangder.lumibooks.R
 import com.huangder.lumibooks.ui.bookshelf.BookshelfScreen
 import com.huangder.lumibooks.ui.components.BookTransitionOverlay
 import com.huangder.lumibooks.ui.components.FloatingTabBar
+import com.huangder.lumibooks.ui.components.Material3BottomNavigationBar
 import com.huangder.lumibooks.ui.components.LiquidGlassImportButton
 import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
 import com.huangder.lumibooks.ui.components.ImmersiveMode
@@ -209,6 +210,7 @@ fun MainNavGraph(
     val entranceTracker = remember { PageEntranceTracker() }
     val hazeState = remember { HazeState() }
     val eInkMode = LocalEInkMode.current
+    val useMaterial3Navigation = LocalUseMaterial3Theme.current
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !eInkMode
     val liquidGlassBackdrop = rememberLayerBackdrop()
     val homeViewModel: HomeViewModel = hiltViewModel()
@@ -620,58 +622,66 @@ fun MainNavGraph(
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             val showLiquidImport = isLiquidGlass
-            Box(
-                modifier = Modifier.fillMaxWidth(),
-                contentAlignment = Alignment.Center
-            ) {
-                val requestImport = {
-                    importRequestFolderId = null
-                    selectedImportBooks = emptyList()
-                    selectedImportBookUris = emptySet()
-                    importCopiesIntoApp = true
-                    isPreparingImport = false
-                    importPreparationGeneration++
-                    showImportActions = true
-                    showImportConfirmation = false
+            val selectTab: (Int) -> Unit = { index ->
+                selectedTab = index
+                val route = when (index) {
+                    0 -> Screen.Home.route
+                    1 -> Screen.Bookshelf.route
+                    2 -> Screen.Statistics.route
+                    else -> Screen.Home.route
                 }
+                navController.navigate(route) {
+                    popUpTo(Screen.Home.route) { saveState = true }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            }
+            if (useMaterial3Navigation) {
+                Material3BottomNavigationBar(
+                    selectedIndex = selectedTab,
+                    onTabSelected = selectTab
+                )
+            } else {
                 Box(
-                    modifier = Modifier.widthIn(
-                        max = if (isLiquidGlass) 480.dp else 430.dp
-                    )
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center
                 ) {
-                    if (showLiquidImport) {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .navigationBarsPadding()
-                                .padding(end = 24.dp, bottom = 10.dp)
-                        ) {
-                            LiquidGlassImportButton(
-                                onClick = requestImport,
-                                liquidGlassBackdrop = liquidGlassBackdrop
-                            )
-                        }
+                    val requestImport = {
+                        importRequestFolderId = null
+                        selectedImportBooks = emptyList()
+                        selectedImportBookUris = emptySet()
+                        importCopiesIntoApp = true
+                        isPreparingImport = false
+                        importPreparationGeneration++
+                        showImportActions = true
+                        showImportConfirmation = false
                     }
-                    FloatingTabBar(
-                        selectedIndex = selectedTab,
-                        hazeState = hazeState,
-                        liquidGlassBackdrop = liquidGlassBackdrop,
-                        reserveImportButtonSpace = showLiquidImport,
-                        onTabSelected = { index ->
-                            selectedTab = index
-                            val r = when (index) {
-                                0 -> Screen.Home.route
-                                1 -> Screen.Bookshelf.route
-                                2 -> Screen.Statistics.route
-                                else -> Screen.Home.route
-                            }
-                            navController.navigate(r) {
-                                popUpTo(Screen.Home.route) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
+                    Box(
+                        modifier = Modifier.widthIn(
+                            max = if (isLiquidGlass) 480.dp else 430.dp
+                        )
+                    ) {
+                        if (showLiquidImport) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .navigationBarsPadding()
+                                    .padding(end = 24.dp, bottom = 10.dp)
+                            ) {
+                                LiquidGlassImportButton(
+                                    onClick = requestImport,
+                                    liquidGlassBackdrop = liquidGlassBackdrop
+                                )
                             }
                         }
-                    )
+                        FloatingTabBar(
+                            selectedIndex = selectedTab,
+                            hazeState = hazeState,
+                            liquidGlassBackdrop = liquidGlassBackdrop,
+                            reserveImportButtonSpace = showLiquidImport,
+                            onTabSelected = selectTab
+                        )
+                    }
                 }
             }
         }
@@ -880,7 +890,11 @@ fun MainNavGraph(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(start = 20.dp, end = 20.dp, bottom = 88.dp)
+                .padding(
+                    start = 20.dp,
+                    end = 20.dp,
+                    bottom = if (useMaterial3Navigation) 96.dp else 88.dp
+                )
         )
 
         if (showTransition && !eInkMode) {

@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.horizontalScroll
@@ -71,6 +72,7 @@ import androidx.compose.ui.res.stringResource
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
+import com.huangder.lumibooks.ui.theme.LocalUseMaterial3Theme
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.huangder.lumibooks.ui.animation.PageEntranceItem
@@ -95,6 +97,11 @@ fun StatisticsScreen(
     val statusBarTopPadding = WindowInsets.statusBars
         .asPaddingValues()
         .calculateTopPadding()
+    val bottomContentPadding = if (LocalUseMaterial3Theme.current) {
+        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 96.dp
+    } else {
+        120.dp
+    }
     val motionEnabled = LocalMotionEnabled.current
     val chartAnimationsPlayed = remember { mutableStateListOf(false, false, false) }
     val selectedPeriod = uiState.selectedTab.coerceIn(0, 2)
@@ -202,7 +209,7 @@ fun StatisticsScreen(
                     PageEntranceItem(play = playEntranceAnimation, index = 4) {
                         Column {
                             CompletionProgress(uiState)
-                            Spacer(Modifier.height(120.dp))
+                            Spacer(Modifier.height(bottomContentPadding))
                         }
                     }
                 }
