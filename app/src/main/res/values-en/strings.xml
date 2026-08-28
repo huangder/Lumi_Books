@@ -8,6 +8,7 @@
     <string name="motion_preference_reduced">Reduced</string>
     <string name="label_app_theme">Theme</string>
     <string name="label_global_font">Global font</string>
+    <string name="label_card_outlines">Show card outlines</string>
     <string name="global_font_default">Default font</string>
     <string name="global_font_system">System font</string>
     <string name="app_theme_lumi">Default</string>
@@ -161,8 +162,28 @@
     <string name="goal_minutes">%d min</string>
 
     <!-- Reading settings details -->
-    <string name="tts_floating_toggle">Reading overlay subtitles</string>
-    <string name="tts_floating_toggle_desc">Show the current sentence above the screen while reading aloud</string>
+    <string name="title_floating_subtitle_settings">Floating window settings</string>
+    <string name="floating_subtitle_settings_entry_desc">Adjust subtitle position, background, and size</string>
+    <string name="floating_subtitle_enabled">Floating subtitles</string>
+    <string name="floating_subtitle_enabled_desc">Show the current short caption over other apps while reading aloud</string>
+    <string name="floating_subtitle_permission_missing">Overlay permission required</string>
+    <string name="floating_subtitle_permission_missing_desc">Allow display over other apps to preview and show subtitles</string>
+    <string name="floating_subtitle_permission_title">Floating subtitle permission</string>
+    <string name="floating_subtitle_permission_message">Displaying and previewing floating subtitles requires the Display over other apps permission. Allow it in system settings.</string>
+    <string name="floating_subtitle_permission_open_settings">Open settings</string>
+    <string name="floating_subtitle_position_section">Position</string>
+    <string name="floating_subtitle_x_position">X position</string>
+    <string name="floating_subtitle_y_position">Y position</string>
+    <string name="floating_subtitle_background_section">Background</string>
+    <string name="floating_subtitle_background_color">Background color</string>
+    <string name="floating_subtitle_background_opacity">Opacity</string>
+    <string name="floating_subtitle_corner_radius">Corner radius</string>
+    <string name="floating_subtitle_size_section">Size</string>
+    <string name="floating_subtitle_width">Width</string>
+    <string name="floating_subtitle_height">Height</string>
+    <string name="floating_subtitle_percent_value">%1$d%%</string>
+    <string name="floating_subtitle_dp_value">%1$d dp</string>
+    <string name="floating_subtitle_preview_text">Floating subtitles appear here</string>
     <string name="tts_engine_selection">Speech engine</string>
     <string name="tts_engine_system_default">System default</string>
     <string name="tts_engine_select_dialog_title">Select speech engine</string>
@@ -301,6 +322,31 @@
     <string name="cover_search_query_suffix">cover</string>
     <string name="reload_page">Reload</string>
     <string name="bookmarks_notes">Bookmarks, Highlights &amp; Notes</string>
+    <string name="book_details">Book details</string>
+    <string name="move_to_folder">Move to folder</string>
+    <string name="book_detail_read">Read</string>
+    <string name="book_detail_continue">Continue reading</string>
+    <string name="book_detail_start">Start reading</string>
+    <string name="book_detail_progress">Progress</string>
+    <string name="book_detail_reading_time">Reading time</string>
+    <string name="book_detail_notes">Notes and highlights</string>
+    <string name="book_detail_bookmarks">Bookmarks</string>
+    <string name="book_detail_active_days">Active days</string>
+    <string name="book_detail_file_size">File size</string>
+    <string name="book_detail_file_name">File name</string>
+    <string name="book_detail_format">Format</string>
+    <string name="book_detail_folder">Folder</string>
+    <string name="book_detail_storage">Storage</string>
+    <string name="book_detail_imported">Imported</string>
+    <string name="book_detail_last_read">Last read</string>
+    <string name="book_detail_location">Location</string>
+    <string name="book_detail_internal_storage">Internal storage</string>
+    <string name="book_detail_local">Local</string>
+    <string name="book_detail_cloud_only">Cloud only</string>
+    <string name="book_detail_synced">Synced</string>
+    <string name="book_detail_unknown">Unknown</string>
+    <string name="book_detail_none">None</string>
+    <string name="book_detail_edit">Edit</string>
     <string name="add_tag">Add tag</string>
     <string name="tag_sheet_title">Tags</string>
     <string name="tag_name_hint">Enter a new tag</string>
@@ -489,6 +535,8 @@
     <string name="delete_theme_suite_message">Delete “%1$s”?</string>
     <string name="background_custom">Custom</string>
     <string name="background_add">Add</string>
+    <string name="background_name_default">Custom background</string>
+    <string name="background_name_hint">Enter background name</string>
     <string name="custom_background_title">Custom Background</string>
     <string name="background_hue">Hue</string>
     <string name="background_saturation">Saturation</string>
@@ -513,6 +561,10 @@
     <string name="font_kaiti">KaiTi</string>
     <string name="font_custom">Custom</string>
     <string name="font_import">Import</string>
+    <string name="font_import_name_title">Custom font name</string>
+    <string name="font_import_name_hint">Enter a name (up to 6 characters)</string>
+    <string name="font_import_name_count">%1$d/6</string>
+    <string name="font_import_default_name">Custom font</string>
 
     <!-- Welcome Page -->
     <string name="welcome_title">Welcome</string>
@@ -939,10 +991,6 @@
     <string name="statistics_active_days">Active days</string>
     <string name="statistics_duration_value">%1$dh %2$dm</string>
     <string name="statistics_active_days_value">%1$d days</string>
-    <string name="tts_floating_permission_title">Audiobook caption permission</string>
-    <string name="tts_floating_permission_required">To show captions over other apps while in the background, please allow the Display over other apps permission in system settings.</string>
-    <string name="tts_floating_permission_toast">Overlay permission missing — audiobook captions are unavailable for now</string>
-    <string name="tts_floating_go_settings">Go to settings</string>
     <string name="bookmark_added_toast">Bookmark added</string>
     <string name="bookmark_removed_toast">Bookmark removed</string>
     <string name="add_sub_tag">Add sub-tag</string>
@@ -982,11 +1030,7 @@
     <string name="transition_fade">Fade</string>
     <string name="transition_scroll">Vertical scroll</string>
     <string name="transition_slide">Slide</string>
-    <string name="tts_floating_channel">Audiobook floating window</string>
-    <string name="tts_floating_channel_desc">Audiobook floating caption notification</string>
     <string name="tts_floating_loading">Reading…</string>
-    <string name="tts_floating_notification_text">Floating window is showing captions</string>
-    <string name="tts_floating_notification_title">Audiobook captions</string>
     <string name="selected_books_count_compact">%1$d selected</string>
     <string name="txt_editor_structure_changed_warning">Chapter structure changed. Text was saved, but existing annotation positions may need review.</string>
     <string name="filter_epub_mobi">EPUB &amp; MOBI</string>

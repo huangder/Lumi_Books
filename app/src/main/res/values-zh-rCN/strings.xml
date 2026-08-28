@@ -5,6 +5,7 @@
     <string name="entrance_animations_description">为部分页面添加元素\n动效，这可能会影响性能</string>
     <string name="label_app_theme">主题</string>
     <string name="label_global_font">全局字体</string>
+    <string name="label_card_outlines">显示轮廓</string>
     <string name="global_font_default">默认字体</string>
     <string name="global_font_system">系统字体</string>
     <string name="app_theme_lumi">默认</string>
@@ -275,6 +276,31 @@
     <string name="cover_search_query_suffix">封面</string>
     <string name="reload_page">重新加载</string>
     <string name="bookmarks_notes">书签高亮与笔记</string>
+    <string name="book_details">书本详情</string>
+    <string name="move_to_folder">移入文件夹</string>
+    <string name="book_detail_read">阅读</string>
+    <string name="book_detail_continue">继续阅读</string>
+    <string name="book_detail_start">开始阅读</string>
+    <string name="book_detail_progress">进度</string>
+    <string name="book_detail_reading_time">阅读时长</string>
+    <string name="book_detail_notes">笔记与高亮</string>
+    <string name="book_detail_bookmarks">书签</string>
+    <string name="book_detail_active_days">活跃天数</string>
+    <string name="book_detail_file_size">文件大小</string>
+    <string name="book_detail_file_name">文件名</string>
+    <string name="book_detail_format">格式</string>
+    <string name="book_detail_folder">文件夹</string>
+    <string name="book_detail_storage">存储状态</string>
+    <string name="book_detail_imported">导入时间</string>
+    <string name="book_detail_last_read">最后阅读</string>
+    <string name="book_detail_location">文件位置</string>
+    <string name="book_detail_internal_storage">内部存储</string>
+    <string name="book_detail_local">本地</string>
+    <string name="book_detail_cloud_only">仅云端</string>
+    <string name="book_detail_synced">已同步</string>
+    <string name="book_detail_unknown">未知</string>
+    <string name="book_detail_none">无</string>
+    <string name="book_detail_edit">编辑</string>
 
     <!-- 书签笔记 -->
     <string name="notes_title">书签、高亮与笔记</string>
@@ -430,6 +456,8 @@
     <string name="delete_theme_suite_message">确定删除“%1$s”吗？</string>
     <string name="background_custom">自定义</string>
     <string name="background_add">添加</string>
+    <string name="background_name_default">自定义背景</string>
+    <string name="background_name_hint">输入背景名称</string>
     <string name="custom_background_title">自定义背景</string>
     <string name="background_hue">色相</string>
     <string name="background_saturation">饱和度</string>
@@ -453,6 +481,10 @@
     <string name="font_kaiti">楷体</string>
     <string name="font_custom">自定义</string>
     <string name="font_import">导入</string>
+    <string name="font_import_name_title">自定义字体名称</string>
+    <string name="font_import_name_hint">输入名称（最多 6 个字）</string>
+    <string name="font_import_name_count">%1$d/6</string>
+    <string name="font_import_default_name">自定义字体</string>
 
     <!-- 欢迎页 -->
     <string name="welcome_title">欢迎使用</string>
@@ -847,10 +879,6 @@
     <string name="widget_preview_book_title">书名</string>
     <string name="widget_preview_author">作者</string>
     <string name="widget_quote_preview_attribution">《书名》 作者</string>
-    <string name="tts_floating_permission_title">听书字幕权限</string>
-    <string name="tts_floating_permission_required">在后台显示听书字幕需要「显示在其他应用上层」权限，请在系统设置中授权</string>
-    <string name="tts_floating_permission_toast">缺少悬浮窗权限，暂时无法显示听书字幕</string>
-    <string name="tts_floating_go_settings">前往设置</string>
     <string name="bookmark_added_toast">已添加书签</string>
     <string name="bookmark_removed_toast">已移除书签</string>
     <string name="add_sub_tag">添加子标签</string>
@@ -940,13 +968,29 @@
     <string name="tts_engine_ai_not_configured">尚未配置，点击前往设置</string>
     <string name="tts_engine_unavailable">已选引擎不可用</string>
     <string name="tts_engine_unavailable_error">所选语音引擎不可用，请在阅读设置中重新选择</string>
-    <string name="tts_floating_channel">听书悬浮窗</string>
-    <string name="tts_floating_channel_desc">听书悬浮窗字幕通知</string>
     <string name="tts_floating_loading">正在朗读...</string>
-    <string name="tts_floating_notification_text">悬浮窗正在显示字幕</string>
-    <string name="tts_floating_notification_title">听书字幕</string>
-    <string name="tts_floating_toggle">听书悬浮窗字幕</string>
-    <string name="tts_floating_toggle_desc">朗读时在屏幕上方显示当前句子字幕</string>
+    <string name="title_floating_subtitle_settings">悬浮窗设置</string>
+    <string name="floating_subtitle_settings_entry_desc">设置悬浮窗字幕的位置、背景和尺寸</string>
+    <string name="floating_subtitle_enabled">悬浮窗字幕</string>
+    <string name="floating_subtitle_enabled_desc">听书时在其他应用上方显示当前短句</string>
+    <string name="floating_subtitle_permission_missing">悬浮窗权限未开启</string>
+    <string name="floating_subtitle_permission_missing_desc">授权后才能显示和预览悬浮窗字幕</string>
+    <string name="floating_subtitle_permission_title">悬浮窗字幕权限</string>
+    <string name="floating_subtitle_permission_message">显示和预览悬浮窗字幕需要「显示在其他应用上层」权限，请在系统设置中授权</string>
+    <string name="floating_subtitle_permission_open_settings">前往设置</string>
+    <string name="floating_subtitle_position_section">位置</string>
+    <string name="floating_subtitle_x_position">X 轴位置</string>
+    <string name="floating_subtitle_y_position">Y 轴位置</string>
+    <string name="floating_subtitle_background_section">背景</string>
+    <string name="floating_subtitle_background_color">背景颜色</string>
+    <string name="floating_subtitle_background_opacity">透明度</string>
+    <string name="floating_subtitle_corner_radius">圆角</string>
+    <string name="floating_subtitle_size_section">尺寸</string>
+    <string name="floating_subtitle_width">宽度</string>
+    <string name="floating_subtitle_height">高度</string>
+    <string name="floating_subtitle_percent_value">%1$d%%</string>
+    <string name="floating_subtitle_dp_value">%1$d dp</string>
+    <string name="floating_subtitle_preview_text">悬浮窗字幕会显示在这里</string>
     <string name="tts_listen">听书</string>
     <string name="tts_next_sentence">下一句</string>
     <string name="tts_no_readable_text">当前页面没有可朗读的文字</string>
