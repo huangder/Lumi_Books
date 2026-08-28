@@ -33,6 +33,14 @@
 -keep class nl.siegmann.epublib.** { *; }
 -dontwarn nl.siegmann.epublib.**
 
+# PDFBox can use this optional JPEG2000 decoder when an app supplies it.
+-dontwarn com.gemalto.jp2.JP2Decoder
+
 # Keep data classes
 -keep class com.huangder.lumibooks.data.** { *; }
 -keep class com.huangder.lumibooks.domain.** { *; }
+# Detailed reader diagnostics must not build strings on release/benchmark hot paths.
+-assumenosideeffects class android.util.Log {
+    public static *** d(...);
+    public static *** v(...);
+}
