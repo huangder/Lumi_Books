@@ -2,8 +2,6 @@ package com.huangder.lumibooks.ui.reader.engine
 
 import android.content.Context
 import android.graphics.Typeface
-import android.graphics.RenderEffect
-import android.graphics.Shader
 import android.text.Layout
 import android.text.Selection
 import android.text.Spannable
@@ -23,8 +21,11 @@ import android.widget.TextView
 import coil.load
 import com.huangder.lumibooks.domain.model.ReaderTextAlignment
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
+import com.huangder.lumibooks.util.ReaderBackgroundBlurTransformation
+import com.huangder.lumibooks.util.parser.EpubParser
 import java.io.File
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 internal fun pageStartsMidParagraph(text: CharSequence, start: Int): Boolean {
     return start > 0 && start <= text.length && text[start - 1] != '\n'
@@ -78,6 +79,13 @@ class PageContentView(context: Context) : FrameLayout(context) {
         visibility = View.GONE
     }
 
+    private val coverImageView = ImageView(context).apply {
+        scaleType = ImageView.ScaleType.FIT_CENTER
+        isClickable = false
+        isFocusable = false
+        visibility = View.GONE
+    }
+
     /** The single visible text, image, highlight, and native-selection renderer. */
     val textView: TextView = PagedSelectableTextView(context).apply {
         setTextIsSelectable(true)
@@ -110,6 +118,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
         isFocusable = false
         isLongClickable = false
         addView(backgroundImageView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        addView(coverImageView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         // 再添加隐藏的 TextView（处理触摸）
         addView(textView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         // 再添加可见的 JustifiedTextView（顶层，渲染文字）
@@ -121,6 +130,8 @@ class PageContentView(context: Context) : FrameLayout(context) {
     private var readerBackgroundImageOpacity: Float = 1f
     private var readerBackgroundImageBlurDp: Float = 0f
     private var currentBgColor: Int = 0
+    private var showingCoverPage = false
+    private var coverImageSpan: ImageSpan? = null
 
     fun setReaderBackground(
         color: Int,
@@ -142,16 +153,6 @@ class PageContentView(context: Context) : FrameLayout(context) {
         readerBackgroundImageOpacity = opacity
         readerBackgroundImageBlurDp = blurDp
         backgroundImageView.alpha = opacity
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-            val radiusPx = blurDp * resources.displayMetrics.density
-            backgroundImageView.setRenderEffect(
-                if (radiusPx >= 0.5f) {
-                    RenderEffect.createBlurEffect(radiusPx, radiusPx, Shader.TileMode.CLAMP)
-                } else {
-                    null
-                }
-            )
-        }
         val imageFile = imagePath?.let(::File)?.takeIf { it.exists() }
         if (imageFile == null) {
             backgroundImageView.load(null)
@@ -161,8 +162,10 @@ class PageContentView(context: Context) : FrameLayout(context) {
             backgroundImageView.load(imageFile) {
                 allowHardware(false)
                 crossfade(false)
-                memoryCacheKey(imageFile.absolutePath)
-                diskCacheKey(imageFile.absolutePath)
+                val radiusPx = blurDp * resources.displayMetrics.density
+                if (radiusPx >= 0.5f) {
+                    transformations(ReaderBackgroundBlurTransformation(radiusPx.roundToInt()))
+                }
             }
         }
     }
@@ -272,6 +275,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
             justifiedView.justifyLastLine = false
             justifiedView.text = null
             verticalTextView.clearPage()
+            clearCoverPage()
             return
         }
 
@@ -292,6 +296,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
             justifiedView.justifyLastLine = false
             justifiedView.text = null
             verticalTextView.clearPage()
+            clearCoverPage()
             return
         }
 
@@ -423,6 +428,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
         justifiedView.text = spannable
         // 保存原始 spannable（含真实 BitmapDrawable ImageSpan），供 moveSlot/syncText 使用
         this.originalSpannable = spannable
+        updateCoverPage(spannable)
 
         // setTextIsSelectable(true) 时 Android 内部通过 Editable.Factory.newEditable() 创建副本
         // 必须从 textView.text 取实际存储的 Spannable，否则 SpanWatcher 注册在死对象上
@@ -451,6 +457,79 @@ class PageContentView(context: Context) : FrameLayout(context) {
         verticalTextView.setPage(actualSpannable, verticalGeometry, actualStart)
         onTextSet?.invoke(actualSpannable)
         invalidateRenderers()
+    }
+
+    /** Update the sentence overlay without rebuilding text, images, or pagination. */
+    fun updateTtsHighlight(chapterStart: Int?, chapterEnd: Int?) {
+        val actualSpannable = textView.text as? Spannable
+        val sourceSpannable = originalSpannable
+        val targets = buildList {
+            actualSpannable?.let(::add)
+            if (sourceSpannable != null && sourceSpannable !== actualSpannable) add(sourceSpannable)
+        }
+        targets.forEach { text ->
+            text.getSpans(0, text.length, TtsSentenceHighlightSpan::class.java)
+                .forEach(text::removeSpan)
+        }
+
+        val localStart = chapterStart?.minus(chapterStartOffset)?.coerceIn(0, actualSpannable?.length ?: 0)
+        val localEnd = chapterEnd?.minus(chapterStartOffset)?.coerceIn(0, actualSpannable?.length ?: 0)
+        if (localStart != null && localEnd != null && localStart < localEnd) {
+            val color = TtsSentenceHighlightSpan.computeHighlightColor(currentBgColor, 0.06f)
+            targets.forEach { text ->
+                text.setSpan(
+                    TtsSentenceHighlightSpan(color),
+                    localStart.coerceAtMost(text.length),
+                    localEnd.coerceAtMost(text.length),
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+            justifiedView.setTtsHighlight(localStart, localEnd, color)
+            verticalTextView.setTtsHighlight(localStart, localEnd, color)
+            if (textView.layerType != View.LAYER_TYPE_SOFTWARE) {
+                textView.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+            }
+        } else {
+            justifiedView.clearTtsHighlight()
+            verticalTextView.clearTtsHighlight()
+        }
+        textView.invalidate()
+        justifiedView.invalidate()
+        verticalTextView.invalidate()
+        invalidate()
+    }
+
+    private fun updateCoverPage(spannable: Spannable) {
+        val isMarkedCover = spannable.getSpans(
+            0,
+            spannable.length,
+            EpubParser.CoverPageSpan::class.java
+        ).isNotEmpty()
+        val image = spannable.getSpans(0, spannable.length, ImageSpan::class.java).singleOrNull()
+        if (!isMarkedCover || image == null) {
+            clearCoverPage()
+            return
+        }
+
+        showingCoverPage = true
+        coverImageSpan = image
+        coverImageView.setImageDrawable(image.drawable.constantState?.newDrawable()?.mutate() ?: image.drawable)
+        coverImageView.visibility = View.VISIBLE
+        updateContentRendererVisibility()
+    }
+
+    private fun clearCoverPage() {
+        showingCoverPage = false
+        coverImageSpan = null
+        coverImageView.setImageDrawable(null)
+        coverImageView.visibility = View.GONE
+        updateContentRendererVisibility()
+    }
+
+    private fun updateContentRendererVisibility() {
+        val vertical = writingMode.isVertical
+        textView.visibility = if (showingCoverPage || vertical) View.INVISIBLE else View.VISIBLE
+        verticalTextView.visibility = if (!showingCoverPage && vertical) View.VISIBLE else View.GONE
     }
 
     fun setSearchHighlightAlpha(alpha: Int) {
@@ -569,9 +648,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
             verticalTextView.paddingRight != mr || verticalTextView.paddingBottom != mb) {
             verticalTextView.setPadding(ml, mt, mr, mb)
         }
-        val vertical = writingMode.isVertical
-        textView.visibility = if (vertical) View.INVISIBLE else View.VISIBLE
-        verticalTextView.visibility = if (vertical) View.VISIBLE else View.GONE
+        updateContentRendererVisibility()
     }
 
     /** 获取当前 TextView 的 Spannable（用于读取选区等） */
@@ -594,6 +671,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
      * invisible justified renderer, whose line metrics can differ for large images.
      */
     fun getImageAt(x: Float, y: Float): ReaderImageHit? {
+        coverImageHit(x, y)?.let { return it }
         if (writingMode.isVertical) return verticalTextView.getImageAt(x, y)
         val spannable = textView.text as? Spannable ?: return null
         val textLayout = textView.layout ?: return null
@@ -646,6 +724,39 @@ class PageContentView(context: Context) : FrameLayout(context) {
             )
         }
         return null
+    }
+
+    private fun coverImageHit(x: Float, y: Float): ReaderImageHit? {
+        if (!showingCoverPage || x !in 0f..width.toFloat() || y !in 0f..height.toFloat()) return null
+        val image = coverImageSpan ?: return null
+        val drawable = image.drawable
+        val naturalWidth = drawable.intrinsicWidth.coerceAtLeast(drawable.bounds.width()).coerceAtLeast(1)
+        val naturalHeight = drawable.intrinsicHeight.coerceAtLeast(drawable.bounds.height()).coerceAtLeast(1)
+        val scale = minOf(width.toFloat() / naturalWidth, height.toFloat() / naturalHeight)
+        val displayedWidth = naturalWidth * scale
+        val displayedHeight = naturalHeight * scale
+        val left = (width - displayedWidth) / 2f
+        val top = (height - displayedHeight) / 2f
+        val right = left + displayedWidth
+        val bottom = top + displayedHeight
+        if (x !in left..right || y !in top..bottom) return null
+
+        val spannable = originalSpannable ?: (textView.text as? Spannable)
+        val spanStart = spannable?.getSpanStart(image)?.coerceAtLeast(0) ?: 0
+        val spanEnd = spannable?.getSpanEnd(image)?.coerceAtLeast(spanStart + 1) ?: 1
+        val link = spannable?.getSpans(spanStart, spanEnd, URLSpan::class.java)?.firstOrNull()?.url
+        val hasAction = spannable?.getSpans(spanStart, spanEnd, ClickableSpan::class.java)?.isNotEmpty() == true
+        return ReaderImageHit(
+            source = image.source.orEmpty(),
+            leftPx = left,
+            topPx = top,
+            rightPx = right,
+            bottomPx = bottom,
+            naturalWidth = naturalWidth,
+            naturalHeight = naturalHeight,
+            link = link,
+            hasAction = hasAction
+        )
     }
 
     /** 缓存当前页在章节中的起始字符偏移（用于选区偏移转换） */
@@ -754,6 +865,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
         verticalTextView.clearPage()
         originalSpannable = null
         verticalGeometry = null
+        clearCoverPage()
     }
 
     /** 获取原始 spannable（含真实 ImageSpan），供 moveSlot 使用 */
@@ -790,6 +902,12 @@ class PageContentView(context: Context) : FrameLayout(context) {
         // 如果传入了 justifiedText，同步更新 originalSpannable
         if (justifiedText != null) {
             this.originalSpannable = justifiedText
+        }
+        val syncedSpannable = justifiedText ?: (textView.text as? Spannable)
+        if (syncedSpannable != null) {
+            updateCoverPage(syncedSpannable)
+        } else {
+            clearCoverPage()
         }
         // Slot rotation replaces TextView's internal Editable. Re-register the selection
         // watcher on that new instance or selections stop producing menus after a page turn.

@@ -53,6 +53,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.ByteArrayInputStream
 import kotlin.coroutines.resume
+import kotlin.math.abs
 
 private const val EPUB_ALLOWED_ORIGIN = "https://appassets.androidplatform.net"
 
@@ -229,6 +230,7 @@ internal fun EpubWebViewReader(
     session: BookRenderSession,
     chapterIndex: Int,
     fontSizeSp: Float,
+    letterSpacingDp: Float = 0f,
     fontType: String,
     fontFilePath: String?,
     bodyFontWeight: Int = 400,
@@ -254,9 +256,13 @@ internal fun EpubWebViewReader(
     locatorRequest: EpubLocatorRequest? = null,
     pageRequest: EpubPageRequest? = null,
     selectionClearToken: Int = 0,
+    bookmarkPullEnabled: Boolean = true,
     onPageTextProviderReady: ((suspend (chapterIndex: Int, pageIndex: Int) -> EpubPageText?)?) -> Unit,
     onPageTurnHandlerReady: (((direction: Int) -> Boolean)?) -> Unit,
     onPageChanged: (pageIndex: Int, pageCount: Int, locatorJson: String?) -> Unit,
+    onBookmarkPullStart: () -> Unit = {},
+    onBookmarkPullProgress: (distancePx: Float, armed: Boolean) -> Unit = { _, _ -> },
+    onBookmarkPullFinished: (commit: Boolean) -> Unit = {},
     onCenterTap: () -> Unit,
     onImagePreviewOpen: () -> Unit,
     onChapterTurn: (direction: Int) -> Unit,
@@ -269,6 +275,9 @@ internal fun EpubWebViewReader(
     modifier: Modifier = Modifier
 ) {
     val latestPageChanged = rememberUpdatedState(onPageChanged)
+    val latestBookmarkPullStart = rememberUpdatedState(onBookmarkPullStart)
+    val latestBookmarkPullProgress = rememberUpdatedState(onBookmarkPullProgress)
+    val latestBookmarkPullFinished = rememberUpdatedState(onBookmarkPullFinished)
     val latestCenterTap = rememberUpdatedState(onCenterTap)
     val latestImagePreviewOpen = rememberUpdatedState(onImagePreviewOpen)
     val latestChapterTurn = rememberUpdatedState(onChapterTurn)
@@ -280,6 +289,7 @@ internal fun EpubWebViewReader(
     val latestRenderUnavailable = rememberUpdatedState(onRenderUnavailable)
     val latestChapterIndex = rememberUpdatedState(chapterIndex)
     val latestFontSizeSp = rememberUpdatedState(fontSizeSp)
+    val latestLetterSpacingDp = rememberUpdatedState(letterSpacingDp)
     val latestFontType = rememberUpdatedState(fontType)
     val latestFontFilePath = rememberUpdatedState(fontFilePath)
     val latestBodyFontWeight = rememberUpdatedState(bodyFontWeight)
@@ -390,6 +400,7 @@ internal fun EpubWebViewReader(
                 fun preloadConfigurationKey(chapterIndex: Int): String = configKey(
                     chapterIndex = chapterIndex,
                     fontSizeSp = latestFontSizeSp.value,
+                    letterSpacingDp = latestLetterSpacingDp.value,
                     fontType = latestFontType.value,
                     fontFilePath = latestFontFilePath.value,
                     bodyFontWeight = latestBodyFontWeight.value,
@@ -415,6 +426,7 @@ internal fun EpubWebViewReader(
                 fun activeConfigurationKey(chapterIndex: Int): String = configKey(
                     chapterIndex = chapterIndex,
                     fontSizeSp = latestFontSizeSp.value,
+                    letterSpacingDp = latestLetterSpacingDp.value,
                     fontType = latestFontType.value,
                     fontFilePath = latestFontFilePath.value,
                     bodyFontWeight = latestBodyFontWeight.value,
@@ -464,6 +476,7 @@ internal fun EpubWebViewReader(
                         chapterIndex = target.chapterIndex,
                         fontType = latestFontType.value,
                         fontFilePath = latestFontFilePath.value,
+                        letterSpacingDp = latestLetterSpacingDp.value,
                         bodyFontWeight = latestBodyFontWeight.value,
                         textColorOverride = latestTextColorOverride.value,
                         theme = latestTheme.value,
@@ -1075,6 +1088,7 @@ internal fun EpubWebViewReader(
                                 chapterIndex = sourceChapter,
                                 fontType = latestFontType.value,
                                 fontFilePath = latestFontFilePath.value,
+                                letterSpacingDp = latestLetterSpacingDp.value,
                                 bodyFontWeight = latestBodyFontWeight.value,
                                 textColorOverride = latestTextColorOverride.value,
                                 theme = latestTheme.value,
@@ -1128,6 +1142,15 @@ internal fun EpubWebViewReader(
                             latestEdgeTapMode.value.rightAction.toEpubTurnDirection()
                         else -> 0
                     }
+                }
+                pageTurnHost.onBookmarkPullStart = {
+                    latestBookmarkPullStart.value()
+                }
+                pageTurnHost.onBookmarkPullProgress = { distancePx, armed ->
+                    latestBookmarkPullProgress.value(distancePx, armed)
+                }
+                pageTurnHost.onBookmarkPullFinished = { commit ->
+                    latestBookmarkPullFinished.value(commit)
                 }
                 pageTurnHost.onPageCommit = { direction, target ->
                     val activeView = pageTurnHost.activeWebView
@@ -1207,6 +1230,7 @@ internal fun EpubWebViewReader(
             )
             pageTurnHost.setNativePagingEnabled(nativePageTurn)
             pageTurnHost.setNativeTouchPagingEnabled(nativePageTurn)
+            pageTurnHost.setBookmarkPullEnabled(bookmarkPullEnabled && !continuousScroll)
             if (nativePageTurn) {
                 pageTurnHost.setTransition(pageTransition, latestPageTransitionDurationMs.value)
             }
@@ -1227,6 +1251,7 @@ internal fun EpubWebViewReader(
             val nextConfigKey = configKey(
                 chapterIndex = chapterIndex,
                 fontSizeSp = fontSizeSp,
+                letterSpacingDp = letterSpacingDp,
                 fontType = fontType,
                 fontFilePath = fontFilePath,
                 bodyFontWeight = bodyFontWeight,
@@ -1292,6 +1317,7 @@ internal fun EpubWebViewReader(
                     chapterIndex = chapterIndex,
                     fontType = fontType,
                     fontFilePath = fontFilePath,
+                    letterSpacingDp = letterSpacingDp,
                     bodyFontWeight = bodyFontWeight,
                     textColorOverride = textColorOverride,
                     theme = theme,
@@ -1437,6 +1463,7 @@ private fun usesNativeEpubPageTurn(
 private fun configKey(
     chapterIndex: Int,
     fontSizeSp: Float,
+    letterSpacingDp: Float,
     fontType: String,
     fontFilePath: String?,
     bodyFontWeight: Int,
@@ -1460,6 +1487,7 @@ private fun configKey(
 ): String = listOf(
     chapterIndex,
     fontSizeSp,
+    letterSpacingDp,
     fontType,
     fontFilePath.orEmpty(),
     bodyFontWeight,
@@ -1488,6 +1516,7 @@ private fun configureReader(
     chapterIndex: Int,
     fontType: String,
     fontFilePath: String?,
+    letterSpacingDp: Float,
     bodyFontWeight: Int,
     textColorOverride: Int?,
     theme: String,
@@ -1522,14 +1551,29 @@ private fun configureReader(
         else -> session.readerFontUrl(fontFilePath)
     }
     val fontFamily = when {
+        // Keep publisher CSS for the default reader font. Explicit platform
+        // families are mapped to CSS names so WebView does not silently fall
+        // back to a document-selected family.
         fontType == "system" -> null
         fontType == "serif" -> "serif"
+        fontType == "sans_serif" -> "sans-serif"
+        fontType == "monospace" -> "monospace"
         readerFontUrl != null -> "Lumi Reader Override"
+        // A selected bundled/imported font that failed to load must not leave
+        // the document's (possibly monospaced) family in control.
+        fontType == "fangsong" || fontType == "kaiti" || fontType.startsWith("custom") ->
+            "sans-serif"
         else -> null
     }
     val chineseMapping = ChineseConverter.mappingStrings(chineseMode)
     val config = JSONObject()
         .put("theme", theme)
+        // Zero is the reader default, not an instruction to erase a
+        // publisher's letter-spacing rule.
+        .putOpt(
+            "letterSpacingDp",
+            letterSpacingDp.takeIf { abs(it) > 0.001f }?.coerceIn(-8f, 16f)
+        )
         .put("textAlignment", textAlignment.key)
         .put("preservePublisherBackground", preservePublisherBackground)
         .put("bionicReading", bionicReadingEnabled)

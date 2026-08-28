@@ -39,9 +39,11 @@ internal enum class SimulationCurlTurnDirection { NEXT, PREVIOUS }
  * (https://github.com/Luoyacheng/legado-E). This file is a modified derivative
  * distributed under GPLv3 together with the Lumi project.
  *
- * Coordinates are always expressed as a page curling from the right edge;
- * callers mirror the Canvas for PREV/reversed layout. All operations are
- * guarded against non-finite and near-zero denominators.
+ * Both directions use a right-side curl corner, matching legado-E. NEXT moves
+ * from the right edge toward the left; PREVIOUS moves from the left toward the
+ * right and therefore uses its own increasing coordinate progression. Layout
+ * reversal is handled by the caller. All operations are guarded against
+ * non-finite and near-zero denominators.
  */
 internal object SimulationCurlGeometry {
     private const val EPSILON = 0.1f
@@ -54,7 +56,7 @@ internal object SimulationCurlGeometry {
         else SimulationCurlCorner.BOTTOM
     }
 
-    /** Map a physical pointer to the canonical right-edge curl coordinate. */
+    /** Map physical drag displacement to the direction-specific curl coordinate. */
     fun canonicalTouchX(
         width: Float,
         gestureStartX: Float,
@@ -65,12 +67,18 @@ internal object SimulationCurlGeometry {
             return 0f
         }
         val delta = pointerX - gestureStartX
-        val inward = when (direction) {
-            SimulationCurlTurnDirection.NEXT -> minOf(delta, 0f)
-            SimulationCurlTurnDirection.PREVIOUS -> -maxOf(delta, 0f)
+        return when (direction) {
+            SimulationCurlTurnDirection.NEXT -> {
+                val maxTouchX = (width - 1f).coerceAtLeast(-width)
+                (width + minOf(delta, 0f)).coerceIn(-width, maxTouchX)
+            }
+            // At x = 0 legado-E's Bezier already exposes a sizeable strip of
+            // the previous page. Start one page-width offscreen and traverse
+            // twice the physical displacement so visible curl progress really
+            // begins at zero while still reaching the right corner at full drag.
+            SimulationCurlTurnDirection.PREVIOUS ->
+                (-width + 2f * maxOf(delta, 0f)).coerceIn(-width, width)
         }
-        val maxTouchX = (width - 1f).coerceAtLeast(-width)
-        return (width + inward).coerceIn(-width, maxTouchX)
     }
 
     fun evaluate(

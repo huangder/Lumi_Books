@@ -187,7 +187,13 @@ class EpubRenderSession private constructor(
         val resource = EpubResource(normalized, mediaType, bytes)
         val spineItem = epubPackage.spine.firstOrNull { it.manifestItem.fullPath == normalized }
         return if (spineItem != null && (mediaType.contains("html") || mediaType.contains("xhtml"))) {
-            resource.copy(bytes = EpubDocumentTransformer.transform(resource, spineItem.renditionLayout))
+            resource.copy(
+                bytes = EpubDocumentTransformer.transform(
+                    resource = resource,
+                    layout = spineItem.renditionLayout,
+                    isCoverCandidate = spineByPath[normalized] == 0
+                )
+            )
         } else resource
     }
 

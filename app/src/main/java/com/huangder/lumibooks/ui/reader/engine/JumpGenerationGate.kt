@@ -25,6 +25,14 @@ internal class JumpGenerationGate {
     }
 }
 
+internal fun shouldResumeQueuedCurlAfterJump(
+    result: PageSlotManager.CurrentSlotLoadResult?,
+    currentSlotReady: Boolean
+): Boolean {
+    if (!currentSlotReady) return false
+    return result == null || result == PageSlotManager.CurrentSlotLoadResult.LOADED
+}
+
 internal class ReaderPositionRequestTracker {
     private var lastChapterIndex: Int? = null
     private var lastPageIndex: Int? = null

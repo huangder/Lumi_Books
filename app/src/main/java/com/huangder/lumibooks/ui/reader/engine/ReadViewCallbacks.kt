@@ -27,8 +27,14 @@ interface ReadViewCallbacks {
     /** 点击中间区域，切换菜单 */
     fun onMenuToggle()
 
-    /** 从阅读页顶部向下拖动，添加或取消当前页书签 */
-    fun onBookmarkSwipe() {}
+    /** 顶部下拉书签手势开始接管正文触摸。 */
+    fun onBookmarkPullStart() {}
+
+    /** 顶部下拉书签手势的实时位移与提交准备状态。 */
+    fun onBookmarkPullProgress(distancePx: Float, armed: Boolean) {}
+
+    /** 顶部下拉书签手势结束；仅 commit=true 时切换当前页书签。 */
+    fun onBookmarkPullFinished(commit: Boolean) {}
 
     /** 点击 EPUB 正文中的超链接。x/y 为 ReadView 内的点击坐标（像素）。 */
     fun onLinkClick(href: String, x: Float, y: Float) {}

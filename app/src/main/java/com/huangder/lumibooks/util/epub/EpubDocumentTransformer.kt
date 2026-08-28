@@ -10,9 +10,13 @@ import org.jsoup.select.NodeVisitor
 import java.io.ByteArrayInputStream
 
 object EpubDocumentTransformer {
-    fun transform(resource: EpubResource, layout: EpubRenditionLayout): ByteArray {
+    fun transform(
+        resource: EpubResource,
+        layout: EpubRenditionLayout,
+        isCoverCandidate: Boolean = false
+    ): ByteArray {
         val document = parseAndSanitize(resource)
-        return transform(document, layout)
+        return transform(document, layout, isCoverCandidate)
     }
 
     /**
@@ -20,7 +24,11 @@ object EpubDocumentTransformer {
      * 注入 viewport、分页 CSS 与 LumiReader 脚本。
      * MOBI 等非 EPUB 来源复用同一包装，保证分页/定位/高亮脚本行为一致。
      */
-    fun transform(document: Document, layout: EpubRenditionLayout): ByteArray {
+    fun transform(
+        document: Document,
+        layout: EpubRenditionLayout,
+        isCoverCandidate: Boolean = false
+    ): ByteArray {
         val head = document.head().takeIf { it.tagName().isNotBlank() }
             ?: document.prependElement("head")
         if (head.selectFirst("meta[name=viewport]") == null) {
@@ -33,12 +41,37 @@ object EpubDocumentTransformer {
         head.appendElement("style").attr("id", "lumi-reader-style")
             .appendChild(DataNode(READER_CSS))
         document.body().attr("data-lumi-layout", layout.name.lowercase())
+        if (isCoverCandidate && layout == EpubRenditionLayout.REFLOWABLE) {
+            markImageOnlyCover(document)
+        }
         // 必须以 DataNode 注入：文档以 XML 语法序列化，appendText 会把脚本里的
         // '<'、'>'、'&' 转义成 &lt; &gt; &amp;，浏览器在 <script> 内不会反转义，
         // 导致分页脚本语法错误、原排版空白卡死（text/html 章节尤其明显）。
         document.body().appendElement("script").attr("id", "lumi-reader-script")
             .appendChild(DataNode(READER_SCRIPT))
         return document.outerHtml().toByteArray(Charsets.UTF_8)
+    }
+
+    private fun markImageOnlyCover(document: Document) {
+        val body = document.body()
+        val textProbe = body.clone().apply {
+            // Text inside an SVG is part of the cover artwork, not flowing chapter copy.
+            select("script, style, noscript, svg").remove()
+        }
+        if (textProbe.text().isNotBlank()) return
+
+        val media = body.select("img, svg").filter { element ->
+            element.parents().none { parent -> parent.tagName().equals("svg", ignoreCase = true) }
+        }
+        if (media.size != 1) return
+
+        body.attr("data-lumi-cover", "true")
+        val coverMedia = media.single().attr("data-lumi-cover-media", "true")
+        var ancestor = coverMedia.parent()
+        while (ancestor != null && ancestor !== body) {
+            ancestor.attr("data-lumi-cover-container", "true")
+            ancestor = ancestor.parent()
+        }
     }
 
     internal fun extractSearchText(resource: EpubResource): String {
@@ -156,6 +189,36 @@ body[data-lumi-layout="reflowable"] canvas {
      限制高度不超过当前分页的内容区高度，保持比例缩放到整页可见。 */
   max-height: var(--lumi-content-height, calc(var(--lumi-page-height, 100vh) - 32px));
   object-fit: contain;
+}
+body[data-lumi-layout="reflowable"][data-lumi-cover="true"] {
+  position: relative !important;
+  width: 100% !important;
+  min-width: 100% !important;
+  height: var(--lumi-page-height, 100vh) !important;
+  min-height: var(--lumi-page-height, 100vh) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+body[data-lumi-cover="true"] [data-lumi-cover-container="true"] {
+  position: static !important;
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+body[data-lumi-cover="true"] [data-lumi-cover-media="true"] {
+  position: absolute !important;
+  inset: 0 !important;
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  object-fit: contain !important;
 }
 body[data-lumi-layout="reflowable"] table,
 body[data-lumi-layout="reflowable"] pre {
@@ -1282,6 +1345,9 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
   }
 
   function readerBox() {
+    if (document.body.getAttribute('data-lumi-cover') === 'true') {
+      return { top: 0, right: 0, bottom: 0, left: 0 };
+    }
     var box = state.publisherBox;
     var publisherHorizontalInset = Math.max(0,
       (box.marginLeft + box.paddingLeft + box.marginRight + box.paddingRight) / 2);
@@ -1648,7 +1714,9 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     var bodyFontWeight = Math.max(100, Math.min(900, Math.round(Number(config.bodyFontWeight) || 400)));
     var textAlignment = /^(left|center|right|justify)$/.test(String(config.textAlignment || '')) ?
       String(config.textAlignment) : '';
-    if (!family && !textColor && !textAlignment && bodyFontWeight === 400) {
+    var letterSpacingDp = Number(config.letterSpacingDp);
+    var hasLetterSpacing = Number.isFinite(letterSpacingDp);
+    if (!family && !textColor && !textAlignment && bodyFontWeight === 400 && !hasLetterSpacing) {
       if (existing) existing.remove();
       return;
     }
@@ -1656,11 +1724,15 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     style.id = 'lumi-reader-overrides';
     var rules = '';
     if (fontUrl) {
-      rules += '@font-face{font-family:"Lumi Reader Override";src:url(' + JSON.stringify(fontUrl) + ');font-display:swap;}';
+      rules += '@font-face{font-family:"Lumi Reader Override";src:url(' + JSON.stringify(fontUrl) + ');font-style:normal;font-weight:100 900;font-display:swap;}';
     }
     var textSelector = 'body,p,div,section,article,aside,header,footer,nav,h1,h2,h3,h4,h5,h6,' +
       'span,a,li,dt,dd,td,th,blockquote,figcaption,label';
     if (family) rules += textSelector + '{font-family:' + JSON.stringify(family) + ' !important;}';
+    if (hasLetterSpacing) {
+      letterSpacingDp = Math.max(-8, Math.min(16, letterSpacingDp));
+      rules += textSelector + '{letter-spacing:' + letterSpacingDp.toFixed(3) + 'px !important;}';
+    }
     if (textColor) rules += textSelector + '{color:' + textColor + ' !important;}';
     if (bodyFontWeight !== 400) rules += textSelector + '{font-weight:' + bodyFontWeight + ' !important;}';
     if (textAlignment) rules += textSelector + '{text-align:' + textAlignment + ' !important;}';

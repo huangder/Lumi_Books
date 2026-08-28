@@ -19,6 +19,7 @@ import android.widget.FrameLayout
 import com.huangder.lumibooks.BuildConfig
 import com.huangder.lumibooks.ui.reader.engine.CurlFrameSource
 import com.huangder.lumibooks.ui.reader.engine.CurlPageAnim
+import com.huangder.lumibooks.ui.reader.engine.BookmarkPullGestureTracker
 import com.huangder.lumibooks.ui.reader.engine.PageAnimationController
 import com.huangder.lumibooks.ui.reader.engine.PageAnimationSurface
 import com.huangder.lumibooks.ui.reader.engine.PageBitmapSource
@@ -26,7 +27,10 @@ import com.huangder.lumibooks.ui.reader.engine.RenderResourceLease
 import com.huangder.lumibooks.ui.reader.engine.RenderResourcePool
 import com.huangder.lumibooks.ui.reader.engine.SlidePageAnim
 import com.huangder.lumibooks.ui.reader.engine.isCurlSwipeIntent
+import com.huangder.lumibooks.ui.reader.engine.isSystemBackGestureStart
+import com.huangder.lumibooks.ui.reader.engine.isSystemBackGestureSwipe
 import com.huangder.lumibooks.domain.model.ReaderPageAnimationSettings
+import com.huangder.lumibooks.util.performance.ReaderPageTurnPerformance
 import kotlin.math.abs
 
 internal data class EpubPageTarget(
@@ -184,6 +188,8 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
     private var transitionDurationMs = ReaderPageAnimationSettings.SLIDE_DEFAULT_MS
     private var nativePagingEnabled = true
     private var nativeTouchPagingEnabled = true
+    private var bookmarkPullEnabled = false
+    private val bookmarkPullTracker = BookmarkPullGestureTracker()
     private var reverseAxis = false
     private var pagingGesture = false
     private var suppressTouchStream = false
@@ -202,6 +208,10 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
     private var touchStartX = 0f
     private var touchStartY = 0f
     private var touchDownTime = 0L
+    private var systemBackGestureCandidate = false
+    private var systemBackGestureSuppressed = false
+    private var systemBackGestureStartX = 0f
+    private var systemBackGestureStartY = 0f
     private var overlayActive = false
     private var waitingForTarget: EpubPageTarget? = null
     private var waitingForPreparedActivePage = false
@@ -232,6 +242,9 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
     private var currentBitmapTarget: EpubPageTarget? = null
 
     var onPageCommit: ((direction: Int, target: EpubPageTarget) -> Unit)? = null
+    var onBookmarkPullStart: (() -> Unit)? = null
+    var onBookmarkPullProgress: ((distancePx: Float, armed: Boolean) -> Unit)? = null
+    var onBookmarkPullFinished: ((commit: Boolean) -> Unit)? = null
     var onCapturedTapDirection: ((x: Float) -> Int)? = null
     var onSlideLookaheadRequested: ((PreloadSlot, EpubPageTarget) -> Unit)? = null
     var onSlideVisualPageAdvanced: ((EpubPageTarget, Int) -> Unit)? = null
@@ -291,6 +304,15 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
 
     fun setNativeTouchPagingEnabled(enabled: Boolean) {
         nativeTouchPagingEnabled = enabled
+    }
+
+    fun setBookmarkPullEnabled(enabled: Boolean) {
+        if (bookmarkPullEnabled == enabled) return
+        bookmarkPullEnabled = enabled
+        if (!enabled) {
+            val finish = bookmarkPullTracker.finish(cancelled = true)
+            if (finish.wasActive) onBookmarkPullFinished?.invoke(false)
+        }
     }
 
     fun setTransition(
@@ -528,6 +550,13 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         } else {
             PageAnimationController.Direction.PREV
         }
+        val requestedTarget = targetFor(controllerDirection)
+        if (!overlayActive && waitingForTarget == null && requestedTarget != null) {
+            ReaderPageTurnPerformance.beginIntent(
+                preloaded = canFlip(controllerDirection),
+                crossChapter = requestedTarget.chapterIndex != currentTarget.chapterIndex
+            )
+        }
         if (transition == "slide" && overlayActive) {
             queueSlideTurn(controllerDirection)
             return true
@@ -567,6 +596,87 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
     fun requestTurn(direction: Int): Boolean = turnFromTap(direction)
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            systemBackGestureStartX = event.x
+            systemBackGestureStartY = event.y
+            systemBackGestureCandidate = isSystemBackGestureStart(
+                width.toFloat(),
+                height.toFloat(),
+                event.x,
+                event.y,
+                resources.displayMetrics.density
+            )
+            systemBackGestureSuppressed = false
+        } else if (systemBackGestureSuppressed) {
+            if (event.actionMasked == MotionEvent.ACTION_UP ||
+                event.actionMasked == MotionEvent.ACTION_CANCEL
+            ) {
+                systemBackGestureSuppressed = false
+                systemBackGestureCandidate = false
+            }
+            return super.dispatchTouchEvent(event)
+        } else if (systemBackGestureCandidate &&
+            event.actionMasked == MotionEvent.ACTION_MOVE
+        ) {
+            val deltaX = event.x - systemBackGestureStartX
+            val deltaY = event.y - systemBackGestureStartY
+            if (isSystemBackGestureSwipe(deltaX, deltaY)) {
+                // Reserve the complete edge stream for Android navigation.
+                // In particular, do not queue turns while another curl is busy.
+                systemBackGestureCandidate = false
+                systemBackGestureSuppressed = true
+                busyTouchStream = false
+                busySlideTouchStream = false
+                pagingGesture = false
+                waitingGestureDirection = PageAnimationController.Direction.NONE
+                capturedSlideTouchStream = false
+                val bookmarkFinish = bookmarkPullTracker.finish(cancelled = true)
+                if (bookmarkFinish.wasActive) {
+                    onBookmarkPullFinished?.invoke(false)
+                }
+                return super.dispatchTouchEvent(event)
+            }
+        }
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> bookmarkPullTracker.start(
+                x = event.rawX,
+                y = event.rawY,
+                density = resources.displayMetrics.density,
+                enabled = bookmarkPullEnabled &&
+                    !overlayActive &&
+                    waitingForTarget == null &&
+                    !controller.isRunning &&
+                    !controller.isDragging &&
+                    !pagingGesture &&
+                    !busyTouchStream &&
+                    !busySlideTouchStream,
+                startRegionY = event.y,
+                gestureRegionHeight = height.toFloat()
+            )
+            MotionEvent.ACTION_MOVE -> {
+                bookmarkPullTracker.move(event.rawX, event.rawY)?.let { update ->
+                    if (update.justClaimed) {
+                        cancelChildTouch(event)
+                        activeWebView.clearTextSelection()
+                        onBookmarkPullStart?.invoke()
+                    }
+                    if (update.crossedThreshold) {
+                        performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                    }
+                    onBookmarkPullProgress?.invoke(update.distancePx, update.armed)
+                    return true
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                val finish = bookmarkPullTracker.finish(
+                    cancelled = event.actionMasked == MotionEvent.ACTION_CANCEL
+                )
+                if (finish.wasActive) {
+                    onBookmarkPullFinished?.invoke(finish.commit)
+                    return true
+                }
+            }
+        }
         if (!nativeTouchPagingEnabled && !overlayActive && waitingForTarget == null &&
             !busyTouchStream
         ) {
@@ -680,6 +790,7 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
             (controller.isRunning || controller.isDragging)
         ) {
             controller.onDraw(canvas)
+            ReaderPageTurnPerformance.markFirstFrame()
             return
         }
         if (overlayActive) controller.onDraw(canvas)
@@ -694,6 +805,7 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
             slideTerminalHandoffPosted = true
             postOnAnimation(::finishSlideTerminalSwipeHandoff)
         }
+        ReaderPageTurnPerformance.markFirstFrame()
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -709,6 +821,8 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
     }
 
     override fun onDetachedFromWindow() {
+        ReaderPageTurnPerformance.cancel()
+        bookmarkPullTracker.reset()
         controller.abortAnim()
         (controller as? CurlPageAnim)?.destroy()
         pendingSlideVisualDirection = PageAnimationController.Direction.NONE
@@ -788,6 +902,13 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         PageAnimationController.Direction.PREV -> previousReady && previousTarget != null
         PageAnimationController.Direction.NONE -> false
     }
+
+    private fun targetFor(direction: PageAnimationController.Direction): EpubPageTarget? =
+        when (direction) {
+            PageAnimationController.Direction.NEXT -> nextTarget
+            PageAnimationController.Direction.PREV -> previousTarget
+            PageAnimationController.Direction.NONE -> null
+        }
 
     private fun hasFlipTarget(direction: PageAnimationController.Direction): Boolean = when (direction) {
         PageAnimationController.Direction.NEXT -> nextTarget != null
@@ -951,6 +1072,7 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
     }
 
     private fun beginPagingGesture(event: MotionEvent) {
+        bookmarkPullTracker.reset()
         pagingGesture = true
         overlayActive = true
         cancelChildTouch(event)
@@ -973,6 +1095,13 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         reuseCurrentCurlSnapshot: Boolean = false
     ): Boolean {
         if (!canFlip(direction) || !prepareAnimationPages(reuseCurrentCurlSnapshot)) return false
+        targetFor(direction)?.let { target ->
+            ReaderPageTurnPerformance.beginIntent(
+                preloaded = true,
+                crossChapter = target.chapterIndex != currentTarget.chapterIndex
+            )
+            ReaderPageTurnPerformance.markVisualStarted()
+        }
         if (transition == "slide") recordPreparedTurn(direction)
         overlayActive = true
         when (val current = controller) {

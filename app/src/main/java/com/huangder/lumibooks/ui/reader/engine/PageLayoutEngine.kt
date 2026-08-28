@@ -21,6 +21,8 @@ import kotlinx.coroutines.withContext
  */
 class PageLayoutEngine {
 
+    private val layoutDispatcher = Dispatchers.Default.limitedParallelism(2)
+
     private data class LayoutInput(
         val generation: Long,
         val visibleWidth: Int,
@@ -95,6 +97,7 @@ class PageLayoutEngine {
         letterSpacingPx: Float = 0f,
         fontType: String = "system",
         customTypeface: android.graphics.Typeface? = null,
+        typeface: android.graphics.Typeface? = null,
         fontWeight: Int = 400,
         marginLeftPx: Float = 48f,
         marginRightPx: Float = 48f,
@@ -106,7 +109,7 @@ class PageLayoutEngine {
         textAlignment: ReaderTextAlignment = ReaderTextAlignment.NATURAL,
         writingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL
     ) {
-        val baseTypeface = when {
+        val baseTypeface = typeface ?: when {
             fontType == "serif" -> Typeface.SERIF
             fontType == "sans_serif" -> Typeface.SANS_SERIF
             fontType == "monospace" -> Typeface.MONOSPACE
@@ -114,7 +117,9 @@ class PageLayoutEngine {
                 customTypeface ?: Typeface.DEFAULT
             else -> Typeface.DEFAULT
         }
-        val tf = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+        val tf = if (typeface != null) {
+            typeface
+        } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
             Typeface.create(baseTypeface, fontWeight.coerceIn(100, 900), false)
         } else {
             Typeface.create(baseTypeface, if (fontWeight >= 600) Typeface.BOLD else Typeface.NORMAL)
@@ -163,7 +168,7 @@ class PageLayoutEngine {
     suspend fun layout(
         chapterIndex: Int,
         text: CharSequence
-    ): ChapterLayout = withContext(Dispatchers.IO) {
+    ): ChapterLayout = withContext(layoutDispatcher) {
         val input = synchronized(cacheLock) {
             layoutCache[chapterIndex]?.let { return@withContext it }
             LayoutInput(

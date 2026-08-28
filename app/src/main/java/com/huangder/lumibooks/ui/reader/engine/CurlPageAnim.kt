@@ -249,23 +249,34 @@ class CurlPageAnim(
 
                 if (newDirection != Direction.NONE && newDirection != direction) {
                     direction = newDirection
-                    gestureMode = CurlGestureMode.EDGE_VERTICAL
                     gestureModeLock.begin(startX, startY)
-                    configureCorner(startY)
-                    snapshotsReady = capturePages(newDirection)
-                    isDragging = snapshotsReady
-                    if (snapshotsReady) onMotionStateChanged?.invoke(MotionState.DRAGGING)
-                    // 🔥 记录 curl 起点锚点：以此为 0 offset 计算 touchX，
-                    // 避免手势识别阈值（16px）造成纸张初始突变。
-                    // Keep the distance already travelled while the host was
-                    // deciding whether this is a paging gesture.
                     curlDragOriginX = startX
                 }
 
+                if (!snapshotsReady && direction != Direction.NONE) {
+                    // Do not render a provisional EDGE_VERTICAL frame. Wait
+                    // through the short classification dead zone, then lock
+                    // one mode for the complete gesture before capturing any
+                    // page frames.
+                    gestureMode = gestureModeLock.lock(
+                        width = readView.width.toFloat(),
+                        height = readView.height.toFloat(),
+                        physicalTurnSign = if (direction == Direction.NEXT) -1f else 1f,
+                        deltaX = dx,
+                        deltaY = event.y - startY
+                    )
+                    if (gestureModeLock.isLocked) {
+                        configureCorner(startY)
+                        snapshotsReady = capturePages(direction)
+                        isDragging = snapshotsReady
+                        if (snapshotsReady) onMotionStateChanged?.invoke(MotionState.DRAGGING)
+                    }
+                }
+
                 if (snapshotsReady && direction != Direction.NONE) {
-                    // NEXT/PREV 都从角落（内部坐标 = 屏幕右角）平铺起步：
-                    // PREV 通过水平镜像输出渲染，手指向右拖折算为内部 touch 向左，
-                    // 卷曲从 0 连续开始，不再跳到已卷曲状态。
+                    // NEXT 从右向左递减；PREV 从真正的屏外平铺态 -width
+                    // 向右递增。两者都以实际拖动位移起步，避免方向刚确定
+                    // 时目标页卷曲突然占据一部分屏幕。
                     val width = readView.width.toFloat()
                     touchX = SimulationCurlGeometry.canonicalTouchX(
                         width,
@@ -277,17 +288,6 @@ class CurlPageAnim(
                             SimulationCurlTurnDirection.PREVIOUS
                         }
                     )
-                    val nextGestureMode = gestureModeLock.lock(
-                        width = width,
-                        height = readView.height.toFloat(),
-                        physicalTurnSign = if (direction == Direction.NEXT) -1f else 1f,
-                        deltaX = dx,
-                        deltaY = event.y - startY
-                    )
-                    if (nextGestureMode != gestureMode) {
-                        gestureMode = nextGestureMode
-                        configureCorner(startY)
-                    }
                     touchY = gestureTouchY(event.y)
                     isDragging = true
                     lastX = event.x
@@ -336,9 +336,9 @@ class CurlPageAnim(
     }
 
     override fun onDraw(canvas: Canvas) {
-        // PREV 采用"左掀角"模型：内部几何与 NEXT 相同（从右角向左卷），
-        // 整帧水平镜像输出；竖排模式自身也镜像一次，两次镜像相互抵消。
-        val mirror = readView.isPageProgressReversed xor (direction == Direction.PREV)
+        // PREV 自身使用从左向右的 legado-E 坐标，不再镜像 NEXT 几何。
+        // 这里只处理竖排/反向阅读布局的物理轴镜像。
+        val mirror = readView.isPageProgressReversed
         if (!mirror) {
             drawCurl(canvas)
             return
@@ -360,16 +360,18 @@ class CurlPageAnim(
         drawPage(canvas, underBitmap, underPageView)
 
         if (calculateCurlPoints()) {
+            // The turning sheet is outside path0 in both legado-E branches:
+            // current over next for NEXT, previous over current for PREV.
             drawCurrentPageArea(canvas, turningBitmap, turningPageView)
             drawNextPageShadow(canvas)
             drawCurrentPageShadow(canvas)
             drawFoldedBack(canvas)
         } else {
-            // 几何退化（贴角 / 极端收尾）时整页兜底：PREV 与 NEXT 的内部模型一致，
-            // 未过半显示被掀起的页面，过半显示下层页面。
-            val targetSideReached = direction != Direction.NONE && touchX <= 0f
-            val fallbackBitmap = if (targetSideReached) underBitmap else turningBitmap
-            val fallbackView = if (targetSideReached) underPageView else turningPageView
+            val showTurningPage = simulationDirection()?.let {
+                SimulationCurlTurnMotion.fallbackShowsTurningPage(touchX, width, it)
+            } ?: false
+            val fallbackBitmap = if (showTurningPage) turningBitmap else underBitmap
+            val fallbackView = if (showTurningPage) turningPageView else underPageView
             drawPage(canvas, fallbackBitmap, fallbackView)
         }
         canvas.restore()
@@ -399,8 +401,8 @@ class CurlPageAnim(
         gestureMode = CurlGestureMode.EDGE_VERTICAL
         gestureModeLock.reset()
         configureCorner(startY)
-        // NEXT/PREV 都从角落平铺起步（PREV 帧随后镜像输出），点击翻页同样从 0 卷曲
-        startX = readView.width - 1f
+        // PREV 从屏外平铺态起步，NEXT 保持右侧平铺态。
+        startX = flatTouchX()
         touchX = startX
         touchY = nearCornerY()
         snapshotsReady = capturePages(dir)
@@ -453,8 +455,7 @@ class CurlPageAnim(
         isFlipAnim = false
         settleCompletesPage = false
         onMotionStateChanged?.invoke(MotionState.SETTLING)
-        // NEXT/PREV 的平铺态都在角落（内部坐标 = 右角），回弹一律退回右角
-        startScrollTo(readView.width - 1f, nearCornerY())
+        startScrollTo(flatTouchX(), nearCornerY())
     }
 
     override fun abortAnim() {
@@ -518,7 +519,11 @@ class CurlPageAnim(
         return true
     }
 
-    override fun getOffsetX(): Float = readView.width - touchX
+    override fun getOffsetX(): Float = when (direction) {
+        Direction.NEXT -> readView.width - touchX
+        Direction.PREV -> touchX
+        Direction.NONE -> 0f
+    }
 
     fun setBaseDuration(durationMs: Int) {
         baseDurationMs = durationMs.coerceIn(300, 1200)
@@ -555,21 +560,24 @@ class CurlPageAnim(
         startScrollTo(completionTargetX(), settleTargetY, fixedDurationMs)
     }
 
-    private fun hasReachedCompletionTarget(): Boolean = when (direction) {
-        // PREV 与 NEXT 内部几何一致：touch 向左越过收尾距离即完成
-        Direction.NEXT, Direction.PREV -> touchX <= completionTargetX()
-        Direction.NONE -> false
+    private fun hasReachedCompletionTarget(): Boolean {
+        val simulationDirection = simulationDirection() ?: return false
+        return SimulationCurlTurnMotion.hasReachedCompletion(
+            touchX,
+            completionTargetX(),
+            simulationDirection
+        )
     }
 
     private fun completionTargetX(): Float {
         val width = readView.width.coerceAtLeast(1).toFloat()
-        val distance = if (readView.hasDirectPageRenderer) {
-            CurlTerminalGeometry.completionDistance(width, readView.height.toFloat())
-        } else width
-        return when (direction) {
-            Direction.NEXT, Direction.PREV -> -distance
-            Direction.NONE -> touchX
-        }
+        val simulationDirection = simulationDirection() ?: return touchX
+        return SimulationCurlTurnMotion.completionTouchX(
+            width,
+            readView.height.toFloat(),
+            simulationDirection,
+            readView.hasDirectPageRenderer
+        )
     }
 
     private fun resolvedSettleTargetY(): Float {
@@ -586,7 +594,7 @@ class CurlPageAnim(
     }
 
     private fun startScrollTo(targetX: Float, targetY: Float, fixedDurationMs: Int? = null) {
-        val flatX = readView.width.coerceAtLeast(1).toFloat() - 1f
+        val flatX = flatTouchX()
         val flatY = nearCornerY()
         val completionX = completionTargetX()
         val completionY = resolvedSettleTargetY()
@@ -669,6 +677,20 @@ class CurlPageAnim(
                 null -> 0f
             }
         }
+    }
+
+    private fun simulationDirection(): SimulationCurlTurnDirection? = when (direction) {
+        Direction.NEXT -> SimulationCurlTurnDirection.NEXT
+        Direction.PREV -> SimulationCurlTurnDirection.PREVIOUS
+        Direction.NONE -> null
+    }
+
+    private fun flatTouchX(): Float {
+        val simulationDirection = simulationDirection() ?: return touchX
+        return SimulationCurlTurnMotion.flatTouchX(
+            readView.width.toFloat(),
+            simulationDirection
+        )
     }
 
     private fun gestureTouchY(pointerY: Float): Float =
@@ -923,8 +945,14 @@ class CurlPageAnim(
         visibleFrontRegion.op(curledRegion, Region.Op.DIFFERENCE)
         visibleFoldRegion.setEmpty()
         visibleFoldRegion.setPath(path1, viewportRegion)
-        // PREV 与 NEXT 内部几何一致：均以"平铺剩余区域与背面区域都归零"为收尾判据
-        return isNegligible(visibleFrontRegion) && isNegligible(visibleFoldRegion)
+        visibleFoldRegion.op(curledRegion, Region.Op.INTERSECT)
+        return when (direction) {
+            Direction.NEXT ->
+                isNegligible(visibleFrontRegion) && isNegligible(visibleFoldRegion)
+            Direction.PREV ->
+                isNegligible(curledRegion) && isNegligible(visibleFoldRegion)
+            Direction.NONE -> false
+        }
     }
 
     private fun isNegligible(region: Region): Boolean {
@@ -1012,6 +1040,8 @@ class CurlPageAnim(
             )
         ) return false
 
+        // The back belongs to the same physical sheet as the visible front:
+        // current page for NEXT, previous page for PREV.
         val bitmap = turningBitmap?.takeUnless { it.isRecycled } ?: return false
         val shader = foldBackShader?.takeIf { foldBackShaderBitmap === bitmap }
             ?: BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).also {
@@ -1051,9 +1081,9 @@ class CurlPageAnim(
                 underView = readView.nextPageView
             }
             Direction.PREV -> {
-                // PREV：当前页从左边缘掀起（帧镜像输出），露出上一页
-                turningView = readView.curPageView
-                underView = readView.prevPageView
+                // PREV：上一页从左侧卷入并覆盖留在底层的当前页。
+                turningView = readView.prevPageView
+                underView = readView.curPageView
             }
             Direction.NONE -> return false
         }
@@ -1160,10 +1190,8 @@ class CurlPageAnim(
     }
 
     private fun drawPageContent(canvas: Canvas, bitmap: Bitmap?, pageView: View?): Boolean {
-        // 直接渲染的子 View 内容处于物理坐标：外层镜像（竖排或 PREV）时同样翻转一次还原
-        val saveCount = if (
-            readView.isPageProgressReversed xor (direction == Direction.PREV)
-        ) {
+        // 直接渲染的子 View 内容处于物理坐标；仅抵消布局反向镜像。
+        val saveCount = if (readView.isPageProgressReversed) {
             canvas.save().also {
                 canvas.scale(-1f, 1f, readView.width * 0.5f, 0f)
             }

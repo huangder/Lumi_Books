@@ -61,7 +61,7 @@ class SimulationCurlGeometryTest {
     }
 
     @Test
-    fun canonicalGeometryIsSharedByNextAndPreviousMirrorPaths() {
+    fun sameTouchCoordinatesAlwaysProduceTheSameFiniteGeometry() {
         val next = SimulationCurlFrame()
         val previous = SimulationCurlFrame()
         assertTrue(
@@ -129,7 +129,7 @@ class SimulationCurlGeometryTest {
     }
 
     @Test
-    fun nextAndPreviousMapPhysicalDragsToSameCanonicalCoordinates() {
+    fun nextDecreasesWhilePreviousIncreasesFromOffscreenFlatState() {
         assertEquals(
             780f,
             SimulationCurlGeometry.canonicalTouchX(
@@ -138,9 +138,23 @@ class SimulationCurlGeometryTest {
             0f
         )
         assertEquals(
-            780f,
+            -480f,
             SimulationCurlGeometry.canonicalTouchX(
                 1080f, 300f, 600f, SimulationCurlTurnDirection.PREVIOUS
+            ),
+            0f
+        )
+        assertEquals(
+            -1080f,
+            SimulationCurlGeometry.canonicalTouchX(
+                1080f, 300f, 300f, SimulationCurlTurnDirection.PREVIOUS
+            ),
+            0f
+        )
+        assertEquals(
+            1080f,
+            SimulationCurlGeometry.canonicalTouchX(
+                1080f, 0f, 2000f, SimulationCurlTurnDirection.PREVIOUS
             ),
             0f
         )

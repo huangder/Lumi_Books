@@ -191,6 +191,7 @@ fun PdfViewerScreen(
     viewModel: ReaderViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val ttsState by viewModel.ttsState.collectAsState()
     val bookmarks by viewModel.bookmarks.collectAsState()
     val conversionState by viewModel.pdfConversionState.collectAsState()
     val mineruMode by viewModel.mineruMode.collectAsState()
@@ -232,8 +233,8 @@ fun PdfViewerScreen(
     val motionEnabled = LocalMotionEnabled.current
     val effectivePdfPageMode = if (eInkMode) "horizontal" else uiState.pdfPageMode
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !eInkMode
-    LaunchedEffect(uiState.ttsErrorMessage) {
-        val message = uiState.ttsErrorMessage ?: return@LaunchedEffect
+    LaunchedEffect(ttsState.errorMessage) {
+        val message = ttsState.errorMessage ?: return@LaunchedEffect
         Toast.makeText(context, message, Toast.LENGTH_LONG).show()
         viewModel.clearTtsError()
     }
@@ -339,13 +340,13 @@ fun PdfViewerScreen(
         bookId,
         pageCount,
         isHorizontal,
-        uiState.ttsActiveBookId,
-        uiState.ttsPlaybackState
+        ttsState.activeBookId,
+        ttsState.playbackState
     ) {
         viewModel.ttsPageTurnRequests.collect { request ->
             if (request.bookId != bookId ||
-                uiState.ttsActiveBookId != bookId ||
-                uiState.ttsPlaybackState == TtsPlaybackState.IDLE ||
+                ttsState.activeBookId != bookId ||
+                ttsState.playbackState == TtsPlaybackState.IDLE ||
                 request.location.pageIndex != 0
             ) return@collect
             val targetPage = request.location.chapterIndex
@@ -361,9 +362,9 @@ fun PdfViewerScreen(
     // 当前页是否已收藏（PDF 每页 = 一个 chapterIndex）
     val isCurrentPageBookmarked = bookmarks.any { it.chapterIndex == currentPage }
 
-    LaunchedEffect(currentPage, uiState.ttsActiveBookId, uiState.ttsPlaybackState) {
-        if (uiState.ttsActiveBookId == bookId &&
-            uiState.ttsPlaybackState != TtsPlaybackState.IDLE
+    LaunchedEffect(currentPage, ttsState.activeBookId, ttsState.playbackState) {
+        if (ttsState.activeBookId == bookId &&
+            ttsState.playbackState != TtsPlaybackState.IDLE
         ) {
             viewModel.onPdfTtsPageVisible(bookId, currentPage)
         }
@@ -591,8 +592,8 @@ fun PdfViewerScreen(
                 pageMode = effectivePdfPageMode,
                 eInkModeEnabled = eInkMode,
                 glassContentScrimColor = pdfGlassContentScrim,
-                isTtsActive = uiState.ttsActiveBookId == bookId &&
-                    uiState.ttsPlaybackState != TtsPlaybackState.IDLE,
+                isTtsActive = ttsState.activeBookId == bookId &&
+                    ttsState.playbackState != TtsPlaybackState.IDLE,
                 onBack = exitReader,
                 onPageModeToggle = {
                     if (!eInkMode) {
@@ -604,8 +605,8 @@ fun PdfViewerScreen(
                     }
                 },
                 onTtsToggle = {
-                    if (uiState.ttsActiveBookId == bookId &&
-                        uiState.ttsPlaybackState != TtsPlaybackState.IDLE
+                    if (ttsState.activeBookId == bookId &&
+                        ttsState.playbackState != TtsPlaybackState.IDLE
                     ) {
                         viewModel.toggleTtsPlayPause()
                     } else {
@@ -696,8 +697,8 @@ fun PdfViewerScreen(
             label = "ttsBottomPadding"
         )
         AnimatedVisibility(
-            visible = uiState.ttsActiveBookId == bookId &&
-                uiState.ttsPlaybackState != TtsPlaybackState.IDLE &&
+            visible = ttsState.activeBookId == bookId &&
+                ttsState.playbackState != TtsPlaybackState.IDLE &&
                 !showPdfToc && conversionSheet == null,
             enter = if (eInkMode) EnterTransition.None else if (!motionEnabled) fadeIn(tween(120)) else slideInVertically(initialOffsetY = { it }) + fadeIn(),
             exit = if (eInkMode) ExitTransition.None else if (!motionEnabled) fadeOut(tween(100)) else slideOutVertically(targetOffsetY = { it }) + fadeOut(),
@@ -708,9 +709,9 @@ fun PdfViewerScreen(
                 .padding(bottom = ttsBottomPadding)
         ) {
             TtsPlayerPanel(
-                playbackState = uiState.ttsPlaybackState,
-                speechRate = uiState.ttsSpeechRate,
-                sleepTimerRemainingMs = uiState.sleepTimerRemainingMs,
+                playbackState = ttsState.playbackState,
+                speechRate = ttsState.speechRate,
+                sleepTimerRemainingMs = ttsState.sleepTimerRemainingMs,
                 onPlayPause = viewModel::toggleTtsPlayPause,
                 onStop = viewModel::stopTts,
                 onSkipForward = viewModel::ttsSkipForward,

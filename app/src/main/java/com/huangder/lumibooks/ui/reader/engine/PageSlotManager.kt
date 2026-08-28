@@ -58,6 +58,8 @@ class PageSlotManager(
     private val scope = CoroutineScope(supervisorJob + Dispatchers.Main)
     private val slotJobs = arrayOfNulls<Job>(3)
     private val chapterLoadJobs = mutableMapOf<Int, Deferred<ChapterMaterial?>>()
+    private var refreshJob: Job? = null
+    private var prefetchJob: Job? = null
     private val requestTokens = LongArray(3)
     private var chapterCount: Int = 0
     private val chapterTextCache = object : LinkedHashMap<Int, CharSequence>(4, 0.75f, true) {
@@ -145,6 +147,7 @@ class PageSlotManager(
         slot.rightGlobalPageIndex = -1
         slot.rightIsLoaded = false
         slot.primaryIsRight = false
+        slot.chapterTotalPages = 0
         slot.contentView.clear()
         slot.rightContentView?.clear()
 
@@ -341,6 +344,7 @@ class PageSlotManager(
         if (!spreadEnabled() && slot.pageIndex != actualPage) return
 
         slot.globalPageIndex = layoutEngine.localToGlobal(chapterIndex, slot.pageIndex)
+        slot.chapterTotalPages = chapterLayout.totalPages
         slot.isLoaded = true
         onSlotReadyCallback?.invoke()
         if (slotIdx == SLOT_CUR) {
@@ -382,11 +386,14 @@ class PageSlotManager(
      */
     private fun eagerPreloadUpcoming(currentChapter: Int) {
         if (contentProvider == null) return
-        for (ahead in 1..2) {
-            val target = currentChapter + ahead
-            if (target >= chapterCount) break
-            if (layoutEngine.getChapterLayout(target) != null) continue
-            getOrStartChapterLoad(target)
+        prefetchJob?.cancel()
+        prefetchJob = scope.launch {
+            for (ahead in 1..2) {
+                val target = currentChapter + ahead
+                if (target >= chapterCount) break
+                if (layoutEngine.getChapterLayout(target) != null) continue
+                getOrStartChapterLoad(target).await()
+            }
         }
     }
 
@@ -402,8 +409,21 @@ class PageSlotManager(
     fun refreshCurrentPage() {
         val cur = slots[SLOT_CUR]
         if (!cur.isLoaded) return
-        val cl = layoutEngine.getChapterLayout(cur.chapterIndex) ?: return
-        val text = contentProvider?.let { kotlinx.coroutines.runBlocking(Dispatchers.IO) { it(cur.chapterIndex) } } ?: return
+        val chapterIndex = cur.chapterIndex
+        val pageIndex = cur.pageIndex
+        val requestToken = requestTokens[SLOT_CUR]
+        refreshJob?.cancel()
+        refreshJob = scope.launch {
+            val material = getOrStartChapterLoad(chapterIndex).await() ?: return@launch
+            val current = slots[SLOT_CUR]
+            if (!isCurrentRequest(SLOT_CUR, requestToken) ||
+                !current.isLoaded || current.chapterIndex != chapterIndex || current.pageIndex != pageIndex
+            ) return@launch
+            renderCurrentPage(current, material.layout, material.text)
+        }
+    }
+
+    private fun renderCurrentPage(cur: SlotState, cl: ChapterLayout, text: CharSequence) {
         val highlights = highlightProvider?.invoke(cur.chapterIndex) ?: emptyList()
         if (spreadEnabled()) {
             val leftPage = if (cur.primaryIsRight) null else cur.pageIndex
@@ -445,6 +465,16 @@ class PageSlotManager(
                 highlights,
                 pageLayout.verticalGeometry
             )
+        }
+    }
+
+    fun updateTtsHighlight(range: TtsHighlightRange?) {
+        slots.forEach { slot ->
+            if (!slot.isLoaded) return@forEach
+            val leftRange = range?.takeIf { it.chapterIndex == slot.chapterIndex }
+            slot.contentView.updateTtsHighlight(leftRange?.start, leftRange?.end)
+            val rightRange = range?.takeIf { slot.rightIsLoaded && it.chapterIndex == slot.rightChapterIndex }
+            slot.rightContentView?.updateTtsHighlight(rightRange?.start, rightRange?.end)
         }
     }
 
@@ -594,6 +624,7 @@ class PageSlotManager(
             curSlot.rightGlobalPageIndex = -1
             curSlot.rightIsLoaded = false
             curSlot.primaryIsRight = false
+            curSlot.chapterTotalPages = 0
             curSlot.contentView.clear()
             curSlot.rightContentView?.clear()
             currentChapterIndex = nextCh
@@ -641,6 +672,7 @@ class PageSlotManager(
             curSlot.rightGlobalPageIndex = -1
             curSlot.rightIsLoaded = false
             curSlot.primaryIsRight = false
+            curSlot.chapterTotalPages = 0
             curSlot.contentView.clear()
             curSlot.rightContentView?.clear()
             currentChapterIndex = prevCh
@@ -696,10 +728,16 @@ class PageSlotManager(
         val ci = cur.chapterIndex
         val pi = cur.pageIndex
 
-        val cl = layoutEngine.getChapterLayout(ci) ?: return -1 to -1
+        val cachedTotal = layoutEngine.getChapterLayout(ci)?.totalPages
+        val chapterTotal = stableChapterPageCount(
+            cachedPageCount = cachedTotal,
+            slotPageCount = cur.chapterTotalPages,
+            visiblePageIndex = pi,
+            isLoaded = cur.isLoaded
+        )
         if (spreadEnabled()) {
             val nextPrimary = if (pi == 0) 1 else pi + 2
-            if (nextPrimary < cl.totalPages) {
+            if (nextPrimary < chapterTotal) {
                 return ci to nextPrimary
             }
             val nextCh = ci + 1
@@ -709,7 +747,7 @@ class PageSlotManager(
             return -1 to -1
         }
         return when {
-            pi + 1 < cl.totalPages -> ci to pi + 1
+            pi + 1 < chapterTotal -> ci to pi + 1
             ci + 1 < chapterCount -> ci + 1 to 0
             else -> -1 to -1
         }
@@ -763,6 +801,7 @@ class PageSlotManager(
         toSlot.rightGlobalPageIndex = fromSlot.rightGlobalPageIndex
         toSlot.rightIsLoaded = fromSlot.rightIsLoaded
         toSlot.primaryIsRight = fromSlot.primaryIsRight
+        toSlot.chapterTotalPages = fromSlot.chapterTotalPages
         if (!renderSlotFromCache(toSlot)) {
             toSlot.contentView.syncText(
                 textViewText = fromSlot.contentView.textView.text,
@@ -794,6 +833,7 @@ class PageSlotManager(
         fromSlot.rightGlobalPageIndex = -1
         fromSlot.rightIsLoaded = false
         fromSlot.primaryIsRight = false
+        fromSlot.chapterTotalPages = 0
         fromSlot.contentView.clear()
         fromSlot.rightContentView?.clear()
     }
@@ -863,6 +903,7 @@ class PageSlotManager(
         slot.rightGlobalPageIndex = -1
         slot.rightIsLoaded = false
         slot.primaryIsRight = false
+        slot.chapterTotalPages = 0
         slot.contentView.clear()
         slot.rightContentView?.clear()
     }
@@ -913,7 +954,12 @@ class PageSlotManager(
     private fun notifyPageChanged() {
         val cur = slots[SLOT_CUR]
         val chapterLayout = layoutEngine.getChapterLayout(cur.chapterIndex)
-        val chapterTotal = chapterLayout?.totalPages ?: 0
+        val chapterTotal = stableChapterPageCount(
+            cachedPageCount = chapterLayout?.totalPages,
+            slotPageCount = cur.chapterTotalPages,
+            visiblePageIndex = cur.pageIndex,
+            isLoaded = cur.isLoaded
+        )
         onPageChangedCallback?.invoke(cur.globalPageIndex, cur.chapterIndex, cur.pageIndex, chapterTotal)
         if (cur.rightIsLoaded && cur.rightPageIndex >= 0) {
             onSpreadPageChangedCallback?.invoke(
@@ -927,6 +973,36 @@ class PageSlotManager(
     fun getCurSlot(): SlotState = slots[SLOT_CUR]
     fun getPrevSlot(): SlotState = slots[SLOT_PREV]
     fun getNextSlot(): SlotState = slots[SLOT_NEXT]
+
+    fun isAtBookStart(): Boolean {
+        val cur = slots[SLOT_CUR]
+        return isAbsoluteBookStart(cur.chapterIndex, cur.pageIndex, cur.isLoaded)
+    }
+
+    fun isAtBookEnd(): Boolean {
+        val cur = slots[SLOT_CUR]
+        val cachedPageCount = layoutEngine.getChapterLayout(cur.chapterIndex)?.totalPages
+        val knownPageCount = maxOf(cachedPageCount ?: 0, cur.chapterTotalPages)
+        if (knownPageCount <= 0) return false
+        return isAbsoluteBookEnd(
+            chapterIndex = cur.chapterIndex,
+            primaryPageIndex = cur.pageIndex,
+            rightPageIndex = cur.rightPageIndex.takeIf { cur.rightIsLoaded } ?: -1,
+            chapterPageCount = knownPageCount,
+            chapterCount = chapterCount,
+            isLoaded = cur.isLoaded
+        )
+    }
+
+    fun getNextPageLocation(): Pair<Int, Int> {
+        val next = slots[SLOT_NEXT]
+        return if (next.isLoaded) next.chapterIndex to next.pageIndex else resolveNextPage()
+    }
+
+    fun getPrevPageLocation(): Pair<Int, Int> {
+        val prev = slots[SLOT_PREV]
+        return if (prev.isLoaded) prev.chapterIndex to prev.pageIndex else resolvePrevPage()
+    }
 
     /** 当前主内容视图：双页单独右页时返回右半页，否则返回左半页。 */
     fun getPrimaryContentView(): PageContentView =
@@ -947,6 +1023,8 @@ class PageSlotManager(
     }
 
     fun destroy() {
+        refreshJob?.cancel()
+        prefetchJob?.cancel()
         cancelActiveJump()
         for (i in 0..2) recycleSlot(i)
         chapterLoadJobs.clear()

@@ -13,7 +13,23 @@ class CurlGestureHelpersTest {
     }
 
     @Test
-    fun horizontalDragFromCornerLocksToVerticalEdgeCurl() {
+    fun bottomFifthScreenEdgesAreReservedForSystemBack() {
+        assertTrue(isSystemBackGestureStart(1080f, 2340f, 40f, 2000f, 3f))
+        assertTrue(isSystemBackGestureStart(1080f, 2340f, 1040f, 2000f, 3f))
+        assertFalse(isSystemBackGestureStart(1080f, 2340f, 540f, 2000f, 3f))
+        assertFalse(isSystemBackGestureStart(1080f, 2340f, 40f, 1800f, 3f))
+    }
+
+    @Test
+    fun systemBackReservationRequiresHorizontalMovement() {
+        assertTrue(isSystemBackGestureSwipe(80f, 20f))
+        assertTrue(isSystemBackGestureSwipe(-80f, 20f))
+        assertFalse(isSystemBackGestureSwipe(6f, 1f))
+        assertFalse(isSystemBackGestureSwipe(20f, 80f))
+    }
+
+    @Test
+    fun horizontalDragLocksToVerticalEdgeCurlAtClassificationDistance() {
         val lock = CurlGestureModeLock()
         lock.begin(1000f, 40f)
 
@@ -27,6 +43,18 @@ class CurlGestureHelpersTest {
 
         assertTrue(lock.isLocked)
         assertTrue(mode == CurlGestureMode.EDGE_VERTICAL)
+    }
+
+    @Test
+    fun movementBelowClassificationDistanceDoesNotLockOrRenderAMode() {
+        val lock = CurlGestureModeLock()
+        lock.begin(1000f, 40f)
+
+        assertTrue(
+            lock.lock(1080f, 2340f, -1f, -40f, 30f) ==
+                CurlGestureMode.EDGE_VERTICAL
+        )
+        assertFalse(lock.isLocked)
     }
 
     @Test
@@ -47,7 +75,7 @@ class CurlGestureHelpersTest {
     }
 
     @Test
-    fun selectedModeDoesNotChangeMidGesture() {
+    fun selectedVerticalModeDoesNotChangeMidGesture() {
         val lock = CurlGestureModeLock()
         lock.begin(1000f, 120f)
         assertTrue(
@@ -57,6 +85,17 @@ class CurlGestureHelpersTest {
         assertTrue(
             lock.lock(1080f, 2340f, -1f, -240f, 500f) ==
                 CurlGestureMode.EDGE_VERTICAL
+        )
+        assertTrue(lock.isLocked)
+    }
+
+    @Test
+    fun diagonalDragAwayFromEdgeStillSelectsStartingCorner() {
+        val lock = CurlGestureModeLock()
+        lock.begin(540f, 1200f)
+        assertTrue(
+            lock.lock(1080f, 2340f, -1f, -220f, 620f) ==
+                CurlGestureMode.CORNER_BOTTOM
         )
     }
 }

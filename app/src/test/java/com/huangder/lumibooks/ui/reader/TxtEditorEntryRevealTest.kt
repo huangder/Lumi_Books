@@ -76,4 +76,22 @@ class TxtEditorEntryRevealTest {
             findTxtEntrySentenceRange(source, sourceOffset)?.let(source::substring)
         )
     }
+
+    @Test
+    fun mapsReaderSelectionWithoutConsumingTheNextParagraph() {
+        val source = "第1章 标题\n　　第一句话。\n　　第二句话。"
+        val reader = "第1章 标题\n\n第一句话。\n\n第二句话。"
+        val selected = "第一句话。"
+        val start = reader.indexOf(selected)
+
+        val range = mapReaderTxtRangeToSource(
+            sourceText = source,
+            readerText = reader,
+            readerStart = start,
+            readerEndExclusive = start + selected.length
+        )
+
+        requireNotNull(range)
+        assertEquals(selected, source.substring(range.start, range.endExclusive))
+    }
 }

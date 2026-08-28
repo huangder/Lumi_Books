@@ -128,7 +128,6 @@ internal object VerticalTextLayouter {
         val columnAdvance = (baseEm * lineSpacingMultiplier + lineSpacingExtra)
             .coerceAtLeast(baseEm)
         val columnCount = (width / columnAdvance).toInt().coerceAtLeast(1)
-        val characterAdvance = (baseEm + letterSpacing).coerceAtLeast(baseEm * 0.55f)
         val graphemes = graphemeRanges(text.toString())
         val pages = mutableListOf<VerticalPageSlice>()
         var rangeIndex = 0
@@ -209,7 +208,14 @@ internal object VerticalTextLayouter {
                 }
 
                 val em = textSizeAt(text, start, baseEm, paint.density)
-                val itemAdvance = max(characterAdvance, em + letterSpacing)
+                // Vertical CJK glyphs are normally one em wide, but punctuation,
+                // Latin clusters and custom fonts can have a narrower/wider advance.
+                // Use the actual cluster measurement so those glyphs are not forced
+                // into a monospaced-looking grid.
+                val clusterPaint = if (em == paint.textSize) paint else TextPaint(paint).apply { textSize = em }
+                val measuredAdvance = clusterPaint.measureText(verticalPresentationText(cluster))
+                val itemAdvance = (max(em * 0.55f, measuredAdvance) + letterSpacing)
+                    .coerceAtLeast(em * 0.55f)
                 if (y + itemAdvance > height && pageItems.any { it is VerticalGlyphLayout && it.columnIndex == column }) {
                     val previous = pageItems.lastOrNull() as? VerticalGlyphLayout
                     val previousText = previous?.let { text.subSequence(it.startOffset, it.endOffset).toString() }

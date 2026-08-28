@@ -82,6 +82,28 @@ class VerticalTextLayouterInstrumentedTest {
     }
 
     @Test
+    fun verticalAdvanceUsesMeasuredClusterWidthForLatinText() {
+        val paint = TextPaint().apply {
+            textSize = 40f
+            density = 1f
+            typeface = android.graphics.Typeface.DEFAULT
+        }
+        val pages = VerticalTextLayouter.layout(
+            text = "iW",
+            paint = paint,
+            width = 80,
+            height = 200,
+            lineSpacingExtra = 0f,
+            lineSpacingMultiplier = 1f,
+            letterSpacing = 0f
+        )
+        val glyphs = pages.single().geometry.glyphs
+        val expected = paint.measureText("i")
+        assertEquals(expected, glyphs[0].bounds.bottom - glyphs[0].bounds.top, 0.01f)
+        assertTrue(glyphs[1].bounds.bottom - glyphs[1].bounds.top > glyphs[0].bounds.bottom - glyphs[0].bounds.top)
+    }
+
+    @Test
     fun indentationSpacingAndKinsokuAffectVerticalGeometry() {
         val text = SpannableStringBuilder("甲乙。）丁戊己（庚辛")
         text.setSpan(
