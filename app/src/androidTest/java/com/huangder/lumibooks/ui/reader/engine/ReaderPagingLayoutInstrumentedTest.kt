@@ -1,6 +1,9 @@
 package com.huangder.lumibooks.ui.reader.engine
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
 import android.text.Layout
 import android.text.Spannable
 import android.text.SpannableStringBuilder
@@ -16,6 +19,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import kotlinx.coroutines.runBlocking
 
 @RunWith(AndroidJUnit4::class)
 class ReaderPagingLayoutInstrumentedTest {
@@ -62,6 +66,94 @@ class ReaderPagingLayoutInstrumentedTest {
         // breaks would add a trailing-space reserve and shift the last line by
         // one character when letterSpacing > 0.
         assertEquals(Layout.JUSTIFICATION_MODE_NONE, page?.textView?.justificationMode)
+    }
+
+    @Test
+    fun paginationUsesOnlySmallSafetyAllowance() = runBlocking {
+        val engine = PageLayoutEngine()
+        val text = "正文\n".repeat(120)
+        val width = 420
+        val height = 640
+        val topBottom = 48
+        engine.configure(
+            width = width,
+            height = height,
+            fontSizePx = 32f,
+            lineSpacingPx = 0f,
+            lineSpacingMult = 1f,
+            marginTopPx = topBottom.toFloat(),
+            marginBottomPx = topBottom.toFloat(),
+            chapterCount = 1
+        )
+
+        val chapter = engine.layout(0, text)
+        val static = chapter.staticLayout
+        var expectedLines = 0
+        var used = 0
+        val available = height - topBottom * 2 - 2
+        while (expectedLines < static.lineCount) {
+            val line = expectedLines
+            val lineHeight = static.getLineBottom(line) - static.getLineTop(line)
+            if (expectedLines > 0 && used + lineHeight > available) break
+            used += lineHeight
+            expectedLines++
+        }
+
+        assertEquals(expectedLines, chapter.pages.first().endLine)
+    }
+
+    @Test
+    fun finalLineInkStaysInsideBottomPadding() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        var page: PageContentView? = null
+        val width = 600
+        val height = 720
+        val margin = 56
+        val text = "最后一行也必须完整显示，不能被底部边界裁切。"
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            page = PageContentView(context).also {
+                it.configure(
+                    fontSizePx = 36f,
+                    textColor = Color.BLACK,
+                    lineHeightMult = 1f,
+                    lineSpacingExtraPx = 0f,
+                    marginLeftPx = 40f,
+                    marginTopPx = margin.toFloat(),
+                    marginRightPx = 40f,
+                    marginBottomPx = margin.toFloat()
+                )
+                it.setPageContent(text, 0, text.length)
+                it.measure(
+                    android.view.View.MeasureSpec.makeMeasureSpec(width, android.view.View.MeasureSpec.EXACTLY),
+                    android.view.View.MeasureSpec.makeMeasureSpec(height, android.view.View.MeasureSpec.EXACTLY)
+                )
+                it.layout(0, 0, width, height)
+            }
+        }
+
+        val view = requireNotNull(page)
+        val layout = requireNotNull(view.textView.layout)
+        val lastLine = layout.lineCount - 1
+        val inkBottom = view.textView.totalPaddingTop +
+            layout.getLineBaseline(lastLine) + layout.getLineDescent(lastLine)
+        assertTrue("last line must stay inside bottom padding", inkBottom <= height - margin)
+
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            bitmap.eraseColor(Color.WHITE)
+            view.draw(Canvas(bitmap))
+        }
+        var lastInkRow = -1
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                if (Color.alpha(bitmap.getPixel(x, y)) > 0 && bitmap.getPixel(x, y) != Color.WHITE) {
+                    lastInkRow = y
+                    break
+                }
+            }
+        }
+        assertTrue("rendered ink must not enter bottom padding", lastInkRow < height - margin)
+        bitmap.recycle()
     }
 
     @Test

@@ -236,17 +236,11 @@ class PageLayoutEngine {
             return@withContext result
         }
 
-        // 留出安全边距：
-        // - 舍入余量，消除 TextView 与 StaticLayout 的取整差异
-        // - descent 缓冲：某些自定义字体的字形 descent 超过 StaticLayout 报告的 lineBottom，
-        //   不预留时最后一行字符会超出底边距被横向截断。
+        // 仅保留极小的物理像素保护，避免浮点到像素栅格化时的边界误差。
+        // 不能按主字体 descent 统一扣除整段高度，否则每页都会额外损失一部分正文空间。
         val pages = mutableListOf<PageLayout>()
-        // 🔥 descent 缓冲只做 1x + 2px 粗筛：
-        // textPaint.descent() 只反映主字体，繁体字等走 fallback 字体时实际 descent 更大，
-        // 但溢出由下方按最后一行实际 sl.getLineDescent() 的精确回退兜底；
-        // 粗筛过大会在页底留下接近一整行的空白，让用户边距设置形同虚设。
-        val descentBuffer = (input.textPaint.descent() + 2f).coerceAtLeast(4f)
-        val effectiveVh = (input.visibleHeight.toFloat() - descentBuffer).coerceAtLeast(1f)
+        val safetyPx = 2f
+        val effectiveVh = (input.visibleHeight.toFloat() - safetyPx).coerceAtLeast(1f)
         var pageStartLine = 0
         var pageIdx = 0
         var globalCharOffset = 0
@@ -272,10 +266,11 @@ class PageLayoutEngine {
                 val lastLine = pageEndLine - 1
                 val lastLineHeight = (sl.getLineBottom(lastLine) - sl.getLineTop(lastLine)).toFloat()
                 val lastLineTopOffset = accumulatedHeight - lastLineHeight
-                val actualBottom = lastLineTopOffset +
-                        (-sl.getLineAscent(lastLine)).toFloat() +    // ascent 为负
-                        sl.getLineDescent(lastLine).toFloat()
-                if (actualBottom > input.visibleHeight.toFloat() && pageEndLine > pageStartLine + 1) {
+                val baselineOffset =
+                    (sl.getLineBaseline(lastLine) - sl.getLineTop(lastLine)).toFloat()
+                val actualBottom = lastLineTopOffset + baselineOffset +
+                    sl.getLineDescent(lastLine).toFloat()
+                if (actualBottom > effectiveVh && pageEndLine > pageStartLine + 1) {
                     // 最后一行真实字形底部超出可视区，将其挪到下一页
                     pageEndLine--
                     accumulatedHeight -= lastLineHeight

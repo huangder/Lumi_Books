@@ -1925,8 +1925,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val layout = tv.layout ?: return null
         val startLine = layout.getLineForOffset(selStart)
         val endLine = layout.getLineForOffset(selEnd.coerceAtMost(spannable.length - 1))
-        val topY = (tv.top + tv.paddingTop + layout.getLineTop(startLine)).toFloat()
-        val bottomY = (tv.top + tv.paddingTop + layout.getLineBottom(endLine)).toFloat()
+        val pageOffsetY = pageView.getPageVerticalOffset()
+        val topY = (tv.top + tv.paddingTop + layout.getLineTop(startLine)).toFloat() + pageOffsetY
+        val bottomY = (tv.top + tv.paddingTop + layout.getLineBottom(endLine)).toFloat() + pageOffsetY
         // 双页模式下右半页视图位于父容器右半区，需要加上半页偏移，
         // 选区菜单/手柄坐标才能对齐屏幕。
         val viewOffsetX = pageView.left.toFloat()

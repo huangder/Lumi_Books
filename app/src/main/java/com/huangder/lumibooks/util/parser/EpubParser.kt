@@ -1457,12 +1457,13 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                 BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
                 android.util.Log.d("EpubParser", "getDrawable: originalSize=${opts.outWidth}x${opts.outHeight}")
 
-                // 计算 inSampleSize，目标尺寸 800×1200
-                val targetWidth = 800
-                val targetHeight = 1200
-                val sampleW = opts.outWidth / targetWidth
-                val sampleH = opts.outHeight / targetHeight
-                opts.inSampleSize = maxOf(sampleW, sampleH).coerceAtLeast(1)
+                val originalWidth = opts.outWidth
+                val originalHeight = opts.outHeight
+                opts.inSampleSize = ReaderImageSizing.decodeSampleSize(
+                    originalWidth,
+                    originalHeight,
+                    pageContentWidth.takeIf { it > 0 } ?: 800
+                )
                 opts.inJustDecodeBounds = false
                 android.util.Log.d("EpubParser", "getDrawable: inSampleSize=${opts.inSampleSize}")
 
@@ -1482,12 +1483,11 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                     val marginPx = (44 * dm.density).toInt()  // 默认边距 44dp
                     dm.widthPixels - marginPx * 2
                 }
-                val drawW: Int
-                val drawH: Int
-                // 🔥 统一缩放到 pageW：无论图片原始尺寸大还是小，都缩放到内容宽度
-                val ratio = pageW.toFloat() / bitmap.width.coerceAtLeast(1)
-                drawW = pageW
-                drawH = (bitmap.height * ratio).toInt()
+                val imageBounds = ReaderImageSizing.bounds(originalWidth, originalHeight, pageW)
+                    ?: return createErrorPlaceholder("Invalid image dimensions: ${entry.name.take(60)}")
+                val ratio = imageBounds.width.toFloat() / bitmap.width.coerceAtLeast(1)
+                val drawW = imageBounds.width
+                val drawH = (bitmap.height * ratio).toInt().coerceAtLeast(1)
 
                 val drawable = BitmapDrawable(null, bitmap)
                 drawable.setBounds(0, 0, drawW, drawH)
@@ -1572,10 +1572,13 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                 val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
 
-                // 降采样
-                val targetW = 800
-                val targetH = 1200
-                opts.inSampleSize = maxOf(opts.outWidth / targetW, opts.outHeight / targetH).coerceAtLeast(1)
+                val originalWidth = opts.outWidth
+                val originalHeight = opts.outHeight
+                opts.inSampleSize = ReaderImageSizing.decodeSampleSize(
+                    originalWidth,
+                    originalHeight,
+                    pageContentWidth.takeIf { it > 0 } ?: 800
+                )
                 opts.inJustDecodeBounds = false
                 val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return null
 
@@ -1588,10 +1591,11 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                     val marginPx = (38 * dm.density).toInt()
                     dm.widthPixels - marginPx * 2
                 }
-                // 🔥 统一缩放到 pageW：无论图片原始尺寸大还是小，都缩放到内容宽度
-                val ratio = pageW.toFloat() / bitmap.width.coerceAtLeast(1)
-                val drawW = pageW
-                val drawH = (bitmap.height * ratio).toInt()
+                val imageBounds = ReaderImageSizing.bounds(originalWidth, originalHeight, pageW)
+                    ?: return null
+                val ratio = imageBounds.width.toFloat() / bitmap.width.coerceAtLeast(1)
+                val drawW = imageBounds.width
+                val drawH = (bitmap.height * ratio).toInt().coerceAtLeast(1)
                 val drawable = BitmapDrawable(null, bitmap)
                 drawable.setBounds(0, 0, drawW, drawH)
                 return drawable

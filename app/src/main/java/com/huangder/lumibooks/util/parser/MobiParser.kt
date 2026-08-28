@@ -470,13 +470,26 @@ class MobiParser(private val context: Context? = null) : BookParser, BookRenderS
             val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
             if (opts.outWidth <= 0 || opts.outHeight <= 0) return null
-            val sample = maxOf(opts.outWidth / 800, opts.outHeight / 1200).coerceAtLeast(1)
+            val originalWidth = opts.outWidth
+            val originalHeight = opts.outHeight
+            val sample = ReaderImageSizing.decodeSampleSize(
+                originalWidth,
+                originalHeight,
+                pageWidth
+            )
             opts.inSampleSize = sample
             opts.inJustDecodeBounds = false
             val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return null
-            val ratio = pageWidth.toFloat() / bitmap.width.coerceAtLeast(1)
+            val imageBounds = ReaderImageSizing.bounds(originalWidth, originalHeight, pageWidth)
+                ?: return null
+            val ratio = imageBounds.width.toFloat() / bitmap.width.coerceAtLeast(1)
             val drawable = BitmapDrawable(null, bitmap)
-            drawable.setBounds(0, 0, pageWidth, (bitmap.height * ratio).toInt().coerceAtLeast(1))
+            drawable.setBounds(
+                0,
+                0,
+                imageBounds.width,
+                (bitmap.height * ratio).toInt().coerceAtLeast(1)
+            )
             drawable
         } catch (error: Throwable) {
             android.util.Log.w("MobiParser", "decode image recindex=$recindex failed", error)
