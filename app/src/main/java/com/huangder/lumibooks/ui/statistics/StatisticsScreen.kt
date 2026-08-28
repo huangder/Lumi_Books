@@ -83,6 +83,7 @@ import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.SansSerif
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
+import com.huangder.lumibooks.ui.theme.cardOutline
 import java.util.Calendar
 
 @Composable
@@ -249,6 +250,7 @@ private fun PeriodSegmentedControl(
                 .width(segmentWidth)
                 .fillMaxSize()
                 .shadow(3.dp, RoundedCornerShape(AppRadius.sm))
+                .cardOutline(RoundedCornerShape(AppRadius.sm))
                 .clip(RoundedCornerShape(AppRadius.sm))
                 .background(AppColors.CardBg)
         )
@@ -359,6 +361,7 @@ private fun WeeklyOverview(
             .fillMaxWidth()
             .padding(horizontal = AppSpace.lg)
             .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .cardOutline(RoundedCornerShape(AppRadius.lg))
             .clip(RoundedCornerShape(AppRadius.lg))
             .background(AppColors.CardBg)
             .padding(AppSpace.md)
@@ -507,6 +510,7 @@ private fun MonthlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsView
             .fillMaxWidth()
             .padding(horizontal = AppSpace.lg)
             .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .cardOutline(RoundedCornerShape(AppRadius.lg))
             .clip(RoundedCornerShape(AppRadius.lg))
             .background(AppColors.CardBg)
             .padding(AppSpace.md)
@@ -706,6 +710,7 @@ private fun YearlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsViewM
             .fillMaxWidth()
             .padding(horizontal = AppSpace.lg)
             .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .cardOutline(RoundedCornerShape(AppRadius.lg))
             .clip(RoundedCornerShape(AppRadius.lg))
             .background(AppColors.CardBg)
             .padding(AppSpace.md)
@@ -893,6 +898,7 @@ private fun MostReadBooks(books: List<MostReadBook>) {
             .fillMaxWidth()
             .padding(horizontal = AppSpace.lg)
             .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .cardOutline(RoundedCornerShape(AppRadius.lg))
             .clip(RoundedCornerShape(AppRadius.lg))
             .background(AppColors.CardBg)
             .cardPressEffect()
@@ -952,6 +958,7 @@ private fun CompletionProgress(uiState: StatisticsUiState) {
             .fillMaxWidth()
             .padding(horizontal = AppSpace.lg)
             .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .cardOutline(RoundedCornerShape(AppRadius.lg))
             .clip(RoundedCornerShape(AppRadius.lg))
             .background(AppColors.CardBg)
             .cardPressEffect()

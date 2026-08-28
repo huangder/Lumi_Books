@@ -115,6 +115,12 @@ class ReadingRepositoryImpl @Inject constructor(
         return readingRecordDao.getDailyTotalsBetween(startDate, endDate)
     }
 
+    override fun getTotalDurationByBookId(bookId: String): Flow<Long?> =
+        readingRecordDao.getTotalDurationByBookId(bookId)
+
+    override fun getActiveDaysByBookId(bookId: String): Flow<Int> =
+        readingRecordDao.getActiveDaysByBookId(bookId)
+
     private fun ReadingRecordEntity.toDomain(): ReadingRecord {
         return ReadingRecord(
             id = id,

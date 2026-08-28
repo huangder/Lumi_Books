@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
 import android.util.Log
+import com.huangder.lumibooks.util.cache.ReaderCacheStore
 import java.io.Closeable
 import java.io.File
 import java.io.FileInputStream
@@ -29,6 +30,12 @@ object BookFileAccess {
     fun openSeekable(context: Context, location: String, writable: Boolean = false): SeekableBookSource {
         if (!isContentUri(location)) return SeekableBookSource(location)
 
+        if (!writable) {
+            ReaderCacheStore.get(context).mirrorContentUri(location)?.let { mirror ->
+                return SeekableBookSource(path = mirror.absolutePath)
+            }
+        }
+
         val uri = Uri.parse(location)
         val cacheDirectory = File(context.cacheDir, "seekable_books").apply { mkdirs() }
         val suffix = queryDisplayName(context, uri)
@@ -51,7 +58,8 @@ object BookFileAccess {
                 path = temporaryFile.absolutePath,
                 temporaryFile = temporaryFile,
                 writeBackContext = context.applicationContext.takeIf { writable },
-                writeBackUri = uri.takeIf { writable }
+                writeBackUri = uri.takeIf { writable },
+                sourceLocation = location.takeIf { writable }
             )
         } catch (error: Throwable) {
             temporaryFile.delete()
@@ -116,7 +124,8 @@ class SeekableBookSource internal constructor(
     val path: String,
     private val temporaryFile: File? = null,
     private val writeBackContext: Context? = null,
-    private val writeBackUri: Uri? = null
+    private val writeBackUri: Uri? = null,
+    private val sourceLocation: String? = null
 ) : Closeable {
     fun writeBack() {
         val context = writeBackContext ?: error("This seekable source is read-only")
@@ -129,6 +138,7 @@ class SeekableBookSource internal constructor(
         FileInputStream(sourceFile).buffered().use { input ->
             output.buffered().use { target -> input.copyTo(target) }
         }
+        sourceLocation?.let { ReaderCacheStore.get(context).invalidate(it) }
     }
 
     override fun close() {

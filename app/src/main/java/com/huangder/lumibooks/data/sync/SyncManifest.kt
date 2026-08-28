@@ -150,5 +150,34 @@ internal fun shouldApplyRemoteMetadata(
 ): Boolean = localMetadataUpdatedAt == null ||
     (remoteMetadata != null && remoteMetadata.updatedAt > localMetadataUpdatedAt)
 
+internal data class SyncMetadataResolution(
+    val metadata: SyncBookMetadata?,
+    val localWins: Boolean
+)
+
+/**
+ * A cloud-only row created from a v1 manifest contains a generated display title, not book
+ * metadata. Never publish that title back to the manifest. Conversely, a local book with an
+ * actual body is authoritative enough to repair a manifest polluted by an older client.
+ */
+internal fun resolveMetadataForSync(
+    localMetadata: SyncBookMetadata,
+    localIsCloudOnly: Boolean,
+    generatedCloudTitle: String,
+    remoteMetadata: SyncBookMetadata?
+): SyncMetadataResolution {
+    val trustedRemote = remoteMetadata?.takeUnless {
+        it.title.trim().equals(generatedCloudTitle.trim(), ignoreCase = true)
+    }
+    val localIsGeneratedPlaceholder = localIsCloudOnly &&
+        localMetadata.title.trim().equals(generatedCloudTitle.trim(), ignoreCase = true)
+    val localWins = !localIsGeneratedPlaceholder &&
+        (trustedRemote == null || localMetadata.updatedAt >= trustedRemote.updatedAt)
+    return SyncMetadataResolution(
+        metadata = if (localWins) localMetadata else trustedRemote,
+        localWins = localWins
+    )
+}
+
 internal fun SyncManifest.activeRemoteBooks(): Map<String, SyncFileEntry> =
     books.filterKeys { it !in deletedBooks }

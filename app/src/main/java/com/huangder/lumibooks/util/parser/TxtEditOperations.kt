@@ -2,6 +2,7 @@ package com.huangder.lumibooks.util.parser
 
 internal object TxtChapterStructure {
     const val MAX_CHAPTER_CHARS = 32_000
+    const val PATTERN_COUNT = 5
     val chapterPatterns = listOf(
         Regex("^第[一二三四五六七八九十百千零\\d]+[章节回卷话]"),
         Regex("^[卷篇][一二三四五六七八九十百千零\\d]+[章回]?"),
@@ -11,17 +12,59 @@ internal object TxtChapterStructure {
     )
     val decoratedHeadingPattern = Regex("^<[^<>\\r\\n]{1,48}>$")
 
+    fun matchingPatternIndex(line: String): Int? {
+        if (line.isEmpty()) return null
+
+        if (line[0] == '第') {
+            var index = 1
+            while (index < line.length && line[index].isStrictChapterNumberCharacter()) index++
+            if (index > 1 && index < line.length && line[index] in STRICT_CHAPTER_SUFFIXES) return 0
+        }
+
+        if (line[0] == '卷' || line[0] == '篇') {
+            var index = 1
+            while (index < line.length && line[index].isStrictChapterNumberCharacter()) index++
+            if (index > 1) return 1
+        }
+
+        if (line.regionMatches(0, "Chapter", 0, 7, ignoreCase = true)) {
+            var index = 7
+            val whitespaceStart = index
+            while (index < line.length && line[index] in REGEX_WHITESPACE_CHARACTERS) index++
+            val digitStart = index
+            while (index < line.length && line[index] in '0'..'9') index++
+            if (whitespaceStart < digitStart && digitStart < index) return 2
+        }
+
+        if (line.all { it in STANDALONE_CHAPTER_NUMBER_CHARACTERS }) return 3
+        return null
+    }
+
+    fun isDecoratedHeading(line: String): Boolean =
+        line.length in 3..50 &&
+            line.first() == '<' &&
+            line.last() == '>' &&
+            line.substring(1, line.lastIndex).none { it == '<' || it == '>' || it == '\r' || it == '\n' }
+
     fun headingLines(text: String): List<String> = text.lineSequence()
         .map { it.trim() }
         .filter { line ->
             line.isNotEmpty() &&
-                (decoratedHeadingPattern.matches(line) || chapterPatterns.any { it.containsMatchIn(line) })
+                (isDecoratedHeading(line) || matchingPatternIndex(line) != null)
         }
         .toList()
 
     fun mayChange(oldText: String, newText: String): Boolean =
         headingLines(oldText) != headingLines(newText) ||
             (oldText.length < MAX_CHAPTER_CHARS) != (newText.length < MAX_CHAPTER_CHARS)
+
+    private fun Char.isStrictChapterNumberCharacter(): Boolean =
+        this in '0'..'9' || this in STRICT_CHAPTER_NUMBER_CHARACTERS
+
+    private const val STRICT_CHAPTER_NUMBER_CHARACTERS = "一二三四五六七八九十百千零"
+    private const val STANDALONE_CHAPTER_NUMBER_CHARACTERS = "一二三四五六七八九十百千零〇两"
+    private const val STRICT_CHAPTER_SUFFIXES = "章节回卷话"
+    private const val REGEX_WHITESPACE_CHARACTERS = " \t\n\u000B\u000C\r"
 }
 
 data class TxtTextMatch(

@@ -100,6 +100,70 @@ class SyncManifestTest {
     }
 
     @Test
+    fun generatedCloudTitleIsNotPublishedAsBookMetadata() {
+        val placeholder = SyncBookMetadata(
+            title = "云端书籍 abcdef12",
+            author = "未知作者",
+            format = "EPUB",
+            createdAt = 10,
+            isFavorite = false,
+            updatedAt = 20
+        )
+
+        val resolution = resolveMetadataForSync(
+            localMetadata = placeholder,
+            localIsCloudOnly = true,
+            generatedCloudTitle = "云端书籍 abcdef12",
+            remoteMetadata = null
+        )
+
+        assertNull(resolution.metadata)
+        assertFalse(resolution.localWins)
+    }
+
+    @Test
+    fun localBookRepairsManifestContainingGeneratedCloudTitle() {
+        val local = SyncBookMetadata("真实书名", "作者", "EPUB", 10, false, 20)
+        val pollutedRemote = local.copy(
+            title = "云端书籍 abcdef12",
+            updatedAt = 999
+        )
+
+        val resolution = resolveMetadataForSync(
+            localMetadata = local,
+            localIsCloudOnly = false,
+            generatedCloudTitle = "云端书籍 abcdef12",
+            remoteMetadata = pollutedRemote
+        )
+
+        assertEquals(local, resolution.metadata)
+        assertTrue(resolution.localWins)
+    }
+
+    @Test
+    fun realRemoteTitleReplacesGeneratedCloudPlaceholderRegardlessOfTimestamp() {
+        val placeholder = SyncBookMetadata(
+            "云端书籍 abcdef12",
+            "未知作者",
+            "EPUB",
+            10,
+            false,
+            999
+        )
+        val remote = placeholder.copy(title = "真实书名", author = "作者", updatedAt = 20)
+
+        val resolution = resolveMetadataForSync(
+            localMetadata = placeholder,
+            localIsCloudOnly = true,
+            generatedCloudTitle = "云端书籍 abcdef12",
+            remoteMetadata = remote
+        )
+
+        assertEquals(remote, resolution.metadata)
+        assertFalse(resolution.localWins)
+    }
+
+    @Test
     fun tombstoneFiltersRemoteEntryAndPreventsResurrection() {
         val entry = SyncFileEntry("deleted.epub", "hash", 10, 20)
         val manifest = SyncManifest(

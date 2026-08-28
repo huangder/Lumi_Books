@@ -4,6 +4,11 @@ import android.content.Context
 import com.huangder.lumibooks.util.BookFileAccess
 import com.huangder.lumibooks.util.FileUtils
 import com.huangder.lumibooks.util.SeekableBookSource
+import com.huangder.lumibooks.util.cache.BookFingerprint
+import com.huangder.lumibooks.util.cache.ReaderCacheStore
+import com.huangder.lumibooks.util.performance.ReaderOpenPerformance
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -62,13 +67,15 @@ class TxtParser(private val context: Context? = null) : BookParser {
 
     private fun parseLocked(filePath: String): BookContent {
         sourceLease?.close()
-        val lease = if (BookFileAccess.isContentUri(filePath)) {
-            BookFileAccess.openSeekable(
-                requireNotNull(context) { "Context is required for document URIs" },
-                filePath,
-                writable = true
-            )
-        } else null
+        val lease = ReaderOpenPerformance.trace("txt_open_seekable") {
+            if (BookFileAccess.isContentUri(filePath)) {
+                BookFileAccess.openSeekable(
+                    requireNotNull(context) { "Context is required for document URIs" },
+                    filePath,
+                    writable = true
+                )
+            } else null
+        }
         val file = File(lease?.path ?: filePath)
         require(file.isFile) { "TXT file not found: $filePath" }
 
@@ -83,17 +90,25 @@ class TxtParser(private val context: Context? = null) : BookParser {
         synchronized(htmlCache) { htmlCache.clear() }
 
         // 优先从磁盘缓存加载章节索引，避免每次重新全文扫描
-        val cached = loadChapterCache(file)
+        val cached = ReaderOpenPerformance.trace("txt_index_cache_read") {
+            loadChapterCache(file)
+        }
         if (cached != null) {
             encodingInfo = cached.first
             entries = cached.second
         } else {
-            encodingInfo = resolveEncoding(file)
-            val headings = findChapterHeadings(file, encodingInfo)
-            entries = if (headings.size >= 2) {
-                buildHeadingEntries(file, headings, encodingInfo)
-            } else {
-                buildFallbackEntries(file, encodingInfo)
+            encodingInfo = ReaderOpenPerformance.trace("txt_encoding_detect") {
+                resolveEncoding(file)
+            }
+            val headings = ReaderOpenPerformance.trace("txt_heading_scan") {
+                findChapterHeadings(file, encodingInfo)
+            }
+            entries = ReaderOpenPerformance.trace("txt_index_build") {
+                if (headings.size >= 2) {
+                    buildHeadingEntries(file, headings, encodingInfo)
+                } else {
+                    buildFallbackEntries(file, encodingInfo)
+                }
             }
             if (entries.isEmpty()) {
                 entries = listOf(
@@ -106,7 +121,9 @@ class TxtParser(private val context: Context? = null) : BookParser {
                 )
             }
             // 解析完成后写入缓存，供下次打开使用
-            saveChapterCache(file, encodingInfo, entries)
+            ReaderOpenPerformance.trace("txt_index_cache_write") {
+                saveChapterCache(file, encodingInfo, entries)
+            }
         }
 
         return BookContent(
@@ -129,30 +146,27 @@ class TxtParser(private val context: Context? = null) : BookParser {
      * 文件被修改或首次打开时返回 null，触发全文解析。
      */
     private fun loadChapterCache(file: File): Pair<EncodingInfo, List<TxtChapterEntry>>? {
-        val cacheFile = getCacheFile(file) ?: return null
-        if (!cacheFile.exists()) return null
+        val ctx = context ?: return null
+        val fingerprint = BookFingerprint.resolve(ctx, sourceLocation.ifBlank { file.absolutePath })
+        val payload = ReaderCacheStore.get(ctx).readMetadata(txtIndexNamespace(), fingerprint) ?: return null
         return try {
-            val lines = cacheFile.readLines(Charsets.UTF_8)
-            if (lines.size < 6) return null
-            if (lines[0] != CACHE_VERSION) return null
-            val fileSize = lines[1].toLongOrNull() ?: return null
-            val lastModified = lines[2].toLongOrNull() ?: return null
-            if (fileSize != file.length() || lastModified != file.lastModified()) return null
-            if (lines[3] != selectedEncoding.storageValue) return null
-
-            val charsetName = lines[4]
-            val contentStart = lines[5].toLongOrNull() ?: return null
-            val charset = try { Charset.forName(charsetName) } catch (_: Exception) { return null }
+            if (payload.getString("formatVersion") != CACHE_VERSION) return null
+            val charset = Charset.forName(payload.getString("charset"))
+            val contentStart = payload.getLong("contentStart")
             val encoding = EncodingInfo(charset, contentStart)
-
-            val chapterEntries = lines.drop(6).mapIndexedNotNull { _, line ->
-                val parts = line.split("|", limit = 4)
-                if (parts.size != 4) return@mapIndexedNotNull null
-                val index = parts[0].toIntOrNull() ?: return@mapIndexedNotNull null
-                val title = parts[1]
-                val startByte = parts[2].toLongOrNull() ?: return@mapIndexedNotNull null
-                val endByte = parts[3].toLongOrNull() ?: return@mapIndexedNotNull null
-                TxtChapterEntry(index, title, startByte, endByte)
+            val array = payload.getJSONArray("chapters")
+            val chapterEntries = buildList {
+                for (position in 0 until array.length()) {
+                    val item = array.getJSONObject(position)
+                    add(
+                        TxtChapterEntry(
+                            index = item.getInt("index"),
+                            title = item.getString("title"),
+                            startByte = item.getLong("startByte"),
+                            endByte = item.getLong("endByte")
+                        )
+                    )
+                }
             }
             if (chapterEntries.isEmpty()) return null
             Pair(encoding, chapterEntries)
@@ -165,50 +179,29 @@ class TxtParser(private val context: Context? = null) : BookParser {
      * 将章节索引写入磁盘缓存。写入失败时静默忽略，不影响阅读。
      */
     private fun saveChapterCache(file: File, encoding: EncodingInfo, chapters: List<TxtChapterEntry>) {
-        val cacheFile = getCacheFile(file) ?: return
-        val temporary = File(cacheFile.parentFile, cacheFile.name + ".tmp")
-        try {
-            cacheFile.parentFile?.mkdirs()
-            val sb = StringBuilder()
-            sb.appendLine(CACHE_VERSION)
-            sb.appendLine(file.length())
-            sb.appendLine(file.lastModified())
-            sb.appendLine(selectedEncoding.storageValue)
-            sb.appendLine(encoding.charset.name())
-            sb.appendLine(encoding.contentStart)
-            for (entry in chapters) {
-                // 标题中的 | 替换为全角，避免破坏分隔格式
-                val safeTitle = entry.title.replace("|", "｜")
-                sb.appendLine("${entry.index}|$safeTitle|${entry.startByte}|${entry.endByte}")
-            }
-            temporary.writeText(sb.toString(), Charsets.UTF_8)
-            try {
-                Files.move(
-                    temporary.toPath(),
-                    cacheFile.toPath(),
-                    StandardCopyOption.REPLACE_EXISTING,
-                    StandardCopyOption.ATOMIC_MOVE
-                )
-            } catch (_: Exception) {
-                Files.move(
-                    temporary.toPath(),
-                    cacheFile.toPath(),
-                    StandardCopyOption.REPLACE_EXISTING
-                )
-            }
-        } catch (_: Exception) {
-            temporary.delete()
-            // 缓存写入失败不影响功能，静默忽略
+        val ctx = context ?: return
+        val fingerprint = BookFingerprint.resolve(ctx, sourceLocation.ifBlank { file.absolutePath })
+        val chapterArray = JSONArray()
+        chapters.forEach { entry ->
+            chapterArray.put(
+                JSONObject()
+                    .put("index", entry.index)
+                    .put("title", entry.title)
+                    .put("startByte", entry.startByte)
+                    .put("endByte", entry.endByte)
+            )
+        }
+        val payload = JSONObject()
+            .put("formatVersion", CACHE_VERSION)
+            .put("charset", encoding.charset.name())
+            .put("contentStart", encoding.contentStart)
+            .put("chapters", chapterArray)
+        runCatching {
+            ReaderCacheStore.get(ctx).writeMetadata(txtIndexNamespace(), fingerprint, payload)
         }
     }
 
-    /** 根据文件路径生成缓存文件路径 */
-    private fun getCacheFile(file: File): File? {
-        val cacheDir = context?.cacheDir ?: return null
-        val cacheKey = sourceLocation.ifBlank { file.absolutePath }
-        val hash = cacheKey.hashCode().toString(16)
-        return File(cacheDir, "txt_index/$hash.cache")
-    }
+    private fun txtIndexNamespace(): String = "txt_index_${selectedEncoding.storageValue}"
 
     private fun resolveEncoding(file: File): EncodingInfo {
         val requestedCharset = selectedEncoding.charsetOrNull() ?: return detectEncoding(file)
@@ -299,7 +292,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
 
     private fun findChapterHeadings(file: File, encoding: EncodingInfo): List<Heading> {
         // 一次扫描同时匹配所有模式，避免对大文件重复全文扫描（原来最多 5 次）
-        val matchesByPattern = Array(TxtChapterStructure.chapterPatterns.size) { mutableListOf<Heading>() }
+        val matchesByPattern = Array(TxtChapterStructure.PATTERN_COUNT) { mutableListOf<Heading>() }
         val decoratedHeadings = mutableListOf<Heading>()
         val looseNumberedHeadings = mutableListOf<NumberedHeading>()
         var pendingDecoratedHeading: Heading? = null
@@ -324,18 +317,13 @@ class TxtParser(private val context: Context? = null) : BookParser {
                 pendingLooseNumberedHeading = null
             }
 
-            if (TxtChapterStructure.decoratedHeadingPattern.matches(line)) {
+            if (TxtChapterStructure.isDecoratedHeading(line)) {
                 pendingDecoratedHeading = Heading(line.take(50), start)
             }
 
-            var matchedStrictPattern = false
-            for (i in TxtChapterStructure.chapterPatterns.indices) {
-                if (TxtChapterStructure.chapterPatterns[i].containsMatchIn(line)) {
-                    matchesByPattern[i] += Heading(line.take(50), start)
-                    matchedStrictPattern = true
-                    break
-                }
-            }
+            val matchedPattern = TxtChapterStructure.matchingPatternIndex(line)
+            val matchedStrictPattern = matchedPattern != null
+            if (matchedPattern != null) matchesByPattern[matchedPattern] += Heading(line.take(50), start)
             if (!matchedStrictPattern && previousLineWasBlank) {
                 LOOSE_NUMBERED_HEADING_PATTERN.matchEntire(line)?.let { match ->
                     val number = match.groupValues[1].toIntOrNull()
@@ -875,7 +863,9 @@ class TxtParser(private val context: Context? = null) : BookParser {
             }
             // Size and timestamp can both remain unchanged after a quick same-length edit on
             // some Android filesystems. Never let the next parser reuse that stale index.
-            getCacheFile(file)?.let { cacheFile -> runCatching { cacheFile.delete() } }
+            context?.let { ctx ->
+                ReaderCacheStore.get(ctx).invalidate(sourceLocation.ifBlank { file.absolutePath })
+            }
             synchronized(contentCache) { contentCache.clear() }
             synchronized(htmlCache) { htmlCache.clear() }
             val reparseError = if (reparseAfterWrite) {

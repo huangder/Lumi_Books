@@ -36,6 +36,12 @@ interface ReadingRecordDao {
 
     @Query("SELECT date, SUM(duration) as totalDuration FROM reading_records WHERE date BETWEEN :startDate AND :endDate GROUP BY date")
     fun getDailyTotalsBetween(startDate: String, endDate: String): Flow<List<DailyTotal>>
+
+    @Query("SELECT SUM(duration) FROM reading_records WHERE bookId = :bookId")
+    fun getTotalDurationByBookId(bookId: String): Flow<Long?>
+
+    @Query("SELECT COUNT(DISTINCT date) FROM reading_records WHERE bookId = :bookId AND duration > 0")
+    fun getActiveDaysByBookId(bookId: String): Flow<Int>
 }
 
 data class BookDuration(

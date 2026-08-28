@@ -215,10 +215,14 @@ class WebdavSyncManager @Inject constructor(
                         }
                     }
 
-                    val localMetadataWins = manifestEntry?.metadata == null ||
-                        book.metadataUpdatedAt >= manifestEntry.metadata.updatedAt
-                    val metadata = if (localMetadataWins) book.toSyncMetadata() else manifestEntry.metadata
-                    val cover = if (localMetadataWins) {
+                    val confirmed = requireNotNull(confirmedEntry)
+                    val metadataResolution = resolveMetadataForSync(
+                        localMetadata = book.toSyncMetadata(),
+                        localIsCloudOnly = book.isCloudOnly,
+                        generatedCloudTitle = cloudFallbackTitle(book.id, confirmed.fileName),
+                        remoteMetadata = manifestEntry?.metadata
+                    )
+                    val cover = if (metadataResolution.localWins) {
                         val coverUpload = runCatching {
                             uploadCoverThumbnailIfNeeded(
                                 book = book,
@@ -239,7 +243,10 @@ class WebdavSyncManager @Inject constructor(
                     } else {
                         manifestEntry?.cover
                     }
-                    val finalEntry = requireNotNull(confirmedEntry).copy(metadata = metadata, cover = cover)
+                    val finalEntry = confirmed.copy(
+                        metadata = metadataResolution.metadata,
+                        cover = cover
+                    )
                     confirmedBooks[book.id] = finalEntry
                     val associatedBook = book.copy(
                         remoteLibraryKey = libraryKey,
@@ -641,12 +648,16 @@ class WebdavSyncManager @Inject constructor(
         coverPath: String?,
         libraryKey: String
     ): Book {
-        val metadata = remoteEntry.metadata
-        val remoteMetadataWins = shouldApplyRemoteMetadata(existing?.metadataUpdatedAt, metadata)
+        val fallbackTitle = cloudFallbackTitle(bookId, remoteEntry.fileName)
+        val metadata = remoteEntry.metadata?.takeUnless {
+            it.title.trim().equals(fallbackTitle.trim(), ignoreCase = true)
+        }
+        val existingIsGeneratedPlaceholder = existing?.isCloudOnly == true &&
+            existing.title.trim().equals(fallbackTitle.trim(), ignoreCase = true)
+        val remoteMetadataWins = metadata != null &&
+            (existing == null || existingIsGeneratedPlaceholder ||
+                shouldApplyRemoteMetadata(existing.metadataUpdatedAt, metadata))
         val fallbackFormat = bookFormatFromName(remoteEntry.fileName)
-        val fallbackTitle = remoteEntry.fileName.substringBeforeLast('.', remoteEntry.fileName)
-            .takeIf { it.isNotBlank() && it != bookId }
-            ?: context.getString(R.string.webdav_cloud_book_fallback, bookId.take(8))
         val base = existing ?: Book(
             id = bookId,
             title = metadata?.title?.takeIf { it.isNotBlank() } ?: fallbackTitle,
@@ -660,7 +671,7 @@ class WebdavSyncManager @Inject constructor(
             createdAt = metadata?.createdAt ?: remoteEntry.lastModified,
             isFavorite = metadata?.isFavorite ?: false,
             isCloudOnly = true,
-            metadataUpdatedAt = metadata?.updatedAt ?: remoteEntry.lastModified
+            metadataUpdatedAt = metadata?.updatedAt ?: 0L
         )
         return base.copy(
             title = if (remoteMetadataWins) metadata?.title?.takeIf { it.isNotBlank() } ?: base.title else base.title,
@@ -676,6 +687,11 @@ class WebdavSyncManager @Inject constructor(
             remoteFileSha256 = remoteEntry.sha256.ifBlank { null }
         )
     }
+
+    private fun cloudFallbackTitle(bookId: String, remoteFileName: String): String =
+        remoteFileName.substringBeforeLast('.', remoteFileName)
+            .takeIf { it.isNotBlank() && it != bookId }
+            ?: context.getString(R.string.webdav_cloud_book_fallback, bookId.take(8))
 
     private fun String.toBookFormatOrNull(): BookFormat? =
         runCatching { BookFormat.valueOf(uppercase()) }.getOrNull()
@@ -1246,7 +1262,12 @@ class WebdavSyncManager @Inject constructor(
         entry: SyncFileEntry
     ): Book? {
         val existing = bookRepository.getBookById(bookId) ?: return null
-        if (entry.metadata != null) return existing
+        val generatedTitle = cloudFallbackTitle(bookId, entry.fileName)
+        val hasTrustedRemoteTitle = entry.metadata?.title
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.equals(generatedTitle.trim(), ignoreCase = true) == false
+        if (hasTrustedRemoteTitle) return existing
         val format = bookFormatFromName(file.name)
 
         // Extract cover and metadata from EPUB
