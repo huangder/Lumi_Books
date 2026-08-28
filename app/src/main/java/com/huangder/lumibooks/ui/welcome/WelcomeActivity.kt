@@ -17,7 +17,6 @@ import androidx.compose.ui.platform.LocalView
 import androidx.lifecycle.lifecycleScope
 import com.huangder.lumibooks.BuildConfig
 import com.huangder.lumibooks.data.local.DataStoreManager
-import com.huangder.lumibooks.domain.model.DEFAULT_APP_ACCENT_HEX
 import com.huangder.lumibooks.ui.components.LocalPredictiveBackEnabled
 import com.huangder.lumibooks.ui.settings.SponsorActivity
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
@@ -27,9 +26,7 @@ import com.huangder.lumibooks.ui.theme.effectiveAppTheme
 import com.huangder.lumibooks.util.LaunchThemeController
 import com.huangder.lumibooks.util.LocaleHelper
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import java.io.File
 import javax.inject.Inject
 
@@ -73,13 +70,11 @@ class WelcomeActivity : ComponentActivity() {
         )
         val isDebugWelcomePreview = isDebugLanguagePreview || isDebugPolicyPreview || isDebugSupportPreview
         val installState = readInstallState()
-        val (completedInstallTime, splashEnabled, hasCompletedLanguageSetup) = runBlocking {
-            Triple(
-                dataStoreManager.completedWelcomeInstallTime.first(),
-                dataStoreManager.splashEnabled.first(),
-                dataStoreManager.hasCompletedWelcomeLanguageSetup.first()
-            )
-        }
+        val welcomeLaunch = LaunchThemeController.welcomeSnapshot(this)
+        val launchTheme = LaunchThemeController.themeSnapshot(this)
+        val completedInstallTime = welcomeLaunch.completedInstallTime
+        val splashEnabled = welcomeLaunch.splashEnabled
+        val hasCompletedLanguageSetup = welcomeLaunch.hasCompletedLanguageSetup
         val initialLanguage = LocaleHelper.getLanguage(this)
         if (!isDebugWelcomePreview) {
             LaunchThemeController.deferSplashEnabled(this, splashEnabled)
@@ -90,15 +85,15 @@ class WelcomeActivity : ComponentActivity() {
         }
 
         setContent {
-            val appTheme by dataStoreManager.appTheme.collectAsState(initial = "lumi")
-            val appAccentColor by dataStoreManager.appAccentColor.collectAsState(initial = DEFAULT_APP_ACCENT_HEX)
-            val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = "system")
-            val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = 0.55f)
-            val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = false)
-            val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
-            val predictiveBackEnabled by dataStoreManager.predictiveBackEnabled.collectAsState(initial = true)
-            val eInkModeEnabled by dataStoreManager.eInkModeEnabled.collectAsState(initial = false)
-            val motionPreferenceValue by dataStoreManager.motionPreference.collectAsState(initial = "standard")
+            val appTheme by dataStoreManager.appTheme.collectAsState(initial = launchTheme.appTheme)
+            val appAccentColor by dataStoreManager.appAccentColor.collectAsState(initial = launchTheme.appAccentColor)
+            val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = launchTheme.globalFontMode)
+            val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = launchTheme.liquidGlassTransparency)
+            val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = launchTheme.liquidGlassHdrHighlightEnabled)
+            val darkMode by dataStoreManager.darkMode.collectAsState(initial = launchTheme.darkMode)
+            val predictiveBackEnabled by dataStoreManager.predictiveBackEnabled.collectAsState(initial = launchTheme.predictiveBackEnabled)
+            val eInkModeEnabled by dataStoreManager.eInkModeEnabled.collectAsState(initial = launchTheme.eInkModeEnabled)
+            val motionPreferenceValue by dataStoreManager.motionPreference.collectAsState(initial = launchTheme.motionPreference)
             val isDark = if (eInkModeEnabled) {
                 false
             } else {
@@ -149,12 +144,14 @@ class WelcomeActivity : ComponentActivity() {
                                 isDark = isDark,
                                 isLiquidGlass = resolvedAppTheme == "liquid_glass",
                                 onFinished = {
-                                    if (!isDebugWelcomePreview) {
-                                        runBlocking {
+                                    if (isDebugWelcomePreview) {
+                                        startMainActivity(splashEnabled)
+                                    } else {
+                                        lifecycleScope.launch {
                                             dataStoreManager.completeWelcomeFlow(installState.installMarker)
+                                            startMainActivity(splashEnabled)
                                         }
                                     }
-                                    startMainActivity(splashEnabled)
                                 },
                                 onOpenSponsor = {
                                     startActivity(Intent(this@WelcomeActivity, SponsorActivity::class.java))

@@ -2,6 +2,7 @@ package com.huangder.lumibooks.ui.settings
 
 import android.content.Intent
 import android.net.Uri
+import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -52,6 +53,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Brightness6
 import androidx.compose.material.icons.outlined.Animation
+import androidx.compose.material.icons.outlined.BorderStyle
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.DeleteSweep
@@ -75,6 +77,7 @@ import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.Source
+import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material.icons.outlined.SwipeRightAlt
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.outlined.Title
@@ -93,6 +96,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -129,8 +133,13 @@ import androidx.compose.ui.text.input.KeyboardType
 import com.huangder.lumibooks.R
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
@@ -140,6 +149,7 @@ import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
 import com.huangder.lumibooks.ui.theme.LocalUseMaterial3Theme
 import com.huangder.lumibooks.tts.ExternalTtsConfig
+import com.huangder.lumibooks.tts.FloatingSubtitleSettings
 import com.huangder.lumibooks.tts.TtsProviderSelection
 import com.huangder.lumibooks.ui.theme.fangSongFamily
 import com.huangder.lumibooks.ui.components.LiquidGlassSwitch
@@ -153,6 +163,7 @@ import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
 import com.huangder.lumibooks.ui.components.AppUpdateDialog
 import com.huangder.lumibooks.ui.components.PolicyUpdateDialog
+import com.huangder.lumibooks.ui.components.OverlayPermissionDialog
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuHost
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuItem
@@ -165,9 +176,11 @@ import com.huangder.lumibooks.domain.model.appAccentHex
 import com.huangder.lumibooks.domain.model.normalizeAppAccentHex
 import com.huangder.lumibooks.domain.model.parseAppAccentArgb
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassCapability
+import com.huangder.lumibooks.ui.theme.cardOutline
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import kotlin.math.roundToInt
 
 // ─── 详情页通用框架 ──────────────────────────────────────────
 
@@ -387,11 +400,17 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
 
     Spacer(Modifier.height(12.dp))
 
-    // 听书悬浮窗开关
+    // 悬浮窗字幕设置入口
     DetailCard {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .clickable {
+                    context.startActivity(
+                        Intent(context, DetailActivity::class.java)
+                            .putExtra("category", "floating_subtitle")
+                    )
+                }
                 .padding(AppSpace.md),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -404,20 +423,17 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
             Spacer(Modifier.width(AppSpace.md))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    stringResource(R.string.tts_floating_toggle),
+                    stringResource(R.string.title_floating_subtitle_settings),
                     fontSize = AppType.Body,
                     color = AppColors.TextPrimary
                 )
                 Text(
-                    stringResource(R.string.tts_floating_toggle_desc),
+                    stringResource(R.string.floating_subtitle_settings_entry_desc),
                     fontSize = AppType.Caption,
                     color = AppColors.TextSecondary
                 )
             }
-            LiquidGlassSwitch(
-                checked = uiState.ttsFloatingWindow,
-                onCheckedChange = { viewModel.saveTtsFloatingWindow(it) }
-            )
+            Icon(Icons.Outlined.ChevronRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
         }
     }
 
@@ -611,6 +627,387 @@ private fun ReadingSettingsBasicDetail(viewModel: SettingsViewModel) {
     }
 }
 
+@Composable
+fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
+    val uiState by viewModel.uiState.collectAsState()
+    val settings = uiState.floatingSubtitleSettings
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val configuration = LocalConfiguration.current
+    var hasOverlayPermission by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
+    var showPermissionDialog by rememberSaveable { mutableStateOf(!Settings.canDrawOverlays(context)) }
+    var showColorDialog by rememberSaveable { mutableStateOf(false) }
+    var valueEditor by remember { mutableStateOf<FloatingSubtitleValueEditor?>(null) }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        hasOverlayPermission = Settings.canDrawOverlays(context)
+        viewModel.refreshFloatingSubtitlePermission()
+        viewModel.setFloatingSubtitlePreviewActive(hasOverlayPermission)
+    }
+
+    fun openOverlayPermissionSettings() {
+        showPermissionDialog = false
+        permissionLauncher.launch(
+            Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:${context.packageName}")
+            )
+        )
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> {
+                    hasOverlayPermission = Settings.canDrawOverlays(context)
+                    viewModel.refreshFloatingSubtitlePermission()
+                    viewModel.setFloatingSubtitlePreviewActive(hasOverlayPermission)
+                    if (hasOverlayPermission) viewModel.previewFloatingSubtitleSettings(settings)
+                }
+                Lifecycle.Event.ON_PAUSE -> viewModel.setFloatingSubtitlePreviewActive(false)
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            viewModel.setFloatingSubtitlePreviewActive(hasOverlayPermission)
+            if (hasOverlayPermission) viewModel.previewFloatingSubtitleSettings(settings)
+        }
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            viewModel.setFloatingSubtitlePreviewActive(false)
+        }
+    }
+
+    DetailCard {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Outlined.Subtitles, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.width(AppSpace.md))
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.floating_subtitle_enabled), fontSize = AppType.Body, color = AppColors.TextPrimary)
+                Text(stringResource(R.string.floating_subtitle_enabled_desc), fontSize = AppType.Caption, color = AppColors.TextSecondary)
+            }
+            LiquidGlassSwitch(
+                checked = settings.enabled,
+                onCheckedChange = { enabled ->
+                    viewModel.saveFloatingSubtitleSettings(settings.copy(enabled = enabled))
+                    if (enabled && !hasOverlayPermission) showPermissionDialog = true
+                }
+            )
+        }
+    }
+
+    if (!hasOverlayPermission) {
+        Spacer(Modifier.height(12.dp))
+        DetailCard {
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { openOverlayPermissionSettings() }.padding(AppSpace.md),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Outlined.Info, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(AppSpace.md))
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.floating_subtitle_permission_missing), fontSize = AppType.Body, color = AppColors.TextPrimary)
+                    Text(stringResource(R.string.floating_subtitle_permission_missing_desc), fontSize = AppType.Caption, color = AppColors.TextSecondary)
+                }
+                Icon(Icons.Outlined.ChevronRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+            }
+        }
+    }
+
+    FloatingSubtitleSectionTitle(stringResource(R.string.floating_subtitle_position_section))
+    DetailCard(horizontalPadding = 12.dp) {
+        SettingsSliderItem(
+            Icons.Outlined.SwapHoriz,
+            stringResource(R.string.floating_subtitle_x_position),
+            settings.xFraction * 100f,
+            0f..100f,
+            stringResource(R.string.floating_subtitle_percent_value, (settings.xFraction * 100f).roundToInt()),
+            step = 1f,
+            verticalPadding = 12.dp,
+            onValueClick = {
+                valueEditor = FloatingSubtitleValueEditor(
+                    field = FloatingSubtitleValueField.X_POSITION,
+                    title = context.getString(R.string.floating_subtitle_x_position),
+                    value = settings.xFraction * 100f,
+                    range = 0f..100f,
+                    unit = "%"
+                )
+            },
+            onDragChange = { viewModel.previewFloatingSubtitleSettings(settings.copy(xFraction = it / 100f)) }
+        ) { viewModel.saveFloatingSubtitleSettings(settings.copy(xFraction = it / 100f)) }
+        SettingsDivider()
+        SettingsSliderItem(
+            Icons.Outlined.ExpandMore,
+            stringResource(R.string.floating_subtitle_y_position),
+            settings.yFraction * 100f,
+            0f..100f,
+            stringResource(R.string.floating_subtitle_percent_value, (settings.yFraction * 100f).roundToInt()),
+            step = 1f,
+            verticalPadding = 12.dp,
+            onValueClick = {
+                valueEditor = FloatingSubtitleValueEditor(
+                    field = FloatingSubtitleValueField.Y_POSITION,
+                    title = context.getString(R.string.floating_subtitle_y_position),
+                    value = settings.yFraction * 100f,
+                    range = 0f..100f,
+                    unit = "%"
+                )
+            },
+            onDragChange = { viewModel.previewFloatingSubtitleSettings(settings.copy(yFraction = it / 100f)) }
+        ) { viewModel.saveFloatingSubtitleSettings(settings.copy(yFraction = it / 100f)) }
+    }
+
+    FloatingSubtitleSectionTitle(stringResource(R.string.floating_subtitle_background_section))
+    DetailCard(horizontalPadding = 12.dp) {
+        Row(
+            modifier = Modifier.fillMaxWidth().clickable { showColorDialog = true }.padding(AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Outlined.Palette, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.width(AppSpace.md))
+            Text(stringResource(R.string.floating_subtitle_background_color), fontSize = AppType.Body, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
+            Box(
+                Modifier.size(28.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color(parseAppAccentArgb(settings.backgroundColorHex)))
+                    .border(1.dp, AppColors.Divider, RoundedCornerShape(6.dp))
+            )
+            Spacer(Modifier.width(AppSpace.sm))
+            Icon(Icons.Outlined.ChevronRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+        }
+        SettingsDivider()
+        SettingsSliderItem(
+            Icons.Outlined.Opacity,
+            stringResource(R.string.floating_subtitle_background_opacity),
+            settings.backgroundOpacity * 100f,
+            0f..100f,
+            stringResource(R.string.floating_subtitle_percent_value, (settings.backgroundOpacity * 100f).roundToInt()),
+            step = 1f,
+            verticalPadding = 12.dp,
+            onValueClick = {
+                valueEditor = FloatingSubtitleValueEditor(
+                    field = FloatingSubtitleValueField.BACKGROUND_OPACITY,
+                    title = context.getString(R.string.floating_subtitle_background_opacity),
+                    value = settings.backgroundOpacity * 100f,
+                    range = 0f..100f,
+                    unit = "%"
+                )
+            },
+            onDragChange = { viewModel.previewFloatingSubtitleSettings(settings.copy(backgroundOpacity = it / 100f)) }
+        ) { viewModel.saveFloatingSubtitleSettings(settings.copy(backgroundOpacity = it / 100f)) }
+        SettingsDivider()
+        SettingsSliderItem(
+            Icons.Outlined.Landscape,
+            stringResource(R.string.floating_subtitle_corner_radius),
+            settings.cornerRadiusDp,
+            FloatingSubtitleSettings.MIN_CORNER_RADIUS_DP..FloatingSubtitleSettings.MAX_CORNER_RADIUS_DP,
+            stringResource(R.string.floating_subtitle_dp_value, settings.cornerRadiusDp.roundToInt()),
+            step = 1f,
+            verticalPadding = 12.dp,
+            onValueClick = {
+                valueEditor = FloatingSubtitleValueEditor(
+                    field = FloatingSubtitleValueField.CORNER_RADIUS,
+                    title = context.getString(R.string.floating_subtitle_corner_radius),
+                    value = settings.cornerRadiusDp,
+                    range = FloatingSubtitleSettings.MIN_CORNER_RADIUS_DP..FloatingSubtitleSettings.MAX_CORNER_RADIUS_DP,
+                    unit = "dp"
+                )
+            },
+            onDragChange = { viewModel.previewFloatingSubtitleSettings(settings.copy(cornerRadiusDp = it)) }
+        ) { viewModel.saveFloatingSubtitleSettings(settings.copy(cornerRadiusDp = it)) }
+    }
+
+    val maxWidthDp = minOf(
+        FloatingSubtitleSettings.MAX_WIDTH_DP,
+        (configuration.screenWidthDp - 16).toFloat().coerceAtLeast(FloatingSubtitleSettings.MIN_WIDTH_DP)
+    )
+    val visibleWidthDp = settings.widthDp.coerceIn(FloatingSubtitleSettings.MIN_WIDTH_DP, maxWidthDp)
+
+    FloatingSubtitleSectionTitle(stringResource(R.string.floating_subtitle_size_section))
+    DetailCard(horizontalPadding = 12.dp) {
+        SettingsSliderItem(
+            Icons.Outlined.FormatSize,
+            stringResource(R.string.floating_subtitle_width),
+            visibleWidthDp,
+            FloatingSubtitleSettings.MIN_WIDTH_DP..maxWidthDp,
+            stringResource(R.string.floating_subtitle_dp_value, visibleWidthDp.roundToInt()),
+            step = 4f,
+            verticalPadding = 12.dp,
+            onValueClick = {
+                valueEditor = FloatingSubtitleValueEditor(
+                    field = FloatingSubtitleValueField.WIDTH,
+                    title = context.getString(R.string.floating_subtitle_width),
+                    value = visibleWidthDp,
+                    range = FloatingSubtitleSettings.MIN_WIDTH_DP..maxWidthDp,
+                    unit = "dp"
+                )
+            },
+            onDragChange = { viewModel.previewFloatingSubtitleSettings(settings.copy(widthDp = it)) }
+        ) { viewModel.saveFloatingSubtitleSettings(settings.copy(widthDp = it)) }
+        SettingsDivider()
+        SettingsSliderItem(
+            Icons.Outlined.LineWeight,
+            stringResource(R.string.floating_subtitle_height),
+            settings.heightDp,
+            FloatingSubtitleSettings.MIN_HEIGHT_DP..FloatingSubtitleSettings.MAX_HEIGHT_DP,
+            stringResource(R.string.floating_subtitle_dp_value, settings.heightDp.roundToInt()),
+            step = 2f,
+            verticalPadding = 12.dp,
+            onValueClick = {
+                valueEditor = FloatingSubtitleValueEditor(
+                    field = FloatingSubtitleValueField.HEIGHT,
+                    title = context.getString(R.string.floating_subtitle_height),
+                    value = settings.heightDp,
+                    range = FloatingSubtitleSettings.MIN_HEIGHT_DP..FloatingSubtitleSettings.MAX_HEIGHT_DP,
+                    unit = "dp"
+                )
+            },
+            onDragChange = { viewModel.previewFloatingSubtitleSettings(settings.copy(heightDp = it)) }
+        ) { viewModel.saveFloatingSubtitleSettings(settings.copy(heightDp = it)) }
+    }
+
+    if (showColorDialog) {
+        ThemeColorDialog(
+            initialColorHex = settings.backgroundColorHex,
+            dialogTitle = stringResource(R.string.floating_subtitle_background_color),
+            resetText = stringResource(R.string.app_accent_color_reset),
+            resetColorHex = FloatingSubtitleSettings.DEFAULT_BACKGROUND_COLOR,
+            onDismiss = { showColorDialog = false },
+            onConfirm = {
+                showColorDialog = false
+                viewModel.saveFloatingSubtitleSettings(settings.copy(backgroundColorHex = it))
+            }
+        )
+    }
+
+    if (showPermissionDialog) {
+        OverlayPermissionDialog(
+            onGoSettings = { openOverlayPermissionSettings() },
+            onDismiss = { showPermissionDialog = false }
+        )
+    }
+
+    valueEditor?.let { editor ->
+        FloatingSubtitleValueInputDialog(
+            editor = editor,
+            onDismiss = { valueEditor = null },
+            onConfirm = { input ->
+                val value = input.roundToInt().toFloat()
+                val updated = when (editor.field) {
+                    FloatingSubtitleValueField.X_POSITION -> settings.copy(xFraction = value / 100f)
+                    FloatingSubtitleValueField.Y_POSITION -> settings.copy(yFraction = value / 100f)
+                    FloatingSubtitleValueField.BACKGROUND_OPACITY ->
+                        settings.copy(backgroundOpacity = value / 100f)
+                    FloatingSubtitleValueField.CORNER_RADIUS -> settings.copy(cornerRadiusDp = value)
+                    FloatingSubtitleValueField.WIDTH -> settings.copy(widthDp = value)
+                    FloatingSubtitleValueField.HEIGHT -> settings.copy(heightDp = value)
+                }
+                viewModel.saveFloatingSubtitleSettings(updated)
+                valueEditor = null
+            }
+        )
+    }
+}
+
+private enum class FloatingSubtitleValueField {
+    X_POSITION,
+    Y_POSITION,
+    BACKGROUND_OPACITY,
+    CORNER_RADIUS,
+    WIDTH,
+    HEIGHT
+}
+
+private data class FloatingSubtitleValueEditor(
+    val field: FloatingSubtitleValueField,
+    val title: String,
+    val value: Float,
+    val range: ClosedFloatingPointRange<Float>,
+    val unit: String
+)
+
+@Composable
+private fun FloatingSubtitleValueInputDialog(
+    editor: FloatingSubtitleValueEditor,
+    onDismiss: () -> Unit,
+    onConfirm: (Float) -> Unit
+) {
+    val initialValue = remember(editor) {
+        if (editor.value == editor.value.roundToInt().toFloat()) editor.value.roundToInt().toString()
+        else editor.value.toString()
+    }
+    var input by remember(editor) { mutableStateOf(initialValue) }
+    val parsed = input.toFloatOrNull()?.takeIf { it.isFinite() && it in editor.range }
+
+    LiquidGlassAlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = editor.title,
+                fontSize = AppType.Body,
+                fontWeight = FontWeight.Bold,
+                color = AppColors.TextPrimary
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "${editor.range.start.roundToInt()} - ${editor.range.endInclusive.roundToInt()} ${editor.unit}",
+                    fontSize = AppType.Caption,
+                    color = AppColors.TextSecondary
+                )
+                OutlinedTextField(
+                    value = input,
+                    onValueChange = { candidate ->
+                        if (candidate.count { it == '.' } <= 1 && candidate.all { it.isDigit() || it == '.' }) {
+                            input = candidate
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    isError = input.isNotEmpty() && parsed == null,
+                    suffix = { Text(editor.unit) },
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Decimal,
+                        imeAction = ImeAction.Done
+                    )
+                )
+            }
+        },
+        confirmButton = {
+            LiquidGlassTextButton(
+                text = stringResource(R.string.confirm),
+                enabled = parsed != null,
+                tintedColor = AppColors.Accent,
+                onClick = { parsed?.let(onConfirm) }
+            )
+        },
+        dismissButton = {
+            LiquidGlassTextButton(
+                text = stringResource(R.string.cancel),
+                onClick = onDismiss
+            )
+        }
+    )
+}
+
+@Composable
+private fun FloatingSubtitleSectionTitle(text: String) {
+    Text(
+        text = text,
+        modifier = Modifier.padding(start = AppSpace.lg, end = AppSpace.lg, top = 22.dp, bottom = 8.dp),
+        fontSize = AppType.BodySmall,
+        fontWeight = FontWeight.Medium,
+        color = AppColors.TextSecondary
+    )
+}
+
 // ─── 显示与外观 ──────────────────────────────────────────────
 
 @Composable
@@ -676,6 +1073,32 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
             selected = uiState.globalFontMode,
             onSelect = viewModel::saveGlobalFontMode
         )
+        SettingsDivider()
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { viewModel.saveCardOutlinesEnabled(!uiState.cardOutlinesEnabled) }
+                .padding(AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Outlined.BorderStyle,
+                contentDescription = null,
+                tint = AppColors.TextSecondary,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(Modifier.width(AppSpace.md))
+            Text(
+                stringResource(R.string.label_card_outlines),
+                fontSize = AppType.Body,
+                color = AppColors.TextPrimary,
+                modifier = Modifier.weight(1f)
+            )
+            LiquidGlassSwitch(
+                checked = uiState.cardOutlinesEnabled,
+                onCheckedChange = viewModel::saveCardOutlinesEnabled
+            )
+        }
     }
 
     Spacer(Modifier.height(12.dp))
@@ -995,10 +1418,14 @@ private fun ThemeColorSettingRow(
 }
 
 @Composable
-private fun ThemeColorDialog(
+internal fun ThemeColorDialog(
     initialColorHex: String,
     onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit
+    onConfirm: (String) -> Unit,
+    dialogTitle: String? = null,
+    confirmText: String? = null,
+    resetText: String? = null,
+    resetColorHex: String = DEFAULT_APP_ACCENT_HEX
 ) {
     val initialArgb = remember(initialColorHex) { parseAppAccentArgb(initialColorHex) }
     val initialHsv = remember(initialArgb) {
@@ -1048,7 +1475,7 @@ private fun ThemeColorDialog(
                 .verticalScroll(rememberScrollState())
         ) {
             Text(
-                stringResource(R.string.app_accent_color_dialog_title),
+                dialogTitle ?: stringResource(R.string.app_accent_color_dialog_title),
                 fontSize = AppType.Section,
                 fontWeight = FontWeight.Bold,
                 color = AppColors.TextPrimary
@@ -1126,8 +1553,8 @@ private fun ThemeColorDialog(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 LiquidGlassTextButton(
-                    text = stringResource(R.string.app_accent_color_reset),
-                    onClick = { updateFromArgb(parseAppAccentArgb(DEFAULT_APP_ACCENT_HEX)) }
+                    text = resetText ?: stringResource(R.string.app_accent_color_reset),
+                    onClick = { updateFromArgb(parseAppAccentArgb(resetColorHex)) }
                 )
                 Spacer(Modifier.weight(1f))
                 LiquidGlassTextButton(
@@ -1135,7 +1562,7 @@ private fun ThemeColorDialog(
                     onClick = onDismiss
                 )
                 LiquidGlassTextButton(
-                    text = stringResource(R.string.confirm),
+                    text = confirmText ?: stringResource(R.string.confirm),
                     onClick = { onConfirm(normalizeAppAccentHex(hexInput)) },
                     enabled = isHexValid,
                     tintedColor = if (isHexValid) Color(previewArgb) else null,
@@ -1488,6 +1915,7 @@ private fun StorageCard(content: @Composable () -> Unit) {
             .fillMaxWidth()
             .padding(horizontal = AppSpace.md)
             .shadow(8.dp, shape, ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
+            .cardOutline(shape)
             .clip(shape)
             .background(AppColors.CardBg)
     ) { content() }
@@ -2559,13 +2987,17 @@ private fun parseChangelog(text: String): List<ChangelogEntry> {
 // ─── 通用组件 ────────────────────────────────────────────────
 
 @Composable
-private fun DetailCard(content: @Composable () -> Unit) {
+private fun DetailCard(
+    horizontalPadding: Dp = AppSpace.md,
+    content: @Composable () -> Unit
+) {
     val shape = RoundedCornerShape(AppRadius.lg)
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = AppSpace.md)
+            .padding(horizontal = horizontalPadding)
             .shadow(8.dp, shape, ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .cardOutline(shape)
             .clip(shape)
             .background(AppColors.CardBg)
     ) { content() }
@@ -2582,15 +3014,30 @@ private fun SettingsSliderItem(
     valueText: String,
     steps: Int = 0,
     step: Float = 0.1f,
+    verticalPadding: Dp = AppSpace.sm,
+    onValueClick: (() -> Unit)? = null,
     onDragChange: ((Float) -> Unit)? = null,
     onChange: (Float) -> Unit
 ) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = AppSpace.md, vertical = AppSpace.sm)) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = AppSpace.md, vertical = verticalPadding)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
             Spacer(Modifier.width(AppSpace.md))
             Text(label, fontSize = AppType.Body, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
-            Text(valueText, fontSize = AppType.BodySmall, color = AppColors.Accent, fontWeight = FontWeight.Medium)
+            Text(
+                text = valueText,
+                modifier = if (onValueClick != null) {
+                    Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable(onClick = onValueClick)
+                        .padding(horizontal = 6.dp, vertical = 4.dp)
+                } else {
+                    Modifier
+                },
+                fontSize = AppType.BodySmall,
+                color = AppColors.Accent,
+                fontWeight = FontWeight.Medium
+            )
         }
         com.huangder.lumibooks.ui.components.PillSlider(
             value = value,

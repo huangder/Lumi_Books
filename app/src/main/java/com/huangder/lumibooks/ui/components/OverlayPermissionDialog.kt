@@ -13,9 +13,7 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 
-/**
- * 听书悬浮窗权限引导弹窗：提示需要「显示在其他应用上层」权限，引导前往系统设置。
- */
+/** 悬浮窗字幕权限引导弹窗。 */
 @Composable
 fun OverlayPermissionDialog(
     onGoSettings: () -> Unit,
@@ -27,7 +25,7 @@ fun OverlayPermissionDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = stringResource(R.string.tts_floating_permission_title),
+                text = stringResource(R.string.floating_subtitle_permission_title),
                 fontSize = AppType.Body,
                 fontWeight = FontWeight.Bold,
                 color = AppColors.TextPrimary
@@ -35,7 +33,7 @@ fun OverlayPermissionDialog(
         },
         text = {
             Text(
-                text = stringResource(R.string.tts_floating_permission_required),
+                text = stringResource(R.string.floating_subtitle_permission_message),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 2.dp),
@@ -46,7 +44,7 @@ fun OverlayPermissionDialog(
         },
         confirmButton = {
             LiquidGlassTextButton(
-                text = stringResource(R.string.tts_floating_go_settings),
+                text = stringResource(R.string.floating_subtitle_permission_open_settings),
                 tintedColor = AppColors.Accent,
                 onClick = onGoSettings
             )

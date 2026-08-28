@@ -22,10 +22,9 @@ import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.MotionPreference
 import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
 import com.huangder.lumibooks.ui.theme.effectiveAppTheme
+import com.huangder.lumibooks.util.LaunchThemeController
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
 
 /**
  * 设置二级页面 — 统一 Activity
@@ -53,29 +52,19 @@ class DetailActivity : ComponentActivity() {
         systemDarkMode = resources.configuration.isNightModeEnabled()
 
         val category = intent.getStringExtra("category") ?: "about"
-        val (initialAppTheme, initialTransparency, initialDarkMode) = runBlocking {
-            Triple(
-                dataStoreManager.appTheme.first(),
-                dataStoreManager.liquidGlassTransparency.first(),
-                dataStoreManager.darkMode.first()
-            )
-        }
-        val initialHdrHighlightEnabled = runBlocking {
-            dataStoreManager.liquidGlassHdrHighlightEnabled.first()
-        }
-        val initialAppAccentColor = runBlocking { dataStoreManager.appAccentColor.first() }
+        val launchTheme = LaunchThemeController.themeSnapshot(this)
 
         setContent {
             val viewModel: SettingsViewModel = hiltViewModel()
             val uiState by viewModel.uiState.collectAsState()
-            val predictiveBackEnabled by dataStoreManager.predictiveBackEnabled.collectAsState(initial = true)
-            val appTheme by dataStoreManager.appTheme.collectAsState(initial = initialAppTheme)
-            val appAccentColor by dataStoreManager.appAccentColor.collectAsState(initial = initialAppAccentColor)
-            val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = "system")
-            val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = initialTransparency)
-            val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = initialHdrHighlightEnabled)
-            val darkMode by dataStoreManager.darkMode.collectAsState(initial = initialDarkMode)
-            val motionPreferenceValue by dataStoreManager.motionPreference.collectAsState(initial = "standard")
+            val predictiveBackEnabled by dataStoreManager.predictiveBackEnabled.collectAsState(initial = launchTheme.predictiveBackEnabled)
+            val appTheme by dataStoreManager.appTheme.collectAsState(initial = launchTheme.appTheme)
+            val appAccentColor by dataStoreManager.appAccentColor.collectAsState(initial = launchTheme.appAccentColor)
+            val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = launchTheme.globalFontMode)
+            val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = launchTheme.liquidGlassTransparency)
+            val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = launchTheme.liquidGlassHdrHighlightEnabled)
+            val darkMode by dataStoreManager.darkMode.collectAsState(initial = launchTheme.darkMode)
+            val motionPreferenceValue by dataStoreManager.motionPreference.collectAsState(initial = launchTheme.motionPreference)
             val liquidGlassCapability = rememberLiquidGlassCapability(view = LocalView.current)
             val effectiveAppTheme = effectiveAppTheme(appTheme, liquidGlassCapability)
             val isDark = when (darkMode) {
@@ -103,6 +92,9 @@ class DetailActivity : ComponentActivity() {
 
                     when (category) {
                         "reading" -> DetailPage(stringResource(R.string.title_reading_settings), onBack) { ReadingSettingsDetail(viewModel) }
+                        "floating_subtitle" -> DetailPage(stringResource(R.string.title_floating_subtitle_settings), onBack) {
+                            FloatingSubtitleSettingsDetail(viewModel)
+                        }
                         "display" -> DetailPage(stringResource(R.string.title_display), onBack) { DisplayDetail(viewModel) }
                         "language" -> DetailPage(stringResource(R.string.title_language), onBack) { LanguageDetailScreen(viewModel) }
                         "goal" -> DetailPage(stringResource(R.string.title_reading_goal), onBack) { ReadingGoalDetail(viewModel) }

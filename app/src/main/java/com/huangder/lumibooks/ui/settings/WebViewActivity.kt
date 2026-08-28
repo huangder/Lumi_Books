@@ -39,9 +39,8 @@ import com.huangder.lumibooks.ui.theme.effectiveAppTheme
 import com.huangder.lumibooks.ui.theme.fangSongFamily
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
+import com.huangder.lumibooks.util.LaunchThemeController
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 
 /**
@@ -70,26 +69,9 @@ class WebViewActivity : ComponentActivity() {
         val title = intent.getStringExtra("title") ?: ""
         val file = intent.getStringExtra("file") ?: "privacy.html"
 
-        // 同步读取避免闪白：手动深色模式下第一个 frame 就渲染深色
-        val (darkMode, appTheme, predictiveBackEnabled) = runBlocking {
-            Triple(
-                dataStoreManager.darkMode.first(),
-                dataStoreManager.appTheme.first(),
-                dataStoreManager.predictiveBackEnabled.first()
-            )
-        }
-        val liquidGlassTransparency = runBlocking {
-            dataStoreManager.liquidGlassTransparency.first()
-        }
-        val appAccentColor = runBlocking { dataStoreManager.appAccentColor.first() }
-        val globalFontMode = runBlocking {
-            dataStoreManager.globalFontMode.first()
-        }
-        val liquidGlassHdrHighlightEnabled = runBlocking {
-            dataStoreManager.liquidGlassHdrHighlightEnabled.first()
-        }
+        val launchTheme = LaunchThemeController.themeSnapshot(this)
         val isSystemDark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-        val isDark = when (darkMode) {
+        val isDark = when (launchTheme.darkMode) {
             "dark" -> true
             "light" -> false
             else -> isSystemDark
@@ -97,18 +79,18 @@ class WebViewActivity : ComponentActivity() {
 
         setContent {
             val capability = rememberLiquidGlassCapability(view = LocalView.current)
-            val resolvedAppTheme = effectiveAppTheme(appTheme, capability)
+            val resolvedAppTheme = effectiveAppTheme(launchTheme.appTheme, capability)
             EBookReaderTheme(
                 darkTheme = isDark,
                 dynamicColor = resolvedAppTheme == "material3",
                 appTheme = resolvedAppTheme,
-                appAccentColor = appAccentColor,
-                liquidGlassTransparency = liquidGlassTransparency,
-                liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled,
-                globalFontMode = globalFontMode
+                appAccentColor = launchTheme.appAccentColor,
+                liquidGlassTransparency = launchTheme.liquidGlassTransparency,
+                liquidGlassHdrHighlightEnabled = launchTheme.liquidGlassHdrHighlightEnabled,
+                globalFontMode = launchTheme.globalFontMode
             ) {
                 com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
-                    predictiveBackEnabled = predictiveBackEnabled,
+                    predictiveBackEnabled = launchTheme.predictiveBackEnabled,
                     onBack = { finish() }
                 )
                 com.huangder.lumibooks.ui.components.LiquidGlassDialogHost(

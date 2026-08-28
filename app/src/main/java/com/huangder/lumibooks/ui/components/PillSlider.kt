@@ -6,6 +6,7 @@ package com.huangder.lumibooks.ui.components
  * Source: https://github.com/Kyant0/AndroidLiquidGlass
  */
 
+import android.os.SystemClock
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -70,6 +71,7 @@ private val LiquidSliderThumbHeight = 24.dp
 private val LiquidSliderVerticalPadding = 5.dp
 private val LiquidSliderTrackHeight = 6.dp
 private const val SliderCommitStabilityMillis = 240L
+private const val SliderDragCallbackIntervalMillis = 64L
 
 /**
  * A thick pill slider with continuous drag preview and release-only commits.
@@ -150,8 +152,7 @@ fun PillSlider(
             val target = snapSliderValue(requestedValue, valueRange, step)
             pendingCommittedValue = target
             motionState.animateToValue(target)
-            latestOnDragValueChange?.invoke(target)
-            if (abs(target - latestValue) > 0.0001f) latestOnValueChange(target)
+            latestOnValueChange(target)
             true
         }
     }
@@ -177,6 +178,7 @@ fun PillSlider(
                     var dragged = false
                     var released = false
                     var cancelledByScroll = false
+                    var lastDragCallbackAtMillis = 0L
 
                     while (true) {
                         val event = awaitPointerEvent(pass = PointerEventPass.Initial)
@@ -208,7 +210,11 @@ fun PillSlider(
                         val directValue = (startValue + direction * positionDx / widthPx * rangeLength)
                             .coerceIn(valueRange)
                         motionState.dragTo(directValue)
-                        latestOnDragValueChange?.invoke(directValue)
+                        val now = SystemClock.uptimeMillis()
+                        if (now - lastDragCallbackAtMillis >= SliderDragCallbackIntervalMillis) {
+                            latestOnDragValueChange?.invoke(directValue)
+                            lastDragCallbackAtMillis = now
+                        }
                         change.consume()
                     }
 
@@ -220,7 +226,7 @@ fun PillSlider(
                             val target = snapSliderValue(motionState.targetValue, valueRange, step)
                             pendingCommittedValue = target
                             motionState.settleTo(target)
-                            if (abs(target - latestValue) > 0.0001f) latestOnValueChange(target)
+                            latestOnValueChange(target)
                         }
                         else -> {
                             val fraction = (startX / widthPx).coerceIn(0f, 1f)
@@ -231,7 +237,7 @@ fun PillSlider(
                             )
                             pendingCommittedValue = target
                             motionState.animateToValue(target)
-                            if (abs(target - latestValue) > 0.0001f) latestOnValueChange(target)
+                            latestOnValueChange(target)
                         }
                     }
                 }

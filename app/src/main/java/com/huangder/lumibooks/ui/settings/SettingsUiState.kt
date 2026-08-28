@@ -66,6 +66,7 @@ data class SettingsUiState(
     val globalFontMode: String = "system", // "default" / "system"
     val liquidGlassTransparency: Float = 0.55f,
     val liquidGlassHdrHighlightEnabled: Boolean = false,
+    val cardOutlinesEnabled: Boolean = false,
     val darkMode: String = "system",       // "system" / "light" / "dark"
     val motionPreference: String = "standard", // "standard" / "reduced"
     val entranceAnimationsEnabled: Boolean = true,
@@ -114,7 +115,8 @@ data class SettingsUiState(
     val customHighlightColors: List<String> = emptyList(),
     val customHighlightPalettes: List<com.huangder.lumibooks.domain.model.HighlightPalette> = emptyList(),
     val activeHighlightPaletteId: String? = null,
-    val ttsFloatingWindow: Boolean = true,
+    val floatingSubtitleSettings: com.huangder.lumibooks.tts.FloatingSubtitleSettings =
+        com.huangder.lumibooks.tts.FloatingSubtitleSettings(),
     val bodyFontWeight: Int = 400,
     val applyToBodyOnly: Boolean = false
 )

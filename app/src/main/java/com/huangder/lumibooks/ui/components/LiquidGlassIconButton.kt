@@ -76,11 +76,11 @@ fun LiquidGlassIconButton(
     LiquidGlassSurface(
         shape = CircleShape,
         fallbackColor = if (useWhiteSettingsSurface) Color.White else liquidContainerColor,
-        contentScrimColor = resolvedScrim ?: if (isDark) {
-            Color.White.copy(alpha = 0.16f)
-        } else {
-            Color.Black.copy(alpha = 0.08f)
-        },
+        // Keep the sampled backdrop visible, but always place the button's own
+        // surface color over it so icon buttons do not become raw background cut-outs.
+        contentScrimColor = resolvedScrim ?: liquidContainerColor.copy(
+            alpha = if (isDark) 0.60f else 0.72f
+        ),
         enabled = enabled,
         onClick = onClick,
         modifier = resolvedModifier.size(size),

@@ -10,13 +10,19 @@ import org.json.JSONObject
  */
 data class CustomFontPreset(
     val id: String,
-    val path: String
+    val path: String,
+    val name: String = ""
 ) {
     /** 字体类型 key，在 fontType 字段中使用 */
     val fontTypeKey: String get() = "custom:$id"
 
-    /** 在 UI 中显示的名称，由外部根据列表下标计算（自定义1、自定义2…） */
-    fun displayName(index: Int): String = "自定义${index + 1}"
+    /** 在 UI 中显示的名称；旧数据没有名称时继续显示兼容性的默认名称。 */
+    fun displayName(index: Int): String {
+        val customName = name.trim()
+        if (customName.isBlank()) return "自定义${index + 1}"
+        val count = customName.codePointCount(0, customName.length)
+        return customName.substring(0, customName.offsetByCodePoints(0, count.coerceAtMost(6)))
+    }
 }
 
 object CustomFontPresetCodec {
@@ -26,6 +32,7 @@ object CustomFontPresetCodec {
             array.put(JSONObject().apply {
                 put("id", preset.id)
                 put("path", preset.path)
+                put("name", preset.name)
             })
         }
         return array.toString()
@@ -40,7 +47,8 @@ object CustomFontPresetCodec {
                     val item = array.optJSONObject(i) ?: continue
                     val id = item.optString("id")
                     val path = item.optString("path")
-                    if (id.isNotBlank() && path.isNotBlank()) add(CustomFontPreset(id, path))
+                    val name = item.optString("name")
+                    if (id.isNotBlank() && path.isNotBlank()) add(CustomFontPreset(id, path, name))
                 }
             }
         } catch (_: Exception) { emptyList() }

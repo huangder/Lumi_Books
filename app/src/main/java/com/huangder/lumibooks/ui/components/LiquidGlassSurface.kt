@@ -45,6 +45,7 @@ import com.huangder.lumibooks.ui.theme.LocalLiquidGlassHdrHighlightEnabled
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassCapability
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassTransparency
 import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
+import com.huangder.lumibooks.ui.theme.cardOutline
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
@@ -499,7 +500,9 @@ fun LiquidGlassSurface(
                 }
             )
     } else {
-        Modifier.clip(shape).background(fallbackColor)
+        Modifier
+            .clip(shape)
+            .background(fallbackColor)
     }
     val activeInteractionState = interactionState.takeIf { handlesButtonGesture }
     val contentTransformModifier = if (activeInteractionState != null) {
@@ -604,6 +607,7 @@ fun LiquidGlassSurface(
                 }
                 drawContent()
             }
+            .cardOutline(shape)
         )
         val surfaceScope = this
         CompositionLocalProvider(

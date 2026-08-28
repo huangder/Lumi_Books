@@ -133,6 +133,7 @@ fun EBookReaderTheme(
     appAccentColor: String = DEFAULT_APP_ACCENT_HEX,
     liquidGlassTransparency: Float = 0.55f,
     liquidGlassHdrHighlightEnabled: Boolean = false,
+    cardOutlinesEnabled: Boolean = false,
     eInkMode: Boolean = false,
     globalFontMode: String = GlobalFontMode.DEFAULT,
     motionPreference: MotionPreference = MotionPreference.STANDARD,
@@ -207,7 +208,8 @@ fun EBookReaderTheme(
         LocalMotionPreference provides motionPreference,
         LocalGlobalFontMode provides GlobalFontMode.normalize(globalFontMode),
         LocalLiquidGlassTransparency provides liquidGlassTransparency.coerceIn(0f, 1f),
-        LocalLiquidGlassHdrHighlightEnabled provides hdrHighlightActive
+        LocalLiquidGlassHdrHighlightEnabled provides hdrHighlightActive,
+        LocalCardOutlinesEnabled provides cardOutlinesEnabled
     ) {
         MaterialTheme(
             colorScheme = colorScheme,

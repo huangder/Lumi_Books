@@ -52,6 +52,8 @@ import com.huangder.lumibooks.tts.ExternalTtsTokenStore
 import com.huangder.lumibooks.tts.TtsController
 import com.huangder.lumibooks.tts.TtsEngine
 import com.huangder.lumibooks.tts.TtsProviderSelection
+import com.huangder.lumibooks.tts.FloatingSubtitleSettings
+import com.huangder.lumibooks.service.FloatingSubtitleOverlayController
 import com.huangder.lumibooks.mineru.MineruTokenStore
 
 @HiltViewModel
@@ -67,6 +69,7 @@ class SettingsViewModel @Inject constructor(
     private val externalTtsAudioCache: ExternalTtsAudioCache,
     private val webdavSyncManager: com.huangder.lumibooks.data.sync.WebdavSyncManager,
     private val webdavTokenStore: com.huangder.lumibooks.data.local.WebdavTokenStore,
+    private val floatingSubtitleOverlayController: FloatingSubtitleOverlayController,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -152,6 +155,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.liquidGlassHdrHighlightEnabled.collectLatest { enabled ->
                 _uiState.value = _uiState.value.copy(liquidGlassHdrHighlightEnabled = enabled)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.cardOutlinesEnabled.collectLatest { enabled ->
+                _uiState.value = _uiState.value.copy(cardOutlinesEnabled = enabled)
             }
         }
         viewModelScope.launch {
@@ -278,8 +286,8 @@ class SettingsViewModel @Inject constructor(
                 }
         }
         viewModelScope.launch {
-            dataStoreManager.ttsFloatingWindow.collectLatest { enabled ->
-                _uiState.value = _uiState.value.copy(ttsFloatingWindow = enabled)
+            dataStoreManager.floatingSubtitleSettings.collectLatest { settings ->
+                _uiState.value = _uiState.value.copy(floatingSubtitleSettings = settings)
             }
         }
         viewModelScope.launch {
@@ -338,11 +346,25 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun saveTtsFloatingWindow(enabled: Boolean) {
+    fun saveFloatingSubtitleSettings(settings: FloatingSubtitleSettings) {
+        val normalized = settings.normalized()
+        _uiState.value = _uiState.value.copy(floatingSubtitleSettings = normalized)
+        floatingSubtitleOverlayController.preview(normalized)
         viewModelScope.launch {
-            dataStoreManager.saveTtsFloatingWindow(enabled)
-            _uiState.value = _uiState.value.copy(ttsFloatingWindow = enabled)
+            dataStoreManager.saveFloatingSubtitleSettings(normalized)
         }
+    }
+
+    fun previewFloatingSubtitleSettings(settings: FloatingSubtitleSettings) {
+        floatingSubtitleOverlayController.preview(settings.normalized())
+    }
+
+    fun setFloatingSubtitlePreviewActive(active: Boolean) {
+        floatingSubtitleOverlayController.setPreviewActive(active)
+    }
+
+    fun refreshFloatingSubtitlePermission() {
+        floatingSubtitleOverlayController.refreshPermission()
     }
 
     // ─── 阅读设置 ───
@@ -450,6 +472,13 @@ class SettingsViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(liquidGlassHdrHighlightEnabled = enabled)
         viewModelScope.launch {
             dataStoreManager.saveLiquidGlassHdrHighlightEnabled(enabled)
+        }
+    }
+
+    fun saveCardOutlinesEnabled(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(cardOutlinesEnabled = enabled)
+        viewModelScope.launch {
+            dataStoreManager.saveCardOutlinesEnabled(enabled)
         }
     }
 

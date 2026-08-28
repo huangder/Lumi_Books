@@ -4,7 +4,6 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
-import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
 import android.view.ActionMode
@@ -34,9 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.pm.PackageInfoCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.LifecycleOwner
+import androidx.core.content.IntentCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
@@ -48,11 +45,9 @@ import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.ui.navigation.MainNavGraph
 import com.huangder.lumibooks.ui.navigation.Screen
 import com.huangder.lumibooks.tts.TtsController
-import com.huangder.lumibooks.tts.TtsPlaybackState
 import com.huangder.lumibooks.ui.splash.SplashScreen
 import com.huangder.lumibooks.ui.components.AppUpdateDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
-import com.huangder.lumibooks.ui.components.OverlayPermissionDialog
 import com.huangder.lumibooks.ui.components.PolicyUpdateDialog
 import com.huangder.lumibooks.ui.components.RemoteNoticeDialog
 import com.huangder.lumibooks.ui.settings.WebViewActivity
@@ -82,6 +77,43 @@ private data class PendingPolicyUpdate(
     val hasPrivacyUpdate: Boolean,
     val privacyVersion: Int
 )
+
+private fun Intent?.extractImportUris(): List<Uri> {
+    val importIntent = this ?: return emptyList()
+    if (importIntent.action !in setOf(
+            Intent.ACTION_VIEW,
+            Intent.ACTION_SEND,
+            Intent.ACTION_SEND_MULTIPLE
+        )
+    ) {
+        return emptyList()
+    }
+
+    val uris = mutableListOf<Uri>()
+    importIntent.data?.let(uris::add)
+    when (importIntent.action) {
+        Intent.ACTION_SEND -> {
+            IntentCompat.getParcelableExtra(
+                importIntent,
+                Intent.EXTRA_STREAM,
+                Uri::class.java
+            )?.let(uris::add)
+        }
+        Intent.ACTION_SEND_MULTIPLE -> {
+            IntentCompat.getParcelableArrayListExtra(
+                importIntent,
+                Intent.EXTRA_STREAM,
+                Uri::class.java
+            )?.let(uris::addAll)
+        }
+    }
+    importIntent.clipData?.let { clipData ->
+        repeat(clipData.itemCount) { index ->
+            clipData.getItemAt(index).uri?.let(uris::add)
+        }
+    }
+    return uris.distinctBy(Uri::toString)
+}
 
 
 private data class PendingAppUpdate(
@@ -119,10 +151,6 @@ class MainActivity : ComponentActivity() {
     private var requestedOpenBookId by mutableStateOf<String?>(null)
     private var requestedOpenBookshelf by mutableStateOf(false)
     private var requestedOpenFolderId by mutableStateOf<String?>(null)
-
-    /** 听书悬浮窗权限引导：退后台时发现未授权，回到前台后弹窗引导 */
-    private var showFloatingPermissionDialog by mutableStateOf(false)
-    private var pendingFloatingPermissionHint = false
 
     override fun attachBaseContext(newBase: android.content.Context) {
         super.attachBaseContext(com.huangder.lumibooks.util.LocaleHelper.applyLanguage(newBase))
@@ -197,34 +225,39 @@ class MainActivity : ComponentActivity() {
         systemDarkMode = newConfig.isNightModeEnabled()
     }
 
-    /**
-     * 处理外部 App 通过 ACTION_VIEW 传入的文件（PDF/EPUB/TXT）
-     * 将文件复制到应用内部存储后写入数据库，首页自动刷新
-     */
+    /** 处理“打开方式”或系统分享菜单传入的书籍文件。 */
     private fun handleImportIntent(intent: Intent?) {
-        if (intent?.action != Intent.ACTION_VIEW) return
-        val uri = intent.data ?: return
+        val uris = intent.extractImportUris()
+        if (uris.isEmpty()) return
         lifecycleScope.launch(Dispatchers.IO) {
-            val result = runCatching { importBookFromUri(uri) }
-            result.exceptionOrNull()?.let { error ->
-                Log.e("MainActivity", "Unable to import external book", error)
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(
-                        this@MainActivity,
-                        getString(R.string.import_failed, error.message.orEmpty()),
-                        Toast.LENGTH_SHORT
-                    ).show()
+            var imported = 0
+            var failed = 0
+            uris.forEach { uri ->
+                runCatching { importBookFromUri(uri) }
+                    .onSuccess { wasImported ->
+                        if (wasImported) imported++ else failed++
+                    }
+                    .onFailure { error ->
+                        failed++
+                        Log.e("MainActivity", "Unable to import shared book: $uri", error)
+                    }
+            }
+            withContext(Dispatchers.Main) {
+                val message = when {
+                    failed > 0 -> getString(R.string.import_summary_with_failures, imported, failed)
+                    else -> getString(R.string.import_summary, imported)
                 }
+                Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
             }
         }
     }
 
-    private suspend fun importBookFromUri(uri: Uri) {
-        val fileName = FileUtils.getFileNameFromUri(this, uri) ?: return
+    private suspend fun importBookFromUri(uri: Uri): Boolean {
+        val fileName = FileUtils.getFileNameFromUri(this, uri) ?: return false
         val extension = FileUtils.getFileExtension(fileName)
-        if (extension !in listOf("epub", "pdf", "txt", "mobi")) return
+        if (extension !in listOf("epub", "pdf", "txt", "mobi")) return false
 
-        val file = FileUtils.copyFileToInternal(this, uri, fileName) ?: return
+        val file = FileUtils.copyFileToInternal(this, uri, fileName) ?: return false
         val format = when (extension) {
             "epub" -> BookFormat.EPUB
             "pdf" -> BookFormat.PDF
@@ -278,10 +311,8 @@ class MainActivity : ComponentActivity() {
             FileUtils.deleteAppOwnedFile(this, coverPath)
             throw error
         }
-        withContext(Dispatchers.Main) {
-            Toast.makeText(this@MainActivity, "导入成功了喵~(=^‥^=)", Toast.LENGTH_SHORT).show()
-        }
         Log.d("MainActivity", "Imported book from intent: ${book.title}")
+        return true
     }
 
     /**
@@ -326,53 +357,10 @@ class MainActivity : ComponentActivity() {
         // 启动时自动检查更新（静默执行，有变更时弹窗）
         performStartupUpdateCheck()
 
-        // 听书悬浮窗：退出应用到后台时显示，回到前台时隐藏
-        lifecycle.addObserver(object : LifecycleEventObserver {
-            override fun onStateChanged(source: LifecycleOwner, event: Lifecycle.Event) {
-                when (event) {
-                    Lifecycle.Event.ON_STOP -> {
-                        if (ttsController.playbackState.value != TtsPlaybackState.IDLE) {
-                            lifecycleScope.launch {
-                                val floatingEnabled = dataStoreManager.ttsFloatingWindow.first()
-                                if (!floatingEnabled) return@launch
-                                if (Settings.canDrawOverlays(this@MainActivity)) {
-                                    runCatching {
-                                        com.huangder.lumibooks.service.TtsFloatingWindowService.start(this@MainActivity)
-                                    }.onFailure { error ->
-                                        Log.w("MainActivity", "Failed to start tts floating window", error)
-                                    }
-                                } else {
-                                    pendingFloatingPermissionHint = true
-                                    Toast.makeText(
-                                        this@MainActivity,
-                                        R.string.tts_floating_permission_toast,
-                                        Toast.LENGTH_LONG
-                                    ).show()
-                                }
-                            }
-                        }
-                    }
-                    Lifecycle.Event.ON_START -> {
-                        if (!com.huangder.lumibooks.service.TtsFloatingWindowService.consumeKeepVisibleOnForeground()) {
-                            com.huangder.lumibooks.service.TtsFloatingWindowService.stop(this@MainActivity)
-                        }
-                        if (pendingFloatingPermissionHint) {
-                            pendingFloatingPermissionHint = false
-                            if (ttsController.playbackState.value != TtsPlaybackState.IDLE &&
-                                !Settings.canDrawOverlays(this@MainActivity)
-                            ) {
-                                showFloatingPermissionDialog = true
-                            }
-                        }
-                    }
-                    else -> Unit
-                }
-            }
-        })
         val splashEnabledAtLaunch = if (intent.hasExtra(LaunchThemeController.EXTRA_SPLASH_ENABLED)) {
             intent.getBooleanExtra(LaunchThemeController.EXTRA_SPLASH_ENABLED, false)
         } else {
-            kotlinx.coroutines.runBlocking { dataStoreManager.splashEnabled.first() }
+            LaunchThemeController.splashEnabledSnapshot(this)
         }
 
         setContent {
@@ -381,6 +369,7 @@ class MainActivity : ComponentActivity() {
             val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = "system")
             val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = 0.55f)
             val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = false)
+            val cardOutlinesEnabled by dataStoreManager.cardOutlinesEnabled.collectAsState(initial = false)
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
             val entranceAnimationsEnabled by dataStoreManager.entranceAnimationsEnabled.collectAsState(initial = true)
             val motionPreferenceValue by dataStoreManager.motionPreference.collectAsState(initial = "standard")
@@ -443,6 +432,7 @@ class MainActivity : ComponentActivity() {
                 appAccentColor = appAccentColor,
                 liquidGlassTransparency = liquidGlassTransparency,
                 liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled && !eInkModeEnabled,
+                cardOutlinesEnabled = cardOutlinesEnabled,
                 eInkMode = eInkModeEnabled,
                 globalFontMode = globalFontMode,
                 motionPreference = MotionPreference.fromStoredValue(motionPreferenceValue)
@@ -461,11 +451,10 @@ class MainActivity : ComponentActivity() {
                         // 阅读页（EPUB/TXT/PDF 共用 reader/{bookId} 路由）禁止弹出全局启动弹窗：
                         // 弹窗会切换主内容 layerBackdrop 导致阅读内容闪烁，退出阅读页后补显示。
                         val onReaderRoute = navCurrentEntry?.destination?.route == Screen.Reader.route
-                        val globalGlassDialogVisible = (!onReaderRoute && (
+                        val globalGlassDialogVisible = !onReaderRoute && (
                             pendingAppUpdate != null ||
                                 pendingRemoteNotice != null ||
-                                policyDialog != null)) ||
-                            showFloatingPermissionDialog
+                                policyDialog != null)
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -566,24 +555,6 @@ class MainActivity : ComponentActivity() {
                                     onViewPrivacy = { openUpdateDocument("隐私政策", "privacy.html") }
                                 )
                             }
-                        }
-                        showFloatingPermissionDialog -> {
-                            OverlayPermissionDialog(
-                                onGoSettings = {
-                                    showFloatingPermissionDialog = false
-                                    runCatching {
-                                        startActivity(
-                                            Intent(
-                                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                                Uri.parse("package:$packageName")
-                                            )
-                                        )
-                                    }.onFailure { error ->
-                                        Log.w("MainActivity", "Failed to open overlay settings", error)
-                                    }
-                                },
-                                onDismiss = { showFloatingPermissionDialog = false }
-                            )
                         }
                     }
 

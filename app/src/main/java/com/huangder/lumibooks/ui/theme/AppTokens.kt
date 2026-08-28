@@ -4,7 +4,10 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.foundation.border
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -29,6 +32,15 @@ val LocalLiquidGlassCapability = staticCompositionLocalOf {
 }
 val LocalEInkMode = staticCompositionLocalOf { false }
 val LocalMotionEnabled = staticCompositionLocalOf { true }
+val LocalCardOutlinesEnabled = staticCompositionLocalOf { false }
+
+/** Adds the optional high-contrast edge used by standard (non-liquid) cards. */
+@Composable
+fun Modifier.cardOutline(shape: Shape): Modifier {
+    if (!LocalCardOutlinesEnabled.current || LocalAppTheme.current == "liquid_glass") return this
+    val outlineColor = if (LocalIsDarkTheme.current) Color.White else Color.Black
+    return border(width = 0.5.dp, color = outlineColor, shape = shape)
+}
 
 enum class MotionPreference {
     STANDARD,
