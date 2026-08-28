@@ -95,7 +95,7 @@ fun CustomCoverSourceSheet(
             onDismissRequest = onDismiss,
             alignment = Alignment.BottomCenter,
             shape = RoundedCornerShape(28.dp),
-            contentScrimColor = AppColors.CardBg.copy(alpha = 0.82f),
+            contentScrimColor = AppColors.CardBg.copy(alpha = 0.24f),
             backgroundScrimColor = Color.Black.copy(alpha = 0.12f)
         ) {
             sheetContent()
@@ -126,7 +126,7 @@ private fun CoverSourceOptionRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppRadius.md))
-            .background(AppColors.BgGray.copy(alpha = 0.72f))
+            .background(AppColors.BgGray.copy(alpha = 0.42f))
             .clickable(onClick = onClick)
             .padding(horizontal = AppSpace.md, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically

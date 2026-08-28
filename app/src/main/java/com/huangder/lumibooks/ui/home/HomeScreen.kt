@@ -66,7 +66,10 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import com.huangder.lumibooks.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -94,6 +97,7 @@ import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
+import com.huangder.lumibooks.ui.theme.cardOutline
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalUseMaterial3Theme
 import com.huangder.lumibooks.ui.theme.SansSerif
@@ -144,7 +148,13 @@ fun HomeScreen(
     val lastReadBook = booksByLastRead.firstOrNull()
     val recentBooks = booksByLastRead
 
-    Box(modifier = Modifier.fillMaxSize().background(AppColors.WindowBg)) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(AppColors.WindowBg)
+            .semantics { testTagsAsResourceId = true }
+            .testTag(HOME_SCREEN_TAG)
+    ) {
         OverscrollBounce(
             modifier = Modifier
                 .fillMaxSize()
@@ -418,16 +428,19 @@ private fun ContinueReadingCard(
         stringResource(R.string.add_favorite)
     }
     val deleteMenuLabel = stringResource(R.string.delete_book)
-    var coverBounds by remember { mutableStateOf(Rect.Zero) }
+    val coverBounds = remember { java.util.concurrent.atomic.AtomicReference(Rect.Zero) }
 
     Row(
         modifier = modifier
             .fillMaxWidth()
             .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
+            .cardOutline(RoundedCornerShape(AppRadius.lg))
             .clip(RoundedCornerShape(AppRadius.lg))
             .background(AppColors.CardBg)
             .cardPressEffect()
-            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick(coverBounds.takeUnless { it == Rect.Zero }) }
+            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                onClick(coverBounds.get().takeUnless { it == Rect.Zero })
+            }
             .padding(AppSpace.md),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -436,16 +449,24 @@ private fun ContinueReadingCard(
             modifier = Modifier
                 .width(72.dp)
                 .aspectRatio(0.75f)
-                .onGloballyPositioned { coverBounds = it.boundsInRoot() }
+                .onGloballyPositioned { coverBounds.set(it.boundsInRoot()) }
                 .clip(RoundedCornerShape(AppRadius.sm))
                 .background(AppColors.BgGray)
         ) {
-            AsyncImage(
-                model = book.coverPath,
-                contentDescription = book.title,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
+            if (book.coverPath == null) {
+                DefaultBookCoverTitle(
+                    title = book.title,
+                    fontSize = AppType.Caption,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            } else {
+                AsyncImage(
+                    model = book.coverPath,
+                    contentDescription = book.title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            }
             BookCoverProgressOverlay(
                 book = book,
                 downloadState = downloadState,
@@ -608,6 +629,7 @@ private fun RecentBookCard(
         modifier = modifier
             .then(if (fixedWidth) Modifier.width(260.dp) else Modifier)
             .shadow(10.dp, RoundedCornerShape(AppRadius.md), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
+            .cardOutline(RoundedCornerShape(AppRadius.md))
             .clip(RoundedCornerShape(AppRadius.md))
             .background(AppColors.CardBg)
             .cardPressEffect()
@@ -615,15 +637,27 @@ private fun RecentBookCard(
             .padding(AppSpace.sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AsyncImage(
-            model = book.coverPath,
-            contentDescription = book.title,
+        Box(
             modifier = Modifier
                 .size(56.dp, 74.dp)
                 .clip(RoundedCornerShape(6.dp))
                 .background(AppColors.BgGray),
-            contentScale = ContentScale.Crop
-        )
+            contentAlignment = Alignment.Center
+        ) {
+            if (book.coverPath == null) {
+                DefaultBookCoverTitle(
+                    title = book.title,
+                    fontSize = 10.sp
+                )
+            } else {
+                AsyncImage(
+                    model = book.coverPath,
+                    contentDescription = book.title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            }
+        }
         Spacer(Modifier.width(AppSpace.sm))
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -671,6 +705,7 @@ private fun ReadingGoalCard(
             .fillMaxWidth()
             .padding(horizontal = AppSpace.lg)
             .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
+            .cardOutline(RoundedCornerShape(AppRadius.lg))
             .clip(RoundedCornerShape(AppRadius.lg))
             .background(AppColors.CardBg)
             .cardPressEffect()
@@ -892,12 +927,19 @@ private fun BooksReadGrid(
                     ) { onBookClick(book, bookBounds[book.id]) },
                 contentAlignment = Alignment.Center
             ) {
-                AsyncImage(
-                    model = book.coverPath,
-                    contentDescription = book.title,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
+                if (book.coverPath == null) {
+                    DefaultBookCoverTitle(
+                        title = book.title,
+                        fontSize = AppType.BodySmall
+                    )
+                } else {
+                    AsyncImage(
+                        model = book.coverPath,
+                        contentDescription = book.title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                }
                 BookCoverProgressOverlay(
                     book = book,
                     downloadState = downloadStates[book.id],
@@ -906,4 +948,25 @@ private fun BooksReadGrid(
             }
         }
     }
+}
+
+private const val HOME_SCREEN_TAG = "home_screen"
+
+@Composable
+private fun DefaultBookCoverTitle(
+    title: String,
+    fontSize: androidx.compose.ui.unit.TextUnit,
+    modifier: Modifier = Modifier
+) {
+    Text(
+        text = title,
+        modifier = modifier.padding(AppSpace.sm),
+        fontSize = fontSize,
+        fontWeight = FontWeight.SemiBold,
+        fontFamily = resolveAppFontFamily(KaiTi),
+        color = AppColors.TextPrimary,
+        textAlign = TextAlign.Center,
+        maxLines = 3,
+        overflow = TextOverflow.Ellipsis
+    )
 }

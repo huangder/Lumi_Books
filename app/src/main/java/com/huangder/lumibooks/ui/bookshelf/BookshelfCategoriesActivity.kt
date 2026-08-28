@@ -650,6 +650,7 @@ private fun CategoryBooksPage(
     var editingBook by remember { mutableStateOf<Book?>(null) }
     var coverTargetBook by remember { mutableStateOf<Book?>(null) }
     var coverSourceBook by remember { mutableStateOf<Book?>(null) }
+    var moveTargetBook by remember { mutableStateOf<Book?>(null) }
     var headerHeightPx by remember { mutableStateOf(0) }
     val collectionTopPadding = if (headerHeightPx > 0) {
         with(density) { headerHeightPx.toDp() } + 12.dp
@@ -771,7 +772,9 @@ private fun CategoryBooksPage(
                     )
                 },
                 onTags = { tagTargetBook = it },
-                onEditInfo = { editingBook = it }
+                onEditInfo = { editingBook = it },
+                onBookDetails = { book -> BookDetailsActivity.start(context, book.id) },
+                onMoveToFolder = { book -> moveTargetBook = book }
             )
         }
     }
@@ -848,6 +851,32 @@ private fun CategoryBooksPage(
                         showBatchMoveSheet = false
                         selectedBookIds = emptySet()
                         isEditing = false
+                    }
+                }
+            }
+        )
+    }
+    moveTargetBook?.let { targetBook ->
+        val sourceFolderId = viewModel.uiState.value.bookFolderLinks
+            .firstOrNull { it.bookId == targetBook.id }?.folderId
+        FolderMoveSheet(
+            folders = viewModel.uiState.value.folders,
+            selectedBookCount = 1,
+            sourceFolderId = sourceFolderId,
+            onDismiss = { moveTargetBook = null },
+            onCreateFolder = { name, parentId -> viewModel.createFolder(name, parentId) },
+            onMove = { targetFolderId ->
+                val targetName = targetFolderId
+                    ?.let { id -> viewModel.uiState.value.folders.firstOrNull { it.id == id }?.name }
+                    ?: context.getString(R.string.library_root)
+                viewModel.moveBooksToFolder(setOf(targetBook.id), targetFolderId) { success ->
+                    if (success) {
+                        moveTargetBook = null
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.folder_move_success, 1, targetName),
+                            Toast.LENGTH_SHORT
+                        ).show()
                     }
                 }
             }

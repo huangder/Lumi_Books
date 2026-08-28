@@ -110,13 +110,12 @@ import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.effectiveAppTheme
 import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
 import com.huangder.lumibooks.util.LocaleHelper
+import com.huangder.lumibooks.util.LaunchThemeController
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 
 /**
@@ -161,22 +160,9 @@ class CoverSearchActivity : ComponentActivity() {
             return
         }
 
-        // 同步读取避免闪白：手动深色模式下第一个 frame 就渲染深色
-        val (darkMode, appTheme) = runBlocking {
-            dataStoreManager.darkMode.first() to dataStoreManager.appTheme.first()
-        }
-        val liquidGlassTransparency = runBlocking {
-            dataStoreManager.liquidGlassTransparency.first()
-        }
-        val appAccentColor = runBlocking { dataStoreManager.appAccentColor.first() }
-        val globalFontMode = runBlocking {
-            dataStoreManager.globalFontMode.first()
-        }
-        val liquidGlassHdrHighlightEnabled = runBlocking {
-            dataStoreManager.liquidGlassHdrHighlightEnabled.first()
-        }
+        val launchTheme = LaunchThemeController.themeSnapshot(this)
         val isSystemDark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-        val isDark = when (darkMode) {
+        val isDark = when (launchTheme.darkMode) {
             "dark" -> true
             "light" -> false
             else -> isSystemDark
@@ -184,15 +170,15 @@ class CoverSearchActivity : ComponentActivity() {
 
         setContent {
             val capability = rememberLiquidGlassCapability(view = LocalView.current)
-            val resolvedAppTheme = effectiveAppTheme(appTheme, capability)
+            val resolvedAppTheme = effectiveAppTheme(launchTheme.appTheme, capability)
             EBookReaderTheme(
                 darkTheme = isDark,
                 dynamicColor = resolvedAppTheme == "material3",
                 appTheme = resolvedAppTheme,
-                appAccentColor = appAccentColor,
-                liquidGlassTransparency = liquidGlassTransparency,
-                liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled,
-                globalFontMode = globalFontMode
+                appAccentColor = launchTheme.appAccentColor,
+                liquidGlassTransparency = launchTheme.liquidGlassTransparency,
+                liquidGlassHdrHighlightEnabled = launchTheme.liquidGlassHdrHighlightEnabled,
+                globalFontMode = launchTheme.globalFontMode
             ) {
                 LiquidGlassDialogHost(modifier = Modifier.fillMaxSize()) {
                     CoverSearchScreen(

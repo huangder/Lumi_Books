@@ -167,6 +167,7 @@ class BookNotesExportBuilder @Inject constructor(
                 letterSpacingPx = letterSpacingDp * density,
                 fontType = fontType,
                 customTypeface = typeface,
+                typeface = typeface,
                 marginLeftPx = marginLeftDp * density,
                 marginRightPx = marginRightDp * density,
                 marginTopPx = baseMarginTop + balanceOffset,

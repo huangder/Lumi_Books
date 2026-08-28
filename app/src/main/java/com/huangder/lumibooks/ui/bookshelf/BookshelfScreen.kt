@@ -101,6 +101,9 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -203,6 +206,7 @@ fun BookshelfScreen(
     var searchLauncherBounds by remember { mutableStateOf(Rect.Zero) }
     var showBatchTagSheet by remember { mutableStateOf(false) }
     var showBatchMoveSheet by remember { mutableStateOf(false) }
+    var moveTargetBook by remember { mutableStateOf<Book?>(null) }
     var showCreateFolderDialog by remember { mutableStateOf(false) }
     var renameFolder by remember { mutableStateOf<LibraryFolder?>(null) }
     var deleteFolder by remember { mutableStateOf<LibraryFolder?>(null) }
@@ -407,6 +411,9 @@ fun BookshelfScreen(
                     editingBook = currentBook
                     showEditDialog = true
                 }
+                PendingBookMenuActionType.BookDetails ->
+                    BookDetailsActivity.start(context, currentBook.id)
+                PendingBookMenuActionType.MoveToFolder -> moveTargetBook = currentBook
             }
         }
         pendingContextMenuAction = null
@@ -596,7 +603,13 @@ fun BookshelfScreen(
     }
 
     ProvideLiquidGlassBackdrop(bookshelfBackdrop.takeIf { isLiquidGlass }) {
-    Box(modifier = Modifier.fillMaxSize().background(AppColors.WindowBg)) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(AppColors.WindowBg)
+            .semantics { testTagsAsResourceId = true }
+            .testTag(BOOKSHELF_SCREEN_TAG)
+    ) {
         // ── 内容层（高斯模糊） ──
         Box(
             modifier = Modifier
@@ -935,6 +948,12 @@ fun BookshelfScreen(
             },
             onEditInfo = { book ->
                 pendingContextMenuAction = PendingBookMenuAction(PendingBookMenuActionType.EditInfo, book)
+            },
+            onBookDetails = { book ->
+                pendingContextMenuAction = PendingBookMenuAction(PendingBookMenuActionType.BookDetails, book)
+            },
+            onMoveToFolder = { book ->
+                pendingContextMenuAction = PendingBookMenuAction(PendingBookMenuActionType.MoveToFolder, book)
             }
         )
 
@@ -1090,6 +1109,30 @@ fun BookshelfScreen(
                             onMessage(
                                 context.getString(R.string.folder_move_success, movedCount, targetName)
                             )
+                        }
+                    }
+                }
+            )
+        }
+
+        moveTargetBook?.let { targetBook ->
+            val sourceFolderId = uiState.bookFolderLinks
+                .firstOrNull { it.bookId == targetBook.id }
+                ?.folderId
+            FolderMoveSheet(
+                folders = uiState.folders,
+                selectedBookCount = 1,
+                sourceFolderId = sourceFolderId,
+                onDismiss = { moveTargetBook = null },
+                onCreateFolder = { name, parentId -> viewModel.createFolder(name, parentId) },
+                onMove = { targetFolderId ->
+                    val targetName = targetFolderId
+                        ?.let { id -> uiState.folders.firstOrNull { it.id == id }?.name }
+                        ?: context.getString(R.string.library_root)
+                    viewModel.moveBooksToFolder(setOf(targetBook.id), targetFolderId) { success ->
+                        if (success) {
+                            moveTargetBook = null
+                            onMessage(context.getString(R.string.folder_move_success, 1, targetName))
                         }
                     }
                 }
@@ -1485,6 +1528,8 @@ private fun BookshelfTitle(
         }
     }
 }
+
+private const val BOOKSHELF_SCREEN_TAG = "bookshelf_screen"
 
 @Composable
 private fun BookshelfSyncProgressIndicator(isSyncing: Boolean) {
@@ -1931,7 +1976,9 @@ private enum class PendingBookMenuActionType {
     RemoveCustomCover,
     BookmarksNotes,
     Tags,
-    EditInfo
+    EditInfo,
+    BookDetails,
+    MoveToFolder
 }
 
 private data class PendingBookMenuAction(

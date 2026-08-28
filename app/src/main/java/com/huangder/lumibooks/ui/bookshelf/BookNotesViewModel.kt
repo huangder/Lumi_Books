@@ -23,7 +23,8 @@ data class BookNotesUiState(
     val isLoading: Boolean = true,
     val isExporting: Boolean = false
 ) {
-    val highlights: List<Note> get() = notes.filter { it.note.isBlank() }
+    val highlights: List<Note> get() = notes.filter { it.note.isBlank() && it.type != "underline" }
+    val underlines: List<Note> get() = notes.filter { it.note.isBlank() && it.type == "underline" }
     val noteItems: List<Note> get() = notes.filter { it.note.isNotBlank() }
 }
 

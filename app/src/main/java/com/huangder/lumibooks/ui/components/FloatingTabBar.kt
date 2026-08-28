@@ -67,6 +67,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
@@ -76,6 +77,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.annotation.StringRes
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -83,6 +85,7 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -115,13 +118,14 @@ import kotlin.math.sign
 data class TabItem(
     val selectedIcon: ImageVector,
     val unselectedIcon: ImageVector,
-    @StringRes val titleRes: Int
+    @StringRes val titleRes: Int,
+    val testTag: String
 )
 
 val tabs = listOf(
-    TabItem(Icons.Rounded.Home, Icons.Rounded.Home, R.string.home_title),
-    TabItem(Icons.Rounded.AutoStories, Icons.Rounded.AutoStories, R.string.bookshelf_title),
-    TabItem(Icons.Rounded.Leaderboard, Icons.Rounded.Leaderboard, R.string.statistics_title)
+    TabItem(Icons.Rounded.Home, Icons.Rounded.Home, R.string.home_title, "home_tab"),
+    TabItem(Icons.Rounded.AutoStories, Icons.Rounded.AutoStories, R.string.bookshelf_title, "bookshelf_tab"),
+    TabItem(Icons.Rounded.Leaderboard, Icons.Rounded.Leaderboard, R.string.statistics_title, "statistics_tab")
 )
 
 @Composable
@@ -131,13 +135,16 @@ fun Material3BottomNavigationBar(
     modifier: Modifier = Modifier
 ) {
     NavigationBar(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .semantics { testTagsAsResourceId = true },
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
         tonalElevation = NavigationBarDefaults.Elevation,
         windowInsets = NavigationBarDefaults.windowInsets
     ) {
         tabs.forEachIndexed { index, tab ->
             NavigationBarItem(
+                modifier = Modifier.testTag(tab.testTag),
                 selected = selectedIndex == index,
                 onClick = { onTabSelected(index) },
                 icon = {
@@ -207,19 +214,11 @@ fun FloatingTabBar(
             )
         )
     } else if (isDark) {
-        Brush.verticalGradient(
-            colors = listOf(
-                Color(0xCC2C2C2E),
-                Color(0xB01C1C1E)
-            )
-        )
+        // The default bar uses a uniform translucent surface; the liquid glass
+        // theme above owns the directional shading and refraction effects.
+        SolidColor(Color(0xFF242426).copy(alpha = 0.76f))
     } else {
-        Brush.verticalGradient(
-            colors = listOf(
-                Color(0xDFFFFFFF),
-                Color(0xB8FFFFFF)
-            )
-        )
+        SolidColor(Color.White.copy(alpha = 0.80f))
     }
     val borderBrush = if (isLiquidGlass && isDark) {
         Brush.verticalGradient(
@@ -238,19 +237,9 @@ fun FloatingTabBar(
             )
         )
     } else if (isDark) {
-        Brush.verticalGradient(
-            colors = listOf(
-                Color.White.copy(alpha = 0.34f),
-                Color.White.copy(alpha = 0.10f)
-            )
-        )
+        SolidColor(Color.White.copy(alpha = 0.22f))
     } else {
-        Brush.verticalGradient(
-            colors = listOf(
-                Color.White.copy(alpha = 0.96f),
-                Color.White.copy(alpha = 0.30f)
-            )
-        )
+        SolidColor(Color.White.copy(alpha = 0.58f))
     }
     val hazeModifier = hazeState?.let { state ->
         Modifier.hazeChild(state) {
@@ -754,11 +743,13 @@ private fun TabItemView(
                 .semantics {
                     role = Role.Tab
                     selected = isSelected
+                    if (interactive) testTagsAsResourceId = true
                     onClick {
                         onClick()
                         true
                     }
                 }
+                .then(if (interactive) Modifier.testTag(tab.testTag) else Modifier)
                 .then(
                     if (interactive) {
                         Modifier.clickable(
@@ -800,6 +791,8 @@ private fun TabItemView(
         modifier = modifier
             .fillMaxSize()
             .clip(RoundedCornerShape(16.dp))
+            .semantics { testTagsAsResourceId = true }
+            .testTag(tab.testTag)
             .clickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() }

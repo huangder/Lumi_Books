@@ -86,6 +86,7 @@ import com.huangder.lumibooks.ui.theme.LocalUseMaterial3Theme
 import com.huangder.lumibooks.ui.theme.LocalReaderColors
 import com.huangder.lumibooks.ui.theme.ReaderColors
 import com.huangder.lumibooks.util.FileUtils
+import com.huangder.lumibooks.util.performance.ReaderOpenPerformance
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -101,12 +102,13 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 private fun ReaderRouter(
     bookId: String,
     onNavigateBack: () -> Unit,
-    onLoadingComplete: () -> Unit,
+    onFirstContentDrawn: () -> Unit,
+    onInteractive: () -> Unit,
     onOpenBook: (String) -> Unit
 ) {
     val viewModel: ReaderViewModel = hiltViewModel()
-    val uiState by viewModel.uiState.collectAsState()
-    val isPdf = uiState.book?.format?.name == "PDF"
+    val documentState by viewModel.documentState.collectAsState()
+    val isPdf = documentState.book?.format?.name == "PDF"
     val isAppDarkTheme = LocalIsDarkTheme.current
     val appTheme = LocalAppTheme.current
     val appAccentColor = LocalAppAccentHex.current
@@ -137,12 +139,16 @@ private fun ReaderRouter(
                     onOpenBook = onOpenBook,
                     viewModel = viewModel
                 )
-                LaunchedEffect(Unit) { onLoadingComplete() }
+                LaunchedEffect(Unit) {
+                    onFirstContentDrawn()
+                    if (eInkMode) onInteractive()
+                }
             } else {
                 ReaderScreen(
                     bookId = bookId,
                     onNavigateBack = onNavigateBack,
-                    onLoadingComplete = onLoadingComplete,
+                    onFirstContentDrawn = onFirstContentDrawn,
+                    onInteractive = onInteractive,
                     viewModel = viewModel
                 )
             }
@@ -191,6 +197,7 @@ fun MainNavGraph(
     var showTransition by remember { mutableStateOf(false) }
     var transitionCover by remember { mutableStateOf<String?>(null) }
     var transitionTitle by remember { mutableStateOf("") }
+    var transitionBookId by remember { mutableStateOf<String?>(null) }
     var readerReady by remember { mutableStateOf(false) }
     var pendingBookId by remember { mutableStateOf<String?>(null) }
     var tabBarVisible by remember { mutableStateOf(true) }
@@ -231,12 +238,14 @@ fun MainNavGraph(
                 SelectedImportBook(uri = uri, name = name)
             }.distinctBy { it.uri.toString() }
             if (candidates.isNotEmpty()) {
-                selectedImportBooks = candidates
-                selectedImportBookUris = emptySet()
-                importCopiesIntoApp = true
                 isPreparingImport = false
                 showImportActions = false
-                showImportConfirmation = true
+                homeViewModel.importBooks(
+                    context = context,
+                    uris = candidates.map { it.uri },
+                    targetFolderId = importRequestFolderId
+                )
+                importRequestFolderId = null
             }
         }
     }
@@ -274,8 +283,12 @@ fun MainNavGraph(
     val homeUiState by homeViewModel.uiState.collectAsState()
     val openLocalBook: (Book) -> Unit = { book ->
         if (eInkMode) {
+            ReaderOpenPerformance.start(book.id)
+            transitionBookId = book.id
             navController.navigate(Screen.Reader.createRoute(book.id))
         } else {
+            ReaderOpenPerformance.start(book.id)
+            transitionBookId = book.id
             transitionCover = book.coverPath
             transitionTitle = book.title
             readerReady = false
@@ -615,7 +628,11 @@ fun MainNavGraph(
                         pendingBookId = null
                         navController.popBackStack()
                     },
-                    onLoadingComplete = { readerReady = true },
+                    onFirstContentDrawn = {
+                        ReaderOpenPerformance.markFirstContentDrawn(bookId)
+                        readerReady = true
+                    },
+                    onInteractive = { ReaderOpenPerformance.markInteractive(bookId) },
                     onOpenBook = { targetBookId ->
                         onBeforeOpenDifferentBook()
                         val target = homeUiState.books.firstOrNull { it.id == targetBookId }
@@ -960,12 +977,18 @@ fun MainNavGraph(
                 onBackNavigationStarted = {
                     pendingBookId = null
                     readerReady = false
+                    transitionBookId?.let(ReaderOpenPerformance::cancel)
+                    transitionBookId = null
                     if (navController.currentDestination?.route == Screen.Reader.route) {
                         navController.popBackStack()
                     }
                 },
                 onBack = { showTransition = false },
-                onTransitionComplete = { showTransition = false }
+                onTransitionComplete = {
+                    showTransition = false
+                    transitionBookId?.let(ReaderOpenPerformance::markInteractive)
+                    transitionBookId = null
+                }
             )
         }
 

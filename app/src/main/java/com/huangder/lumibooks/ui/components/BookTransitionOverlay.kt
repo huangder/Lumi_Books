@@ -119,14 +119,14 @@ fun BookTransitionOverlay(
 
         // Wait until the entrance is visible, unless the user requests back first.
         snapshotFlow { sheetAlpha.value to isClosing.value }
-            .first { (alpha, closing) -> alpha > 0.5f || closing }
+            .first { (alpha, closing) -> alpha > 0.35f || closing }
         if (isClosing.value) return@LaunchedEffect
 
         isClosing.value = true
         coroutineScope {
-            launch { sheetAlpha.animateTo(0f, tween(200)) }
-            launch { sheetScale.animateTo(1.06f, tween(250)) }
-            launch { scrimAlpha.animateTo(0f, tween(300)) }
+            launch { sheetAlpha.animateTo(0f, tween(160)) }
+            launch { sheetScale.animateTo(1.04f, tween(190)) }
+            launch { scrimAlpha.animateTo(0f, tween(220)) }
         }
         onTransitionComplete()
     }

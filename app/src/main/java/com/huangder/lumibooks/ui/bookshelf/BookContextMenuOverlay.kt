@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,11 +24,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.Bookmark
+import androidx.compose.material.icons.outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Label
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -66,6 +69,8 @@ import com.huangder.lumibooks.ui.components.LiquidGlassSurface
  * 上下文菜单操作类型（UI 阶段仅定义，不接逻辑）
  */
 sealed class ContextMenuAction {
+    data object BookDetails : ContextMenuAction()
+    data object MoveToFolder : ContextMenuAction()
     data object Delete : ContextMenuAction()
     data object Favorite : ContextMenuAction()
     data object CustomCover : ContextMenuAction()
@@ -93,7 +98,9 @@ fun BookContextMenuOverlay(
     onRemoveCustomCover: (Book) -> Unit = {},
     onBookmarksNotes: (Book) -> Unit = {},
     onTags: (Book) -> Unit = {},
-    onEditInfo: (Book) -> Unit = {}
+    onEditInfo: (Book) -> Unit = {},
+    onBookDetails: (Book) -> Unit = {},
+    onMoveToFolder: (Book) -> Unit = {}
 ) {
     if (state.phase == ContextMenuPhase.Idle) return
 
@@ -137,6 +144,8 @@ fun BookContextMenuOverlay(
                 onAction = { action ->
                     state.dismiss()
                     when (action) {
+                        is ContextMenuAction.BookDetails -> onBookDetails(book)
+                        is ContextMenuAction.MoveToFolder -> onMoveToFolder(book)
                         is ContextMenuAction.Delete -> onDelete(book)
                         is ContextMenuAction.Favorite -> onFavorite(book)
                         is ContextMenuAction.CustomCover -> onCustomCover(book)
@@ -283,7 +292,7 @@ private fun ContextMenuLayout(
 
     // 菜单面板顶部与封面顶部对齐；如果面板超出屏幕底部，则改为底部对齐
     // 液态主题需要为悬浮 Tag 栏、间距和系统导航区预留完整安全区。
-    val estimatedMenuHeight = 450.dp
+    val estimatedMenuHeight = 520.dp
     val bottomMargin = if (isLiquidGlass) 148.dp else 48.dp
     val topMargin = with(density) { WindowInsets.statusBars.getTop(this).toDp() } + 14.dp
     val maxPanelY = (screenHeightDp - estimatedMenuHeight - bottomMargin).coerceAtLeast(topMargin)
@@ -436,6 +445,8 @@ private fun MenuActionsPanel(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(max = 360.dp)
+                .verticalScroll(rememberScrollState())
                 .padding(if (compact) 8.dp else 12.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
@@ -446,14 +457,16 @@ private fun MenuActionsPanel(
         data class MenuItem(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val action: ContextMenuAction)
 
         val items = buildList {
-            add(MenuItem(stringResource(R.string.delete), Icons.Outlined.Delete, ContextMenuAction.Delete))
+            add(MenuItem(stringResource(R.string.book_details), Icons.Outlined.Info, ContextMenuAction.BookDetails))
             add(MenuItem(favoriteLabel, favoriteIcon, ContextMenuAction.Favorite))
+            add(MenuItem(stringResource(R.string.add_tag), Icons.Outlined.Label, ContextMenuAction.Tags))
+            add(MenuItem(stringResource(R.string.move_to_folder), Icons.Outlined.DriveFileMove, ContextMenuAction.MoveToFolder))
+            add(MenuItem(stringResource(R.string.bookmarks_notes), Icons.Outlined.Bookmark, ContextMenuAction.BookmarksNotes))
             add(MenuItem(stringResource(R.string.custom_cover), Icons.Outlined.Image, ContextMenuAction.CustomCover))
             if (hasCustomCover) {
                 add(MenuItem(stringResource(R.string.remove_custom_cover), Icons.Outlined.Restore, ContextMenuAction.RemoveCustomCover))
             }
-            add(MenuItem(stringResource(R.string.add_tag), Icons.Outlined.Label, ContextMenuAction.Tags))
-            add(MenuItem(stringResource(R.string.bookmarks_notes), Icons.Outlined.Bookmark, ContextMenuAction.BookmarksNotes))
+            add(MenuItem(stringResource(R.string.delete), Icons.Outlined.Delete, ContextMenuAction.Delete))
         }
 
         items.forEach { item ->

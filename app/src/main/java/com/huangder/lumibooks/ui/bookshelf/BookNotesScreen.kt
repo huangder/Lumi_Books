@@ -98,7 +98,7 @@ fun BookNotesScreen(
     val scope = rememberCoroutineScope()
     val glassBackdrop = rememberLayerBackdrop()
     var selectedTab by rememberSaveable(initialTab) {
-        mutableIntStateOf(initialTab.coerceIn(0, 2))
+        mutableIntStateOf(initialTab.coerceIn(0, 3))
     }
     var pendingExportText by remember { mutableStateOf<String?>(null) }
 
@@ -130,6 +130,7 @@ fun BookNotesScreen(
 
     val tabs = listOf(
         stringResource(R.string.tab_highlights),
+        stringResource(R.string.tab_underline),
         stringResource(R.string.tab_notes),
         stringResource(R.string.tab_bookmarks)
     )
@@ -198,11 +199,16 @@ fun BookNotesScreen(
                     onDelete = { viewModel.deleteNote(it) }
                 )
                 1 -> NoteList(
+                    notes = uiState.underlines,
+                    targetNoteId = targetNoteId,
+                    onDelete = { viewModel.deleteNote(it) }
+                )
+                2 -> NoteList(
                     notes = uiState.noteItems,
                     targetNoteId = targetNoteId,
                     onDelete = { viewModel.deleteNote(it) }
                 )
-                2 -> BookmarkList(
+                3 -> BookmarkList(
                     bookmarks = uiState.bookmarks,
                     onDelete = { viewModel.deleteBookmark(it) }
                 )

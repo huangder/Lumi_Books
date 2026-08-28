@@ -33,7 +33,9 @@ class BookNotesActivity : ComponentActivity() {
         const val EXTRA_TARGET_NOTE_ID = "target_note_id"
 
         const val TAB_HIGHLIGHTS = 0
-        const val TAB_NOTES = 1
+        const val TAB_UNDERLINES = 1
+        const val TAB_NOTES = 2
+        const val TAB_BOOKMARKS = 3
     }
 
     override fun attachBaseContext(newBase: android.content.Context) {
@@ -48,7 +50,7 @@ class BookNotesActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         val initialTab = intent.getIntExtra(EXTRA_INITIAL_TAB, TAB_HIGHLIGHTS)
-            .coerceIn(TAB_HIGHLIGHTS, TAB_NOTES)
+            .coerceIn(TAB_HIGHLIGHTS, TAB_BOOKMARKS)
         val targetNoteId = intent.getLongExtra(EXTRA_TARGET_NOTE_ID, -1L)
             .takeIf { it > 0L }
 
