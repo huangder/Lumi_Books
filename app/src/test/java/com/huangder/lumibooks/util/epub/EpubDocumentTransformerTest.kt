@@ -10,6 +10,60 @@ import org.junit.Test
 
 class EpubDocumentTransformerTest {
     @Test
+    fun expandsFirstImageOnlyDocumentAsCover() {
+        val source = """
+            <html><body><div class="cover"><img src="../Images/cover.jpg" alt="Cover"/></div></body></html>
+        """.trimIndent()
+
+        val output = EpubDocumentTransformer.transform(
+            EpubResource("OPS/Text/cover.xhtml", "application/xhtml+xml", source.toByteArray()),
+            EpubRenditionLayout.REFLOWABLE,
+            isCoverCandidate = true
+        ).toString(Charsets.UTF_8)
+        val document = Jsoup.parse(output, "", Parser.xmlParser())
+
+        assertEquals("true", document.body().attr("data-lumi-cover"))
+        assertEquals("true", document.selectFirst("img")!!.attr("data-lumi-cover-media"))
+        assertEquals("true", document.selectFirst("div")!!.attr("data-lumi-cover-container"))
+        assertTrue(output.contains("object-fit: contain !important"))
+        assertTrue(output.contains("return { top: 0, right: 0, bottom: 0, left: 0 }"))
+    }
+
+    @Test
+    fun doesNotTreatIllustratedTextAsCover() {
+        val source = """
+            <html><body><img src="../Images/frontispiece.jpg"/><p>Preface</p></body></html>
+        """.trimIndent()
+
+        val output = EpubDocumentTransformer.transform(
+            EpubResource("OPS/Text/chapter.xhtml", "application/xhtml+xml", source.toByteArray()),
+            EpubRenditionLayout.REFLOWABLE,
+            isCoverCandidate = true
+        ).toString(Charsets.UTF_8)
+        val document = Jsoup.parse(output, "", Parser.xmlParser())
+
+        assertFalse(document.body().hasAttr("data-lumi-cover"))
+        assertFalse(document.selectFirst("img")!!.hasAttr("data-lumi-cover-media"))
+    }
+
+    @Test
+    fun expandsVectorOnlyFirstDocumentAsCover() {
+        val source = """
+            <html><body><svg viewBox="0 0 1200 1800"><text x="100" y="200">Book title</text></svg></body></html>
+        """.trimIndent()
+
+        val output = EpubDocumentTransformer.transform(
+            EpubResource("OPS/Text/cover.xhtml", "application/xhtml+xml", source.toByteArray()),
+            EpubRenditionLayout.REFLOWABLE,
+            isCoverCandidate = true
+        ).toString(Charsets.UTF_8)
+        val document = Jsoup.parse(output, "", Parser.xmlParser())
+
+        assertEquals("true", document.body().attr("data-lumi-cover"))
+        assertEquals("true", document.selectFirst("svg")!!.attr("data-lumi-cover-media"))
+    }
+
+    @Test
     fun removesActiveContentButPreservesPublisherLayout() {
         val source = """
             <html xmlns="http://www.w3.org/1999/xhtml">
@@ -65,6 +119,8 @@ class EpubDocumentTransformerTest {
         assertTrue(output.contains("@font-face"))
         assertTrue(output.contains("config.textColor"))
         assertTrue(output.contains("config.textAlignment"))
+        assertTrue(output.contains("config.letterSpacingDp"))
+        assertTrue(output.contains("font-weight:100 900"))
         assertTrue(output.contains("{text-align:' + textAlignment + ' !important;}"))
         assertTrue(output.contains("findText"))
         assertTrue(output.contains("version: 2"))
