@@ -77,6 +77,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
@@ -109,6 +110,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import android.provider.OpenableColumns
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
@@ -123,7 +125,7 @@ import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
-import com.huangder.lumibooks.util.DownloadedFonts
+import com.huangder.lumibooks.ui.reader.engine.resolveReaderTypeface
 import com.huangder.lumibooks.util.epub.EpubRenderMode
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
@@ -134,10 +136,12 @@ import com.huangder.lumibooks.domain.model.ReaderPageCorner
 import com.huangder.lumibooks.domain.model.CustomFontPreset
 import com.huangder.lumibooks.domain.model.ReaderThemeSuite
 import com.huangder.lumibooks.domain.model.ReaderThemeSuites
+import com.huangder.lumibooks.domain.model.resolveImageSource
 import com.huangder.lumibooks.domain.model.normalizeReaderThemeSuiteName
 import com.huangder.lumibooks.domain.model.readerThemeSuiteNameCodePointCount
 import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
+import com.huangder.lumibooks.ui.components.LocalLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.components.LiquidGlassButton
 import com.huangder.lumibooks.ui.components.LiquidGlassDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
@@ -205,8 +209,8 @@ fun ThemeSettingsSheet(
     onFontSizeChange: (Float) -> Unit,
     onThemeChange: (String) -> Unit,
     onBackgroundSelect: (String) -> Unit = onThemeChange,
-    onAddBackgroundColor: (Int) -> Unit = {},
-    onAddBackgroundImage: (Uri) -> Unit = {},
+    onAddBackgroundColor: (Int, String) -> Unit = { _, _ -> },
+    onAddBackgroundImage: (Uri, String) -> Unit = { _, _ -> },
     onDeleteBackground: (String) -> Unit = {},
     onThemeSuiteSelect: (String) -> Unit = {},
     onThemeSuiteCreate: (String) -> Unit = {},
@@ -1014,6 +1018,8 @@ private fun ThemeSuiteCard(
     val fallbackBackground = suiteBackgroundColor(suite, backgroundPreset)
     val textColor = suiteTextColor(suite, backgroundPreset, fallbackBackground)
     val fontFamily = rememberSuiteFontFamily(suite, customFonts)
+    val backgroundImageSource = backgroundPreset
+        ?.resolveImageSource(suite.settings.backgroundImageBlurDp)
 
     Box(
         modifier = modifier
@@ -1041,9 +1047,11 @@ private fun ThemeSuiteCard(
             ) {
                 if (backgroundPreset?.type == ReaderBackgroundType.IMAGE) {
                     AsyncImage(
-                        model = File(backgroundPreset.value),
+                        model = backgroundImageSource?.path?.let(::File),
                         contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .blur((backgroundImageSource?.runtimeBlurDp ?: 0f).dp),
                         contentScale = ContentScale.Crop
                     )
                 }
@@ -1296,17 +1304,19 @@ private fun ReaderBackgroundSelector(
     currentSelection: String,
     customBackgrounds: List<ReaderBackgroundPreset>,
     onSelect: (String) -> Unit,
-    onAddColor: (Int) -> Unit,
-    onAddImage: (Uri) -> Unit,
+    onAddColor: (Int, String) -> Unit,
+    onAddImage: (Uri, String) -> Unit,
     onDelete: (String) -> Unit,
     horizontalPadding: Dp = 24.dp
 ) {
     var showCustomizer by remember { mutableStateOf(false) }
+    var pendingImageName by remember { mutableStateOf("") }
     var deleteArmedId by remember { mutableStateOf<String?>(null) }
     val photoPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
-        if (uri != null) onAddImage(uri)
+        if (uri != null) onAddImage(uri, pendingImageName)
+        pendingImageName = ""
     }
 
     LaunchedEffect(currentSelection, customBackgrounds) {
@@ -1354,11 +1364,11 @@ private fun ReaderBackgroundSelector(
             Box(Modifier.fillMaxSize().background(ReaderGreenBg))
         }
 
-        customBackgrounds.forEach { preset ->
+        customBackgrounds.forEachIndexed { index, preset ->
             val isSelected = currentSelection == preset.selectionKey
             val isDeleteArmed = deleteArmedId == preset.id
             BackgroundPresetItem(
-                label = stringResource(R.string.background_custom),
+                label = preset.displayName(index),
                 isSelected = isSelected,
                 onClick = {
                     if (isDeleteArmed) {
@@ -1431,6 +1441,7 @@ private fun ReaderBackgroundSelector(
         CustomBackgroundDialog(
             onAddColor = onAddColor,
             onPickPhoto = {
+                pendingImageName = it
                 showCustomizer = false
                 photoPicker.launch(
                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
@@ -1494,8 +1505,8 @@ private fun BackgroundPresetItem(
 
 @Composable
 private fun CustomBackgroundDialog(
-    onAddColor: (Int) -> Unit,
-    onPickPhoto: () -> Unit,
+    onAddColor: (Int, String) -> Unit,
+    onPickPhoto: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
     val dialogTransparency = (LocalLiquidGlassTransparency.current - 0.10f)
@@ -1506,9 +1517,13 @@ private fun CustomBackgroundDialog(
     val previewColorInt = android.graphics.Color.HSVToColor(
         floatArrayOf(hue, saturation / 100f, lightness / 100f)
     )
+    val defaultName = stringResource(R.string.background_name_default)
+    var name by remember { mutableStateOf(defaultName) }
+    val backdrop = LocalLiquidGlassBackdrop.current
 
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
+        backdrop = backdrop,
         shape = RoundedCornerShape(24.dp),
         transparencyOverride = dialogTransparency
     ) {
@@ -1541,6 +1556,34 @@ private fun CustomBackgroundDialog(
                 )
                 Spacer(Modifier.height(16.dp))
 
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(LightBgGray)
+                        .border(1.dp, LightDivider, RoundedCornerShape(14.dp))
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                ) {
+                    BasicTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        textStyle = TextStyle(color = AppColors.TextPrimary, fontSize = 16.sp),
+                        decorationBox = { inner ->
+                            if (name.isEmpty()) {
+                                Text(
+                                    stringResource(R.string.background_name_hint),
+                                    color = LightTextSecondary,
+                                    fontSize = 16.sp
+                                )
+                            }
+                            inner()
+                        }
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
+
                 BackgroundColorSlider(stringResource(R.string.background_hue), hue, 0f..360f) {
                     hue = it
                 }
@@ -1560,13 +1603,17 @@ private fun CustomBackgroundDialog(
 
                 LiquidGlassTextButton(
                     text = stringResource(R.string.background_add_color),
-                    onClick = { onAddColor(previewColorInt); onDismiss() },
+                    onClick = {
+                        onAddColor(previewColorInt, name.trim())
+                        onDismiss()
+                    },
+                    enabled = name.trim().isNotEmpty(),
                     modifier = Modifier.fillMaxWidth().height(44.dp),
                     tintedColor = AccentColor
                 )
                 Spacer(Modifier.height(10.dp))
                 LiquidGlassButton(
-                    onClick = onPickPhoto,
+                    onClick = { onPickPhoto(name.trim()) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(44.dp)
@@ -1880,11 +1927,11 @@ fun AdvancedSettingsSheet(
     onLetterSpacingChange: (Float) -> Unit,
     onTextAlignmentChange: (ReaderTextAlignment) -> Unit = {},
     onFontTypeChange: (String) -> Unit,
-    onImportFont: (android.net.Uri) -> Unit = {},
+    onImportFont: (android.net.Uri, String) -> Unit = { _, _ -> },
     onDeleteCustomFont: (String) -> Unit = {},
     onBackgroundSelect: (String) -> Unit,
-    onAddBackgroundColor: (Int) -> Unit,
-    onAddBackgroundImage: (Uri) -> Unit,
+    onAddBackgroundColor: (Int, String) -> Unit,
+    onAddBackgroundImage: (Uri, String) -> Unit,
     onDeleteBackground: (String) -> Unit,
     onPreserveEpubBackgroundChange: (Boolean) -> Unit = {},
     onMarginLeftChange: (Float) -> Unit,
@@ -1975,19 +2022,12 @@ fun AdvancedSettingsSheet(
     val previewFirstLineIndent = if (preservePublisherLayout) 0f else currentFirstLineIndent
     val previewContext = LocalContext.current
     val verticalPreviewTypeface = remember(previewContext, currentFontType, customFontPath) {
-        when {
-            currentFontType == "serif" -> android.graphics.Typeface.SERIF
-            currentFontType == "fangsong" -> DownloadedFonts.typeface(previewContext, "fangsong")
-                ?: android.graphics.Typeface.DEFAULT
-            currentFontType == "kaiti" -> androidx.core.content.res.ResourcesCompat.getFont(
-                previewContext,
-                R.font.lxgw_wenkai
-            ) ?: android.graphics.Typeface.DEFAULT
-            currentFontType.startsWith("custom") && customFontPath != null -> runCatching {
-                android.graphics.Typeface.createFromFile(java.io.File(customFontPath))
-            }.getOrDefault(android.graphics.Typeface.DEFAULT)
-            else -> android.graphics.Typeface.DEFAULT
-        }
+        resolveReaderTypeface(
+            context = previewContext,
+            fontType = currentFontType,
+            customFontPath = customFontPath,
+            weight = 400
+        ).typeface
     }
 
     LiquidGlassMenuHost(modifier = Modifier.fillMaxSize()) {
@@ -3435,16 +3475,23 @@ private fun FontSelector(
     customFontPath: String? = null,
     customFonts: List<com.huangder.lumibooks.domain.model.CustomFontPreset> = emptyList(),
     onFontChange: (String) -> Unit,
-    onImportFont: (android.net.Uri) -> Unit = {},
+    onImportFont: (android.net.Uri, String) -> Unit = { _, _ -> },
     onDeleteCustomFont: (String) -> Unit = {},
     usePublisherFontLabel: Boolean = false,
     downloadingKey: String? = null,
     fontDownloadFailed: Boolean = false
 ) {
+    val context = LocalContext.current
+    var pendingImportUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var pendingImportName by remember { mutableStateOf("") }
+    val liquidGlassBackdrop = LocalLiquidGlassBackdrop.current
     val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
     ) { uri ->
-        if (uri != null) onImportFont(uri)
+        if (uri != null) {
+            pendingImportUri = uri
+            pendingImportName = importedFontName(context, uri)
+        }
     }
     var deleteArmedId by remember { mutableStateOf<String?>(null) }
 
@@ -3528,8 +3575,16 @@ private fun FontSelector(
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(preset.displayName(item.index), fontSize = 14.sp, fontFamily = fontFamily,
-                                    color = if (isSelected) AccentColor else LightTextSecondary)
+                                val label = preset.displayName(item.index)
+                                Text(
+                                    label,
+                                    fontSize = if (label.codePointCount(0, label.length) > 4) 12.sp else 14.sp,
+                                    fontFamily = fontFamily,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = if (isSelected) AccentColor else LightTextSecondary
+                                )
                                 if (isDeleteArmed) {
                                     Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.48f)),
                                         contentAlignment = Alignment.Center) {
@@ -3560,6 +3615,122 @@ private fun FontSelector(
             }
         }
     }
+
+    pendingImportUri?.let { uri ->
+        FontImportNameDialog(
+            initialName = pendingImportName,
+            backdrop = liquidGlassBackdrop,
+            onConfirm = { name ->
+                onImportFont(uri, name)
+                pendingImportUri = null
+            },
+            onDismiss = { pendingImportUri = null }
+        )
+    }
+}
+
+private fun importedFontName(context: android.content.Context, uri: android.net.Uri): String {
+    val rawName = runCatching {
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+    }.getOrNull()
+    val withoutExtension = rawName?.substringBeforeLast('.', rawName)?.trim().orEmpty()
+    val source = withoutExtension.ifBlank { context.getString(R.string.font_import_default_name) }
+    val count = source.codePointCount(0, source.length)
+    return source.substring(0, source.offsetByCodePoints(0, count.coerceAtMost(6)))
+}
+
+@Composable
+private fun FontImportNameDialog(
+    initialName: String,
+    backdrop: com.kyant.backdrop.Backdrop?,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val focusRequester = remember { FocusRequester() }
+    var name by remember(initialName) { mutableStateOf(initialName) }
+    val normalized = name.trim()
+    val count = normalized.codePointCount(0, normalized.length)
+    val confirm = {
+        if (normalized.isNotEmpty()) {
+            val end = normalized.offsetByCodePoints(0, count.coerceAtMost(6))
+            onConfirm(normalized.substring(0, end))
+        }
+    }
+
+    LiquidGlassDialog(
+        onDismissRequest = onDismiss,
+        backdrop = backdrop,
+        shape = RoundedCornerShape(24.dp),
+        transparencyOverride = (LocalLiquidGlassTransparency.current - 0.10f).coerceIn(0f, 0.90f),
+        backgroundBlurRadius = 12.dp
+    ) {
+        Column(Modifier.padding(horizontal = 28.dp, vertical = 22.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(R.string.font_import_name_title),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = AppColors.TextPrimary
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    stringResource(R.string.font_import_name_count, count.coerceAtMost(6)),
+                    fontSize = 12.sp,
+                    color = LightTextSecondary
+                )
+            }
+            Spacer(Modifier.height(18.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(LightBgGray)
+                    .border(1.dp, LightDivider, RoundedCornerShape(14.dp))
+                    .padding(horizontal = 16.dp, vertical = 14.dp)
+            ) {
+                BasicTextField(
+                    value = name,
+                    onValueChange = { value ->
+                        val trimmed = value.trimStart()
+                        val end = trimmed.offsetByCodePoints(
+                            0,
+                            trimmed.codePointCount(0, trimmed.length).coerceAtMost(6)
+                        )
+                        name = trimmed.substring(0, end)
+                    },
+                    modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+                    singleLine = true,
+                    textStyle = TextStyle(color = AppColors.TextPrimary, fontSize = 16.sp),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { confirm() }),
+                    decorationBox = { inner ->
+                        if (name.isEmpty()) {
+                            Text(
+                                stringResource(R.string.font_import_name_hint),
+                                color = LightTextSecondary,
+                                fontSize = 16.sp
+                            )
+                        }
+                        inner()
+                    }
+                )
+            }
+            Spacer(Modifier.height(18.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End)) {
+                LiquidGlassTextButton(text = stringResource(R.string.cancel), onClick = onDismiss)
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.confirm),
+                    onClick = confirm,
+                    enabled = normalized.isNotEmpty(),
+                    tintedColor = AccentColor
+                )
+            }
+        }
+    }
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
 }
 
 @Composable
