@@ -55,6 +55,9 @@ class TtsController(
     private var pageSource: TtsPageSource? = null
     private var segments: List<TtsTextSegment> = emptyList()
     private var sentenceIndex = 0
+    private var clauses: List<TtsTextSegment> = emptyList()
+    private var clauseIndex = 0
+    private var playbackSentence: TtsTextSegment? = null
     private var activeUtteranceId: String? = null
     private var sessionGeneration = 0L
     private var utteranceSequence = 0L
@@ -63,6 +66,7 @@ class TtsController(
     private var pendingResume: ExternalTtsResumePosition? = null
     private var crossPageMerge: CrossPageMergeState? = null
     private var activeSegment: TtsTextSegment? = null
+    private var activeSentenceSegment: TtsTextSegment? = null
     private var pageTurnSequence = 0L
     private var pendingPageTurn: PendingPageTurn? = null
     private var acknowledgedPageTurn: AcknowledgedPageTurn? = null
@@ -242,8 +246,7 @@ class TtsController(
             val state = _playbackState.value
             if (state != TtsPlaybackState.PLAYING && state != TtsPlaybackState.PAUSED) return@launch
             activeUtteranceId = null
-            activeSegment = null
-            _currentSentence.value = null
+            resetClausePlayback()
             activeEngine.stop()
 
             if (forward) {
@@ -348,6 +351,7 @@ class TtsController(
         ) {
             activeUtteranceId = null
             activeSegment = null
+            activeSentenceSegment = null
             _currentSentence.value = null
             activeEngine.stop()
             speakCurrentSegment()
@@ -366,7 +370,15 @@ class TtsController(
         if (_playbackState.value != TtsPlaybackState.PLAYING) return
         activeUtteranceId = null
         activeSegment = null
+        activeSentenceSegment = null
         pendingResume = null
+        if (clauseIndex + 1 < clauses.size) {
+            clauseIndex++
+            speakCurrentSegment()
+            return
+        }
+
+        resetClausePlayback()
         if (sentenceIndex + 1 < segments.size) {
             sentenceIndex++
             speakCurrentSegment()
@@ -420,8 +432,7 @@ class TtsController(
         val token = ++pageLoadToken
         pageContentError = null
         activeUtteranceId = null
-        activeSegment = null
-        _currentSentence.value = null
+        resetClausePlayback()
         activeEngine.stop()
         crossPageMerge = null
 
@@ -543,22 +554,8 @@ class TtsController(
     private suspend fun speakCurrentSegment() {
         val generation = sessionGeneration
         val page = _currentPage.value ?: return
-        var segment = segments.getOrNull(sentenceIndex) ?: return
-
-        if (
-            crossPageMerge == null &&
-            sentenceIndex == segments.lastIndex &&
-            segment.canContinueAcrossPage &&
-            textExtractor.isTrailing(segment.text)
-        ) {
-            val merged = mergeAcrossPages(
-                segment.text,
-                segment.startCharacterOffset,
-                segment.endCharacterOffset,
-                generation
-            )
-            if (merged != null) segment = merged
-        }
+        val sentence = prepareCurrentSentence(page, generation) ?: return
+        val segment = clauses.getOrNull(clauseIndex) ?: return
         if (generation != sessionGeneration ||
             _currentPage.value?.location != page.location ||
             _playbackState.value != TtsPlaybackState.PLAYING
@@ -573,14 +570,18 @@ class TtsController(
             append(page.location.pageIndex)
             append("_s")
             append(sentenceIndex)
+            append("_c")
+            append(clauseIndex)
         }
         activeUtteranceId = utteranceId
         activeSegment = segment
+        activeSentenceSegment = sentence
         _currentSentence.value = segment
         val resume = pendingResume?.takeIf {
             it.chapterIndex == page.location.chapterIndex &&
                 it.pageIndex == page.location.pageIndex &&
-                it.characterOffset == segment.startCharacterOffset
+                it.characterOffset == sentence.startCharacterOffset &&
+                it.clauseIndex == clauseIndex
         }
         pendingResume = null
         val result = activeEngine.speak(
@@ -605,14 +606,70 @@ class TtsController(
                     bookId = _activeBookId.value ?: return,
                     chapterIndex = page.location.chapterIndex,
                     pageIndex = page.location.pageIndex,
-                    characterOffset = segment.startCharacterOffset,
+                    characterOffset = sentence.startCharacterOffset,
+                    clauseIndex = clauseIndex,
                     pageFingerprint = page.resumeFingerprint,
                     cacheKey = cacheKey,
                     pcmFrameOffset = resume?.pcmFrameOffset ?: 0L
                 )
             )
-            segments.getOrNull(sentenceIndex + 1)?.let { activeEngine.prefetch(it.text) }
+            nextPrefetchText()?.let { activeEngine.prefetch(it) }
         }
+    }
+
+    private suspend fun prepareCurrentSentence(
+        page: TtsPageContent,
+        generation: Long
+    ): TtsTextSegment? {
+        playbackSentence?.let { return it }
+        var sentence = segments.getOrNull(sentenceIndex) ?: return null
+        if (
+            crossPageMerge == null &&
+            sentenceIndex == segments.lastIndex &&
+            sentence.canContinueAcrossPage &&
+            textExtractor.isTrailing(sentence.text)
+        ) {
+            val merged = mergeAcrossPages(
+                sentence.text,
+                sentence.startCharacterOffset,
+                sentence.endCharacterOffset,
+                generation
+            )
+            if (merged != null) sentence = merged
+        }
+        if (generation != sessionGeneration || _currentPage.value?.location != page.location) return null
+
+        val preparedClauses = textExtractor.splitIntoClauses(sentence)
+        if (preparedClauses.isEmpty()) return null
+        playbackSentence = sentence
+        clauses = preparedClauses
+        clauseIndex = pendingResume
+            ?.takeIf {
+                it.chapterIndex == page.location.chapterIndex &&
+                    it.pageIndex == page.location.pageIndex &&
+                    it.characterOffset == sentence.startCharacterOffset &&
+                    it.clauseIndex in preparedClauses.indices
+            }
+            ?.clauseIndex
+            ?: 0
+        return sentence
+    }
+
+    private fun nextPrefetchText(): String? {
+        clauses.getOrNull(clauseIndex + 1)?.let { return it.text }
+        return segments.getOrNull(sentenceIndex + 1)
+            ?.let { textExtractor.splitIntoClauses(it) }
+            ?.firstOrNull()
+            ?.text
+    }
+
+    private fun resetClausePlayback() {
+        activeSegment = null
+        activeSentenceSegment = null
+        playbackSentence = null
+        clauses = emptyList()
+        clauseIndex = 0
+        _currentSentence.value = null
     }
     private suspend fun persistExternalProgress(
         utteranceId: String,
@@ -621,14 +678,16 @@ class TtsController(
     ) {
         if (utteranceId != activeUtteranceId || !activeEngine.isExternal) return
         val page = _currentPage.value ?: return
-        val segment = activeSegment ?: segments.getOrNull(sentenceIndex) ?: return
+        val segment = activeSegment ?: return
+        val sentence = activeSentenceSegment ?: return
         val bookId = _activeBookId.value ?: return
         dataStoreManager.saveExternalTtsResumePosition(
             ExternalTtsResumePosition(
                 bookId = bookId,
                 chapterIndex = page.location.chapterIndex,
                 pageIndex = page.location.pageIndex,
-                characterOffset = segment.startCharacterOffset,
+                characterOffset = sentence.startCharacterOffset,
+                clauseIndex = clauseIndex,
                 pageFingerprint = page.resumeFingerprint,
                 cacheKey = cacheKey,
                 pcmFrameOffset = pcmFrameOffset.coerceAtLeast(0L)
@@ -639,7 +698,8 @@ class TtsController(
     private suspend fun persistCurrentExternalProgress() {
         if (!activeEngine.isExternal || activeUtteranceId == null) return
         val page = _currentPage.value ?: return
-        val segment = activeSegment ?: segments.getOrNull(sentenceIndex) ?: return
+        val segment = activeSegment ?: return
+        val sentence = activeSentenceSegment ?: return
         val bookId = _activeBookId.value ?: return
         val cacheKey = activeEngine.cacheKey(segment.text) ?: return
         dataStoreManager.saveExternalTtsResumePosition(
@@ -647,7 +707,8 @@ class TtsController(
                 bookId = bookId,
                 chapterIndex = page.location.chapterIndex,
                 pageIndex = page.location.pageIndex,
-                characterOffset = segment.startCharacterOffset,
+                characterOffset = sentence.startCharacterOffset,
+                clauseIndex = clauseIndex,
                 pageFingerprint = page.resumeFingerprint,
                 cacheKey = cacheKey,
                 pcmFrameOffset = activeEngine.currentPcmFrameOffset().coerceAtLeast(0L)
@@ -693,12 +754,12 @@ class TtsController(
         clearPageTurnReplay()
         pageLoadToken++
         activeUtteranceId = null
-        activeSegment = null
-        _currentSentence.value = null
+        resetClausePlayback()
         systemTtsEngine.stop()
         externalTtsEngine.stop()
         runCatching { pageSource?.close() }
         pageSource = null
+        crossPageMerge = null
         pendingPageTurn = null
         acknowledgedPageTurn = null
         segments = emptyList()

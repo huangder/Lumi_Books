@@ -1,11 +1,16 @@
 package com.huangder.lumibooks.tts
 
+import java.text.BreakIterator
+import java.util.Locale
+
 class TtsTextExtractor {
     companion object {
         internal const val MAX_SENTENCE_LENGTH = 200
+        internal const val MAX_CLAUSE_LENGTH = 24
         internal val TERMINATORS = setOf('。', '！', '？', '；', '.', '!', '?', ';')
         internal val CLOSING_PUNCTUATION = setOf('”', '’', '"', '\'', '》', '】', '）', ')')
         private val SOFT_BREAKS = setOf('，', ',', '、', '：', ':')
+        private val CLAUSE_BREAKS = TERMINATORS + SOFT_BREAKS + setOf('…', '\n')
     }
 
     fun extractPageText(
@@ -93,6 +98,41 @@ class TtsTextExtractor {
         }
         appendSegment(text, start, text.length, baseCharacterOffset, segments)
         return segments
+    }
+
+    /**
+     * Splits a logical sentence into subtitle-sized clauses while retaining source offsets.
+     * Punctuation stays with the preceding clause and long unpunctuated text is split only at
+     * word or grapheme boundaries.
+     */
+    fun splitIntoClauses(
+        segment: TtsTextSegment,
+        maxClauseLength: Int = MAX_CLAUSE_LENGTH
+    ): List<TtsTextSegment> {
+        require(maxClauseLength > 0) { "maxClauseLength must be positive" }
+        if (segment.text.isBlank()) return emptyList()
+
+        val clauses = mutableListOf<TtsTextSegment>()
+        var start = 0
+        var index = 0
+        while (index < segment.text.length) {
+            if (segment.text[index] in CLAUSE_BREAKS) {
+                var end = index + 1
+                while (
+                    end < segment.text.length &&
+                    (segment.text[end] in CLAUSE_BREAKS || segment.text[end] in CLOSING_PUNCTUATION)
+                ) {
+                    end++
+                }
+                appendClauseRange(segment, start, end, maxClauseLength, clauses)
+                start = end
+                index = end
+            } else {
+                index++
+            }
+        }
+        appendClauseRange(segment, start, segment.text.length, maxClauseLength, clauses)
+        return clauses
     }
 
     data class MergeResult(
@@ -183,6 +223,82 @@ class TtsTextExtractor {
                 canContinueAcrossPage = canContinueAcrossPage
             )
         }
+    }
+
+    private fun appendClauseRange(
+        segment: TtsTextSegment,
+        rawStart: Int,
+        rawEnd: Int,
+        maxClauseLength: Int,
+        output: MutableList<TtsTextSegment>
+    ) {
+        var start = rawStart
+        var end = rawEnd
+        while (start < end && segment.text[start].isWhitespace()) start++
+        while (end > start && segment.text[end - 1].isWhitespace()) end--
+        if (start >= end) return
+
+        while (graphemeCount(segment.text, start, end) > maxClauseLength) {
+            val hardLimit = graphemeBoundaryAt(segment.text, start, end, maxClauseLength)
+            val wordBoundary = lastWhitespaceBoundary(segment.text, start, hardLimit)
+                .takeIf { it > start }
+            val splitEnd = wordBoundary ?: hardLimit
+            appendClause(segment, start, splitEnd, output)
+            start = splitEnd
+            while (start < end && segment.text[start].isWhitespace()) start++
+        }
+        appendClause(segment, start, end, output)
+    }
+
+    private fun appendClause(
+        segment: TtsTextSegment,
+        start: Int,
+        end: Int,
+        output: MutableList<TtsTextSegment>
+    ) {
+        if (start >= end) return
+        output += TtsTextSegment(
+            text = segment.text.substring(start, end),
+            startCharacterOffset = segment.startCharacterOffset + start,
+            endCharacterOffset = segment.startCharacterOffset + end,
+            canContinueAcrossPage = false
+        )
+    }
+
+    private fun graphemeCount(text: String, start: Int, end: Int): Int {
+        val iterator = BreakIterator.getCharacterInstance(Locale.ROOT)
+        iterator.setText(text.substring(start, end))
+        var count = 0
+        var boundary = iterator.first()
+        while (boundary != BreakIterator.DONE) {
+            val next = iterator.next()
+            if (next == BreakIterator.DONE) break
+            count++
+            boundary = next
+        }
+        return count
+    }
+
+    private fun graphemeBoundaryAt(text: String, start: Int, end: Int, count: Int): Int {
+        val iterator = BreakIterator.getCharacterInstance(Locale.ROOT)
+        iterator.setText(text.substring(start, end))
+        var boundary = iterator.first()
+        repeat(count) {
+            val next = iterator.next()
+            if (next == BreakIterator.DONE) return end
+            boundary = next
+        }
+        return start + boundary
+    }
+
+    private fun lastWhitespaceBoundary(text: String, start: Int, endExclusive: Int): Int {
+        if (endExclusive < text.length && text[endExclusive].isWhitespace()) return endExclusive
+        var index = endExclusive
+        while (index > start) {
+            if (text[index - 1].isWhitespace()) return index - 1
+            index--
+        }
+        return start
     }
 
     private fun normalize(text: String): String {

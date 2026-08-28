@@ -57,6 +57,50 @@ class TtsTextExtractorTest {
     }
 
     @Test
+    fun splitIntoClauses_splitsAtSoftPunctuationAndPreservesOffsets() {
+        val segment = TtsTextSegment(
+            text = "第一小句，第二小句；第三小句。",
+            startCharacterOffset = 50,
+            endCharacterOffset = 65
+        )
+
+        val result = extractor.splitIntoClauses(segment)
+
+        assertEquals(listOf("第一小句，", "第二小句；", "第三小句。"), result.map { it.text })
+        assertEquals(listOf(50, 55, 60), result.map { it.startCharacterOffset })
+        assertEquals(listOf(55, 60, 65), result.map { it.endCharacterOffset })
+    }
+
+    @Test
+    fun splitIntoClauses_keepsClosingQuoteWithPunctuation() {
+        val segment = TtsTextSegment("他说：“可以！”然后走了。", 10, 23)
+
+        val result = extractor.splitIntoClauses(segment)
+
+        assertEquals(listOf("他说：", "“可以！”", "然后走了。"), result.map { it.text })
+    }
+
+    @Test
+    fun splitIntoClauses_prefersWholeWordsForLongEnglishText() {
+        val segment = TtsTextSegment("one two three four", 0, 18)
+
+        val result = extractor.splitIntoClauses(segment, maxClauseLength = 7)
+
+        assertEquals(listOf("one two", "three", "four"), result.map { it.text })
+    }
+
+    @Test
+    fun splitIntoClauses_neverSplitsSurrogatePairs() {
+        val segment = TtsTextSegment("😀😀😀", 100, 106)
+
+        val result = extractor.splitIntoClauses(segment, maxClauseLength = 2)
+
+        assertEquals(listOf("😀😀", "😀"), result.map { it.text })
+        assertEquals(listOf(100, 104), result.map { it.startCharacterOffset })
+        assertEquals(listOf(104, 106), result.map { it.endCharacterOffset })
+    }
+
+    @Test
     fun pageResumeFingerprint_changesWithPageLayoutOrText() {
         val location = TtsPageLocation(chapterIndex = 2, pageIndex = 3)
         val original = buildTtsPageFingerprint(location, startCharacterOffset = 100, text = "正文")

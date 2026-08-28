@@ -39,6 +39,7 @@ data class ExternalTtsResumePosition(
     val chapterIndex: Int,
     val pageIndex: Int,
     val characterOffset: Int,
+    val clauseIndex: Int = 0,
     val cacheKey: String? = null,
     val pageFingerprint: String? = null,
     val pcmFrameOffset: Long = 0L

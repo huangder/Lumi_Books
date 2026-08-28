@@ -122,6 +122,17 @@
                 <data android:scheme="file" />
                 <data android:mimeType="application/x-mobipocket-ebook" />
             </intent-filter>
+
+            <!-- 在系统分享菜单中显示 LUMI，并支持一次导入一本或多本书 -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="application/epub+zip" />
+                <data android:mimeType="text/plain" />
+                <data android:mimeType="application/x-mobipocket-ebook" />
+            </intent-filter>
         </activity>
 
         <activity
@@ -180,6 +191,13 @@
             android:windowSoftInputMode="adjustResize" />
 
         <activity
+            android:name=".ui.bookshelf.BookDetailsActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+            android:theme="@style/Theme.EBookReader"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
             android:name=".ui.bookshelf.BookshelfCategoriesActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
@@ -197,12 +215,6 @@
             android:name=".service.TtsForegroundService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
-
-        <service
-            android:name=".service.TtsFloatingWindowService"
-            android:exported="false"
-            android:foregroundServiceType="mediaPlayback"
-            android:stopWithTask="false" />
 
         <receiver
             android:name=".widget.ContinueReadingWidgetProvider"

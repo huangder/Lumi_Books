@@ -17,6 +17,97 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class TtsControllerTest {
     @Test
+    fun punctuationClausesAdvanceInsideOneLogicalSentence() = runTest {
+        val main = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(main)
+        val engine = FakePlaybackEngine()
+        val controller = controller(engine)
+        try {
+            controller.start("book", FakePageSource(page(0, "第一小句，第二小句，句子结束。")), 0, 0)
+            assertEquals("第一小句，", controller.currentSentence.value?.text)
+
+            engine.complete(engine.lastUtteranceId)
+            runCurrent()
+            assertEquals("第二小句，", controller.currentSentence.value?.text)
+
+            engine.complete(engine.lastUtteranceId)
+            runCurrent()
+            assertEquals("句子结束。", controller.currentSentence.value?.text)
+            assertEquals(listOf("第一小句，", "第二小句，", "句子结束。"), engine.spokenTexts)
+        } finally {
+            controller.shutdown()
+            runCurrent()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun skipForwardMovesToNextLogicalSentenceFromMiddleClause() = runTest {
+        val main = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(main)
+        val engine = FakePlaybackEngine()
+        val controller = controller(engine)
+        try {
+            controller.start(
+                "book",
+                FakePageSource(page(0, "第一小句，第二小句，句子结束。下一句。")),
+                0,
+                0
+            )
+            engine.complete(engine.lastUtteranceId)
+            runCurrent()
+
+            controller.skip(forward = true)
+            runCurrent()
+
+            assertEquals("下一句。", controller.currentSentence.value?.text)
+            assertEquals(listOf("第一小句，", "第二小句，", "下一句。"), engine.spokenTexts)
+        } finally {
+            controller.shutdown()
+            runCurrent()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun externalResumeRestoresTheSavedClauseWithinItsLogicalSentence() = runTest {
+        val main = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(main)
+        val page = page(0, "第一小句，第二小句，句子结束。")
+        val settingsStore = FakeSettingsStore(TtsProviderSelection.AiModel).apply {
+            seedResume(
+                ExternalTtsResumePosition(
+                    bookId = "book",
+                    chapterIndex = 0,
+                    pageIndex = 0,
+                    characterOffset = 0,
+                    clauseIndex = 1,
+                    cacheKey = "saved-cache",
+                    pageFingerprint = page.resumeFingerprint,
+                    pcmFrameOffset = 42L
+                )
+            )
+        }
+        val externalEngine = FakePlaybackEngine(isExternal = true)
+        val controller = controller(
+            systemEngine = FakePlaybackEngine(),
+            externalEngine = externalEngine,
+            settingsStore = settingsStore
+        )
+        try {
+            assertTrue(controller.start("book", FakePageSource(page), 0, 0).isSuccess)
+
+            assertEquals(listOf("第二小句，"), externalEngine.spokenTexts)
+            assertEquals(listOf("saved-cache"), externalEngine.suppliedCacheKeys)
+            assertEquals(listOf(42L), externalEngine.suppliedStartFrames)
+        } finally {
+            controller.shutdown()
+            runCurrent()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun duplicateAndOldDoneCallbacksAdvanceOnlyOnce() = runTest {
         val main = StandardTestDispatcher(testScheduler)
         Dispatchers.setMain(main)
@@ -299,6 +390,8 @@ class TtsControllerTest {
         private lateinit var listener: TtsPlaybackListener
         val spokenTexts = mutableListOf<String>()
         val selectedEnginePackages = mutableListOf<String?>()
+        val suppliedCacheKeys = mutableListOf<String?>()
+        val suppliedStartFrames = mutableListOf<Long>()
         var lastUtteranceId = ""
 
         override suspend fun selectEngine(packageName: String?) {
@@ -312,6 +405,17 @@ class TtsControllerTest {
             lastUtteranceId = utteranceId
             listener.onStart(utteranceId)
             return Result.success(Unit)
+        }
+
+        override suspend fun speak(
+            text: String,
+            utteranceId: String,
+            cacheKey: String?,
+            startFrame: Long
+        ): Result<Unit> {
+            suppliedCacheKeys += cacheKey
+            suppliedStartFrames += startFrame
+            return speak(text, utteranceId)
         }
 
         fun complete(utteranceId: String) = listener.onDone(utteranceId)
@@ -338,6 +442,10 @@ class TtsControllerTest {
 
         override fun externalTtsResumePosition(bookId: String): Flow<ExternalTtsResumePosition?> =
             resumePositions.getOrPut(bookId) { MutableStateFlow(null) }
+
+        fun seedResume(position: ExternalTtsResumePosition) {
+            resumePositions.getOrPut(position.bookId) { MutableStateFlow(null) }.value = position
+        }
 
         override suspend fun saveTtsSpeechRate(rate: Float) {
             ttsSpeechRate.value = rate

@@ -37,16 +37,21 @@ import com.huangder.lumibooks.domain.model.ReaderThemeSuites
 import com.huangder.lumibooks.domain.model.ReaderPageAnimationSettings
 import com.huangder.lumibooks.domain.model.defaultReaderCornerContent
 import com.huangder.lumibooks.util.LaunchThemeController
+import com.huangder.lumibooks.util.LaunchThemeSnapshot
 import com.huangder.lumibooks.util.epub.EpubRenderMode
 import com.huangder.lumibooks.tts.ExternalTtsProtocol
 import com.huangder.lumibooks.tts.ExternalTtsResumePosition
 import com.huangder.lumibooks.tts.ExternalTtsSettings
 import com.huangder.lumibooks.tts.ExternalTtsConfig
+import com.huangder.lumibooks.tts.FloatingSubtitleSettings
 import com.huangder.lumibooks.tts.TtsSettingsStore
 import com.huangder.lumibooks.tts.TtsProviderSelection
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import javax.inject.Inject
@@ -54,10 +59,69 @@ import javax.inject.Singleton
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
+data class ReaderPreferencesSnapshot(
+    val fontSize: Float,
+    val lineHeight: Float,
+    val letterSpacing: Float,
+    val textAlignment: ReaderTextAlignment,
+    val fontType: String,
+    val marginLeft: Float,
+    val marginRight: Float,
+    val marginTop: Float,
+    val marginBottom: Float,
+    val readerTheme: String,
+    val brightness: Float,
+    val customFontPath: String?,
+    val customFonts: List<CustomFontPreset>,
+    val readerBackgroundSelection: String,
+    val readerBackgroundColorSelection: String,
+    val readerBackgroundImageOpacity: Float,
+    val readerBackgroundImageBlurDp: Float,
+    val customReaderBackgrounds: List<ReaderBackgroundPreset>,
+    val preserveEpubBackground: Boolean,
+    val readerTextColor: Int?,
+    val pageAnimationSettings: ReaderPageAnimationSettings,
+    val pageTransition: String,
+    val readerThemeSuiteState: ReaderThemeSuiteState,
+    val pdfPageMode: String,
+    val showReaderChapterProgress: Boolean,
+    val showReaderPageNumber: Boolean,
+    val showReaderBattery: Boolean,
+    val volumeKeyPageTurnEnabled: Boolean,
+    val bionicReadingEnabled: Boolean,
+    val comicModeEnabled: Boolean,
+    val bodyFontWeight: Int,
+    val eInkModeEnabled: Boolean,
+    val twoPageSpreadEnabled: Boolean,
+    val screenSleepTimeoutSeconds: Int,
+    val readerEdgeTapMode: ReaderEdgeTapMode,
+    val readerTopLeftContent: ReaderCornerContent,
+    val readerTopRightContent: ReaderCornerContent,
+    val readerBottomLeftContent: ReaderCornerContent,
+    val readerBottomRightContent: ReaderCornerContent,
+    val readerDisplayMode: String,
+    val paragraphSpacing: Float,
+    val firstLineIndent: Float,
+    val chineseMode: String,
+    val selectionMenuItems: Map<String, Boolean>,
+    val customHighlightPalettes: List<HighlightPalette>,
+    val activeHighlightPaletteId: String?,
+    val renderMode: EpubRenderMode,
+    val txtEncoding: String,
+    val txtEncodingHintShown: Boolean,
+    val epubLayoutHintShown: Boolean,
+    val mobiLayoutHintShown: Boolean,
+    val optimizeLayout: Boolean,
+    val useEpubCss: Boolean,
+    val readerWritingMode: ReaderWritingMode
+)
+
 @Singleton
 class DataStoreManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) : TtsSettingsStore {
+    private val readerMigrationMutex = Mutex()
+    @Volatile private var readerMigrationsComplete = false
     private val deviceSupportsHdr: Boolean by lazy {
         context.getSystemService(DisplayManager::class.java)
             ?.getDisplay(Display.DEFAULT_DISPLAY)
@@ -105,6 +169,13 @@ class DataStoreManager @Inject constructor(
         private val ACTIVE_HIGHLIGHT_PALETTE_ID = stringPreferencesKey("active_highlight_palette_id")
         private val SELECTION_MENU_ITEMS = stringPreferencesKey("selection_menu_items")
         private val TTS_FLOATING_WINDOW = booleanPreferencesKey("tts_floating_window")
+        private val TTS_FLOATING_X_FRACTION = floatPreferencesKey("tts_floating_x_fraction")
+        private val TTS_FLOATING_Y_FRACTION = floatPreferencesKey("tts_floating_y_fraction")
+        private val TTS_FLOATING_BACKGROUND_COLOR = stringPreferencesKey("tts_floating_background_color")
+        private val TTS_FLOATING_BACKGROUND_OPACITY = floatPreferencesKey("tts_floating_background_opacity")
+        private val TTS_FLOATING_CORNER_RADIUS_DP = floatPreferencesKey("tts_floating_corner_radius_dp")
+        private val TTS_FLOATING_WIDTH_DP = floatPreferencesKey("tts_floating_width_dp")
+        private val TTS_FLOATING_HEIGHT_DP = floatPreferencesKey("tts_floating_height_dp")
         private val PREFERRED_TTS_ENGINE = stringPreferencesKey("preferred_tts_engine")
         private val TTS_PROVIDER_SELECTION = stringPreferencesKey("tts_provider_selection")
         private val BODY_FONT_WEIGHT = intPreferencesKey("body_font_weight")
@@ -137,6 +208,7 @@ class DataStoreManager @Inject constructor(
         private val GLOBAL_FONT_MODE = stringPreferencesKey("global_font_mode")
         private val LIQUID_GLASS_TRANSPARENCY = floatPreferencesKey("liquid_glass_transparency")
         private val LIQUID_GLASS_HDR_HIGHLIGHT_ENABLED = booleanPreferencesKey("liquid_glass_hdr_highlight_enabled")
+        private val CARD_OUTLINES_ENABLED = booleanPreferencesKey("card_outlines_enabled")
         private val DARK_MODE = stringPreferencesKey("dark_mode")
         private val ENTRANCE_ANIMATIONS_ENABLED = booleanPreferencesKey("entrance_animations_enabled")
         private val MOTION_PREFERENCE = stringPreferencesKey("motion_preference")
@@ -198,6 +270,129 @@ class DataStoreManager @Inject constructor(
     }
 
     // 阅读设置
+    fun readerPreferences(bookId: String): Flow<ReaderPreferencesSnapshot> =
+        context.dataStore.data.map { preferences ->
+            val horizontal = preferences[MARGIN_HORIZ] ?: 38f
+            val vertical = preferences[MARGIN_VERT] ?: 64f
+            val suites = readThemeSuites(preferences)
+            val requestedActiveSuite = preferences[ACTIVE_READER_THEME_SUITE_ID]
+            val suiteState = ReaderThemeSuiteState(
+                suites = suites,
+                activeSuiteId = requestedActiveSuite?.takeIf { id -> suites.any { it.id == id } }
+                    ?: ReaderThemeSuites.DAY_ID
+            )
+            val selectionItems = preferences[SELECTION_MENU_ITEMS]
+                ?.takeIf(String::isNotBlank)
+                ?.let { raw ->
+                    runCatching {
+                        JSONObject(raw).let { json ->
+                            json.keys().asSequence().associateWith(json::getBoolean)
+                        }
+                    }.getOrDefault(emptyMap())
+                }
+                .orEmpty()
+            val modeKey = stringPreferencesKey("epub_render_mode_$bookId")
+            val optimizeKey = booleanPreferencesKey("optimize_layout_$bookId")
+            val cssKey = booleanPreferencesKey("use_epub_css_$bookId")
+            val resolvedRenderMode = EpubRenderMode.fromStorage(preferences[modeKey]) ?: when {
+                preferences[cssKey] == true || preferences[optimizeKey] == false -> EpubRenderMode.BOOK_LAYOUT
+                else -> EpubRenderMode.READER_LAYOUT
+            }
+            fun cornerContent(corner: ReaderPageCorner): ReaderCornerContent {
+                val stored = preferences[readerCornerKey(corner)]
+                return if (stored == null) defaultReaderCornerContent(corner)
+                else ReaderCornerContent.fromKey(stored)
+            }
+            ReaderPreferencesSnapshot(
+                fontSize = preferences[FONT_SIZE] ?: 16f,
+                lineHeight = preferences[LINE_HEIGHT] ?: 1.5f,
+                letterSpacing = preferences[LETTER_SPACING] ?: 0f,
+                textAlignment = ReaderTextAlignment.fromKey(preferences[TEXT_ALIGNMENT]),
+                fontType = preferences[FONT_TYPE] ?: "system",
+                marginLeft = preferences[MARGIN_LEFT] ?: horizontal,
+                marginRight = preferences[MARGIN_RIGHT] ?: horizontal,
+                marginTop = preferences[MARGIN_TOP] ?: vertical,
+                marginBottom = preferences[MARGIN_BOTTOM] ?: vertical,
+                readerTheme = preferences[READER_THEME] ?: "day",
+                brightness = preferences[BRIGHTNESS] ?: -1f,
+                customFontPath = preferences[CUSTOM_FONT_PATH],
+                customFonts = CustomFontPresetCodec.decode(preferences[CUSTOM_FONTS]),
+                readerBackgroundSelection = preferences[READER_BACKGROUND_SELECTION]
+                    ?: preferences[READER_THEME]
+                    ?: "day",
+                readerBackgroundColorSelection = preferences[READER_BACKGROUND_COLOR_SELECTION]
+                    ?: preferences.resolveLegacyBackgroundColorSelection(
+                        preferences[READER_BACKGROUND_SELECTION] ?: ReaderThemeSuites.DAY_ID
+                    ),
+                readerBackgroundImageOpacity = (preferences[READER_BACKGROUND_IMAGE_OPACITY] ?: 1f)
+                    .coerceIn(0f, 1f),
+                readerBackgroundImageBlurDp = (preferences[READER_BACKGROUND_IMAGE_BLUR_DP] ?: 0f)
+                    .coerceIn(0f, 40f),
+                customReaderBackgrounds = ReaderBackgroundPresetCodec.decode(
+                    preferences[CUSTOM_READER_BACKGROUNDS]
+                ),
+                preserveEpubBackground = preferences[PRESERVE_EPUB_BACKGROUND] ?: true,
+                readerTextColor = preferences[READER_TEXT_COLOR],
+                pageAnimationSettings = ReaderPageAnimationSettings(
+                    slideDurationMs = ReaderPageAnimationSettings.sanitizeDuration(
+                        ReaderPageAnimationSettings.MODE_SLIDE,
+                        preferences[PAGE_TRANSITION_SLIDE_DURATION_MS]
+                            ?: ReaderPageAnimationSettings.SLIDE_DEFAULT_MS
+                    ),
+                    fadeDurationMs = ReaderPageAnimationSettings.sanitizeDuration(
+                        ReaderPageAnimationSettings.MODE_FADE,
+                        preferences[PAGE_TRANSITION_FADE_DURATION_MS]
+                            ?: ReaderPageAnimationSettings.FADE_DEFAULT_MS
+                    ),
+                    curlDurationMs = ReaderPageAnimationSettings.sanitizeDuration(
+                        ReaderPageAnimationSettings.MODE_CURL,
+                        preferences[PAGE_TRANSITION_CURL_DURATION_MS]
+                            ?: ReaderPageAnimationSettings.CURL_DEFAULT_MS
+                    )
+                ),
+                pageTransition = preferences[PAGE_TRANSITION] ?: "slide",
+                readerThemeSuiteState = suiteState,
+                pdfPageMode = preferences[PDF_PAGE_MODE].takeIf { it == "horizontal" } ?: "vertical",
+                showReaderChapterProgress = preferences[SHOW_READER_CHAPTER_PROGRESS] ?: true,
+                showReaderPageNumber = preferences[SHOW_READER_PAGE_NUMBER] ?: true,
+                showReaderBattery = preferences[SHOW_READER_BATTERY] ?: true,
+                volumeKeyPageTurnEnabled = preferences[VOLUME_KEY_PAGE_TURN] ?: false,
+                bionicReadingEnabled = preferences[BIONIC_READING_ENABLED] ?: false,
+                comicModeEnabled = preferences[COMIC_MODE] ?: false,
+                bodyFontWeight = preferences[BODY_FONT_WEIGHT] ?: 400,
+                eInkModeEnabled = preferences[E_INK_MODE_ENABLED] ?: false,
+                twoPageSpreadEnabled = preferences[TWO_PAGE_SPREAD_ENABLED] ?: true,
+                screenSleepTimeoutSeconds = preferences[SCREEN_SLEEP_TIMEOUT_SECONDS]
+                    ?.takeIf { it in SCREEN_SLEEP_TIMEOUT_SECONDS_OPTIONS }
+                    ?: DEFAULT_SCREEN_SLEEP_TIMEOUT_SECONDS,
+                readerEdgeTapMode = ReaderEdgeTapMode.fromKey(preferences[READER_EDGE_TAP_MODE]),
+                readerTopLeftContent = cornerContent(ReaderPageCorner.TOP_LEFT),
+                readerTopRightContent = cornerContent(ReaderPageCorner.TOP_RIGHT),
+                readerBottomLeftContent = cornerContent(ReaderPageCorner.BOTTOM_LEFT),
+                readerBottomRightContent = cornerContent(ReaderPageCorner.BOTTOM_RIGHT),
+                readerDisplayMode = preferences[stringPreferencesKey("reader_display_mode")] ?: "auto",
+                paragraphSpacing = preferences[PARAGRAPH_SPACING] ?: 2f,
+                firstLineIndent = preferences[FIRST_LINE_INDENT] ?: 2f,
+                chineseMode = preferences[stringPreferencesKey("chinese_mode")] ?: "original",
+                selectionMenuItems = selectionItems,
+                customHighlightPalettes = decodeHighlightPalettes(preferences),
+                activeHighlightPaletteId = preferences[ACTIVE_HIGHLIGHT_PALETTE_ID],
+                renderMode = resolvedRenderMode,
+                txtEncoding = preferences[stringPreferencesKey("txt_encoding_$bookId")] ?: "auto",
+                txtEncodingHintShown = preferences[booleanPreferencesKey("txt_encoding_hint_shown_$bookId")]
+                    ?: false,
+                epubLayoutHintShown = preferences[booleanPreferencesKey("epub_layout_hint_shown_$bookId")]
+                    ?: false,
+                mobiLayoutHintShown = preferences[booleanPreferencesKey("mobi_layout_hint_shown_$bookId")]
+                    ?: false,
+                optimizeLayout = preferences[optimizeKey] ?: true,
+                useEpubCss = preferences[cssKey] ?: false,
+                readerWritingMode = ReaderWritingMode.fromKey(
+                    preferences[stringPreferencesKey("reader_writing_mode_$bookId")]
+                )
+            )
+        }.distinctUntilChanged()
+
     val fontSize: Flow<Float> = context.dataStore.data.map { preferences ->
         preferences[FONT_SIZE] ?: 16f
     }
@@ -335,10 +530,28 @@ class DataStoreManager @Inject constructor(
         } catch (_: Exception) { emptyMap() }
     }
 
-    /** 听书悬浮窗字幕开关 */
-    val ttsFloatingWindow: Flow<Boolean> = context.dataStore.data.map { preferences ->
-        preferences[TTS_FLOATING_WINDOW] ?: true
+    val floatingSubtitleSettings: Flow<FloatingSubtitleSettings> = context.dataStore.data.map { preferences ->
+        FloatingSubtitleSettings(
+            enabled = preferences[TTS_FLOATING_WINDOW] ?: true,
+            xFraction = preferences[TTS_FLOATING_X_FRACTION]
+                ?: FloatingSubtitleSettings.DEFAULT_X_FRACTION,
+            yFraction = preferences[TTS_FLOATING_Y_FRACTION]
+                ?: FloatingSubtitleSettings.DEFAULT_Y_FRACTION,
+            backgroundColorHex = preferences[TTS_FLOATING_BACKGROUND_COLOR]
+                ?: FloatingSubtitleSettings.DEFAULT_BACKGROUND_COLOR,
+            backgroundOpacity = preferences[TTS_FLOATING_BACKGROUND_OPACITY]
+                ?: FloatingSubtitleSettings.DEFAULT_BACKGROUND_OPACITY,
+            cornerRadiusDp = preferences[TTS_FLOATING_CORNER_RADIUS_DP]
+                ?: FloatingSubtitleSettings.DEFAULT_CORNER_RADIUS_DP,
+            widthDp = preferences[TTS_FLOATING_WIDTH_DP]
+                ?: FloatingSubtitleSettings.DEFAULT_WIDTH_DP,
+            heightDp = preferences[TTS_FLOATING_HEIGHT_DP]
+                ?: FloatingSubtitleSettings.DEFAULT_HEIGHT_DP
+        ).normalized()
     }
+
+    /** Backward-compatible view used by older call sites. */
+    val ttsFloatingWindow: Flow<Boolean> = floatingSubtitleSettings.map { it.enabled }
 
     val preferredTtsEngine: Flow<String?> = context.dataStore.data.map { it[PREFERRED_TTS_ENGINE] }
     override val ttsProviderSelection: Flow<TtsProviderSelection> = context.dataStore.data.map { preferences ->
@@ -483,6 +696,10 @@ class DataStoreManager @Inject constructor(
         preferences[LIQUID_GLASS_HDR_HIGHLIGHT_ENABLED] ?: deviceSupportsHdr
     }
 
+    val cardOutlinesEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[CARD_OUTLINES_ENABLED] ?: false
+    }
+
     val darkMode: Flow<String> = context.dataStore.data.map { preferences ->
         preferences[DARK_MODE] ?: "system"
     }
@@ -523,6 +740,25 @@ class DataStoreManager @Inject constructor(
     val predictiveBackEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[PREDICTIVE_BACK_ENABLED] ?: true
     }
+
+    /** Single DataStore read used to refresh the non-blocking Activity launch snapshot. */
+    val launchThemeSnapshot: Flow<LaunchThemeSnapshot> = context.dataStore.data.map { preferences ->
+        LaunchThemeSnapshot(
+            appTheme = preferences[APP_THEME] ?: "lumi",
+            appAccentColor = normalizeAppAccentHex(preferences[APP_ACCENT_COLOR]),
+            globalFontMode = if (preferences[GLOBAL_FONT_MODE] == "default") "default" else "system",
+            liquidGlassTransparency = preferences[LIQUID_GLASS_TRANSPARENCY] ?: 0.55f,
+            liquidGlassHdrHighlightEnabled =
+                preferences[LIQUID_GLASS_HDR_HIGHLIGHT_ENABLED] ?: deviceSupportsHdr,
+            cardOutlinesEnabled = preferences[CARD_OUTLINES_ENABLED] ?: false,
+            darkMode = preferences[DARK_MODE] ?: "system",
+            motionPreference = preferences[MOTION_PREFERENCE]
+                ?.takeIf { it == "standard" || it == "reduced" }
+                ?: if (preferences[ENTRANCE_ANIMATIONS_ENABLED] == false) "reduced" else "standard",
+            eInkModeEnabled = preferences[E_INK_MODE_ENABLED] ?: false,
+            predictiveBackEnabled = preferences[PREDICTIVE_BACK_ENABLED] ?: true
+        )
+    }.distinctUntilChanged()
 
     val splashEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[SPLASH_ENABLED] ?: true
@@ -837,6 +1073,61 @@ class DataStoreManager @Inject constructor(
         }
     }
 
+    suspend fun saveFloatingSubtitleSettings(settings: FloatingSubtitleSettings) {
+        val value = settings.normalized()
+        context.dataStore.edit { preferences ->
+            preferences[TTS_FLOATING_WINDOW] = value.enabled
+            preferences[TTS_FLOATING_X_FRACTION] = value.xFraction
+            preferences[TTS_FLOATING_Y_FRACTION] = value.yFraction
+            preferences[TTS_FLOATING_BACKGROUND_COLOR] = value.backgroundColorHex
+            preferences[TTS_FLOATING_BACKGROUND_OPACITY] = value.backgroundOpacity
+            preferences[TTS_FLOATING_CORNER_RADIUS_DP] = value.cornerRadiusDp
+            preferences[TTS_FLOATING_WIDTH_DP] = value.widthDp
+            preferences[TTS_FLOATING_HEIGHT_DP] = value.heightDp
+        }
+    }
+
+    suspend fun saveFloatingSubtitlePosition(xFraction: Float, yFraction: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[TTS_FLOATING_X_FRACTION] = xFraction.coerceIn(0f, 1f)
+            preferences[TTS_FLOATING_Y_FRACTION] = yFraction.coerceIn(0f, 1f)
+        }
+    }
+
+    suspend fun saveFloatingSubtitleBackgroundColor(colorHex: String) {
+        context.dataStore.edit { preferences ->
+            preferences[TTS_FLOATING_BACKGROUND_COLOR] = FloatingSubtitleSettings.normalizeColor(colorHex)
+        }
+    }
+
+    suspend fun saveFloatingSubtitleBackgroundOpacity(opacity: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[TTS_FLOATING_BACKGROUND_OPACITY] = opacity.coerceIn(0f, 1f)
+        }
+    }
+
+    suspend fun saveFloatingSubtitleCornerRadius(radiusDp: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[TTS_FLOATING_CORNER_RADIUS_DP] = radiusDp.coerceIn(
+                FloatingSubtitleSettings.MIN_CORNER_RADIUS_DP,
+                FloatingSubtitleSettings.MAX_CORNER_RADIUS_DP
+            )
+        }
+    }
+
+    suspend fun saveFloatingSubtitleSize(widthDp: Float, heightDp: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[TTS_FLOATING_WIDTH_DP] = widthDp.coerceIn(
+                FloatingSubtitleSettings.MIN_WIDTH_DP,
+                FloatingSubtitleSettings.MAX_WIDTH_DP
+            )
+            preferences[TTS_FLOATING_HEIGHT_DP] = heightDp.coerceIn(
+                FloatingSubtitleSettings.MIN_HEIGHT_DP,
+                FloatingSubtitleSettings.MAX_HEIGHT_DP
+            )
+        }
+    }
+
     suspend fun saveReaderBackgroundSelection(selection: String) {
         context.dataStore.edit { preferences ->
             preferences[READER_BACKGROUND_SELECTION] = selection
@@ -1114,6 +1405,16 @@ class DataStoreManager @Inject constructor(
                     ?.settings
                     ?.let { settings -> preferences.applyReaderThemeSettings(settings) }
             }
+        }
+    }
+
+    suspend fun ensureReaderMigrations() {
+        if (readerMigrationsComplete) return
+        readerMigrationMutex.withLock {
+            if (readerMigrationsComplete) return
+            migrateAdvancedReaderDefaults()
+            migrateReaderThemeSuites()
+            readerMigrationsComplete = true
         }
     }
 
@@ -1482,6 +1783,7 @@ class DataStoreManager @Inject constructor(
         context.dataStore.edit { preferences ->
             preferences[HAS_COMPLETED_WELCOME_LANGUAGE_SETUP] = completed
         }
+        LaunchThemeController.updateWelcomeLanguageSetup(context, completed)
     }
 
     suspend fun completeWelcomeFlow(installTime: Long) {
@@ -1489,6 +1791,7 @@ class DataStoreManager @Inject constructor(
             preferences[HAS_SEEN_WELCOME] = true
             preferences[COMPLETED_WELCOME_INSTALL_TIME] = installTime
         }
+        LaunchThemeController.updateWelcomeCompletedInstallTime(context, installTime)
     }
 
     suspend fun saveMineruMode(mode: String) {
@@ -1533,6 +1836,12 @@ class DataStoreManager @Inject constructor(
             ) {
                 preferences[TTS_PROVIDER_SELECTION] = TtsProviderSelection.AiModel.storedValue
             }
+        }
+    }
+
+    suspend fun saveCardOutlinesEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[CARD_OUTLINES_ENABLED] = enabled
         }
     }
 
@@ -1623,6 +1932,7 @@ class DataStoreManager @Inject constructor(
         val key = externalTtsResumeKey(position.bookId)
         val encoded = buildString {
             append("ch=${position.chapterIndex}|pg=${position.pageIndex}|off=${position.characterOffset}")
+            if (position.clauseIndex > 0) append("|clause=${position.clauseIndex}")
             position.pageFingerprint?.let { append("|page=$it") }
             position.cacheKey?.let { append("|cache=$it|frame=${position.pcmFrameOffset.coerceAtLeast(0L)}") }
         }
@@ -1656,6 +1966,7 @@ class DataStoreManager @Inject constructor(
                 chapterIndex = parts["ch"]?.toIntOrNull() ?: return null,
                 pageIndex = parts["pg"]?.toIntOrNull() ?: return null,
                 characterOffset = parts["off"]?.toIntOrNull() ?: return null,
+                clauseIndex = parts["clause"]?.toIntOrNull()?.coerceAtLeast(0) ?: 0,
                 pageFingerprint = pageFingerprint,
                 cacheKey = cacheKey,
                 pcmFrameOffset = parts["frame"]?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
