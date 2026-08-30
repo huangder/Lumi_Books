@@ -50,6 +50,75 @@ class EpubPackageReaderTest {
     }
 
     @Test
+    fun acceptsStandardExternalDoctypeInNcx() {
+        val file = temporaryFolder.newFile("fixture2-doctype.epub")
+        val entries = epub2Entries().toMutableMap()
+        entries["OEBPS/toc.ncx"] = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE ncx PUBLIC "-//NISO//DTD ncx 2005-1//EN"
+                "http://www.daisy.org/z3986/2005/ncx-2005-1.dtd">
+            <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+              <navMap>
+                <navPoint id="n1" playOrder="1">
+                  <navLabel><text>Chapter One</text></navLabel>
+                  <content src="chapter.xhtml#one"/>
+                </navPoint>
+              </navMap>
+            </ncx>
+        """.trimIndent()
+        writeEpub(file, entries)
+
+        val pkg = EpubPackageReader.read(file.absolutePath)
+
+        assertEquals("Fixture EPUB 2", pkg.title)
+        assertEquals(1, pkg.spine.size)
+        assertEquals(1, pkg.navigation.size)
+        assertEquals("Chapter One", pkg.navigation.single().title)
+        assertEquals("OEBPS/chapter.xhtml#one", pkg.navigation.single().href)
+    }
+
+    @Test
+    fun reconcilesRootEntriesReferencedFromNestedOpfAndNcx() {
+        val file = temporaryFolder.newFile("fixture2-root-entries.epub")
+        val entries = epub2Entries().toMutableMap()
+        entries["OEBPS/content.opf"] = """
+            <package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+              <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Root entries</dc:title></metadata>
+              <manifest>
+                <item id="c1" href="Text/:first.xhtml" media-type="application/xhtml+xml"/>
+                <item id="c2" href="Text/::second.xhtml" media-type="application/xhtml+xml"/>
+                <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+              </manifest>
+              <spine toc="ncx"><itemref idref="c1"/><itemref idref="c2"/></spine>
+            </package>
+        """.trimIndent()
+        entries["OEBPS/toc.ncx"] = """
+            <?xml version="1.0"?>
+            <!DOCTYPE ncx PUBLIC "-//NISO//DTD ncx 2005-1//EN"
+                "http://www.daisy.org/z3986/2005/ncx-2005-1.dtd">
+            <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/"><navMap>
+              <navPoint><navLabel><text>First</text></navLabel><content src="Text/:first.xhtml"/></navPoint>
+              <navPoint><navLabel><text>Second</text></navLabel><content src="Text/::second.xhtml"/></navPoint>
+            </navMap></ncx>
+        """.trimIndent()
+        entries.remove("OEBPS/chapter.xhtml")
+        entries["Text/:first.xhtml"] = "<html><body>First</body></html>"
+        entries["Text/::second.xhtml"] = "<html><body>Second</body></html>"
+        writeEpub(file, entries)
+
+        val pkg = EpubPackageReader.read(file.absolutePath)
+
+        assertEquals(
+            listOf("Text/:first.xhtml", "Text/::second.xhtml"),
+            pkg.spine.map { it.manifestItem.fullPath }
+        )
+        assertEquals(
+            listOf("Text/:first.xhtml", "Text/::second.xhtml"),
+            pkg.navigation.map { it.href }
+        )
+    }
+
+    @Test
     fun rejectsDoctypeAndExternalEntities() {
         val file = temporaryFolder.newFile("doctype.epub")
         val entries = epub2Entries().toMutableMap()
@@ -61,6 +130,25 @@ class EpubPackageReaderTest {
         writeEpub(file, entries)
 
         assertThrows(Exception::class.java) { EpubPackageReader.read(file.absolutePath) }
+    }
+
+    @Test
+    fun rejectsInternalEntityDeclarationsInNcx() {
+        val file = temporaryFolder.newFile("ncx-internal-entity.epub")
+        val entries = epub2Entries().toMutableMap()
+        entries["OEBPS/toc.ncx"] = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE ncx [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
+            <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/">
+              <navMap><navPoint id="n1"><navLabel><text>&xxe;</text></navLabel>
+                <content src="chapter.xhtml"/></navPoint></navMap>
+            </ncx>
+        """.trimIndent()
+        writeEpub(file, entries)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            EpubPackageReader.read(file.absolutePath)
+        }
     }
 
 }

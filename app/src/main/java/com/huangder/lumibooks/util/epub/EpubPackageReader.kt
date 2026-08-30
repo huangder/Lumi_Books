@@ -5,6 +5,7 @@ import org.jsoup.nodes.Element
 import org.jsoup.parser.Parser
 import org.w3c.dom.Document
 import org.w3c.dom.Node
+import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
@@ -40,7 +41,16 @@ object EpubPackageReader {
                 val id = item.attribute("id")
                 val href = item.attribute("href")
                 if (id.isBlank() || href.isBlank()) return@mapNotNull null
-                val fullPath = EpubPathResolver.resolve(opfPath, href) ?: return@mapNotNull null
+                val resolvedPath = EpubPathResolver.resolve(opfPath, href) ?: return@mapNotNull null
+                // A few widely distributed EPUBs put OPF-relative hrefs at the ZIP root.
+                // Prefer the standards-compliant path, but use the actual entry when only
+                // that exists so spine, navigation and resource reads agree on one path.
+                val rootPath = EpubPathResolver.normalize(href)
+                val fullPath = when {
+                    find(resolvedPath) != null -> resolvedPath
+                    rootPath != null && find(rootPath) != null -> rootPath
+                    else -> resolvedPath
+                }
                 EpubManifestItem(
                     id = id,
                     href = href,
@@ -108,7 +118,7 @@ object EpubPackageReader {
                 val toc = document.select("nav").firstOrNull {
                     it.attr("epub:type").split(' ').contains("toc") || it.attr("type") == "toc"
                 } ?: document.selectFirst("nav")
-                if (toc != null) return flattenHtmlNavigation(toc, navItem.fullPath)
+                if (toc != null) return flattenHtmlNavigation(toc, navItem.fullPath, manifest)
             }
         }
 
@@ -116,21 +126,35 @@ object EpubPackageReader {
             ?: manifest.values.firstOrNull { it.mediaType == "application/x-dtbncx+xml" }
             ?: return emptyList()
         val entry = zip.getEntry(ncxItem.fullPath) ?: entries[ncxItem.fullPath.lowercase()] ?: return emptyList()
-        val document = zip.getInputStream(entry).use(::parseXml)
+        // NCX files commonly carry the EPUB 2 public XHTML/NCX DOCTYPE.  The
+        // package files above still use the hardened XML parser, but the NCX
+        // is only a navigation data source and does not need DTD resolution.
+        // Jsoup's XML parser accepts that declaration without fetching the
+        // external DTD, so a standards-compliant NCX does not make the whole
+        // book unreadable.
+        val document = zip.getInputStream(entry).use { parseNcxXml(it, ncxItem.fullPath) }
         val output = mutableListOf<EpubNavigationItem>()
-        document.elements("navMap").firstOrNull()?.childNodes?.asSequence()
-            ?.filter { it.localNameValue() == "navPoint" }
-            ?.forEach { flattenNcxNavigation(it, ncxItem.fullPath, 1, output) }
+        document.getElementsByTag("navMap").firstOrNull()?.children()
+            ?.filter { it.tagName().equals("navPoint", ignoreCase = true) }
+            ?.forEach { flattenNcxNavigation(it, ncxItem.fullPath, manifest, 1, output) }
         return output
     }
 
-    private fun flattenHtmlNavigation(nav: Element, navPath: String): List<EpubNavigationItem> {
+    private fun flattenHtmlNavigation(
+        nav: Element,
+        navPath: String,
+        manifest: Map<String, EpubManifestItem>
+    ): List<EpubNavigationItem> {
         val output = mutableListOf<EpubNavigationItem>()
         fun visit(list: Element, level: Int) {
             list.children().filter { it.tagName().equals("li", true) }.forEach { item ->
                 val anchor = item.children().firstOrNull { it.tagName().equals("a", true) }
                 if (anchor != null) {
-                    val resolved = EpubPathResolver.resolve(navPath, anchor.attr("href"))
+                    val resolved = resolveNavigationReference(
+                        navPath,
+                        anchor.attr("href"),
+                        manifest
+                    )
                     if (resolved != null) {
                         val fragment = EpubPathResolver.fragment(anchor.attr("href"))
                         output += EpubNavigationItem(anchor.text().trim(), resolved + fragment?.let { "#$it" }.orEmpty(), level)
@@ -146,21 +170,41 @@ object EpubPackageReader {
     }
 
     private fun flattenNcxNavigation(
-        node: Node,
+        node: Element,
         ncxPath: String,
+        manifest: Map<String, EpubManifestItem>,
         level: Int,
         output: MutableList<EpubNavigationItem>
     ) {
-        val label = node.descendants("text").firstOrNull()?.textContent?.trim().orEmpty()
-        val source = node.childNodes.asSequence().firstOrNull { it.localNameValue() == "content" }
-            ?.attribute("src").orEmpty()
-        val resolved = EpubPathResolver.resolve(ncxPath, source)
+        val label = node.getElementsByTag("text").firstOrNull()?.text()?.trim().orEmpty()
+        val source = node.children().firstOrNull {
+            it.tagName().equals("content", ignoreCase = true)
+        }?.attr("src").orEmpty()
+        val resolved = resolveNavigationReference(ncxPath, source, manifest)
         if (resolved != null) {
             val fragment = EpubPathResolver.fragment(source)
             output += EpubNavigationItem(label, resolved + fragment?.let { "#$it" }.orEmpty(), level)
         }
-        node.childNodes.asSequence().filter { it.localNameValue() == "navPoint" }
-            .forEach { flattenNcxNavigation(it, ncxPath, level + 1, output) }
+        node.children().filter { it.tagName().equals("navPoint", ignoreCase = true) }
+            .forEach { flattenNcxNavigation(it, ncxPath, manifest, level + 1, output) }
+    }
+
+    private fun resolveNavigationReference(
+        navigationPath: String,
+        reference: String,
+        manifest: Map<String, EpubManifestItem>
+    ): String? {
+        val resolvedPath = EpubPathResolver.resolve(navigationPath, reference)
+        val rootPath = EpubPathResolver.normalize(reference)
+        val manifestPaths = manifest.values.asSequence().map { it.fullPath }.toList()
+        return sequenceOf(resolvedPath, rootPath)
+            .filterNotNull()
+            .mapNotNull { candidate ->
+                manifestPaths.firstOrNull { it == candidate }
+                    ?: manifestPaths.firstOrNull { it.equals(candidate, ignoreCase = true) }
+            }
+            .firstOrNull()
+            ?: resolvedPath
     }
 
     private fun parseXml(input: InputStream): Document {
@@ -176,6 +220,40 @@ object EpubPackageReader {
             runCatching { setAttribute("http://javax.xml.XMLConstants/property/accessExternalSchema", "") }
         }
         return factory.newDocumentBuilder().parse(input)
+    }
+
+    private fun parseNcxXml(input: InputStream, baseUri: String): org.jsoup.nodes.Document {
+        val bytes = input.readBytes()
+        val declarationProbe = bytes.toString(Charsets.ISO_8859_1)
+        require(!hasInternalDtdSubset(declarationProbe)) {
+            "NCX internal DTD subsets are not supported"
+        }
+        return Jsoup.parse(ByteArrayInputStream(bytes), null, baseUri, Parser.xmlParser())
+    }
+
+    private fun hasInternalDtdSubset(xml: String): Boolean {
+        var searchFrom = 0
+        while (searchFrom < xml.length) {
+            val start = xml.indexOf("<!DOCTYPE", searchFrom, ignoreCase = true)
+            if (start < 0) return false
+            var quote: Char? = null
+            var index = start + "<!DOCTYPE".length
+            while (index < xml.length) {
+                val character = xml[index]
+                if (quote != null) {
+                    if (character == quote) quote = null
+                } else {
+                    when (character) {
+                        '\'', '"' -> quote = character
+                        '[' -> return true
+                        '>' -> break
+                    }
+                }
+                index++
+            }
+            searchFrom = index + 1
+        }
+        return false
     }
 
     private fun Document.elements(name: String): List<Node> =

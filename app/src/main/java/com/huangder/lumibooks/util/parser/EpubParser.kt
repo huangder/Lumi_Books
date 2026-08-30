@@ -6,12 +6,24 @@ import android.graphics.BitmapFactory
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.text.Html
+import android.text.NoCopySpan
+import android.text.Spannable
+import android.text.SpannableStringBuilder
 import android.text.Spanned
+import android.text.style.LeadingMarginSpan
+import android.text.style.QuoteSpan
 import android.util.Base64
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
+import java.lang.ref.WeakReference
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 import java.util.zip.ZipEntry
+import java.util.zip.ZipException
 import java.util.zip.ZipFile
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 import kotlin.text.RegexOption
 import com.huangder.lumibooks.util.BookFileAccess
 import com.huangder.lumibooks.util.SeekableBookSource
@@ -40,6 +52,21 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
     companion object {
         private const val ANCHOR_MARKER_PREFIX = "\uE000LUMIBOOKS_ANCHOR:"
         private const val ANCHOR_MARKER_SUFFIX = "\uE001"
+        private const val NATIVE_HTML_CHUNK_THRESHOLD = 192 * 1024
+        private const val NATIVE_HTML_CHUNK_TARGET = 64 * 1024
+        private const val IMAGE_BITMAP_CACHE_BYTES = 16L * 1024L * 1024L
+        private const val JPEG_HEADER_READ_LIMIT = 256 * 1024
+        private const val SIMPLE_IMAGE_HEADER_READ_LIMIT = 64
+        private val NATIVE_HTML_BOUNDARY_REGEX = Regex(
+            """</(?:p|div|blockquote|li|dd|dt|h[1-6])\s*>""",
+            RegexOption.IGNORE_CASE
+        )
+        private val JPEG_START_OF_FRAME_MARKERS = setOf(
+            0xC0, 0xC1, 0xC2, 0xC3,
+            0xC5, 0xC6, 0xC7,
+            0xC9, 0xCA, 0xCB,
+            0xCD, 0xCE, 0xCF
+        )
 
         // ── 注释引用识别（与 WebView 版 EpubDocumentTransformer 的启发式保持一致） ──
         private val FOOTNOTE_HINT_REGEX = Regex(
@@ -161,49 +188,94 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
     // 章节路径列表（spine 顺序）
     private var chapterPaths: List<String> = emptyList()
 
+    /**
+     * Reader-layout chapters. Some EPUB 2 books put the whole book in one spine item and
+     * expose real chapters only as NCX fragments. Treat those fragments as logical chapters
+     * so opening a book does not require laying out hundreds of thousands of characters.
+     */
+    private data class ChapterSource(
+        val path: String,
+        val title: String? = null,
+        val startAnchor: String? = null,
+        val endAnchor: String? = null
+    )
+    private var chapterSources: List<ChapterSource> = emptyList()
+    private var logicalChapterIndicesByPath: Map<String, List<Int>> = emptyMap()
+
     // spine 中的 href 列表（用于 NCX → spine 索引映射）
     private var spineHrefs: List<String> = emptyList()
 
     // EPUB chapters vary greatly in size, so bound decoded data by memory weight.
-    private data class HtmlCacheKey(val chapterIndex: Int, val optimizeLayout: Boolean)
+    private data class HtmlCacheKey(
+        val revision: Long,
+        val chapterIndex: Int,
+        val optimizeLayout: Boolean
+    )
+    private data class ContentLoadKey(val revision: Long, val chapterIndex: Int)
+    private data class AnchoredChapter(
+        val text: SpannableStringBuilder,
+        val offsets: Map<String, Int>
+    )
     private val htmlCache = WeightedLruCache<HtmlCacheKey, String>(8L * 1024L * 1024L) {
         it.length.toLong() * Char.SIZE_BYTES
     }
-    private val contentCache = WeightedLruCache<Int, CharSequence>(16L * 1024L * 1024L) {
+    private val contentCache = WeightedLruCache<ContentLoadKey, CharSequence>(16L * 1024L * 1024L) {
         it.length.toLong() * Char.SIZE_BYTES
+    }
+    /** Keep only a small set of decoded images; individual spans reload on demand after eviction. */
+    private val imageBitmapCache = WeightedLruCache<String, Bitmap>(IMAGE_BITMAP_CACHE_BYTES) {
+        it.allocationByteCount.toLong().coerceAtLeast(0L)
     }
     private val anchorOffsets = mutableMapOf<Int, Map<String, Int>>()
     // CSS 文件内容缓存（key = ZIP 内完整路径，避免重复读取同一文件）
     private val cssFileCache = mutableMapOf<String, String>()
     // 各章节中识别为注释引用的 href 集合（Canvas 引擎注释气泡用）
     private val footnoteHrefs = mutableMapOf<Int, Set<String>>()
+    private val contentRevision = AtomicLong(0L)
+    private val contentLoadLocks = ConcurrentHashMap<ContentLoadKey, Any>()
 
     override fun parse(filePath: String): BookContent {
         close()
+        android.util.Log.i("EpubParser", "parse: start path=$filePath")
         val lease = context?.let { BookFileAccess.openSeekable(it, filePath) }
         sourceLease = lease
-        epubFilePath = lease?.path ?: filePath
+        epubFilePath = prepareCompatibleEpub(lease?.path ?: filePath)
         val cachedMetadata = context?.let { EpubMetadataCache.read(it, filePath, epubFilePath) }
+        android.util.Log.i("EpubParser", "parse: metadata cache=${cachedMetadata != null}")
         val packageModel = cachedMetadata?.epubPackage ?: EpubPackageReader.read(epubFilePath)
         parsedPackage = packageModel
         basePath = packageModel.basePath
         bookTitle = packageModel.title
         bookAuthor = packageModel.author
-        chapterPaths = packageModel.spine.map { it.manifestItem.fullPath }
+        val spinePaths = packageModel.spine.map { it.manifestItem.fullPath }
         spineHrefs = packageModel.spine.map { it.manifestItem.href }
 
+        chapterSources = buildLogicalChapterSources(spinePaths, packageModel.navigation)
+        chapterPaths = chapterSources.map(ChapterSource::path)
+        logicalChapterIndicesByPath = chapterSources.indices.groupBy { index ->
+            canonicalPath(chapterSources[index].path).orEmpty().lowercase()
+        }
+
         val navigationTitles = packageModel.navigation.mapNotNull { item ->
-            val path = EpubPathResolver.normalize(item.href.substringBefore('#')) ?: return@mapNotNull null
+            val path = canonicalPath(item.href.substringBefore('#')) ?: return@mapNotNull null
             path to item.title
+        }.toMap()
+        val chapterIndexByPath = chapterPaths.mapIndexedNotNull { index, path ->
+            canonicalPath(path)?.let { it to index }
+        }.toMap()
+        val chapterIndexByLowerPath = chapterPaths.mapIndexedNotNull { index, path ->
+            canonicalPath(path)?.lowercase()?.let { it to index }
         }.toMap()
 
         val zipFile = ZipFile(epubFilePath)
         sessionZipFile = zipFile
         lowercaseEntryIndex = zipFile.entries().asSequence().associateBy { it.name.lowercase() }
         val chapterTitles = cachedMetadata?.chapterTitles
-            ?.takeIf { it.size == chapterPaths.size }
-            ?: chapterPaths.mapIndexed { index, chapterPath ->
-                navigationTitles[chapterPath]?.takeIf { it.isNotBlank() } ?: run {
+            ?.takeIf { it.size == chapterSources.size && chapterSources.none { source -> source.startAnchor != null } }
+            ?: chapterSources.mapIndexed { index, source ->
+                source.title?.takeIf { it.isNotBlank() }
+                    ?: navigationTitles[canonicalPath(source.path)]?.takeIf { it.isNotBlank() } ?: run {
+                    val chapterPath = source.path
                     val entry = findEntry(zipFile, chapterPath)
                     val preview = entry?.let {
                         zipFile.getInputStream(it).use { input ->
@@ -221,13 +293,22 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
 
         val tocEntries = packageModel.navigation.map { item ->
             val documentPath = item.href.substringBefore('#')
-            val chapterIndex = chapterPaths.indexOf(documentPath)
+            val normalizedPath = canonicalPath(documentPath)
+            val anchor = item.href.substringAfter('#', "").ifBlank { null }
+                ?.let(::decodeUrlComponent)
+            val chapterIndex = findLogicalChapterIndex(normalizedPath, anchor)
+                ?: normalizedPath?.let { chapterIndexByPath[it] }
+                ?: normalizedPath?.lowercase()?.let { chapterIndexByLowerPath[it] }
+                ?: chapterPaths.indexOf(documentPath)
             TocEntry(
                 title = item.title,
                 level = item.level,
                 chapterIndex = chapterIndex,
                 isGroup = chapterIndex < 0,
-                anchor = item.href.substringAfter('#', "").ifBlank { null }
+                // A fragment used as a logical chapter boundary now maps to offset zero.
+                anchor = anchor?.takeUnless {
+                    chapterSources.getOrNull(chapterIndex)?.startAnchor.equals(it, ignoreCase = true)
+                }
             )
         }.ifEmpty {
             chapterTitles.mapIndexed { index, title -> TocEntry(title, 1, index) }
@@ -255,7 +336,131 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             chapters = chapters,
             coverPath = coverPath,
             tocEntries = tocEntries
-        )
+        ).also {
+            android.util.Log.i(
+                "EpubParser",
+                "parse: complete spine=${spinePaths.size} logical=${chapterSources.size} toc=${tocEntries.size}"
+            )
+        }
+    }
+
+    /**
+     * Android's ZipFile rejects archives containing duplicate central-directory names. A number
+     * of otherwise valid EPUBs in the wild contain a second `mimetype` entry. Build a cached,
+     * byte-for-byte resource copy with later duplicate entries omitted; the user's book is never
+     * modified and normal archives continue to use their original path.
+     */
+    private fun prepareCompatibleEpub(sourcePath: String): String {
+        try {
+            ZipFile(sourcePath).use { }
+            return sourcePath
+        } catch (error: ZipException) {
+            if (!error.message.orEmpty().contains("duplicate", ignoreCase = true)) throw error
+        }
+
+        val appContext = context ?: throw ZipException("EPUB contains duplicate ZIP entries")
+        val source = File(sourcePath)
+        val fingerprint = java.security.MessageDigest.getInstance("SHA-256")
+            .digest("${source.absolutePath}|${source.length()}|${source.lastModified()}".toByteArray())
+            .joinToString("") { byte -> "%02x".format(byte) }
+            .take(24)
+        val directory = File(appContext.cacheDir, "epub_compat").apply { mkdirs() }
+        val target = File(directory, "$fingerprint.epub")
+        if (target.isFile && runCatching { ZipFile(target).use { } }.isSuccess) {
+            android.util.Log.i("EpubParser", "parse: using cached duplicate-entry repair")
+            return target.absolutePath
+        }
+
+        val temporary = File(directory, "$fingerprint.tmp")
+        if (target.exists()) target.delete()
+        if (temporary.exists()) temporary.delete()
+        val seenNames = HashSet<String>()
+        try {
+            FileInputStream(source).buffered().use { fileInput ->
+                ZipInputStream(fileInput).use { input ->
+                    temporary.outputStream().buffered().use { fileOutput ->
+                        ZipOutputStream(fileOutput).use { output ->
+                            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                            while (true) {
+                                val entry = input.nextEntry ?: break
+                                val normalizedName = entry.name.replace('\\', '/')
+                                if (seenNames.add(normalizedName)) {
+                                    val copy = ZipEntry(normalizedName).apply {
+                                        entry.comment?.let { comment = it }
+                                        if (entry.time >= 0L) time = entry.time
+                                    }
+                                    output.putNextEntry(copy)
+                                    if (!entry.isDirectory) {
+                                        while (true) {
+                                            val count = input.read(buffer)
+                                            if (count < 0) break
+                                            output.write(buffer, 0, count)
+                                        }
+                                    }
+                                    output.closeEntry()
+                                }
+                                input.closeEntry()
+                            }
+                        }
+                    }
+                }
+            }
+            check(seenNames.isNotEmpty()) { "EPUB archive is empty" }
+            check(temporary.renameTo(target)) { "Unable to finalize compatible EPUB cache" }
+            ZipFile(target).use { }
+            android.util.Log.i("EpubParser", "parse: repaired duplicate ZIP entries")
+            return target.absolutePath
+        } catch (error: Throwable) {
+            temporary.delete()
+            throw error
+        }
+    }
+
+    private fun buildLogicalChapterSources(
+        spinePaths: List<String>,
+        navigation: List<com.huangder.lumibooks.util.epub.EpubNavigationItem>
+    ): List<ChapterSource> {
+        val navigationByPath = navigation.mapNotNull { item ->
+            val path = canonicalPath(item.href.substringBefore('#')) ?: return@mapNotNull null
+            val anchor = item.href.substringAfter('#', "").ifBlank { null }
+                ?.let(::decodeUrlComponent)
+            Triple(path.lowercase(), item, anchor)
+        }.groupBy { it.first }
+
+        return buildList {
+            spinePaths.forEach { path ->
+                val key = canonicalPath(path)?.lowercase()
+                val anchoredItems = key?.let(navigationByPath::get).orEmpty()
+                    .filter { it.third != null }
+                    .distinctBy { it.third?.lowercase() }
+                if (anchoredItems.size < 2) {
+                    add(ChapterSource(path = path))
+                } else {
+                    anchoredItems.forEachIndexed { index, (_, item, anchor) ->
+                        add(
+                            ChapterSource(
+                                path = path,
+                                title = item.title,
+                                startAnchor = anchor,
+                                endAnchor = anchoredItems.getOrNull(index + 1)?.third
+                            )
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private fun findLogicalChapterIndex(path: String?, anchor: String?): Int? {
+        val key = path?.lowercase() ?: return null
+        val candidates = logicalChapterIndicesByPath[key].orEmpty()
+        if (candidates.isEmpty()) return null
+        if (anchor != null) {
+            candidates.firstOrNull { index ->
+                chapterSources[index].startAnchor.equals(anchor, ignoreCase = true)
+            }?.let { return it }
+        }
+        return candidates.first()
     }
 
     override fun openRenderSession(): EpubRenderSession =
@@ -606,7 +811,10 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         val matches = spineHrefs.indices.filter { index ->
             decodeUrlComponent(spineHrefs[index]).substringAfterLast('/') == hrefFileName
         }
-        return matches.singleOrNull() ?: -1
+        val spineIndex = matches.singleOrNull() ?: return -1
+        val matchedPath = parsedPackage?.spine?.getOrNull(spineIndex)?.manifestItem?.fullPath
+            ?: return -1
+        return findLogicalChapterIndex(canonicalPath(matchedPath), anchor = null) ?: -1
     }
 
     /**
@@ -738,23 +946,34 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
      * @param optimizeLayout true=使用优化排版（包裹自定义CSS），false=保留EPUB自带排版
      */
     override fun getChapterHtml(chapterIndex: Int, optimizeLayout: Boolean): String {
-        val cacheKey = HtmlCacheKey(chapterIndex, optimizeLayout)
+        val revision = contentRevision.get()
+        val cacheKey = HtmlCacheKey(revision, chapterIndex, optimizeLayout)
         htmlCache[cacheKey]?.let { return it }
         if (chapterIndex !in chapterPaths.indices) return ""
 
-        val path = chapterPaths[chapterIndex]
-        try {
-            return synchronized(zipLock) {
-                val zipFile = sessionZipFile ?: return@synchronized ""
-                val zipEntry = findEntry(zipFile, path) ?: return@synchronized ""
+        val source = chapterSources.getOrNull(chapterIndex) ?: return ""
+        val path = source.path
+        return try {
+            val sourcePath = synchronized(zipLock) {
+                if (sessionZipFile == null || contentRevision.get() != revision) return ""
+                epubFilePath
+            }
+            val processed = ZipFile(sourcePath).use { zipFile ->
+                val zipEntry = findEntry(zipFile, path) ?: return ""
                 val rawHtml = zipFile.getInputStream(zipEntry).bufferedReader().use { it.readText() }
-                processHtml(zipFile, rawHtml, optimizeLayout, chapterPath = path).also {
+                    .let { sliceLogicalChapterHtml(it, source) }
+                processHtml(zipFile, rawHtml, optimizeLayout, chapterPath = path)
+            }
+            if (contentRevision.get() == revision) {
+                processed.also {
                     htmlCache.put(cacheKey, it)
                 }
+            } else {
+                ""
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            return ""
+            ""
         }
     }
 
@@ -762,52 +981,109 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
      * 按需加载单个章节的 Spanned，带缓存
      */
     override fun getChapterContent(chapterIndex: Int): CharSequence {
-        contentCache[chapterIndex]?.let {
-            android.util.Log.d("EpubParser", "getChapterContent: idx=$chapterIndex from cache, length=${it.length}")
-            return it
-        }
         if (chapterIndex !in chapterPaths.indices) {
             android.util.Log.w("EpubParser", "getChapterContent: idx=$chapterIndex out of range (chapterPaths.size=${chapterPaths.size})")
             return ""
         }
 
-        val path = chapterPaths[chapterIndex]
-        android.util.Log.d("EpubParser", "getChapterContent: idx=$chapterIndex path=$path")
+        val revision = contentRevision.get()
+        val loadKey = ContentLoadKey(revision, chapterIndex)
+        contentCache[loadKey]?.let {
+            android.util.Log.d("EpubParser", "getChapterContent: idx=$chapterIndex from cache, length=${it.length}")
+            return it
+        }
+        val loadLock = contentLoadLocks.getOrPut(loadKey) { Any() }
         try {
-            return synchronized(zipLock) {
-            val zipFile = sessionZipFile ?: return@synchronized ""
-            val zipEntry = findEntry(zipFile, path) ?: return@synchronized ""
-            val rawHtml = zipFile.getInputStream(zipEntry).bufferedReader().use { it.readText() }
-            android.util.Log.d("EpubParser", "getChapterContent: idx=$chapterIndex rawHtml.length=${rawHtml.length}")
-            if (chapterIndex == 0) android.util.Log.d("EpubParser", "cover HTML: $rawHtml")
-            val spanned = htmlToSpanned(chapterIndex, rawHtml, zipFile)
-            // 应用段间距和首行缩进（Canvas 引擎需要在 Spanned 层面处理）
-            val formatted = applyParagraphFormatting(spanned)
-            // 修剪末尾多余换行（防止章节末尾出现空白页）
-            val trimmed = trimTrailingNewlines(formatted)
-            // 移除 HTML 锚点占位，并记录其在最终章节文本中的字符位置
-            val anchored = extractAnchorOffsets(chapterIndex, trimmed)
-            // 验证修剪后 span 存活
-            val trimSpans = anchored.getSpans(0, anchored.length, android.text.style.LeadingMarginSpan::class.java)
-            android.util.Log.d("EpubParser", "getChapterContent: after trim: type=${anchored.javaClass.simpleName} LeadingMarginSpans=${trimSpans.size}")
-            // 如果 Spanned 为空（纯图片章节图片加载失败），返回占位文本
-            val result: CharSequence = if (anchored.isBlank()) android.text.SpannableString(" ") else anchored
-            // 验证最终结果中的 span
-            val finalSpans = if (result is android.text.Spannable) result.getSpans(0, result.length, Any::class.java) else emptyArray()
-            val finalIndentCount = finalSpans.count { it is android.text.style.LeadingMarginSpan }
-            val finalLHCount = finalSpans.count { it is ParagraphLineHeightSpan }
-            android.util.Log.d("EpubParser", "getChapterContent: idx=$chapterIndex result.length=${result.length} LeadingMarginSpans=$finalIndentCount LineHeightSpans=$finalLHCount firstLineIndentChars=$firstLineIndentChars indentPx=${(firstLineIndentChars * 18f * (context?.resources?.displayMetrics?.density ?: 2.75f)).toInt()}")
-            contentCache.put(chapterIndex, result)
-            result
+            return synchronized(loadLock) chapterLoad@{
+                contentCache[loadKey]?.let {
+                    if (contentRevision.get() == revision) return@chapterLoad it
+                }
+
+                val source = chapterSources.getOrNull(chapterIndex) ?: return@chapterLoad ""
+                val path = source.path
+                android.util.Log.d("EpubParser", "getChapterContent: idx=$chapterIndex path=$path")
+                val chapterSource = synchronized(zipLock) sourceRead@{
+                    if (contentRevision.get() != revision) return@sourceRead null
+                    val activeZip = sessionZipFile ?: return@sourceRead null
+                    val zipEntry = findEntry(activeZip, path) ?: return@sourceRead null
+                    activeZip to activeZip.getInputStream(zipEntry).bufferedReader().use { reader ->
+                        sliceLogicalChapterHtml(reader.readText(), source)
+                    }
+                } ?: return@chapterLoad ""
+                val (zipFile, rawHtml) = chapterSource
+                android.util.Log.d("EpubParser", "getChapterContent: idx=$chapterIndex rawHtml.length=${rawHtml.length}")
+
+                val parseStartedAt = android.os.SystemClock.elapsedRealtime()
+                val spanned = htmlToSpanned(chapterIndex, rawHtml, zipFile)
+                val htmlParsedAt = android.os.SystemClock.elapsedRealtime()
+                if (!isActiveRevision(revision, zipFile)) return@chapterLoad ""
+
+                // 应用段间距和首行缩进（Canvas 引擎需要在 Spanned 层面处理）
+                val formatted = applyParagraphFormatting(spanned)
+                val formattedAt = android.os.SystemClock.elapsedRealtime()
+                // 修剪末尾多余换行（防止章节末尾出现空白页）
+                val trimmed = trimTrailingNewlines(formatted)
+                // 移除 HTML 锚点占位，并记录其在最终章节文本中的字符位置
+                val anchored = extractAnchorOffsets(trimmed)
+                val anchoredAt = android.os.SystemClock.elapsedRealtime()
+                // 如果 Spanned 为空（纯图片章节图片加载失败），返回占位文本
+                val result: CharSequence = if (anchored.text.isBlank()) {
+                    android.text.SpannableString(" ")
+                } else {
+                    anchored.text
+                }
+
+                val stored = synchronized(zipLock) storeResult@{
+                    if (!isActiveRevisionLocked(revision, zipFile)) return@storeResult false
+                    anchorOffsets[chapterIndex] = anchored.offsets
+                    contentCache.put(loadKey, result)
+                    true
+                }
+                if (!stored) return@chapterLoad ""
+                android.util.Log.d(
+                    "EpubParser",
+                    "getChapterContent: idx=$chapterIndex result.length=${result.length} " +
+                        "html=${htmlParsedAt - parseStartedAt}ms format=${formattedAt - htmlParsedAt}ms " +
+                        "anchors=${anchoredAt - formattedAt}ms total=${anchoredAt - parseStartedAt}ms"
+                )
+                result
             }
         } catch (e: Exception) {
             android.util.Log.e("EpubParser", "getChapterContent: exception for idx=$chapterIndex", e)
             e.printStackTrace()
             return ""
+        } finally {
+            contentLoadLocks.remove(loadKey, loadLock)
         }
     }
 
+    private fun isActiveRevision(revision: Long, zipFile: ZipFile): Boolean = synchronized(zipLock) {
+        isActiveRevisionLocked(revision, zipFile)
+    }
+
+    private fun isActiveRevisionLocked(revision: Long, zipFile: ZipFile): Boolean =
+        contentRevision.get() == revision && sessionZipFile === zipFile
+
     override fun getChapterCount(): Int = chapterPaths.size
+
+    private fun sliceLogicalChapterHtml(html: String, source: ChapterSource): String {
+        val startAnchor = source.startAnchor ?: return html
+        val start = findAnchorElementStart(html, startAnchor) ?: return html
+        val end = source.endAnchor
+            ?.let { findAnchorElementStart(html, it, start + 1) }
+            ?.coerceAtLeast(start)
+            ?: html.length
+        return html.substring(start, end)
+    }
+
+    private fun findAnchorElementStart(html: String, anchor: String, fromIndex: Int = 0): Int? {
+        val escaped = Regex.escape(anchor)
+        val anchorTag = Regex(
+            """<[^>]+\b(?:id|name)\s*=\s*[\"']$escaped[\"'][^>]*>""",
+            RegexOption.IGNORE_CASE
+        )
+        return anchorTag.find(html, fromIndex)?.range?.first
+    }
 
     override fun resolveLink(sourceChapterIndex: Int, href: String): BookLinkTarget? {
         if (sourceChapterIndex !in chapterPaths.indices) return null
@@ -817,7 +1093,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         if (Regex("^[A-Za-z][A-Za-z0-9+.-]*:").containsMatchIn(trimmedHref)) return null
 
         val documentHref = trimmedHref.substringBefore('#').substringBefore('?')
-        val targetChapter = if (documentHref.isBlank()) {
+        var targetChapter = if (documentHref.isBlank()) {
             sourceChapterIndex
         } else {
             resolveLinkedChapter(sourceChapterIndex, documentHref)
@@ -831,20 +1107,45 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         }
         if (fragment.isEmpty()) return BookLinkTarget(targetChapter)
 
+        val targetPath = chapterSources.getOrNull(targetChapter)?.path
+        val logicalTarget = findLogicalChapterIndex(canonicalPath(targetPath.orEmpty()), fragment)
+        if (logicalTarget != null &&
+            chapterSources[logicalTarget].startAnchor.equals(fragment, ignoreCase = true)
+        ) {
+            return BookLinkTarget(logicalTarget, 0)
+        }
+
         // 目标章可能尚未分页，先按需解析以建立 id/name → 字符偏移映射。
         getChapterContent(targetChapter)
-        val offset = anchorOffsets[targetChapter]?.get(fragment)
-            ?: anchorOffsets[targetChapter]?.get(fragment.lowercase())
-            ?: 0
+        val offset = synchronized(zipLock) {
+            anchorOffsets[targetChapter]?.get(fragment)
+                ?: anchorOffsets[targetChapter]?.get(fragment.lowercase())
+                ?: 0
+        }
         return BookLinkTarget(targetChapter, offset)
     }
 
     override fun clearHtmlCache() {
+        contentRevision.incrementAndGet()
         htmlCache.clear()
         contentCache.clear()  // 段间距/首行缩进变更时也需要清空内容缓存
-        anchorOffsets.clear()
-        cssFileCache.clear()
-        footnoteHrefs.clear()
+        clearDecodedImageCache()
+        synchronized(zipLock) {
+            anchorOffsets.clear()
+            cssFileCache.clear()
+            footnoteHrefs.clear()
+        }
+    }
+
+    internal fun decodedImageCacheSizeForTest(): Int = imageBitmapCache.size
+
+    private fun clearDecodedImageCache() {
+        synchronized(zipLock) {
+            imageBitmapCache.values.toSet().forEach { bitmap ->
+                if (!bitmap.isRecycled) bitmap.recycle()
+            }
+            imageBitmapCache.clear()
+        }
     }
 
     /** 扫描章节 HTML，收集注释引用链接的 href（保持 HTML 属性原样，仅解码实体）。 */
@@ -864,14 +1165,18 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                 tagAttribute(openTag, "href")?.let { hrefs.add(decodeTagEntities(it)) }
             }
         }
-        footnoteHrefs[chapterIndex] = hrefs
+        synchronized(zipLock) {
+            footnoteHrefs[chapterIndex] = hrefs
+        }
     }
 
     override fun isFootnoteHref(chapterIndex: Int, href: String): Boolean {
         if (chapterIndex !in chapterPaths.indices) return false
         // 章节已展示时必有缓存；这里兜底确保 href 集合已收集
         getChapterContent(chapterIndex)
-        return footnoteHrefs[chapterIndex]?.contains(href.trim()) == true
+        return synchronized(zipLock) {
+            footnoteHrefs[chapterIndex]?.contains(href.trim()) == true
+        }
     }
 
     override fun resolveFootnoteText(sourceChapterIndex: Int, href: String): String? {
@@ -881,7 +1186,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         if (sourceChapterIndex !in chapterPaths.indices) return null
 
         val documentHref = trimmed.substringBefore('#').substringBefore('?')
-        val targetChapter = if (documentHref.isBlank()) {
+        var targetChapter = if (documentHref.isBlank()) {
             sourceChapterIndex
         } else {
             resolveLinkedChapter(sourceChapterIndex, documentHref)
@@ -891,11 +1196,18 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         val fragment = if ('#' in trimmed) decodeUrlComponent(trimmed.substringAfter('#')) else ""
         if (fragment.isEmpty()) return null
 
+        val targetPath = chapterSources.getOrNull(targetChapter)?.path
+        targetChapter = findLogicalChapterIndex(canonicalPath(targetPath.orEmpty()), fragment)
+            ?: targetChapter
+
         val rawHtml = try {
             synchronized(zipLock) {
                 val zipFile = sessionZipFile ?: return null
-                val zipEntry = findEntry(zipFile, chapterPaths[targetChapter]) ?: return null
-                zipFile.getInputStream(zipEntry).bufferedReader().use { it.readText() }
+                val source = chapterSources.getOrNull(targetChapter) ?: return null
+                val zipEntry = findEntry(zipFile, source.path) ?: return null
+                zipFile.getInputStream(zipEntry).bufferedReader().use {
+                    sliceLogicalChapterHtml(it.readText(), source)
+                }
             }
         } catch (_: Exception) {
             return null
@@ -911,79 +1223,142 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
      * - 段间距：在段落之间插入空行，用 LineHeightSpan 精确控制空行高度
      */
     private fun applyParagraphFormatting(text: CharSequence): CharSequence {
-        android.util.Log.d("EpubParser", "applyParagraphFormatting: paragraphSpacingDp=$paragraphSpacingDp firstLineIndentChars=$firstLineIndentChars")
-
-        val ssb = android.text.SpannableStringBuilder(text)
-
-        // 段间距为0时，合并连续换行（\n\n → \n），消除段落间空行
-        if (paragraphSpacingDp <= 0f) {
-            var i = ssb.length - 1
-            while (i > 0) {
-                if (ssb[i] == '\n' && ssb[i - 1] == '\n') {
-                    ssb.delete(i, i + 1)
-                }
-                i--
-            }
-        }
-
-        if (paragraphSpacingDp <= 0f && firstLineIndentChars <= 0f) {
-            android.util.Log.d("EpubParser", "applyParagraphFormatting: SKIP (both <= 0)")
-            return ssb
-        }
-
         val density = context?.resources?.displayMetrics?.density ?: 2.75f
         val indentPx = if (firstLineIndentChars > 0f) (firstLineIndentChars * 18f * density).toInt() else 0
         val spacingPx = if (paragraphSpacingDp > 0f) (paragraphSpacingDp * density).toInt() else 0
-        android.util.Log.d("EpubParser", "applyParagraphFormatting: density=$density spacingDp=$paragraphSpacingDp -> spacingPx=$spacingPx")
 
-        // ── 段间距：在每个 \n 后插入一个空行，并用 LineHeightSpan 控制高度 ──
-        if (spacingPx > 0) {
-            // 从后往前插入，避免位置偏移
-            val newlinePositions = mutableListOf<Int>()
-            for (j in 0 until ssb.length) {
-                if (ssb[j] == '\n') newlinePositions.add(j)
+        // Build paragraph separators once. Repeated insert/delete on a 400K+ Spanned
+        // relocates every following character and span thousands of times.
+        val ssb = rebuildParagraphBreaks(text, spacingPx)
+        if (indentPx <= 0) return ssb
+
+        // ── 首行缩进：给每个段落添加 LeadingMarginSpan ──
+        val imageRanges = ssb.getSpans(
+            0,
+            ssb.length,
+            android.text.style.ImageSpan::class.java
+        ).map { ssb.getSpanStart(it) until ssb.getSpanEnd(it) }
+            .sortedBy { it.first }
+        var imageRangeIndex = 0
+        var indentCount = 0
+        var paraStart = 0
+        for (j in 0..ssb.length) {
+            val isEnd = j == ssb.length
+            val isNewline = !isEnd && ssb[j] == '\n'
+            if (isEnd || isNewline) {
+                if (paraStart < j) {
+                    while (imageRangeIndex < imageRanges.size &&
+                        imageRanges[imageRangeIndex].last < paraStart
+                    ) {
+                        imageRangeIndex++
+                    }
+                    val imageRange = imageRanges.getOrNull(imageRangeIndex)
+                    val hasImage = imageRange != null && imageRange.first < j
+                    if (!hasImage) {
+                        ssb.setSpan(
+                            android.text.style.LeadingMarginSpan.Standard(indentPx, 0),
+                            paraStart, j,
+                            android.text.Spannable.SPAN_INCLUSIVE_INCLUSIVE
+                        )
+                        indentCount++
+                    }
+                }
+                paraStart = j + 1
             }
-            for (nl in newlinePositions.reversed()) {
-                ssb.insert(nl + 1, "\n")
-                ssb.setSpan(
-                    ParagraphLineHeightSpan(spacingPx),
-                    nl + 1, nl + 2,
-                    android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+        }
+
+        android.util.Log.d(
+            "EpubParser",
+            "Paragraph formatting complete: length=${ssb.length} indentSpans=$indentCount spacingPx=$spacingPx"
+        )
+
+        return ssb
+    }
+
+    private fun rebuildParagraphBreaks(
+        text: CharSequence,
+        spacingPx: Int
+    ): SpannableStringBuilder {
+        val source = text.toString()
+        val startOffsets = IntArray(source.length + 1)
+        val endOffsets = IntArray(source.length + 1)
+        val spacerOffsets = mutableListOf<Int>()
+        val plainText = StringBuilder(source.length)
+        var sourceIndex = 0
+
+        while (sourceIndex < source.length) {
+            val newline = source.indexOf('\n', sourceIndex).let { if (it < 0) source.length else it }
+            val outputStart = plainText.length
+            for (boundary in sourceIndex..newline) {
+                val mapped = outputStart + boundary - sourceIndex
+                startOffsets[boundary] = mapped
+                endOffsets[boundary] = mapped
+            }
+            plainText.append(source, sourceIndex, newline)
+            if (newline == source.length) break
+
+            var runEnd = newline + 1
+            while (runEnd < source.length && (source[runEnd] == '\n' || source[runEnd] == '\r')) {
+                runEnd++
+            }
+            plainText.append('\n')
+            val beforeSpacer = plainText.length
+            for (boundary in newline + 1..runEnd) {
+                endOffsets[boundary] = beforeSpacer
+            }
+            if (spacingPx > 0 && runEnd < source.length) {
+                spacerOffsets += plainText.length
+                plainText.append('\n')
+            }
+            for (boundary in newline + 1..runEnd) {
+                startOffsets[boundary] = plainText.length
+            }
+            sourceIndex = runEnd
+        }
+
+        if (source.isEmpty()) {
+            startOffsets[0] = 0
+            endOffsets[0] = 0
+        }
+        val result = SpannableStringBuilder(plainText)
+        copyMappedSpans(text, result, startOffsets, endOffsets)
+        spacerOffsets.forEach { spacerStart ->
+            result.setSpan(
+                ParagraphLineHeightSpan(spacingPx),
+                spacerStart,
+                spacerStart + 1,
+                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+        }
+        return result
+    }
+
+    /** Copies all source spans once after a linear text transformation. */
+    private fun copyMappedSpans(
+        source: CharSequence,
+        target: SpannableStringBuilder,
+        startOffsets: IntArray,
+        endOffsets: IntArray
+    ) {
+        if (source !is Spanned || source.isEmpty()) return
+        source.getSpans(0, source.length, Any::class.java).forEach { span ->
+            if (span is NoCopySpan) return@forEach
+            val sourceStart = source.getSpanStart(span)
+            val sourceEnd = source.getSpanEnd(span)
+            if (sourceStart !in startOffsets.indices || sourceEnd !in endOffsets.indices) return@forEach
+            val targetStart = startOffsets[sourceStart]
+            val targetEnd = endOffsets[sourceEnd]
+            if (targetStart > targetEnd) return@forEach
+            try {
+                target.setSpan(span, targetStart, targetEnd, source.getSpanFlags(span))
+            } catch (error: RuntimeException) {
+                android.util.Log.w(
+                    "EpubParser",
+                    "Skipping invalid mapped span ${span.javaClass.simpleName}: $targetStart..$targetEnd",
+                    error
                 )
             }
         }
-
-        // ── 首行缩进：给每个段落添加 LeadingMarginSpan ──
-        android.util.Log.d("EpubParser", "applyParagraphFormatting: indentPx=$indentPx (firstLineIndentChars=$firstLineIndentChars)")
-        if (indentPx > 0) {
-            var paraStart = 0
-            for (j in 0..ssb.length) {
-                val isEnd = j == ssb.length
-                val isNewline = !isEnd && ssb[j] == '\n'
-                if (isEnd || isNewline) {
-                    if (paraStart < j) {
-                        // 🔥 跳过含图片的段落：图片不应有首行缩进
-                        val hasImage = ssb.getSpans(paraStart, j, android.text.style.ImageSpan::class.java).isNotEmpty()
-                        if (!hasImage) {
-                            ssb.setSpan(
-                                android.text.style.LeadingMarginSpan.Standard(indentPx, 0),
-                                paraStart, j,
-                                android.text.Spannable.SPAN_INCLUSIVE_INCLUSIVE
-                            )
-                        }
-                    }
-                    paraStart = j + 1
-                }
-            }
-        }
-
-        // 验证 span 被正确添加
-        val spans = ssb.getSpans(0, ssb.length, Any::class.java)
-        val indentCount = spans.count { it is android.text.style.LeadingMarginSpan }
-        val lineHeightCount = spans.count { it is ParagraphLineHeightSpan }
-        android.util.Log.d("EpubParser", "applyParagraphFormatting: indentPx=$indentPx spacingPx=$spacingPx textLen=${ssb.length} LeadingMarginSpans=$indentCount LineHeightSpans=$lineHeightCount")
-
-        return ssb
     }
 
     /**
@@ -1017,14 +1392,11 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             }
             if (!isSpacerLine) return
 
-            val origAscent = fm.ascent
-            val origDescent = fm.descent
             // 强制覆盖字体度量，精确控制空行高度
             fm.ascent = 0
             fm.top = 0
             fm.descent = extraHeightPx
             fm.bottom = extraHeightPx
-            android.util.Log.d("EpubParser", "chooseHeight: extraPx=$extraHeightPx origAscent=$origAscent origDescent=$origDescent lineHeight=$lineHeight -> newDescent=$extraHeightPx")
         }
     }
 
@@ -1208,10 +1580,14 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         return result.joinToString("/")
     }
 
+    /** Canonical path used when comparing OPF/spine/NCX references. */
+    private fun canonicalPath(path: String): String? =
+        EpubPathResolver.normalize(decodeUrlComponent(path).replace('\\', '/'))
+
     /** 根据来源章节目录解析 EPUB 内部相对链接。 */
     private fun resolveLinkedChapter(sourceChapterIndex: Int, documentHref: String): Int {
         val decodedHref = decodeUrlComponent(documentHref).replace('\\', '/')
-        val sourcePath = chapterPaths[sourceChapterIndex].replace('\\', '/')
+        val sourcePath = chapterSources[sourceChapterIndex].path.replace('\\', '/')
         val sourceDirectory = sourcePath.substringBeforeLast('/', "")
         val resolvedPath = if (decodedHref.startsWith('/')) {
             decodedHref.trimStart('/')
@@ -1221,11 +1597,8 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             ).trimStart('/')
         }
 
-        val exactMatch = chapterPaths.indexOfFirst { chapterPath ->
-            normalizePath(decodeUrlComponent(chapterPath).replace('\\', '/'))
-                .trimStart('/') == resolvedPath
-        }
-        if (exactMatch >= 0) return exactMatch
+        val exactPath = canonicalPath(resolvedPath)
+        findLogicalChapterIndex(exactPath, anchor = null)?.let { return it }
 
         return mapHrefToSpineIndex(decodedHref.trimStart('/'))
     }
@@ -1301,6 +1674,138 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         return "image/png"
     }
 
+    private data class EncodedImageSize(val width: Int, val height: Int)
+
+    /** Reads dimensions from encoded headers without starting Android's bitmap decoder. */
+    private fun readEncodedImageSize(zipFile: ZipFile, entry: ZipEntry): EncodedImageSize? {
+        val readLimit = if (entry.name.endsWith(".jpg", true) || entry.name.endsWith(".jpeg", true)) {
+            JPEG_HEADER_READ_LIMIT
+        } else {
+            SIMPLE_IMAGE_HEADER_READ_LIMIT
+        }
+        val header = synchronized(zipLock) {
+            if (sessionZipFile !== zipFile) return null
+            zipFile.getInputStream(entry).use { input ->
+                val output = ByteArrayOutputStream(4096)
+                val buffer = ByteArray(4096)
+                var remaining = readLimit
+                while (remaining > 0) {
+                    val count = input.read(buffer, 0, minOf(buffer.size, remaining))
+                    if (count <= 0) break
+                    output.write(buffer, 0, count)
+                    remaining -= count
+                }
+                output.toByteArray()
+            }
+        }
+        return parseEncodedImageSize(header)
+    }
+
+    private fun parseEncodedImageSize(bytes: ByteArray): EncodedImageSize? {
+        if (bytes.size >= 24 &&
+            bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte() &&
+            bytes[2] == 0x4E.toByte() && bytes[3] == 0x47.toByte()
+        ) {
+            return validImageSize(readBigEndianInt(bytes, 16), readBigEndianInt(bytes, 20))
+        }
+        if (bytes.size >= 10 &&
+            bytes[0] == 'G'.code.toByte() && bytes[1] == 'I'.code.toByte() &&
+            bytes[2] == 'F'.code.toByte()
+        ) {
+            return validImageSize(readLittleEndianShort(bytes, 6), readLittleEndianShort(bytes, 8))
+        }
+        if (bytes.size >= 12 &&
+            bytes[0] == 'R'.code.toByte() && bytes[1] == 'I'.code.toByte() &&
+            bytes[2] == 'F'.code.toByte() && bytes[3] == 'F'.code.toByte() &&
+            bytes[8] == 'W'.code.toByte() && bytes[9] == 'E'.code.toByte() &&
+            bytes[10] == 'B'.code.toByte() && bytes[11] == 'P'.code.toByte()
+        ) {
+            parseWebpSize(bytes)?.let { return it }
+        }
+        if (bytes.size >= 4 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte()) {
+            parseJpegSize(bytes)?.let { return it }
+        }
+        return null
+    }
+
+    private fun parseJpegSize(bytes: ByteArray): EncodedImageSize? {
+        var index = 2
+        while (index + 8 < bytes.size) {
+            while (index < bytes.size && bytes[index] != 0xFF.toByte()) index++
+            while (index < bytes.size && bytes[index] == 0xFF.toByte()) index++
+            if (index >= bytes.size) return null
+            val marker = bytes[index].toInt() and 0xFF
+            index++
+            if (marker == 0xD8 || marker == 0xD9 || marker in 0xD0..0xD7 || marker == 0x01) continue
+            if (index + 1 >= bytes.size) return null
+            val segmentLength = readBigEndianShort(bytes, index)
+            if (segmentLength < 2 || index + segmentLength > bytes.size) return null
+            if (marker in JPEG_START_OF_FRAME_MARKERS && segmentLength >= 7) {
+                return validImageSize(
+                    readBigEndianShort(bytes, index + 5),
+                    readBigEndianShort(bytes, index + 3)
+                )
+            }
+            index += segmentLength
+        }
+        return null
+    }
+
+    private fun parseWebpSize(bytes: ByteArray): EncodedImageSize? {
+        if (bytes.size < 30) return null
+        val chunk = String(bytes, 12, 4, Charsets.US_ASCII)
+        return when (chunk) {
+            "VP8X" -> validImageSize(
+                1 + readLittleEndian24(bytes, 24),
+                1 + readLittleEndian24(bytes, 27)
+            )
+            "VP8 " -> {
+                var index = 20
+                while (index + 6 < bytes.size) {
+                    if (bytes[index] == 0x9D.toByte() && bytes[index + 1] == 0x01.toByte() &&
+                        bytes[index + 2] == 0x2A.toByte()
+                    ) {
+                        return validImageSize(
+                            readLittleEndianShort(bytes, index + 3) and 0x3FFF,
+                            readLittleEndianShort(bytes, index + 5) and 0x3FFF
+                        )
+                    }
+                    index++
+                }
+                null
+            }
+            "VP8L" -> {
+                if (bytes[20] != 0x2F.toByte()) return null
+                val packed = (bytes[21].toInt() and 0xFF) or
+                    ((bytes[22].toInt() and 0xFF) shl 8) or
+                    ((bytes[23].toInt() and 0xFF) shl 16) or
+                    ((bytes[24].toInt() and 0xFF) shl 24)
+                validImageSize((packed and 0x3FFF) + 1, ((packed ushr 14) and 0x3FFF) + 1)
+            }
+            else -> null
+        }
+    }
+
+    private fun validImageSize(width: Int, height: Int): EncodedImageSize? =
+        if (width > 0 && height > 0) EncodedImageSize(width, height) else null
+
+    private fun readBigEndianInt(bytes: ByteArray, offset: Int): Int =
+        ((bytes[offset].toInt() and 0xFF) shl 24) or
+            ((bytes[offset + 1].toInt() and 0xFF) shl 16) or
+            ((bytes[offset + 2].toInt() and 0xFF) shl 8) or
+            (bytes[offset + 3].toInt() and 0xFF)
+
+    private fun readBigEndianShort(bytes: ByteArray, offset: Int): Int =
+        ((bytes[offset].toInt() and 0xFF) shl 8) or (bytes[offset + 1].toInt() and 0xFF)
+
+    private fun readLittleEndianShort(bytes: ByteArray, offset: Int): Int =
+        (bytes[offset].toInt() and 0xFF) or ((bytes[offset + 1].toInt() and 0xFF) shl 8)
+
+    private fun readLittleEndian24(bytes: ByteArray, offset: Int): Int =
+        (bytes[offset].toInt() and 0xFF) or
+            ((bytes[offset + 1].toInt() and 0xFF) shl 8) or
+            ((bytes[offset + 2].toInt() and 0xFF) shl 16)
+
     private fun htmlToSpanned(chapterIndex: Int, html: String, zipFile: ZipFile): Spanned {
         val bodyContent = extractBody(html) ?: html
 
@@ -1338,7 +1843,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         )
 
         val imageGetter = EpubImageGetter(zipFile, contentWidth)
-        val parsed = Html.fromHtml(withImageBreaks, Html.FROM_HTML_MODE_LEGACY, imageGetter, null)
+        val parsed = parseNativeHtmlInChunks(withImageBreaks, imageGetter)
         if (chapterIndex != 0) return parsed
 
         val cover = android.text.SpannableStringBuilder(parsed)
@@ -1355,6 +1860,90 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             )
         }
         return cover
+    }
+
+    /**
+     * Android's HTML parser becomes disproportionately expensive for the very
+     * large single-file chapters produced by some EPUB exporters. Split only
+     * at block boundaries so inline markup and image/anchor spans remain
+     * intact while each parser invocation stays bounded.
+     */
+    private fun parseNativeHtmlInChunks(
+        html: String,
+        imageGetter: Html.ImageGetter
+    ): Spanned {
+        val chunks = splitNativeHtml(html)
+        if (chunks.size == 1) {
+            return replaceDefaultQuoteSpans(
+                Html.fromHtml(chunks[0], Html.FROM_HTML_MODE_LEGACY, imageGetter, null)
+            )
+        }
+
+        val combined = android.text.SpannableStringBuilder()
+        chunks.forEachIndexed { index, chunk ->
+            val parsed = Html.fromHtml(chunk, Html.FROM_HTML_MODE_LEGACY, imageGetter, null)
+            if (index > 0 && combined.isNotEmpty() && !combined.endsWith('\n') &&
+                parsed.isNotEmpty() && parsed[0] != '\n'
+            ) {
+                combined.append('\n')
+            }
+            combined.append(parsed)
+        }
+        return replaceDefaultQuoteSpans(combined)
+    }
+
+    /**
+     * Html.fromHtml renders every blockquote with Android's fixed blue QuoteSpan stripe.
+     * Keep its leading margin, but replace the system-colored decoration so EPUB quotes
+     * remain readable in every reader theme without an unrelated blue/purple accent.
+     */
+    private fun replaceDefaultQuoteSpans(text: Spanned): Spanned {
+        val quoteSpans = text.getSpans(0, text.length, QuoteSpan::class.java)
+        if (quoteSpans.isEmpty()) return text
+
+        val result = SpannableStringBuilder(text)
+        quoteSpans.forEach { quoteSpan ->
+            val start = result.getSpanStart(quoteSpan)
+            val end = result.getSpanEnd(quoteSpan)
+            val flags = result.getSpanFlags(quoteSpan)
+            val margin = quoteSpan.getLeadingMargin(true).coerceAtLeast(0)
+            result.removeSpan(quoteSpan)
+            if (start in 0 until end && end <= result.length && margin > 0) {
+                result.setSpan(
+                    LeadingMarginSpan.Standard(margin, margin),
+                    start,
+                    end,
+                    flags
+                )
+            }
+        }
+        return result
+    }
+
+    private fun splitNativeHtml(html: String): List<String> {
+        if (html.length <= NATIVE_HTML_CHUNK_THRESHOLD) return listOf(html)
+
+        val chunks = mutableListOf<String>()
+        var start = 0
+        while (start < html.length) {
+            val target = (start + NATIVE_HTML_CHUNK_TARGET).coerceAtMost(html.length)
+            if (target == html.length) {
+                chunks += html.substring(start)
+                break
+            }
+
+            val boundary = findNativeHtmlBoundary(html, target)
+            chunks += html.substring(start, boundary)
+            start = boundary
+        }
+        return chunks.filter(String::isNotEmpty)
+    }
+
+    private fun findNativeHtmlBoundary(html: String, target: Int): Int {
+        val boundary = NATIVE_HTML_BOUNDARY_REGEX.find(html, target)?.range?.last?.plus(1)
+        // Never split inside a paragraph or tag. A single unusually large
+        // block remains one chunk, which preserves its spans and markup.
+        return boundary ?: html.length
     }
 
     private fun insertAnchorMarkers(html: String): String {
@@ -1381,23 +1970,31 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         }
     }
 
-    private fun extractAnchorOffsets(
-        chapterIndex: Int,
-        text: CharSequence
-    ): android.text.SpannableStringBuilder {
-        val result = android.text.SpannableStringBuilder(text)
+    private fun extractAnchorOffsets(text: CharSequence): AnchoredChapter {
+        val source = text.toString()
+        val startOffsets = IntArray(source.length + 1)
+        val endOffsets = IntArray(source.length + 1)
+        val plainText = StringBuilder(source.length)
         val offsets = linkedMapOf<String, Int>()
         var searchFrom = 0
+        var copyFrom = 0
 
-        while (searchFrom < result.length) {
-            val currentText = result.toString()
-            val markerStart = currentText.indexOf(ANCHOR_MARKER_PREFIX, searchFrom)
+        while (searchFrom < source.length) {
+            val markerStart = source.indexOf(ANCHOR_MARKER_PREFIX, searchFrom)
             if (markerStart < 0) break
             val payloadStart = markerStart + ANCHOR_MARKER_PREFIX.length
-            val markerEnd = currentText.indexOf(ANCHOR_MARKER_SUFFIX, payloadStart)
+            val markerEnd = source.indexOf(ANCHOR_MARKER_SUFFIX, payloadStart)
             if (markerEnd < 0) break
 
-            val encoded = currentText.substring(payloadStart, markerEnd)
+            val outputStart = plainText.length
+            for (boundary in copyFrom..markerStart) {
+                val mapped = outputStart + boundary - copyFrom
+                startOffsets[boundary] = mapped
+                endOffsets[boundary] = mapped
+            }
+            plainText.append(source, copyFrom, markerStart)
+            val anchorOffset = plainText.length
+            val encoded = source.substring(payloadStart, markerEnd)
             val anchor = try {
                 String(Base64.decode(encoded, Base64.NO_WRAP or Base64.URL_SAFE), Charsets.UTF_8)
             } catch (_: IllegalArgumentException) {
@@ -1405,17 +2002,123 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             }
             if (anchor.isNotEmpty()) {
                 val decodedAnchor = decodeUrlComponent(anchor)
-                offsets.putIfAbsent(anchor, markerStart)
-                offsets.putIfAbsent(decodedAnchor, markerStart)
-                offsets.putIfAbsent(decodedAnchor.lowercase(), markerStart)
+                offsets.putIfAbsent(anchor, anchorOffset)
+                offsets.putIfAbsent(decodedAnchor, anchorOffset)
+                offsets.putIfAbsent(decodedAnchor.lowercase(), anchorOffset)
             }
 
-            result.delete(markerStart, markerEnd + ANCHOR_MARKER_SUFFIX.length)
-            searchFrom = markerStart
+            copyFrom = markerEnd + ANCHOR_MARKER_SUFFIX.length
+            for (boundary in markerStart..copyFrom) {
+                startOffsets[boundary] = anchorOffset
+                endOffsets[boundary] = anchorOffset
+            }
+            searchFrom = copyFrom
+        }
+        val outputStart = plainText.length
+        for (boundary in copyFrom..source.length) {
+            val mapped = outputStart + boundary - copyFrom
+            startOffsets[boundary] = mapped
+            endOffsets[boundary] = mapped
+        }
+        plainText.append(source, copyFrom, source.length)
+
+        val result = SpannableStringBuilder(plainText)
+        copyMappedSpans(text, result, startOffsets, endOffsets)
+        return AnchoredChapter(result, offsets)
+    }
+
+    /**
+     * Drawable used by ImageSpan. It keeps only intrinsic dimensions while a
+     * chapter is being parsed; bitmap bytes are read and decoded on the first
+     * actual draw, then retained only by the bounded parser cache.
+     */
+    private inner class LazyEpubImageDrawable(
+        private val zipFile: ZipFile,
+        private val entry: ZipEntry,
+        private val cacheKey: String,
+        private val originalWidth: Int,
+        private val originalHeight: Int,
+        private val pageWidth: Int,
+        private val drawWidth: Int,
+        private val drawHeight: Int
+    ) : Drawable() {
+        private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG)
+        private var bitmapRef: WeakReference<Bitmap>? = null
+        private var decodeFailed = false
+
+        override fun draw(canvas: android.graphics.Canvas) {
+            val bitmap = bitmapRef?.get()
+                ?: imageBitmapCache[cacheKey]?.also { bitmapRef = WeakReference(it) }
+                ?: loadBitmap()?.also {
+                    bitmapRef = WeakReference(it)
+                    if (it.allocationByteCount.toLong() <= IMAGE_BITMAP_CACHE_BYTES) {
+                        imageBitmapCache.put(cacheKey, it)
+                    }
+                }
+            if (bitmap != null && !bitmap.isRecycled) {
+                canvas.drawBitmap(bitmap, null, bounds, paint)
+            } else {
+                drawFailurePlaceholder(canvas)
+            }
         }
 
-        anchorOffsets[chapterIndex] = offsets
-        return result
+        private fun loadBitmap(): Bitmap? {
+            if (decodeFailed) return null
+            return try {
+                synchronized(zipLock) {
+                    val opts = BitmapFactory.Options().apply {
+                        inSampleSize = ReaderImageSizing.decodeSampleSize(
+                            originalWidth,
+                            originalHeight,
+                            pageWidth
+                        )
+                        inPreferredConfig = Bitmap.Config.ARGB_8888
+                    }
+                    zipFile.getInputStream(entry).use { input ->
+                        BitmapFactory.decodeStream(input, null, opts)
+                    }
+                }
+            } catch (error: Throwable) {
+                decodeFailed = true
+                android.util.Log.w("EpubParser", "Lazy image decode failed: ${entry.name}", error)
+                null
+            }
+        }
+
+        private fun drawFailurePlaceholder(canvas: android.graphics.Canvas) {
+            val fill = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = 0xFFF5F5F5.toInt()
+                style = android.graphics.Paint.Style.FILL
+            }
+            canvas.drawRect(bounds, fill)
+            val border = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = 0xFFCCCCCC.toInt()
+                style = android.graphics.Paint.Style.STROKE
+                strokeWidth = 2f
+            }
+            canvas.drawRect(
+                bounds.left + 1f,
+                bounds.top + 1f,
+                bounds.right - 1f,
+                bounds.bottom - 1f,
+                border
+            )
+        }
+
+        override fun setAlpha(alpha: Int) {
+            paint.alpha = alpha
+        }
+
+        override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) {
+            paint.colorFilter = colorFilter
+        }
+
+        @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+        override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
+
+        override fun getIntrinsicWidth(): Int = drawWidth
+
+        override fun getIntrinsicHeight(): Int = drawHeight
     }
 
     private inner class EpubImageGetter(
@@ -1424,74 +2127,54 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
     ) : Html.ImageGetter {
         override fun getDrawable(source: String): Drawable? {
             return try {
-                android.util.Log.d("EpubParser", "getDrawable: source=${source.take(80)}")
-
-                // 🔥 处理 Base64 data URI（embedImages 转换后的格式）
+                // data: 图片只在正文确实包含内嵌资源时出现；保留已有解码路径。
                 if (source.startsWith("data:", ignoreCase = true)) {
                     return decodeDataUri(source)
                 }
 
-                val entryPath = resolveImagePath(source) ?: run {
-                    android.util.Log.w("EpubParser", "getDrawable: resolveImagePath returned null for $source")
-                    return createErrorPlaceholder("Path resolution failed: ${source.take(60)}")
-                }
-                android.util.Log.d("EpubParser", "getDrawable: entryPath=$entryPath")
+                val entryPath = resolveImagePath(source)
                 val entry = findEntry(zipFile, entryPath) ?: run {
                     android.util.Log.w("EpubParser", "getDrawable: findEntry returned null for $entryPath")
                     return createErrorPlaceholder("Image not found: ${entryPath.take(60)}")
                 }
-                android.util.Log.d("EpubParser", "getDrawable: entry=${entry.name} size=${entry.size}")
-
-                val bytes = zipFile.getInputStream(entry).readBytes()
-                android.util.Log.d("EpubParser", "getDrawable: readBytes=${bytes.size}")
-
-                // 🔥 SVG 检测：BitmapFactory 无法解码 SVG，返回占位符
-                val mimeType = detectMimeType(entry.name, bytes)
-                if (mimeType == "image/svg+xml") {
-                    android.util.Log.w("EpubParser", "getDrawable: SVG not supported by BitmapFactory, using placeholder for ${entry.name}")
+                if (entry.name.endsWith(".svg", ignoreCase = true)) {
                     return createSvgPlaceholder()
                 }
 
-                // 先只读尺寸，不分配内存
-                val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
-                android.util.Log.d("EpubParser", "getDrawable: originalSize=${opts.outWidth}x${opts.outHeight}")
-
-                val originalWidth = opts.outWidth
-                val originalHeight = opts.outHeight
-                opts.inSampleSize = ReaderImageSizing.decodeSampleSize(
-                    originalWidth,
-                    originalHeight,
-                    pageContentWidth.takeIf { it > 0 } ?: 800
-                )
-                opts.inJustDecodeBounds = false
-                android.util.Log.d("EpubParser", "getDrawable: inSampleSize=${opts.inSampleSize}")
-
-                val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
-                if (bitmap == null) {
-                    android.util.Log.e("EpubParser", "getDrawable: decodeByteArray returned null!")
-                    return createErrorPlaceholder("Decode failed: ${entry.name.take(60)}")
-                }
-                android.util.Log.d("EpubParser", "getDrawable: decoded ${bitmap.width}x${bitmap.height}")
-
-                // 缩放至页面可用宽度，高度等比
-                val pageW = if (pageContentWidth > 0) {
-                    pageContentWidth
-                } else {
+                val encodedSize = readEncodedImageSize(zipFile, entry) ?: run {
+                    val bounds = synchronized(zipLock) {
+                        if (sessionZipFile !== zipFile) return createErrorPlaceholder("Reader closed")
+                        BitmapFactory.Options().apply { inJustDecodeBounds = true }.also { options ->
+                            zipFile.getInputStream(entry).use { input ->
+                                BitmapFactory.decodeStream(input, null, options)
+                            }
+                        }
+                    }
+                    validImageSize(bounds.outWidth, bounds.outHeight)
+                } ?: return createErrorPlaceholder("Invalid image dimensions: ${entry.name.take(60)}")
+                val originalWidth = encodedSize.width
+                val originalHeight = encodedSize.height
+                val pageW = pageContentWidth.takeIf { it > 0 } ?: run {
                     val dm = context?.resources?.displayMetrics
                         ?: android.content.res.Resources.getSystem().displayMetrics
-                    val marginPx = (44 * dm.density).toInt()  // 默认边距 44dp
-                    dm.widthPixels - marginPx * 2
+                    val marginPx = (44 * dm.density).toInt()
+                    (dm.widthPixels - marginPx * 2).coerceAtLeast(1)
                 }
                 val imageBounds = ReaderImageSizing.bounds(originalWidth, originalHeight, pageW)
                     ?: return createErrorPlaceholder("Invalid image dimensions: ${entry.name.take(60)}")
-                val ratio = imageBounds.width.toFloat() / bitmap.width.coerceAtLeast(1)
-                val drawW = imageBounds.width
-                val drawH = (bitmap.height * ratio).toInt().coerceAtLeast(1)
 
-                val drawable = BitmapDrawable(null, bitmap)
-                drawable.setBounds(0, 0, drawW, drawH)
-                drawable
+                LazyEpubImageDrawable(
+                    zipFile = zipFile,
+                    entry = entry,
+                    cacheKey = entry.name,
+                    originalWidth = originalWidth,
+                    originalHeight = originalHeight,
+                    pageWidth = pageW,
+                    drawWidth = imageBounds.width,
+                    drawHeight = imageBounds.height
+                ).apply {
+                    setBounds(0, 0, imageBounds.width, imageBounds.height)
+                }
             } catch (e: Throwable) {
                 android.util.Log.e("EpubParser", "getDrawable: exception", e)
                 createErrorPlaceholder("Exception: ${e.message?.take(60) ?: "unknown"}")
@@ -1757,6 +2440,10 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         }
         clearHtmlCache()
         parsedPackage = null
+        chapterSources = emptyList()
+        chapterPaths = emptyList()
+        logicalChapterIndicesByPath = emptyMap()
+        spineHrefs = emptyList()
         sourceLease?.close()
         sourceLease = null
     }

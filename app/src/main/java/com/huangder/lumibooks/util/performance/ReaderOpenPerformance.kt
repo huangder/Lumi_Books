@@ -95,11 +95,12 @@ object ReaderOpenPerformance {
     }
 
     inline fun <T> trace(section: String, block: () -> T): T {
-        Trace.beginSection(section)
+        val tracing = Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2
+        if (tracing) Trace.beginSection(section)
         return try {
             block()
         } finally {
-            Trace.endSection()
+            if (tracing) Trace.endSection()
         }
     }
 

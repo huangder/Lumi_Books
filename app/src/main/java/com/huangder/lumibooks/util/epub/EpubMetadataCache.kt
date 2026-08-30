@@ -141,5 +141,6 @@ object EpubMetadataCache {
         takeUnless { isNull(key) }?.optString(key)?.takeIf(String::isNotBlank)
 
     private const val NAMESPACE = "epub_metadata"
-    private const val FORMAT_VERSION = 1
+    // v2 stores manifest/navigation paths reconciled against actual ZIP entries.
+    private const val FORMAT_VERSION = 2
 }
