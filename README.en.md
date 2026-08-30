@@ -133,6 +133,14 @@ See [Changelog](https://huangder.top/changelog.html)
 
 ---
 
+## ❤️ Support Lumi
+
+Lumi will remain free, open source, and ad-free. If it has been useful to you, you can support its continued development through the [sponsorship page](https://huangder.top/sponsor.html).
+
+The **Sponsor** button in the GitHub repository sidebar will also list the available support options. Sponsorship is entirely optional and does not affect feature access or issue handling.
+
+---
+
 ## 📜 License
 
 Lumi's original code is open-sourced under the [GNU GPLv3](LICENSE). Third-party dependencies and adaptations follow their respective licenses. The curl page-turn implementation is adapted from the GPLv3 project [legado-E](https://github.com/Luoyacheng/legado-E); the Liquid Glass implementation is adapted from [AndroidLiquidGlass / Backdrop](https://github.com/Kyant0/AndroidLiquidGlass) under Apache 2.0. © 2026 Huangder

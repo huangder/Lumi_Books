@@ -1,10 +1,10 @@
 blank_issues_enabled: false
 contact_links:
-  - name: 💬 使用问题 / 讨论
+  - name: 💬 反馈与求助 / Feedback & Help
     url: https://github.com/huangder/Lumi_Books/discussions
     about: |
-      使用上的疑问、功能想法交流，或者不确定是不是 bug 的问题，
-      请到 Discussions 发起讨论，不要提 Issue。
+      使用求助、普通体验反馈、功能想法，或不确定是否为 bug 的问题，
+      请到 Discussions 交流；已确认可稳定复现的程序错误请提交 Issue。
   - name: 📖 官网文档
     url: https://huangder.top
     about: 使用前请先查阅官网，了解功能特性与隐私政策。
