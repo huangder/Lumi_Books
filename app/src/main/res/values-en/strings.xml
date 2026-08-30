@@ -198,8 +198,10 @@
 
     <!-- Storage Management -->
     <string name="label_total_size">Total Space Used</string>
+    <string name="storage_total_footprint">Lumi uses %1$s</string>
     <string name="storage_app">App</string>
     <string name="storage_cache">Cache</string>
+    <string name="storage_tts_short">TTS audio</string>
     <string name="storage_books">Ebook Files</string>
     <string name="storage_covers">Cover Images</string>
     <string name="calculating">Calculating...</string>
@@ -218,6 +220,9 @@
     <string name="storage_group_cleanup">Cleanup</string>
     <string name="storage_show_all_books">Show all %1$d books</string>
     <string name="storage_hide_books">Show less</string>
+    <string name="storage_cleanup_amount">Clear cache %1$s</string>
+    <string name="storage_books_total_summary">%1$d books · %2$s</string>
+    <string name="storage_books_empty">No ebook files</string>
 
     <!-- Backup & Restore -->
     <string name="backup_in_progress">Backing up...</string>
@@ -295,7 +300,7 @@
     <!-- Bookshelf -->
     <string name="bookshelf_title">Library</string>
     <string name="filter_all">All</string>
-    <string name="filter_downloaded">Downloaded</string>
+    <string name="filter_downloaded">EPUB &amp; MOBI</string>
     <string name="filter_pdf">PDF</string>
     <string name="filter_favorites">Favorites</string>
     <string name="edit_book_info">Edit Book Info</string>
@@ -427,6 +432,7 @@
     <string name="reader_toc">Contents</string>
     <string name="reader_toc_scroll_to_top">Jump to top</string>
     <string name="reader_toc_scroll_to_bottom">Jump to bottom</string>
+    <string name="reader_toc_return_to_current">Return to current chapter</string>
     <string name="reader_toc_group_collapse">Collapse volume</string>
     <string name="reader_toc_group_expand">Expand volume</string>
     <string name="reader_previous_chapter">Previous chapter</string>
@@ -518,6 +524,7 @@
     <string name="brightness_auto">Auto</string>
     <string name="reading_background">Reading Background</string>
     <string name="reader_theme_suites">Theme Sets</string>
+    <string name="reader_theme_suite_apply_to_book">Apply to this book only</string>
     <string name="page_turn_module_label">Page turn</string>
     <string name="display_module_label">Display</string>
     <string name="display_mode_day">Day mode</string>
@@ -600,15 +607,16 @@
     <string name="welcome_liquid_glass_reader_description">Liquid Glass · Refined everywhere</string>
     <string name="welcome_mineru_preview_description">Built-in MinerU parsing</string>
     <string name="welcome_bookshelf_preview_description">Bookshelf improvements</string>
-    <string name="welcome_privacy_summary">Lumi is a local-first book reader. Reading data stays on your device by default; WebDAV, MinerU and third-party TTS transmit relevant data only when you configure or enable them. Lumi does not use analytics or advertising trackers. By tapping Continue, you agree to</string>
+    <string name="welcome_privacy_summary">Lumi is a local-first book reader. Reading data stays on your device by default; update checks, contributor pages, cover search, remote fonts, WebDAV, MinerU and third-party TTS connect to the relevant service only when used. Lumi does not use analytics or advertising trackers. By tapping Continue, you agree to</string>
     <string name="welcome_policy_punctuation">.</string>
     <string name="welcome_app_icon_description">Lumi app icon</string>
-    <string name="welcome_privacy_content">Lumi Privacy Policy\n\nEffective date: June 29, 2026\nLast updated: July 28, 2026\nApp name: Lumi\nPackage name: com.huangder.lumibooks\nDeveloper: huangder\nContact: huangder0104@126.com\n\n1. Core principles\nLumi is an open-source, local-first e-book reader. Your library, reading progress, bookmarks, notes and most settings stay on your device by default. Network requests happen only when you configure or enable features such as WebDAV sync, MinerU cloud parsing, third-party TTS, update/policy checks, or external links.\n\n2. Permissions\nStorage/media permissions read the EPUB, TXT, PDF, cover or image files you choose. Legacy write storage may save files or write back authorized TXT files on Android 9 and below. INTERNET and ACCESS_NETWORK_STATE are used for update/policy checks, WebDAV, MinerU, third-party TTS and external links. WRITE_SETTINGS is used only when you enable custom screen timeout. Foreground service and notification permissions are used for TTS playback and parsing/sync progress. Lumi does not request location, camera, microphone, contacts, phone state, SMS or calendar permissions.\n\n3. Data stored locally\nBook files, reading progress, bookmarks, notes and selected text, reading time, preferences, file/folder authorization URIs, edited TXT content, MinerU settings, WebDAV settings, third-party TTS settings and local TTS audio cache may be stored locally. MinerU tokens, WebDAV passwords and third-party TTS API keys are encrypted with Android Keystore and excluded from system backup/device transfer.\n\n4. Optional data transmission\nWebDAV sync uploads/downloads book files, file manifests, reading progress, bookmarks, notes and selected text to the server you configure. MinerU cloud parsing sends your selected PDF, parsing parameters, task identifiers and, for precise parsing, your personal token to OpenDataLab/MinerU. Third-party TTS sends the current text segment, model/voice, style instructions and required credentials to the service you choose, such as OpenAI TTS, Xiaomi MiMo or a compatible endpoint. External links are opened only when you tap them.\n\n5. What Lumi does not do\nLumi does not collect names, phone numbers, precise location, contacts or device identifiers for tracking. It does not include analytics, ads, profiling, third-party push or crash-reporting SDKs. It does not provide a Lumi account system or a developer-operated cloud library.\n\n6. Third-party services\nMinerU/OpenDataLab, your WebDAV provider or self-hosted server, OpenAI, Xiaomi MiMo and custom TTS services operate independently from Lumi. Their availability, pricing, retention, deletion and compliance rules are governed by their own terms and privacy policies.\n\n7. Contact\nDeveloper: huangder\nEmail: huangder0104@126.com\nGitHub Issues are welcome.\n\nLast updated: July 28, 2026.</string>
-    <string name="welcome_terms_content">Lumi Terms of Service\n\nEffective date: June 29, 2026\nLast updated: July 28, 2026\nApp name: Lumi\nPackage name: com.huangder.lumibooks\nDeveloper: huangder\nContact: huangder0104@126.com\n\n1. Acceptance\nBy downloading, installing, opening or using Lumi, you agree to these terms. If you do not agree, stop using the app.\n\n2. App features\nLumi is an open-source, local-first e-book reader for EPUB, TXT and PDF. It supports local library management, reading progress, bookmarks, notes, reading statistics, system TTS, TXT editing, file/folder authorization, optional MinerU cloud PDF parsing, optional WebDAV sync, and optional third-party TTS such as OpenAI TTS, Xiaomi MiMo or compatible endpoints. Lumi does not provide a Lumi account or a developer-operated cloud library. WebDAV, MinerU and third-party TTS require your active configuration or confirmation.\n\n3. Your responsibilities\nYou must ensure that books and text you read, import, edit, parse, speak or sync do not infringe rights or laws. Only upload, sync or send files and text you are allowed to process. Do not transmit DRM-protected content, sensitive personal information of others, trade secrets or unlawful content. You are responsible for protecting WebDAV passwords, MinerU tokens and third-party TTS API keys, and for complying with each provider terms, privacy policy, fees and limits. Back up important TXT files before saving edits.\n\n4. Disclaimers\nLumi is provided as is. Compatibility with all files, devices, Android versions and third-party APIs is not guaranteed. You are responsible for losses caused by device failure, mistakes, revoked permissions, corrupted files, sync conflicts, third-party outages, fees or policy changes. WebDAV, MinerU and third-party TTS are operated by third parties or your own environment; Lumi does not guarantee availability, integrity, retention, deletion, parsing or speech quality. TXT editing changes authorized files, so keep backups.\n\n5. Privacy\nReading data stays local by default. Network requests occur only when you configure or enable WebDAV, MinerU, third-party TTS, update checks or external links. See the Privacy Policy for details.\n\n6. Changes and termination\nThese terms may be updated for feature, legal or service changes. You may stop using and uninstall the app at any time. Uninstalling removes app-private data, but not original book files, WebDAV copies or data already processed by third-party services.\n\nLast updated: July 28, 2026.</string>
+    <string name="welcome_privacy_content">Lumi Privacy Policy\nEffective date: June 29, 2026\nLast updated: August 30, 2026\nApp name: Lumi\nPackage name: com.huangder.lumibooks\nDeveloper: huangder\nContact: huangder0104@126.com\n1. Core principles\nLumi is an open-source, local-first e-book reader. Your library, reading progress, bookmarks, notes and most settings stay on your device by default. Network requests may occur for cover search, contributor/avatar display, remote font downloads, update checks, or features you configure or use such as WebDAV, MinerU, third-party TTS and external links.\n2. Permissions\n- READ_EXTERNAL_STORAGE (Android 12 and below): reads EPUB, TXT, PDF and other files you choose.\n- READ_MEDIA_IMAGES (Android 13 and above): reads covers, exported images or images you choose.\n- INTERNET / ACCESS_NETWORK_STATE: update and policy checks, remote fonts, WebDAV, MinerU, third-party TTS, cover search and external pages.\n- WRITE_SETTINGS: changes the screen timeout only when you enable the custom timeout feature.\n- Foreground service and notification permissions: TTS playback and parsing/sync progress.\n- WAKE_LOCK: keeps the device awake during background TTS playback.\n- SYSTEM_ALERT_WINDOW: shows floating subtitles across apps only when you enable that feature.\nThe current minimum supported Android version is 11, so legacy write-storage access for Android 9 and below is not used on supported devices. Lumi does not request location, camera/microphone, contacts, phone-state, SMS or calendar permissions.\n3. Data stored locally\nBook files, reading progress, bookmarks, notes and selected text, reading time, preferences, file/folder authorization URIs, edited TXT content, MinerU settings, WebDAV settings, third-party TTS settings and local TTS audio cache may be stored locally. MinerU tokens, WebDAV passwords and third-party TTS API keys are encrypted with Android Keystore and excluded from system backup/device transfer.\n4. Data transmission\n- Update and policy checks may access project release or document URLs.\n- Selecting or restoring FangSong may download a font from GitHub Raw or jsDelivr; book content is not uploaded.\n- WebDAV sync uploads/downloads books, manifests, reading progress, bookmarks, notes and selected text to your configured server.\n- MinerU cloud parsing sends the selected PDF, parsing parameters, task identifiers and, for precise parsing, your personal token to OpenDataLab/MinerU.\n- Third-party TTS sends the current text segment, model/voice, style instructions and required credentials to your chosen service. If HTTP is enabled, the API key and reading text may travel unencrypted and can be intercepted.\n- Cover search sends the book title and search terms to Bing, Baidu or Google through the in-app WebView; those services may log IP address, request time and browser/network information.\n- Opening the contributor page requests the GitHub contributors API and loads GitHub avatars; GitHub and its CDN receive normal request metadata.\n- External links are opened only when you tap them.\n5. What Lumi does not do\nLumi does not collect names, phone numbers, contacts, precise location or device identifiers for tracking. It has no analytics, ads, profiling, third-party push or crash-reporting SDK, and no Lumi account or developer-operated cloud library. Apart from the network features described above, Lumi does not proactively upload books or reading content.\n6. Third-party services\nOpenDataLab/MinerU, WebDAV providers, third-party TTS services, GitHub and its CDN, and Bing, Baidu and Google operate independently from Lumi. Their logging, availability, pricing, retention, deletion and compliance rules are governed by their own terms and privacy policies.\n7. Data management and children\nYou can clear reading history, caches and related settings, or uninstall the app. Uninstalling removes app-private data but not original files, WebDAV copies or data already processed by third parties. Lumi is not directed to children under 13 and does not knowingly collect children\'s personal information.\n8. Changes and contact\nWe may update this policy for feature, legal or third-party service changes. Material changes will be presented in an in-app version prompt for you to reread and confirm. Questions can be sent to huangder at huangder0104@126.com.\n9. Scope\nThis policy applies to Lumi (com.huangder.lumibooks) on Android and does not govern data processing by third-party services.\nThis Privacy Policy was last updated on August 30, 2026.</string>
+    <string name="welcome_terms_content">Lumi Terms of Service\nEffective date: June 29, 2026\nLast updated: August 30, 2026\nApp name: Lumi\nPackage name: com.huangder.lumibooks\nDeveloper: huangder\nContact: huangder0104@126.com\n1. Acceptance\nBy downloading, installing, opening or using Lumi, you agree to these terms. If you do not agree, stop using the app.\n2. App features\nLumi is an open-source, local-first e-book reader for EPUB, TXT and PDF. It supports local library management, reading progress, bookmarks, notes, reading statistics, system TTS, TXT editing, file/folder authorization, optional MinerU cloud PDF parsing, optional WebDAV sync, optional third-party TTS, network cover search and on-demand remote font downloads. Lumi has no account system or developer-operated cloud library.\nWebDAV, MinerU, third-party TTS, cover search and remote fonts make network requests when you configure, enable or use them.\nOpening the sponsor/contributors page requests the GitHub contributors API and avatar images; GitHub and its CDN receive normal request metadata.\n3. User rights and responsibilities\n- You may use available features, manage local data and disable optional network features at any time.\n- You may view, modify and distribute source code subject to the applicable open-source licenses.\n- Ensure that books and text you read, import, edit, parse, speak or sync do not infringe rights or laws.\n- Send only files and text you are allowed to process; do not transmit DRM content, other people\'s sensitive information, trade secrets or unlawful content.\n- Protect WebDAV passwords, MinerU tokens and TTS API keys, and follow each provider\'s terms, privacy policy, fees and limits.\n- Confirm and back up TXT files before saving. Do not use Lumi for unlawful, infringing or abusive activity.\n4. Intellectual property\nLumi original source code, interface design, icons and branding belong to huangder as applicable, with original code released under GNU GPLv3. The curl page-turn implementation is adapted from legado-E under GPLv3. Third-party components and adaptations remain subject to their respective licenses. App names, icons and branding receive no additional trademark license.\nRights in books and content you read, edit, parse, speak or sync remain with their original holders.\n5. Disclaimers\nLumi is provided as is without guarantees of compatibility with every file, device, Android version or third-party API. You are responsible for losses caused by device failure, mistakes, revoked permissions, corrupted files, sync conflicts, third-party outages, fees or policy changes. WebDAV, MinerU, TTS, search and font services are independent services; Lumi does not guarantee their availability, integrity, retention, deletion, parsing or speech quality. TXT editing changes authorized files, so keep backups.\n6. Privacy\nReading data stays local by default. Cover search, contributor/avatar display, remote fonts, update checks, WebDAV, MinerU, third-party TTS and external links can make network requests. See the Privacy Policy for details.\n7. Third-party services\nOpenDataLab/MinerU, WebDAV providers, third-party TTS, GitHub and its CDN, and Bing, Baidu and Google operate independently. You must follow their terms, privacy policies, fees and limits. Enabling HTTP TTS may send API keys and reading text without encryption.\n8. Changes\nWe may update these terms for feature, legal or third-party service changes. Material changes involving privacy, data transmission, core features or user responsibilities will be presented in an in-app version prompt for you to reread and confirm; other changes take effect when published.\n9. Termination\nYou may stop using and uninstall Lumi at any time. Uninstalling removes app-private data but not original files, WebDAV copies or data already processed by third parties.\n10. Governing law\nThese terms are governed by the laws of the People\'s Republic of China. Disputes should first be resolved through friendly consultation; otherwise either party may bring proceedings before a competent court at the developer\'s location.\n11. Miscellaneous\nIf any provision is invalid or unenforceable, the remaining provisions remain effective. These terms are the complete agreement about your use of Lumi.\n12. Contact\nQuestions may be sent to huangder at huangder0104@126.com or submitted through the project\'s GitHub repository.\nThese Terms of Service were last updated on August 30, 2026.</string>
 
     <!-- PDF Reader -->
     <string name="pdf_back">Back</string>
     <string name="pdf_bookmark">Bookmark</string>
+    <string name="pdf_annotation_tool">Annotate</string>
     <string name="pdf_toc">Contents</string>
     <string name="pdf_close">Close</string>
     <string name="pdf_page_desc">Page %d</string>
@@ -670,6 +678,10 @@
     <string name="label_splash_screen">Launch Screen</string>
     <string name="splash_screen_description">Show the branded screen when the app starts</string>
     <string name="splash_setting_next_launch">Takes effect the next time the app starts</string>
+    <string name="icon_style_title">Icon style</string>
+    <string name="icon_style_lumi2">Lumi 2</string>
+    <string name="icon_style_classic">Classic</string>
+    <string name="icon_style_change_failed">Couldn\'t change the launcher icon. Try again later.</string>
     <!-- MinerU third-party cloud parsing -->
     <string name="category_third_party_services">Services</string>
     <string name="title_third_party_services">Services</string>
@@ -1093,4 +1105,69 @@
     <string name="delete_cloud_book_choice">The selected %1$d books include cloud copies. Choose where to delete them.</string>
     <string name="delete_local_only">Delete local only</string>
     <string name="delete_local_and_cloud">Delete local and cloud</string>
+    <string name="pdf_password_title">PDF password</string>
+    <string name="pdf_password_hint">Password</string>
+    <string name="pdf_page_progress">Reading progress</string>
+    <string name="pdf_page_fraction">Page %1$d / %2$d</string>
+    <string name="pdf_page_number">Page %1$d</string>
+    <string name="pdf_jump_to_page">Go to page</string>
+    <string name="pdf_no_saved_items">Nothing saved yet</string>
+    <string name="pdf_add_current_page_bookmark">Bookmark current page</string>
+    <string name="pdf_edit_note">Edit note</string>
+    <string name="pdf_note_hint">Write a note</string>
+    <string name="pdf_sdk_extension_required">PDF text selection requires Android S system extension 13 or newer on this device.</string>
+    <!-- Reader theme sets and page turn animation settings -->
+    <string name="reader_theme_suite_settings_title">Theme set settings</string>
+    <string name="reader_theme_suite_settings_description">Manage, reorder, and preview reading themes</string>
+    <string name="reader_page_animation_settings_title">Page turn animation settings</string>
+    <string name="reader_page_animation_settings_description">Preview animations and adjust page turn speed</string>
+    <string name="reader_page_animation_eink_unavailable">Unavailable in E Ink mode</string>
+    <string name="theme_suite_default_name">My Theme</string>
+    <string name="rename_theme_suite_title">Rename theme set</string>
+    <string name="theme_suite_current">Current theme</string>
+    <string name="theme_suite_tap_to_edit">Tap to edit</string>
+    <string name="theme_suite_drag_to_reorder">Touch and hold to reorder</string>
+    <string name="theme_suite_set_current">Set as current</string>
+    <string name="rename">Rename</string>
+    <string name="reader_background_settings">Background</string>
+    <string name="reader_text_settings">Text</string>
+    <string name="background_custom_color">Custom color</string>
+    <string name="background_photo_opacity">Photo opacity</string>
+    <string name="background_photo_blur">Photo blur</string>
+    <string name="background_remove_photo">Remove photo</string>
+    <string name="background_add_photo">Add photo</string>
+    <string name="background_custom_color_title">Custom background color</string>
+    <string name="background_reset_white">Reset to white</string>
+    <string name="font_serif">Serif</string>
+    <string name="reader_unit_character">chars</string>
+    <string name="page_turn_speed">Page turn speed</string>
+    <string name="page_animation_slide_short">Slide</string>
+    <string name="page_animation_fade_short">Fade</string>
+    <string name="page_animation_curl_short">Curl</string>
+    <string name="reader_settings_preview_sample">Chapter One: Light on the Page\n\nMorning air drifted over the windowsill and gently stirred the paper. Reading slowed time and brought distant voices clearly into the present.</string>
+    <string name="exit_preview">Exit preview</string>
+    <string name="theme_suite_day_name">Day</string>
+    <string name="theme_suite_night_name">Night</string>
+    <string name="theme_suite_sepia_name">Parchment</string>
+    <string name="theme_suite_green_name">Eye comfort</string>
+    <!-- Previously missing localized resources -->
+    <string name="highlight_current_colors">Current colors</string>
+    <string name="highlight_using_default">Using default colors</string>
+    <string name="highlight_reset_default">Reset to default</string>
+    <string name="highlight_add_color">Add color</string>
+    <string name="highlight_edit_color">Edit color</string>
+    <string name="move_up">Move up</string>
+    <string name="move_down">Move down</string>
+    <string name="use_epub_css">Use book CSS styles</string>
+    <string name="use_epub_css_hint">Load the layout styles included with the book; best for carefully designed books</string>
+    <string name="page_transition_label">Page turn effect</string>
+    <string name="welcome_brand_name">Lumi Books</string>
+    <string name="welcome_major_version">2</string>
+    <string name="pdf_text_selection_unavailable">Text selection is not currently available for this PDF</string>
+    <string name="pdf_notes_hint">Touch and hold PDF text to copy, highlight, or underline</string>
+    <string name="pdf_search_unavailable">PDF search is coming soon</string>
+    <string name="pdf_search_placeholder">Search PDF text</string>
+    <string name="pdf_search_no_results">No matches found</string>
+    <string name="pdf_search_page_result">Page %1$d</string>
+    <string name="webdav_cloud_book_fallback">Cloud book %1$s</string>
 </resources>

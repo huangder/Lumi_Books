@@ -145,8 +145,10 @@
 
     <!-- 儲存管理 -->
     <string name="label_total_size">總佔用空間</string>
+    <string name="storage_total_footprint">Lumi 共佔用 %1$s</string>
     <string name="storage_app">應用程式本體</string>
     <string name="storage_cache">快取檔案</string>
+    <string name="storage_tts_short">TTS 音訊</string>
     <string name="storage_books">電子書檔案</string>
     <string name="storage_covers">封面圖片</string>
     <string name="calculating">計算中...</string>
@@ -165,6 +167,9 @@
     <string name="storage_group_cleanup">清理</string>
     <string name="storage_show_all_books">顯示全部 %1$d 本</string>
     <string name="storage_hide_books">收起</string>
+    <string name="storage_cleanup_amount">清理快取 %1$s</string>
+    <string name="storage_books_total_summary">%1$d 本 · %2$s</string>
+    <string name="storage_books_empty">暫無電子書檔案</string>
 
     <!-- 備份與還原 -->
     <string name="backup_in_progress">正在備份...</string>
@@ -242,7 +247,7 @@
     <!-- 書架 -->
     <string name="bookshelf_title">書庫</string>
     <string name="filter_all">全部</string>
-    <string name="filter_downloaded">下載內容</string>
+    <string name="filter_downloaded">EPUB &amp; MOBI</string>
     <string name="filter_pdf">PDF</string>
     <string name="filter_favorites">收藏</string>
     <string name="edit_book_info">修改書本資訊</string>
@@ -370,6 +375,7 @@
     <string name="reader_toc">目錄</string>
     <string name="reader_toc_scroll_to_top">翻到最頂</string>
     <string name="reader_toc_scroll_to_bottom">翻到最底</string>
+    <string name="reader_toc_return_to_current">返回目前章節</string>
     <string name="reader_toc_group_collapse">折疊該卷</string>
     <string name="reader_toc_group_expand">展開該卷</string>
     <string name="reader_previous_chapter">上一章</string>
@@ -436,6 +442,7 @@
     <string name="brightness_auto">自動</string>
     <string name="reading_background">閱讀背景</string>
     <string name="reader_theme_suites">主題套裝</string>
+    <string name="reader_theme_suite_apply_to_book">只套用到本書</string>
     <string name="theme_suite_preview_text">文字</string>
     <string name="add_theme_suite">新增主題套裝</string>
     <string name="new_theme_suite_title">新增主題套裝</string>
@@ -506,11 +513,11 @@
     <string name="welcome_liquid_glass_reader_description">液態玻璃主題 · 全面煥新</string>
     <string name="welcome_mineru_preview_description">內建 MinerU 解析介面</string>
     <string name="welcome_bookshelf_preview_description">書庫功能升級</string>
-    <string name="welcome_privacy_summary">Lumi 是一款本地優先的圖書閱讀器。閱讀資料預設保存在您的裝置中；WebDAV、MinerU、第三方 TTS 等網路功能僅在您主動設定或啟用時傳輸相應資料。Lumi 不使用分析或廣告追蹤。點擊「繼續」，即表示您已閱讀並同意</string>
+    <string name="welcome_privacy_summary">Lumi 是一款本地優先的圖書閱讀器。閱讀資料預設保存在您的裝置中；更新檢查、貢獻者頁、網路封面搜尋、遠端字型、WebDAV、MinerU、第三方 TTS 等功能僅在使用時連接相應服務。Lumi 不使用分析或廣告追蹤。點擊「繼續」，即表示您已閱讀並同意</string>
     <string name="welcome_policy_punctuation">。</string>
     <string name="welcome_app_icon_description">Lumi 應用程式圖示</string>
-    <string name="welcome_privacy_content">Lumi 隱私政策\n\n生效日期：2026年6月29日\n最近更新：2026年7月28日\n應用程式名稱：Lumi\n套件名稱：com.huangder.lumibooks\n開發者：huangder\n聯絡電郵：huangder0104@126.com\n\n一、核心原则\nLumi 是开源、本地优先的电子书閱讀器。閱讀、书架、进度、书签、笔记和大多数設定預設保存在本机。只有在您主动配置或啟用 WebDAV 同步、MinerU 雲端解析、第三方 TTS 合成、更新检查或外部链接访问时，才会发生相应網路请求。\n\n二、權限用途\n• 读取存储/媒体權限：读取您選擇的 EPUB、TXT、PDF、封面或图片资源。\n• 写入外部存储（Android 9 及以下）：兼容旧系统保存檔案或写回您授权编辑的 TXT。\n• INTERNET / ACCESS_NETWORK_STATE：用于更新和政策版本检查、WebDAV、MinerU、第三方 TTS 以及您点击的外部链接。\n• WRITE_SETTINGS：仅在您啟用自定义亮屏时间时修改系统屏幕关闭时间。\n• 前台服務和通知權限：用于 TTS 后台播放、PDF/MinerU 解析或 WebDAV 同步进度通知。\n本應用程式不申请位置、相机/麦克风、通讯录、电话状态、短信、日历等与閱讀无关的敏感權限。\n\n三、本地保存的資料\n电子书檔案、閱讀进度、书签、笔记及选中文字、閱讀时长、閱讀偏好、檔案/檔案夹授权 URI、TXT 编辑内容、MinerU 設定、WebDAV 設定、第三方 TTS 設定和本地 TTS 音频缓存。MinerU Token、WebDAV 密码、第三方 TTS API Key 使用 Android Keystore 加密保存，并排除系统备份/裝置迁移。\n\n四、会傳輸資料的可选场景\n• WebDAV 同步：向您配置的服務器上傳/下載書籍檔案、書籍清单、閱讀进度、书签、笔记和选中文字。\n• MinerU 雲端解析：向 OpenDataLab/MinerU 发送您选定的 PDF、解析参数、任务标识；精准解析还会使用您的个人 Token。\n• 第三方 TTS：向您選擇的 OpenAI TTS、Xiaomi MiMo 或兼容服務发送当前朗讀文字段、模型/音色、风格提示和必要鉴权信息，并在本地缓存返回音频。\n• 外部链接：仅在您主动点击 GitHub、反馈、下載或第三方協議链接时访问對應网站。\n如不希望書籍或文字离开裝置，请不要啟用 WebDAV、MinerU 雲端解析或第三方 TTS，并使用本地閱讀、本地解析和系统 TTS。\n\n五、我们不做什么\n本應用程式不收集姓名、手机号、精确位置、通讯录或裝置标识用于追踪；不集成分析、廣告、使用者画像、第三方推送或崩溃上报 SDK；不提供 Lumi 账号系统或開發者运营的雲端书库。\n\n六、第三方服務\nMinerU/OpenDataLab、您選擇的 WebDAV 服務商或自建服務器、OpenAI、Xiaomi MiMo 或自定义 TTS 服務均独立于 Lumi 运营。其可用性、计费、資料保存、删除和合规要求由對應服務条款和隱私政策决定。\n\n七、資料管理\n您可以在應用程式内清除閱讀历史、缓存和相关配置，或随时卸载應用程式。卸载会删除應用程式私有資料，但不会自动删除您自行管理的原始电子书檔案、WebDAV 服務器副本或第三方服務已经處理的資料。\n\n八、聯絡我们\n開發者：huangder\n邮箱：huangder0104@126.com\nGitHub Issues：欢迎在项目仓库提交反馈。\n\n本隱私政策最后更新于 2026年7月28日。</string>
-    <string name="welcome_terms_content">Lumi 使用者協議\n\n生效日期：2026年6月29日\n最近更新：2026年7月28日\n應用程式名稱：Lumi\n套件名稱：com.huangder.lumibooks\n開發者：huangder\n聯絡電郵：huangder0104@126.com\n\n一、接受協議\n下載、安装、打开或使用 Lumi，即表示您已閱讀、理解并同意本協議。如不同意，请停止使用本應用程式。\n\n二、應用程式功能\nLumi 是开源、本地优先的电子书閱讀器，支持 EPUB、TXT、PDF 閱讀，本地书架、閱讀进度、书签、笔记、閱讀统计、系统 TTS、TXT 编辑、檔案/檔案夹授权读取、可选 MinerU 雲端 PDF 解析、可选 WebDAV 同步，以及可选 OpenAI TTS、Xiaomi MiMo 或兼容第三方 TTS。\n本應用程式不提供 Lumi 账号注册、登录或開發者运营的雲端书库。WebDAV、MinerU 和第三方 TTS 均需您主动配置、啟用或确认。\n\n三、您的权利\n您可以免费使用可用功能，自主管理閱讀資料、缓存和配置；可以随时停用 WebDAV、MinerU、第三方 TTS 并清除相关 Token、密码或 API Key；可以在遵守开源许可证的前提下查看、修改和分发源代码。\n\n四、您的义务\n• 确保您閱讀、导入、编辑、解析、朗讀或同步的电子书及文字不侵犯他人知识产权或其他合法权益。\n• 仅上傳、同步或发送您有权處理的檔案和文字，不傳輸 DRM 保护内容、他人敏感个人信息、商业秘密或依法不得傳輸的内容。\n• 自行選擇并保管 WebDAV 密码、MinerU Token、第三方 TTS API Key，遵守對應服務商協議、隱私政策、费用和限额规则。\n• 使用 TXT 编辑器保存前自行确认内容并备份重要檔案，避免误改或覆盖。\n• 不得利用本應用程式从事违法、侵权或破坏網路服務安全的活动。\n\n五、免责声明\n本應用程式按“现状”提供，不保证对所有檔案、裝置、系统版本和第三方接口完全兼容。因裝置故障、误操作、權限撤销、檔案损坏、同步冲突、第三方服務不可用、计费变化或政策调整造成的损失，由您自行承担。WebDAV、MinerU、第三方 TTS 均由第三方或您自建环境独立提供，本應用程式不保证其可用性、資料完整性、保存期限、删除效果、合成或解析质量。TXT 编辑会改变您授权保存的檔案内容，请提前备份。\n\n六、隐私保护\n閱讀資料預設保存在本机；只有在您主动配置或啟用 WebDAV、MinerU、第三方 TTS、更新检查或外部链接访问时，才会发生相应網路请求。具体请见《隱私政策》。\n\n七、協議变更与终止\n我们可能因功能、法律法规或第三方服務变化更新本協議，并更新最近更新日期。您可随时停止使用并卸载應用程式；卸载会删除應用程式私有資料，但不会自动删除原始电子书檔案、WebDAV 服務器副本或第三方服務已经處理的資料。\n\n八、聯絡我们\n開發者：huangder\n邮箱：huangder0104@126.com\nGitHub Issues：欢迎在项目仓库提交反馈。\n\n本使用者協議最后更新于 2026年7月28日。</string>
+    <string name="welcome_privacy_content">Lumi 隱私政策\n生效日期：2026年6月29日\n最近更新：2026年8月30日\n應用程式名稱：Lumi\n套件名稱：com.huangder.lumibooks\n開發者：huangder\n聯絡電郵：huangder0104@126.com\n一、核心原則\nLumi 是開源、本地優先的電子書閱讀器。閱讀、書架、進度、書籤、筆記和大部分設定預設保存在本機。網路封面搜尋、貢獻者/頭像展示、遠端字型下載、更新檢查，以及您主動設定或啟用的 WebDAV 同步、MinerU 云端解析、第三方 TTS 或外部連結会产生相应網路請求。\n二、權限用途\n• READ_EXTERNAL_STORAGE（Android 12 及以下）：讀取您選擇的 EPUB、TXT、PDF 等電子書檔案。\n• READ_MEDIA_IMAGES（Android 13 及以上）：讀取電子書封面、匯出圖片或您選擇的圖片资源。\n• INTERNET / ACCESS_NETWORK_STATE：用于更新和政策版本檢查、遠端字型下載、WebDAV、MinerU、第三方 TTS、網路封面搜尋和外部页面存取。\n• WRITE_SETTINGS：僅在您啟用自定义亮屏时间时修改系統屏幕关闭时间。\n• 前景服務和通知權限：用于 TTS 背景播放、PDF/MinerU 解析或 WebDAV 同步進度通知。\n• WAKE_LOCK：在 TTS 背景播放期间保持裝置喚醒，避免播放意外中断。\n• SYSTEM_ALERT_WINDOW：僅在您啟用悬浮窗字幕时顯示跨應用程式懸浮字幕窗口。\n本應用程式目前最低支援 Android 11，不會在受支援裝置上請求 Android 9 及以下的舊式寫入儲存權限；不申请位置、相机/麦克风、通讯录、电话状态、短信、日历等與閱讀无关的敏感權限。\n三、本機保存的資料\n電子書檔案、閱讀進度、書籤、筆記及選取文字、閱讀時間、閱讀偏好、檔案/檔案夾授權 URI、TXT 編輯內容、MinerU 設定、WebDAV 設定、第三方 TTS 設定和本地 TTS 音訊快取可能保存在本地。MinerU Token、WebDAV 密码、第三方 TTS API Key 使用 Android Keystore 加密保存，並排除系統备份/裝置迁移。\n四、會傳輸資料的場景\n• 更新、公告和條款/政策版本檢查：应用可能存取專案發佈頁或檔案地址。\n• 遠端字型：当您選擇或恢复仿宋字型时，应用会从 GitHub Raw 或 jsDelivr 按需下載字型檔案，不上傳書籍內容。\n• WebDAV 同步：向您設定的伺服器上傳/下載書籍檔案、書籍清單、閱讀進度、書籤、筆記和選取文字。\n• MinerU 云端解析：向 OpenDataLab/MinerU 傳送您選定的 PDF、解析参数、工作識別碼；精準解析还会使用您的個人 Token。\n• 第三方 TTS：向您選擇的服务傳送目前朗读文字段、模型/音色、風格提示和必要認證資訊。若开启 HTTP 连接，API Key 和朗读文字可能未經加密傳輸並被竊聽。\n• 網路封面搜尋：向您選擇的 Bing、百度或 Google 等搜尋服務傳送书名和搜尋關鍵字；這些服務可能記錄 IP、請求時間和瀏覽器網路資訊。\n• 贊助頁貢獻者：開啟貢獻者页面时，应用會請求 GitHub contributors API 並載入 GitHub 頭像，GitHub 及其 CDN 会接收網路請求中繼資料。\n• 外部連結：僅在您主動點擊 GitHub、反馈、下載或第三方协议链接时存取對應網站。\n五、我們不會做什麼\n本應用程式不收集姓名、手機號碼、通讯录、精确位置或裝置識別碼用于追蹤；不整合分析、广告、使用者畫像、第三方推送或崩潰回報 SDK；不提供 Lumi 帳號系統或開發者營運的雲端書庫。除上述由您主動設定、啟用、进入或点击的網路功能外，不主動上傳您的書籍和閱讀內容。\n六、第三方服务\nOpenDataLab/MinerU、WebDAV 服務商、第三方 TTS、GitHub 及其 CDN、Bing、百度和 Google 等服务均獨立於 Lumi 營運。其網路日誌、可用性、計費、資料保存、刪除和合規要求由对应服务條款和隱私政策决定。\n七、資料管理\n您可以在應用程式內清除閱讀历史、快取和相關設定，或随时解除安裝应用。解除安裝会刪除应用私有資料，但不會自动刪除您自行管理的原始電子書檔案、WebDAV 伺服器副本或第三方服务已處理的資料。\n八、兒童私隱\n本應用程式不针对 13 岁以下儿童，不會故意收集儿童個人資料。监护人如发现儿童可能透過可選第三方服务提交了個人資料，请联系我们並同时联系相应服务方。\n九、政策變更、联系我们與适用范围\n我們可能因功能、法律法規或第三方服务变化更新本政策。重大變更会透過應用程式內版本提示要求您重新閱讀並確認。若您对本政策或資料处理有疑问，请联系開發者 huangder（huangder0104@126.com）。本政策僅適用於 Lumi 应用（com.huangder.lumibooks）在 Android 平台的功能，不適用於第三方服务自身的資料处理活动。\n本隱私政策最後更新于 2026年8月30日。</string>
+    <string name="welcome_terms_content">Lumi 使用者協議\n生效日期：2026年6月29日\n最近更新：2026年8月30日\n應用程式名稱：Lumi\n套件名稱：com.huangder.lumibooks\n開發者：huangder\n聯絡電郵：huangder0104@126.com\n一、接受協議\n下載、安装、開啟或使用 Lumi，即表示您已閱讀、理解並同意本协议。如不同意，请停止使用本應用程式。\n二、應用程式功能\nLumi 是開源、本地優先的電子書閱讀器，支援 EPUB、TXT、PDF 閱讀、本地書架、閱讀進度、書籤、筆記、閱讀統計、系統 TTS、TXT 编辑、檔案/檔案夾授權讀取、可選 MinerU 云端 PDF 解析、可選 WebDAV 同步、可選第三方 TTS，以及網路封面搜尋和按需遠端字型下載。\n本應用程式不提供 Lumi 帳號註冊、登入或開發者營運的雲端書庫。WebDAV、MinerU、第三方 TTS、網路封面搜尋和遠端字型下載均在您主動設定、啟用或使用时发生。\n開啟贊助/貢獻者頁面時會請求 GitHub contributors API 並載入頭像，GitHub 及其 CDN 會接收正常網路請求中繼資料。\n三、使用者權利與義務\n• 您可以免費使用可用功能，自主管理閱讀資料、快取和設定，並随时停用可選網路功能。\n• 您可以在遵守開源許可證的前提下查看、修改和分发本應用程式源碼。\n• 确保您閱讀、导入、编辑、解析、朗读或同步的電子書及文字不侵犯他人合法權益。\n• 僅上傳、同步或傳送您有权处理的檔案和文字，不传输 DRM 保护內容、他人敏感個人資料、商业秘密或依法不得传输的內容。\n• 自行保管 WebDAV 密码、MinerU Token 和第三方 TTS API Key，並遵守对应服務商协议、隱私政策、費用和限額规则。\n• 使用 TXT 编辑器保存前确认內容並备份重要檔案，不得利用本應用程式从事违法、侵权或破坏網路服务安全的活动。\n四、知識產權\nLumi 原創源碼、原創介面设计、圖示及品牌標誌的相关权利歸開發者 huangder 所有，原創代码依 GNU GPLv3 許可證开放使用。卷曲翻頁實現改編自 GPLv3 项目 legado-E。第三方依賴及改編程式碼继续受各自許可證约束；應用程式名稱、圖示及品牌標誌不因源碼開源而授予额外商標许可。\n您透過本應用程式閱讀、编辑、解析、朗读或同步的電子書及其內容权利归原始权利人所有。本應用程式僅提供工具功能，不主张对您的閱讀內容享有权利。\n五、免責聲明\n本應用程式按“現狀”提供，不保證对所有檔案、裝置、系統版本和第三方介面完全相容。因裝置故障、误操作、權限撤銷、檔案損壞、同步衝突、第三方服务不可用、計費变化或政策調整造成的损失，由您自行承担。WebDAV、MinerU、第三方 TTS、搜尋服務和字型 CDN 均由第三方或您自建环境独立提供，本應用程式不保證其可用性、資料完整性、保存期限、刪除效果、合成或解析质量。TXT 编辑会改变您授權保存的檔案內容，请提前备份。\n六、私隱保護\n閱讀資料預設保存在本機；網路封面搜尋、貢獻者/頭像展示、遠端字型下載、更新檢查，以及 WebDAV、MinerU、第三方 TTS 和外部連結存取会产生相应網路請求。詳情請參閱《隱私政策》。\n七、第三方服务與使用者自选服务\nOpenDataLab/MinerU、WebDAV 服務商、第三方 TTS、GitHub 及其 CDN、Bing、百度和 Google 等服务独立營運。您应閱讀並遵守相应服务的條款、隱私政策、費用和限額规则。开启 HTTP TTS 时，API Key 和朗读文字可能明文传输。\n八、协议的变更\n我們可能根据功能、法律法規或第三方服务要求修改本协议，並更新最近更新日期。涉及隐私、資料传输、核心功能或使用者义务的重大变更，将透過應用程式內版本提示要求您重新閱讀並確認；其他变更自公布之日起生效。\n九、终止與终止後的处理\n您可以随时停止使用並解除安裝应用。解除安裝会刪除应用私有資料，但不會自动刪除原始電子書檔案、WebDAV 伺服器副本或第三方服务已處理的資料。\n十、适用法律\n本协议的解释和执行适用中华人民共和国法律。因本协议引起的争议，应友好协商解决；协商不成的，任何一方均可向開發者所在地有管辖权的人民法院提起诉讼。\n十一、其他條款\n本协议中任何條款如被认定为无效或不可执行，其余條款仍然有效。本协议构成您與開發者之间关于使用本應用程式的完整协议。\n十二、联系我们\n如对本使用者协议有疑问，请联系開發者 huangder（huangder0104@126.com），或在專案 GitHub 仓库提交反馈。\n本使用者协议最後更新于 2026年8月30日。</string>
 
     <!-- PDF閱讀器 -->
     <string name="pdf_back">返回</string>
@@ -576,6 +583,10 @@
     <string name="label_splash_screen">啟動畫面</string>
     <string name="splash_screen_description">啟動時顯示品牌開屏畫面</string>
     <string name="splash_setting_next_launch">將在下次啟動時生效</string>
+    <string name="icon_style_title">圖示風格</string>
+    <string name="icon_style_lumi2">Lumi 2</string>
+    <string name="icon_style_classic">經典</string>
+    <string name="icon_style_change_failed">無法切換桌面圖示，請稍後再試</string>
     <!-- MinerU 第三方雲端解析 -->
     <string name="category_third_party_services">服務</string>
     <string name="title_third_party_services">服務</string>
@@ -1080,4 +1091,80 @@
     <string name="delete_cloud_book_choice">所選 %1$d 本書包含雲端副本。請選擇刪除範圍。</string>
     <string name="delete_local_only">僅刪除本機</string>
     <string name="delete_local_and_cloud">本機與雲端一起刪除</string>
+    <!-- 閱讀主題套裝與翻頁動畫設定 -->
+    <string name="reader_theme_suite_settings_title">主題套裝設定</string>
+    <string name="reader_theme_suite_settings_description">管理、排序並預覽閱讀主題</string>
+    <string name="reader_page_animation_settings_title">翻頁動畫設定</string>
+    <string name="reader_page_animation_settings_description">預覽動畫並調整翻頁速度</string>
+    <string name="reader_page_animation_eink_unavailable">電子墨水螢幕模式下無法使用</string>
+    <string name="theme_suite_default_name">我的主題</string>
+    <string name="rename_theme_suite_title">重新命名主題套裝</string>
+    <string name="theme_suite_current">目前主題</string>
+    <string name="theme_suite_tap_to_edit">點按編輯</string>
+    <string name="theme_suite_drag_to_reorder">長按拖曳排序</string>
+    <string name="theme_suite_set_current">設為目前</string>
+    <string name="rename">重新命名</string>
+    <string name="reader_background_settings">背景設定</string>
+    <string name="reader_text_settings">文字設定</string>
+    <string name="background_custom_color">自訂色彩</string>
+    <string name="background_photo_opacity">相片透明度</string>
+    <string name="background_photo_blur">相片模糊度</string>
+    <string name="background_remove_photo">移除相片</string>
+    <string name="background_add_photo">新增相片</string>
+    <string name="background_custom_color_title">自訂背景色彩</string>
+    <string name="background_reset_white">恢復白色</string>
+    <string name="font_serif">宋體</string>
+    <string name="reader_unit_character">字</string>
+    <string name="page_turn_speed">翻頁速度</string>
+    <string name="page_animation_slide_short">滑動</string>
+    <string name="page_animation_fade_short">漸變</string>
+    <string name="page_animation_curl_short">捲曲</string>
+    <string name="reader_settings_preview_sample">第一章 光落在書頁上\n\n清晨的風越過窗台，紙張輕輕翻動。閱讀讓時間慢下來，也讓遙遠的聲音在此刻變得清晰。</string>
+    <string name="exit_preview">結束預覽</string>
+    <string name="theme_suite_day_name">日間</string>
+    <string name="theme_suite_night_name">夜間</string>
+    <string name="theme_suite_sepia_name">羊皮紙</string>
+    <string name="theme_suite_green_name">護眼</string>
+    <!-- 補齊的本地化資源 -->
+    <string name="label_card_outlines">顯示輪廓</string>
+    <string name="highlight_current_colors">目前色彩</string>
+    <string name="highlight_using_default">使用預設色彩</string>
+    <string name="highlight_reset_default">恢復預設</string>
+    <string name="highlight_add_color">新增色彩</string>
+    <string name="highlight_edit_color">編輯色彩</string>
+    <string name="move_up">上移</string>
+    <string name="move_down">下移</string>
+    <string name="book_detail_continue">繼續閱讀</string>
+    <string name="book_detail_start">開始閱讀</string>
+    <string name="book_detail_synced">已同步</string>
+    <string name="book_detail_unknown">未知</string>
+    <string name="background_name_default">自訂背景</string>
+    <string name="background_name_hint">輸入背景名稱</string>
+    <string name="use_epub_css">使用書籍 CSS 樣式</string>
+    <string name="use_epub_css_hint">載入書籍內建的排版樣式，編排精美的書籍效果更佳</string>
+    <string name="font_import_name_title">自訂字型名稱</string>
+    <string name="font_import_name_hint">輸入名稱（最多 6 個字）</string>
+    <string name="font_import_name_count">%1$d/6</string>
+    <string name="font_import_default_name">自訂字型</string>
+    <string name="page_transition_label">翻頁效果</string>
+    <string name="welcome_brand_name">Lumi Books</string>
+    <string name="welcome_major_version">2</string>
+    <string name="pdf_text_selection_unavailable">目前此 PDF 暫不支援文字選取</string>
+    <string name="pdf_notes_hint">長按 PDF 文字即可複製、新增醒目提示或底線</string>
+    <string name="pdf_search_unavailable">PDF 搜尋功能正在接入</string>
+    <string name="pdf_search_placeholder">搜尋 PDF 文字</string>
+    <string name="pdf_search_no_results">找不到相符內容</string>
+    <string name="pdf_search_page_result">第 %1$d 頁</string>
+    <string name="webdav_cloud_book_fallback">雲端書籍 %1$s</string>
+    <string name="pdf_password_title">輸入 PDF 密碼</string>
+    <string name="pdf_password_hint">密碼</string>
+    <string name="pdf_page_progress">閱讀進度</string>
+    <string name="pdf_page_fraction">第 %1$d / %2$d 頁</string>
+    <string name="pdf_page_number">第 %1$d 頁</string>
+    <string name="pdf_jump_to_page">跳至頁碼</string>
+    <string name="pdf_no_saved_items">暫無內容</string>
+    <string name="pdf_add_current_page_bookmark">新增目前頁面書籤</string>
+    <string name="pdf_edit_note">編輯筆記</string>
+    <string name="pdf_note_hint">寫下筆記</string>
+    <string name="pdf_sdk_extension_required">此裝置缺少 PDF 文字選取元件（需要 Android S 系統擴充功能 13 或更高版本）</string>
 </resources>
