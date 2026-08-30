@@ -7,6 +7,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.huangder.lumibooks.data.local.database.AppDatabase
 import com.huangder.lumibooks.data.local.entity.BookEntity
 import com.huangder.lumibooks.data.local.entity.FolderEntity
+import com.huangder.lumibooks.data.repository.FolderRepositoryImpl
+import com.huangder.lumibooks.data.sync.SyncIdentityStore
 import com.huangder.lumibooks.domain.model.FolderMoveResult
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -167,6 +169,37 @@ class FolderDaoTest {
         assertEquals(1, dao.initializeFolderPreviewIfUnset(folder.id, "[\"book-1\"]"))
         assertEquals(0, dao.initializeFolderPreviewIfUnset(folder.id, "[\"book-2\"]"))
         assertEquals("[\"book-1\"]", dao.getFolderById(folder.id)?.previewBookIds)
+    }
+
+    @Test
+    fun authorizedFolderPathCreatesNestedFoldersAndReusesCaseInsensitiveSiblings() = runBlocking {
+        val repository = FolderRepositoryImpl(
+            dao,
+            database.syncStateDao(),
+            SyncIdentityStore(database.syncStateDao())
+        )
+
+        val leaf = repository.getOrCreateFolderPath(
+            rootName = "Library",
+            relativeDirectory = "Fiction/Space Opera"
+        )
+        val reusedLeaf = repository.getOrCreateFolderPath(
+            rootName = "library",
+            relativeDirectory = "fiction/space opera"
+        )
+
+        assertEquals(leaf.id, reusedLeaf.id)
+        val folders = dao.getAllFolders().first()
+        assertEquals(3, folders.size)
+        val root = folders.single { it.parentId == null }
+        val fiction = folders.single { it.parentId == root.id }
+        val spaceOpera = folders.single { it.parentId == fiction.id }
+        assertEquals("Library", root.name)
+        assertEquals("Fiction", fiction.name)
+        assertEquals("Space Opera", spaceOpera.name)
+
+        repository.getOrCreateFolderPath("Other Library", "Fiction/Space Opera")
+        assertEquals(6, dao.getAllFolders().first().size)
     }
 
     private suspend fun insertBook(id: String) {
