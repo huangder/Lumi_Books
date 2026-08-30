@@ -138,6 +138,14 @@
 
 ---
 
+## ❤️ 支持 Lumi
+
+Lumi 始终保持免费、开源且无广告。如果它对你有帮助，欢迎通过 [赞助页](https://huangder.top/sponsor.html) 请开发者喝杯咖啡。
+
+GitHub 页面右侧的 **Sponsor** 按钮也会提供可用的赞助入口。赞助完全自愿，不会影响功能使用或问题处理。
+
+---
+
 ## 📜 许可证
 
 Lumi 原创代码采用 [MIT License](LICENSE) 开源。第三方依赖及改编代码继续遵循各自许可证；其中液态玻璃使用并改编自 Apache 2.0 许可的 [AndroidLiquidGlass / Backdrop](https://github.com/Kyant0/AndroidLiquidGlass)。© 2026 Huangder
