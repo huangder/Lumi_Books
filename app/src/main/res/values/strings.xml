@@ -272,8 +272,14 @@
     <string name="sponsor_title">赞助开发</string>
     <string name="sponsor_desc">捐赠：如果你觉得不错的话，欢迎支持开发</string>
     <string name="sponsor_qr_desc">捐赠二维码</string>
+    <string name="sponsor_payment_menu">选择捐赠方式</string>
+    <string name="sponsor_payment_wechat">WeChat 捐赠</string>
+    <string name="sponsor_payment_paypal">PayPal 捐赠</string>
+    <string name="sponsor_wechat_qr_desc">WeChat 捐赠二维码</string>
+    <string name="sponsor_paypal_qr_desc">PayPal 捐赠二维码</string>
     <string name="sponsor_quote">"如果觉得不错，请我吃个饭吧😊"</string>
     <string name="sponsor_code_label">绘屿浮 的赞赏码</string>
+    <string name="sponsor_paypal_code_label">PayPal 收款码</string>
     <string name="sponsor_thanks_title">梦想赞助家</string>
     <string name="sponsor_dev_title">开发人员</string>
     <string name="sponsor_maintainer_badge">维护者</string>
