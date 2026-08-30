@@ -263,7 +263,6 @@
     <string name="sponsor_title">Support Development</string>
     <string name="sponsor_desc">Donations: If you enjoy using this app, feel free to support its development</string>
     <string name="sponsor_qr_desc">Donation QR Code</string>
-    <string name="sponsor_payment_menu">Choose donation method</string>
     <string name="sponsor_payment_wechat">WeChat donation</string>
     <string name="sponsor_payment_paypal">PayPal donation</string>
     <string name="sponsor_wechat_qr_desc">WeChat donation QR code</string>
