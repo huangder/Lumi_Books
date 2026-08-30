@@ -248,9 +248,24 @@ class CurlPageAnim(
                 }
 
                 if (newDirection != Direction.NONE && newDirection != direction) {
+                    val wasRenderingCurl = snapshotsReady
+                    if (wasRenderingCurl) {
+                        // A direction reversal changes both page roles (the
+                        // turning sheet and the page underneath). Do not draw
+                        // one frame with the old PREV/NEXT snapshots under the
+                        // new direction; release them and rebase the gesture
+                        // at the new direction's flat coordinate instead.
+                        clearCapturedFrames()
+                        snapshotsReady = false
+                        isDragging = false
+                        readView.postInvalidateOnAnimation()
+                    }
                     direction = newDirection
                     gestureModeLock.begin(startX, startY)
+                    gestureMode = CurlGestureMode.EDGE_VERTICAL
                     curlDragOriginX = startX
+                    touchX = flatTouchX()
+                    touchY = nearCornerY()
                 }
 
                 if (!snapshotsReady && direction != Direction.NONE) {
@@ -277,17 +292,7 @@ class CurlPageAnim(
                     // NEXT 从右向左递减；PREV 从真正的屏外平铺态 -width
                     // 向右递增。两者都以实际拖动位移起步，避免方向刚确定
                     // 时目标页卷曲突然占据一部分屏幕。
-                    val width = readView.width.toFloat()
-                    touchX = SimulationCurlGeometry.canonicalTouchX(
-                        width,
-                        curlDragOriginX,
-                        event.x,
-                        if (direction == Direction.NEXT) {
-                            SimulationCurlTurnDirection.NEXT
-                        } else {
-                            SimulationCurlTurnDirection.PREVIOUS
-                        }
-                    )
+                    touchX = touchXForPointer(event.x)
                     touchY = gestureTouchY(event.y)
                     isDragging = true
                     lastX = event.x
@@ -309,6 +314,7 @@ class CurlPageAnim(
                     return true
                 }
 
+                touchX = touchXForPointer(event.x)
                 touchY = gestureTouchY(event.y)
                 val progress = abs(event.x - startX) /
                     readView.width.coerceAtLeast(1).toFloat()
@@ -390,15 +396,23 @@ class CurlPageAnim(
         settleToPage()
     }
 
-    fun startFromTap(dir: Direction) {
-        if (destroyed || isRunning || isDragging || dir == Direction.NONE) return
-        if (onCanFlip?.invoke(dir) != true) return
+    fun startFromTap(dir: Direction, gestureStartY: Float? = null): Boolean {
+        if (destroyed || isRunning || isDragging || dir == Direction.NONE) return false
+        if (onCanFlip?.invoke(dir) != true) return false
 
         abortAnim()
         capturedBaseDurationMs = baseDurationMs
         direction = dir
-        startY = readView.height * 0.82f
-        gestureMode = CurlGestureMode.EDGE_VERTICAL
+        val defaultStartY = readView.height * 0.82f
+        startY = gestureStartY
+            ?.takeIf { it.isFinite() }
+            ?.coerceIn(0f, readView.height.toFloat())
+            ?: defaultStartY
+        gestureMode = curlGestureModeForStartY(
+            height = readView.height.toFloat(),
+            downY = startY,
+            physicalTurnSign = if (dir == Direction.NEXT) -1f else 1f
+        )
         gestureModeLock.reset()
         configureCorner(startY)
         // PREV 从屏外平铺态起步，NEXT 保持右侧平铺态。
@@ -408,12 +422,13 @@ class CurlPageAnim(
         snapshotsReady = capturePages(dir)
         if (!snapshotsReady) {
             resetToIdle()
-            return
+            return false
         }
 
         isFlipAnim = true
         onMotionStateChanged?.invoke(MotionState.SETTLING)
         settleToPage(capturedBaseDurationMs)
+        return true
     }
 
     override fun computeScroll(): Boolean {
@@ -479,11 +494,11 @@ class CurlPageAnim(
         if (!destroyed) onMotionStateChanged?.invoke(MotionState.IDLE)
     }
 
-    override fun completeRunningFlipForNewInput(): Boolean {
+    override fun completeRunningFlipForNewInput(): RunningFlipHandoff {
         val committedDirection = if (
             isFlipAnim && isRunning && settleCompletesPage && direction != Direction.NONE
         ) direction else Direction.NONE
-        if (committedDirection == Direction.NONE) return false
+        if (committedDirection == Direction.NONE) return RunningFlipHandoff.NOT_COMMITTED
 
         if (readView.hasDirectPageRenderer) {
             if (!settleExpedited) {
@@ -497,7 +512,7 @@ class CurlPageAnim(
             }
             // Keep the current curl visible until its paper edge has actually
             // left the screen. The host can retain the new intent meanwhile.
-            return false
+            return RunningFlipHandoff.COMPLETING_ASYNCHRONOUSLY
         }
 
         if (!scroller.isFinished) scroller.abortAnimation()
@@ -516,7 +531,7 @@ class CurlPageAnim(
         direction = Direction.NONE
         readView.invalidate()
         onMotionStateChanged?.invoke(MotionState.IDLE)
-        return true
+        return RunningFlipHandoff.COMPLETED_SYNCHRONOUSLY
     }
 
     override fun getOffsetX(): Float = when (direction) {
@@ -689,6 +704,25 @@ class CurlPageAnim(
         val simulationDirection = simulationDirection() ?: return touchX
         return SimulationCurlTurnMotion.flatTouchX(
             readView.width.toFloat(),
+            simulationDirection
+        )
+    }
+
+    private fun touchXForPointer(pointerX: Float): Float {
+        val width = readView.width.toFloat()
+        if (gestureMode == CurlGestureMode.CORNER_TOP ||
+            gestureMode == CurlGestureMode.CORNER_BOTTOM
+        ) {
+            // In a corner curl the Bezier touch point is the fold tip. Keep it
+            // at the real finger coordinate instead of adding displacement to
+            // the right-edge origin.
+            return SimulationCurlGeometry.cornerTouchX(width, pointerX)
+        }
+        val simulationDirection = simulationDirection() ?: return touchX
+        return SimulationCurlGeometry.canonicalTouchX(
+            width,
+            curlDragOriginX,
+            pointerX,
             simulationDirection
         )
     }
@@ -1132,6 +1166,15 @@ class CurlPageAnim(
         underLease = null
         if (turningBitmap !== ownedTurningBitmap) turningBitmap = ownedTurningBitmap
         if (underBitmap !== ownedUnderBitmap) underBitmap = ownedUnderBitmap
+    }
+
+    private fun clearCapturedFrames() {
+        releaseBorrowedFrames()
+        turningPageView = null
+        underPageView = null
+        foldTexturePaint.shader = null
+        foldBackShader = null
+        foldBackShaderBitmap = null
     }
 
     private fun frozenPage(view: View): Bitmap? =

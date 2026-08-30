@@ -29,9 +29,9 @@ class CurlGestureHelpersTest {
     }
 
     @Test
-    fun horizontalDragLocksToVerticalEdgeCurlAtClassificationDistance() {
+    fun nextMiddleBandLocksToVerticalEdgeCurlAtClassificationDistance() {
         val lock = CurlGestureModeLock()
-        lock.begin(1000f, 40f)
+        lock.begin(1000f, 1170f)
 
         val mode = lock.lock(
             width = 1080f,
@@ -58,44 +58,85 @@ class CurlGestureHelpersTest {
     }
 
     @Test
-    fun diagonalDragFromTurnEdgeSelectsStartingCorner() {
+    fun nextTopAndBottomBandsSelectTheirRightCorners() {
         val topLock = CurlGestureModeLock()
-        topLock.begin(1000f, 120f)
+        topLock.begin(1000f, 200f)
         assertTrue(
             topLock.lock(1080f, 2340f, -1f, -180f, 400f) ==
                 CurlGestureMode.CORNER_TOP
         )
 
         val bottomLock = CurlGestureModeLock()
-        bottomLock.begin(1000f, 2200f)
+        bottomLock.begin(1000f, 2140f)
         assertTrue(
             bottomLock.lock(1080f, 2340f, -1f, -180f, -400f) ==
                 CurlGestureMode.CORNER_BOTTOM
         )
+
+        val topBoundaryLock = CurlGestureModeLock()
+        topBoundaryLock.begin(1000f, 2340f * 0.3f)
+        assertTrue(
+            topBoundaryLock.lock(1080f, 2340f, -1f, -180f, 900f) ==
+                CurlGestureMode.CORNER_TOP
+        )
+
+        val bottomBoundaryLock = CurlGestureModeLock()
+        bottomBoundaryLock.begin(1000f, 2340f * 0.7f)
+        assertTrue(
+            bottomBoundaryLock.lock(1080f, 2340f, -1f, -180f, -900f) ==
+                CurlGestureMode.CORNER_BOTTOM
+        )
     }
 
     @Test
-    fun selectedVerticalModeDoesNotChangeMidGesture() {
-        val lock = CurlGestureModeLock()
-        lock.begin(1000f, 120f)
+    fun previousAlwaysSelectsVerticalCurlRegardlessOfTouchBandOrSlope() {
+        val topLock = CurlGestureModeLock()
+        topLock.begin(1000f, 120f)
         assertTrue(
-            lock.lock(1080f, 2340f, -1f, -180f, 10f) ==
+            topLock.lock(1080f, 2340f, 1f, 240f, -500f) ==
                 CurlGestureMode.EDGE_VERTICAL
         )
+
+        val bottomLock = CurlGestureModeLock()
+        bottomLock.begin(1000f, 2220f)
         assertTrue(
-            lock.lock(1080f, 2340f, -1f, -240f, 500f) ==
+            bottomLock.lock(1080f, 2340f, 1f, 240f, 500f) ==
                 CurlGestureMode.EDGE_VERTICAL
         )
-        assertTrue(lock.isLocked)
+        assertTrue(topLock.isLocked)
+        assertTrue(bottomLock.isLocked)
     }
 
     @Test
-    fun diagonalDragAwayFromEdgeStillSelectsStartingCorner() {
+    fun nextBandSelectionIgnoresMovementSlope() {
         val lock = CurlGestureModeLock()
         lock.begin(540f, 1200f)
         assertTrue(
             lock.lock(1080f, 2340f, -1f, -220f, 620f) ==
-                CurlGestureMode.CORNER_BOTTOM
+                CurlGestureMode.EDGE_VERTICAL
+        )
+    }
+
+    @Test
+    fun restoredStartYKeepsTheOriginalNextCurlBand() {
+        assertTrue(
+            curlGestureModeForStartY(2340f, 120f, -1f) == CurlGestureMode.CORNER_TOP
+        )
+        assertTrue(
+            curlGestureModeForStartY(2340f, 2220f, -1f) == CurlGestureMode.CORNER_BOTTOM
+        )
+        assertTrue(
+            curlGestureModeForStartY(2340f, 1170f, -1f) == CurlGestureMode.EDGE_VERTICAL
+        )
+    }
+
+    @Test
+    fun restoredPreviousStartYAlwaysUsesTheEdgeCurl() {
+        assertTrue(
+            curlGestureModeForStartY(2340f, 120f, 1f) == CurlGestureMode.EDGE_VERTICAL
+        )
+        assertTrue(
+            curlGestureModeForStartY(2340f, 2220f, 1f) == CurlGestureMode.EDGE_VERTICAL
         )
     }
 }

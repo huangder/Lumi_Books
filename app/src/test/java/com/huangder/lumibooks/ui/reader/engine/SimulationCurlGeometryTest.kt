@@ -164,4 +164,29 @@ class SimulationCurlGeometryTest {
             ).isFinite()
         )
     }
+
+    @Test
+    fun cornerTouchXFollowsTheActualPointerCoordinate() {
+        assertEquals(
+            180f,
+            SimulationCurlGeometry.cornerTouchX(1080f, 180f),
+            0f
+        )
+        assertEquals(
+            -40f,
+            SimulationCurlGeometry.cornerTouchX(1080f, -40f),
+            0f
+        )
+        assertEquals(
+            -1080f,
+            SimulationCurlGeometry.cornerTouchX(1080f, -2000f),
+            0f
+        )
+        assertTrue(
+            SimulationCurlGeometry.cornerTouchX(
+                Float.POSITIVE_INFINITY,
+                100f
+            ).isFinite()
+        )
+    }
 }

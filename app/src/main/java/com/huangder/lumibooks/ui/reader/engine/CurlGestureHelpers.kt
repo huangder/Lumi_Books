@@ -34,10 +34,37 @@ internal enum class CurlGestureMode {
     CORNER_BOTTOM
 }
 
-/** Locks horizontal drags to an edge curl and diagonal drags to a corner curl. */
+private const val CURL_CORNER_BAND_FRACTION = 0.3f
+
+/** Classifies a NEXT gesture from its original finger-down vertical position. */
+internal fun curlGestureModeForStartY(
+    height: Float,
+    downY: Float,
+    physicalTurnSign: Float
+): CurlGestureMode {
+    if (!height.isFinite() || height <= 0f || !downY.isFinite() ||
+        !physicalTurnSign.isFinite() || physicalTurnSign >= 0f
+    ) return CurlGestureMode.EDGE_VERTICAL
+
+    return when {
+        downY <= height * CURL_CORNER_BAND_FRACTION -> CurlGestureMode.CORNER_TOP
+        downY >= height * (1f - CURL_CORNER_BAND_FRACTION) -> CurlGestureMode.CORNER_BOTTOM
+        else -> CurlGestureMode.EDGE_VERTICAL
+    }
+}
+
+/**
+ * Locks a curl mode once the horizontal paging intent is far enough along to
+ * classify without exposing a provisional first frame.
+ *
+ * PREVIOUS is deliberately always an edge curl. NEXT uses the finger-down
+ * vertical band: the top and bottom 30% select the corresponding right corner,
+ * while the middle 40% selects the full-height edge curl. The movement slope
+ * is intentionally ignored here; it is only used by the outer paging-intent
+ * recognizers to decide whether a gesture is horizontal at all.
+ */
 internal class CurlGestureModeLock {
     companion object {
-        private const val DIAGONAL_SLOPE = 0.42f
         private const val CLASSIFICATION_X_FRACTION = 0.045f
     }
 
@@ -65,19 +92,13 @@ internal class CurlGestureModeLock {
     ): CurlGestureMode {
         if (isLocked) return mode
         if (width <= 0f || height <= 0f || physicalTurnSign == 0f ||
-            !width.isFinite() || !height.isFinite()
+            !width.isFinite() || !height.isFinite() || !physicalTurnSign.isFinite() ||
+            !deltaX.isFinite() || !downY.isFinite()
         ) return mode
         if (abs(deltaX) < width * CLASSIFICATION_X_FRACTION) return mode
 
-        val slope = abs(deltaY) / abs(deltaX).coerceAtLeast(1f)
         isLocked = true
-        mode = if (slope < DIAGONAL_SLOPE) {
-            CurlGestureMode.EDGE_VERTICAL
-        } else if (downY < height * 0.5f) {
-            CurlGestureMode.CORNER_TOP
-        } else {
-            CurlGestureMode.CORNER_BOTTOM
-        }
+        mode = curlGestureModeForStartY(height, downY, physicalTurnSign)
         return mode
     }
 

@@ -20,6 +20,8 @@ import android.widget.ImageView
 import android.widget.TextView
 import coil.load
 import com.huangder.lumibooks.domain.model.ReaderTextAlignment
+import com.huangder.lumibooks.ui.reader.readerBreakStrategy
+import com.huangder.lumibooks.ui.reader.readerJustificationMode
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.util.ReaderBackgroundBlurTransformation
 import com.huangder.lumibooks.util.parser.EpubParser
@@ -607,19 +609,16 @@ class PageContentView(context: Context) : FrameLayout(context) {
         // 🔥 守卫：仅在值变更时才设置，避免无条件触发 nullLayouts() + requestLayout()
         // Android 的 setBreakStrategy/setHyphenationFrequency 不检查相等性，即使值相同
         // 也会无效化已存在的 Layout，导致多余的 layout pass → 内容位移
-        if (textView.breakStrategy != Layout.BREAK_STRATEGY_SIMPLE) {
-            textView.breakStrategy = Layout.BREAK_STRATEGY_SIMPLE
+        val breakStrategy = textAlignment.readerBreakStrategy()
+        if (textView.breakStrategy != breakStrategy) {
+            textView.breakStrategy = breakStrategy
         }
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
             if (textView.hyphenationFrequency != Layout.HYPHENATION_FREQUENCY_NONE) {
                 textView.hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NONE
             }
         }
-        val justificationMode = if (textAlignment == ReaderTextAlignment.JUSTIFY) {
-            Layout.JUSTIFICATION_MODE_INTER_WORD
-        } else {
-            Layout.JUSTIFICATION_MODE_NONE
-        }
+        val justificationMode = textAlignment.readerJustificationMode()
         if (textView.justificationMode != justificationMode) {
             textView.justificationMode = justificationMode
         }

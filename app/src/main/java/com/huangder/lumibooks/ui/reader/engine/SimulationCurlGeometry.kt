@@ -81,6 +81,15 @@ internal object SimulationCurlGeometry {
         }
     }
 
+    /**
+     * Corner curls use the actual pointer coordinate so the fold tip stays
+     * under the finger even when the gesture started away from the right edge.
+     */
+    fun cornerTouchX(width: Float, pointerX: Float): Float {
+        if (!width.isFinite() || !pointerX.isFinite() || width <= 0f) return 0f
+        return pointerX.coerceIn(-width, width)
+    }
+
     fun evaluate(
         width: Float,
         height: Float,

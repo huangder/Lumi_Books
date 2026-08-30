@@ -32,6 +32,12 @@ abstract class PageAnimationController(
 
     enum class Direction { NONE, NEXT, PREV }
 
+    enum class RunningFlipHandoff {
+        COMPLETED_SYNCHRONOUSLY,
+        COMPLETING_ASYNCHRONOUSLY,
+        NOT_COMMITTED
+    }
+
     protected val scroller: Scroller = Scroller(readView.context, FAST_OUT_SLOW_IN)
 
     var isRunning: Boolean = false
@@ -303,10 +309,10 @@ abstract class PageAnimationController(
         return true
     }
 
-    /** Commit a settling page only after a new page-turn intent is confirmed. */
-    open fun completeRunningFlipForNewInput(): Boolean {
+    /** Commit or expedite a settling page only after a new page-turn intent is confirmed. */
+    open fun completeRunningFlipForNewInput(): RunningFlipHandoff {
         val committedDirection = if (isFlipAnim && isRunning) direction else Direction.NONE
-        if (committedDirection == Direction.NONE) return false
+        if (committedDirection == Direction.NONE) return RunningFlipHandoff.NOT_COMMITTED
         if (!scroller.isFinished) scroller.abortAnimation()
         isRunning = false
         isDragging = false
@@ -317,7 +323,7 @@ abstract class PageAnimationController(
         onAnimationComplete?.invoke()
         direction = Direction.NONE
         readView.invalidate()
-        return true
+        return RunningFlipHandoff.COMPLETED_SYNCHRONOUSLY
     }
 
     protected open fun startBounceBack() {

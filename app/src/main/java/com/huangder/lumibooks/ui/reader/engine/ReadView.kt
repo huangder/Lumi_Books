@@ -158,6 +158,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         get() = jumpGenerationGate.isSettling
     private var jumpTimeoutRunnable: Runnable? = null
     private val curlTurnSequencer = ReaderCurlTurnSequencer()
+    private var pendingCurlGestureStartY: Float? = null
     private var rvDeferredCurlGesture = false
 
     /** 设置已保存的笔记/高亮并刷新当前页。 */
@@ -373,7 +374,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         slotManager.onSpreadPageChangedCallback = { rightGlobalPage, rightChapterIdx, rightPage ->
             callbacks?.onSpreadPageChanged(rightGlobalPage, rightChapterIdx, rightPage)
         }
-        slotManager.onSlotReadyCallback = { post(::drainPendingCurlTurns) }
+        slotManager.onSlotReadyCallback = { postOnAnimation(::drainPendingCurlTurns) }
 
         setWillNotDraw(false)
     }
@@ -1308,7 +1309,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                         deltaX = ev.x - rvTouchStartX,
                         deltaY = ev.y - rvTouchStartY
                     )
-                    finishRunningPageTurnForNewInput()
+                    if (animationController !is CurlPageAnim) {
+                        finishRunningPageTurnForNewInput()
+                    }
                     if (isPageTurnBlockedAtBoundary(pageDirection)) {
                         rvBoundaryGestureSuppressed = true
                         rvHasMoved = true
@@ -1585,16 +1588,11 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         }
     }
 
-    /**
-     * Rapid edge taps are not queued. The in-flight committed animation is
-     * finalized synchronously, which shifts the slot tape, and the new tap can
-     * immediately start against that new current page.
-     */
+    /** Non-curl animations finalize a committed turn before accepting new input. */
     private fun finishRunningPageTurnForNewInput() {
         val controller = animationController
         if (controller.isRunning) {
-            val committed = controller.completeRunningFlipForNewInput()
-            if (!committed && controller is CurlPageAnim) controller.abortAnim()
+            controller.completeRunningFlipForNewInput()
         }
     }
 
@@ -1603,34 +1601,37 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         if (direction == PageAnimationController.Direction.NONE) return false
 
         if (isJumpSettling) {
+            pendingCurlGestureStartY = null
             curlTurnSequencer.offerWhileWaiting(direction)
             return true
         }
+
+        if (handoffRunningCurlInput(controller, direction)) return true
 
         if (curlTurnSequencer.pendingSteps != 0) {
             curlTurnSequencer.offerWhileWaiting(direction)
             drainPendingCurlTurns()
             return true
         }
-
-        if (controller.isRunning || controller.isDragging) {
-            if (!controller.completeRunningFlipForNewInput()) controller.abortAnim()
-        }
         if (isCurlTargetReady(direction)) {
             clearCurrentSelection()
-            curlTurnSequencer.settling()
-            recordCurlTurnIntent(direction, preloaded = true)
-            ReaderPageTurnPerformance.markVisualStarted()
-            controller.startFromTap(direction)
-            return true
+            if (controller.startFromTap(direction)) {
+                curlTurnSequencer.settling()
+                recordCurlTurnIntent(direction, preloaded = true)
+                ReaderPageTurnPerformance.markVisualStarted()
+                return true
+            }
+            return retryCurlTurnAfterStartFailure(direction)
         }
         if (hasCurlTarget(direction)) {
             recordCurlTurnIntent(direction, preloaded = false)
+            pendingCurlGestureStartY = null
             curlTurnSequencer.offerWhileWaiting(direction)
             return true
         }
 
         curlTurnSequencer.clear()
+        pendingCurlGestureStartY = null
         return false
     }
 
@@ -1638,26 +1639,72 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val controller = animationController as? CurlPageAnim ?: return true
         if (direction == PageAnimationController.Direction.NONE) return false
         if (isJumpSettling) {
+            pendingCurlGestureStartY = rvTouchStartY
             curlTurnSequencer.offerWhileWaiting(direction)
             return false
         }
+        if (handoffRunningCurlInput(controller, direction)) {
+            pendingCurlGestureStartY = rvTouchStartY
+            return false
+        }
+
         if (curlTurnSequencer.pendingSteps != 0) {
+            pendingCurlGestureStartY = rvTouchStartY
             curlTurnSequencer.offerWhileWaiting(direction)
             drainPendingCurlTurns()
             return false
         }
-        if (controller.isRunning || controller.isDragging) {
-            if (!controller.completeRunningFlipForNewInput()) controller.abortAnim()
-        }
         if (isCurlTargetReady(direction)) {
+            pendingCurlGestureStartY = null
             curlTurnSequencer.dragging()
             return true
         }
         if (hasCurlTarget(direction)) {
+            pendingCurlGestureStartY = rvTouchStartY
             curlTurnSequencer.offerWhileWaiting(direction)
         } else {
             curlTurnSequencer.clear()
+            pendingCurlGestureStartY = null
         }
+        return false
+    }
+
+    /** Returns true when the incoming turn was queued behind an in-flight curl. */
+    private fun handoffRunningCurlInput(
+        controller: CurlPageAnim,
+        direction: PageAnimationController.Direction
+    ): Boolean {
+        if (!controller.isRunning) {
+            if (controller.isDragging) controller.abortAnim()
+            return false
+        }
+        return when (
+            curlRunningInputDisposition(controller.completeRunningFlipForNewInput())
+        ) {
+            CurlRunningInputDisposition.QUEUE -> {
+                curlTurnSequencer.offer(direction)
+                true
+            }
+            CurlRunningInputDisposition.REEVALUATE -> false
+            CurlRunningInputDisposition.ABORT_AND_REEVALUATE -> {
+                controller.abortAnim()
+                false
+            }
+        }
+    }
+
+    private fun retryCurlTurnAfterStartFailure(
+        direction: PageAnimationController.Direction
+    ): Boolean {
+        if (hasCurlTarget(direction)) {
+            curlTurnSequencer.restore(direction)
+            // The target slot may have just been populated and still needs its
+            // first layout pass before it can be captured into a curl frame.
+            postOnAnimation { drainPendingCurlTurns() }
+            return true
+        }
+        curlTurnSequencer.clear()
+        pendingCurlGestureStartY = null
         return false
     }
 
@@ -1667,20 +1714,26 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val direction = curlTurnSequencer.poll()
         if (direction == PageAnimationController.Direction.NONE) {
             curlTurnSequencer.idle()
+            pendingCurlGestureStartY = null
             return
         }
         if (isCurlTargetReady(direction)) {
             clearCurrentSelection()
-            curlTurnSequencer.settling()
-            recordCurlTurnIntent(direction, preloaded = true)
-            ReaderPageTurnPerformance.markVisualStarted()
-            controller.startFromTap(direction)
+            if (controller.startFromTap(direction, pendingCurlGestureStartY)) {
+                pendingCurlGestureStartY = null
+                curlTurnSequencer.settling()
+                recordCurlTurnIntent(direction, preloaded = true)
+                ReaderPageTurnPerformance.markVisualStarted()
+                return
+            }
+            retryCurlTurnAfterStartFailure(direction)
             return
         }
         if (hasCurlTarget(direction)) {
             curlTurnSequencer.restore(direction)
         } else {
             curlTurnSequencer.clear()
+            pendingCurlGestureStartY = null
         }
     }
 
@@ -1755,6 +1808,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
     private fun clearCurlTurnIntent() {
         curlTurnSequencer.clear()
+        pendingCurlGestureStartY = null
         rvDeferredCurlGesture = false
         rvIsHandlingPageGesture = false
         rvBoundaryGestureSuppressed = false

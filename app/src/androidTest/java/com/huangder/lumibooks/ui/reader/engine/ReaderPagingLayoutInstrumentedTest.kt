@@ -15,6 +15,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.huangder.lumibooks.util.parser.MobiParser
 import com.huangder.lumibooks.domain.model.ReaderTextAlignment
 import com.huangder.lumibooks.ui.reader.applyReaderTextAlignment
+import com.huangder.lumibooks.ui.reader.readerJustificationMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -61,11 +62,17 @@ class ReaderPagingLayoutInstrumentedTest {
 
         assertEquals(0, page?.textView?.scrollX)
         assertEquals(0, page?.textView?.scrollY)
-        // The visible renderer must stay left-aligned (NONE) so its line breaks
-        // exactly match PageLayoutEngine's ALIGN_NORMAL StaticLayout. Justified
-        // breaks would add a trailing-space reserve and shift the last line by
-        // one character when letterSpacing > 0.
-        assertEquals(Layout.JUSTIFICATION_MODE_NONE, page?.textView?.justificationMode)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            page?.configure(
+                fontSizePx = 36f,
+                textColor = Color.BLACK,
+                textAlignment = ReaderTextAlignment.NATURAL
+            )
+        }
+        assertEquals(
+            ReaderTextAlignment.NATURAL.readerJustificationMode(),
+            page?.textView?.justificationMode
+        )
     }
 
     @Test
@@ -154,6 +161,34 @@ class ReaderPagingLayoutInstrumentedTest {
         }
         assertTrue("rendered ink must not enter bottom padding", lastInkRow < height - margin)
         bitmap.recycle()
+    }
+
+    @Test
+    fun equalMarginsProduceEqualTextPaddingAndContentWidth() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        var page: PageContentView? = null
+        val text = "这是一段用于验证左右边距完全对称的中文正文。"
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            page = PageContentView(context).also {
+                it.configure(
+                    fontSizePx = 36f,
+                    textColor = Color.BLACK,
+                    marginLeftPx = 72f,
+                    marginRightPx = 72f,
+                    textAlignment = ReaderTextAlignment.NATURAL
+                )
+                it.setPageContent(text, 0, text.length)
+                it.measure(
+                    android.view.View.MeasureSpec.makeMeasureSpec(600, android.view.View.MeasureSpec.EXACTLY),
+                    android.view.View.MeasureSpec.makeMeasureSpec(720, android.view.View.MeasureSpec.EXACTLY)
+                )
+                it.layout(0, 0, 600, 720)
+            }
+        }
+
+        val textView = requireNotNull(page).textView
+        assertEquals(textView.totalPaddingLeft, textView.totalPaddingRight)
+        assertEquals(600 - 144, requireNotNull(textView.layout).width)
     }
 
     @Test

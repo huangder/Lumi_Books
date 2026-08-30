@@ -1,5 +1,22 @@
 package com.huangder.lumibooks.ui.reader.engine
 
+internal enum class CurlRunningInputDisposition {
+    QUEUE,
+    REEVALUATE,
+    ABORT_AND_REEVALUATE
+}
+
+internal fun curlRunningInputDisposition(
+    handoff: PageAnimationController.RunningFlipHandoff
+): CurlRunningInputDisposition = when (handoff) {
+    PageAnimationController.RunningFlipHandoff.COMPLETING_ASYNCHRONOUSLY ->
+        CurlRunningInputDisposition.QUEUE
+    PageAnimationController.RunningFlipHandoff.COMPLETED_SYNCHRONOUSLY ->
+        CurlRunningInputDisposition.REEVALUATE
+    PageAnimationController.RunningFlipHandoff.NOT_COMMITTED ->
+        CurlRunningInputDisposition.ABORT_AND_REEVALUATE
+}
+
 /** Pending intent for reflowed Curl turns. It stores a signed balance, not pages. */
 internal class ReaderCurlTurnSequencer {
     enum class State { IDLE, DRAGGING, SETTLING, WAITING_FOR_TARGET, DESTROYED }

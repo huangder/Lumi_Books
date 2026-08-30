@@ -1,10 +1,30 @@
 package com.huangder.lumibooks.ui.reader
 
 import android.text.Layout
+import android.os.Build
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.style.AlignmentSpan
 import com.huangder.lumibooks.domain.model.ReaderTextAlignment
+
+internal fun ReaderTextAlignment.usesFullLineJustification(): Boolean =
+    this == ReaderTextAlignment.NATURAL || this == ReaderTextAlignment.JUSTIFY
+
+internal fun ReaderTextAlignment.readerJustificationMode(
+    sdkInt: Int = Build.VERSION.SDK_INT
+): Int = when {
+    !usesFullLineJustification() -> Layout.JUSTIFICATION_MODE_NONE
+    sdkInt >= Build.VERSION_CODES.VANILLA_ICE_CREAM ->
+        Layout.JUSTIFICATION_MODE_INTER_CHARACTER
+    else -> Layout.JUSTIFICATION_MODE_INTER_WORD
+}
+
+internal fun ReaderTextAlignment.readerBreakStrategy(): Int =
+    if (usesFullLineJustification()) {
+        Layout.BREAK_STRATEGY_HIGH_QUALITY
+    } else {
+        Layout.BREAK_STRATEGY_SIMPLE
+    }
 
 internal fun applyReaderTextAlignment(
     text: CharSequence,
@@ -23,17 +43,13 @@ internal fun applyReaderTextAlignment(
         ReaderTextAlignment.JUSTIFY -> null
     } ?: return result
 
-    var paragraphStart = 0
-    while (paragraphStart < result.length) {
-        val newline = result.indexOf('\n', paragraphStart)
-        val paragraphEnd = if (newline >= 0) newline + 1 else result.length
+    if (result.isNotEmpty()) {
         result.setSpan(
             AlignmentSpan.Standard(layoutAlignment),
-            paragraphStart,
-            paragraphEnd,
+            0,
+            result.length,
             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
         )
-        paragraphStart = paragraphEnd
     }
     return result
 }

@@ -7,6 +7,8 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import com.huangder.lumibooks.domain.model.ReaderTextAlignment
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
+import com.huangder.lumibooks.ui.reader.readerBreakStrategy
+import com.huangder.lumibooks.ui.reader.readerJustificationMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -189,15 +191,9 @@ class PageLayoutEngine {
             .setAlignment(Layout.Alignment.ALIGN_NORMAL)
             .setLineSpacing(lineSpacingExtra, lineSpacingMultiplier)
             .setIncludePad(false)
-            .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
+            .setBreakStrategy(input.textAlignment.readerBreakStrategy())
             .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)
-            .setJustificationMode(
-                if (input.textAlignment == ReaderTextAlignment.JUSTIFY) {
-                    Layout.JUSTIFICATION_MODE_INTER_WORD
-                } else {
-                    Layout.JUSTIFICATION_MODE_NONE
-                }
-            )
+            .setJustificationMode(input.textAlignment.readerJustificationMode())
             .build()
 
         if (input.writingMode.isVertical) {

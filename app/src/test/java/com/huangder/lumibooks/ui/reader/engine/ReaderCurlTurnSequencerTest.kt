@@ -5,8 +5,31 @@ import org.junit.Test
 
 class ReaderCurlTurnSequencerTest {
     @Test
+    fun asynchronousHandoffQueuesWithoutAbortingCurrentTurn() {
+        assertEquals(
+            CurlRunningInputDisposition.QUEUE,
+            curlRunningInputDisposition(
+                PageAnimationController.RunningFlipHandoff.COMPLETING_ASYNCHRONOUSLY
+            )
+        )
+        assertEquals(
+            CurlRunningInputDisposition.REEVALUATE,
+            curlRunningInputDisposition(
+                PageAnimationController.RunningFlipHandoff.COMPLETED_SYNCHRONOUSLY
+            )
+        )
+        assertEquals(
+            CurlRunningInputDisposition.ABORT_AND_REEVALUATE,
+            curlRunningInputDisposition(
+                PageAnimationController.RunningFlipHandoff.NOT_COMMITTED
+            )
+        )
+    }
+
+    @Test
     fun twentyRapidNextInputsProduceTwentySteps() {
         val sequencer = ReaderCurlTurnSequencer()
+        sequencer.settling()
         repeat(20) { sequencer.offer(PageAnimationController.Direction.NEXT) }
 
         var turns = 0
@@ -73,5 +96,19 @@ class ReaderCurlTurnSequencerTest {
 
         sequencer.offerWhileWaiting(PageAnimationController.Direction.PREV)
         assertEquals(0, sequencer.pendingSteps)
+    }
+
+    @Test
+    fun queuedAnimationBurstCollapsesWhenTargetStartsWaiting() {
+        val sequencer = ReaderCurlTurnSequencer()
+        sequencer.settling()
+        repeat(5) { sequencer.offer(PageAnimationController.Direction.NEXT) }
+
+        val blockedTurn = sequencer.poll()
+        sequencer.restore(blockedTurn)
+
+        assertEquals(ReaderCurlTurnSequencer.State.WAITING_FOR_TARGET, sequencer.state)
+        assertEquals(1, sequencer.pendingSteps)
+        assertEquals(PageAnimationController.Direction.NEXT, sequencer.poll())
     }
 }

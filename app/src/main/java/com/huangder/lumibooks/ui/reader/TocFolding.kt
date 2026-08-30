@@ -19,6 +19,31 @@ internal data class TocVisibleEntry(
     val entry: TocEntry
 )
 
+internal data class TocViewportItem(
+    val index: Int,
+    val offset: Int,
+    val size: Int
+)
+
+internal fun isTocItemVisible(
+    itemIndex: Int,
+    viewportStartOffset: Int,
+    viewportEndOffset: Int,
+    visibleItems: List<TocViewportItem>
+): Boolean {
+    if (itemIndex < 0) return false
+    val item = visibleItems.firstOrNull { it.index == itemIndex } ?: return false
+    return item.offset < viewportEndOffset && item.offset + item.size > viewportStartOffset
+}
+
+internal fun collapsedTocAncestors(
+    sourceIndex: Int,
+    foldGroups: Map<Int, Int>,
+    collapsedGroups: Set<Int>
+): Set<Int> = collapsedGroups.filterTo(mutableSetOf()) { groupIndex ->
+    sourceIndex > groupIndex && sourceIndex < (foldGroups[groupIndex] ?: groupIndex + 1)
+}
+
 /**
  * Returns foldable entry indexes and the exclusive end of each entry's descendants.
  * Explicit EPUB groups use TOC levels; inferred volume headings delimit flat TXT/MOBI lists.

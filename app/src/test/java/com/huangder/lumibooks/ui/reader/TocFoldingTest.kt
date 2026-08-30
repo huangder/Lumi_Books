@@ -109,6 +109,29 @@ class TocFoldingTest {
         assertEquals("第一卷", visible[visibleIndex].entry.title)
     }
 
+    @Test
+    fun currentCardCountsAsVisibleWhenItIntersectsViewport() {
+        val items = listOf(TocViewportItem(index = 4, offset = 96, size = 40))
+
+        assertTrue(isTocItemVisible(4, viewportStartOffset = 100, viewportEndOffset = 300, items))
+        assertFalse(isTocItemVisible(4, viewportStartOffset = 136, viewportEndOffset = 300, items))
+        assertFalse(isTocItemVisible(-1, viewportStartOffset = 100, viewportEndOffset = 300, items))
+    }
+
+    @Test
+    fun returnToCurrentExpandsEveryCollapsedAncestor() {
+        val groups = mapOf(0 to 8, 1 to 5, 5 to 8)
+
+        assertEquals(
+            setOf(0, 1),
+            collapsedTocAncestors(
+                sourceIndex = 3,
+                foldGroups = groups,
+                collapsedGroups = setOf(0, 1, 5)
+            )
+        )
+    }
+
     private fun chapter(title: String, index: Int, level: Int = 1) =
         TocEntry(title = title, level = level, chapterIndex = index)
 

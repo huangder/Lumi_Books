@@ -1,11 +1,38 @@
 package com.huangder.lumibooks.ui.reader.engine
 
+import android.text.Layout
+import com.huangder.lumibooks.domain.model.ReaderTextAlignment
+import com.huangder.lumibooks.ui.reader.readerBreakStrategy
+import com.huangder.lumibooks.ui.reader.readerJustificationMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class JustifiedTextViewTest {
+    @Test
+    fun naturalAndJustifyShareChineseFullLineStrategy() {
+        assertEquals(
+            Layout.JUSTIFICATION_MODE_INTER_CHARACTER,
+            ReaderTextAlignment.NATURAL.readerJustificationMode(sdkInt = 35)
+        )
+        assertEquals(
+            Layout.JUSTIFICATION_MODE_INTER_CHARACTER,
+            ReaderTextAlignment.JUSTIFY.readerJustificationMode(sdkInt = 35)
+        )
+        assertEquals(
+            Layout.JUSTIFICATION_MODE_INTER_WORD,
+            ReaderTextAlignment.NATURAL.readerJustificationMode(sdkInt = 34)
+        )
+        assertEquals(
+            Layout.BREAK_STRATEGY_HIGH_QUALITY,
+            ReaderTextAlignment.NATURAL.readerBreakStrategy()
+        )
+        assertEquals(
+            Layout.JUSTIFICATION_MODE_NONE,
+            ReaderTextAlignment.LEFT.readerJustificationMode(sdkInt = 35)
+        )
+    }
     @Test
     fun trimsTrailingWhitespaceBeforeJustifyingWrappedLine() {
         val text = "正文， \n"
