@@ -12,13 +12,14 @@ plugins {
 android {
     namespace = "com.huangder.lumibooks"
     compileSdk = 36
+    compileSdkExtension = 19
 
     defaultConfig {
         applicationId = "com.huangder.lumibooks"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10
-        versionName = "Dev2.1"
+        versionCode = 12
+        versionName = "Dev2.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
