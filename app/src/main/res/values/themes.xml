@@ -11,6 +11,11 @@
     </style>
 
     <style name="Theme.EBookReader.Launch" parent="Theme.EBookReader">
+        <item name="android:windowBackground">@drawable/splash_background_lumi2</item>
+        <item name="android:forceDarkAllowed">false</item>
+    </style>
+
+    <style name="Theme.EBookReader.Launch.Classic" parent="Theme.EBookReader">
         <item name="android:windowBackground">@drawable/splash_background</item>
     </style>
 

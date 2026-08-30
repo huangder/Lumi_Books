@@ -51,6 +51,7 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
 
     override fun onCreate() {
         super.onCreate()
+        LaunchThemeController.synchronizeLauncherComponents(this)
         registerActivityLifecycleCallbacks(this)
         floatingSubtitleOverlayController.start()
         applicationScope.launch(Dispatchers.IO) {

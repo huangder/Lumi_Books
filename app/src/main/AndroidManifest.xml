@@ -39,7 +39,7 @@
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:enableOnBackInvokedCallback="true"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@mipmap/ic_launcher_lumi2"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.EBookReader"
@@ -53,31 +53,63 @@
             android:theme="@style/Theme.EBookReader.NoPreview"
             android:windowSoftInputMode="adjustResize" />
 
-        <activity
+        <activity-alias
             android:name=".ui.splash.SplashLauncherActivity"
             android:enabled="true"
             android:exported="true"
-            android:icon="@mipmap/ic_launcher"
+            android:icon="@mipmap/ic_launcher_lumi2"
             android:label="@string/app_name"
+            android:targetActivity=".ui.welcome.WelcomeActivity"
             android:theme="@style/Theme.EBookReader.Launch">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
 
-        <activity
+        <activity-alias
             android:name=".ui.splash.DirectLauncherActivity"
             android:enabled="false"
             android:exported="true"
-            android:icon="@mipmap/ic_launcher"
+            android:icon="@mipmap/ic_launcher_lumi2"
             android:label="@string/app_name"
+            android:targetActivity=".ui.welcome.WelcomeActivity"
             android:theme="@style/Theme.EBookReader">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
+
+        <!-- Classic launcher entries keep the legacy icon and launch artwork available as a
+             user-selectable pair. Only one of the four launcher components is enabled at a time. -->
+        <activity-alias
+            android:name=".ui.splash.ClassicSplashLauncherActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
+            android:targetActivity=".ui.welcome.WelcomeActivity"
+            android:theme="@style/Theme.EBookReader.Launch.Classic">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".ui.splash.ClassicDirectLauncherActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
+            android:targetActivity=".ui.welcome.WelcomeActivity"
+            android:theme="@style/Theme.EBookReader">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
 
         <activity
             android:name=".MainActivity"

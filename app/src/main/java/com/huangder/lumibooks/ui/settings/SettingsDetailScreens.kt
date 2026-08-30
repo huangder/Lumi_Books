@@ -12,6 +12,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
@@ -25,6 +26,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -53,6 +56,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Brightness6
 import androidx.compose.material.icons.outlined.Animation
+import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.BorderStyle
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.DeleteForever
@@ -88,6 +92,7 @@ import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material.icons.outlined.SystemUpdateAlt
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -114,15 +119,22 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -171,6 +183,7 @@ import com.huangder.lumibooks.ui.components.LiquidGlassMenuSpec
 import com.huangder.lumibooks.ui.components.LocalLiquidGlassMenuHost
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.domain.model.HighlightPalette
+import com.huangder.lumibooks.domain.model.AppIconStyle
 import com.huangder.lumibooks.domain.model.DEFAULT_APP_ACCENT_HEX
 import com.huangder.lumibooks.domain.model.appAccentHex
 import com.huangder.lumibooks.domain.model.normalizeAppAccentHex
@@ -178,15 +191,47 @@ import com.huangder.lumibooks.domain.model.parseAppAccentArgb
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassCapability
 import com.huangder.lumibooks.ui.theme.cardOutline
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
+import com.huangder.lumibooks.ui.animation.AppEasing
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 
 // ─── 详情页通用框架 ──────────────────────────────────────────
 
+/**
+ * Returns how much of the large title has moved above the scroll viewport.
+ * A value of 0 means the title is fully in view; 1 means it has left the viewport.
+ */
+internal fun detailTitleCollapseFraction(
+    titleTop: Float,
+    titleHeight: Float,
+    viewportTop: Float
+): Float {
+    if (!titleTop.isFinite() || !titleHeight.isFinite() || !viewportTop.isFinite() || titleHeight <= 0f) {
+        return 0f
+    }
+    return ((viewportTop - titleTop) / titleHeight).coerceIn(0f, 1f)
+}
+
 @Composable
-fun DetailPage(title: String, onBack: () -> Unit, content: @Composable () -> Unit) {
+fun DetailPage(
+    title: String,
+    onBack: () -> Unit,
+    content: @Composable () -> Unit
+) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val scrollState = rememberScrollState()
+    var largeTitleHeight by remember { mutableFloatStateOf(0f) }
+    val collapsedTitleAlpha = if (largeTitleHeight > 0f) {
+        detailTitleCollapseFraction(
+            titleTop = -scrollState.value.toFloat(),
+            titleHeight = largeTitleHeight,
+            viewportTop = 0f
+        )
+    } else {
+        0f
+    }
     val pageBackdrop = rememberLayerBackdrop()
     val pageControlsBackdrop = rememberLayerBackdrop()
     val activeBackdrop = pageBackdrop.takeIf { isLiquidGlass }
@@ -237,9 +282,25 @@ fun DetailPage(title: String, onBack: () -> Unit, content: @Composable () -> Uni
                                 onClick = onBack,
                                 settingsBackButton = true
                             )
-                            Spacer(Modifier.weight(1f))
-                            Text(title, fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = resolveAppFontFamily(fangSongFamily()), color = AppColors.TextPrimary)
-                            Spacer(Modifier.weight(1f))
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = AppSpace.sm),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = title,
+                                    fontSize = AppType.Section,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = resolveAppFontFamily(fangSongFamily()),
+                                    color = AppColors.TextPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.graphicsLayer {
+                                        alpha = collapsedTitleAlpha
+                                    }
+                                )
+                            }
                             Spacer(Modifier.size(48.dp))
                         }
                         Column(
@@ -248,9 +309,20 @@ fun DetailPage(title: String, onBack: () -> Unit, content: @Composable () -> Uni
                                 .fillMaxWidth()
                                 .weight(1f)
                                 .imePadding()
-                                .verticalScroll(rememberScrollState())
+                                .verticalScroll(scrollState)
                         ) {
-                            Spacer(Modifier.height(AppSpace.sm))
+                            Text(
+                                text = title,
+                                modifier = Modifier
+                                    .padding(horizontal = AppSpace.lg, vertical = AppSpace.sm)
+                                    .onSizeChanged { size ->
+                                        largeTitleHeight = size.height.toFloat()
+                                    },
+                                fontSize = AppType.Display,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = resolveAppFontFamily(fangSongFamily()),
+                                color = AppColors.TextPrimary
+                            )
                             content()
                             Spacer(Modifier.height(120.dp))
                         }
@@ -284,8 +356,16 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
             Icon(Icons.Outlined.Palette, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
             Spacer(Modifier.width(AppSpace.md))
             Column(Modifier.weight(1f)) {
-                Text("主题套装设置", fontSize = AppType.Body, color = AppColors.TextPrimary)
-                Text("管理、排序并预览阅读主题", fontSize = AppType.Caption, color = AppColors.TextSecondary)
+                Text(
+                    stringResource(R.string.reader_theme_suite_settings_title),
+                    fontSize = AppType.Body,
+                    color = AppColors.TextPrimary
+                )
+                Text(
+                    stringResource(R.string.reader_theme_suite_settings_description),
+                    fontSize = AppType.Caption,
+                    color = AppColors.TextSecondary
+                )
             }
             Icon(Icons.Outlined.ChevronRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
         }
@@ -311,12 +391,16 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
             Spacer(Modifier.width(AppSpace.md))
             Column(Modifier.weight(1f)) {
                 Text(
-                    "翻页动画设置",
+                    stringResource(R.string.reader_page_animation_settings_title),
                     fontSize = AppType.Body,
                     color = AppColors.TextPrimary.copy(alpha = if (uiState.eInkModeEnabled) 0.4f else 1f)
                 )
                 Text(
-                    if (uiState.eInkModeEnabled) "墨水屏模式下不可用" else "预览动画并调整翻页速度",
+                    if (uiState.eInkModeEnabled) {
+                        stringResource(R.string.reader_page_animation_eink_unavailable)
+                    } else {
+                        stringResource(R.string.reader_page_animation_settings_description)
+                    },
                     fontSize = AppType.Caption,
                     color = AppColors.TextSecondary
                 )
@@ -1013,6 +1097,7 @@ private fun FloatingSubtitleSectionTitle(text: String) {
 @Composable
 fun DisplayDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
     var showAccentColorDialog by rememberSaveable { mutableStateOf(false) }
     val liquidGlassCapability = LocalLiquidGlassCapability.current
     val liquidGlassSupported = liquidGlassCapability.supported
@@ -1097,6 +1182,52 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
             LiquidGlassSwitch(
                 checked = uiState.cardOutlinesEnabled,
                 onCheckedChange = viewModel::saveCardOutlinesEnabled
+            )
+        }
+    }
+
+    Spacer(Modifier.height(12.dp))
+
+    DetailCard {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable {
+                    context.startActivity(
+                        Intent(context, DetailActivity::class.java).putExtra("category", "icon_style")
+                    )
+                }
+                .padding(AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Outlined.Apps,
+                contentDescription = null,
+                tint = AppColors.TextSecondary,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(Modifier.width(AppSpace.md))
+            Text(
+                stringResource(R.string.icon_style_title),
+                fontSize = AppType.Body,
+                color = AppColors.TextPrimary,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                if (uiState.appIconStyle == AppIconStyle.CLASSIC.storedValue) {
+                    stringResource(R.string.icon_style_classic)
+                } else {
+                    stringResource(R.string.icon_style_lumi2)
+                },
+                fontSize = AppType.BodySmall,
+                color = AppColors.TextSecondary
+            )
+            Spacer(Modifier.width(AppSpace.xs))
+            Icon(
+                Icons.Outlined.ChevronRight,
+                contentDescription = null,
+                tint = AppColors.TextSecondary,
+                modifier = Modifier.size(20.dp)
             )
         }
     }
@@ -1644,27 +1775,24 @@ private val DestructiveRed: Color
     @Composable get() = if (LocalEInkMode.current) {
         Color.Black
     } else if (LocalUseMaterial3Theme.current) {
-        MaterialTheme.colorScheme.error
+        MaterialTheme.colorScheme.error.copy(alpha = 0.84f)
     } else if (LocalIsDarkTheme.current) {
-        Color(0xFFFF453A)
+        Color(0xFFE07871)
     } else {
-        Color(0xFFFF3B30)
+        Color(0xFFD45F58)
     }
 
 @Composable
-fun StorageDetail(viewModel: SettingsViewModel) {
+fun StorageDetail(viewModel: SettingsViewModel, onOpenBooks: () -> Unit) {
     val uiState by viewModel.uiState.collectAsState()
     val info = uiState.storageInfo
     var showClearDialog by remember { mutableStateOf(false) }
     var showClearExternalTtsCacheDialog by remember { mutableStateOf(false) }
-    var booksExpanded by rememberSaveable { mutableStateOf(false) }
-    val displayColors = if (LocalEInkMode.current) EInkSegmentGrays else SegmentColors
 
-    val totalBytes = info.appSizeBytes + info.cacheSizeBytes + info.externalTtsCacheSizeBytes + info.booksSizeBytes + info.coversSizeBytes
     val categoryLabels = listOf(
         stringResource(R.string.storage_app),
         stringResource(R.string.storage_cache),
-        stringResource(R.string.external_tts_audio_cache),
+        stringResource(R.string.storage_tts_short),
         stringResource(R.string.storage_books),
         stringResource(R.string.storage_covers)
     )
@@ -1675,98 +1803,39 @@ fun StorageDetail(viewModel: SettingsViewModel) {
         info.booksSizeBytes,
         info.coversSizeBytes
     )
-
-    // 圆环分段：过滤空项、保底可见占比后归一化
-    val ringParts: List<Pair<Float, Color>> = if (totalBytes > 0) {
-        val activeIndexes = categoryBytes.indices.filter { categoryBytes[it] > 0 }
-        val weights = activeIndexes.map { (categoryBytes[it].toFloat() / totalBytes).coerceAtLeast(0.02f) }
-        val weightSum = weights.sum()
-        activeIndexes.mapIndexed { i, index -> weights[i] / weightSum to displayColors[index] }
+    val displayColors = if (LocalEInkMode.current) {
+        EInkSegmentGrays
     } else {
-        emptyList()
+        listOf(
+            AppColors.Accent,
+            Color(0xFF8A909E),
+            Color(0xFF3B91E8),
+            Color(0xFF31C58B),
+            Color(0xFFFFB23F)
+        )
     }
 
     Column {
-        // ── 分组：存储空间（小米圆环总览）──
-        StorageGroupTitle(stringResource(R.string.storage_group_overview))
-        StorageCard {
-            Column(Modifier.fillMaxWidth()) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(top = AppSpace.lg, bottom = AppSpace.md),
-                    contentAlignment = Alignment.Center
-                ) {
-                    StorageRing(
-                        fractions = ringParts.map { it.first },
-                        colors = ringParts.map { it.second },
-                        totalText = viewModel.formatFileSize(totalBytes),
-                        caption = stringResource(R.string.label_total_size),
-                        calculating = totalBytes == 0L
-                    )
-                }
-                SettingsDivider()
-                categoryLabels.indices.forEach { index ->
-                    StorageLegendRow(
-                        color = displayColors[index],
-                        label = categoryLabels[index],
-                        size = viewModel.formatFileSize(categoryBytes[index])
-                    )
-                }
-            }
-        }
+        StorageOverview(
+            calculating = info.isCalculating,
+            categoryLabels = categoryLabels,
+            categoryBytes = categoryBytes,
+            colors = displayColors,
+            formatFileSize = viewModel::formatFileSize,
+            onOpenBooks = onOpenBooks
+        )
 
-        // ── 分组：电子书文件（默认前几本，可展开）──
-        if (info.bookDetails.isNotEmpty()) {
-            StorageGroupTitle(stringResource(R.string.storage_books))
-            StorageCard {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .animateContentSize(
-                            animationSpec = if (LocalMotionEnabled.current) spring(dampingRatio = 1f, stiffness = 380f) else snap()
-                        )
-                ) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(AppSpace.md),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            stringResource(R.string.storage_books_count, info.bookDetails.size),
-                            fontSize = AppType.Body,
-                            fontWeight = FontWeight.SemiBold,
-                            color = AppColors.TextPrimary,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Text(
-                            viewModel.formatFileSize(info.booksSizeBytes),
-                            fontSize = AppType.BodySmall,
-                            color = AppColors.TextSecondary,
-                            style = TabularFigures
-                        )
-                    }
-                    SettingsDivider()
-                    val visibleBooks = if (booksExpanded) info.bookDetails else info.bookDetails.take(StorageBookPreviewCount)
-                    visibleBooks.forEachIndexed { index, item ->
-                        if (index > 0) SettingsDivider()
-                        StorageBookRow(
-                            title = item.title,
-                            format = item.format,
-                            size = viewModel.formatFileSize(item.sizeBytes)
-                        )
-                    }
-                    if (info.bookDetails.size > StorageBookPreviewCount) {
-                        SettingsDivider()
-                        StorageToggleRow(
-                            expanded = booksExpanded,
-                            label = if (booksExpanded) {
-                                stringResource(R.string.storage_hide_books)
-                            } else {
-                                stringResource(R.string.storage_show_all_books, info.bookDetails.size)
-                            },
-                            onClick = { booksExpanded = !booksExpanded }
-                        )
-                    }
-                }
-            }
+        // 清理缓存紧跟总览，保持为普通设置行而不是玻璃按钮。
+        StorageGroupTitle(stringResource(R.string.storage_group_cleanup))
+        StorageCard {
+            StorageActionRow(
+                icon = Icons.Outlined.DeleteSweep,
+                label = stringResource(
+                    R.string.storage_cleanup_amount,
+                    viewModel.formatFileSize(info.cacheSizeBytes)
+                ),
+                onClick = viewModel::clearCache
+            )
         }
 
         // ── 分组：第三方 TTS 音频缓存 ──
@@ -1807,6 +1876,7 @@ fun StorageDetail(viewModel: SettingsViewModel) {
                     range = ExternalTtsConfig.MIN_AUDIO_CACHE_LIMIT_MB.toFloat()..ExternalTtsConfig.MAX_AUDIO_CACHE_LIMIT_MB.toFloat(),
                     valueText = stringResource(R.string.external_tts_cache_limit_value, info.externalTtsCacheLimitMb),
                     step = 32f,
+                    verticalPadding = AppSpace.md,
                     onChange = { viewModel.saveExternalTtsCacheLimitMb(it.toInt()) }
                 )
                 Text(
@@ -1825,15 +1895,9 @@ fun StorageDetail(viewModel: SettingsViewModel) {
             }
         }
 
-        // ── 分组：清理 ──
-        StorageGroupTitle(stringResource(R.string.storage_group_cleanup))
+        // ── 分组：删除资料 ──
+        StorageGroupTitle(stringResource(R.string.clear_all_data))
         StorageCard {
-            StorageActionRow(
-                icon = Icons.Outlined.DeleteSweep,
-                label = stringResource(R.string.clear_cache),
-                onClick = { viewModel.clearCache() }
-            )
-            SettingsDivider()
             StorageActionRow(
                 icon = Icons.Outlined.DeleteForever,
                 label = stringResource(R.string.clear_all_data),
@@ -1855,7 +1919,7 @@ fun StorageDetail(viewModel: SettingsViewModel) {
                         viewModel.clearExternalTtsAudioCache()
                         showClearExternalTtsCacheDialog = false
                     },
-                    tintedColor = Color.Red
+                    tintedColor = DestructiveRed
                 )
             },
             dismissButton = {
@@ -1876,7 +1940,7 @@ fun StorageDetail(viewModel: SettingsViewModel) {
                 LiquidGlassTextButton(
                     text = stringResource(R.string.clear),
                     onClick = { viewModel.clearAllData(); showClearDialog = false },
-                    tintedColor = Color.Red
+                    tintedColor = DestructiveRed
                 )
             },
             dismissButton = {
@@ -1889,10 +1953,53 @@ fun StorageDetail(viewModel: SettingsViewModel) {
     }
 }
 
-// ─── 存储管理专用组件（HyperOS 版面 × 苹果控件细节）──────────
+@Composable
+fun StorageBooksDetail(viewModel: SettingsViewModel) {
+    val uiState by viewModel.uiState.collectAsState()
+    val info = uiState.storageInfo
 
-/** 书籍列表默认展示数量，超出部分折叠 */
-private const val StorageBookPreviewCount = 5
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = AppSpace.md)) {
+        if (info.isCalculating && info.bookDetails.isEmpty()) {
+            Text(
+                text = stringResource(R.string.calculating),
+                modifier = Modifier.fillMaxWidth().padding(vertical = AppSpace.xl),
+                color = AppColors.TextSecondary,
+                fontSize = AppType.BodySmall,
+                textAlign = TextAlign.Center
+            )
+        } else if (info.bookDetails.isEmpty()) {
+            Text(
+                text = stringResource(R.string.storage_books_empty),
+                modifier = Modifier.fillMaxWidth().padding(vertical = AppSpace.xl),
+                color = AppColors.TextSecondary,
+                fontSize = AppType.BodySmall,
+                textAlign = TextAlign.Center
+            )
+        } else {
+            Text(
+                text = stringResource(
+                    R.string.storage_books_total_summary,
+                    info.bookDetails.size,
+                    viewModel.formatFileSize(info.booksSizeBytes)
+                ),
+                modifier = Modifier.padding(horizontal = AppSpace.xs, vertical = AppSpace.sm),
+                color = AppColors.TextSecondary,
+                fontSize = AppType.BodySmall,
+                style = TabularFigures
+            )
+            info.bookDetails.forEach { item ->
+                StorageBookCard(
+                    title = item.title,
+                    format = item.format,
+                    size = viewModel.formatFileSize(item.sizeBytes)
+                )
+                Spacer(Modifier.height(AppSpace.sm))
+            }
+        }
+    }
+}
+
+// ─── 存储管理专用组件（HyperOS 版面 × 苹果控件细节）──────────
 
 /** HyperOS 分组小标题（miuix SmallTitle 复刻：28dp 缩进 + 次要色） */
 @Composable
@@ -1921,142 +2028,524 @@ private fun StorageCard(content: @Composable () -> Unit) {
     ) { content() }
 }
 
-/** 小米存储圆环：分段留缝、顶部起点，入场按进度弹性生长 */
 @Composable
-private fun StorageRing(
-    fractions: List<Float>,
+private fun StorageOverview(
+    calculating: Boolean,
+    categoryLabels: List<String>,
+    categoryBytes: List<Long>,
     colors: List<Color>,
-    totalText: String,
-    caption: String,
-    calculating: Boolean
+    formatFileSize: (Long) -> String,
+    onOpenBooks: () -> Unit
 ) {
     val motionEnabled = LocalMotionEnabled.current
-    val trackColor = AppColors.BgGray
-    val progress by animateFloatAsState(
-        targetValue = if (calculating) 0f else 1f,
-        animationSpec = if (motionEnabled) spring(dampingRatio = 1f, stiffness = 250f) else snap(),
-        label = "storageRingProgress"
+    var entrancePlayed by rememberSaveable { mutableStateOf(false) }
+    var selectedIndex by rememberSaveable { mutableStateOf<Int?>(null) }
+    val settleProgress = remember { Animatable(if (entrancePlayed) 1f else 0f) }
+    val fillProgress = remember { Animatable(if (entrancePlayed) 1f else 0f) }
+
+    LaunchedEffect(calculating, motionEnabled) {
+        if (!calculating && !entrancePlayed) {
+            if (motionEnabled) {
+                settleProgress.snapTo(0f)
+                fillProgress.snapTo(0f)
+                settleProgress.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(620, easing = AppEasing.Decelerate)
+                )
+                fillProgress.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(900, easing = AppEasing.Smooth)
+                )
+            } else {
+                settleProgress.snapTo(1f)
+                fillProgress.snapTo(1f)
+            }
+            entrancePlayed = true
+        }
+    }
+
+    val refreshDuration = if (motionEnabled && entrancePlayed) 420 else 0
+    val targetFractions = storageSegmentFractions(categoryBytes)
+    val animatedFractions = targetFractions.mapIndexed { index, fraction ->
+        animateFloatAsState(
+            targetValue = fraction,
+            animationSpec = tween(refreshDuration, easing = AppEasing.Standard),
+            label = "storageFraction$index"
+        ).value
+    }
+    val visualFractions = storageDisplayFractions(animatedFractions)
+    val animatedBytes = categoryBytes.mapIndexed { index, bytes ->
+        animateFloatAsState(
+            targetValue = bytes.toFloat(),
+            animationSpec = tween(refreshDuration, easing = AppEasing.Standard),
+            label = "storageBytes$index"
+        ).value
+    }
+    val visibleBytes = animatedBytes.map { bytes ->
+        (bytes * fillProgress.value).coerceAtLeast(0f).roundToLong()
+    }
+    val visibleTotal = visibleBytes.sum()
+    val animationRunning = !calculating && !entrancePlayed
+
+    Text(
+        text = if (calculating && !entrancePlayed) {
+            stringResource(R.string.calculating)
+        } else {
+            stringResource(R.string.storage_total_footprint, formatFileSize(visibleTotal))
+        },
+        modifier = Modifier.padding(horizontal = AppSpace.lg, vertical = AppSpace.xs),
+        fontSize = AppType.BodySmall,
+        color = AppColors.TextSecondary,
+        style = TabularFigures
     )
-    Box(contentAlignment = Alignment.Center) {
-        Canvas(Modifier.size(150.dp)) {
-            val strokePx = 14.dp.toPx()
-            val arcStyle = Stroke(width = strokePx)
-            val arcTopLeft = Offset(strokePx / 2f, strokePx / 2f)
-            val arcSize = Size(size.width - strokePx, size.height - strokePx)
-            drawArc(color = trackColor, startAngle = 0f, sweepAngle = 360f, useCenter = false, topLeft = arcTopLeft, size = arcSize, style = arcStyle)
-            var startAngle = -90f
-            val gapDegrees = 3f
-            fractions.forEachIndexed { index, fraction ->
-                val fullSweep = fraction * 360f * progress
-                val sweep = fullSweep - gapDegrees
-                if (sweep > 1f) {
-                    drawArc(
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(460.dp)
+            .padding(horizontal = AppSpace.lg)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            StorageCylinder(
+                fractions = visualFractions,
+                colors = colors,
+                settleProgress = settleProgress.value,
+                fillProgress = fillProgress.value,
+                selectedIndex = selectedIndex,
+                onSegmentPressed = { selectedIndex = it },
+                onSegmentReleased = { selectedIndex = null },
+                modifier = Modifier.weight(0.44f).height(440.dp)
+            )
+            Spacer(Modifier.width(AppSpace.md))
+            Column(
+                modifier = Modifier.weight(0.56f).height(440.dp),
+                verticalArrangement = Arrangement.SpaceEvenly
+            ) {
+                categoryLabels.indices.forEach { index ->
+                    StorageCategoryRow(
                         color = colors.getOrElse(index) { Color.Gray },
-                        startAngle = startAngle,
-                        sweepAngle = sweep,
-                        useCenter = false,
-                        topLeft = arcTopLeft,
-                        size = arcSize,
-                        style = arcStyle
+                        label = categoryLabels[index],
+                        size = formatFileSize(visibleBytes.getOrElse(index) { 0L }),
+                        showProgress = calculating || animationRunning,
+                        dimmed = selectedIndex != null && selectedIndex != index,
+                        highlighted = selectedIndex == index,
+                        onClick = if (index == 3) onOpenBooks else null
                     )
                 }
-                startAngle += fullSweep
             }
         }
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(caption, fontSize = AppType.Caption, color = AppColors.TextSecondary)
-            Spacer(Modifier.height(AppSpace.xs))
+
+        if (selectedIndex != null && selectedIndex in colors.indices) {
+            val selected = selectedIndex ?: return@Box
+            Canvas(Modifier.matchParentSize()) {
+                val count = categoryLabels.size.coerceAtLeast(1)
+                val cylinderHeight = (size.height - 20.dp.toPx()).coerceAtLeast(1f)
+                val cylinderOffsetY = (size.height - cylinderHeight) / 2f
+                val ellipseHeight = 22.dp.toPx().coerceAtMost(cylinderHeight * 0.09f)
+                val topY = ellipseHeight * 0.45f
+                val baseY = cylinderHeight - ellipseHeight * 1.35f
+                val stackHeight = (baseY - topY - ellipseHeight * 0.5f).coerceAtLeast(0f)
+                val filledHeight = stackHeight * StorageCylinderFillFraction
+                var accumulatedHeight = 0f
+                var accumulatedSeedHeight = 0f
+                var segmentCenterY = cylinderOffsetY + topY
+                colors.indices.reversed().forEachIndexed { drawIndex, sourceIndex ->
+                    val targetHeight = visualFractions.getOrElse(sourceIndex) { 0f } * filledHeight
+                    val seedHeight = targetHeight.coerceAtMost(ellipseHeight * 0.34f)
+                    val layerSettle = storageStaggeredProgress(
+                        settleProgress.value,
+                        drawIndex,
+                        colors.size
+                    )
+                    val layerFill = storageStaggeredProgress(
+                        fillProgress.value,
+                        drawIndex,
+                        colors.size
+                    )
+                    val loadingY = topY + (drawIndex + 1) * (stackHeight / (colors.size.coerceAtLeast(1) + 1f))
+                    val collapsedY = baseY - accumulatedSeedHeight - seedHeight
+                    val finalY = baseY - accumulatedHeight - targetHeight
+                    val layerY = storageLerp(
+                        loadingY,
+                        storageLerp(collapsedY, finalY, layerFill),
+                        layerSettle
+                    )
+                    if (sourceIndex == selected) {
+                        val visibleHeight = storageLayerVisibleHeight(
+                            targetHeight = targetHeight,
+                            seedHeight = seedHeight,
+                            settleProgress = layerSettle,
+                            fillProgress = layerFill
+                        )
+                        segmentCenterY = cylinderOffsetY + layerY + visibleHeight * 0.5f
+                    }
+                    accumulatedHeight += targetHeight
+                    accumulatedSeedHeight += seedHeight
+                }
+                val itemHeight = StorageCategoryRowHeight.toPx()
+                val gap = ((cylinderHeight - itemHeight * count) / (count + 1)).coerceAtLeast(0f)
+                val rowCenterY = cylinderOffsetY + gap + itemHeight / 2f + selected * (itemHeight + gap)
+                val cylinderSlotWidth = (size.width - AppSpace.md.toPx()) * 0.44f
+                val cylinderRight = cylinderSlotWidth * 0.89f
+                val moduleDotLeft = cylinderSlotWidth + AppSpace.md.toPx()
+                val elbowX = cylinderRight + (moduleDotLeft - cylinderRight) * 0.45f
+                val connectorColor = colors[selected].copy(alpha = 0.52f)
+                drawLine(connectorColor, Offset(cylinderRight, segmentCenterY), Offset(elbowX, rowCenterY), 1.25.dp.toPx())
+                drawLine(connectorColor, Offset(elbowX, rowCenterY), Offset(moduleDotLeft, rowCenterY), 1.25.dp.toPx())
+            }
+        }
+    }
+
+}
+
+private const val StorageCylinderFillFraction = 0.72f
+private val StorageCategoryRowHeight = 52.dp
+
+@Composable
+private fun StorageCylinder(
+    fractions: List<Float>,
+    colors: List<Color>,
+    settleProgress: Float,
+    fillProgress: Float,
+    selectedIndex: Int?,
+    onSegmentPressed: (Int) -> Unit,
+    onSegmentReleased: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val isDark = LocalIsDarkTheme.current
+    val isEInk = LocalEInkMode.current
+    val shellCenter = if (isEInk) {
+        Color.Transparent
+    } else if (isDark) {
+        Color.White.copy(alpha = 0.035f)
+    } else {
+        Color.White.copy(alpha = 0.48f)
+    }
+    val shellEdge = if (isEInk) {
+        Color.Black.copy(alpha = 0.035f)
+    } else if (isDark) {
+        Color.White.copy(alpha = 0.09f)
+    } else {
+        Color(0xFFDCE1E8).copy(alpha = 0.46f)
+    }
+    val shellOutline = if (isEInk) {
+        Color.Black.copy(alpha = 0.34f)
+    } else if (isDark) {
+        Color.White.copy(alpha = 0.16f)
+    } else {
+        Color(0xFFBFC7D2).copy(alpha = 0.28f)
+    }
+
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val interactiveModifier = modifier.pointerInput(fractions, settleProgress, fillProgress) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            val cylinderHeight = with(density) { 440.dp.toPx() }
+            val ellipseHeight = with(density) { 22.dp.toPx() }
+                .coerceAtMost(cylinderHeight * 0.09f)
+            val topY = ellipseHeight * 0.45f
+            val baseY = cylinderHeight - ellipseHeight * 1.35f
+            val stackHeight = (baseY - topY - ellipseHeight * 0.5f).coerceAtLeast(0f)
+            val filledHeight = stackHeight * StorageCylinderFillFraction
+
+            fun segmentAt(y: Float): Int? {
+                var accumulatedHeight = 0f
+                var accumulatedSeedHeight = 0f
+                var result: Int? = null
+            colors.indices.reversed().forEachIndexed { drawIndex, sourceIndex ->
+                if (result != null) return@forEachIndexed
+                val targetHeight = fractions.getOrElse(sourceIndex) { 0f } * filledHeight
+                    val seedHeight = targetHeight.coerceAtMost(ellipseHeight * 0.34f)
+                    val layerSettle = storageStaggeredProgress(settleProgress, drawIndex, colors.size)
+                    val layerFill = storageStaggeredProgress(fillProgress, drawIndex, colors.size)
+                    val loadingY = topY + (drawIndex + 1) *
+                        (stackHeight / (colors.size.coerceAtLeast(1) + 1f))
+                    val collapsedY = baseY - accumulatedSeedHeight - seedHeight
+                    val finalY = baseY - accumulatedHeight - targetHeight
+                    val layerY = storageLerp(
+                        loadingY,
+                        storageLerp(collapsedY, finalY, layerFill),
+                        layerSettle
+                    )
+                    val visibleHeight = storageLayerVisibleHeight(
+                        targetHeight = targetHeight,
+                        seedHeight = seedHeight,
+                        settleProgress = layerSettle,
+                        fillProgress = layerFill
+                    )
+                    if (visibleHeight > 0.5f && y in layerY..(layerY + visibleHeight)) {
+                        result = sourceIndex
+                    }
+                    accumulatedHeight += targetHeight
+                    accumulatedSeedHeight += seedHeight
+                }
+                return result
+            }
+
+            var activeIndex = segmentAt(down.position.y)
+            if (activeIndex == null) return@awaitEachGesture
+            onSegmentPressed(activeIndex)
+            var longPressActivated = false
+            val downAt = android.os.SystemClock.uptimeMillis()
+            try {
+                while (true) {
+                    val event = awaitPointerEvent(pass = PointerEventPass.Initial)
+                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                    if (change.changedToUpIgnoreConsumed()) {
+                        break
+                    }
+                    if (!change.pressed) break
+
+                    if (!longPressActivated &&
+                        android.os.SystemClock.uptimeMillis() - downAt >= viewConfiguration.longPressTimeoutMillis
+                    ) {
+                        longPressActivated = true
+                        change.consume()
+                    }
+                    if (longPressActivated) {
+                        change.consume()
+                        val nextIndex = segmentAt(change.position.y)
+                        if (nextIndex != null && nextIndex != activeIndex) {
+                            activeIndex = nextIndex
+                            onSegmentPressed(nextIndex)
+                        }
+                    }
+                }
+            } finally {
+                onSegmentReleased()
+            }
+        }
+    }
+
+    Canvas(interactiveModifier) {
+        val cylinderWidth = size.width * 0.78f
+        val left = (size.width - cylinderWidth) / 2f
+        val ellipseHeight = 22.dp.toPx().coerceAtMost(size.height * 0.09f)
+        val topY = ellipseHeight * 0.45f
+        val baseY = size.height - ellipseHeight * 1.35f
+        val stackHeight = (baseY - topY - ellipseHeight * 0.5f).coerceAtLeast(0f)
+        val outerHeight = (baseY - topY).coerceAtLeast(0f)
+        val cornerRadius = CornerRadius(ellipseHeight * 0.72f, ellipseHeight * 0.72f)
+
+        drawRoundRect(
+            brush = Brush.horizontalGradient(listOf(shellEdge, shellCenter, shellEdge)),
+            topLeft = Offset(left, topY),
+            size = Size(cylinderWidth, outerHeight),
+            cornerRadius = cornerRadius
+        )
+        val right = left + cylinderWidth
+        val bottom = topY + outerHeight
+        val radius = cornerRadius.x
+        val shellClipPath = Path().apply {
+            moveTo(left + radius, topY)
+            lineTo(right - radius, topY)
+            quadraticTo(right, topY, right, topY + radius)
+            lineTo(right, bottom - radius)
+            quadraticTo(right, bottom, right - radius, bottom)
+            lineTo(left + radius, bottom)
+            quadraticTo(left, bottom, left, bottom - radius)
+            lineTo(left, topY + radius)
+            quadraticTo(left, topY, left + radius, topY)
+            close()
+        }
+        clipPath(shellClipPath) {
+            var accumulatedHeight = 0f
+            var accumulatedSeedHeight = 0f
+            val count = colors.size.coerceAtLeast(1)
+            val filledHeight = stackHeight * StorageCylinderFillFraction
+            colors.indices.reversed().forEachIndexed { drawIndex, sourceIndex ->
+                val color = colors[sourceIndex]
+                val targetHeight = fractions.getOrElse(sourceIndex) { 0f } * filledHeight
+                val seedHeight = targetHeight.coerceAtMost(ellipseHeight * 0.34f)
+                val layerAlpha = if (selectedIndex == null || selectedIndex == sourceIndex) 1f else 0.16f
+                val loadingY = topY + (drawIndex + 1) * (stackHeight / (count + 1f))
+                val collapsedY = baseY - accumulatedSeedHeight - seedHeight
+                val finalY = baseY - accumulatedHeight - targetHeight
+                val layerSettle = storageStaggeredProgress(settleProgress, drawIndex, count)
+                val layerFill = storageStaggeredProgress(fillProgress, drawIndex, count)
+                val entranceAlpha = storageLerp(0.18f, 1f, layerSettle)
+                val layerY = storageLerp(
+                    loadingY,
+                    storageLerp(collapsedY, finalY, layerFill),
+                    layerSettle
+                )
+                val visibleHeight = storageLayerVisibleHeight(
+                    targetHeight = targetHeight,
+                    seedHeight = seedHeight,
+                    settleProgress = layerSettle,
+                    fillProgress = layerFill
+                )
+                if (targetHeight > 0.5f && visibleHeight > 0.5f) {
+                    val segmentBrush = Brush.horizontalGradient(
+                        listOf(
+                            color.copy(alpha = color.alpha * 0.82f * layerAlpha * entranceAlpha),
+                            color.copy(alpha = color.alpha * layerAlpha * entranceAlpha),
+                            color.copy(alpha = color.alpha * 0.72f * layerAlpha * entranceAlpha)
+                        )
+                    )
+                    drawRect(
+                        brush = segmentBrush,
+                        topLeft = Offset(left, layerY),
+                        size = Size(cylinderWidth, visibleHeight)
+                    )
+                }
+                accumulatedHeight += targetHeight
+                accumulatedSeedHeight += seedHeight
+            }
+        }
+
+        drawRoundRect(
+            color = shellOutline,
+            topLeft = Offset(left, topY),
+            size = Size(cylinderWidth, outerHeight),
+            cornerRadius = cornerRadius,
+            style = Stroke(width = 1.dp.toPx())
+        )
+    }
+}
+
+@Composable
+private fun StorageCategoryRow(
+    color: Color,
+    label: String,
+    size: String,
+    showProgress: Boolean,
+    dimmed: Boolean = false,
+    highlighted: Boolean = false,
+    onClick: (() -> Unit)?
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val rowModifier = Modifier
+        .fillMaxWidth()
+        .graphicsLayer { alpha = if (dimmed) 0.18f else 1f }
+        .then(
+            if (onClick != null) {
+                Modifier.clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = onClick
+                )
+            } else {
+                Modifier
+            }
+        )
+    Row(
+        modifier = rowModifier.height(StorageCategoryRowHeight),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier
+                .size(if (highlighted) 10.dp else 9.dp)
+                .clip(CircleShape)
+                .background(if (dimmed) color.copy(alpha = 0.4f) else color)
+        )
+        Spacer(Modifier.width(AppSpace.sm))
+        Column(modifier = Modifier.weight(1f)) {
             Text(
-                if (calculating) stringResource(R.string.calculating) else totalText,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
+                text = label,
+                fontSize = AppType.BodySmall,
+                color = if (highlighted) AppColors.TextPrimary else AppColors.TextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = size,
+                fontSize = AppType.Body,
+                fontWeight = FontWeight.SemiBold,
                 color = AppColors.TextPrimary,
+                maxLines = 1,
                 style = TabularFigures
+            )
+        }
+        when {
+            showProgress -> CircularProgressIndicator(
+                modifier = Modifier.size(17.dp),
+                color = AppColors.TextSecondary.copy(alpha = 0.45f),
+                strokeWidth = 1.5.dp
+            )
+            onClick != null -> Icon(
+                Icons.Outlined.ChevronRight,
+                contentDescription = null,
+                tint = AppColors.TextSecondary.copy(alpha = 0.6f),
+                modifier = Modifier.size(20.dp)
             )
         }
     }
 }
 
-/** 总览图例行：圆点 + 标签 + 右对齐等宽数字 */
 @Composable
-private fun StorageLegendRow(color: Color, label: String, size: String) {
+private fun StorageBookCard(title: String, format: String, size: String) {
+    val shape = RoundedCornerShape(AppRadius.sm)
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = AppSpace.md, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(Modifier.size(10.dp).clip(CircleShape).background(color))
-        Spacer(Modifier.width(AppSpace.sm))
-        Text(label, fontSize = AppType.BodySmall, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
-        Text(size, fontSize = AppType.BodySmall, color = AppColors.TextSecondary, style = TabularFigures)
-    }
-}
-
-/** 书籍行：书名 + 格式标签 + 等宽大小 */
-@Composable
-private fun StorageBookRow(title: String, format: String, size: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = AppSpace.md, vertical = 10.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 104.dp)
+            .shadow(2.dp, shape, ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
+            .cardOutline(shape)
+            .clip(shape)
+            .background(AppColors.CardBg)
+            .padding(horizontal = AppSpace.lg, vertical = 18.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                title,
-                fontSize = AppType.BodySmall,
+                text = title,
+                fontSize = AppType.Body,
+                fontWeight = FontWeight.Medium,
                 color = AppColors.TextPrimary,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
-            Spacer(Modifier.height(4.dp))
-            val fmtColor = FormatColors[format] ?: Color.Gray
+            Spacer(Modifier.height(AppSpace.xs))
+            val formatColor = FormatColors[format] ?: AppColors.TextSecondary
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(4.dp))
-                    .background(fmtColor.copy(alpha = 0.12f))
-                    .padding(horizontal = 6.dp, vertical = 1.dp)
+                    .background(formatColor.copy(alpha = 0.12f))
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
             ) {
-                Text(format, fontSize = 10.sp, color = fmtColor, fontWeight = FontWeight.Medium)
+                Text(
+                    text = format,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = formatColor
+                )
             }
         }
-        Spacer(Modifier.width(AppSpace.sm))
-        Text(size, fontSize = AppType.BodySmall, color = AppColors.TextSecondary, fontWeight = FontWeight.Medium, style = TabularFigures)
+        Spacer(Modifier.width(AppSpace.md))
+        Text(
+            text = size,
+            fontSize = AppType.BodySmall,
+            fontWeight = FontWeight.SemiBold,
+            color = AppColors.TextSecondary,
+            maxLines = 1,
+            style = TabularFigures
+        )
     }
 }
 
-/** 展开/收起行：按下即时高亮，箭头随状态弹簧旋转 */
-@Composable
-private fun StorageToggleRow(expanded: Boolean, label: String, onClick: () -> Unit) {
-    val motionEnabled = LocalMotionEnabled.current
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    val highlight by animateFloatAsState(
-        targetValue = if (pressed) 1f else 0f,
-        animationSpec = if (motionEnabled) spring(dampingRatio = 1f, stiffness = 800f) else snap(),
-        label = "storageToggleHighlight"
-    )
-    val chevronRotation by animateFloatAsState(
-        targetValue = if (expanded) 180f else 0f,
-        animationSpec = if (motionEnabled) spring(dampingRatio = 1f, stiffness = 380f) else snap(),
-        label = "storageChevronRotation"
-    )
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(AppColors.BgGray.copy(alpha = highlight))
-            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
-            .padding(horizontal = AppSpace.md, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(label, fontSize = AppType.BodySmall, color = AppColors.Accent, fontWeight = FontWeight.Medium)
-        Spacer(Modifier.weight(1f))
-        Icon(
-            Icons.Outlined.ExpandMore,
-            contentDescription = null,
-            tint = AppColors.TextSecondary,
-            modifier = Modifier
-                .size(20.dp)
-                .graphicsLayer { rotationZ = chevronRotation }
-        )
-    }
+private fun storageLerp(start: Float, end: Float, fraction: Float): Float =
+    start + (end - start) * fraction.coerceIn(0f, 1f)
+
+private fun storageStaggeredProgress(progress: Float, index: Int, count: Int): Float {
+    if (count <= 1) return progress.coerceIn(0f, 1f)
+    val start = (index.toFloat() / (count - 1).toFloat()) * 0.64f
+    val duration = 0.36f
+    return ((progress - start) / duration).coerceIn(0f, 1f)
+}
+
+internal fun storageLayerVisibleHeight(
+    targetHeight: Float,
+    seedHeight: Float,
+    settleProgress: Float,
+    fillProgress: Float
+): Float {
+    if (targetHeight <= 0f) return 0f
+    val initialHeight = seedHeight.coerceIn(0f, targetHeight)
+    return storageLerp(initialHeight, targetHeight, fillProgress) * settleProgress.coerceIn(0f, 1f)
 }
 
 /** 动作行：按下即时高亮、无涟漪、无箭头（苹果规范：箭头仅表示页面导航） */

@@ -83,9 +83,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -97,6 +97,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
+import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
@@ -383,13 +384,13 @@ private fun ThemeSuiteListScreen(
             ) {
                 LiquidGlassIconButton(
                     imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                    contentDescription = "退出",
+                    contentDescription = stringResource(R.string.reader_back),
                     onClick = onClose,
                     settingsBackButton = true
                 )
                 Spacer(Modifier.weight(1f))
                 Text(
-                    text = "主题套装",
+                    text = stringResource(R.string.reader_theme_suites),
                     fontSize = AppType.Section,
                     fontWeight = FontWeight.Bold,
                     color = AppColors.TextPrimary
@@ -397,7 +398,7 @@ private fun ThemeSuiteListScreen(
                 Spacer(Modifier.weight(1f))
                 LiquidGlassIconButton(
                     imageVector = Icons.Outlined.Add,
-                    contentDescription = "新建主题",
+                    contentDescription = stringResource(R.string.add_theme_suite),
                     onClick = { createDialog = true }
                 )
             }
@@ -444,13 +445,21 @@ private fun ThemeSuiteListScreen(
         }
     }
     if (createDialog) {
-        NameDialog("新建主题套装", "我的主题", onDismiss = { createDialog = false }) {
+        NameDialog(
+            stringResource(R.string.new_theme_suite_title),
+            stringResource(R.string.theme_suite_default_name),
+            onDismiss = { createDialog = false }
+        ) {
             createDialog = false
             onCreate(it)
         }
     }
     renameSuite?.let { suite ->
-        NameDialog("重命名主题", suite.customName.orEmpty(), onDismiss = { renameSuite = null }) {
+        NameDialog(
+            stringResource(R.string.rename_theme_suite_title),
+            suite.customName.orEmpty(),
+            onDismiss = { renameSuite = null }
+        ) {
             renameSuite = null
             onRename(suite.id, it)
         }
@@ -460,23 +469,31 @@ private fun ThemeSuiteListScreen(
             onDismissRequest = { deleteSuite = null },
             title = {
                 Text(
-                    "删除主题",
+                    stringResource(R.string.delete_theme_suite_title),
                     fontSize = AppType.Section,
                     fontWeight = FontWeight.Bold,
                     color = AppColors.TextPrimary
                 )
             },
-            text = { Text("确定删除“${suite.customName}”吗？", color = AppColors.TextSecondary) },
+            text = {
+                Text(
+                    stringResource(R.string.delete_theme_suite_message, suite.customName.orEmpty()),
+                    color = AppColors.TextSecondary
+                )
+            },
             confirmButton = {
                 LiquidGlassTextButton(
-                    text = "删除",
+                    text = stringResource(R.string.delete),
                     onClick = { deleteSuite = null; onDelete(suite.id) },
                     tintedColor = MaterialTheme.colorScheme.error,
                     contentColor = MaterialTheme.colorScheme.onError
                 )
             },
             dismissButton = {
-                LiquidGlassTextButton(text = "取消", onClick = { deleteSuite = null })
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.cancel),
+                    onClick = { deleteSuite = null }
+                )
             }
         )
     }
@@ -529,7 +546,11 @@ private fun ThemeSuiteRow(
                         color = AppColors.TextPrimary
                     )
                     Text(
-                        if (active) "当前主题" else "点击编辑",
+                        if (active) {
+                            stringResource(R.string.theme_suite_current)
+                        } else {
+                            stringResource(R.string.theme_suite_tap_to_edit)
+                        },
                         fontSize = AppType.Caption,
                         color = AppColors.TextSecondary
                     )
@@ -545,7 +566,7 @@ private fun ThemeSuiteRow(
                 Spacer(Modifier.width(AppSpace.sm))
                 Icon(
                     Icons.Outlined.DragHandle,
-                    contentDescription = "长按拖动排序",
+                    contentDescription = stringResource(R.string.theme_suite_drag_to_reorder),
                     tint = AppColors.TextSecondary,
                     modifier = Modifier
                         .size(36.dp)
@@ -573,7 +594,7 @@ private fun ThemeSuiteRow(
                 ) {
                     if (!active) {
                         LiquidGlassTextButton(
-                            text = "设为当前",
+                            text = stringResource(R.string.theme_suite_set_current),
                             onClick = onActivate,
                             tintedColor = AppColors.Accent
                         )
@@ -581,14 +602,14 @@ private fun ThemeSuiteRow(
                     if (!suite.isBuiltIn) {
                         LiquidGlassIconButton(
                             imageVector = Icons.Outlined.Edit,
-                            contentDescription = "重命名",
+                            contentDescription = stringResource(R.string.rename),
                             onClick = onRename,
                             size = 40.dp,
                             iconSize = 18.dp
                         )
                         LiquidGlassIconButton(
                             imageVector = Icons.Outlined.Delete,
-                            contentDescription = "删除",
+                            contentDescription = stringResource(R.string.delete),
                             onClick = onDelete,
                             size = 40.dp,
                             iconSize = 18.dp,
@@ -669,13 +690,15 @@ private fun NameDialog(
         },
         confirmButton = {
             LiquidGlassTextButton(
-                text = "确定",
+                text = stringResource(R.string.confirm),
                 enabled = value.isNotBlank(),
                 onClick = { if (value.isNotBlank()) onConfirm(value) },
                 tintedColor = AppColors.Accent
             )
         },
-        dismissButton = { LiquidGlassTextButton(text = "取消", onClick = onDismiss) }
+        dismissButton = {
+            LiquidGlassTextButton(text = stringResource(R.string.cancel), onClick = onDismiss)
+        }
     )
 }
 
@@ -794,7 +817,7 @@ private fun ThemeEditorScreen(
                 horizontalArrangement = Arrangement.spacedBy(AppSpace.sm)
             ) {
                 CapsuleButton(
-                    text = "背景设置",
+                    text = stringResource(R.string.reader_background_settings),
                     icon = Icons.Outlined.Palette,
                     selected = panel == ThemePanel.BACKGROUND
                 ) {
@@ -805,7 +828,7 @@ private fun ThemeEditorScreen(
                     }
                 }
                 CapsuleButton(
-                    text = "文本设置",
+                    text = stringResource(R.string.reader_text_settings),
                     icon = Icons.Outlined.TextFields,
                     selected = panel == ThemePanel.TEXT
                 ) {
@@ -853,7 +876,7 @@ private fun BackgroundPanel(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(
-            "背景颜色",
+            stringResource(R.string.floating_subtitle_background_color),
             fontSize = AppType.Body,
             fontWeight = FontWeight.SemiBold,
             color = AppColors.TextPrimary
@@ -877,7 +900,7 @@ private fun BackgroundPanel(
             item {
                 LiquidGlassIconButton(
                     imageVector = Icons.Outlined.Add,
-                    contentDescription = "自定义颜色",
+                    contentDescription = stringResource(R.string.background_custom_color),
                     onClick = { colorDialog = true },
                     size = 36.dp,
                     iconSize = 18.dp
@@ -886,7 +909,7 @@ private fun BackgroundPanel(
         }
         if (hasImage) {
             SettingSlider(
-                "照片透明度",
+                stringResource(R.string.background_photo_opacity),
                 settings.backgroundImageOpacity * 100f,
                 0f..100f,
                 99,
@@ -899,7 +922,7 @@ private fun BackgroundPanel(
                 }
             )
             SettingSlider(
-                "照片模糊度",
+                stringResource(R.string.background_photo_blur),
                 settings.backgroundImageBlurDp,
                 0f..40f,
                 39,
@@ -912,14 +935,14 @@ private fun BackgroundPanel(
                 }
             )
             CommandCapsuleButton(
-                text = "移除照片",
+                text = stringResource(R.string.background_remove_photo),
                 icon = Icons.Outlined.Delete,
                 onClick = onRemovePhoto,
                 secondary = true
             )
         } else {
             CommandCapsuleButton(
-                text = "添加照片",
+                text = stringResource(R.string.background_add_photo),
                 icon = Icons.Outlined.Image,
                 onClick = onAddPhoto
             )
@@ -943,9 +966,9 @@ private fun BackgroundPanel(
                 colorDialog = false
                 onAddColor(it)
             },
-            dialogTitle = "自定义背景颜色",
-            confirmText = "添加",
-            resetText = "恢复白色",
+            dialogTitle = stringResource(R.string.background_custom_color_title),
+            confirmText = stringResource(R.string.background_add),
+            resetText = stringResource(R.string.background_reset_white),
             resetColorHex = "#FFFFFF"
         )
     }
@@ -963,12 +986,16 @@ private fun TextPanel(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Text(
-            "文本设置",
+            stringResource(R.string.reader_text_settings),
             fontSize = AppType.Body,
             fontWeight = FontWeight.SemiBold,
             color = AppColors.TextPrimary
         )
-        Text("文字颜色", fontSize = AppType.BodySmall, color = AppColors.TextSecondary)
+        Text(
+            stringResource(R.string.label_text_color),
+            fontSize = AppType.BodySmall,
+            color = AppColors.TextSecondary
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             listOf(0xFF222222, 0xFF5A4636, 0xFF1E5E36, 0xFFE7E7E7).forEach { argb ->
                 ColorSwatch(Color(argb), settings.textColor == argb.toInt()) {
@@ -976,13 +1003,13 @@ private fun TextPanel(
                 }
             }
             OptionCapsule(
-                label = "自动",
+                label = stringResource(R.string.text_color_auto),
                 selected = settings.textColor == null,
                 onClick = { onUpdate(settings.copy(textColor = null)) }
             )
         }
         SettingSlider(
-            "字号",
+            stringResource(R.string.label_font_size),
             settings.fontSize,
             12f..28f,
             15,
@@ -990,14 +1017,22 @@ private fun TextPanel(
             onPreview = { onPreviewUpdate(settings.copy(fontSize = it)) },
             onChange = { onUpdate(settings.copy(fontSize = it)) }
         )
-        Text("字体", fontSize = AppType.BodySmall, color = AppColors.TextSecondary)
+        Text(
+            stringResource(R.string.font_label),
+            fontSize = AppType.BodySmall,
+            color = AppColors.TextSecondary
+        )
         OptionRow(
-            options = listOf("system" to "系统", "serif" to "宋体", "kaiti" to "楷体") +
+            options = listOf(
+                "system" to stringResource(R.string.font_system),
+                "serif" to stringResource(R.string.font_serif),
+                "kaiti" to stringResource(R.string.font_kaiti)
+            ) +
                 customFonts.mapIndexed { index, font -> font.fontTypeKey to font.displayName(index) },
             selected = settings.fontType
         ) { onUpdate(settings.copy(fontType = it)) }
         SettingSlider(
-            "字重",
+            stringResource(R.string.body_font_weight),
             settings.bodyFontWeight.toFloat(),
             100f..900f,
             7,
@@ -1010,7 +1045,7 @@ private fun TextPanel(
             }
         )
         SettingSlider(
-            "行距",
+            stringResource(R.string.label_line_height),
             settings.lineHeight,
             1f..2.5f,
             14,
@@ -1019,7 +1054,7 @@ private fun TextPanel(
             onChange = { onUpdate(settings.copy(lineHeight = it)) }
         )
         SettingSlider(
-            "字距",
+            stringResource(R.string.label_letter_spacing),
             settings.letterSpacing,
             0f..10f,
             19,
@@ -1027,44 +1062,50 @@ private fun TextPanel(
             onPreview = { onPreviewUpdate(settings.copy(letterSpacing = it)) },
             onChange = { onUpdate(settings.copy(letterSpacing = it)) }
         )
-        Text("对齐", fontSize = AppType.BodySmall, color = AppColors.TextSecondary)
+        Text(
+            stringResource(R.string.label_text_alignment),
+            fontSize = AppType.BodySmall,
+            color = AppColors.TextSecondary
+        )
         OptionRow(
             listOf(
-                ReaderTextAlignment.NATURAL.key to "默认",
-                ReaderTextAlignment.LEFT.key to "左对齐",
-                ReaderTextAlignment.CENTER.key to "居中",
-                ReaderTextAlignment.RIGHT.key to "右对齐",
-                ReaderTextAlignment.JUSTIFY.key to "两端"
+                ReaderTextAlignment.NATURAL.key to stringResource(R.string.text_alignment_natural),
+                ReaderTextAlignment.LEFT.key to stringResource(R.string.text_alignment_left),
+                ReaderTextAlignment.CENTER.key to stringResource(R.string.text_alignment_center),
+                ReaderTextAlignment.RIGHT.key to stringResource(R.string.text_alignment_right),
+                ReaderTextAlignment.JUSTIFY.key to stringResource(R.string.text_alignment_justify)
             ),
             settings.textAlignment.key
         ) { onUpdate(settings.copy(textAlignment = ReaderTextAlignment.fromKey(it))) }
         SettingSlider(
-            "段距", settings.paragraphSpacing, 0f..30f, 29, "dp",
+            stringResource(R.string.label_paragraph_spacing),
+            settings.paragraphSpacing, 0f..30f, 29, "dp",
             onPreview = { onPreviewUpdate(settings.copy(paragraphSpacing = it)) },
             onChange = { onUpdate(settings.copy(paragraphSpacing = it)) }
         )
         SettingSlider(
-            "首行缩进", settings.firstLineIndent, 0f..4f, 7, "字",
+            stringResource(R.string.label_first_line_indent),
+            settings.firstLineIndent, 0f..4f, 7, stringResource(R.string.reader_unit_character),
             onPreview = { onPreviewUpdate(settings.copy(firstLineIndent = it)) },
             onChange = { onUpdate(settings.copy(firstLineIndent = it)) }
         )
         SettingSlider(
-            "左边距", settings.marginLeft, 0f..80f, 79, "dp",
+            stringResource(R.string.label_margin_left), settings.marginLeft, 0f..80f, 79, "dp",
             onPreview = { onPreviewUpdate(settings.copy(marginLeft = it)) },
             onChange = { onUpdate(settings.copy(marginLeft = it)) }
         )
         SettingSlider(
-            "右边距", settings.marginRight, 0f..80f, 79, "dp",
+            stringResource(R.string.label_margin_right), settings.marginRight, 0f..80f, 79, "dp",
             onPreview = { onPreviewUpdate(settings.copy(marginRight = it)) },
             onChange = { onUpdate(settings.copy(marginRight = it)) }
         )
         SettingSlider(
-            "上边距", settings.marginTop, 0f..120f, 119, "dp",
+            stringResource(R.string.label_margin_top), settings.marginTop, 0f..120f, 119, "dp",
             onPreview = { onPreviewUpdate(settings.copy(marginTop = it)) },
             onChange = { onUpdate(settings.copy(marginTop = it)) }
         )
         SettingSlider(
-            "下边距", settings.marginBottom, 0f..120f, 119, "dp",
+            stringResource(R.string.label_margin_bottom), settings.marginBottom, 0f..120f, 119, "dp",
             onPreview = { onPreviewUpdate(settings.copy(marginBottom = it)) },
             onChange = { onUpdate(settings.copy(marginBottom = it)) }
         )
@@ -1128,7 +1169,7 @@ private fun AnimationPreviewScreen(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                "翻页速度",
+                                stringResource(R.string.page_turn_speed),
                                 fontSize = AppType.Body,
                                 fontWeight = FontWeight.SemiBold,
                                 color = AppColors.TextPrimary
@@ -1168,9 +1209,9 @@ private fun AnimationPreviewScreen(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                AnimationCapsule("滑动", "slide", mode, onModeChange)
-                AnimationCapsule("渐变", "fade", mode, onModeChange)
-                AnimationCapsule("卷曲", "curl", mode, onModeChange)
+                AnimationCapsule(stringResource(R.string.page_animation_slide_short), "slide", mode, onModeChange)
+                AnimationCapsule(stringResource(R.string.page_animation_fade_short), "fade", mode, onModeChange)
+                AnimationCapsule(stringResource(R.string.page_animation_curl_short), "curl", mode, onModeChange)
                 DurationCapsule(
                     displayedDuration.roundToInt(),
                     onClick = { showDurationInput = true }
@@ -1180,7 +1221,7 @@ private fun AnimationPreviewScreen(
     }
     if (showDurationInput) {
         SliderValueInputDialog(
-            label = "翻页速度",
+            label = stringResource(R.string.page_turn_speed),
             value = displayedDuration,
             range = range.first.toFloat()..range.last.toFloat(),
             step = step.toFloat(),
@@ -1310,22 +1351,15 @@ private fun PreviewReadView(
 
 @Composable
 private fun rememberSampleText(): String {
-    val context = LocalContext.current
-    return remember {
-        runCatching {
-            context.assets.open("theme_preview.txt").bufferedReader().use { it.readText() }
-        }.getOrElse {
-            "第一章 光落在书页上\n\n清晨的风越过窗台，纸张轻轻翻动。阅读让时间慢下来，也让遥远的声音在此刻变得清晰。"
-                .repeat(20)
-        }
-    }
+    val sample = stringResource(R.string.reader_settings_preview_sample)
+    return remember(sample) { sample.repeat(20) }
 }
 
 @Composable
 private fun ExitButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     LiquidGlassIconButton(
         imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-        contentDescription = "退出预览",
+        contentDescription = stringResource(R.string.exit_preview),
         onClick = onClick,
         modifier = modifier,
         settingsBackButton = true
@@ -1643,13 +1677,13 @@ private fun SliderValueInputDialog(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 LiquidGlassTextButton(
-                    text = "取消",
+                    text = stringResource(R.string.cancel),
                     onClick = onDismiss,
                     modifier = Modifier.weight(1f).height(44.dp),
                     contentColor = AppColors.TextSecondary
                 )
                 LiquidGlassTextButton(
-                    text = "确认",
+                    text = stringResource(R.string.confirm_action),
                     onClick = confirm,
                     enabled = canConfirm,
                     modifier = Modifier.weight(1f).height(44.dp),
@@ -1731,11 +1765,12 @@ private fun OptionCapsule(label: String, selected: Boolean, onClick: () -> Unit)
     }
 }
 
+@Composable
 private fun themeName(suite: ReaderThemeSuite): String = suite.customName ?: when (suite.id) {
-    ReaderThemeSuites.NIGHT_ID -> "夜间"
-    ReaderThemeSuites.SEPIA_ID -> "羊皮纸"
-    ReaderThemeSuites.GREEN_ID -> "护眼"
-    else -> "日间"
+    ReaderThemeSuites.NIGHT_ID -> stringResource(R.string.theme_suite_night_name)
+    ReaderThemeSuites.SEPIA_ID -> stringResource(R.string.theme_suite_sepia_name)
+    ReaderThemeSuites.GREEN_ID -> stringResource(R.string.theme_suite_green_name)
+    else -> stringResource(R.string.theme_suite_day_name)
 }
 
 private fun suitePreviewColor(selection: String): Color = when (selection) {

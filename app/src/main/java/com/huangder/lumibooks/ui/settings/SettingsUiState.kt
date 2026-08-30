@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.ui.settings
 
 import com.huangder.lumibooks.domain.model.DEFAULT_APP_ACCENT_HEX
+import com.huangder.lumibooks.domain.model.AppIconStyle
 
 /** 单本书的文件大小明细 */
 data class BookSizeItem(
@@ -12,6 +13,7 @@ data class BookSizeItem(
 
 /** 存储空间分解数据 */
 data class StorageInfo(
+    val isCalculating: Boolean = true,
     val appSizeBytes: Long = 0,
     val cacheSizeBytes: Long = 0,
     val booksSizeBytes: Long = 0,
@@ -61,6 +63,7 @@ data class SettingsUiState(
     val marginVert: Float = 64f,
 
     // 显示与外观
+    val appIconStyle: String = AppIconStyle.LUMI_2.storedValue,
     val appTheme: String = "lumi",         // "lumi" / "material3" / "liquid_glass"
     val appAccentColor: String = DEFAULT_APP_ACCENT_HEX,
     val globalFontMode: String = "system", // "default" / "system"

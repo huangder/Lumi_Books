@@ -10,6 +10,8 @@ import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.domain.model.normalizeAppAccentHex
+import com.huangder.lumibooks.domain.model.AppIconStyle
+import com.huangder.lumibooks.util.BookFileAccess
 import com.huangder.lumibooks.util.FileUtils
 import com.huangder.lumibooks.util.UpdateChecker
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -25,6 +27,8 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import android.net.Uri
 import java.io.File
@@ -78,7 +82,7 @@ class SettingsViewModel @Inject constructor(
     private var predictiveBackVisualOverride: Boolean? = null
     private var predictiveBackTransitionJob: Job? = null
     private var externalTtsCacheLimitJob: Job? = null
-
+    private val storageRefreshMutex = Mutex()
 
     init {
         collectAllPreferences()
@@ -130,6 +134,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.marginVert.collectLatest { value ->
                 _uiState.value = _uiState.value.copy(marginVert = value)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.appIconStyle.collectLatest { style ->
+                _uiState.value = _uiState.value.copy(appIconStyle = style)
             }
         }
         viewModelScope.launch {
@@ -413,6 +422,17 @@ class SettingsViewModel @Inject constructor(
 
     // ─── 显示与外观 ───
 
+    fun saveAppIconStyle(style: String) {
+        val normalized = AppIconStyle.normalize(style)
+        if (_uiState.value.appIconStyle == normalized) return
+        _uiState.value = _uiState.value.copy(appIconStyle = normalized)
+        viewModelScope.launch {
+            if (!dataStoreManager.saveAppIconStyle(normalized)) {
+                Toast.makeText(context, R.string.icon_style_change_failed, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     fun saveAppTheme(theme: String) {
         if (_uiState.value.appTheme == theme) return
         _uiState.value = _uiState.value.copy(appTheme = theme)
@@ -568,6 +588,8 @@ class SettingsViewModel @Inject constructor(
         const val PREDICTIVE_BACK_SWITCH_ANIMATION_MILLIS = 250L
         const val PREDICTIVE_BACK_DISABLE_SETTLE_MILLIS = 34L
         const val BYTES_PER_MEBIBYTE = 1_048_576L
+        // Material's indeterminate indicator needs roughly one cycle to read as intentional.
+        const val MIN_STORAGE_REFRESH_VISIBILITY_MS = 1_200L
     }
 
     fun saveSplashEnabled(enabled: Boolean) {
@@ -883,38 +905,59 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    private suspend fun refreshStorageBreakdown() {
-        // APK 本体大小
-        val appSize = try {
-            val appInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-            File(appInfo.applicationInfo?.sourceDir ?: "").length()
-        } catch (_: Exception) { 0L }
-
-        val cacheSize = getDirSize(context.cacheDir)
-        val filesSize = getDirSize(context.filesDir)
-        val externalTtsCacheSize = externalTtsAudioCache.sizeBytes()
-        val genericCacheSize = (cacheSize + filesSize - externalTtsCacheSize).coerceAtLeast(0L)
-        val booksDirSize = getDirSize(FileUtils.getBooksDirectory(context))
-        val coversDirSize = getDirSize(FileUtils.getCoversDirectory(context))
-
-        // 逐本书文件大小（按大小降序）
-        val bookDetails = bookRepository.getAllBooks().first().map { book ->
-            val fileSize = File(book.filePath).let { if (it.exists()) it.length() else 0L }
-            BookSizeItem(book.id, book.title, book.format.name, fileSize)
-        }.sortedByDescending { it.sizeBytes }
-
+    private suspend fun refreshStorageBreakdown() = storageRefreshMutex.withLock {
+        val refreshStartedAt = System.currentTimeMillis()
         _uiState.update { state ->
-            state.copy(
-                storageInfo = StorageInfo(
-                    appSizeBytes = appSize,
-                    cacheSizeBytes = genericCacheSize,
-                    booksSizeBytes = booksDirSize,
-                    coversSizeBytes = coversDirSize,
-                    externalTtsCacheSizeBytes = externalTtsCacheSize,
-                    externalTtsCacheLimitMb = state.storageInfo.externalTtsCacheLimitMb,
-                    bookDetails = bookDetails
+            state.copy(storageInfo = state.storageInfo.copy(isCalculating = true))
+        }
+        try {
+            // APK 本体大小
+            val appSize = try {
+                val appInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+                File(appInfo.applicationInfo?.sourceDir ?: "").length()
+            } catch (_: Exception) { 0L }
+
+            val cacheSize = getDirSize(context.cacheDir)
+            val filesSize = getDirSize(context.filesDir)
+            val externalTtsCacheSize = externalTtsAudioCache.sizeBytes()
+            val genericCacheSize = (cacheSize + filesSize - externalTtsCacheSize).coerceAtLeast(0L)
+            val coversDirSize = getDirSize(FileUtils.getCoversDirectory(context))
+
+            // SAF 与应用内部文件统一取真实大小，并按大小降序展示。
+            val bookDetails = bookRepository.getAllBooks().first().map { book ->
+                BookSizeItem(
+                    bookId = book.id,
+                    title = book.title,
+                    format = book.format.name,
+                    sizeBytes = BookFileAccess.size(context, book.filePath)
                 )
-            )
+            }.sortedByDescending { it.sizeBytes }
+
+            val remaining = MIN_STORAGE_REFRESH_VISIBILITY_MS -
+                (System.currentTimeMillis() - refreshStartedAt)
+            if (remaining > 0L) delay(remaining)
+
+            _uiState.update { state ->
+                state.copy(
+                    storageInfo = StorageInfo(
+                        isCalculating = false,
+                        appSizeBytes = appSize,
+                        cacheSizeBytes = genericCacheSize,
+                        booksSizeBytes = bookDetails.sumOf { it.sizeBytes },
+                        coversSizeBytes = coversDirSize,
+                        externalTtsCacheSizeBytes = externalTtsCacheSize,
+                        externalTtsCacheLimitMb = state.storageInfo.externalTtsCacheLimitMb,
+                        bookDetails = bookDetails
+                    )
+                )
+            }
+        } catch (_: Exception) {
+            val remaining = MIN_STORAGE_REFRESH_VISIBILITY_MS -
+                (System.currentTimeMillis() - refreshStartedAt)
+            if (remaining > 0L) delay(remaining)
+            _uiState.update { state ->
+                state.copy(storageInfo = state.storageInfo.copy(isCalculating = false))
+            }
         }
     }
 
@@ -927,7 +970,8 @@ class SettingsViewModel @Inject constructor(
         return when {
             bytes < 1024 -> "$bytes B"
             bytes < 1024 * 1024 -> "${bytes / 1024} KB"
-            else -> String.format("%.1f MB", bytes / (1024.0 * 1024.0))
+            bytes < 1024L * 1024L * 1024L -> String.format(Locale.getDefault(), "%.1f MB", bytes / (1024.0 * 1024.0))
+            else -> String.format(Locale.getDefault(), "%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0))
         }
     }
 

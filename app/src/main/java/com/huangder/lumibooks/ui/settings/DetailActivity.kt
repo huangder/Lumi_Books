@@ -96,9 +96,26 @@ class DetailActivity : ComponentActivity() {
                             FloatingSubtitleSettingsDetail(viewModel)
                         }
                         "display" -> DetailPage(stringResource(R.string.title_display), onBack) { DisplayDetail(viewModel) }
+                        "icon_style" -> DetailPage(stringResource(R.string.icon_style_title), onBack) { AppIconStyleDetail(viewModel) }
                         "language" -> DetailPage(stringResource(R.string.title_language), onBack) { LanguageDetailScreen(viewModel) }
                         "goal" -> DetailPage(stringResource(R.string.title_reading_goal), onBack) { ReadingGoalDetail(viewModel) }
-                        "storage" -> DetailPage(stringResource(R.string.title_storage), onBack) { StorageDetail(viewModel) }
+                        "storage" -> DetailPage(
+                            title = stringResource(R.string.title_storage),
+                            onBack = onBack
+                        ) {
+                            StorageDetail(
+                                viewModel = viewModel,
+                                onOpenBooks = {
+                                    startActivity(
+                                        Intent(this@DetailActivity, DetailActivity::class.java)
+                                            .putExtra("category", "storage_books")
+                                    )
+                                }
+                            )
+                        }
+                        "storage_books" -> DetailPage(stringResource(R.string.storage_books), onBack) {
+                            StorageBooksDetail(viewModel)
+                        }
                         "backup" -> DetailPage(stringResource(R.string.title_backup), onBack) { BackupRestoreDetail(viewModel) }
                         "third_party_services" -> DetailPage(stringResource(R.string.title_third_party_services), onBack) {
                             ThirdPartyServicesDetail(viewModel)

@@ -8,8 +8,10 @@ import android.os.Build
 import android.util.Log
 import com.huangder.lumibooks.MainActivity
 import com.huangder.lumibooks.domain.model.DEFAULT_APP_ACCENT_HEX
+import com.huangder.lumibooks.domain.model.AppIconStyle
 
 data class LaunchThemeSnapshot(
+    val iconStyle: String = AppIconStyle.LUMI_2.storedValue,
     val appTheme: String = "lumi",
     val appAccentColor: String = DEFAULT_APP_ACCENT_HEX,
     val globalFontMode: String = "system",
@@ -31,9 +33,12 @@ data class WelcomeLaunchSnapshot(
 object LaunchThemeController {
     const val EXTRA_SPLASH_ENABLED = "com.huangder.lumibooks.extra.SPLASH_ENABLED"
 
+    private val launcherSwitchLock = Any()
+
     private const val STATE_PREFERENCES = "launch_theme_state"
     private const val PENDING_SPLASH_ENABLED = "pending_splash_enabled"
     private const val SPLASH_ENABLED_SNAPSHOT = "splash_enabled_snapshot"
+    private const val APP_ICON_STYLE = "app_icon_style"
     private const val APP_THEME = "app_theme"
     private const val APP_ACCENT_COLOR = "app_accent_color"
     private const val GLOBAL_FONT_MODE = "global_font_mode"
@@ -46,8 +51,6 @@ object LaunchThemeController {
     private const val PREDICTIVE_BACK_ENABLED = "predictive_back_enabled"
     private const val COMPLETED_WELCOME_INSTALL_TIME = "completed_welcome_install_time"
     private const val HAS_COMPLETED_WELCOME_LANGUAGE_SETUP = "has_completed_welcome_language_setup"
-    private const val SPLASH_LAUNCHER = "com.huangder.lumibooks.ui.splash.SplashLauncherActivity"
-    private const val DIRECT_LAUNCHER = "com.huangder.lumibooks.ui.splash.DirectLauncherActivity"
 
     fun deferSplashEnabled(context: Context, enabled: Boolean) {
         context.getSharedPreferences(STATE_PREFERENCES, Context.MODE_PRIVATE)
@@ -61,9 +64,18 @@ object LaunchThemeController {
         context.getSharedPreferences(STATE_PREFERENCES, Context.MODE_PRIVATE)
             .getBoolean(SPLASH_ENABLED_SNAPSHOT, true)
 
+    fun iconStyleSnapshot(context: Context): String =
+        AppIconStyle.normalize(
+            context.getSharedPreferences(STATE_PREFERENCES, Context.MODE_PRIVATE)
+                .getString(APP_ICON_STYLE, AppIconStyle.LUMI_2.storedValue)
+        )
+
     fun themeSnapshot(context: Context): LaunchThemeSnapshot {
         val preferences = context.getSharedPreferences(STATE_PREFERENCES, Context.MODE_PRIVATE)
         return LaunchThemeSnapshot(
+            iconStyle = AppIconStyle.normalize(
+                preferences.getString(APP_ICON_STYLE, AppIconStyle.LUMI_2.storedValue)
+            ),
             appTheme = preferences.getString(APP_THEME, "lumi") ?: "lumi",
             appAccentColor = preferences.getString(APP_ACCENT_COLOR, DEFAULT_APP_ACCENT_HEX)
                 ?: DEFAULT_APP_ACCENT_HEX,
@@ -96,6 +108,7 @@ object LaunchThemeController {
     fun updateThemeSnapshot(context: Context, snapshot: LaunchThemeSnapshot) {
         context.getSharedPreferences(STATE_PREFERENCES, Context.MODE_PRIVATE)
             .edit()
+            .putString(APP_ICON_STYLE, AppIconStyle.normalize(snapshot.iconStyle))
             .putString(APP_THEME, snapshot.appTheme)
             .putString(APP_ACCENT_COLOR, snapshot.appAccentColor)
             .putString(GLOBAL_FONT_MODE, snapshot.globalFontMode)
@@ -109,6 +122,13 @@ object LaunchThemeController {
             .putString(MOTION_PREFERENCE, snapshot.motionPreference)
             .putBoolean(E_INK_MODE_ENABLED, snapshot.eInkModeEnabled)
             .putBoolean(PREDICTIVE_BACK_ENABLED, snapshot.predictiveBackEnabled)
+            .apply()
+    }
+
+    fun updateIconStyleSnapshot(context: Context, style: String) {
+        context.getSharedPreferences(STATE_PREFERENCES, Context.MODE_PRIVATE)
+            .edit()
+            .putString(APP_ICON_STYLE, AppIconStyle.normalize(style))
             .apply()
     }
 
@@ -137,53 +157,71 @@ object LaunchThemeController {
     }
 
     private fun setSplashEnabled(context: Context, enabled: Boolean): Boolean {
+        return setLauncherComponents(context, iconStyleSnapshot(context), enabled)
+    }
+
+    /** Apply the selected icon/splash pair without restarting the running application. */
+    fun applyIconStyle(context: Context, style: String): Boolean =
+        setLauncherComponents(context, style, splashEnabledSnapshot(context))
+
+    /** Reconcile persisted launcher preferences after an install, upgrade, or process restart. */
+    fun synchronizeLauncherComponents(context: Context): Boolean =
+        setLauncherComponents(context, iconStyleSnapshot(context), splashEnabledSnapshot(context))
+
+    private fun setLauncherComponents(
+        context: Context,
+        style: String,
+        splashEnabled: Boolean
+    ): Boolean = synchronized(launcherSwitchLock) {
         val packageManager = context.packageManager
-        val enabledComponent = ComponentName(
-            context,
-            if (enabled) SPLASH_LAUNCHER else DIRECT_LAUNCHER
-        )
-        val disabledComponent = ComponentName(
-            context,
-            if (enabled) DIRECT_LAUNCHER else SPLASH_LAUNCHER
+        val desired = launcherComponentStates(style, splashEnabled)
+        val manifestDefaults = mapOf(
+            LauncherComponentNames.LUMI_2_SPLASH to true,
+            LauncherComponentNames.LUMI_2_DIRECT to false,
+            LauncherComponentNames.CLASSIC_SPLASH to false,
+            LauncherComponentNames.CLASSIC_DIRECT to false
         )
 
-        val splashIsEnabled = isComponentEnabled(
-            packageManager.getComponentEnabledSetting(ComponentName(context, SPLASH_LAUNCHER)),
-            manifestDefault = true
-        )
-        val directIsEnabled = isComponentEnabled(
-            packageManager.getComponentEnabledSetting(ComponentName(context, DIRECT_LAUNCHER)),
-            manifestDefault = false
-        )
-        if (splashIsEnabled == enabled && directIsEnabled != enabled) return true
+        val alreadySynchronized = desired.all { (name, shouldBeEnabled) ->
+            val current = isComponentEnabled(
+                packageManager.getComponentEnabledSetting(ComponentName(context, name)),
+                manifestDefaults.getValue(name)
+            )
+            current == shouldBeEnabled
+        }
+        if (alreadySynchronized) return@synchronized true
 
-        return runCatching {
+        runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 packageManager.setComponentEnabledSettings(
-                    listOf(
+                    desired.map { (name, shouldBeEnabled) ->
                         PackageManager.ComponentEnabledSetting(
-                            enabledComponent,
-                            PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                            PackageManager.DONT_KILL_APP
-                        ),
-                        PackageManager.ComponentEnabledSetting(
-                            disabledComponent,
-                            PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                            ComponentName(context, name),
+                            if (shouldBeEnabled) {
+                                PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+                            } else {
+                                PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+                            },
                             PackageManager.DONT_KILL_APP
                         )
-                    )
+                    }
                 )
             } else {
-                packageManager.setComponentEnabledSetting(
-                    enabledComponent,
-                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                    PackageManager.DONT_KILL_APP
-                )
-                packageManager.setComponentEnabledSetting(
-                    disabledComponent,
-                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                    PackageManager.DONT_KILL_APP
-                )
+                // Disable every alternative first so the launcher never observes two styles.
+                desired.filterValues { !it }.keys.forEach { name ->
+                    packageManager.setComponentEnabledSetting(
+                        ComponentName(context, name),
+                        PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                        PackageManager.DONT_KILL_APP
+                    )
+                }
+                desired.filterValues { it }.keys.forEach { name ->
+                    packageManager.setComponentEnabledSetting(
+                        ComponentName(context, name),
+                        PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                        PackageManager.DONT_KILL_APP
+                    )
+                }
             }
             true
         }.onFailure { error ->

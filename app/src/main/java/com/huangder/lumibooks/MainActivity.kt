@@ -57,6 +57,7 @@ import com.huangder.lumibooks.ui.theme.MotionPreference
 import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
 import com.huangder.lumibooks.ui.theme.effectiveAppTheme
 import com.huangder.lumibooks.util.FileUtils
+import com.huangder.lumibooks.util.BuiltinGuideSeeder
 import com.huangder.lumibooks.util.LaunchThemeController
 import com.huangder.lumibooks.util.UpdateChecker
 import com.huangder.lumibooks.util.parser.BookParserFactory
@@ -161,6 +162,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var bookRepository: BookRepository
+
+    @Inject
+    lateinit var builtinGuideSeeder: BuiltinGuideSeeder
 
     @Inject
     lateinit var ttsController: TtsController
@@ -348,6 +352,9 @@ class MainActivity : ComponentActivity() {
             return
         }
 
+        // Install the bundled multi-language guide without delaying the first frame.
+        lifecycleScope.launch(Dispatchers.IO) { builtinGuideSeeder.seed() }
+
         systemDarkMode = resources.configuration.isNightModeEnabled()
 
         // 处理外部文件打开（冷启动）
@@ -362,6 +369,7 @@ class MainActivity : ComponentActivity() {
         } else {
             LaunchThemeController.splashEnabledSnapshot(this)
         }
+        val iconStyleAtLaunch = LaunchThemeController.iconStyleSnapshot(this)
 
         setContent {
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = "lumi")
@@ -563,7 +571,7 @@ class MainActivity : ComponentActivity() {
                             exit = fadeOut(animationSpec = tween(260)),
                             modifier = Modifier.fillMaxSize()
                         ) {
-                            SplashScreen(isDark = isDark)
+                            SplashScreen(isDark = isDark, iconStyle = iconStyleAtLaunch)
                         }
                     }
                     }

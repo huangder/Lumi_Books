@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -42,5 +44,26 @@ class ReaderPreferencesSnapshotTest {
         assertEquals(EpubRenderMode.READER_LAYOUT, snapshot.renderMode)
         assertTrue(snapshot.preserveEpubBackground)
         assertEquals("auto", snapshot.txtEncoding)
+        assertFalse(snapshot.readerThemeSuiteBookScoped)
+        assertNull(snapshot.readerThemeSuiteBookActiveId)
+    }
+
+    @Test
+    fun bookScopedThemeSuiteSelectionPersistsPerBook() = runBlocking {
+        val manager = DataStoreManager(context)
+
+        manager.setReaderThemeSuiteBookScoped("book-a", enabled = true, activeSuiteId = "night")
+        val bookA = manager.readerPreferences("book-a").first()
+        val bookB = manager.readerPreferences("book-b").first()
+
+        assertTrue(bookA.readerThemeSuiteBookScoped)
+        assertEquals("night", bookA.readerThemeSuiteBookActiveId)
+        assertFalse(bookB.readerThemeSuiteBookScoped)
+        assertNull(bookB.readerThemeSuiteBookActiveId)
+
+        manager.setReaderThemeSuiteBookScoped("book-a", enabled = false)
+        val restored = manager.readerPreferences("book-a").first()
+        assertFalse(restored.readerThemeSuiteBookScoped)
+        assertNull(restored.readerThemeSuiteBookActiveId)
     }
 }
