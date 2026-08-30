@@ -27,6 +27,7 @@ interface ReadingRepository {
     suspend fun deleteNote(note: Note)
     suspend fun applyAnnotationEdit(plan: AnnotationEditPlan)
     suspend fun deleteAllNotesByBookId(bookId: String)
+    suspend fun deleteLegacyPdfAnnotationsByBookId(bookId: String)
     fun getMostReadBooks(limit: Int = 5): Flow<List<BookDuration>>
     fun getDailyTotalsBetween(startDate: String, endDate: String): Flow<List<DailyTotal>>
     fun getTotalDurationByBookId(bookId: String): Flow<Long?>

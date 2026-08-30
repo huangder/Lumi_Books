@@ -31,9 +31,12 @@ fun LiquidGlassIconButton(
     liquidContainerColor: Color = AppColors.CardBg,
     liquidScrimColor: Color? = null,
     settingsBackButton: Boolean = false,
-    enabled: Boolean = true
+    /** Disable the liquid-glass press stretch/highlight while keeping the click action. */
+    pressFeedbackEnabled: Boolean = true,
+    enabled: Boolean = true,
+    forceFallback: Boolean = false
 ) {
-    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !forceFallback
     val isDark = LocalIsDarkTheme.current
     if (!isLiquidGlass) {
         IconButton(
@@ -81,6 +84,7 @@ fun LiquidGlassIconButton(
         contentScrimColor = resolvedScrim ?: liquidContainerColor.copy(
             alpha = if (isDark) 0.60f else 0.72f
         ),
+        interactive = pressFeedbackEnabled,
         enabled = enabled,
         onClick = onClick,
         modifier = resolvedModifier.size(size),

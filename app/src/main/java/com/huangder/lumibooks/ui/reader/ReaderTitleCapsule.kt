@@ -23,6 +23,7 @@ internal fun ReaderTitleCapsule(
     fallbackColor: Color,
     glassContentScrimColor: Color,
     isLiquidGlass: Boolean,
+    forceFallback: Boolean = false,
     modifier: Modifier = Modifier,
     contentAlignment: Alignment = Alignment.Center,
     textAlign: TextAlign = TextAlign.Center
@@ -36,6 +37,7 @@ internal fun ReaderTitleCapsule(
                 shape = RoundedCornerShape(50),
                 fallbackColor = fallbackColor,
                 contentScrimColor = glassContentScrimColor,
+                forceFallback = forceFallback,
                 modifier = Modifier
                     .height(32.dp)
                     .widthIn(max = 280.dp),

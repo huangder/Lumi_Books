@@ -28,9 +28,9 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
@@ -39,6 +39,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -53,9 +54,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -74,6 +77,9 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ViewAgenda
 import androidx.compose.material.icons.filled.ViewCarousel
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -93,18 +99,26 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.geometry.Offset
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.CloudUpload
@@ -139,13 +153,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import com.huangder.lumibooks.MainActivity
 import com.huangder.lumibooks.ReaderPageDirection
+import com.huangder.lumibooks.domain.model.Bookmark
 import com.huangder.lumibooks.pdfconversion.PdfConversionContract
 import com.huangder.lumibooks.pdfconversion.PdfConversionEngine
 import com.huangder.lumibooks.pdfconversion.PdfConversionState
 import com.huangder.lumibooks.mineru.MineruMode
 import com.huangder.lumibooks.ui.settings.DetailActivity
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.currentCoroutineContext
@@ -165,6 +179,12 @@ private class PdfRendererHolder(
         synchronized(renderer) { runCatching { renderer.close() } }
         runCatching { descriptor.close() }
     }
+}
+
+private enum class PdfMultiTouchMode {
+    UNDECIDED,
+    PAN,
+    ZOOM
 }
 
 private sealed interface PdfConversionSheet {
@@ -193,6 +213,7 @@ fun PdfViewerScreen(
     val uiState by viewModel.uiState.collectAsState()
     val ttsState by viewModel.ttsState.collectAsState()
     val bookmarks by viewModel.bookmarks.collectAsState()
+    val notes by viewModel.notes.collectAsState()
     val conversionState by viewModel.pdfConversionState.collectAsState()
     val mineruMode by viewModel.mineruMode.collectAsState()
     val scope = rememberCoroutineScope()
@@ -211,6 +232,11 @@ fun PdfViewerScreen(
     }
     var showMenu by remember { mutableStateOf(false) }
     var showPdfToc by remember { mutableStateOf(false) }
+    var showPdfBookmarks by remember { mutableStateOf(false) }
+    var annotationMode by remember(bookId) { mutableStateOf(false) }
+    var selectedInkTool by remember(bookId) { mutableStateOf(PdfInkTool.PEN) }
+    var selectedInkColorSlot by remember(bookId) { mutableStateOf(0) }
+    var inkColorExpanded by remember(bookId) { mutableStateOf(false) }
     var conversionSheet by remember { mutableStateOf<PdfConversionSheet?>(null) }
     val exitReader: () -> Unit = {
         viewModel.stopTts()
@@ -220,7 +246,7 @@ fun PdfViewerScreen(
         viewModel.stopTts()
         onOpenBook(targetBookId)
     }
-    val isAnySheetOpen = showPdfToc || conversionSheet != null
+    val isAnySheetOpen = showPdfToc || showPdfBookmarks || conversionSheet != null
     val readerBackProgress = ConfigurableBackHandler(
         enabled = !isAnySheetOpen,
         onBack = exitReader
@@ -310,6 +336,30 @@ fun PdfViewerScreen(
         return
     }
 
+    // The raster experiment intentionally owns PDF annotations. Remove legacy text
+    // annotations once while preserving any strokes created by this branch.
+    LaunchedEffect(bookId) {
+        viewModel.clearLegacyPdfAnnotations(bookId)
+    }
+    val inkStrokes = remember(notes) {
+        val decoded = notes.asSequence()
+            .filter { it.type == PdfInkPenType || it.type == PdfInkHighlighterType }
+            .mapNotNull { note ->
+                PdfInkStrokeLocatorV1.decode(
+                    encoded = note.startLocatorJson,
+                    id = note.id,
+                    fallbackPage = note.chapterIndex,
+                    fallbackColor = note.color
+                )?.copy(
+                    createdAt = note.createdAt,
+                    tool = if (note.type == PdfInkHighlighterType) PdfInkTool.HIGHLIGHTER else PdfInkTool.PEN,
+                    color = note.color
+                )
+            }
+            .toList()
+        bridgeLegacyCrossPageStrokes(decoded)
+    }
+
     val startPage = remember(bookId, pageCount) {
         ((book?.readingProgress ?: 0f) * pageCount)
             .toInt()
@@ -386,6 +436,7 @@ fun PdfViewerScreen(
     val shouldHandleVolumePageTurn = uiState.volumeKeyPageTurnEnabled &&
         !showMenu &&
         !showPdfToc &&
+        !annotationMode &&
         conversionSheet == null &&
         scale <= 1.01f
 
@@ -431,24 +482,15 @@ fun PdfViewerScreen(
 
     // 菜单动画（同时淡入+移动，不是先后）
     val menuAlpha = remember { Animatable(0f) }
-    val menuOffset = remember { Animatable(60f) }
     LaunchedEffect(showMenu, eInkMode, motionEnabled) {
         if (eInkMode) {
             menuAlpha.snapTo(if (showMenu) 1f else 0f)
-            menuOffset.snapTo(if (showMenu) 0f else 60f)
         } else if (!motionEnabled) {
-            menuOffset.snapTo(0f)
             menuAlpha.animateTo(if (showMenu) 1f else 0f, tween(if (showMenu) 120 else 100))
         } else if (showMenu) {
-            coroutineScope {
-                launch { menuAlpha.animateTo(1f, tween(300)) }
-                launch { menuOffset.animateTo(0f, tween(300, easing = AppEasing.Smooth)) }
-            }
+            menuAlpha.animateTo(1f, tween(260, easing = AppEasing.Smooth))
         } else {
-            coroutineScope {
-                launch { menuAlpha.animateTo(0f, tween(200)) }
-                launch { menuOffset.animateTo(60f, tween(200, easing = AppEasing.Accelerate)) }
-            }
+            menuAlpha.animateTo(0f, tween(180, easing = AppEasing.Accelerate))
         }
     }
 
@@ -480,12 +522,20 @@ fun PdfViewerScreen(
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() }
-                ) { if (scale <= 1.01f) showMenu = !showMenu }
+                ) {
+                    if (scale <= 1.01f) {
+                        if (annotationMode && inkColorExpanded) {
+                            inkColorExpanded = false
+                        } else {
+                            showMenu = !showMenu
+                        }
+                    }
+                }
         ) {
             if (isHorizontal) {
                 HorizontalPager(
                     state = pagerState,
-                    userScrollEnabled = scale <= 1.01f,
+                    userScrollEnabled = !annotationMode && scale <= 1.01f,
                     modifier = Modifier.fillMaxSize()
                 ) { pageIndex ->
                     Box(
@@ -496,21 +546,41 @@ fun PdfViewerScreen(
                                     awaitFirstDown(requireUnconsumed = false)
                                     var pointersPressed: Boolean
                                     var transformGesture = false
+                                    var gestureMode = PdfMultiTouchMode.UNDECIDED
+                                    var documentPanX = 0f
+                                    var pendingPan = Offset.Zero
+                                    var pendingZoom = 1f
                                     do {
-                                        val event = awaitPointerEvent()
+                                        val event = awaitPointerEvent(pass = PointerEventPass.Initial)
                                         val pressedCount = event.changes.count { it.pressed }
                                         if (pressedCount >= 2) transformGesture = true
                                         if (transformGesture || scale > 1.01f) {
-                                            val newScale = (scale * event.calculateZoom()).coerceIn(1f, 5f)
                                             val pan = event.calculatePan()
-                                            val maxOffsetX = (newScale - 1f) * size.width / 2f
-                                            val maxOffsetY = (newScale - 1f) * size.height / 2f
-                                            scale = newScale
-                                            offsetX = (offsetX + pan.x).coerceIn(-maxOffsetX, maxOffsetX)
-                                            offsetY = (offsetY + pan.y).coerceIn(-maxOffsetY, maxOffsetY)
-                                            if (newScale <= 1.01f) {
-                                                offsetX = 0f
-                                                offsetY = 0f
+                                            val zoom = event.calculateZoom()
+                                            pendingPan += pan
+                                            pendingZoom *= zoom
+                                            if (gestureMode == PdfMultiTouchMode.UNDECIDED) {
+                                                gestureMode = when {
+                                                    scale > 1.01f -> PdfMultiTouchMode.ZOOM
+                                                    kotlin.math.abs(pendingZoom - 1f) >= 0.035f -> PdfMultiTouchMode.ZOOM
+                                                    pendingPan.getDistance() >= viewConfiguration.touchSlop -> PdfMultiTouchMode.PAN
+                                                    else -> PdfMultiTouchMode.UNDECIDED
+                                                }
+                                            }
+                                            if (gestureMode == PdfMultiTouchMode.PAN) {
+                                                documentPanX += pendingPan.x
+                                                pagerState.dispatchRawDelta(-pendingPan.x)
+                                                pendingPan = Offset.Zero
+                                                pendingZoom = 1f
+                                            } else if (gestureMode == PdfMultiTouchMode.ZOOM) {
+                                                val newScale = (scale * pendingZoom).coerceIn(1f, 5f)
+                                                val maxOffsetX = (newScale - 1f) * size.width / 2f
+                                                val maxOffsetY = (newScale - 1f) * size.height / 2f
+                                                scale = newScale
+                                                offsetX = (offsetX + pendingPan.x).coerceIn(-maxOffsetX, maxOffsetX)
+                                                offsetY = (offsetY + pendingPan.y).coerceIn(-maxOffsetY, maxOffsetY)
+                                                pendingPan = Offset.Zero
+                                                pendingZoom = 1f
                                             }
                                             event.changes.forEach { change ->
                                                 if (change.positionChanged()) change.consume()
@@ -518,6 +588,14 @@ fun PdfViewerScreen(
                                         }
                                         pointersPressed = event.changes.any { it.pressed }
                                     } while (pointersPressed)
+                                    if (transformGesture && gestureMode == PdfMultiTouchMode.PAN && scale <= 1.01f) {
+                                        val targetPage = when {
+                                            documentPanX < -48f -> pageIndex + 1
+                                            documentPanX > 48f -> pageIndex - 1
+                                            else -> pageIndex
+                                        }.coerceIn(0, pageCount - 1)
+                                        scope.launch { pagerState.animateScrollToPage(targetPage) }
+                                    }
                                 }
                             }
                             .graphicsLayer {
@@ -531,7 +609,15 @@ fun PdfViewerScreen(
                         PdfPageItem(
                             filePath = filePath,
                             pageIndex = pageIndex,
-                            fitToViewport = true
+                            fitToViewport = true,
+                            annotationEnabled = true,
+                            annotationInteractive = annotationMode,
+                            activeInkTool = selectedInkTool,
+                            activeInkColor = ReaderHighlightPalette.getOrNull(selectedInkColorSlot)?.first
+                                ?: DefaultReaderHighlightColor,
+                            existingStrokes = inkStrokes,
+                            onStrokeCommitted = viewModel::addPdfInkStroke,
+                            onStrokeErased = viewModel::deletePdfInkStroke
                         )
                     }
                 }
@@ -539,17 +625,58 @@ fun PdfViewerScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .pointerInput(Unit) {
-                            detectTransformGestures { _, pan, zoom, _ ->
-                                val newScale = (scale * zoom).coerceIn(1f, 5f)
-                                val maxOffsetX = (newScale - 1f) * size.width / 2f
-                                val maxOffsetY = (newScale - 1f) * size.height / 2f
-                                scale = newScale
-                                offsetX = (offsetX + pan.x).coerceIn(-maxOffsetX, maxOffsetX)
-                                offsetY = (offsetY + pan.y).coerceIn(-maxOffsetY, maxOffsetY)
-                                if (newScale <= 1.01f) {
-                                    offsetX = 0f
-                                    offsetY = 0f
+                        .pointerInput(isHorizontal, annotationMode) {
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false)
+                                var multiTouch = false
+                                var gestureMode = PdfMultiTouchMode.UNDECIDED
+                                var pendingPan = Offset.Zero
+                                var pendingZoom = 1f
+                                while (true) {
+                                    val event = awaitPointerEvent(pass = PointerEventPass.Initial)
+                                    val pressed = event.changes.count { it.pressed }
+                                    if (pressed >= 2) {
+                                        multiTouch = true
+                                        val pan = event.calculatePan()
+                                        val zoom = event.calculateZoom()
+                                        pendingPan += pan
+                                        pendingZoom *= zoom
+                                        if (gestureMode == PdfMultiTouchMode.UNDECIDED) {
+                                            gestureMode = when {
+                                                scale > 1.01f -> PdfMultiTouchMode.ZOOM
+                                                kotlin.math.abs(pendingZoom - 1f) >= 0.035f -> PdfMultiTouchMode.ZOOM
+                                                pendingPan.getDistance() >= viewConfiguration.touchSlop -> PdfMultiTouchMode.PAN
+                                                else -> PdfMultiTouchMode.UNDECIDED
+                                            }
+                                        }
+                                        if (gestureMode == PdfMultiTouchMode.ZOOM) {
+                                            val newScale = (scale * pendingZoom).coerceIn(1f, 5f)
+                                            val maxOffsetX = (newScale - 1f) * size.width / 2f
+                                            val maxOffsetY = (newScale - 1f) * size.height / 2f
+                                            scale = newScale
+                                            offsetX = (offsetX + pendingPan.x).coerceIn(-maxOffsetX, maxOffsetX)
+                                            offsetY = (offsetY + pendingPan.y).coerceIn(-maxOffsetY, maxOffsetY)
+                                            if (newScale <= 1.01f) {
+                                                offsetX = 0f
+                                                offsetY = 0f
+                                            }
+                                            pendingPan = Offset.Zero
+                                            pendingZoom = 1f
+                                        } else if (gestureMode == PdfMultiTouchMode.PAN) {
+                                            listState.dispatchRawDelta(-pendingPan.y)
+                                            pendingPan = Offset.Zero
+                                            pendingZoom = 1f
+                                        }
+                                        event.changes.forEach { change ->
+                                            if (change.positionChanged()) change.consume()
+                                        }
+                                    } else if (pressed == 0) {
+                                        break
+                                    } else if (multiTouch) {
+                                        event.changes.forEach { change ->
+                                            if (change.positionChanged()) change.consume()
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -560,10 +687,38 @@ fun PdfViewerScreen(
                             translationY = offsetY
                         }
                 ) {
-                    LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        state = listState,
+                        userScrollEnabled = scale <= 1.01f,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
                         items(pageCount) {
-                            PdfPageItem(filePath = filePath, pageIndex = it, fitToViewport = false)
+                            PdfPageItem(
+                                filePath = filePath,
+                                pageIndex = it,
+                                fitToViewport = false,
+                                annotationEnabled = true,
+                                annotationInteractive = false,
+                                activeInkTool = selectedInkTool,
+                                activeInkColor = ReaderHighlightPalette.getOrNull(selectedInkColorSlot)?.first
+                                    ?: DefaultReaderHighlightColor,
+                                existingStrokes = inkStrokes,
+                                onStrokeCommitted = viewModel::addPdfInkStroke,
+                                onStrokeErased = viewModel::deletePdfInkStroke
+                            )
                         }
+                    }
+                    if (annotationMode) {
+                        PdfDocumentInkCanvas(
+                            pageCount = pageCount,
+                            listState = listState,
+                            activeTool = selectedInkTool,
+                            activeColor = ReaderHighlightPalette.getOrNull(selectedInkColorSlot)?.first
+                                ?: DefaultReaderHighlightColor,
+                            strokes = inkStrokes,
+                            onStrokeCommitted = viewModel::addPdfInkStroke,
+                            onStrokeErased = viewModel::deletePdfInkStroke
+                        )
                     }
                 }
             }
@@ -654,41 +809,99 @@ fun PdfViewerScreen(
             )
         }
 
-        // ── 底部胶囊菜单（同时淡入+上移）──
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer { alpha = menuAlpha.value; translationY = menuOffset.value }
+        // ── 底部胶囊菜单（淡入+从底部上移）──
+        AnimatedVisibility(
+            visible = showMenu,
+            enter = slideInVertically(
+                initialOffsetY = { it / 3 },
+                animationSpec = tween(280, easing = AppEasing.Smooth)
+            ) + fadeIn(tween(240)),
+            exit = slideOutVertically(
+                targetOffsetY = { it / 3 },
+                animationSpec = tween(220, easing = AppEasing.Accelerate)
+            ) + fadeOut(tween(180)),
+            modifier = Modifier.fillMaxSize()
         ) {
-            PdfBottomMenu(
-                chapterTitle = book?.title ?: "",
-                chapterProgress = if (pageCount > 0) {
-                    ((currentPage + 1).toFloat() / pageCount * 100f).coerceIn(0f, 100f)
-                } else {
-                    0f
-                },
-                conversionState = conversionState,
-                glassContentScrimColor = pdfGlassContentScrim,
-                onConversionClick = {
-                    showMenu = false
-                    if (conversionState is PdfConversionState.Running) {
-                        conversionSheet = PdfConversionSheet.Progress
+            Box(Modifier.fillMaxSize()) {
+                PdfBottomMenu(
+                    chapterTitle = book?.title ?: "",
+                    chapterProgress = if (pageCount > 0) {
+                        ((currentPage + 1).toFloat() / pageCount * 100f).coerceIn(0f, 100f)
                     } else {
-                        scope.launch {
-                            val convertedBookId = viewModel.findConvertedPdfBookId()
-                            conversionSheet = if (convertedBookId == null) {
-                                PdfConversionSheet.Confirm()
-                            } else {
-                                PdfConversionSheet.Existing(convertedBookId)
+                        0f
+                    },
+                    conversionState = conversionState,
+                    glassContentScrimColor = pdfGlassContentScrim,
+                    onConversionClick = {
+                        showMenu = false
+                        if (conversionState is PdfConversionState.Running) {
+                            conversionSheet = PdfConversionSheet.Progress
+                        } else {
+                            scope.launch {
+                                val convertedBookId = viewModel.findConvertedPdfBookId()
+                                conversionSheet = if (convertedBookId == null) {
+                                    PdfConversionSheet.Confirm()
+                                } else {
+                                    PdfConversionSheet.Existing(convertedBookId)
+                                }
                             }
                         }
+                    },
+                    onCatalogClick = {
+                        showMenu = false
+                        showPdfToc = true
+                    },
+                    onAnnotationClick = {
+                        annotationMode = !annotationMode
+                        inkColorExpanded = false
+                        showMenu = true
+                    },
+                    onBookmarksClick = {
+                        showMenu = false
+                        showPdfBookmarks = true
+                    },
+                    modifier = Modifier.align(Alignment.BottomCenter)
+                )
+            }
+        }
+        val annotationBottomPadding by animateDpAsState(
+            targetValue = if (showMenu) 206.dp else 24.dp,
+            animationSpec = tween(300, easing = AppEasing.Smooth),
+            label = "pdfAnnotationToolBottomPadding"
+        )
+        AnimatedVisibility(
+            visible = annotationMode,
+            enter = fadeIn(tween(220)) + slideInVertically(
+                initialOffsetY = { it / 2 },
+                animationSpec = spring(dampingRatio = 0.76f, stiffness = 360f)
+            ),
+            exit = fadeOut(tween(180)) + slideOutVertically(
+                targetOffsetY = { it / 2 },
+                animationSpec = tween(220, easing = AppEasing.Accelerate)
+            ),
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(
+                    start = 24.dp,
+                    bottom = annotationBottomPadding
+                )
+        ) {
+            PdfAnnotationToolCapsule(
+                selectedTool = selectedInkTool,
+                colorExpanded = inkColorExpanded,
+                selectedColorSlot = selectedInkColorSlot,
+                onToolSelected = { tool ->
+                    if (tool == selectedInkTool && tool != PdfInkTool.ERASER) {
+                        inkColorExpanded = !inkColorExpanded
+                    } else {
+                        selectedInkTool = tool
+                        inkColorExpanded = false
                     }
                 },
-                onCatalogClick = {
-                    showMenu = false
-                    showPdfToc = true
-                },
-                modifier = Modifier.align(Alignment.BottomCenter)
+                onColorSelected = { slot ->
+                    selectedInkColorSlot = slot
+                    inkColorExpanded = false
+                }
             )
         }
         val ttsBottomPadding by animateDpAsState(
@@ -699,7 +912,7 @@ fun PdfViewerScreen(
         AnimatedVisibility(
             visible = ttsState.activeBookId == bookId &&
                 ttsState.playbackState != TtsPlaybackState.IDLE &&
-                !showPdfToc && conversionSheet == null,
+                !showPdfToc && !showPdfBookmarks && conversionSheet == null,
             enter = if (eInkMode) EnterTransition.None else if (!motionEnabled) fadeIn(tween(120)) else slideInVertically(initialOffsetY = { it }) + fadeIn(),
             exit = if (eInkMode) ExitTransition.None else if (!motionEnabled) fadeOut(tween(100)) else slideOutVertically(targetOffsetY = { it }) + fadeOut(),
             modifier = Modifier
@@ -738,6 +951,21 @@ fun PdfViewerScreen(
                 showPdfToc = false
             },
             onDismiss = { showPdfToc = false },
+            eInkModeEnabled = eInkMode
+        )
+
+        PdfBookmarksSheet(
+            visible = showPdfBookmarks,
+            bookmarks = bookmarks,
+            currentPage = currentPage,
+            onPageSelected = { page ->
+                scope.launch {
+                    if (isHorizontal) pagerState.scrollToPage(page) else listState.scrollToItem(page)
+                }
+                showPdfBookmarks = false
+            },
+            onDelete = viewModel::deleteBookmark,
+            onDismiss = { showPdfBookmarks = false },
             eInkModeEnabled = eInkMode
         )
 
@@ -904,8 +1132,7 @@ private fun PdfTopBar(
                 isLiquidGlass = isLiquidGlass,
                 modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = 8.dp)
-                    .align(Alignment.CenterVertically),
+                    .padding(horizontal = 8.dp),
                 contentAlignment = Alignment.CenterStart,
                 textAlign = TextAlign.Start
             )
@@ -982,6 +1209,8 @@ private fun PdfBottomMenu(
     glassContentScrimColor: Color,
     onConversionClick: () -> Unit,
     onCatalogClick: () -> Unit,
+    onAnnotationClick: () -> Unit,
+    onBookmarksClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -1003,6 +1232,23 @@ private fun PdfBottomMenu(
             glassContentScrimColor = glassContentScrimColor,
             onClick = onCatalogClick
         )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            PdfActionCapsule(
+                icon = Icons.Default.Edit,
+                label = stringResource(R.string.pdf_annotation_tool),
+                modifier = Modifier.weight(1f),
+                onClick = onAnnotationClick
+            )
+            PdfActionCapsule(
+                icon = Icons.Default.Bookmark,
+                label = stringResource(R.string.reader_bookmark),
+                modifier = Modifier.weight(1f),
+                onClick = onBookmarksClick
+            )
+        }
     }
 }
 
@@ -1637,10 +1883,147 @@ private fun PdfActionCapsule(icon: ImageVector, label: String, modifier: Modifie
     }
 }
 
+@Composable
+private fun PdfAnnotationToolCapsule(
+    selectedTool: PdfInkTool,
+    colorExpanded: Boolean,
+    selectedColorSlot: Int,
+    onToolSelected: (PdfInkTool) -> Unit,
+    onColorSelected: (Int) -> Unit
+) {
+    val capsuleWidth by animateDpAsState(
+        targetValue = if (colorExpanded) 246.dp else 174.dp,
+        animationSpec = spring(dampingRatio = 0.72f, stiffness = 420f),
+        label = "pdfAnnotationCapsuleWidth"
+    )
+    LiquidGlassSurface(
+        shape = RoundedCornerShape(24.dp),
+        fallbackColor = AppColors.BgGray,
+        contentScrimColor = AppColors.WindowBg.copy(alpha = 0.18f),
+        modifier = Modifier
+            .width(capsuleWidth)
+            .height(48.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        AnimatedContent(
+            targetState = colorExpanded,
+            transitionSpec = {
+                (fadeIn(tween(170)) + androidx.compose.animation.scaleIn(initialScale = 0.82f, animationSpec = spring(dampingRatio = 0.72f)))
+                    .togetherWith(fadeOut(tween(100)) + androidx.compose.animation.scaleOut(targetScale = 0.82f))
+                    .using(SizeTransform(clip = false))
+            },
+            contentAlignment = Alignment.Center,
+            label = "pdfAnnotationColorTransition"
+        ) { expanded ->
+            if (expanded) {
+                Row(
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    ReaderHighlightPalette.forEachIndexed { index, (_, color) ->
+                        Box(
+                            modifier = Modifier
+                                .size(if (index == selectedColorSlot) 25.dp else 21.dp)
+                                .clip(CircleShape)
+                                .background(color)
+                                .then(
+                                    if (index == selectedColorSlot) {
+                                        Modifier.border(2.dp, AppColors.TextPrimary, CircleShape)
+                                    } else Modifier
+                                )
+                                .clickable(
+                                    indication = null,
+                                    interactionSource = remember { MutableInteractionSource() }
+                                ) { onColorSelected(index) }
+                        )
+                    }
+                }
+            } else {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .wrapContentWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(0.dp),
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    PdfAnnotationToolButton(
+                        tool = PdfInkTool.PEN,
+                        selected = selectedTool == PdfInkTool.PEN,
+                        onClick = { onToolSelected(PdfInkTool.PEN) }
+                    )
+                    PdfAnnotationToolButton(
+                        tool = PdfInkTool.HIGHLIGHTER,
+                        selected = selectedTool == PdfInkTool.HIGHLIGHTER,
+                        onClick = { onToolSelected(PdfInkTool.HIGHLIGHTER) }
+                    )
+                    PdfAnnotationToolButton(
+                        tool = PdfInkTool.ERASER,
+                        selected = selectedTool == PdfInkTool.ERASER,
+                        onClick = { onToolSelected(PdfInkTool.ERASER) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PdfAnnotationToolButton(
+    tool: PdfInkTool,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val scale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (selected) 1.16f else 0.94f,
+        animationSpec = spring(dampingRatio = 0.62f, stiffness = 430f),
+        label = "pdfAnnotationToolScale"
+    )
+    val icon = when (tool) {
+        PdfInkTool.PEN -> Icons.Default.Edit
+        PdfInkTool.HIGHLIGHTER -> Icons.Default.Brush
+        PdfInkTool.ERASER -> Icons.Default.Delete
+    }
+    Box(
+        modifier = Modifier
+            .width(50.dp)
+            .height(48.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
+            }
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = tool.name,
+            tint = if (selected) AppColors.Accent else AppColors.TextPrimary,
+            modifier = Modifier.size(22.dp)
+        )
+    }
+}
+
 // ── PDF 页面渲染（每个页面独立打开文件，避免并发冲突）──
 
 @Composable
-private fun PdfPageItem(filePath: String, pageIndex: Int, fitToViewport: Boolean) {
+private fun PdfPageItem(
+    filePath: String,
+    pageIndex: Int,
+    fitToViewport: Boolean,
+    annotationEnabled: Boolean,
+    annotationInteractive: Boolean,
+    activeInkTool: PdfInkTool,
+    activeInkColor: String,
+    existingStrokes: List<PdfInkStroke>,
+    onStrokeCommitted: (PdfInkStroke) -> Unit,
+    onStrokeErased: (PdfInkStroke) -> Unit
+) {
     val context = LocalContext.current
     var bitmap by remember(filePath, pageIndex) { mutableStateOf<Bitmap?>(null) }
     LaunchedEffect(filePath, pageIndex) { bitmap = renderPdfPage(context, filePath, pageIndex) }
@@ -1651,22 +2034,438 @@ private fun PdfPageItem(filePath: String, pageIndex: Int, fitToViewport: Boolean
         }
     }
 
-    val renderedPage = bitmap
-    if (renderedPage != null) {
-        Image(
-            bitmap = renderedPage.asImageBitmap(),
-            contentDescription = stringResource(R.string.pdf_page_desc, pageIndex + 1),
-            modifier = if (fitToViewport) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
-            contentScale = if (fitToViewport) ContentScale.Fit else ContentScale.FillWidth
-        )
-    } else {
-        Box(
-            if (fitToViewport) Modifier.fillMaxSize() else Modifier.fillMaxWidth().height(600.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = AppColors.TextSecondary.copy(alpha = 0.4f))
+    Box(
+        modifier = if (fitToViewport) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center
+    ) {
+        val renderedPage = bitmap
+        if (renderedPage != null) {
+            Image(
+                bitmap = renderedPage.asImageBitmap(),
+                contentDescription = stringResource(R.string.pdf_page_desc, pageIndex + 1),
+                modifier = if (fitToViewport) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
+                contentScale = if (fitToViewport) ContentScale.Fit else ContentScale.FillWidth
+            )
+        } else {
+            Box(
+                if (fitToViewport) Modifier.fillMaxSize() else Modifier.fillMaxWidth().height(600.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = AppColors.TextSecondary.copy(alpha = 0.4f)
+                )
+            }
+        }
+        if (annotationEnabled) {
+            PdfPageInkCanvas(
+                pageIndex = pageIndex,
+                activeTool = activeInkTool,
+                activeColor = activeInkColor,
+                strokes = existingStrokes,
+                interactive = annotationInteractive,
+                onStrokeCommitted = onStrokeCommitted,
+                onStrokeErased = onStrokeErased
+            )
         }
     }
+}
+
+@Composable
+private fun BoxScope.PdfPageInkCanvas(
+    pageIndex: Int,
+    activeTool: PdfInkTool,
+    activeColor: String,
+    strokes: List<PdfInkStroke>,
+    interactive: Boolean,
+    onStrokeCommitted: (PdfInkStroke) -> Unit,
+    onStrokeErased: (PdfInkStroke) -> Unit
+) {
+    var canvasSize by remember(pageIndex) { mutableStateOf(IntSize.Zero) }
+    var livePoints by remember(pageIndex) { mutableStateOf<List<PdfInkPoint>>(emptyList()) }
+    val pageStrokes = remember(strokes, pageIndex) { strokes.filter { it.page == pageIndex } }
+
+    fun normalize(position: Offset): PdfInkPoint {
+        val width = canvasSize.width.coerceAtLeast(1)
+        val height = canvasSize.height.coerceAtLeast(1)
+        return PdfInkPoint(
+            (position.x / width).coerceIn(0f, 1f),
+            (position.y / height).coerceIn(0f, 1f)
+        )
+    }
+
+    val gestureModifier = if (interactive) {
+        Modifier.pointerInput(pageIndex, activeTool, activeColor, canvasSize) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val points = ArrayList<PdfInkPoint>(32)
+                    val pointsErased = mutableSetOf<Long>()
+                    var cancelled = false
+                    points += normalize(down.position)
+                    livePoints = points.toList()
+
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val pressedChanges = event.changes.filter { it.pressed }
+                        if (pressedChanges.size > 1) {
+                            cancelled = true
+                            livePoints = emptyList()
+                            // Leave this event unconsumed so the parent transform detector can
+                            // take over as a normal two-finger zoom/pan gesture.
+                        } else if (pressedChanges.isEmpty()) {
+                            break
+                        } else if (!cancelled) {
+                            val change = pressedChanges.first()
+                            val point = normalize(change.position)
+                            points += point
+                            livePoints = points.toList()
+                            change.consume()
+                            if (activeTool == PdfInkTool.ERASER) {
+                                val erased = pageStrokes.filter { stroke ->
+                                    val key = stroke.id.takeIf { it > 0L }
+                                        ?: PdfInkStrokeLocatorV1.encode(stroke.copy(id = 0L)).hashCode().toLong()
+                                    key !in pointsErased && strokeHitsPoint(stroke, point)
+                                }
+                                erased.forEach { stroke ->
+                                    pointsErased += stroke.id.takeIf { it > 0L }
+                                        ?: PdfInkStrokeLocatorV1.encode(stroke.copy(id = 0L)).hashCode().toLong()
+                                    onStrokeErased(stroke)
+                                }
+                            }
+                        }
+                    }
+
+                    val completed = points.toList()
+                    livePoints = emptyList()
+                    if (!cancelled && activeTool != PdfInkTool.ERASER && completed.size >= 2) {
+                        onStrokeCommitted(
+                            PdfInkStroke(
+                                page = pageIndex,
+                                points = simplifyInkPoints(completed),
+                                tool = activeTool,
+                                color = activeColor,
+                                width = if (activeTool == PdfInkTool.HIGHLIGHTER) 0.018f else 0.006f
+                            )
+                        )
+                    }
+                }
+            }
+    } else {
+        Modifier
+    }
+    Canvas(
+        modifier = Modifier
+            .matchParentSize()
+            .onSizeChanged { canvasSize = it }
+            .then(gestureModifier)
+    ) {
+        pageStrokes.forEach(::drawInkStroke)
+        if (livePoints.size >= 2 && activeTool != PdfInkTool.ERASER) {
+            drawInkStroke(
+                PdfInkStroke(
+                    page = pageIndex,
+                    points = livePoints,
+                    tool = activeTool,
+                    color = activeColor,
+                    width = if (activeTool == PdfInkTool.HIGHLIGHTER) 0.018f else 0.006f
+                )
+            )
+        }
+    }
+}
+
+/**
+ * Document-level ink surface for continuous vertical reading. A gesture is split into
+ * page-local normalized segments as it crosses page boundaries, so each segment remains
+ * aligned after relayout, zoom, or reopening the document.
+ */
+@Composable
+private fun BoxScope.PdfDocumentInkCanvas(
+    pageCount: Int,
+    listState: androidx.compose.foundation.lazy.LazyListState,
+    activeTool: PdfInkTool,
+    activeColor: String,
+    strokes: List<PdfInkStroke>,
+    onStrokeCommitted: (PdfInkStroke) -> Unit,
+    onStrokeErased: (PdfInkStroke) -> Unit
+) {
+    var canvasSize by remember { mutableStateOf(IntSize.Zero) }
+    var liveSegments by remember { mutableStateOf<Map<Int, List<PdfInkPoint>>>(emptyMap()) }
+
+    fun locate(position: Offset): Pair<Int, PdfInkPoint>? {
+        val visibleItems = listState.layoutInfo.visibleItemsInfo
+        val item = visibleItems.firstOrNull {
+            position.y >= it.offset && position.y <= it.offset + it.size
+        } ?: visibleItems.minByOrNull {
+            kotlin.math.abs(position.y - (it.offset + it.size / 2f))
+        } ?: return null
+        val width = canvasSize.width.coerceAtLeast(1)
+        val height = item.size.coerceAtLeast(1)
+        return item.index.coerceIn(0, pageCount - 1) to PdfInkPoint(
+            (position.x / width).coerceIn(0f, 1f),
+            ((position.y - item.offset) / height).coerceIn(0f, 1f)
+        )
+    }
+
+    Canvas(
+        modifier = Modifier
+            .matchParentSize()
+            .onSizeChanged { canvasSize = it }
+            .pointerInput(pageCount, activeTool, activeColor, canvasSize) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val segments = linkedMapOf<Int, MutableList<PdfInkPoint>>()
+                    val erasedKeys = mutableSetOf<Long>()
+                    var cancelled = false
+                    var previousLocated: Pair<Int, PdfInkPoint>? = null
+
+                    fun addPoint(position: Offset) {
+                        val located = locate(position) ?: return
+                        val (page, point) = located
+                        previousLocated?.let { (previousPage, previousPoint) ->
+                            if (previousPage != page) {
+                                val boundaryX = ((previousPoint.x + point.x) / 2f).coerceIn(0f, 1f)
+                                if (previousPage < page) {
+                                    segments.getOrPut(previousPage) { mutableListOf() }
+                                        .add(PdfInkPoint(boundaryX, 1f))
+                                    for (bridgePage in previousPage + 1 until page) {
+                                        segments.getOrPut(bridgePage) { mutableListOf() }.apply {
+                                            add(PdfInkPoint(boundaryX, 0f))
+                                            add(PdfInkPoint(boundaryX, 1f))
+                                        }
+                                    }
+                                    segments.getOrPut(page) { mutableListOf() }
+                                        .add(PdfInkPoint(boundaryX, 0f))
+                                } else {
+                                    segments.getOrPut(previousPage) { mutableListOf() }
+                                        .add(PdfInkPoint(boundaryX, 0f))
+                                    for (bridgePage in previousPage - 1 downTo page + 1) {
+                                        segments.getOrPut(bridgePage) { mutableListOf() }.apply {
+                                            add(PdfInkPoint(boundaryX, 1f))
+                                            add(PdfInkPoint(boundaryX, 0f))
+                                        }
+                                    }
+                                    segments.getOrPut(page) { mutableListOf() }
+                                        .add(PdfInkPoint(boundaryX, 1f))
+                                }
+                            }
+                        }
+                        segments.getOrPut(page) { mutableListOf() }.add(point)
+                        previousLocated = located
+                        liveSegments = if (activeTool == PdfInkTool.ERASER) {
+                            emptyMap()
+                        } else {
+                            segments.mapValues { (_, points) -> points.toList() }
+                        }
+                        if (activeTool == PdfInkTool.ERASER) {
+                            strokes.asSequence()
+                                .filter { it.page == page }
+                                .filter { stroke ->
+                                    val key = stroke.id.takeIf { it > 0L }
+                                        ?: PdfInkStrokeLocatorV1.encode(stroke.copy(id = 0L)).hashCode().toLong()
+                                    key !in erasedKeys && strokeHitsPoint(stroke, point)
+                                }
+                                .forEach { stroke ->
+                                    val key = stroke.id.takeIf { it > 0L }
+                                        ?: PdfInkStrokeLocatorV1.encode(stroke.copy(id = 0L)).hashCode().toLong()
+                                    erasedKeys += key
+                                    onStrokeErased(stroke)
+                                }
+                        }
+                    }
+
+                    addPoint(down.position)
+                    while (true) {
+                        val event = awaitPointerEvent(pass = PointerEventPass.Initial)
+                        val pressed = event.changes.filter { it.pressed }
+                        if (pressed.size >= 2) {
+                            cancelled = true
+                            liveSegments = emptyMap()
+                        } else if (pressed.isEmpty()) {
+                            break
+                        } else if (!cancelled) {
+                            val change = pressed.first()
+                            val y = change.position.y
+                            // Keep the document moving while the pen reaches an edge. The next
+                            // event is then mapped against the newly visible page.
+                            if (y > size.height - 56f) {
+                                listState.dispatchRawDelta(18f)
+                            }
+                            if (y < 56f) {
+                                listState.dispatchRawDelta(-18f)
+                            }
+                            addPoint(change.position)
+                            change.consume()
+                        }
+                    }
+
+                    liveSegments = emptyMap()
+                    if (!cancelled && activeTool != PdfInkTool.ERASER) {
+                        segments.forEach { (page, points) ->
+                            if (points.size >= 2) {
+                                onStrokeCommitted(
+                                    PdfInkStroke(
+                                        page = page,
+                                        points = simplifyInkPoints(points),
+                                        tool = activeTool,
+                                        color = activeColor,
+                                        width = if (activeTool == PdfInkTool.HIGHLIGHTER) 0.018f else 0.006f
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+    ) {
+        liveSegments.forEach { (page, points) ->
+            if (activeTool != PdfInkTool.ERASER && points.size >= 2) {
+                drawDocumentInkStroke(
+                    PdfInkStroke(
+                        page = page,
+                        points = points,
+                        tool = activeTool,
+                        color = activeColor,
+                        width = if (activeTool == PdfInkTool.HIGHLIGHTER) 0.018f else 0.006f
+                    ),
+                    listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == page }
+                )
+            }
+        }
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawDocumentInkStroke(
+    stroke: PdfInkStroke,
+    item: androidx.compose.foundation.lazy.LazyListItemInfo?
+) {
+    if (item == null || stroke.points.isEmpty()) return
+    val path = Path()
+    stroke.points.forEachIndexed { index, point ->
+        val x = point.x * size.width
+        val y = item.offset + point.y * item.size
+        if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+    }
+    val parsedColor = runCatching {
+        Color(android.graphics.Color.parseColor(resolveReaderHighlightColor(stroke.color)))
+    }.getOrDefault(Color(0xFFD6C58D))
+    drawPath(
+        path = path,
+        color = if (stroke.tool == PdfInkTool.HIGHLIGHTER) {
+            parsedColor.copy(alpha = 0.34f)
+        } else {
+            parsedColor.copy(alpha = 0.94f)
+        },
+        style = Stroke(
+            width = (stroke.width * size.width).coerceAtLeast(2f),
+            cap = StrokeCap.Round,
+            join = StrokeJoin.Round
+        )
+    )
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawInkStroke(stroke: PdfInkStroke) {
+    if (stroke.points.isEmpty()) return
+    val path = Path()
+    stroke.points.forEachIndexed { index, point ->
+        val x = point.x * size.width
+        val y = point.y * size.height
+        if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+    }
+    val parsedColor = runCatching {
+        Color(android.graphics.Color.parseColor(resolveReaderHighlightColor(stroke.color)))
+    }.getOrDefault(Color(0xFFD6C58D))
+    val color = if (stroke.tool == PdfInkTool.HIGHLIGHTER) {
+        parsedColor.copy(alpha = 0.34f)
+    } else {
+        parsedColor.copy(alpha = 0.94f)
+    }
+    drawPath(
+        path = path,
+        color = color,
+        style = Stroke(
+            width = (stroke.width * size.width).coerceAtLeast(2f),
+            cap = StrokeCap.Round,
+            join = StrokeJoin.Round
+        )
+    )
+}
+
+private fun simplifyInkPoints(points: List<PdfInkPoint>): List<PdfInkPoint> {
+    if (points.size <= 800) return points
+    val step = (points.size / 800f).toInt().coerceAtLeast(2)
+    return points.filterIndexed { index, _ -> index % step == 0 || index == points.lastIndex }
+}
+
+private fun bridgeLegacyCrossPageStrokes(strokes: List<PdfInkStroke>): List<PdfInkStroke> {
+    if (strokes.size < 2) return strokes
+    val bridged = strokes.toMutableList()
+    val chronologicalIndices = strokes.indices.sortedBy { strokes[it].createdAt }
+    chronologicalIndices.zipWithNext().forEach { (fromIndex, toIndex) ->
+        val from = bridged[fromIndex]
+        val to = bridged[toIndex]
+        if (from.createdAt <= 0L || to.createdAt <= 0L ||
+            kotlin.math.abs(to.createdAt - from.createdAt) > 1_500L ||
+            from.tool != to.tool || from.color != to.color ||
+            from.points.isEmpty() || to.points.isEmpty()
+        ) return@forEach
+
+        val fromPoint = from.points.last()
+        val toPoint = to.points.first()
+        if (kotlin.math.abs(fromPoint.x - toPoint.x) > 0.16f) return@forEach
+        val boundaryX = ((fromPoint.x + toPoint.x) / 2f).coerceIn(0f, 1f)
+        when {
+            to.page == from.page + 1 && fromPoint.y >= 0.72f && toPoint.y <= 0.28f -> {
+                bridged[fromIndex] = from.copy(
+                    points = if (fromPoint.y >= 0.999f) from.points
+                    else from.points + PdfInkPoint(boundaryX, 1f)
+                )
+                bridged[toIndex] = to.copy(
+                    points = if (toPoint.y <= 0.001f) to.points
+                    else listOf(PdfInkPoint(boundaryX, 0f)) + to.points
+                )
+            }
+            to.page == from.page - 1 && fromPoint.y <= 0.28f && toPoint.y >= 0.72f -> {
+                bridged[fromIndex] = from.copy(
+                    points = if (fromPoint.y <= 0.001f) from.points
+                    else from.points + PdfInkPoint(boundaryX, 0f)
+                )
+                bridged[toIndex] = to.copy(
+                    points = if (toPoint.y >= 0.999f) to.points
+                    else listOf(PdfInkPoint(boundaryX, 1f)) + to.points
+                )
+            }
+        }
+    }
+    return bridged
+}
+
+private fun strokeHitsPoint(stroke: PdfInkStroke, point: PdfInkPoint): Boolean {
+    val threshold = (stroke.width * 1.8f).coerceAtLeast(0.022f)
+    if (stroke.points.size == 1) return distanceSquared(stroke.points.first(), point) <= threshold * threshold
+    return stroke.points.zipWithNext().any { (start, end) ->
+        distanceToSegmentSquared(point, start, end) <= threshold * threshold
+    }
+}
+
+private fun distanceSquared(first: PdfInkPoint, second: PdfInkPoint): Float {
+    val dx = first.x - second.x
+    val dy = first.y - second.y
+    return dx * dx + dy * dy
+}
+
+private fun distanceToSegmentSquared(point: PdfInkPoint, start: PdfInkPoint, end: PdfInkPoint): Float {
+    val dx = end.x - start.x
+    val dy = end.y - start.y
+    val lengthSquared = dx * dx + dy * dy
+    if (lengthSquared <= 0.000001f) return distanceSquared(point, start)
+    val projection = ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared
+    val t = projection.coerceIn(0f, 1f)
+    return distanceSquared(
+        point,
+        PdfInkPoint(start.x + t * dx, start.y + t * dy)
+    )
 }
 
 private suspend fun renderPdfPage(context: Context, filePath: String, pageIndex: Int): Bitmap? = withContext(Dispatchers.IO) {
@@ -1832,6 +2631,141 @@ private fun PdfTocSheet(
                             isClosing = true
                         }
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PdfBookmarksSheet(
+    visible: Boolean,
+    bookmarks: List<Bookmark>,
+    currentPage: Int,
+    onPageSelected: (Int) -> Unit,
+    onDelete: (Bookmark) -> Unit,
+    onDismiss: () -> Unit,
+    eInkModeEnabled: Boolean = false
+) {
+    if (!visible) return
+    val eInkMode = eInkModeEnabled || LocalEInkMode.current
+    val sheetOffset = remember { Animatable(1f) }
+    var closing by remember { mutableStateOf(false) }
+    val predictiveBackProgress = ConfigurableBottomSheetBackHandler { closing = true }
+
+    LaunchedEffect(visible) {
+        sheetOffset.snapTo(1f)
+        if (eInkMode) sheetOffset.snapTo(0f) else sheetOffset.animateBottomSheetIn()
+    }
+    LaunchedEffect(closing) {
+        if (closing) {
+            if (eInkMode) sheetOffset.snapTo(1f) else sheetOffset.animateBottomSheetOut()
+            onDismiss()
+        }
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(AppColors.Scrim.copy(alpha = 0.24f * (1f - sheetOffset.value)))
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() }
+                ) { closing = true }
+        )
+        LiquidGlassColumnSheetContainer(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .fillMaxHeight(0.62f)
+                .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress),
+            contentModifier = Modifier
+                .fillMaxSize()
+                .navigationBarsPadding()
+                .padding(horizontal = 24.dp, vertical = 24.dp),
+            fallbackColor = AppColors.CardBg,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(R.string.reader_bookmark),
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = resolveAppFontFamily(KaiTi),
+                    color = AppColors.TextPrimary
+                )
+                Spacer(Modifier.weight(1f))
+                LiquidGlassIconButton(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = stringResource(R.string.pdf_close),
+                    onClick = { closing = true },
+                    size = 44.dp,
+                    iconSize = 20.dp,
+                    contentColor = AppColors.TextPrimary,
+                    normalContainerColor = AppColors.BgGray
+                )
+            }
+            Spacer(Modifier.height(14.dp))
+            if (bookmarks.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        stringResource(R.string.no_bookmarks),
+                        color = AppColors.TextSecondary,
+                        fontSize = 14.sp
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(bottom = 16.dp)
+                ) {
+                    items(bookmarks, key = { it.id }) { bookmark ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 64.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(
+                                    if (bookmark.chapterIndex == currentPage) AppColors.Accent.copy(alpha = 0.12f)
+                                    else AppColors.BgGray
+                                )
+                                .clickable {
+                                    onPageSelected(bookmark.chapterIndex)
+                                    closing = true
+                                }
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Bookmark, null, tint = AppColors.Accent, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    bookmark.title.ifBlank { stringResource(R.string.reader_bookmark) },
+                                    fontSize = 14.sp,
+                                    color = AppColors.TextPrimary,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    stringResource(R.string.pdf_page_desc, bookmark.chapterIndex + 1),
+                                    fontSize = 12.sp,
+                                    color = AppColors.TextSecondary
+                                )
+                            }
+                            LiquidGlassIconButton(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = stringResource(R.string.delete),
+                                onClick = { onDelete(bookmark) },
+                                size = 36.dp,
+                                iconSize = 17.dp,
+                                contentColor = Color(0xFFE85D5D),
+                                normalContainerColor = Color.Transparent
+                            )
+                        }
+                    }
                 }
             }
         }

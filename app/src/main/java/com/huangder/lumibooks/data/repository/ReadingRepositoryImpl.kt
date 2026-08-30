@@ -107,6 +107,10 @@ class ReadingRepositoryImpl @Inject constructor(
         noteDao.deleteAllNotesByBookId(bookId)
     }
 
+    override suspend fun deleteLegacyPdfAnnotationsByBookId(bookId: String) {
+        noteDao.deleteLegacyPdfAnnotationsByBookId(bookId)
+    }
+
     override fun getMostReadBooks(limit: Int): Flow<List<BookDuration>> {
         return readingRecordDao.getMostReadBooks(limit)
     }

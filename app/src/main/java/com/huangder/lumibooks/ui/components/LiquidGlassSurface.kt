@@ -1,9 +1,13 @@
 package com.huangder.lumibooks.ui.components
 
-import androidx.compose.foundation.LocalIndication
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +20,7 @@ import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -249,7 +254,8 @@ internal fun supportsLiquidGlassLens(shape: Shape): Boolean =
 fun Modifier.liquidGlassSheetSurface(
     fallbackColor: Color,
     shape: Shape,
-    backdrop: Backdrop? = null
+    backdrop: Backdrop? = null,
+    forceFallback: Boolean = false
 ): Modifier {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val isDark = LocalIsDarkTheme.current
@@ -269,7 +275,7 @@ fun Modifier.liquidGlassSheetSurface(
                 spotColor = Color.Black.copy(alpha = if (isDark) 0.40f else 0.30f)
             )
 
-        if (activeBackdrop != null) {
+        if (activeBackdrop != null && !forceFallback) {
             floatingSurface.liquidGlassBackdrop(
                 backdrop = activeBackdrop,
                 shape = floatingShape,
@@ -309,6 +315,7 @@ fun LiquidGlassSheetContainer(
     modifier: Modifier = Modifier,
     contentModifier: Modifier = Modifier,
     backdrop: Backdrop? = null,
+    forceFallback: Boolean = false,
     contentAlignment: Alignment = Alignment.TopStart,
     content: @Composable BoxScope.() -> Unit
 ) {
@@ -329,10 +336,11 @@ fun LiquidGlassSheetContainer(
                         if (isLiquidGlass) Modifier.layerBackdrop(containerBackdrop) else Modifier
                     )
                     .liquidGlassSheetSurface(
-                        fallbackColor = fallbackColor,
-                        shape = shape,
-                        backdrop = parentBackdrop
-                    )
+                         fallbackColor = fallbackColor,
+                         shape = shape,
+                         backdrop = parentBackdrop,
+                         forceFallback = forceFallback
+                     )
             )
             ProvideLiquidGlassBackdrop(containerBackdrop.takeIf { isLiquidGlass }) {
                 Box(
@@ -365,6 +373,7 @@ fun LiquidGlassColumnSheetContainer(
     modifier: Modifier = Modifier,
     contentModifier: Modifier = Modifier,
     backdrop: Backdrop? = null,
+    forceFallback: Boolean = false,
     verticalArrangement: Arrangement.Vertical = Arrangement.Top,
     content: @Composable ColumnScope.() -> Unit
 ) {
@@ -372,7 +381,8 @@ fun LiquidGlassColumnSheetContainer(
         fallbackColor = fallbackColor,
         shape = shape,
         modifier = modifier,
-        backdrop = backdrop
+        backdrop = backdrop,
+        forceFallback = forceFallback
     ) {
         Column(
             modifier = contentModifier.fillMaxWidth(),
@@ -395,6 +405,7 @@ fun LiquidGlassSurface(
     enabled: Boolean = true,
     onClick: (() -> Unit)? = null,
     interactive: Boolean = onClick != null,
+    pressFeedbackEnabled: Boolean = true,
     effectPadding: Dp = 0.dp,
     outlineWidth: Dp = 0.8.dp,
     highlightColor: Color = fallbackColor,
@@ -414,6 +425,13 @@ fun LiquidGlassSurface(
     val motionEnabled = LocalMotionEnabled.current
     val activeBackdrop = backdrop ?: LocalLiquidGlassBackdrop.current
     val density = LocalDensity.current
+    val clickInteractionSource = remember { MutableInteractionSource() }
+    val pressed by clickInteractionSource.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressFeedbackEnabled && onClick != null && motionEnabled && pressed) 0.96f else 1f,
+        animationSpec = if (motionEnabled) tween(durationMillis = 90) else snap(),
+        label = "liquidGlassSurfacePressScale"
+    )
     val lensShape = remember(shape, density) {
         if (shape is G2ContinuousCornerShape) {
             RoundedCornerShape(with(density) { shape.cornerRadius.toDp() })
@@ -432,8 +450,8 @@ fun LiquidGlassSurface(
         supportsLiquidGlassLens(lensShape)
     val clickModifier = if (onClick != null) {
         Modifier.clickable(
-            interactionSource = null,
-            indication = if (handlesButtonGesture) null else LocalIndication.current,
+            interactionSource = clickInteractionSource,
+            indication = null,
             enabled = enabled,
             role = Role.Button
         ) {
@@ -543,6 +561,10 @@ fun LiquidGlassSurface(
     Box(
         modifier = modifier
             .then(decorationModifier ?: defaultGlassShadow)
+            .graphicsLayer {
+                scaleX = pressScale
+                scaleY = pressScale
+            }
             .then(clickModifier)
             .then(interactionModifier),
         contentAlignment = contentAlignment

@@ -193,6 +193,7 @@ fun ThemeSettingsSheet(
     customBackgrounds: List<ReaderBackgroundPreset> = emptyList(),
     readerThemeSuites: List<ReaderThemeSuite> = ReaderThemeSuites.defaults(),
     activeReaderThemeSuiteId: String = ReaderThemeSuites.DAY_ID,
+    readerThemeSuiteBookScoped: Boolean = false,
     customFonts: List<CustomFontPreset> = emptyList(),
     currentPreserveEpubBackground: Boolean = true,
     currentBrightness: Float = -1f,
@@ -216,6 +217,7 @@ fun ThemeSettingsSheet(
     onThemeSuiteCreate: (String) -> Unit = {},
     onThemeSuiteDelete: (String) -> Unit = {},
     onThemeSuitesReorder: (List<String>) -> Unit = {},
+    onThemeSuiteBookScopedChange: (Boolean) -> Unit = {},
     onPreserveEpubBackgroundChange: (Boolean) -> Unit = {},
     onBrightnessChange: (Float) -> Unit = {},
     onOptimizeLayoutChange: (Boolean) -> Unit = {},
@@ -572,6 +574,24 @@ fun ThemeSettingsSheet(
                     onDelete = onThemeSuiteDelete,
                     onReorder = onThemeSuitesReorder
                 )
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.reader_theme_suite_apply_to_book),
+                        fontSize = 14.sp,
+                        color = AppColors.TextPrimary
+                    )
+                    Spacer(Modifier.weight(1f))
+                    LiquidGlassSwitch(
+                        checked = readerThemeSuiteBookScoped,
+                        onCheckedChange = onThemeSuiteBookScopedChange
+                    )
+                }
             }
 
 
@@ -2930,7 +2950,7 @@ private fun readerTextAlignmentLabel(alignment: ReaderTextAlignment): String = s
 )
 
 private fun ReaderTextAlignment.toComposeTextAlign(): TextAlign = when (this) {
-    ReaderTextAlignment.NATURAL -> TextAlign.Unspecified
+    ReaderTextAlignment.NATURAL -> TextAlign.Justify
     ReaderTextAlignment.LEFT -> TextAlign.Left
     ReaderTextAlignment.CENTER -> TextAlign.Center
     ReaderTextAlignment.RIGHT -> TextAlign.Right

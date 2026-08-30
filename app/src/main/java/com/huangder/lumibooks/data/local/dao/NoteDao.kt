@@ -67,4 +67,7 @@ interface NoteDao {
 
     @Query("DELETE FROM notes WHERE bookId = :bookId")
     suspend fun deleteAllNotesByBookId(bookId: String)
+
+    @Query("DELETE FROM notes WHERE bookId = :bookId AND type NOT LIKE 'pdf_ink_%'")
+    suspend fun deleteLegacyPdfAnnotationsByBookId(bookId: String)
 }

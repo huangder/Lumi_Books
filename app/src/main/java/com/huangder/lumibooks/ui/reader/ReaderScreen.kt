@@ -102,6 +102,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.VerticalAlignBottom
 import androidx.compose.material.icons.filled.VerticalAlignTop
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -120,6 +121,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -1131,8 +1133,10 @@ fun ReaderScreen(
     var firstContentReported by remember(bookId) { mutableStateOf(false) }
     // pageReady is emitted after the renderer has populated its current page. Waiting for the
     // following frame makes the navigation transition follow visible content instead of parsing.
-    LaunchedEffect(uiState.pageReady, uiState.isLoading, bookId) {
-        if (!firstContentReported && uiState.pageReady && !uiState.isLoading) {
+    LaunchedEffect(uiState.pageReady, uiState.isLoading, uiState.error, bookId) {
+        if (!firstContentReported && !uiState.isLoading &&
+            (uiState.pageReady || uiState.error != null)
+        ) {
             ReaderOpenPerformance.beginStage(bookId, ReaderOpenStage.FIRST_FRAME)
             withFrameNanos { }
             firstContentReported = true
@@ -1147,18 +1151,47 @@ fun ReaderScreen(
         viewModel.clearTtsError()
     }
 
-    // 恢复阅读进度：pendingPageFraction > 0 时跳转到目标页
-    LaunchedEffect(uiState.pageReady, uiState.pendingPageFraction, isContinuousScrollMode) {
+    // 恢复阅读进度：精确字符锚点优先，旧记录再按章节比例换算页码。
+    LaunchedEffect(
+        uiState.pageReady,
+        uiState.pendingPageFraction,
+        uiState.pendingReaderPosition,
+        isContinuousScrollMode
+    ) {
         // Continuous scroll owns pendingPageFraction while crossing the mode boundary. Letting the
         // detached paged reader consume it first resets single-chapter TXT books to their first page.
-        if (isContinuousScrollMode || !uiState.pageReady || uiState.pendingPageFraction <= 0f) {
+        if (isContinuousScrollMode || !uiState.pageReady) {
             return@LaunchedEffect
         }
         val readView = readViewRef.value ?: return@LaunchedEffect
+        val readerPosition = uiState.pendingReaderPosition
+        if (readerPosition != null) {
+            val characterOffset = readerPosition.characterOffset
+            if (characterOffset != null) {
+                readView.jumpToCharacter(readerPosition.chapterIndex, characterOffset)
+            } else {
+                val totalPages = readView.getChapterPageCount(readerPosition.chapterIndex)
+                if (totalPages > 0) {
+                    readView.jumpToChapter(
+                        readerPosition.chapterIndex,
+                        restoredPagedPageIndex(
+                            readerPosition.chapterFraction,
+                            totalPages,
+                            ReaderPageFractionSemantics.START
+                        )
+                    )
+                }
+            }
+            return@LaunchedEffect
+        }
+        if (uiState.pendingPageFraction <= 0f) return@LaunchedEffect
         val totalPages = readView.getChapterPageCount(uiState.currentChapterIndex)
         if (totalPages > 0) {
-            val targetPage = (totalPages * uiState.pendingPageFraction).toInt()
-                .coerceIn(0, totalPages - 1)
+            val targetPage = restoredPagedPageIndex(
+                uiState.pendingPageFraction,
+                totalPages,
+                uiState.pendingPageFractionSemantics
+            )
             if (targetPage > 0) {
                 readView.jumpToChapter(uiState.currentChapterIndex, targetPage)
             }
@@ -2967,6 +3000,7 @@ fun ReaderScreen(
                 customBackgrounds = uiState.customReaderBackgrounds,
                 readerThemeSuites = uiState.readerThemeSuites,
                 activeReaderThemeSuiteId = uiState.activeReaderThemeSuiteId,
+                readerThemeSuiteBookScoped = uiState.readerThemeSuiteBookScoped,
                 customFonts = uiState.customFonts,
                 currentPreserveEpubBackground = effectivePreserveEpubBackground,
                 currentBrightness = uiState.brightness,
@@ -2989,6 +3023,7 @@ fun ReaderScreen(
                 onThemeSuiteCreate = viewModel::createReaderThemeSuite,
                 onThemeSuiteDelete = viewModel::deleteReaderThemeSuite,
                 onThemeSuitesReorder = viewModel::reorderReaderThemeSuites,
+                onThemeSuiteBookScopedChange = viewModel::setApplyThemeSuiteToBook,
                 onPreserveEpubBackgroundChange = viewModel::savePreserveEpubBackground,
                 onBrightnessChange = { viewModel.saveBrightness(it) },
                 onOptimizeLayoutChange = { viewModel.saveOptimizeLayout(it) },
@@ -3123,12 +3158,22 @@ fun ReaderScreen(
                 }
             )
 
-            // 高级排版设置弹窗
-            val previewText = remember(uiState.currentChapterIndex) {
-                viewModel.getChapterText(uiState.currentChapterIndex)
-                    ?.toString()
-                    ?.replace('\uFFFC', ' ')
-                    ?.take(420) ?: ""
+            // 高级排版设置弹窗。不要在组合阶段同步读取/格式化整章文本：
+            // 大型 EPUB 的 getChapterText() 可能需要数十秒，并且会阻塞主线程导致 ANR。
+            var previewText by remember(bookId) { mutableStateOf("") }
+            LaunchedEffect(showAdvancedSheet, uiState.currentChapterIndex, uiState.contentRevision) {
+                if (!showAdvancedSheet) {
+                    previewText = ""
+                    return@LaunchedEffect
+                }
+                val chapterIndex = uiState.currentChapterIndex
+                previewText = withContext(Dispatchers.IO) {
+                    viewModel.getChapterText(chapterIndex)
+                        ?.toString()
+                        ?.replace('\uFFFC', ' ')
+                        ?.take(420)
+                        .orEmpty()
+                }
             }
             AdvancedSettingsSheet(
                 visible = showAdvancedSheet,
@@ -4669,6 +4714,12 @@ private fun CatalogCapsule(
 
     var dragProgress by remember { mutableFloatStateOf(progress) }
     var isDragging by remember { mutableStateOf(false) }
+    var isPressed by remember { mutableStateOf(false) }
+    val capsuleScale by animateFloatAsState(
+        targetValue = if (LocalMotionEnabled.current && isPressed) 0.96f else 1f,
+        animationSpec = if (LocalMotionEnabled.current) tween(durationMillis = 90) else snap(),
+        label = "catalogCapsulePressScale"
+    )
     val dragSession = remember { CatalogProgressDragSession() }
     LaunchedEffect(progress) { if (!isDragging) dragProgress = progress }
 
@@ -4736,7 +4787,12 @@ private fun CatalogCapsule(
             fallbackColor = bgColor,
             contentScrimColor = glassContentScrimColor,
             forceFallback = forceSolid,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = capsuleScale
+                    scaleY = capsuleScale
+                },
             onClick = null,
             interactive = false,
             contentAlignment = Alignment.TopStart
@@ -4816,6 +4872,7 @@ private fun CatalogCapsule(
                         }
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
+                            isPressed = true
                             var cumDrag = 0f
                             var dragging = false
                             var committed = false
@@ -4860,6 +4917,7 @@ private fun CatalogCapsule(
                                     latestOnDragCancel?.invoke()
                                 }
                                 isDragging = false
+                                isPressed = false
                             }
                         }
                     } else Modifier
@@ -5316,7 +5374,7 @@ private fun ContinuousScrollReader(
                 AndroidView(
                     factory = { context ->
                         ContinuousSelectableTextView(context).apply {
-                            breakStrategy = android.text.Layout.BREAK_STRATEGY_HIGH_QUALITY
+                            breakStrategy = textAlignment.readerBreakStrategy()
                             hyphenationFrequency = android.text.Layout.HYPHENATION_FREQUENCY_NONE
                         }
                     },
@@ -5354,11 +5412,11 @@ private fun ContinuousScrollReader(
                         } else {
                             0f
                         }
-                        textView.justificationMode = if (textAlignment == ReaderTextAlignment.JUSTIFY) {
-                            android.text.Layout.JUSTIFICATION_MODE_INTER_WORD
-                        } else {
-                            android.text.Layout.JUSTIFICATION_MODE_NONE
+                        val breakStrategy = textAlignment.readerBreakStrategy()
+                        if (textView.breakStrategy != breakStrategy) {
+                            textView.breakStrategy = breakStrategy
                         }
+                        textView.justificationMode = textAlignment.readerJustificationMode()
                         textView.setReaderText(selectableText)
                     },
                     modifier = Modifier.fillMaxWidth()
@@ -5543,6 +5601,9 @@ private fun TocSheet(
     val tocListState = rememberLazyListState(
         initialFirstVisibleItemIndex = currentEntryIndex.coerceAtLeast(0)
     )
+    val currentDirectVisibleIndex = remember(visibleEntries, currentSourceIndex) {
+        visibleEntries.indexOfFirst { it.sourceIndex == currentSourceIndex }
+    }
     val bookmarkListState = rememberLazyListState()
     var activeSection by remember { mutableStateOf("toc") }
     var editingBookmark by remember {
@@ -5553,6 +5614,26 @@ private fun TocSheet(
             compareBy<com.huangder.lumibooks.domain.model.Bookmark> { it.chapterIndex }
                 .thenBy { it.position }
         )
+    }
+    val motionEnabled = LocalMotionEnabled.current
+    val showReturnToCurrent by remember(
+        tocListState,
+        currentSourceIndex,
+        currentDirectVisibleIndex,
+        activeSection
+    ) {
+        derivedStateOf {
+            if (activeSection != "toc" || currentSourceIndex < 0) return@derivedStateOf false
+            val layout = tocListState.layoutInfo
+            !isTocItemVisible(
+                itemIndex = currentDirectVisibleIndex,
+                viewportStartOffset = layout.viewportStartOffset,
+                viewportEndOffset = layout.viewportEndOffset,
+                visibleItems = layout.visibleItemsInfo.map {
+                    TocViewportItem(it.index, it.offset, it.size)
+                }
+            )
+        }
     }
 
     // Center the reading position only when this sheet instance opens. Folding changes the
@@ -5721,7 +5802,7 @@ private fun TocSheet(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(end = 12.dp),
-                        contentPadding = PaddingValues(bottom = 24.dp)
+                        contentPadding = PaddingValues(bottom = 88.dp)
                     ) {
                         items(
                             count = visibleEntries.size,
@@ -5735,7 +5816,7 @@ private fun TocSheet(
                                 val isFoldable = originalIndex in foldGroups
                                 val collapsed = originalIndex in collapsedGroups
                                 val isCurrent =
-                                    (entry.chapterIndex >= 0 && entry.chapterIndex == currentChapter) ||
+                                    (entry.chapterIndex >= 0 && originalIndex == currentSourceIndex) ||
                                         (collapsed && currentSourceIndex > originalIndex &&
                                             currentSourceIndex < (foldGroups[originalIndex] ?: originalIndex + 1))
                                 val arrowRotation by animateFloatAsState(
@@ -5809,7 +5890,7 @@ private fun TocSheet(
                                 }
                             } else {
                                 // 实际章节：可点击，根据 level 缩进
-                                val isCurrent = entry.chapterIndex == currentChapter
+                                val isCurrent = originalIndex == currentSourceIndex
                                 val indent = ((entry.level - 1) * 20).dp
 
                                 Box(
@@ -5860,6 +5941,42 @@ private fun TocSheet(
                         },
                         modifier = Modifier
                             .fillMaxSize()
+                    )
+
+                    TocReturnToCurrentButton(
+                        visible = showReturnToCurrent,
+                        motionEnabled = motionEnabled,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 16.dp, bottom = 24.dp),
+                        onClick = {
+                            if (currentSourceIndex >= 0) {
+                                scope.launch {
+                                    val nextCollapsed = collapsedGroups - collapsedTocAncestors(
+                                        currentSourceIndex, foldGroups, collapsedGroups
+                                    )
+                                    collapsedGroups = nextCollapsed
+                                    val targetIndex = visibleTocEntries(
+                                        tocEntries, foldGroups, nextCollapsed
+                                    ).indexOfFirst { it.sourceIndex == currentSourceIndex }
+                                    if (targetIndex >= 0) {
+                                        withFrameNanos { }
+                                        tocListState.scrollToItem(targetIndex)
+                                        withFrameNanos { }
+                                        val layout = tocListState.layoutInfo
+                                        val targetItem = layout.visibleItemsInfo
+                                            .firstOrNull { it.index == targetIndex }
+                                        if (targetItem != null) {
+                                            val centeredOffset = layout.viewportStartOffset +
+                                                (layout.viewportEndOffset - layout.viewportStartOffset - targetItem.size) / 2
+                                            tocListState.scrollBy(
+                                                (targetItem.offset - centeredOffset).toFloat()
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     )
                 }
             } else {
@@ -5947,6 +6064,41 @@ private fun TocSheet(
                 }
             )
         }
+    }
+}
+
+@Composable
+internal fun TocReturnToCurrentButton(
+    visible: Boolean,
+    motionEnabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    androidx.compose.animation.AnimatedVisibility(
+        visible = visible,
+        modifier = modifier,
+        enter = if (motionEnabled) {
+            fadeIn(tween(180)) + scaleIn(tween(220), initialScale = 0.72f)
+        } else {
+            EnterTransition.None
+        },
+        exit = if (motionEnabled) {
+            fadeOut(tween(140)) + scaleOut(tween(160), targetScale = 0.72f)
+        } else {
+            ExitTransition.None
+        }
+    ) {
+        LiquidGlassIconButton(
+            imageVector = Icons.Default.Refresh,
+            contentDescription = stringResource(R.string.reader_toc_return_to_current),
+            onClick = onClick,
+            size = 48.dp,
+            iconSize = 22.dp,
+            contentColor = AppColors.OnAccent,
+            normalContainerColor = AppColors.Accent,
+            liquidContainerColor = AppColors.Accent,
+            liquidScrimColor = AppColors.Accent.copy(alpha = 0.82f)
+        )
     }
 }
 
