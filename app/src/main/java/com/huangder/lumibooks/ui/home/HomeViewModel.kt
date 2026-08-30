@@ -54,7 +54,9 @@ data class BookImportCandidate(
     val uri: Uri,
     val name: String,
     val sourceDirectoryUri: String? = null,
-    val sourceDirectoryName: String? = null
+    val sourceDirectoryName: String? = null,
+    /** Directory path relative to the authorized root, separated by '/'. */
+    val sourceRelativeDirectory: String? = null
 )
 
 data class HomeUiState(
@@ -460,7 +462,8 @@ class HomeViewModel @Inject constructor(
                     uri = candidate.uri,
                     name = candidate.name,
                     sourceDirectoryUri = candidate.sourceDirectoryUri,
-                    sourceDirectoryName = candidate.sourceDirectoryName
+                    sourceDirectoryName = candidate.sourceDirectoryName,
+                    sourceRelativeDirectory = candidate.sourceRelativeDirectory
                 )
             },
             copyIntoApp = false,
@@ -598,8 +601,12 @@ class HomeViewModel @Inject constructor(
     private fun discoverBooks(context: Context, treeUri: Uri): List<BookDocument> {
         val resolver = context.contentResolver
         val sourceDirectoryName = resolveAuthorizedDirectoryName(context, treeUri)
-        val pendingDirectories = ArrayDeque<String>()
-        pendingDirectories += DocumentsContract.getTreeDocumentId(treeUri)
+        val pendingDirectories = ArrayDeque<PendingAuthorizedDirectory>()
+        pendingDirectories += PendingAuthorizedDirectory(
+            documentId = DocumentsContract.getTreeDocumentId(treeUri),
+            relativeDirectory = null
+        )
+        val visitedDirectories = mutableSetOf<String>()
         val discovered = mutableListOf<BookDocument>()
         val projection = arrayOf(
             DocumentsContract.Document.COLUMN_DOCUMENT_ID,
@@ -608,7 +615,9 @@ class HomeViewModel @Inject constructor(
         )
 
         while (pendingDirectories.isNotEmpty()) {
-            val parentId = pendingDirectories.removeFirst()
+            val pending = pendingDirectories.removeFirst()
+            if (!visitedDirectories.add(pending.documentId)) continue
+            val parentId = pending.documentId
             val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentId)
             resolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
                 val idIndex = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
@@ -619,13 +628,24 @@ class HomeViewModel @Inject constructor(
                     val name = cursor.getString(nameIndex).orEmpty()
                     val mimeType = cursor.getString(mimeIndex).orEmpty()
                     if (mimeType == DocumentsContract.Document.MIME_TYPE_DIR) {
-                        pendingDirectories += documentId
+                        val childName = name.trim()
+                        val childRelativeDirectory = if (childName.isBlank()) {
+                            pending.relativeDirectory
+                        } else {
+                            listOfNotNull(pending.relativeDirectory, childName)
+                                .joinToString("/")
+                        }
+                        pendingDirectories += PendingAuthorizedDirectory(
+                            documentId = documentId,
+                            relativeDirectory = childRelativeDirectory
+                        )
                     } else if (FileUtils.getFileExtension(name) in SUPPORTED_BOOK_EXTENSIONS) {
                         discovered += BookDocument(
                             uri = DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId),
                             name = name,
                             sourceDirectoryUri = treeUri.toString(),
-                            sourceDirectoryName = sourceDirectoryName
+                            sourceDirectoryName = sourceDirectoryName,
+                            sourceRelativeDirectory = pending.relativeDirectory
                         )
                     }
                 }
@@ -713,7 +733,12 @@ class HomeViewModel @Inject constructor(
                         ?.let(FolderNameValidator::clean)
                         ?.take(FolderNameValidator.MAX_LENGTH)
                         ?.takeIf(FolderNameValidator::isValid)
-                        ?.let { folderRepository.getOrCreateRootFolder(it).id }
+                        ?.let {
+                            folderRepository.getOrCreateFolderPath(
+                                rootName = it,
+                                relativeDirectory = document.sourceRelativeDirectory
+                            ).id
+                        }
                 } else {
                     targetFolderId
                 }
@@ -738,15 +763,22 @@ class HomeViewModel @Inject constructor(
         val uri: Uri,
         val name: String,
         val sourceDirectoryUri: String? = null,
-        val sourceDirectoryName: String? = null
+        val sourceDirectoryName: String? = null,
+        val sourceRelativeDirectory: String? = null
     ) {
         fun toCandidate() = BookImportCandidate(
             uri = uri,
             name = name,
             sourceDirectoryUri = sourceDirectoryUri,
-            sourceDirectoryName = sourceDirectoryName
+            sourceDirectoryName = sourceDirectoryName,
+            sourceRelativeDirectory = sourceRelativeDirectory
         )
     }
+
+    private data class PendingAuthorizedDirectory(
+        val documentId: String,
+        val relativeDirectory: String?
+    )
 
     private data class BookDiscoveryResult(
         val documents: List<BookDocument> = emptyList(),

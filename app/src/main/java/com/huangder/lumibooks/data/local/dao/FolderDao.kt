@@ -86,6 +86,22 @@ abstract class FolderDao {
         return folder
     }
 
+    /**
+     * Gets or creates every folder in an authorized source path atomically. The first entity is
+     * always the root folder; child entities are rebound to the ID of the folder that was found
+     * or created at the previous level so an existing root can be safely reused.
+     */
+    @Transaction
+    open suspend fun getOrCreateFolderPath(path: List<FolderEntity>): FolderEntity {
+        require(path.isNotEmpty()) { "Folder path cannot be empty" }
+        var current = getOrCreateRootFolder(path.first())
+        for (proposed in path.drop(1)) {
+            current = getFolderByNormalizedName(proposed.normalizedName, current.id)
+                ?: proposed.copy(parentId = current.id).also { insertFolder(it) }
+        }
+        return current
+    }
+
     @Transaction
     open suspend fun renameFolderIfAvailable(
         folderId: String,

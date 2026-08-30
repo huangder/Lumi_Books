@@ -106,7 +106,8 @@ data class SelectedImportBook(
     val uri: Uri,
     val name: String,
     val sourceDirectoryUri: String? = null,
-    val sourceDirectoryName: String? = null
+    val sourceDirectoryName: String? = null,
+    val sourceRelativeDirectory: String? = null
 )
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -33,6 +33,26 @@ class FolderRepositoryImpl @Inject constructor(
         return folderDao.getOrCreateRootFolder(newFolder(rawName, null)).toDomain()
     }
 
+    override suspend fun getOrCreateFolderPath(
+        rootName: String,
+        relativeDirectory: String?
+    ): LibraryFolder {
+        val sanitizedRoot = sanitizeFolderSegment(rootName)
+            ?: error("Invalid authorized folder name")
+        val path = buildList {
+            add(newFolder(sanitizedRoot, null))
+            relativeDirectory
+                .orEmpty()
+                .split('/')
+                .asSequence()
+                .mapNotNull(::sanitizeFolderSegment)
+                .forEach { segment ->
+                    add(newFolder(segment, last().id))
+                }
+        }
+        return folderDao.getOrCreateFolderPath(path).toDomain()
+    }
+
     override suspend fun renameFolder(folderId: String, rawName: String): Boolean {
         if (!FolderNameValidator.isValid(rawName)) return false
         val name = FolderNameValidator.clean(rawName)
@@ -85,6 +105,11 @@ class FolderRepositoryImpl @Inject constructor(
             createdAt = System.currentTimeMillis()
         )
     }
+
+    private fun sanitizeFolderSegment(rawName: String): String? =
+        FolderNameValidator.clean(rawName)
+            .take(FolderNameValidator.MAX_LENGTH)
+            .takeIf(FolderNameValidator::isValid)
 
     private fun FolderEntity.toDomain() = LibraryFolder(
         id = id,

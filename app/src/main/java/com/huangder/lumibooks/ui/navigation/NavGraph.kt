@@ -264,7 +264,8 @@ fun MainNavGraph(
                             uri = candidate.uri,
                             name = candidate.name,
                             sourceDirectoryUri = candidate.sourceDirectoryUri,
-                            sourceDirectoryName = candidate.sourceDirectoryName
+                            sourceDirectoryName = candidate.sourceDirectoryName,
+                            sourceRelativeDirectory = candidate.sourceRelativeDirectory
                         )
                     }
                     if (selected.isNotEmpty()) {
@@ -790,7 +791,8 @@ fun MainNavGraph(
                                     uri = candidate.uri,
                                     name = candidate.name,
                                     sourceDirectoryUri = candidate.sourceDirectoryUri,
-                                    sourceDirectoryName = candidate.sourceDirectoryName
+                                    sourceDirectoryName = candidate.sourceDirectoryName,
+                                    sourceRelativeDirectory = candidate.sourceRelativeDirectory
                                 )
                             }
                             if (selected.isNotEmpty()) {
@@ -915,7 +917,8 @@ fun MainNavGraph(
                                     uri = book.uri,
                                     name = book.name,
                                     sourceDirectoryUri = book.sourceDirectoryUri,
-                                    sourceDirectoryName = book.sourceDirectoryName
+                                    sourceDirectoryName = book.sourceDirectoryName,
+                                    sourceRelativeDirectory = book.sourceRelativeDirectory
                                 )
                             },
                             groupBySourceFolder = true
@@ -934,7 +937,8 @@ fun MainNavGraph(
                                     uri = book.uri,
                                     name = book.name,
                                     sourceDirectoryUri = book.sourceDirectoryUri,
-                                    sourceDirectoryName = book.sourceDirectoryName
+                                    sourceDirectoryName = book.sourceDirectoryName,
+                                    sourceRelativeDirectory = book.sourceRelativeDirectory
                                 )
                             },
                             groupBySourceFolder = false

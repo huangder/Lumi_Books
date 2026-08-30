@@ -10,6 +10,10 @@ interface FolderRepository {
     fun getAllBookFolderLinks(): Flow<List<BookFolderLink>>
     suspend fun createFolder(rawName: String, parentId: String?): LibraryFolder?
     suspend fun getOrCreateRootFolder(rawName: String): LibraryFolder
+    suspend fun getOrCreateFolderPath(
+        rootName: String,
+        relativeDirectory: String?
+    ): LibraryFolder
     suspend fun renameFolder(folderId: String, rawName: String): Boolean
     suspend fun updateFolderCover(folderId: String, coverPath: String?): Boolean
     suspend fun initializeFolderPreview(folderId: String, orderedBookIds: List<String>): Boolean
