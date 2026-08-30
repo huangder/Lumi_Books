@@ -272,7 +272,6 @@
     <string name="sponsor_title">赞助开发</string>
     <string name="sponsor_desc">捐赠：如果你觉得不错的话，欢迎支持开发</string>
     <string name="sponsor_qr_desc">捐赠二维码</string>
-    <string name="sponsor_payment_menu">选择捐赠方式</string>
     <string name="sponsor_payment_wechat">WeChat 捐赠</string>
     <string name="sponsor_payment_paypal">PayPal 捐赠</string>
     <string name="sponsor_wechat_qr_desc">WeChat 捐赠二维码</string>

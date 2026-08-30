@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -27,14 +28,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.ChevronRight
-import androidx.compose.material.icons.outlined.MoreVert
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -46,9 +45,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -67,6 +67,7 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
+import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.fangSongFamily
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
@@ -143,7 +144,6 @@ private fun SponsorPage(
     val context = LocalContext.current
     var contributors by remember { mutableStateOf(fallbackContributors) }
     var paymentMethod by rememberSaveable { mutableStateOf(PaymentMethod.WECHAT.name) }
-    var paymentMenuExpanded by remember { mutableStateOf(false) }
     val selectedPayment = PaymentMethod.valueOf(paymentMethod)
 
     LaunchedEffect(Unit) {
@@ -197,6 +197,14 @@ private fun SponsorPage(
 
             Spacer(Modifier.height(AppSpace.md))
 
+            SponsorPaymentTagSwitcher(
+                selectedPayment = selectedPayment,
+                onPaymentSelected = { paymentMethod = it.name },
+                modifier = Modifier.padding(horizontal = AppSpace.lg)
+            )
+
+            Spacer(Modifier.height(AppSpace.md))
+
             // 二维码卡片
             Column(
                 modifier = Modifier
@@ -208,44 +216,6 @@ private fun SponsorPage(
                     .padding(AppSpace.lg),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Spacer(Modifier.weight(1f))
-                    Box {
-                        IconButton(
-                            onClick = { paymentMenuExpanded = true },
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.MoreVert,
-                                contentDescription = stringResource(R.string.sponsor_payment_menu),
-                                tint = AppColors.TextSecondary
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = paymentMenuExpanded,
-                            onDismissRequest = { paymentMenuExpanded = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.sponsor_payment_wechat)) },
-                                onClick = {
-                                    paymentMethod = PaymentMethod.WECHAT.name
-                                    paymentMenuExpanded = false
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.sponsor_payment_paypal)) },
-                                onClick = {
-                                    paymentMethod = PaymentMethod.PAYPAL.name
-                                    paymentMenuExpanded = false
-                                }
-                            )
-                        }
-                    }
-                }
-
                 // 二维码
                 Image(
                     painter = painterResource(
@@ -339,6 +309,67 @@ private fun SponsorPage(
             )
 
             Spacer(Modifier.height(120.dp))
+        }
+    }
+}
+
+@Composable
+private fun SponsorPaymentTagSwitcher(
+    selectedPayment: PaymentMethod,
+    onPaymentSelected: (PaymentMethod) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val isDark = LocalIsDarkTheme.current
+    val options = listOf(
+        PaymentMethod.WECHAT to R.string.sponsor_payment_wechat,
+        PaymentMethod.PAYPAL to R.string.sponsor_payment_paypal
+    )
+    val selectedIndex = options.indexOfFirst { it.first == selectedPayment }.coerceAtLeast(0)
+    val indicatorProgress by animateFloatAsState(
+        targetValue = selectedIndex.toFloat(),
+        animationSpec = tween(200),
+        label = "sponsorPaymentIndicator"
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(40.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(AppColors.BgGray)
+            .padding(2.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(1f / options.size)
+                .fillMaxSize()
+                .graphicsLayer {
+                    translationX = indicatorProgress * size.width
+                }
+                .clip(RoundedCornerShape(18.dp))
+                .shadow(2.dp, RoundedCornerShape(18.dp))
+                .background(if (isDark) AppColors.CardBg else Color.White)
+        )
+        Row(Modifier.fillMaxSize()) {
+            options.forEach { (payment, labelRes) ->
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) { onPaymentSelected(payment) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = stringResource(labelRes),
+                        fontSize = AppType.BodySmall,
+                        fontWeight = if (payment == selectedPayment) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (payment == selectedPayment) AppColors.TextPrimary else AppColors.TextSecondary
+                    )
+                }
+            }
         }
     }
 }
