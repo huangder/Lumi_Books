@@ -719,4 +719,44 @@ software:
 The complete SIL Open Font License 1.1 text distributed with Lumi is available
 at:
 
-    app/src/main/assets/licenses/genryumin2-ofl-1.1.txt
+app/src/main/assets/licenses/genryumin2-ofl-1.1.txt
+
+Additional runtime components distributed with the APK are listed below. Their
+copyright and license notices remain applicable to those components; the
+complete license texts are shipped under app/src/main/assets/licenses/.
+
+Apache License 2.0 components:
+
+    AndroidX Core, Lifecycle, Activity Compose, RecyclerView, Compose/Material,
+    Navigation Compose, Hilt and AndroidX Hilt extensions, Room, DataStore,
+    WebKit, Kotlin Coroutines, PDFBox Android, AndroidX PDF, WorkManager,
+    OkHttp/Okio (Square), Coil (Coil Contributors, including coil-svg),
+    AndroidX Palette, Haze (Chris Banes), and AndroidLiquidGlass / Backdrop.
+
+    License text: app/src/main/assets/licenses/apache-2.0.txt
+
+AndroidSVG is distributed under Apache License 2.0:
+
+    Copyright 2013-2018 Cave Rock Software Ltd
+    Maven: com.caverock:androidsvg-aar:1.4
+
+CommonMark Java is distributed under the BSD 2-Clause License:
+
+    Copyright 2015 Robin Stocker
+    License text: app/src/main/assets/licenses/commonmark-bsd-2-clause.txt
+
+Jsoup is distributed under the MIT License:
+
+    Copyright 2009-2026 Jonathan Hedley
+    License text: app/src/main/assets/licenses/jsoup-mit.txt
+
+PDFBox Android includes Bouncy Castle modules (bcprov, bcpkix and bcutil):
+
+    Copyright 2000-2022 The Legion of the Bouncy Castle Inc.
+    License text: app/src/main/assets/licenses/bouncycastle-mit.txt
+
+Lumi bundles the LXGW WenKai font as app/src/main/res/font/lxgw_wenkai.ttf:
+
+    Copyright 2021-2026 LXGW and the Klee Project Authors
+    Reserved Font Names: 霞鹜, 霞鶩, 落霞孤鹜, 落霞孤鶩 and LXGW
+    License text: app/src/main/assets/licenses/lxgw-wenkai-ofl-1.1.txt

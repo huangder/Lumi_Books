@@ -19,18 +19,18 @@ h1 { font-size:24px; font-weight:700; margin-bottom:20px; }
 </head>
 <body>
 <h1>开放源代码许可</h1>
-<p style="font-size:14px;color:var(--text2);margin-bottom:20px;">本应用使用了以下开源项目，特此致谢。</p>
+<p style="font-size:14px;color:var(--text2);margin-bottom:20px;">本应用使用了以下随 APK 分发的开源组件，特此致谢。构建工具和测试依赖不包含在本清单中。</p>
 
 <div class="lib">
 <div class="lib-name">Lumi Books</div>
-<div class="lib-info">Lumi 原创代码及卷曲翻页移植实现</div>
+<div class="lib-info">Lumi 原创代码</div>
 <a class="lib-link" href="../licenses/gpl-3.0.txt">GNU GPLv3 完整文本</a>
 <div class="lib-license">GNU General Public License v3.0 · Copyright 2026 Huangder</div>
 </div>
 
 <div class="lib">
 <div class="lib-name">legado-E SimulationPageDelegate</div>
-<div class="lib-info">卷曲翻页双二次贝塞尔几何与分层绘制，已修改并适配 Lumi 原生 Canvas/WebView 宿主</div>
+<div class="lib-info">卷曲翻页几何与分层绘制，已修改并适配 Lumi</div>
 <a class="lib-link" href="https://github.com/Luoyacheng/legado-E">GitHub 仓库</a><br>
 <a class="lib-link" href="../licenses/gpl-3.0.txt">GPLv3 完整文本</a>
 <div class="lib-license">GNU GPLv3 · Copyright Luoyacheng / legado-E</div>
@@ -38,7 +38,7 @@ h1 { font-size:24px; font-weight:700; margin-bottom:20px; }
 
 <div class="lib">
 <div class="lib-name">AndroidLiquidGlass / Backdrop</div>
-<div class="lib-info">io.github.kyant0:backdrop:1.0.6 · Kyant<br>液态玻璃折射引擎及底部导航交互参考</div>
+<div class="lib-info">io.github.kyant0:backdrop:1.0.6 · Kyant</div>
 <a class="lib-link" href="https://github.com/Kyant0/AndroidLiquidGlass">GitHub 仓库</a><br>
 <a class="lib-link" href="../licenses/android-liquid-glass-apache-2.0.txt">Apache License 2.0 完整文本</a>
 <div class="lib-license">Apache License 2.0 · Copyright 2025 Kyant</div>
@@ -46,109 +46,163 @@ h1 { font-size:24px; font-weight:700; margin-bottom:20px; }
 
 <div class="lib">
 <div class="lib-name">AndroidX Core KTX</div>
-<div class="lib-info">androidx.core:core-ktx · Google</div>
+<div class="lib-info">androidx.core:core-ktx:1.15.0 (resolved 1.16.0) · Google</div>
+<a class="lib-link" href="../licenses/apache-2.0.txt">Apache License 2.0 完整文本</a>
 <div class="lib-license">Apache License 2.0</div>
 </div>
 
 <div class="lib">
-<div class="lib-name">AndroidX Lifecycle</div>
-<div class="lib-info">androidx.lifecycle:lifecycle-runtime-ktx · Google</div>
+<div class="lib-name">AndroidX Lifecycle Runtime KTX</div>
+<div class="lib-info">androidx.lifecycle:lifecycle-runtime-ktx:2.8.7 (resolved 2.9.4) · Google</div>
+<a class="lib-link" href="../licenses/apache-2.0.txt">Apache License 2.0 完整文本</a>
 <div class="lib-license">Apache License 2.0</div>
 </div>
 
 <div class="lib">
-<div class="lib-name">Jetpack Compose</div>
-<div class="lib-info">androidx.compose.* · Google</div>
+<div class="lib-name">AndroidX Activity Compose</div>
+<div class="lib-info">androidx.activity:activity-compose:1.10.1 · Google</div>
+<a class="lib-link" href="../licenses/apache-2.0.txt">Apache License 2.0 完整文本</a>
 <div class="lib-license">Apache License 2.0</div>
 </div>
 
 <div class="lib">
-<div class="lib-name">Material 3</div>
-<div class="lib-info">androidx.compose.material3:material3 · Google</div>
+<div class="lib-name">AndroidX RecyclerView</div>
+<div class="lib-info">androidx.recyclerview:recyclerview:1.3.2 (resolved 1.4.0) · Google</div>
+<a class="lib-link" href="../licenses/apache-2.0.txt">Apache License 2.0 完整文本</a>
+<div class="lib-license">Apache License 2.0</div>
+</div>
+
+<div class="lib">
+<div class="lib-name">Jetpack Compose and Material</div>
+<div class="lib-info">androidx.compose.* / material3 / material-icons-extended · Google</div>
+<a class="lib-link" href="../licenses/apache-2.0.txt">Apache License 2.0 完整文本</a>
+<div class="lib-license">Apache License 2.0</div>
+</div>
+
+<div class="lib">
+<div class="lib-name">Haze</div>
+<div class="lib-info">dev.chrisbanes.haze:haze:1.1.1 · Chris Banes</div>
+<a class="lib-link" href="../licenses/apache-2.0.txt">Apache License 2.0 完整文本</a>
 <div class="lib-license">Apache License 2.0</div>
 </div>
 
 <div class="lib">
 <div class="lib-name">Navigation Compose</div>
-<div class="lib-info">androidx.navigation:navigation-compose · Google</div>
+<div class="lib-info">androidx.navigation:navigation-compose:2.8.9 · Google</div>
+<a class="lib-link" href="../licenses/apache-2.0.txt">Apache License 2.0 完整文本</a>
 <div class="lib-license">Apache License 2.0</div>
 </div>
 
 <div class="lib">
-<div class="lib-name">Hilt</div>
-<div class="lib-info">com.google.dagger:hilt-android · Google</div>
+<div class="lib-name">Hilt and AndroidX Hilt extensions</div>
+<div class="lib-info">hilt-android:2.58 · hilt-navigation-compose:1.2.0 · hilt-work:1.2.0 · Google</div>
+<a class="lib-link" href="../licenses/apache-2.0.txt">Apache License 2.0 完整文本</a>
 <div class="lib-license">Apache License 2.0</div>
 </div>
 
 <div class="lib">
-<div class="lib-name">Room</div>
-<div class="lib-info">androidx.room:room-runtime · Google</div>
+<div class="lib-name">Room and DataStore</div>
+<div class="lib-info">androidx.room:room-runtime/room-ktx:2.8.4 · androidx.datastore:datastore-preferences:1.1.1 · Google</div>
+<a class="lib-link" href="../licenses/apache-2.0.txt">Apache License 2.0 完整文本</a>
 <div class="lib-license">Apache License 2.0</div>
 </div>
 
 <div class="lib">
-<div class="lib-name">DataStore Preferences</div>
-<div class="lib-info">androidx.datastore:datastore-preferences · Google</div>
+<div class="lib-name">AndroidX WebKit</div>
+<div class="lib-info">androidx.webkit:webkit:1.16.0 · Google / Android Open Source Project</div>
+<a class="lib-link" href="../licenses/androidx-webkit-apache-2.0.txt">Apache License 2.0 完整文本</a>
 <div class="lib-license">Apache License 2.0</div>
+</div>
+
+<div class="lib">
+<div class="lib-name">Jsoup</div>
+<div class="lib-info">org.jsoup:jsoup:1.22.2 · Jonathan Hedley</div>
+<a class="lib-link" href="../licenses/jsoup-mit.txt">MIT License 完整文本</a>
+<div class="lib-license">MIT License · Copyright 2009-2026 Jonathan Hedley</div>
 </div>
 
 <div class="lib">
 <div class="lib-name">Kotlin Coroutines</div>
-<div class="lib-info">org.jetbrains.kotlinx:kotlinx-coroutines-android · JetBrains</div>
-<div class="lib-license">Apache License 2.0</div>
-</div>
-
-<div class="lib">
-<div class="lib-name">Coil</div>
-<div class="lib-info">io.coil-kt:coil-compose · Coil Contributors</div>
-<div class="lib-license">Apache License 2.0</div>
-</div>
-
-<div class="lib">
-<div class="lib-name">AndroidX WorkManager</div>
-<div class="lib-info">androidx.work:work-runtime-ktx · Google</div>
+<div class="lib-info">org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0 · JetBrains</div>
+<a class="lib-link" href="../licenses/apache-2.0.txt">Apache License 2.0 完整文本</a>
 <div class="lib-license">Apache License 2.0</div>
 </div>
 
 <div class="lib">
 <div class="lib-name">PDFBox Android</div>
-<div class="lib-info">com.tom-roush:pdfbox-android · Tom Roush / Apache Software Foundation</div>
+<div class="lib-info">com.tom-roush:pdfbox-android:2.0.27.0 · Tom Roush / Apache Software Foundation</div>
+<a class="lib-link" href="../licenses/apache-2.0.txt">Apache License 2.0 完整文本</a>
 <div class="lib-license">Apache License 2.0</div>
 </div>
 
 <div class="lib">
-<div class="lib-name">Kotlin</div>
-<div class="lib-info">JetBrains</div>
+<div class="lib-name">AndroidX PDF</div>
+<div class="lib-info">androidx.pdf:pdf-viewer/pdf-document-service/pdf-core:1.0.0-beta01 · Google</div>
+<a class="lib-link" href="../licenses/apache-2.0.txt">Apache License 2.0 完整文本</a>
 <div class="lib-license">Apache License 2.0</div>
 </div>
 
 <div class="lib">
-<div class="lib-name">Android Gradle Plugin</div>
-<div class="lib-info">Google</div>
-<div class="lib-license">Apache License 2.0</div>
-</div>
-
-
-<div class="lib">
-<div class="lib-name">AndroidX WebKit 1.16.0</div>
-<div class="lib-info">androidx.webkit:webkit - Google / Android Open Source Project<br>Used for origin-scoped WebView messaging and secure EPUB asset loading.</div>
-<a class="lib-link" href="../licenses/androidx-webkit-apache-2.0.txt">Apache License 2.0 full text</a>
+<div class="lib-name">AndroidX WorkManager</div>
+<div class="lib-info">androidx.work:work-runtime-ktx:2.10.0 · Google</div>
+<a class="lib-link" href="../licenses/apache-2.0.txt">Apache License 2.0 完整文本</a>
 <div class="lib-license">Apache License 2.0</div>
 </div>
 
 <div class="lib">
-<div class="lib-name">jsoup 1.22.2</div>
-<div class="lib-info">org.jsoup:jsoup - Jonathan Hedley<br>Used to sanitize and transform untrusted EPUB XHTML.</div>
-<a class="lib-link" href="../licenses/jsoup-mit.txt">MIT License full text</a>
-<div class="lib-license">MIT License - Copyright 2009-2026 Jonathan Hedley</div>
+<div class="lib-name">CommonMark Java</div>
+<div class="lib-info">org.commonmark:commonmark:0.24.0</div>
+<a class="lib-link" href="../licenses/commonmark-bsd-2-clause.txt">BSD 2-Clause License 完整文本</a>
+<div class="lib-license">BSD 2-Clause License · Copyright 2015 Robin Stocker</div>
+</div>
+
+<div class="lib">
+<div class="lib-name">OkHttp and Okio</div>
+<div class="lib-info">com.squareup.okhttp3:okhttp:4.12.0 · Square</div>
+<a class="lib-link" href="../licenses/apache-2.0.txt">Apache License 2.0 完整文本</a>
+<div class="lib-license">Apache License 2.0</div>
+</div>
+
+<div class="lib">
+<div class="lib-name">Coil</div>
+<div class="lib-info">io.coil-kt:coil/coil-compose/coil-svg:2.7.0 · Coil Contributors</div>
+<a class="lib-link" href="../licenses/apache-2.0.txt">Apache License 2.0 完整文本</a>
+<div class="lib-license">Apache License 2.0</div>
+</div>
+
+<div class="lib">
+<div class="lib-name">AndroidSVG</div>
+<div class="lib-info">com.caverock:androidsvg-aar:1.4 · Copyright 2013-2018 Cave Rock Software Ltd</div>
+<a class="lib-link" href="../licenses/apache-2.0.txt">Apache License 2.0 完整文本</a>
+<div class="lib-license">Apache License 2.0</div>
+</div>
+
+<div class="lib">
+<div class="lib-name">AndroidX Palette</div>
+<div class="lib-info">androidx.palette:palette-ktx:1.0.0 · Google</div>
+<a class="lib-link" href="../licenses/apache-2.0.txt">Apache License 2.0 完整文本</a>
+<div class="lib-license">Apache License 2.0</div>
+</div>
+
+<div class="lib">
+<div class="lib-name">Bouncy Castle</div>
+<div class="lib-info">bcprov-jdk15to18/bcpkix-jdk15to18/bcutil-jdk15to18:1.72 (via PDFBox)</div>
+<a class="lib-link" href="../licenses/bouncycastle-mit.txt">MIT License 完整文本</a>
+<div class="lib-license">MIT License · Copyright 2000-2022 The Legion of the Bouncy Castle Inc.</div>
 </div>
 
 <div class="lib">
 <div class="lib-name">GenRyuMin2 / Source</div>
-<div class="lib-info">GenRyuMin2 TC L is used for desktop-widget excerpts.<br>Copyright 2014-2019 Adobe. Reserved Font Name: Source.</div>
-<a class="lib-link" href="../licenses/genryumin2-ofl-1.1.txt">SIL Open Font License 1.1 full text</a>
+<div class="lib-info">用于桌面小组件摘录 · Copyright 2014-2019 Adobe · Reserved Font Name: Source</div>
+<a class="lib-link" href="../licenses/genryumin2-ofl-1.1.txt">SIL Open Font License 1.1 完整文本</a>
 <div class="lib-license">SIL Open Font License 1.1</div>
 </div>
 
+<div class="lib">
+<div class="lib-name">LXGW WenKai</div>
+<div class="lib-info">内置 lxgw_wenkai.ttf · Copyright 2021-2026 LXGW / Klee Project Authors · Reserved Font Names: 霞鹜、霞鶩、落霞孤鹜、落霞孤鶩、LXGW</div>
+<a class="lib-link" href="../licenses/lxgw-wenkai-ofl-1.1.txt">SIL Open Font License 1.1 完整文本</a>
+<div class="lib-license">SIL Open Font License 1.1 · 含上游附加保留名称许可</div>
+</div>
 </body>
 </html>

@@ -102,7 +102,7 @@
 - Convert PDFs to reflowable ebooks with consistent reading experience
 
 ### 🔒 Privacy Protection
-- **Local-first** — Only connects to GitHub when checking for updates; no personal data sent
+- **Local-first** — Reading data stays on-device by default; cover search, remote fonts, contributor avatars, update checks, and any WebDAV, MinerU, or third-party TTS features you enable connect to their respective services as needed
 - **Zero third-party SDKs** — No analytics, ads, push notifications, or crash reporting
 - **Android sandbox storage** — All data stored in app-private directories only
 - **Open source, auditable** — Full source code publicly available for review

@@ -1,11 +1,11 @@
 {
   "config_version": 1,
-  "generated_at": "2026-08-22T00:00:00+08:00",
+  "generated_at": "2026-08-30T00:00:00+08:00",
   "latest_version": "1.7.8.1",
   "latest_version_code": 8,
   "release_url": "https://github.com/huangder/Lumi_Books/releases/tag/1.7.8.1",
-  "terms_version": 0,
-  "privacy_version": 0,
+  "terms_version": 1,
+  "privacy_version": 1,
   "update": {
     "latest_version_code": 8,
     "latest_version_name": "1.7.8.1",
