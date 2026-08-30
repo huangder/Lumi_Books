@@ -251,6 +251,28 @@ class DatabaseMigrationsTest {
         }
     }
 
+    @Test
+    fun migration9To10PreservesFoldersAndLeavesPreviewUninitialized() {
+        openHelper(version = 9, createSchema = true).use { helper ->
+            helper.writableDatabase.execSQL(
+                "INSERT INTO folders VALUES ('folder-1','Folder','folder',NULL,20,'/folder.jpg')"
+            )
+        }
+
+        openHelper(version = 10, createSchema = false).use { helper ->
+            helper.writableDatabase.query(
+                "SELECT id,name,parentId,coverPath,previewBookIds FROM folders WHERE id='folder-1'"
+            ).use { cursor ->
+                cursor.moveToFirst()
+                assertEquals("folder-1", cursor.getString(0))
+                assertEquals("Folder", cursor.getString(1))
+                assertNull(cursor.getString(2))
+                assertEquals("/folder.jpg", cursor.getString(3))
+                assertNull(cursor.getString(4))
+            }
+        }
+    }
+
     private fun openHelper(version: Int, createSchema: Boolean): SupportSQLiteOpenHelper {
         val callback = object : SupportSQLiteOpenHelper.Callback(version) {
             override fun onCreate(db: SupportSQLiteDatabase) {
@@ -262,6 +284,7 @@ class DatabaseMigrationsTest {
                     if (version >= 7) DatabaseMigrations.MIGRATION_6_7.migrate(db)
                     if (version >= 8) DatabaseMigrations.MIGRATION_7_8.migrate(db)
                     if (version >= 9) DatabaseMigrations.MIGRATION_8_9.migrate(db)
+                    if (version >= 10) DatabaseMigrations.MIGRATION_9_10.migrate(db)
                 }
             }
 
@@ -272,6 +295,7 @@ class DatabaseMigrationsTest {
                 if (oldVersion < 7 && newVersion >= 7) DatabaseMigrations.MIGRATION_6_7.migrate(db)
                 if (oldVersion < 8 && newVersion >= 8) DatabaseMigrations.MIGRATION_7_8.migrate(db)
                 if (oldVersion < 9 && newVersion >= 9) DatabaseMigrations.MIGRATION_8_9.migrate(db)
+                if (oldVersion < 10 && newVersion >= 10) DatabaseMigrations.MIGRATION_9_10.migrate(db)
             }
         }
         val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)

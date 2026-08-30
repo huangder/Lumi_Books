@@ -15,6 +15,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -70,6 +71,8 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -368,19 +371,68 @@ fun BookDetailsScreen(
             location,
             modifier = Modifier.fillMaxWidth(),
             fontSize = AppType.BodySmall,
-            color = AppColors.TextSecondary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            color = AppColors.TextSecondary
         )
     }
 }
 
-@Composable private fun DetailRow(label: String, value: String, clickable: Boolean, onClick: () -> Unit = {}) {
-    Row(Modifier.fillMaxWidth().then(if (clickable) Modifier.clickable(onClick = onClick) else Modifier).padding(horizontal = AppSpace.md, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, fontSize = AppType.Body, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
-        Text(value, fontSize = AppType.BodySmall, color = AppColors.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+@Composable internal fun DetailRow(label: String, value: String, clickable: Boolean, onClick: () -> Unit = {}) {
+    val textMeasurer = rememberTextMeasurer()
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val labelStyle = TextStyle(fontSize = AppType.Body)
+    val valueStyle = TextStyle(fontSize = AppType.BodySmall)
+    BoxWithConstraints(
+        Modifier
+            .fillMaxWidth()
+            .then(if (clickable) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = AppSpace.md, vertical = 14.dp)
+    ) {
+        val gap = 16.dp
+        val availableWidthPx = with(density) { maxWidth.toPx() }
+        val labelWidthPx = remember(label, labelStyle) {
+            textMeasurer.measure(label, style = labelStyle, maxLines = 1).size.width.toFloat()
+        }
+        val valueWidthPx = remember(value, valueStyle) {
+            textMeasurer.measure(value, style = valueStyle, maxLines = 1).size.width.toFloat()
+        }
+        val stack = shouldStackDetailRow(
+            labelWidthPx = labelWidthPx,
+            valueWidthPx = valueWidthPx,
+            availableWidthPx = availableWidthPx,
+            gapWidthPx = with(density) { gap.toPx() }
+        )
+        if (stack) {
+            Column(Modifier.fillMaxWidth()) {
+                Text(label, style = labelStyle, color = AppColors.TextPrimary)
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    value,
+                    style = valueStyle,
+                    color = AppColors.TextSecondary,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        } else {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(label, style = labelStyle, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
+                Spacer(Modifier.width(gap))
+                Text(
+                    value,
+                    style = valueStyle,
+                    color = AppColors.TextSecondary,
+                    maxLines = 1
+                )
+            }
+        }
     }
 }
+
+internal fun shouldStackDetailRow(
+    labelWidthPx: Float,
+    valueWidthPx: Float,
+    availableWidthPx: Float,
+    gapWidthPx: Float
+): Boolean = labelWidthPx + valueWidthPx + gapWidthPx > availableWidthPx
 
 @Composable private fun FloatingDetailTag(modifier: Modifier, onDelete: () -> Unit, onEdit: () -> Unit, onMove: () -> Unit, onNotes: () -> Unit, onRead: () -> Unit) {
     val isDark = LocalIsDarkTheme.current

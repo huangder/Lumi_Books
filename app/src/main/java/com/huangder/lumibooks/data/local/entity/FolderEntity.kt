@@ -24,5 +24,6 @@ data class FolderEntity(
     val normalizedName: String,
     val parentId: String?,
     val createdAt: Long,
-    val coverPath: String? = null
+    val coverPath: String? = null,
+    val previewBookIds: String? = null
 )

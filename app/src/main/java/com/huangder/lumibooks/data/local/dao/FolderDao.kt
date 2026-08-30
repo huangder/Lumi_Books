@@ -39,6 +39,16 @@ abstract class FolderDao {
     @Query("UPDATE folders SET coverPath = :coverPath WHERE id = :folderId")
     abstract suspend fun updateFolderCover(folderId: String, coverPath: String?): Int
 
+    @Query(
+        "UPDATE folders SET previewBookIds = :previewBookIds " +
+            "WHERE id = :folderId AND previewBookIds IS NULL " +
+            "AND length(trim(:previewBookIds)) > 2"
+    )
+    abstract suspend fun initializeFolderPreviewIfUnset(
+        folderId: String,
+        previewBookIds: String
+    ): Int
+
     @Query("UPDATE folders SET parentId = :parentId WHERE id = :folderId")
     abstract suspend fun updateFolderParent(folderId: String, parentId: String?)
 

@@ -17,6 +17,7 @@ import com.huangder.lumibooks.domain.model.BookTagLink
 import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.domain.model.FolderNameValidator
 import com.huangder.lumibooks.domain.model.FolderMoveResult
+import com.huangder.lumibooks.domain.model.FolderPreviewPlanner
 import com.huangder.lumibooks.domain.model.LibraryFolder
 import com.huangder.lumibooks.domain.model.LibraryTag
 import com.huangder.lumibooks.domain.model.TagNameValidator
@@ -112,6 +113,11 @@ class HomeViewModel @Inject constructor(
     private val _downloadedBooks = MutableSharedFlow<Book>(extraBufferCapacity = 1)
     val downloadedBooks: SharedFlow<Book> = _downloadedBooks.asSharedFlow()
 
+    // Importing several documents writes books and folder links one at a time. Defer the
+    // first-non-empty folder snapshot until the whole batch is complete, otherwise the first
+    // document would permanently consume the folder's one-time snapshot.
+    private var folderPreviewInitializationSuspended = false
+
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
     private val dayLabels = listOf(
         application.getString(R.string.day_sunday),
@@ -150,6 +156,11 @@ class HomeViewModel @Inject constructor(
                         isLoading = false,
                         error = null
                     )
+                    scheduleFolderPreviewInitialization(
+                        books = sortedBooks,
+                        folders = _uiState.value.folders,
+                        links = _uiState.value.bookFolderLinks
+                    )
                 }
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
@@ -187,7 +198,42 @@ class HomeViewModel @Inject constructor(
                         folders = folders,
                         bookFolderLinks = links
                     )
+                    scheduleFolderPreviewInitialization(
+                        books = _uiState.value.books,
+                        folders = folders,
+                        links = links
+                    )
                 }
+        }
+    }
+
+    /**
+     * Initializes each folder's book-cover snapshot exactly once, after the current database
+     * state contains both books and folder links. The DAO conditionally updates the nullable
+     * snapshot field, so repeated calls from independent book/folder flows are harmless.
+     */
+    private fun scheduleFolderPreviewInitialization(
+        books: List<Book>,
+        folders: List<LibraryFolder>,
+        links: List<BookFolderLink>
+    ) {
+        if (folderPreviewInitializationSuspended) return
+        val uninitializedFolders = folders.filter { it.previewBookIds == null }
+        if (uninitializedFolders.isEmpty() || books.isEmpty() || links.isEmpty()) return
+
+        val orderedBooks = books.toList()
+        viewModelScope.launch(Dispatchers.IO) {
+            uninitializedFolders.forEach { folder ->
+                val previewIds = FolderPreviewPlanner.selectBookIds(
+                    booksInLibraryOrder = orderedBooks,
+                    folders = folders,
+                    links = links,
+                    folderId = folder.id
+                )
+                if (previewIds.isNotEmpty()) {
+                    folderRepository.initializeFolderPreview(folder.id, previewIds)
+                }
+            }
         }
     }
 
@@ -355,6 +401,11 @@ class HomeViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(sortBy = sortBy)
         val sortedBooks = sortBooks(_uiState.value.books, sortBy)
         _uiState.value = _uiState.value.copy(books = sortedBooks)
+        scheduleFolderPreviewInitialization(
+            books = sortedBooks,
+            folders = _uiState.value.folders,
+            links = _uiState.value.bookFolderLinks
+        )
     }
 
     private fun sortBooks(books: List<Book>, sortBy: SortBy): List<Book> {
@@ -426,17 +477,37 @@ class HomeViewModel @Inject constructor(
         groupByAuthorizedSource: Boolean
     ) {
         if (documents.isEmpty()) return
+        folderPreviewInitializationSuspended = true
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(importMessage = context.getString(R.string.importing))
-            val result = withContext(Dispatchers.IO) {
-                importDocuments(
-                    context = context,
-                    documents = documents,
-                    copyIntoApp = copyIntoApp,
-                    targetFolderId = targetFolderId,
-                    groupByAuthorizedSource = groupByAuthorizedSource
+            val result = try {
+                _uiState.value = _uiState.value.copy(importMessage = context.getString(R.string.importing))
+                withContext(Dispatchers.IO) {
+                    importDocuments(
+                        context = context,
+                        documents = documents,
+                        copyIntoApp = copyIntoApp,
+                        targetFolderId = targetFolderId,
+                        groupByAuthorizedSource = groupByAuthorizedSource
+                    )
+                }
+            } finally {
+                folderPreviewInitializationSuspended = false
+            }
+
+            // The Room collectors may still be processing the per-document emissions. Read the
+            // final persisted state so the one-time snapshot sees every book in this batch.
+            val (books, folders, links) = withContext(Dispatchers.IO) {
+                Triple(
+                    bookRepository.getAllBooks().first(),
+                    folderRepository.getAllFolders().first(),
+                    folderRepository.getAllBookFolderLinks().first()
                 )
             }
+            scheduleFolderPreviewInitialization(
+                books = sortBooks(books, _uiState.value.sortBy),
+                folders = folders,
+                links = links
+            )
             _uiState.value = _uiState.value.copy(importMessage = result.toMessage(context))
         }
     }
@@ -926,7 +997,14 @@ class HomeViewModel @Inject constructor(
         }
         viewModelScope.launch {
             runCatching { folderRepository.moveBooks(bookIds, targetFolderId) }
-                .onSuccess { onResult(true) }
+                .onSuccess {
+                    scheduleFolderPreviewInitialization(
+                        books = _uiState.value.books,
+                        folders = _uiState.value.folders,
+                        links = _uiState.value.bookFolderLinks
+                    )
+                    onResult(true)
+                }
                 .onFailure {
                     showFolderMessage(it.message ?: application.getString(R.string.error))
                     onResult(false)

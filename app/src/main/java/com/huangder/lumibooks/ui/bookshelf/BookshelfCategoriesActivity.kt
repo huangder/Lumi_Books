@@ -38,6 +38,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Label
@@ -166,12 +167,28 @@ class BookshelfCategoriesActivity : ComponentActivity() {
                                 )
                             },
                             onFolderSelected = { folder ->
+                                // Custom folders are part of the hierarchical main bookshelf.
+                                // Return to that screen with the requested path instead of opening
+                                // the flat category view used by built-in filters and tags.
                                 startActivity(
-                                    BookshelfCategoryBooksActivity.createIntent(
+                                    Intent(
                                         this@BookshelfCategoriesActivity,
-                                        BookshelfCategoryTarget.Folder(folder.id, folder.name)
+                                        com.huangder.lumibooks.MainActivity::class.java
                                     )
+                                        .putExtra(
+                                            com.huangder.lumibooks.MainActivity.EXTRA_OPEN_DESTINATION,
+                                            com.huangder.lumibooks.MainActivity.DESTINATION_BOOKSHELF
+                                        )
+                                        .putExtra(
+                                            com.huangder.lumibooks.MainActivity.EXTRA_OPEN_FOLDER_ID,
+                                            folder.id
+                                        )
+                                        .addFlags(
+                                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                                                Intent.FLAG_ACTIVITY_SINGLE_TOP
+                                        )
                                 )
+                                finish()
                             },
                             onBack = { finish() }
                         )
@@ -477,7 +494,7 @@ private fun CategoryListPage(
                     CategoryRow(
                         title = row.folder.name,
                         count = folderBookCounts[row.folder.id] ?: 0,
-                        icon = Icons.Outlined.FolderOpen,
+                        icon = Icons.Outlined.Folder,
                         startIndent = (row.depth * 20).dp,
                         onClick = { onFolderSelected(row.folder) },
                         onLongClick = { onFolderLongClick(row.folder) }
@@ -720,6 +737,8 @@ private fun CategoryBooksPage(
                 onBookClick = { book, _ -> onOpenBook(book) },
                 onAddBook = {},
                 onEditInfo = { editingBook = it },
+                onBookDetails = { book -> BookDetailsActivity.start(context, book.id) },
+                onMoveToFolder = { book -> moveTargetBook = book },
                 onDelete = {
                     pendingDeleteBooks = listOf(it)
                     showDeleteConfirm = true

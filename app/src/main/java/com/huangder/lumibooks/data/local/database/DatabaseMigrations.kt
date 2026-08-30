@@ -101,4 +101,10 @@ object DatabaseMigrations {
             db.execSQL("UPDATE books SET metadataUpdatedAt = createdAt WHERE metadataUpdatedAt = 0")
         }
     }
+
+    val MIGRATION_9_10 = object : Migration(9, 10) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE folders ADD COLUMN previewBookIds TEXT DEFAULT NULL")
+        }
+    }
 }

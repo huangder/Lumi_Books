@@ -7,7 +7,8 @@ data class LibraryFolder(
     val name: String,
     val parentId: String?,
     val createdAt: Long,
-    val coverPath: String? = null
+    val coverPath: String? = null,
+    val previewBookIds: List<String>? = null
 )
 
 enum class FolderMoveResult {

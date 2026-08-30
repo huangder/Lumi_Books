@@ -42,6 +42,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.huangder.lumibooks.R
+import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.model.LibraryFolder
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.theme.AppColors
@@ -62,6 +63,7 @@ private sealed interface FolderContextAction {
 internal fun FolderContextMenuOverlay(
     state: FolderContextMenuState,
     bookCount: Int,
+    previewBooks: List<Book?> = List(4) { null },
     onRename: (LibraryFolder) -> Unit,
     onDelete: (LibraryFolder) -> Unit,
     onSetCover: (LibraryFolder) -> Unit,
@@ -88,7 +90,8 @@ internal fun FolderContextMenuOverlay(
             folder = folder,
             coverBounds = state.coverBounds,
             coverScale = state.coverScale.value,
-            positionProgress = state.coverPositionProgress.value
+            positionProgress = state.coverPositionProgress.value,
+            previewBooks = previewBooks
         )
         if (state.menuAlpha.value > 0.01f || state.actionsAlpha.value > 0.01f) {
             FolderContextMenuLayout(
@@ -120,7 +123,8 @@ private fun HighlightedFolderCover(
     folder: LibraryFolder,
     coverBounds: Rect,
     coverScale: Float,
-    positionProgress: Float
+    positionProgress: Float,
+    previewBooks: List<Book?>
 ) {
     val density = LocalDensity.current
     val configuration = LocalConfiguration.current
@@ -138,6 +142,7 @@ private fun HighlightedFolderCover(
     }
     FolderCover(
         folder = folder,
+        previewBooks = previewBooks,
         cornerRadius = if (LocalAppTheme.current == "liquid_glass") 16.dp else AppRadius.sm,
         modifier = Modifier
             .offset(x = coverLeft, y = offsetY)

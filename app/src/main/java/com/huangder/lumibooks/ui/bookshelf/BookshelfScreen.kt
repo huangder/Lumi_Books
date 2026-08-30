@@ -121,6 +121,7 @@ import com.huangder.lumibooks.data.sync.BookDownloadState
 import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.domain.model.FolderMoveResult
 import com.huangder.lumibooks.domain.model.LibraryFolder
+import com.huangder.lumibooks.domain.model.FolderPreviewPlanner
 import com.huangder.lumibooks.ui.animation.AppEasing
 import com.huangder.lumibooks.ui.animation.OverscrollBounce
 import com.huangder.lumibooks.ui.animation.PageEntranceItem
@@ -463,6 +464,25 @@ fun BookshelfScreen(
     val folderCounts = remember(uiState.folders, uiState.bookFolderLinks) {
         folderBookCounts(uiState.folders, uiState.bookFolderLinks)
     }
+    val booksById = remember(uiState.books) { uiState.books.associateBy { it.id } }
+    val folderPreviewBookIds = remember(uiState.folders, uiState.bookFolderLinks) {
+        uiState.folders.associate { folder ->
+            folder.id to uiState.bookFolderLinks
+                .asSequence()
+                .filter { it.folderId in descendantFolderIds(uiState.folders, folder.id) }
+                .map { it.bookId }
+                .toSet()
+        }
+    }
+    val folderPreviewBooks = remember(uiState.folders, uiState.books, uiState.bookFolderLinks) {
+        uiState.folders.associate { folder ->
+            folder.id to FolderPreviewPlanner.slots(
+                previewBookIds = folder.previewBookIds,
+                booksById = booksById,
+                presentBookIds = folderPreviewBookIds[folder.id].orEmpty()
+            )
+        }
+    }
     val filteredBooks = when (val filter = selectedFilter) {
         BookshelfFilter.All -> currentLevelBooks
         BookshelfFilter.EpubMobi -> currentLevelBooks.filter(Book::isEpubMobi)
@@ -528,6 +548,14 @@ fun BookshelfScreen(
         expandedListBookId = null
         editingBook = book
         showEditDialog = true
+    }
+    val openDetailsFromList: (Book) -> Unit = { book ->
+        expandedListBookId = null
+        BookDetailsActivity.start(context, book.id)
+    }
+    val moveBookFromList: (Book) -> Unit = { book ->
+        expandedListBookId = null
+        moveTargetBook = book
     }
     val deleteBookFromList: (Book) -> Unit = { book ->
         expandedListBookId = null
@@ -639,6 +667,7 @@ fun BookshelfScreen(
                         books = filteredBooks,
                         folders = visibleFolders,
                         folderBookCounts = folderCounts,
+                        folderPreviewBooks = folderPreviewBooks,
                         tagNamesByBook = tagNamesByBook,
                         isLoading = uiState.isLoading,
                         playEntranceAnimation = playEntranceAnimation,
@@ -672,6 +701,8 @@ fun BookshelfScreen(
                         onFolderMove = moveFolderFromList,
                         onAddBook = { onAddBook(renderedFolderId) },
                         onEditInfo = editBookFromList,
+                        onBookDetails = openDetailsFromList,
+                        onMoveToFolder = moveBookFromList,
                         onDelete = deleteBookFromList,
                         onFavorite = { book -> viewModel.updateBook(book.copy(isFavorite = !book.isFavorite)) },
                         onCustomCover = chooseCoverFromList,
@@ -742,6 +773,7 @@ fun BookshelfScreen(
                         books = filteredBooks,
                         folders = visibleFolders,
                         folderBookCounts = folderCounts,
+                        folderPreviewBooks = folderPreviewBooks,
                         tagNamesByBook = tagNamesByBook,
                         isLoading = uiState.isLoading,
                         playEntranceAnimation = playEntranceAnimation,
@@ -775,6 +807,8 @@ fun BookshelfScreen(
                         onFolderMove = moveFolderFromList,
                         onAddBook = { onAddBook(renderedFolderId) },
                         onEditInfo = editBookFromList,
+                        onBookDetails = openDetailsFromList,
+                        onMoveToFolder = moveBookFromList,
                         onDelete = deleteBookFromList,
                         onFavorite = { book -> viewModel.updateBook(book.copy(isFavorite = !book.isFavorite)) },
                         onCustomCover = chooseCoverFromList,
@@ -895,6 +929,14 @@ fun BookshelfScreen(
                     editingBook = book
                     showEditDialog = true
                 },
+                onBookDetails = { book ->
+                    expandedSearchBookId = null
+                    BookDetailsActivity.start(context, book.id)
+                },
+                onMoveToFolder = { book ->
+                    expandedSearchBookId = null
+                    moveTargetBook = book
+                },
                 onDelete = { book ->
                     expandedSearchBookId = null
                     booksPendingDeletion = listOf(book)
@@ -962,6 +1004,9 @@ fun BookshelfScreen(
             bookCount = folderContextMenuState.selectedFolder
                 ?.let { folderCounts[it.id] }
                 ?: 0,
+            previewBooks = folderContextMenuState.selectedFolder
+                ?.let { folderPreviewBooks[it.id] }
+                .orEmpty(),
             onRename = { folder ->
                 pendingFolderMenuAction = PendingFolderMenuAction(
                     PendingFolderMenuActionType.Rename,
@@ -1252,6 +1297,8 @@ internal fun BookshelfCollection(
     onBookClick: (Book, Rect?) -> Unit,
     onAddBook: () -> Unit,
     onEditInfo: (Book) -> Unit,
+    onBookDetails: (Book) -> Unit = {},
+    onMoveToFolder: (Book) -> Unit = {},
     onDelete: (Book) -> Unit,
     onFavorite: (Book) -> Unit,
     onCustomCover: (Book) -> Unit,
@@ -1260,6 +1307,7 @@ internal fun BookshelfCollection(
     onBookmarksNotes: (Book) -> Unit,
     folders: List<LibraryFolder> = emptyList(),
     folderBookCounts: Map<String, Int> = emptyMap(),
+    folderPreviewBooks: Map<String, List<Book?>> = emptyMap(),
     onFolderClick: (LibraryFolder) -> Unit = {},
     onFolderRename: (LibraryFolder) -> Unit = {},
     onFolderDelete: (LibraryFolder) -> Unit = {},
@@ -1364,6 +1412,7 @@ internal fun BookshelfCollection(
                             FolderListItem(
                                 folder = folder,
                                 bookCount = folderBookCounts[folder.id] ?: 0,
+                                previewBooks = folderPreviewBooks[folder.id].orEmpty(),
                                 enabled = !isEditing,
                                 expanded = !isEditing && expandedListFolderId == folder.id,
                                 onClick = { onFolderClick(folder) },
@@ -1396,6 +1445,8 @@ internal fun BookshelfCollection(
                             },
                             onClick = { onBookClick(book, null) },
                             onEditInfo = { onEditInfo(book) },
+                            onBookDetails = { onBookDetails(book) },
+                            onMoveToFolder = { onMoveToFolder(book) },
                             onDelete = { onDelete(book) },
                             onFavorite = { onFavorite(book) },
                             onCustomCover = { onCustomCover(book) },
@@ -1439,6 +1490,7 @@ internal fun BookshelfCollection(
                         FolderGridItem(
                             folder = folder,
                             bookCount = folderBookCounts[folder.id] ?: 0,
+                            previewBooks = folderPreviewBooks[folder.id].orEmpty(),
                             enabled = !isEditing,
                             contextMenuState = folderContextMenuState,
                             onHaptic = onHaptic,
@@ -1561,10 +1613,6 @@ private fun BookshelfHeaderActions(
     val compactGridLabel = stringResource(R.string.bookshelf_compact_grid)
     val listLayoutLabel = stringResource(R.string.bookshelf_list_layout)
     val createFolderLabel = stringResource(R.string.new_category_folder)
-    // 平板横屏下 2/3 宫格都按自适应列渲染（效果一致），因此只在列表/宫格间切换
-    val configuration = LocalConfiguration.current
-    val isTabletLandscape = configuration.smallestScreenWidthDp >= 600 &&
-        configuration.screenWidthDp > configuration.screenHeightDp
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1629,35 +1677,13 @@ private fun BookshelfHeaderActions(
             },
             size = 32.dp,
             iconSize = 15.dp,
+            pressFeedbackEnabled = false,
             contentColor = contentColor,
             normalContainerColor = AppColors.Accent,
             liquidContainerColor = AppColors.CardBg,
             liquidScrimColor = AppColors.CardBg.copy(alpha = 0.58f),
             modifier = Modifier.onGloballyPositioned { menuAnchorBounds = it.boundsInRoot() }
         )
-        LiquidGlassSurface(
-            shape = CircleShape,
-            fallbackColor = if (isLiquidGlass) AppColors.CardBg else AppColors.Accent,
-            contentScrimColor = AppColors.CardBg.copy(alpha = 0.58f),
-            onClick = {
-                onLayoutModeChange(
-                    if (isTabletLandscape) {
-                        if (layoutMode == 1) 2 else 1
-                    } else {
-                        layoutMode % 3 + 1
-                    }
-                )
-            },
-            effectPadding = 1.dp,
-            modifier = Modifier.size(32.dp)
-        ) {
-            Icon(
-                imageVector = layoutIcon(layoutMode, compact = isTabletLandscape),
-                contentDescription = stringResource(R.string.bookshelf_layout),
-                tint = contentColor,
-                modifier = Modifier.size(18.dp)
-            )
-        }
     }
 }
 
@@ -2258,6 +2284,7 @@ private fun BookGridItem(
 private fun FolderListItem(
     folder: LibraryFolder,
     bookCount: Int,
+    previewBooks: List<Book?>,
     enabled: Boolean,
     expanded: Boolean,
     onClick: () -> Unit,
@@ -2303,6 +2330,7 @@ private fun FolderListItem(
                 FolderCover(
                     folder = folder,
                     cornerRadius = 14.dp,
+                    previewBooks = previewBooks,
                     modifier = Modifier
                         .width(69.dp)
                         .height(92.dp)
@@ -2374,6 +2402,7 @@ private fun FolderListItem(
 private fun FolderGridItem(
     folder: LibraryFolder,
     bookCount: Int,
+    previewBooks: List<Book?>,
     enabled: Boolean,
     contextMenuState: FolderContextMenuState,
     onHaptic: () -> Unit,
@@ -2418,6 +2447,7 @@ private fun FolderGridItem(
         FolderCover(
             folder = folder,
             cornerRadius = coverCorner,
+            previewBooks = previewBooks,
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(0.75f)

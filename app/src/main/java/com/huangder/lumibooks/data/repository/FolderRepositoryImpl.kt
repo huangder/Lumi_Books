@@ -10,6 +10,7 @@ import com.huangder.lumibooks.domain.model.LibraryFolder
 import com.huangder.lumibooks.domain.repository.FolderRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import org.json.JSONArray
 import java.util.UUID
 import javax.inject.Inject
 
@@ -45,6 +46,23 @@ class FolderRepositoryImpl @Inject constructor(
     override suspend fun updateFolderCover(folderId: String, coverPath: String?): Boolean =
         folderDao.updateFolderCover(folderId, coverPath) > 0
 
+    override suspend fun initializeFolderPreview(
+        folderId: String,
+        orderedBookIds: List<String>
+    ): Boolean {
+        val ids = orderedBookIds
+            .asSequence()
+            .filter { it.isNotBlank() }
+            .distinct()
+            .take(4)
+            .toList()
+        if (ids.isEmpty()) return false
+        return folderDao.initializeFolderPreviewIfUnset(
+            folderId = folderId,
+            previewBookIds = JSONArray(ids).toString()
+        ) > 0
+    }
+
     override suspend fun moveFolder(
         folderId: String,
         targetParentId: String?
@@ -68,7 +86,24 @@ class FolderRepositoryImpl @Inject constructor(
         )
     }
 
-    private fun FolderEntity.toDomain() = LibraryFolder(id, name, parentId, createdAt, coverPath)
+    private fun FolderEntity.toDomain() = LibraryFolder(
+        id = id,
+        name = name,
+        parentId = parentId,
+        createdAt = createdAt,
+        coverPath = coverPath,
+        previewBookIds = previewBookIds?.let { raw ->
+            runCatching {
+                JSONArray(raw).let { array ->
+                    buildList {
+                        for (index in 0 until minOf(array.length(), 4)) {
+                            array.optString(index).takeIf { it.isNotBlank() }?.let(::add)
+                        }
+                    }
+                }
+            }.getOrDefault(emptyList())
+        }
+    )
 
     private fun BookFolderCrossRefEntity.toDomain() = BookFolderLink(bookId, folderId)
 }

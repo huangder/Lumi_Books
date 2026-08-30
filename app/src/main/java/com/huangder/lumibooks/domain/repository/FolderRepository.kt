@@ -12,6 +12,7 @@ interface FolderRepository {
     suspend fun getOrCreateRootFolder(rawName: String): LibraryFolder
     suspend fun renameFolder(folderId: String, rawName: String): Boolean
     suspend fun updateFolderCover(folderId: String, coverPath: String?): Boolean
+    suspend fun initializeFolderPreview(folderId: String, orderedBookIds: List<String>): Boolean
     suspend fun moveFolder(folderId: String, targetParentId: String?): FolderMoveResult
     suspend fun deleteFolderTree(folderId: String): List<String>
     suspend fun moveBooks(bookIds: Set<String>, targetFolderId: String?)

@@ -5,8 +5,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -28,6 +34,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.huangder.lumibooks.domain.model.LibraryFolder
+import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.ui.theme.AppColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -36,9 +43,11 @@ import kotlinx.coroutines.withContext
 internal fun FolderCover(
     folder: LibraryFolder,
     cornerRadius: Dp,
+    previewBooks: List<Book?> = List(4) { null },
     modifier: Modifier = Modifier
 ) {
     val coverPath = folder.coverPath
+    val hasPreview = coverPath == null && folder.previewBookIds?.isNotEmpty() == true
     var imageLoaded by remember(coverPath) { mutableStateOf(false) }
     val useDarkBadge by produceState<Boolean?>(initialValue = null, coverPath) {
         value = coverPath?.let { path ->
@@ -54,20 +63,27 @@ internal fun FolderCover(
             .background(AppColors.CardBg),
         contentAlignment = Alignment.Center
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(0.62f)
-                .aspectRatio(1f)
-                .clip(RoundedCornerShape(20.dp))
-                .background(AppColors.Accent.copy(alpha = 0.14f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.Folder,
-                contentDescription = folder.name,
-                tint = AppColors.Accent,
-                modifier = Modifier.fillMaxSize(0.56f)
+        if (hasPreview) {
+            FolderBookPreview(
+                previewBooks = previewBooks,
+                modifier = Modifier.fillMaxSize()
             )
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.62f)
+                    .aspectRatio(1f)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(AppColors.Accent.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Folder,
+                    contentDescription = folder.name,
+                    tint = AppColors.Accent,
+                    modifier = Modifier.fillMaxSize(0.56f)
+                )
+            }
         }
 
         if (coverPath != null) {
@@ -107,6 +123,53 @@ internal fun FolderCover(
                     tint = iconColor,
                     modifier = Modifier.size(20.dp)
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FolderBookPreview(
+    previewBooks: List<Book?>,
+    modifier: Modifier = Modifier
+) {
+    val slotBackground = Color(0xFFE5E5E5)
+    val outerPadding = 8.dp
+    val slotGap = 6.dp
+    Column(
+        modifier = modifier
+            .background(Color.White)
+            .padding(outerPadding),
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(slotGap)
+    ) {
+        repeat(2) { rowIndex ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(slotGap)
+            ) {
+                repeat(2) { columnIndex ->
+                    val slotIndex = rowIndex * 2 + columnIndex
+                    val book = previewBooks.getOrNull(slotIndex)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(slotBackground),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        book?.coverPath?.takeIf { it.isNotBlank() }?.let { coverPath ->
+                            AsyncImage(
+                                model = coverPath,
+                                contentDescription = book.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
+                }
             }
         }
     }

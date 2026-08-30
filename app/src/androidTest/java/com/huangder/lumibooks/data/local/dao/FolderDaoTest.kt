@@ -158,6 +158,17 @@ class FolderDaoTest {
         )
     }
 
+    @Test
+    fun folderPreviewIsInitializedOnlyOnce() = runBlocking {
+        val folder = folder("folder", "Folder", "folder")
+        dao.createFolderIfAvailable(folder)
+
+        assertEquals(0, dao.initializeFolderPreviewIfUnset(folder.id, "[]"))
+        assertEquals(1, dao.initializeFolderPreviewIfUnset(folder.id, "[\"book-1\"]"))
+        assertEquals(0, dao.initializeFolderPreviewIfUnset(folder.id, "[\"book-2\"]"))
+        assertEquals("[\"book-1\"]", dao.getFolderById(folder.id)?.previewBookIds)
+    }
+
     private suspend fun insertBook(id: String) {
         database.bookDao().insertBook(
             BookEntity(

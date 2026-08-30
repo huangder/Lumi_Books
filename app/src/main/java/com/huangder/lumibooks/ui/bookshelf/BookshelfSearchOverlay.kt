@@ -61,6 +61,7 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.HideImage
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
@@ -190,6 +191,8 @@ internal fun BookshelfSearchOverlay(
     onExpandedBookChange: (String?) -> Unit,
     onBookClick: (Book) -> Unit,
     onEditInfo: (Book) -> Unit,
+    onBookDetails: (Book) -> Unit,
+    onMoveToFolder: (Book) -> Unit,
     onDelete: (Book) -> Unit,
     onFavorite: (Book) -> Unit,
     onCustomCover: (Book) -> Unit,
@@ -374,6 +377,8 @@ internal fun BookshelfSearchOverlay(
                                     },
                                     onClick = { onBookClick(book) },
                                     onEditInfo = { onEditInfo(book) },
+                                    onBookDetails = { onBookDetails(book) },
+                                    onMoveToFolder = { onMoveToFolder(book) },
                                     onDelete = { onDelete(book) },
                                     onFavorite = { onFavorite(book) },
                                     onCustomCover = { onCustomCover(book) },
@@ -483,6 +488,8 @@ internal fun BookshelfSearchResultItem(
     onExpandedChange: () -> Unit,
     onClick: () -> Unit,
     onEditInfo: () -> Unit,
+    onBookDetails: () -> Unit = {},
+    onMoveToFolder: () -> Unit = {},
     onDelete: () -> Unit,
     onFavorite: () -> Unit,
     onCustomCover: () -> Unit,
@@ -568,6 +575,8 @@ internal fun BookshelfSearchResultItem(
                 SearchResultActionRow(
                     book = book,
                     visible = expanded,
+                    onBookDetails = onBookDetails,
+                    onMoveToFolder = onMoveToFolder,
                     onEditInfo = onEditInfo,
                     onDelete = onDelete,
                     onFavorite = onFavorite,
@@ -739,6 +748,8 @@ private fun BookshelfSearchResultCard(
 private fun SearchResultActionRow(
     book: Book,
     visible: Boolean,
+    onBookDetails: () -> Unit,
+    onMoveToFolder: () -> Unit,
     onEditInfo: () -> Unit,
     onDelete: () -> Unit,
     onFavorite: () -> Unit,
@@ -760,17 +771,24 @@ private fun SearchResultActionRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         SearchActionButton(
+            icon = Icons.Outlined.Info,
+            contentDescription = stringResource(R.string.book_details),
+            visible = visible,
+            animationIndex = 0,
+            onClick = onBookDetails
+        )
+        SearchActionButton(
             icon = Icons.Outlined.Edit,
             contentDescription = stringResource(R.string.edit_book_info),
             visible = visible,
-            animationIndex = 0,
+            animationIndex = 1,
             onClick = onEditInfo
         )
         SearchActionButton(
             icon = Icons.Outlined.Delete,
             contentDescription = stringResource(R.string.delete),
             visible = visible,
-            animationIndex = 1,
+            animationIndex = 2,
             onClick = onDelete
         )
         SearchActionButton(
@@ -779,7 +797,7 @@ private fun SearchResultActionRow(
             tintedColor = if (book.isFavorite) favoritePink else Color.Black,
             contentColor = Color.White,
             visible = visible,
-            animationIndex = 2,
+            animationIndex = 3,
             onClick = onFavorite
         )
 
@@ -790,7 +808,7 @@ private fun SearchResultActionRow(
                 label = stringResource(R.string.custom_cover),
                 width = 78.dp,
                 visible = visible,
-                animationIndex = 3,
+                animationIndex = 4,
                 onClick = onCustomCover
             )
             SearchActionButton(
@@ -799,7 +817,7 @@ private fun SearchResultActionRow(
                 label = stringResource(R.string.remove_custom_cover),
                 width = 110.dp,
                 visible = visible,
-                animationIndex = 4,
+                animationIndex = 5,
                 onClick = onRemoveCustomCover
             )
         } else {
@@ -809,7 +827,7 @@ private fun SearchResultActionRow(
                 label = stringResource(R.string.custom_cover),
                 width = 192.dp,
                 visible = visible,
-                animationIndex = 3,
+                animationIndex = 4,
                 onClick = onCustomCover
             )
         }
@@ -818,15 +836,24 @@ private fun SearchResultActionRow(
             icon = Icons.AutoMirrored.Outlined.Label,
             contentDescription = stringResource(R.string.add_tag),
             visible = visible,
-            animationIndex = if (hasCustomCover) 5 else 4,
+            animationIndex = if (hasCustomCover) 6 else 5,
             onClick = onTags
         )
         SearchActionButton(
             icon = Icons.Outlined.Bookmark,
             contentDescription = stringResource(R.string.bookmarks_notes),
             visible = visible,
-            animationIndex = if (hasCustomCover) 6 else 5,
+            animationIndex = if (hasCustomCover) 7 else 6,
             onClick = onBookmarksNotes
+        )
+        SearchActionButton(
+            icon = Icons.Outlined.DriveFileMove,
+            contentDescription = stringResource(R.string.move_to_folder),
+            label = stringResource(R.string.move_to_folder),
+            width = 104.dp,
+            visible = visible,
+            animationIndex = if (hasCustomCover) 8 else 7,
+            onClick = onMoveToFolder
         )
     }
     }
