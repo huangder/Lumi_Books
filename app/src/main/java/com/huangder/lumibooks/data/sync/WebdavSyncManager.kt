@@ -220,7 +220,8 @@ class WebdavSyncManager @Inject constructor(
                         localMetadata = book.toSyncMetadata(),
                         localIsCloudOnly = book.isCloudOnly,
                         generatedCloudTitle = cloudFallbackTitle(book.id, confirmed.fileName),
-                        remoteMetadata = manifestEntry?.metadata
+                        remoteMetadata = manifestEntry?.metadata,
+                        legacyCloudFileTitle = cloudFileTitle(confirmed.fileName)
                     )
                     val cover = if (metadataResolution.localWins) {
                         val coverUpload = runCatching {
@@ -265,14 +266,27 @@ class WebdavSyncManager @Inject constructor(
                 for (book in bookRepository.getAllBooks().first()) {
                     if (book.id in deletedBooks) continue
                     val remoteData = dataEntries[book.id]
+                    val remoteBook = confirmedBooks[book.id]
+                    val needsMetadataBackfill = remoteData != null &&
+                        book.isCloudOnly &&
+                        remoteBook != null &&
+                        remoteBook.metadata == null &&
+                        isGeneratedCloudTitle(
+                            book.title,
+                            cloudFallbackTitle(book.id, remoteBook.fileName),
+                            cloudFileTitle(remoteBook.fileName)
+                        )
                     try {
                         if (remoteData != null &&
-                            (book.id !in initialLocalIds || remoteData.lastModified > book.lastReadTime)
+                            (book.id !in initialLocalIds ||
+                                remoteData.lastModified > book.localReadingDataModifiedAt() ||
+                                needsMetadataBackfill)
                         ) {
                             downloadBookData(book.id, serverUrl, username, password, syncPath, normalized)
                             dataDownloaded++
                         } else if (book.id in initialLocalIds &&
-                            (remoteData == null || book.lastReadTime > remoteData.lastModified)
+                            (remoteData == null ||
+                                book.localReadingDataModifiedAt() > remoteData.lastModified)
                         ) {
                             uploadBookData(book.id, serverUrl, username, password, syncPath, normalized)
                             dataEntries[book.id] = buildBookDataManifestEntry(book)
@@ -649,11 +663,12 @@ class WebdavSyncManager @Inject constructor(
         libraryKey: String
     ): Book {
         val fallbackTitle = cloudFallbackTitle(bookId, remoteEntry.fileName)
+        val legacyFileTitle = cloudFileTitle(remoteEntry.fileName)
         val metadata = remoteEntry.metadata?.takeUnless {
-            it.title.trim().equals(fallbackTitle.trim(), ignoreCase = true)
+            isGeneratedCloudTitle(it.title, fallbackTitle, legacyFileTitle)
         }
         val existingIsGeneratedPlaceholder = existing?.isCloudOnly == true &&
-            existing.title.trim().equals(fallbackTitle.trim(), ignoreCase = true)
+            isGeneratedCloudTitle(existing.title, fallbackTitle, legacyFileTitle)
         val remoteMetadataWins = metadata != null &&
             (existing == null || existingIsGeneratedPlaceholder ||
                 shouldApplyRemoteMetadata(existing.metadataUpdatedAt, metadata))
@@ -674,7 +689,11 @@ class WebdavSyncManager @Inject constructor(
             metadataUpdatedAt = metadata?.updatedAt ?: 0L
         )
         return base.copy(
-            title = if (remoteMetadataWins) metadata?.title?.takeIf { it.isNotBlank() } ?: base.title else base.title,
+            title = when {
+                remoteMetadataWins -> metadata?.title?.takeIf { it.isNotBlank() } ?: base.title
+                existingIsGeneratedPlaceholder -> fallbackTitle
+                else -> base.title
+            },
             author = if (remoteMetadataWins) metadata?.author?.takeIf { it.isNotBlank() } ?: base.author else base.author,
             coverPath = coverPath ?: base.coverPath,
             format = if (remoteMetadataWins) metadata?.format?.toBookFormatOrNull() ?: base.format else base.format,
@@ -689,9 +708,10 @@ class WebdavSyncManager @Inject constructor(
     }
 
     private fun cloudFallbackTitle(bookId: String, remoteFileName: String): String =
+        context.getString(R.string.webdav_cloud_book_fallback, bookId.take(8))
+
+    private fun cloudFileTitle(remoteFileName: String): String =
         remoteFileName.substringBeforeLast('.', remoteFileName)
-            .takeIf { it.isNotBlank() && it != bookId }
-            ?: context.getString(R.string.webdav_cloud_book_fallback, bookId.take(8))
 
     private fun String.toBookFormatOrNull(): BookFormat? =
         runCatching { BookFormat.valueOf(uppercase()) }.getOrNull()
@@ -923,8 +943,10 @@ class WebdavSyncManager @Inject constructor(
         fileName = "${book.id}.json",
         sha256 = "",
         sizeBytes = 0,
-        lastModified = book.lastReadTime
+        lastModified = book.localReadingDataModifiedAt()
     )
+
+    private fun Book.localReadingDataModifiedAt(): Long = maxOf(lastReadTime, metadataUpdatedAt)
 
     private suspend fun uploadBookFile(
         book: Book,
@@ -1080,7 +1102,8 @@ class WebdavSyncManager @Inject constructor(
         config: WebdavConfig,
         existingJson: JSONObject? = null
     ): String {
-        val book = if (config.syncReadingRecords) bookRepository.getBookById(bookId) else null
+        val localBook = bookRepository.getBookById(bookId)
+        val book = localBook.takeIf { config.syncReadingRecords }
         val bookmarks = if (config.syncBookmarks) {
             readingRepository.getBookmarksByBookId(bookId).first()
         } else {
@@ -1094,6 +1117,18 @@ class WebdavSyncManager @Inject constructor(
 
         return (existingJson ?: JSONObject()).apply {
             put("bookId", bookId)
+            if (localBook != null) {
+                val fallback = cloudFallbackTitle(
+                    localBook.id,
+                    localBook.remoteFileName ?: localBook.id
+                )
+                val legacyFileTitle = localBook.remoteFileName?.let(::cloudFileTitle)
+                if (!localBook.isCloudOnly ||
+                    !isGeneratedCloudTitle(localBook.title, fallback, legacyFileTitle)
+                ) {
+                    put("metadata", localBook.toSyncMetadata().toJson())
+                }
+            }
             if (config.syncReadingRecords && book != null) {
                 put("readingProgress", book.readingProgress.toDouble())
                 if (book.locatorJson != null) put("locatorJson", book.locatorJson) else remove("locatorJson")
@@ -1137,7 +1172,37 @@ class WebdavSyncManager @Inject constructor(
 
     private suspend fun applyBookDataJson(bookId: String, json: String, config: WebdavConfig) {
         val root = JSONObject(json)
-        val book = bookRepository.getBookById(bookId)
+        var book = bookRepository.getBookById(bookId)
+        val remoteMetadata = syncMetadataFromReadingData(root)
+        val localBook = book
+        if (localBook != null && remoteMetadata != null) {
+            val fallback = cloudFallbackTitle(bookId, localBook.remoteFileName ?: bookId)
+            val legacyFileTitle = localBook.remoteFileName?.let(::cloudFileTitle)
+            val trustedMetadata = remoteMetadata.takeUnless {
+                isGeneratedCloudTitle(it.title, fallback, legacyFileTitle)
+            }
+            val localIsPlaceholder = localBook.isCloudOnly &&
+                isGeneratedCloudTitle(localBook.title, fallback, legacyFileTitle)
+            if (trustedMetadata != null && shouldApplyReadingDataMetadata(
+                    localIsCloudOnly = localBook.isCloudOnly,
+                    localIsPlaceholder = localIsPlaceholder,
+                    localUpdatedAt = localBook.metadataUpdatedAt,
+                    remoteMetadata = trustedMetadata
+                )
+            ) {
+                val appliedMetadata = requireNotNull(trustedMetadata)
+                val updatedBook = localBook.copy(
+                    title = appliedMetadata.title.takeIf { it.isNotBlank() } ?: localBook.title,
+                    author = appliedMetadata.author.takeIf { it.isNotBlank() } ?: localBook.author,
+                    format = appliedMetadata.format.toBookFormatOrNull() ?: localBook.format,
+                    createdAt = appliedMetadata.createdAt.takeIf { it > 0L } ?: localBook.createdAt,
+                    isFavorite = appliedMetadata.isFavorite,
+                    metadataUpdatedAt = appliedMetadata.updatedAt
+                )
+                bookRepository.updateBook(updatedBook)
+                book = updatedBook
+            }
+        }
         if (book != null && config.syncReadingRecords && root.has("readingProgress")) {
             val progress = root.optDouble("readingProgress", book.readingProgress.toDouble()).toFloat()
             val locator = root.optString("locatorJson", null)

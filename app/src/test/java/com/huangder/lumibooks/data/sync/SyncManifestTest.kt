@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.json.JSONObject
 
 class SyncManifestTest {
     @Test
@@ -172,5 +173,35 @@ class SyncManifestTest {
         )
 
         assertEquals(setOf("active"), manifest.activeRemoteBooks().keys)
+    }
+
+    @Test
+    fun readingDataMetadataIsOptionalAndUsesManifestStructure() {
+        assertNull(syncMetadataFromReadingData(JSONObject("{\"bookId\":\"book-1\"}")))
+
+        val metadata = SyncBookMetadata("真实书名", "作者", "EPUB", 10, true, 20)
+        val root = JSONObject().put("metadata", metadata.toJson())
+
+        assertEquals(metadata, syncMetadataFromReadingData(root))
+    }
+
+    @Test
+    fun cloudFileNameIsAlsoTreatedAsAnUntrustedLegacyPlaceholder() {
+        assertTrue(
+            isGeneratedCloudTitle(
+                title = "server-file-name",
+                generatedCloudTitle = "云端书籍 abcdef12",
+                legacyCloudFileTitle = "server-file-name"
+            )
+        )
+    }
+
+    @Test
+    fun readingDataMetadataBackfillsCloudPlaceholderButNotLocalBody() {
+        val remote = SyncBookMetadata("真实书名", "作者", "EPUB", 10, false, 20)
+
+        assertTrue(shouldApplyReadingDataMetadata(true, true, 999, remote))
+        assertTrue(shouldApplyReadingDataMetadata(true, false, 10, remote))
+        assertFalse(shouldApplyReadingDataMetadata(false, false, 10, remote))
     }
 }

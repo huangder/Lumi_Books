@@ -164,13 +164,14 @@ internal fun resolveMetadataForSync(
     localMetadata: SyncBookMetadata,
     localIsCloudOnly: Boolean,
     generatedCloudTitle: String,
-    remoteMetadata: SyncBookMetadata?
+    remoteMetadata: SyncBookMetadata?,
+    legacyCloudFileTitle: String? = null
 ): SyncMetadataResolution {
     val trustedRemote = remoteMetadata?.takeUnless {
-        it.title.trim().equals(generatedCloudTitle.trim(), ignoreCase = true)
+        isGeneratedCloudTitle(it.title, generatedCloudTitle, legacyCloudFileTitle)
     }
     val localIsGeneratedPlaceholder = localIsCloudOnly &&
-        localMetadata.title.trim().equals(generatedCloudTitle.trim(), ignoreCase = true)
+        isGeneratedCloudTitle(localMetadata.title, generatedCloudTitle, legacyCloudFileTitle)
     val localWins = !localIsGeneratedPlaceholder &&
         (trustedRemote == null || localMetadata.updatedAt >= trustedRemote.updatedAt)
     return SyncMetadataResolution(
@@ -178,6 +179,28 @@ internal fun resolveMetadataForSync(
         localWins = localWins
     )
 }
+
+internal fun isGeneratedCloudTitle(
+    title: String,
+    generatedCloudTitle: String,
+    legacyCloudFileTitle: String? = null
+): Boolean {
+    val normalized = title.trim()
+    return normalized.equals(generatedCloudTitle.trim(), ignoreCase = true) ||
+        legacyCloudFileTitle?.trim()?.takeIf { it.isNotEmpty() }
+            ?.let { normalized.equals(it, ignoreCase = true) } == true
+}
+
+internal fun syncMetadataFromReadingData(root: JSONObject): SyncBookMetadata? =
+    root.optJSONObject("metadata")?.let(SyncBookMetadata::fromJson)
+
+internal fun shouldApplyReadingDataMetadata(
+    localIsCloudOnly: Boolean,
+    localIsPlaceholder: Boolean,
+    localUpdatedAt: Long,
+    remoteMetadata: SyncBookMetadata?
+): Boolean = remoteMetadata != null && localIsCloudOnly &&
+    (localIsPlaceholder || remoteMetadata.updatedAt > localUpdatedAt)
 
 internal fun SyncManifest.activeRemoteBooks(): Map<String, SyncFileEntry> =
     books.filterKeys { it !in deletedBooks }
