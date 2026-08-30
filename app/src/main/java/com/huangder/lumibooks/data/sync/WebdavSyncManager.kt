@@ -529,19 +529,39 @@ class WebdavSyncManager @Inject constructor(
         }
     }
 
-    suspend fun deleteRemoteBooks(bookIds: Set<String>): SyncResult {
+    suspend fun deleteRemoteBooks(
+        bookIds: Set<String>,
+        remoteFileNames: Map<String, String> = emptyMap(),
+        publishPortableState: Boolean = false
+    ): SyncResult {
         if (bookIds.isEmpty()) return SyncResult(context.getString(R.string.no_books_selected), true)
         if (!syncMutex.tryLock()) {
             return SyncResult(context.getString(R.string.webdav_operation_in_progress), false)
         }
         return try {
-            withContext(Dispatchers.IO) { runRemoteDelete(bookIds) }
+            withContext(Dispatchers.IO) {
+                runRemoteDelete(bookIds, remoteFileNames, publishPortableState)
+            }
+        } catch (error: WebdavException) {
+            SyncResult(
+                context.getString(R.string.webdav_delete_failed, userFacingWebdavError(error)),
+                false
+            )
+        } catch (error: Exception) {
+            SyncResult(
+                context.getString(R.string.webdav_delete_failed, error.message.orEmpty()),
+                false
+            )
         } finally {
             syncMutex.unlock()
         }
     }
 
-    private suspend fun runRemoteDelete(bookIds: Set<String>): SyncResult {
+    private suspend fun runRemoteDelete(
+        bookIds: Set<String>,
+        remoteFileNames: Map<String, String>,
+        publishPortableState: Boolean
+    ): SyncResult {
         cleanupStalePartialDownloads()
         val config = dataStoreManager.webdavConfig.first().normalized()
         if (!config.enabled) return SyncResult(context.getString(R.string.webdav_disabled), false)
@@ -564,8 +584,10 @@ class WebdavSyncManager @Inject constructor(
                 val remoteData = data.remove(bookId)
                 deleted[bookId] = DeletedBookEntry(
                     deletedAt = now,
-                    fileName = remoteBook?.fileName ?: localBook?.remoteFileName,
-                    coverFileName = remoteBook?.cover?.fileName,
+                    fileName = remoteBook?.fileName
+                        ?: localBook?.remoteFileName
+                        ?: remoteFileNames[bookId],
+                    coverFileName = remoteBook?.cover?.fileName ?: "$bookId.jpg",
                     dataFileName = remoteData?.fileName ?: "$bookId.json"
                 )
             }
@@ -593,6 +615,14 @@ class WebdavSyncManager @Inject constructor(
                 )
             }
             dataStoreManager.saveWebdavSyncedBookIds(books.keys)
+            if (publishPortableState && (
+                    config.syncProfileAndSettings ||
+                        config.syncLibraryOrganization ||
+                        config.syncReadingData
+                )
+            ) {
+                portableStateSync.sync(config, password)
+            }
             SyncResult(context.getString(R.string.webdav_books_deleted, bookIds.size), true)
         } catch (error: WebdavException) {
             SyncResult(

@@ -1125,6 +1125,10 @@
     <string name="delete_cloud_book_choice">The selected %1$d books include cloud copies. Choose where to delete them.</string>
     <string name="delete_local_only">Delete local only</string>
     <string name="delete_local_and_cloud">Delete local and cloud</string>
+    <string name="force_delete">Force delete</string>
+    <string name="force_delete_hint">Force delete removes the local library entry first and then attempts WebDAV cleanup. Local deletion still completes if the cloud operation fails. Use it only when normal deletion fails.</string>
+    <string name="force_delete_cloud_failed">The local entry was deleted, but cloud cleanup did not finish: %1$s</string>
+    <string name="force_delete_file_cleanup_failed">“%1$s” was removed from the library, but its local file could not be cleaned up</string>
     <string name="pdf_password_title">PDF password</string>
     <string name="pdf_password_hint">Password</string>
     <string name="pdf_page_progress">Reading progress</string>

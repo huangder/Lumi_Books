@@ -1111,6 +1111,10 @@
     <string name="delete_cloud_book_choice">選択した %1$d 冊にはクラウドコピーがあります。削除範囲を選択してください。</string>
     <string name="delete_local_only">端末のみ削除</string>
     <string name="delete_local_and_cloud">端末とクラウドから削除</string>
+    <string name="force_delete">強制削除</string>
+    <string name="force_delete_hint">強制削除は先に端末のライブラリから削除し、その後 WebDAV のクリーンアップを試みます。クラウド側で失敗しても端末側の削除は完了します。通常の削除に失敗した場合のみ使用してください。</string>
+    <string name="force_delete_cloud_failed">端末の項目は削除されましたが、クラウドのクリーンアップは完了しませんでした：%1$s</string>
+    <string name="force_delete_file_cleanup_failed">「%1$s」はライブラリから削除されましたが、端末上のファイルを削除できませんでした</string>
     <!-- 読書テーマセットとページめくりアニメーション設定 -->
     <string name="reader_theme_suite_settings_title">読書テーマセット設定</string>
     <string name="reader_theme_suite_settings_description">読書テーマの管理、並べ替え、プレビュー</string>

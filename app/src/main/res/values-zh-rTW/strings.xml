@@ -1111,6 +1111,10 @@
     <string name="delete_cloud_book_choice">所選 %1$d 本書包含雲端副本。請選擇刪除範圍。</string>
     <string name="delete_local_only">僅刪除本機</string>
     <string name="delete_local_and_cloud">本機與雲端一起刪除</string>
+    <string name="force_delete">強制刪除</string>
+    <string name="force_delete_hint">強制刪除會先從本機書庫移除，再嘗試清理 WebDAV；即使雲端失敗，本機刪除仍會完成。僅在一般刪除失敗時使用。</string>
+    <string name="force_delete_cloud_failed">已刪除本機書目，但雲端清理未完成：%1$s</string>
+    <string name="force_delete_file_cleanup_failed">已從書庫刪除《%1$s》，但未能清理本機檔案</string>
     <!-- 閱讀主題套裝與翻頁動畫設定 -->
     <string name="reader_theme_suite_settings_title">主題套裝設定</string>
     <string name="reader_theme_suite_settings_description">管理、排序並預覽閱讀主題</string>

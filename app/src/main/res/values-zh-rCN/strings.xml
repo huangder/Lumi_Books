@@ -1122,6 +1122,10 @@
     <string name="delete_cloud_book_choice">所选 %1$d 本书包含云端副本。请选择删除范围。</string>
     <string name="delete_local_only">仅删除本地</string>
     <string name="delete_local_and_cloud">本地与云端一起删除</string>
+    <string name="force_delete">强制删除</string>
+    <string name="force_delete_hint">强制删除会先从本地书库移除，并尝试清理 WebDAV；即使云端失败，本地删除仍会完成。仅在普通删除失败时使用。</string>
+    <string name="force_delete_cloud_failed">已删除本地书目，但云端清理未完成：%1$s</string>
+    <string name="force_delete_file_cleanup_failed">已从书库删除《%1$s》，但本地文件未能清理</string>
     <!-- 阅读主题套装与翻页动画设置 -->
     <string name="reader_theme_suite_settings_title">主题套装设置</string>
     <string name="reader_theme_suite_settings_description">管理、排序并预览阅读主题</string>

@@ -1167,7 +1167,8 @@ class HomeViewModel @Inject constructor(
         if (booksToDelete.isEmpty()) return
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isBookDeleteInProgress = true)
-            if (mode == BookDeleteMode.LOCAL_AND_CLOUD) {
+            var remoteFailure: String? = null
+            if (mode.cloudFailureBlocksLocalDelete) {
                 val remoteIds = booksToDelete.asSequence()
                     .filter { it.remoteFileName != null }
                     .mapTo(mutableSetOf()) { it.id }
@@ -1183,9 +1184,26 @@ class HomeViewModel @Inject constructor(
                 }
             }
             val failures = deleteBooksAndManagedData(booksToDelete, mode)
-            if (failures.isNotEmpty()) {
+            if (mode.forcesLocalDelete) {
+                val remoteFileNames = booksToDelete.associate { book ->
+                    book.id to (book.remoteFileName ?: "${book.id}.${book.format.name.lowercase()}")
+                }
+                val remoteResult = webdavSyncManager.deleteRemoteBooks(
+                    bookIds = booksToDelete.mapTo(mutableSetOf()) { it.id },
+                    remoteFileNames = remoteFileNames,
+                    publishPortableState = true
+                )
+                if (!remoteResult.success) {
+                    remoteFailure = application.getString(
+                        R.string.force_delete_cloud_failed,
+                        remoteResult.message
+                    )
+                }
+            }
+            val messages = failures + listOfNotNull(remoteFailure)
+            if (messages.isNotEmpty()) {
                 _uiState.value = _uiState.value.copy(
-                    error = failures.joinToString(separator = "\n"),
+                    error = messages.joinToString(separator = "\n"),
                     isBookDeleteInProgress = false
                 )
             } else {
@@ -1215,10 +1233,27 @@ class HomeViewModel @Inject constructor(
                 val shouldDeletePhysicalFile = book.filePath.isNotBlank() &&
                     book.filePath !in pathsUsedByRemainingBooks
                 if (shouldDeletePhysicalFile) {
-                    val fileDeleted = withContext(Dispatchers.IO) {
-                        FileUtils.deleteAppManagedBookFile(application, book.filePath)
+                    val fileDeleted = if (mode.forcesLocalDelete) {
+                        runCatching {
+                            withContext(Dispatchers.IO) {
+                                FileUtils.deleteAppManagedBookFile(application, book.filePath)
+                            }
+                        }.getOrDefault(false)
+                    } else {
+                        withContext(Dispatchers.IO) {
+                            FileUtils.deleteAppManagedBookFile(application, book.filePath)
+                        }
                     }
-                    check(fileDeleted) { "Unable to delete the local file for ${book.title}" }
+                    if (!fileDeleted) {
+                        if (mode.forcesLocalDelete) {
+                            failures += application.getString(
+                                R.string.force_delete_file_cleanup_failed,
+                                book.title
+                            )
+                        } else {
+                            error("Unable to delete the local file for ${book.title}")
+                        }
+                    }
                 }
 
                 if (keepCloudPlaceholder) {
