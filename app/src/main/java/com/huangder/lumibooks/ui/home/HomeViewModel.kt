@@ -140,6 +140,7 @@ class HomeViewModel @Inject constructor(
         loadWeeklyData()
         loadWebdavSyncStatus()
         loadBookshelfLayoutMode()
+        loadBookshelfSortMode()
         loadImportBooksLayoutMode()
         loadAuthorizedBookDirectories()
     }
@@ -348,6 +349,18 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    private fun loadBookshelfSortMode() {
+        viewModelScope.launch {
+            dataStoreManager.bookshelfSortMode.collectLatest { stored ->
+                val sort = runCatching { SortBy.valueOf(stored) }.getOrDefault(SortBy.LAST_READ)
+                _uiState.value = _uiState.value.copy(
+                    sortBy = sort,
+                    books = sortBooks(_uiState.value.books, sort)
+                )
+            }
+        }
+    }
+
     fun downloadCloudBook(bookId: String) {
         viewModelScope.launch {
             val result = webdavSyncManager.downloadBook(bookId)
@@ -408,6 +421,7 @@ class HomeViewModel @Inject constructor(
             folders = _uiState.value.folders,
             links = _uiState.value.bookFolderLinks
         )
+        viewModelScope.launch { dataStoreManager.saveBookshelfSortMode(sortBy.name) }
     }
 
     private fun sortBooks(books: List<Book>, sortBy: SortBy): List<Book> {

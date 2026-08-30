@@ -13,9 +13,14 @@ import kotlinx.coroutines.flow.map
 import org.json.JSONArray
 import java.util.UUID
 import javax.inject.Inject
+import com.huangder.lumibooks.data.local.dao.SyncStateDao
+import com.huangder.lumibooks.data.local.entity.SyncTombstoneEntity
+import com.huangder.lumibooks.data.sync.SyncIdentityStore
 
 class FolderRepositoryImpl @Inject constructor(
-    private val folderDao: FolderDao
+    private val folderDao: FolderDao,
+    private val syncStateDao: SyncStateDao,
+    private val syncIdentityStore: SyncIdentityStore
 ) : FolderRepository {
     override fun getAllFolders(): Flow<List<LibraryFolder>> =
         folderDao.getAllFolders().map { folders -> folders.map { it.toDomain() } }
@@ -64,7 +69,7 @@ class FolderRepositoryImpl @Inject constructor(
     }
 
     override suspend fun updateFolderCover(folderId: String, coverPath: String?): Boolean =
-        folderDao.updateFolderCover(folderId, coverPath) > 0
+        folderDao.updateFolderCover(folderId, coverPath, System.currentTimeMillis()) > 0
 
     override suspend fun initializeFolderPreview(
         folderId: String,
@@ -79,7 +84,8 @@ class FolderRepositoryImpl @Inject constructor(
         if (ids.isEmpty()) return false
         return folderDao.initializeFolderPreviewIfUnset(
             folderId = folderId,
-            previewBookIds = JSONArray(ids).toString()
+            previewBookIds = JSONArray(ids).toString(),
+            updatedAt = System.currentTimeMillis()
         ) > 0
     }
 
@@ -88,11 +94,27 @@ class FolderRepositoryImpl @Inject constructor(
         targetParentId: String?
     ): FolderMoveResult = folderDao.moveFolder(folderId, targetParentId)
 
-    override suspend fun deleteFolderTree(folderId: String): List<String> =
-        folderDao.deleteFolderTree(folderId)
+    override suspend fun deleteFolderTree(folderId: String): List<String> {
+        val now = System.currentTimeMillis()
+        val deviceId = syncIdentityStore.deviceId()
+        val folderIds = folderDao.getFolderTreeIds(folderId)
+        val links = folderDao.getBookLinksInTree(folderId)
+        syncStateDao.upsertTombstones(
+            folderIds.map { SyncTombstoneEntity("folder", it, now, deviceId) } +
+                links.map { SyncTombstoneEntity("book_folder", it.bookId, now, deviceId) }
+        )
+        return folderDao.deleteFolderTree(folderId)
+    }
 
     override suspend fun moveBooks(bookIds: Set<String>, targetFolderId: String?) {
         folderDao.moveBooks(bookIds, targetFolderId)
+        if (targetFolderId == null && bookIds.isNotEmpty()) {
+            val now = System.currentTimeMillis()
+            val deviceId = syncIdentityStore.deviceId()
+            syncStateDao.upsertTombstones(
+                bookIds.map { SyncTombstoneEntity("book_folder", it, now, deviceId) }
+            )
+        }
     }
 
     private fun newFolder(rawName: String, parentId: String?): FolderEntity {
@@ -127,8 +149,9 @@ class FolderRepositoryImpl @Inject constructor(
                     }
                 }
             }.getOrDefault(emptyList())
-        }
+        },
+        updatedAt = updatedAt
     )
 
-    private fun BookFolderCrossRefEntity.toDomain() = BookFolderLink(bookId, folderId)
+    private fun BookFolderCrossRefEntity.toDomain() = BookFolderLink(bookId, folderId, updatedAt)
 }

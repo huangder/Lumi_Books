@@ -178,6 +178,18 @@
     <string name="restore_in_progress">正在還原...</string>
     <string name="restore_success">還原成功，請重新啟動應用程式</string>
     <string name="restore_failed">還原失敗：%s</string>
+    <string name="backup_data_action">備份資料</string>
+    <string name="restore_data_action">還原資料</string>
+    <string name="backup_contents_title">備份內容</string>
+    <string name="backup_content_profile_settings">頭像、暱稱、應用程式與閱讀設定</string>
+    <string name="backup_content_library">書架配置、資料夾、標籤與自訂封面</string>
+    <string name="backup_content_reading">閱讀進度、統計、書籤、筆記與標註</string>
+    <string name="backup_content_resources">自訂字型與閱讀背景</string>
+    <string name="backup_content_books">所有可讀取的書籍原檔，包括 SAF 書籍</string>
+    <string name="backup_advice">密碼、權杖、資料夾權限及裝置狀態不會備份。建議定期備份。</string>
+    <string name="restore_replace_title">還原並取代本機資料？</string>
+    <string name="restore_replace_message">還原會完整取代目前書庫、閱讀資料、可移轉設定及自訂資源。密碼、權杖、WebDAV 憑證、資料夾權限及裝置識別碼會保留。</string>
+    <string name="restore_confirm_action">選擇備份</string>
     <string name="select_backup_file">選擇備份檔案</string>
     <string name="select_restore_file">選擇還原檔案</string>
 
@@ -855,6 +867,14 @@
     <string name="webdav_sync_content_description">選擇要儲存到 WebDAV 的內容</string>
     <string name="webdav_sync_content_books">書籍原始檔案</string>
     <string name="webdav_sync_content_books_description">EPUB、PDF 和 TXT 檔案</string>
+    <string name="webdav_sync_content_profile_settings">個人資料與設定</string>
+    <string name="webdav_sync_content_profile_settings_description">頭像、暱稱、主題、字型和閱讀偏好</string>
+    <string name="webdav_sync_content_library">書架組織</string>
+    <string name="webdav_sync_content_library_description">資料夾、標籤、封面和書籍歸屬</string>
+    <string name="webdav_sync_content_reading_data">閱讀資料與統計</string>
+    <string name="webdav_sync_content_reading_data_description">進度、閱讀時間、書籤、劃線與筆記</string>
+    <string name="webdav_sync_category_result">%1$s：已同步</string>
+    <string name="webdav_sync_assets_result">自訂資源：上傳 %1$d，下載 %2$d</string>
     <string name="webdav_sync_content_reading_records">閱讀記錄</string>
     <string name="webdav_sync_content_reading_records_description">閱讀進度、最後位置和時間</string>
     <string name="webdav_sync_content_bookmarks">書籤</string>

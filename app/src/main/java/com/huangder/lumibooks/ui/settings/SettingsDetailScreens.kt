@@ -2611,6 +2611,7 @@ fun BackupRestoreDetail(viewModel: SettingsViewModel) {
     val genericErrorText = stringResource(R.string.error)
     val backupPickerFailureText = stringResource(R.string.backup_failed, genericErrorText)
     val restorePickerFailureText = stringResource(R.string.restore_failed, genericErrorText)
+    var showRestoreConfirmation by rememberSaveable { mutableStateOf(false) }
 
     // 备份：创建文件
     val backupLauncher = rememberLauncherForActivityResult(
@@ -2636,7 +2637,7 @@ fun BackupRestoreDetail(viewModel: SettingsViewModel) {
 
     DetailCard {
         // 备份
-        ActionRow(Icons.Outlined.Upload, "备份数据") {
+        ActionRow(Icons.Outlined.Upload, stringResource(R.string.backup_data_action)) {
             val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date())
             runCatching {
                 backupLauncher.launch("lumi_backup_$timestamp.zip")
@@ -2646,12 +2647,8 @@ fun BackupRestoreDetail(viewModel: SettingsViewModel) {
         }
         SettingsDivider()
         // 恢复
-        ActionRow(Icons.Outlined.Download, "恢复数据") {
-            runCatching {
-                restoreLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
-            }.onFailure {
-                Toast.makeText(context, restorePickerFailureText, Toast.LENGTH_LONG).show()
-            }
+        ActionRow(Icons.Outlined.Download, stringResource(R.string.restore_data_action)) {
+            showRestoreConfirmation = true
         }
     }
 
@@ -2660,28 +2657,56 @@ fun BackupRestoreDetail(viewModel: SettingsViewModel) {
     // 备份说明
     DetailCard {
         Column(Modifier.fillMaxWidth().padding(AppSpace.md)) {
-            Text("备份内容", fontSize = AppType.BodySmall, fontWeight = FontWeight.SemiBold, color = AppColors.TextPrimary)
+            Text(stringResource(R.string.backup_contents_title), fontSize = AppType.BodySmall, fontWeight = FontWeight.SemiBold, color = AppColors.TextPrimary)
             Spacer(Modifier.height(AppSpace.xs))
             listOf(
-                "阅读记录与书签",
-                "阅读进度与统计数据",
-                "应用设置（字号、主题、深色模式等）",
-                "用户头像",
-                "已导入的电子书文件"
+                R.string.backup_content_profile_settings,
+                R.string.backup_content_library,
+                R.string.backup_content_reading,
+                R.string.backup_content_resources,
+                R.string.backup_content_books
             ).forEach { item ->
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
                     Text("·", fontSize = AppType.Caption, color = AppColors.Accent, fontWeight = FontWeight.Bold, modifier = Modifier.width(16.dp))
-                    Text(item, fontSize = AppType.Caption, color = AppColors.TextSecondary)
+                    Text(stringResource(item), fontSize = AppType.Caption, color = AppColors.TextSecondary)
                 }
             }
             Spacer(Modifier.height(AppSpace.sm))
             Text(
-                "建议定期备份数据，卸载应用或清除数据将导致所有记录丢失。",
+                stringResource(R.string.backup_advice),
                 fontSize = AppType.Caption,
                 color = AppColors.Accent,
                 fontWeight = FontWeight.Medium
             )
         }
+    }
+
+    if (showRestoreConfirmation) {
+        LiquidGlassAlertDialog(
+            onDismissRequest = { showRestoreConfirmation = false },
+            title = { Text(stringResource(R.string.restore_replace_title)) },
+            text = { Text(stringResource(R.string.restore_replace_message)) },
+            confirmButton = {
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.restore_confirm_action),
+                    tintedColor = DestructiveRed,
+                    onClick = {
+                        showRestoreConfirmation = false
+                        runCatching {
+                            restoreLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
+                        }.onFailure {
+                            Toast.makeText(context, restorePickerFailureText, Toast.LENGTH_LONG).show()
+                        }
+                    }
+                )
+            },
+            dismissButton = {
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.cancel),
+                    onClick = { showRestoreConfirmation = false }
+                )
+            }
+        )
     }
 
     // 状态提示

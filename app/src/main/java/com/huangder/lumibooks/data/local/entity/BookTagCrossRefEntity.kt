@@ -25,5 +25,6 @@ import androidx.room.Index
 )
 data class BookTagCrossRefEntity(
     val bookId: String,
-    val tagId: String
+    val tagId: String,
+    val updatedAt: Long = System.currentTimeMillis()
 )

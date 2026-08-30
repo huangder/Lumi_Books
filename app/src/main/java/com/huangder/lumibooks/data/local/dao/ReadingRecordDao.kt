@@ -25,10 +25,20 @@ interface ReadingRecordDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRecord(record: ReadingRecordEntity)
 
-    @Query("SELECT * FROM reading_records WHERE bookId = :bookId AND date = :date LIMIT 1")
-    suspend fun getRecordByBookAndDate(bookId: String, date: String): ReadingRecordEntity?
+    @Query(
+        "SELECT * FROM reading_records WHERE bookId = :bookId AND date = :date " +
+            "AND sourceDeviceId = :sourceDeviceId LIMIT 1"
+    )
+    suspend fun getRecordByBookAndDate(
+        bookId: String,
+        date: String,
+        sourceDeviceId: String
+    ): ReadingRecordEntity?
 
-    @Query("UPDATE reading_records SET duration = duration + :additionalDuration, endTime = :endTime WHERE id = :recordId")
+    @Query(
+        "UPDATE reading_records SET duration = duration + :additionalDuration, " +
+            "endTime = :endTime, updatedAt = :endTime WHERE id = :recordId"
+    )
     suspend fun updateRecordDuration(recordId: Long, additionalDuration: Long, endTime: Long)
 
     @Query("SELECT bookId, SUM(duration) as totalDuration FROM reading_records GROUP BY bookId ORDER BY totalDuration DESC LIMIT :limit")

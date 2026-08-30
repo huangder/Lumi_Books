@@ -8,9 +8,14 @@ import com.huangder.lumibooks.domain.repository.BookRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
+import com.huangder.lumibooks.data.local.dao.SyncStateDao
+import com.huangder.lumibooks.data.local.entity.SyncTombstoneEntity
+import com.huangder.lumibooks.data.sync.SyncIdentityStore
 
 class BookRepositoryImpl @Inject constructor(
-    private val bookDao: BookDao
+    private val bookDao: BookDao,
+    private val syncStateDao: SyncStateDao,
+    private val syncIdentityStore: SyncIdentityStore
 ) : BookRepository {
 
     override fun getAllBooks(): Flow<List<Book>> {
@@ -42,6 +47,16 @@ class BookRepositoryImpl @Inject constructor(
     }
 
     override suspend fun deleteBook(book: Book) {
+        syncStateDao.upsertTombstones(
+            listOf(
+                SyncTombstoneEntity(
+                    namespace = "book",
+                    itemId = book.id,
+                    deletedAt = System.currentTimeMillis(),
+                    deviceId = syncIdentityStore.deviceId()
+                )
+            )
+        )
         bookDao.deleteBookWithRelatedData(book.id)
     }
 

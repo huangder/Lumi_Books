@@ -273,6 +273,71 @@ class DatabaseMigrationsTest {
         }
     }
 
+    @Test
+    fun migration10To11CreatesStableSyncStateAndPreservesPortableData() {
+        openHelper(version = 10, createSchema = true).use { helper ->
+            helper.writableDatabase.apply {
+                execSQL(
+                    "INSERT INTO books " +
+                        "(id,title,author,filePath,coverPath,format,lastReadTime,readingProgress," +
+                        "createdAt,isFavorite,locatorJson,isCloudOnly,remoteFileSize,metadataUpdatedAt) VALUES " +
+                        "('book-1','Title','Author','/book.epub',NULL,'EPUB',10,0.5,5,0,NULL,0,0,5)"
+                )
+                execSQL("INSERT INTO reading_records VALUES (1,'book-1','2026-08-30',120,10,130)")
+                execSQL("INSERT INTO bookmarks VALUES (7,'book-1',3,0.65,'Mark',11,NULL)")
+                execSQL(
+                    "INSERT INTO notes VALUES " +
+                        "(9,'book-1',3,12,24,'selected','note','#ffee00',12,NULL,NULL,'highlight')"
+                )
+                execSQL("INSERT INTO folders VALUES ('folder-1','Folder','folder',NULL,20,NULL,NULL)")
+                execSQL("INSERT INTO book_folder_cross_refs VALUES ('book-1','folder-1')")
+                execSQL("INSERT INTO tags VALUES ('tag-1','Fiction','fiction',13,NULL)")
+                execSQL("INSERT INTO book_tag_cross_refs VALUES ('book-1','tag-1')")
+            }
+        }
+
+        openHelper(version = 11, createSchema = false).use { helper ->
+            val db = helper.writableDatabase
+            val deviceId = db.query("SELECT value FROM sync_state WHERE `key`='device_id'").use { cursor ->
+                cursor.moveToFirst()
+                cursor.getString(0)
+            }
+            db.query(
+                "SELECT duration,sourceDeviceId,updatedAt FROM reading_records " +
+                    "WHERE bookId='book-1' AND date='2026-08-30'"
+            ).use { cursor ->
+                cursor.moveToFirst()
+                assertEquals(120L, cursor.getLong(0))
+                assertEquals(deviceId, cursor.getString(1))
+                assertEquals(130L, cursor.getLong(2))
+            }
+            db.query("SELECT syncId,updatedAt FROM bookmarks WHERE id=7").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals(32, cursor.getString(0).length)
+                assertEquals(11L, cursor.getLong(1))
+            }
+            db.query("SELECT syncId,updatedAt FROM notes WHERE id=9").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals(32, cursor.getString(0).length)
+                assertEquals(12L, cursor.getLong(1))
+            }
+            db.query("SELECT updatedAt FROM folders WHERE id='folder-1'").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals(20L, cursor.getLong(0))
+            }
+            db.query("SELECT updatedAt FROM tags WHERE id='tag-1'").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals(13L, cursor.getLong(0))
+            }
+            assertEquals(
+                setOf("index_reading_records_bookId_date_sourceDeviceId"),
+                indexNames(db, "reading_records")
+            )
+            assertEquals(setOf("index_bookmarks_syncId"), indexNames(db, "bookmarks"))
+            assertEquals(setOf("index_notes_syncId"), indexNames(db, "notes"))
+        }
+    }
+
     private fun openHelper(version: Int, createSchema: Boolean): SupportSQLiteOpenHelper {
         val callback = object : SupportSQLiteOpenHelper.Callback(version) {
             override fun onCreate(db: SupportSQLiteDatabase) {
@@ -285,6 +350,7 @@ class DatabaseMigrationsTest {
                     if (version >= 8) DatabaseMigrations.MIGRATION_7_8.migrate(db)
                     if (version >= 9) DatabaseMigrations.MIGRATION_8_9.migrate(db)
                     if (version >= 10) DatabaseMigrations.MIGRATION_9_10.migrate(db)
+                    if (version >= 11) DatabaseMigrations.MIGRATION_10_11.migrate(db)
                 }
             }
 
@@ -296,6 +362,7 @@ class DatabaseMigrationsTest {
                 if (oldVersion < 8 && newVersion >= 8) DatabaseMigrations.MIGRATION_7_8.migrate(db)
                 if (oldVersion < 9 && newVersion >= 9) DatabaseMigrations.MIGRATION_8_9.migrate(db)
                 if (oldVersion < 10 && newVersion >= 10) DatabaseMigrations.MIGRATION_9_10.migrate(db)
+                if (oldVersion < 11 && newVersion >= 11) DatabaseMigrations.MIGRATION_10_11.migrate(db)
             }
         }
         val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)
@@ -351,5 +418,11 @@ class DatabaseMigrationsTest {
                 "bookId TEXT NOT NULL, tagId TEXT NOT NULL, PRIMARY KEY(bookId, tagId))"
         )
         db.execSQL("CREATE INDEX index_book_tag_cross_refs_tagId ON book_tag_cross_refs (tagId)")
+        db.execSQL(
+            "CREATE TABLE reading_records (" +
+                "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, bookId TEXT NOT NULL, " +
+                "date TEXT NOT NULL, duration INTEGER NOT NULL, startTime INTEGER NOT NULL, " +
+                "endTime INTEGER NOT NULL)"
+        )
     }
 }

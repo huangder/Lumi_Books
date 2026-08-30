@@ -231,6 +231,18 @@
     <string name="restore_in_progress">Restoring...</string>
     <string name="restore_success">Restore complete. Please restart the app</string>
     <string name="restore_failed">Restore failed: %s</string>
+    <string name="backup_data_action">Back up data</string>
+    <string name="restore_data_action">Restore data</string>
+    <string name="backup_contents_title">Backup contents</string>
+    <string name="backup_content_profile_settings">Profile, app settings, and reader settings</string>
+    <string name="backup_content_library">Shelf layout, folders, tags, and custom covers</string>
+    <string name="backup_content_reading">Reading progress, statistics, bookmarks, notes, and highlights</string>
+    <string name="backup_content_resources">Custom fonts and reader backgrounds</string>
+    <string name="backup_content_books">All readable original book files, including SAF books</string>
+    <string name="backup_advice">Passwords, tokens, folder permissions, and device state are excluded. Back up regularly.</string>
+    <string name="restore_replace_title">Restore and replace local data?</string>
+    <string name="restore_replace_message">Restoring fully replaces the current library, reading data, portable settings, and custom resources. Passwords, tokens, WebDAV credentials, folder permissions, and the device ID are preserved.</string>
+    <string name="restore_confirm_action">Choose backup</string>
     <string name="select_backup_file">Select backup file</string>
     <string name="select_restore_file">Select restore file</string>
 
@@ -973,6 +985,14 @@
     <string name="webdav_sync_content_description">Choose what to save to WebDAV</string>
     <string name="webdav_sync_content_books">Original book files</string>
     <string name="webdav_sync_content_books_description">EPUB, PDF, and TXT files</string>
+    <string name="webdav_sync_content_profile_settings">Profile and settings</string>
+    <string name="webdav_sync_content_profile_settings_description">Avatar, nickname, themes, fonts, and reading preferences</string>
+    <string name="webdav_sync_content_library">Library organization</string>
+    <string name="webdav_sync_content_library_description">Folders, tags, covers, and book placement</string>
+    <string name="webdav_sync_content_reading_data">Reading data and statistics</string>
+    <string name="webdav_sync_content_reading_data_description">Progress, reading time, bookmarks, highlights, and notes</string>
+    <string name="webdav_sync_category_result">%1$s: synced</string>
+    <string name="webdav_sync_assets_result">Custom resources: %1$d uploaded, %2$d downloaded</string>
     <string name="webdav_sync_content_reading_records">Reading history</string>
     <string name="webdav_sync_content_reading_records_description">Progress, last position, and reading time</string>
     <string name="webdav_sync_content_bookmarks">Bookmarks</string>

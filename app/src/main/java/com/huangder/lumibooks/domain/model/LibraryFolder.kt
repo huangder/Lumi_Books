@@ -8,7 +8,8 @@ data class LibraryFolder(
     val parentId: String?,
     val createdAt: Long,
     val coverPath: String? = null,
-    val previewBookIds: List<String>? = null
+    val previewBookIds: List<String>? = null,
+    val updatedAt: Long = createdAt
 )
 
 enum class FolderMoveResult {
@@ -22,7 +23,8 @@ enum class FolderMoveResult {
 
 data class BookFolderLink(
     val bookId: String,
-    val folderId: String
+    val folderId: String,
+    val updatedAt: Long = 0L
 )
 
 object FolderNameValidator {

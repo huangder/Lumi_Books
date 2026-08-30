@@ -29,11 +29,28 @@ abstract class TagDao {
     @Query("DELETE FROM book_tag_cross_refs WHERE bookId = :bookId AND tagId = :tagId")
     abstract suspend fun deleteBookTagLink(bookId: String, tagId: String)
 
-    @Query("UPDATE tags SET name = :name, normalizedName = :normalizedName WHERE id = :tagId")
-    abstract suspend fun updateTagName(tagId: String, name: String, normalizedName: String)
+    @Query(
+        "UPDATE tags SET name = :name, normalizedName = :normalizedName, updatedAt = :updatedAt " +
+            "WHERE id = :tagId"
+    )
+    abstract suspend fun updateTagName(
+        tagId: String,
+        name: String,
+        normalizedName: String,
+        updatedAt: Long
+    )
 
-    @Query("UPDATE tags SET parentId = NULL WHERE parentId = :parentId")
-    abstract suspend fun upgradeSecondaryTags(parentId: String)
+    open suspend fun updateTagName(tagId: String, name: String, normalizedName: String) =
+        updateTagName(tagId, name, normalizedName, System.currentTimeMillis())
+
+    @Query("SELECT * FROM tags WHERE id = :tagId OR parentId = :tagId")
+    abstract suspend fun getTagAndChildren(tagId: String): List<TagEntity>
+
+    @Query("SELECT * FROM book_tag_cross_refs WHERE tagId = :tagId OR tagId IN (SELECT id FROM tags WHERE parentId = :tagId)")
+    abstract suspend fun getLinksForTagTree(tagId: String): List<BookTagCrossRefEntity>
+
+    @Query("UPDATE tags SET parentId = NULL, updatedAt = :updatedAt WHERE parentId = :parentId")
+    abstract suspend fun upgradeSecondaryTags(parentId: String, updatedAt: Long)
 
     @Query("DELETE FROM tags WHERE id = :tagId")
     abstract suspend fun deleteTag(tagId: String)
@@ -53,11 +70,15 @@ abstract class TagDao {
 
     /** 删除一级标签：deleteChildren=false 时子标签升级为一级，true 时级联删除 */
     @Transaction
-    open suspend fun deleteTagWithChildren(tagId: String, deleteChildren: Boolean) {
+    open suspend fun deleteTagWithChildren(
+        tagId: String,
+        deleteChildren: Boolean,
+        updatedAt: Long = System.currentTimeMillis()
+    ) {
         if (deleteChildren) {
             deleteSecondaryTags(tagId)
         } else {
-            upgradeSecondaryTags(tagId)
+            upgradeSecondaryTags(tagId, updatedAt)
         }
         deleteTag(tagId)
     }

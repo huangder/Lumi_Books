@@ -140,6 +140,28 @@ class WebdavClient @Inject constructor() {
         bytes
     }
 
+    @Throws(WebdavException::class)
+    suspend fun downloadVersioned(
+        url: String,
+        username: String,
+        password: String
+    ): WebdavVersionedData = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url(url)
+            .header("Authorization", authHeader(username, password))
+            .get()
+            .build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw WebdavException("Download failed — HTTP ${response.code}", statusCode = response.code)
+            }
+            WebdavVersionedData(
+                data = response.body?.bytes() ?: ByteArray(0),
+                etag = response.header("ETag")
+            )
+        }
+    }
+
     /** Download as streaming input — caller must close. */
     @Throws(WebdavException::class)
     suspend fun downloadStream(
@@ -233,6 +255,29 @@ class WebdavClient @Inject constructor() {
             throw uploadException("PUT", request.url.toString(), response)
         }
         response.close()
+    }
+
+    @Throws(WebdavException::class)
+    suspend fun uploadConditional(
+        url: String,
+        data: ByteArray,
+        username: String,
+        password: String,
+        etag: String?,
+        contentType: String = "application/octet-stream"
+    ): String? = withContext(Dispatchers.IO) {
+        val builder = Request.Builder()
+            .url(url)
+            .header("Authorization", authHeader(username, password))
+            .put(data.toRequestBody(contentType.toMediaType()))
+        if (etag != null) builder.header("If-Match", etag) else builder.header("If-None-Match", "*")
+        val request = builder.build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw uploadException("PUT_CONDITIONAL", request.url.toString(), response)
+            }
+            response.header("ETag")
+        }
     }
 
     /** Atomically replace a WebDAV resource when the server supports the standard MOVE method. */
@@ -517,6 +562,11 @@ data class WebdavDownloadResult(
     val sha256: String,
     val bytesWritten: Long,
     val totalBytes: Long
+)
+
+data class WebdavVersionedData(
+    val data: ByteArray,
+    val etag: String?
 )
 
 data class WebdavResource(

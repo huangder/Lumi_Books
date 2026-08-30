@@ -7,12 +7,14 @@ data class LibraryTag(
     val name: String,
     val createdAt: Long,
     /** null = 一级标签；非 null = 归属该 id 一级标签下的二级标签 */
-    val parentId: String? = null
+    val parentId: String? = null,
+    val updatedAt: Long = createdAt
 )
 
 data class BookTagLink(
     val bookId: String,
-    val tagId: String
+    val tagId: String,
+    val updatedAt: Long = 0L
 )
 
 object TagNameValidator {

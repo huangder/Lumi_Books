@@ -11,9 +11,14 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.util.UUID
 import javax.inject.Inject
+import com.huangder.lumibooks.data.local.dao.SyncStateDao
+import com.huangder.lumibooks.data.local.entity.SyncTombstoneEntity
+import com.huangder.lumibooks.data.sync.SyncIdentityStore
 
 class TagRepositoryImpl @Inject constructor(
-    private val tagDao: TagDao
+    private val tagDao: TagDao,
+    private val syncStateDao: SyncStateDao,
+    private val syncIdentityStore: SyncIdentityStore
 ) : TagRepository {
     override fun getAllTags(): Flow<List<LibraryTag>> =
         tagDao.getAllTags().map { tags -> tags.map { it.toDomain() } }
@@ -52,6 +57,16 @@ class TagRepositoryImpl @Inject constructor(
     }
 
     override suspend fun removeTagFromBook(bookId: String, tagId: String) {
+        syncStateDao.upsertTombstones(
+            listOf(
+                SyncTombstoneEntity(
+                    "book_tag",
+                    "$bookId:$tagId",
+                    System.currentTimeMillis(),
+                    syncIdentityStore.deviceId()
+                )
+            )
+        )
         tagDao.deleteBookTagLink(bookId, tagId)
     }
 
@@ -63,23 +78,35 @@ class TagRepositoryImpl @Inject constructor(
         val existing = tagDao.getTagByNormalizedName(normalizedName)
         if (existing != null && existing.id != tagId) return false
 
-        tagDao.updateTagName(tagId, name, normalizedName)
+        tagDao.updateTagName(tagId, name, normalizedName, System.currentTimeMillis())
         return true
     }
 
     override suspend fun deleteTag(tagId: String, deleteChildren: Boolean) {
-        tagDao.deleteTagWithChildren(tagId, deleteChildren)
+        val now = System.currentTimeMillis()
+        val deviceId = syncIdentityStore.deviceId()
+        val tags = tagDao.getTagAndChildren(tagId).let { if (deleteChildren) it else it.filter { item -> item.id == tagId } }
+        val links = tagDao.getLinksForTagTree(tagId).let {
+            if (deleteChildren) it else it.filter { link -> link.tagId == tagId }
+        }
+        syncStateDao.upsertTombstones(
+            tags.map { SyncTombstoneEntity("tag", it.id, now, deviceId) } +
+                links.map { SyncTombstoneEntity("book_tag", "${it.bookId}:${it.tagId}", now, deviceId) }
+        )
+        tagDao.deleteTagWithChildren(tagId, deleteChildren, now)
     }
 
     private fun TagEntity.toDomain() = LibraryTag(
         id = id,
         name = name,
         createdAt = createdAt,
-        parentId = parentId
+        parentId = parentId,
+        updatedAt = updatedAt
     )
 
     private fun BookTagCrossRefEntity.toDomain() = BookTagLink(
         bookId = bookId,
-        tagId = tagId
+        tagId = tagId,
+        updatedAt = updatedAt
     )
 }

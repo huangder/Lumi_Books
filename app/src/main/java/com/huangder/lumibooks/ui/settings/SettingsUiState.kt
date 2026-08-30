@@ -110,6 +110,8 @@ data class SettingsUiState(
     val webdavConfig: com.huangder.lumibooks.domain.model.WebdavConfig = com.huangder.lumibooks.domain.model.WebdavConfig(),
     val webdavHasToken: Boolean = false,
     val isWebdavSyncing: Boolean = false,
+    val webdavSyncResult: String = "",
+    val webdavSyncSucceeded: Boolean = true,
 
     // 检查更新
     val updateCheck: UpdateCheckDisplay = UpdateCheckDisplay(),

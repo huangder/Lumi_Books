@@ -9,6 +9,7 @@ import com.huangder.lumibooks.data.local.dao.FolderDao
 import com.huangder.lumibooks.data.local.dao.NoteDao
 import com.huangder.lumibooks.data.local.dao.ReadingRecordDao
 import com.huangder.lumibooks.data.local.dao.TagDao
+import com.huangder.lumibooks.data.local.dao.SyncStateDao
 import com.huangder.lumibooks.data.local.database.AppDatabase
 import com.huangder.lumibooks.data.local.database.DatabaseMigrations
 import com.huangder.lumibooks.data.repository.BookRepositoryImpl
@@ -50,7 +51,8 @@ object AppModule {
             DatabaseMigrations.MIGRATION_6_7,
             DatabaseMigrations.MIGRATION_7_8,
             DatabaseMigrations.MIGRATION_8_9,
-            DatabaseMigrations.MIGRATION_9_10
+            DatabaseMigrations.MIGRATION_9_10,
+            DatabaseMigrations.MIGRATION_10_11
         )
             .build()
     }
@@ -87,12 +89,20 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideSyncStateDao(database: AppDatabase): SyncStateDao = database.syncStateDao()
+
+    @Provides
+    @Singleton
     fun provideFolderDao(database: AppDatabase): FolderDao = database.folderDao()
 
     @Provides
     @Singleton
-    fun provideBookRepository(bookDao: BookDao): BookRepository {
-        return BookRepositoryImpl(bookDao)
+    fun provideBookRepository(
+        bookDao: BookDao,
+        database: AppDatabase,
+        syncIdentityStore: com.huangder.lumibooks.data.sync.SyncIdentityStore
+    ): BookRepository {
+        return BookRepositoryImpl(bookDao, database.syncStateDao(), syncIdentityStore)
     }
 
     @Provides
@@ -100,21 +110,37 @@ object AppModule {
     fun provideReadingRepository(
         readingRecordDao: ReadingRecordDao,
         bookmarkDao: BookmarkDao,
-        noteDao: NoteDao
+        noteDao: NoteDao,
+        database: AppDatabase,
+        syncIdentityStore: com.huangder.lumibooks.data.sync.SyncIdentityStore
     ): ReadingRepository {
-        return ReadingRepositoryImpl(readingRecordDao, bookmarkDao, noteDao)
+        return ReadingRepositoryImpl(
+            readingRecordDao,
+            bookmarkDao,
+            noteDao,
+            database.syncStateDao(),
+            syncIdentityStore,
+            database
+        )
     }
 
     @Provides
     @Singleton
-    fun provideTagRepository(tagDao: TagDao): TagRepository {
-        return TagRepositoryImpl(tagDao)
+    fun provideTagRepository(
+        tagDao: TagDao,
+        database: AppDatabase,
+        syncIdentityStore: com.huangder.lumibooks.data.sync.SyncIdentityStore
+    ): TagRepository {
+        return TagRepositoryImpl(tagDao, database.syncStateDao(), syncIdentityStore)
     }
 
     @Provides
     @Singleton
-    fun provideFolderRepository(folderDao: FolderDao): FolderRepository =
-        FolderRepositoryImpl(folderDao)
+    fun provideFolderRepository(
+        folderDao: FolderDao,
+        database: AppDatabase,
+        syncIdentityStore: com.huangder.lumibooks.data.sync.SyncIdentityStore
+    ): FolderRepository = FolderRepositoryImpl(folderDao, database.syncStateDao(), syncIdentityStore)
 
     @Provides
     @Singleton

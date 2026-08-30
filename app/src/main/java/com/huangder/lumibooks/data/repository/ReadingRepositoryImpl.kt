@@ -4,6 +4,7 @@ import com.huangder.lumibooks.data.local.dao.BookDuration
 import com.huangder.lumibooks.data.local.dao.BookmarkDao
 import com.huangder.lumibooks.data.local.dao.NoteDao
 import com.huangder.lumibooks.data.local.dao.ReadingRecordDao
+import com.huangder.lumibooks.data.local.database.AppDatabase
 import com.huangder.lumibooks.data.local.entity.BookmarkEntity
 import com.huangder.lumibooks.data.local.entity.NoteEntity
 import com.huangder.lumibooks.data.local.entity.ReadingRecordEntity
@@ -15,12 +16,20 @@ import com.huangder.lumibooks.domain.model.ReadingRecord
 import com.huangder.lumibooks.domain.repository.ReadingRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import androidx.room.withTransaction
 import javax.inject.Inject
+import java.util.UUID
+import com.huangder.lumibooks.data.sync.SyncIdentityStore
+import com.huangder.lumibooks.data.local.dao.SyncStateDao
+import com.huangder.lumibooks.data.local.entity.SyncTombstoneEntity
 
 class ReadingRepositoryImpl @Inject constructor(
     private val readingRecordDao: ReadingRecordDao,
     private val bookmarkDao: BookmarkDao,
-    private val noteDao: NoteDao
+    private val noteDao: NoteDao,
+    private val syncStateDao: SyncStateDao,
+    private val syncIdentityStore: SyncIdentityStore,
+    private val database: AppDatabase
 ) : ReadingRepository {
 
     override fun getRecordsByDate(date: String): Flow<List<ReadingRecord>> {
@@ -44,11 +53,16 @@ class ReadingRepositoryImpl @Inject constructor(
     }
 
     override suspend fun insertRecord(record: ReadingRecord) {
-        readingRecordDao.insertRecord(record.toEntity())
+        val deviceId = record.sourceDeviceId.ifBlank { syncIdentityStore.deviceId() }
+        readingRecordDao.insertRecord(record.copy(sourceDeviceId = deviceId).toEntity())
     }
 
     override suspend fun getRecordByBookAndDate(bookId: String, date: String): ReadingRecord? {
-        return readingRecordDao.getRecordByBookAndDate(bookId, date)?.toDomain()
+        return readingRecordDao.getRecordByBookAndDate(
+            bookId,
+            date,
+            syncIdentityStore.deviceId()
+        )?.toDomain()
     }
 
     override suspend fun updateRecordDuration(recordId: Long, additionalDuration: Long, endTime: Long) {
@@ -62,14 +76,24 @@ class ReadingRepositoryImpl @Inject constructor(
     }
 
     override suspend fun insertBookmark(bookmark: Bookmark) {
-        bookmarkDao.insertBookmark(bookmark.toEntity())
+        val now = System.currentTimeMillis()
+        bookmarkDao.insertBookmark(
+            bookmark.copy(
+                syncId = bookmark.syncId.ifBlank { UUID.randomUUID().toString() },
+                updatedAt = maxOf(bookmark.updatedAt, now)
+            ).toEntity()
+        )
     }
 
     override suspend fun updateBookmark(bookmark: Bookmark) {
-        bookmarkDao.updateBookmark(bookmark.toEntity())
+        bookmarkDao.updateBookmark(bookmark.copy(updatedAt = System.currentTimeMillis()).toEntity())
     }
 
     override suspend fun deleteBookmark(bookmark: Bookmark) {
+        val syncId = bookmark.syncId.ifBlank { "legacy-bookmark-${bookmark.id}" }
+        syncStateDao.upsertTombstones(
+            listOf(SyncTombstoneEntity("bookmark", syncId, System.currentTimeMillis(), syncIdentityStore.deviceId()))
+        )
         bookmarkDao.deleteBookmark(bookmark.toEntity())
     }
 
@@ -84,23 +108,49 @@ class ReadingRepositoryImpl @Inject constructor(
     }
 
     override suspend fun insertNote(note: Note) {
-        noteDao.insertNote(note.toEntity())
+        val now = System.currentTimeMillis()
+        noteDao.insertNote(
+            note.copy(
+                syncId = note.syncId.ifBlank { UUID.randomUUID().toString() },
+                updatedAt = maxOf(note.updatedAt, now)
+            ).toEntity()
+        )
     }
 
     override suspend fun updateNote(note: Note) {
-        noteDao.updateNote(note.toEntity())
+        noteDao.updateNote(note.copy(updatedAt = System.currentTimeMillis()).toEntity())
     }
 
     override suspend fun deleteNote(note: Note) {
+        val syncId = note.syncId.ifBlank { "legacy-note-${note.id}" }
+        syncStateDao.upsertTombstones(
+            listOf(SyncTombstoneEntity("note", syncId, System.currentTimeMillis(), syncIdentityStore.deviceId()))
+        )
         noteDao.deleteNote(note.toEntity())
     }
 
     override suspend fun applyAnnotationEdit(plan: AnnotationEditPlan) {
-        noteDao.applyAnnotationEdit(
-            deleteIds = plan.deletes.map { it.id }.filter { it > 0L },
-            updates = plan.updates.map { it.toEntity() },
-            inserts = plan.inserts.map { it.copy(id = 0).toEntity() }
-        )
+        val now = System.currentTimeMillis()
+        val deviceId = syncIdentityStore.deviceId()
+        database.withTransaction {
+            val deleted = plan.deletes.filter { it.id > 0L && it.syncId.isNotBlank() }
+            if (deleted.isNotEmpty()) {
+                syncStateDao.upsertTombstones(
+                    deleted.map { SyncTombstoneEntity("note", it.syncId, now, deviceId) }
+                )
+            }
+            noteDao.applyAnnotationEdit(
+                deleteIds = plan.deletes.map { it.id }.filter { it > 0L },
+                updates = plan.updates.map { it.copy(updatedAt = now).toEntity() },
+                inserts = plan.inserts.map {
+                    it.copy(
+                        id = 0,
+                        syncId = UUID.randomUUID().toString(),
+                        updatedAt = now
+                    ).toEntity()
+                }
+            )
+        }
     }
 
     override suspend fun deleteAllNotesByBookId(bookId: String) {
@@ -132,7 +182,9 @@ class ReadingRepositoryImpl @Inject constructor(
             date = date,
             duration = duration,
             startTime = startTime,
-            endTime = endTime
+            endTime = endTime,
+            sourceDeviceId = sourceDeviceId,
+            updatedAt = updatedAt
         )
     }
 
@@ -143,7 +195,9 @@ class ReadingRepositoryImpl @Inject constructor(
             date = date,
             duration = duration,
             startTime = startTime,
-            endTime = endTime
+            endTime = endTime,
+            sourceDeviceId = sourceDeviceId,
+            updatedAt = updatedAt
         )
     }
 
@@ -155,7 +209,9 @@ class ReadingRepositoryImpl @Inject constructor(
             position = position,
             locatorJson = locatorJson,
             title = title,
-            createdAt = createdAt
+            createdAt = createdAt,
+            syncId = syncId,
+            updatedAt = updatedAt
         )
     }
 
@@ -167,7 +223,9 @@ class ReadingRepositoryImpl @Inject constructor(
             position = position,
             locatorJson = locatorJson,
             title = title,
-            createdAt = createdAt
+            createdAt = createdAt,
+            syncId = syncId,
+            updatedAt = updatedAt
         )
     }
 
@@ -184,7 +242,9 @@ class ReadingRepositoryImpl @Inject constructor(
             note = note,
             color = color,
             createdAt = createdAt,
-            type = type
+            type = type,
+            syncId = syncId,
+            updatedAt = updatedAt
         )
     }
 
@@ -201,7 +261,9 @@ class ReadingRepositoryImpl @Inject constructor(
             note = note,
             color = color,
             createdAt = createdAt,
-            type = type
+            type = type,
+            syncId = syncId,
+            updatedAt = updatedAt
         )
     }
 }

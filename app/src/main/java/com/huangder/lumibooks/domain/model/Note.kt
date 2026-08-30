@@ -12,5 +12,7 @@ data class Note(
     val note: String,
     val color: String,
     val createdAt: Long,
-    val type: String = "highlight"
+    val type: String = "highlight",
+    val syncId: String = "",
+    val updatedAt: Long = createdAt
 )

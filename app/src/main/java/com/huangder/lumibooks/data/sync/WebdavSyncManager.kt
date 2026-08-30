@@ -49,6 +49,7 @@ class WebdavSyncManager @Inject constructor(
     private val webdavClient: WebdavClient,
     private val tokenStore: WebdavTokenStore,
     private val dataStoreManager: DataStoreManager,
+    private val portableStateSync: WebdavPortableStateSync,
     @ApplicationContext private val context: Context
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -312,6 +313,12 @@ class WebdavSyncManager @Inject constructor(
                 atomic = false
             )
 
+            val portableResult = if (
+                normalized.syncProfileAndSettings ||
+                normalized.syncLibraryOrganization ||
+                normalized.syncReadingData
+            ) portableStateSync.sync(normalized, password) else null
+
             val now = System.currentTimeMillis()
             dataStoreManager.updateWebdavLastSyncTime(now)
             if (normalized.syncBookFiles) {
@@ -338,6 +345,21 @@ class WebdavSyncManager @Inject constructor(
                 }.joinToString("\u3001")
                 val dataFailureHint = if (dataFailed > 0) "\uff0c\u5931\u8d25 $dataFailed \u672c" else ""
                 summaries += "$selectedData\uff1a\u4e0a\u4f20 $dataSynced \u672c\uff0c\u4e0b\u8f7d $dataDownloaded \u672c$dataFailureHint"
+            }
+            if (normalized.syncProfileAndSettings) {
+                summaries += context.getString(R.string.webdav_sync_category_result,
+                    context.getString(R.string.webdav_sync_content_profile_settings))
+            }
+            if (normalized.syncLibraryOrganization) {
+                summaries += context.getString(R.string.webdav_sync_category_result,
+                    context.getString(R.string.webdav_sync_content_library))
+            }
+            if (portableResult != null) {
+                summaries += context.getString(
+                    R.string.webdav_sync_assets_result,
+                    portableResult.uploadedAssets,
+                    portableResult.downloadedAssets
+                )
             }
             val quotaHint = quotaError?.let { "\n" + userFacingWebdavError(it) }.orEmpty()
             SyncResult(
@@ -383,6 +405,7 @@ class WebdavSyncManager @Inject constructor(
                         atomic = false
                     )
                 }
+                portableStateSync.sync(n, password)
             } catch (_: Exception) {
                 // Silent fail for background sync
             } finally {
@@ -1144,6 +1167,8 @@ class WebdavSyncManager @Inject constructor(
                             b.locatorJson?.let { put("locatorJson", it) }
                             put("title", b.title)
                             put("createdAt", b.createdAt)
+                            put("syncId", b.syncId)
+                            put("updatedAt", b.updatedAt)
                         })
                     }
                 })
@@ -1163,6 +1188,8 @@ class WebdavSyncManager @Inject constructor(
                             put("color", n.color)
                             put("createdAt", n.createdAt)
                             put("type", n.type)
+                            put("syncId", n.syncId)
+                            put("updatedAt", n.updatedAt)
                         })
                     }
                 })
@@ -1226,7 +1253,17 @@ class WebdavSyncManager @Inject constructor(
                     position = b.getDouble("position").toFloat(),
                     locatorJson = b.optString("locatorJson", null),
                     title = b.getString("title"),
-                    createdAt = b.getLong("createdAt")
+                    createdAt = b.getLong("createdAt"),
+                    syncId = b.optString("syncId").ifBlank {
+                        legacyAnnotationSyncId(
+                            "bookmark",
+                            bookId,
+                            b.optInt("chapterIndex").toString(),
+                            b.optDouble("position").toString(),
+                            b.optLong("createdAt").toString()
+                        )
+                    },
+                    updatedAt = b.optLong("updatedAt", b.optLong("createdAt"))
                 ))
             }
         }
@@ -1248,10 +1285,30 @@ class WebdavSyncManager @Inject constructor(
                     note = n.getString("note"),
                     color = n.getString("color"),
                     createdAt = n.getLong("createdAt"),
-                    type = n.optString("type", "highlight")
+                    type = n.optString("type", "highlight"),
+                    syncId = n.optString("syncId").ifBlank {
+                        legacyAnnotationSyncId(
+                            "note",
+                            bookId,
+                            n.optInt("chapterIndex").toString(),
+                            n.optInt("startPosition").toString(),
+                            n.optInt("endPosition").toString(),
+                            n.optLong("createdAt").toString()
+                        )
+                    },
+                    updatedAt = n.optLong("updatedAt", n.optLong("createdAt"))
                 ))
             }
         }
+    }
+
+    private fun legacyAnnotationSyncId(prefix: String, vararg parts: String): String {
+        val raw = buildString {
+            append(prefix)
+            parts.forEach { append('|').append(it) }
+        }
+        return MessageDigest.getInstance("SHA-256").digest(raw.toByteArray())
+            .joinToString("") { "%02x".format(it) }
     }
 
     private suspend fun commitManifest(

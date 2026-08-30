@@ -348,6 +348,7 @@ class ReaderViewModel @Inject constructor(
     private val mineruManualImportManager: MineruManualImportManager,
     private val mineruTokenStore: MineruTokenStore,
     private val webdavSyncManager: com.huangder.lumibooks.data.sync.WebdavSyncManager,
+    private val webdavAutoSyncScheduler: com.huangder.lumibooks.data.sync.WebdavAutoSyncScheduler,
     private val fontDownloadManager: com.huangder.lumibooks.util.FontDownloadManager
 ) : ViewModel() {
 
@@ -2167,15 +2168,7 @@ class ReaderViewModel @Inject constructor(
         continuousProgressJob?.cancel()
         saveProgress()
         saveReadingSession()
-        // Trigger WebDAV full sync when leaving reader — only if auto mode
-        viewModelScope.launch {
-            try {
-                val config = dataStoreManager.webdavConfig.first()
-                if (config.enabled && config.syncMode == "auto") {
-                    webdavSyncManager.fullSync()
-                }
-            } catch (_: Exception) { }
-        }
+        webdavAutoSyncScheduler.onReaderExited()
     }
 
     private suspend fun loadBook(preferences: ReaderPreferencesSnapshot, book: Book?) {
@@ -2242,7 +2235,7 @@ class ReaderViewModel @Inject constructor(
                         displayBook = displayBook.copy(coverPath = parsedCoverPath)
                     }
                     if (displayBook != book) {
-                        bookRepository.updateBook(displayBook)
+                        bookRepository.updateBookMetadata(displayBook)
                     }
 
                     val chapterCount = content.chapters.size

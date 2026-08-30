@@ -6,7 +6,9 @@ data class ReadingRecord(
     val date: String,
     val duration: Long,
     val startTime: Long,
-    val endTime: Long
+    val endTime: Long,
+    val sourceDeviceId: String = "",
+    val updatedAt: Long = endTime
 )
 
 data class DailyTotal(

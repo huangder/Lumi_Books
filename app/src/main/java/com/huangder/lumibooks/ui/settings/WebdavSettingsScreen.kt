@@ -122,6 +122,14 @@ fun WebdavSettingsDetail(
                 icon = Icons.Outlined.Sync,
                 onClick = { if (!uiState.isWebdavSyncing) viewModel.syncWebdavNow() }
             )
+            if (uiState.webdavSyncResult.isNotBlank()) {
+                Text(
+                    text = uiState.webdavSyncResult,
+                    fontSize = AppType.Caption,
+                    color = if (uiState.webdavSyncSucceeded) AppColors.TextSecondary else MaterialTheme.colorScheme.error,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
 
         if (isEnabled) {
@@ -171,9 +179,9 @@ fun WebdavConfigurationDetail(
             lastSyncTime = currentConfig.lastSyncTime,
             syncMode = currentConfig.syncMode,
             syncBookFiles = currentConfig.syncBookFiles,
-            syncReadingRecords = currentConfig.syncReadingRecords,
-            syncBookmarks = currentConfig.syncBookmarks,
-            syncNotes = currentConfig.syncNotes
+            syncProfileAndSettings = currentConfig.syncProfileAndSettings,
+            syncLibraryOrganization = currentConfig.syncLibraryOrganization,
+            syncReadingData = currentConfig.syncReadingData
         )
         viewModel.enableWebdav(config, password)
         onSaved()
@@ -505,22 +513,22 @@ private fun WebdavSyncContentSelector(
             onCheckedChange = { onContentChange(WebdavSyncContent.BOOK_FILES, it) }
         )
         WebdavSyncContentRow(
-            title = stringResource(R.string.webdav_sync_content_reading_records),
-            description = stringResource(R.string.webdav_sync_content_reading_records_description),
-            checked = config.syncReadingRecords,
-            onCheckedChange = { onContentChange(WebdavSyncContent.READING_RECORDS, it) }
+            title = stringResource(R.string.webdav_sync_content_profile_settings),
+            description = stringResource(R.string.webdav_sync_content_profile_settings_description),
+            checked = config.syncProfileAndSettings,
+            onCheckedChange = { onContentChange(WebdavSyncContent.PROFILE_AND_SETTINGS, it) }
         )
         WebdavSyncContentRow(
-            title = stringResource(R.string.webdav_sync_content_bookmarks),
-            description = stringResource(R.string.webdav_sync_content_bookmarks_description),
-            checked = config.syncBookmarks,
-            onCheckedChange = { onContentChange(WebdavSyncContent.BOOKMARKS, it) }
+            title = stringResource(R.string.webdav_sync_content_library),
+            description = stringResource(R.string.webdav_sync_content_library_description),
+            checked = config.syncLibraryOrganization,
+            onCheckedChange = { onContentChange(WebdavSyncContent.LIBRARY_ORGANIZATION, it) }
         )
         WebdavSyncContentRow(
-            title = stringResource(R.string.webdav_sync_content_notes),
-            description = stringResource(R.string.webdav_sync_content_notes_description),
-            checked = config.syncNotes,
-            onCheckedChange = { onContentChange(WebdavSyncContent.NOTES, it) }
+            title = stringResource(R.string.webdav_sync_content_reading_data),
+            description = stringResource(R.string.webdav_sync_content_reading_data_description),
+            checked = config.syncReadingData,
+            onCheckedChange = { onContentChange(WebdavSyncContent.READING_DATA, it) }
         )
     }
 }

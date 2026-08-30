@@ -9,11 +9,13 @@ import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import com.huangder.lumibooks.domain.model.CustomFontPreset
 import com.huangder.lumibooks.domain.model.CustomFontPresetCodec
 import com.huangder.lumibooks.domain.model.HighlightPalette
@@ -51,12 +53,20 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.Dispatchers
 import org.json.JSONArray
 import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.huangder.lumibooks.data.backup.PortablePreference
+import java.security.MessageDigest
+import java.io.File
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
@@ -222,6 +232,7 @@ class DataStoreManager @Inject constructor(
         private val SPLASH_ENABLED = booleanPreferencesKey("splash_enabled")
         private val LAST_READ_BOOK = stringPreferencesKey("last_read_book")
         private val BOOKSHELF_LAYOUT_MODE = intPreferencesKey("bookshelf_layout_mode")
+        private val BOOKSHELF_SORT_MODE = stringPreferencesKey("bookshelf_sort_mode")
         private val IMPORT_BOOKS_LAYOUT_MODE = intPreferencesKey("import_books_layout_mode")
         private val HAS_SEEN_WELCOME = booleanPreferencesKey("has_seen_welcome")
         private val COMPLETED_WELCOME_INSTALL_TIME = longPreferencesKey("completed_welcome_install_time")
@@ -256,6 +267,9 @@ class DataStoreManager @Inject constructor(
         private val WEBDAV_SYNC_READING_RECORDS = booleanPreferencesKey("webdav_sync_reading_records")
         private val WEBDAV_SYNC_BOOKMARKS = booleanPreferencesKey("webdav_sync_bookmarks")
         private val WEBDAV_SYNC_NOTES = booleanPreferencesKey("webdav_sync_notes")
+        private val WEBDAV_SYNC_PROFILE_SETTINGS = booleanPreferencesKey("webdav_sync_profile_settings")
+        private val WEBDAV_SYNC_LIBRARY_ORGANIZATION = booleanPreferencesKey("webdav_sync_library_organization")
+        private val WEBDAV_SYNC_READING_DATA = booleanPreferencesKey("webdav_sync_reading_data")
         // 应用语言
         private val APP_LANGUAGE = stringPreferencesKey("app_language")
 
@@ -272,6 +286,7 @@ class DataStoreManager @Inject constructor(
         private val HAS_CHECKED_UPDATE_ON_START = booleanPreferencesKey("has_checked_update_on_start")
         private val ACKNOWLEDGED_NOTICE_IDS = stringSetPreferencesKey("acknowledged_notice_ids")
         private val IGNORED_APP_UPDATE_VERSION_CODE = longPreferencesKey("ignored_app_update_version_code")
+        private val PORTABLE_PREFERENCE_METADATA = stringPreferencesKey("portable_preference_metadata_v1")
     }
 
     // 阅读设置
@@ -754,6 +769,10 @@ class DataStoreManager @Inject constructor(
         preferences[PREDICTIVE_BACK_ENABLED] ?: true
     }
 
+    val bookshelfSortMode: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[BOOKSHELF_SORT_MODE] ?: "LAST_READ"
+    }
+
     /** Single DataStore read used to refresh the non-blocking Activity launch snapshot. */
     val launchThemeSnapshot: Flow<LaunchThemeSnapshot> = context.dataStore.data.map { preferences ->
         LaunchThemeSnapshot(
@@ -844,9 +863,12 @@ class DataStoreManager @Inject constructor(
             lastSyncTime = preferences[WEBDAV_LAST_SYNC_TIME] ?: 0L,
             syncMode = preferences[WEBDAV_SYNC_MODE] ?: "auto",
             syncBookFiles = preferences[WEBDAV_SYNC_BOOK_FILES] ?: true,
-            syncReadingRecords = preferences[WEBDAV_SYNC_READING_RECORDS] ?: true,
-            syncBookmarks = preferences[WEBDAV_SYNC_BOOKMARKS] ?: true,
-            syncNotes = preferences[WEBDAV_SYNC_NOTES] ?: true
+            syncProfileAndSettings = preferences[WEBDAV_SYNC_PROFILE_SETTINGS] ?: true,
+            syncLibraryOrganization = preferences[WEBDAV_SYNC_LIBRARY_ORGANIZATION] ?: true,
+            syncReadingData = preferences[WEBDAV_SYNC_READING_DATA]
+                ?: ((preferences[WEBDAV_SYNC_READING_RECORDS] ?: true) ||
+                    (preferences[WEBDAV_SYNC_BOOKMARKS] ?: true) ||
+                    (preferences[WEBDAV_SYNC_NOTES] ?: true))
         )
     }
 
@@ -919,6 +941,18 @@ class DataStoreManager @Inject constructor(
             preferences.updateActiveReaderThemeSuite { copy(letterSpacing = letterSpacing) }
         }
     }
+
+    suspend fun saveBookshelfSortMode(mode: String) {
+        context.dataStore.edit { preferences -> preferences[BOOKSHELF_SORT_MODE] = mode }
+    }
+
+    val portablePreferenceChanges: Flow<Int> = context.dataStore.data.map { preferences ->
+        preferences.asMap()
+            .filterKeys { isPortablePreferenceKey(it.name) }
+            .entries
+            .sortedBy { it.key.name }
+            .fold(1) { hash, (key, value) -> 31 * hash + key.name.hashCode() + value.hashCode() }
+    }.distinctUntilChanged()
 
     suspend fun saveTextAlignment(alignment: ReaderTextAlignment) {
         context.dataStore.edit { preferences ->
@@ -1962,9 +1996,9 @@ class DataStoreManager @Inject constructor(
             preferences[WEBDAV_LAST_SYNC_TIME] = normalized.lastSyncTime
             preferences[WEBDAV_SYNC_MODE] = normalized.syncMode
             preferences[WEBDAV_SYNC_BOOK_FILES] = normalized.syncBookFiles
-            preferences[WEBDAV_SYNC_READING_RECORDS] = normalized.syncReadingRecords
-            preferences[WEBDAV_SYNC_BOOKMARKS] = normalized.syncBookmarks
-            preferences[WEBDAV_SYNC_NOTES] = normalized.syncNotes
+            preferences[WEBDAV_SYNC_PROFILE_SETTINGS] = normalized.syncProfileAndSettings
+            preferences[WEBDAV_SYNC_LIBRARY_ORGANIZATION] = normalized.syncLibraryOrganization
+            preferences[WEBDAV_SYNC_READING_DATA] = normalized.syncReadingData
         }
     }
 
@@ -1972,9 +2006,9 @@ class DataStoreManager @Inject constructor(
         context.dataStore.edit { preferences ->
             val key = when (content) {
                 WebdavSyncContent.BOOK_FILES -> WEBDAV_SYNC_BOOK_FILES
-                WebdavSyncContent.READING_RECORDS -> WEBDAV_SYNC_READING_RECORDS
-                WebdavSyncContent.BOOKMARKS -> WEBDAV_SYNC_BOOKMARKS
-                WebdavSyncContent.NOTES -> WEBDAV_SYNC_NOTES
+                WebdavSyncContent.PROFILE_AND_SETTINGS -> WEBDAV_SYNC_PROFILE_SETTINGS
+                WebdavSyncContent.LIBRARY_ORGANIZATION -> WEBDAV_SYNC_LIBRARY_ORGANIZATION
+                WebdavSyncContent.READING_DATA -> WEBDAV_SYNC_READING_DATA
             }
             preferences[key] = enabled
         }
@@ -2221,6 +2255,201 @@ class DataStoreManager @Inject constructor(
         }
         this[READER_THEME_SUITES] = ReaderThemeSuiteCodec.encode(updated)
     }
+
+    suspend fun exportPortablePreferences(deviceId: String): List<PortablePreference> {
+        val preferences = context.dataStore.data.first()
+        val previous = parsePortablePreferenceMetadata(preferences[PORTABLE_PREFERENCE_METADATA])
+        val now = System.currentTimeMillis()
+        val current = preferences.asMap()
+            .asSequence()
+            .filter { (key, _) -> isPortablePreferenceKey(key.name) }
+            .mapNotNull { (key, value) -> encodePortablePreference(key.name, value) }
+            .associateBy { it.key }
+
+        val result = mutableListOf<PortablePreference>()
+        val metadata = JSONObject()
+        for ((key, encoded) in current) {
+            val fingerprint = portablePreferenceFingerprint(encoded.type, encoded.value)
+            val old = previous[key]
+            val updatedAt = old?.takeIf { it.fingerprint == fingerprint && !it.deleted }?.updatedAt ?: now
+            val owner = old?.takeIf { it.fingerprint == fingerprint && !it.deleted }?.deviceId ?: deviceId
+            result += encoded.copy(updatedAt = updatedAt, deviceId = owner)
+            metadata.put(key, portablePreferenceMetadataJson(fingerprint, updatedAt, owner, false))
+        }
+        for ((key, old) in previous) {
+            if (key in current || !isPortablePreferenceKey(key)) continue
+            val updatedAt = if (old.deleted) old.updatedAt else now
+            val owner = if (old.deleted) old.deviceId else deviceId
+            result += PortablePreference(key, PortablePreference.TYPE_DELETED, "", updatedAt, owner)
+            metadata.put(key, portablePreferenceMetadataJson("", updatedAt, owner, true))
+        }
+        context.dataStore.edit { it[PORTABLE_PREFERENCE_METADATA] = metadata.toString() }
+        return result
+    }
+
+    suspend fun applyPortablePreferences(entries: List<PortablePreference>) {
+        if (entries.isEmpty()) return
+        context.dataStore.edit { preferences ->
+            val metadata = JSONObject(preferences[PORTABLE_PREFERENCE_METADATA] ?: "{}")
+            for (entry in entries) {
+                if (!isPortablePreferenceKey(entry.key)) continue
+                applyPortablePreference(preferences, entry)
+                val fingerprint = if (entry.deleted) "" else portablePreferenceFingerprint(entry.type, entry.value)
+                metadata.put(
+                    entry.key,
+                    portablePreferenceMetadataJson(
+                        fingerprint,
+                        entry.updatedAt,
+                        entry.deviceId,
+                        entry.deleted
+                    )
+                )
+            }
+            preferences[PORTABLE_PREFERENCE_METADATA] = metadata.toString()
+        }
+    }
+
+    suspend fun replacePortablePreferences(entries: List<PortablePreference>, deviceId: String) {
+        val incomingKeys = entries.mapTo(mutableSetOf()) { it.key }
+        val removals = exportPortablePreferences(deviceId)
+            .filterNot { it.key in incomingKeys }
+            .map { PortablePreference(it.key, PortablePreference.TYPE_DELETED, "", System.currentTimeMillis(), deviceId) }
+        applyPortablePreferences(entries + removals)
+    }
+
+    suspend fun readLegacyPortablePreferences(file: File, deviceId: String): List<PortablePreference> {
+        if (!file.isFile) return emptyList()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        return try {
+            val legacyStore = PreferenceDataStoreFactory.create(scope = scope) { file }
+            val preferences = legacyStore.data.first()
+            val timestamp = file.lastModified().takeIf { it > 0L } ?: System.currentTimeMillis()
+            preferences.asMap().mapNotNull { (key, value) ->
+                if (!isPortablePreferenceKey(key.name)) null
+                else encodePortablePreference(key.name, value)?.copy(updatedAt = timestamp, deviceId = deviceId)
+            }
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    private fun encodePortablePreference(key: String, value: Any): PortablePreference? {
+        val (type, encoded) = when (value) {
+            is Boolean -> PortablePreference.TYPE_BOOLEAN to value.toString()
+            is Int -> PortablePreference.TYPE_INT to value.toString()
+            is Long -> PortablePreference.TYPE_LONG to value.toString()
+            is Float -> PortablePreference.TYPE_FLOAT to value.toString()
+            is Double -> PortablePreference.TYPE_DOUBLE to value.toString()
+            is String -> PortablePreference.TYPE_STRING to value
+            is Set<*> -> PortablePreference.TYPE_STRING_SET to JSONArray(
+                value.filterIsInstance<String>().sorted()
+            ).toString()
+            else -> return null
+        }
+        return PortablePreference(key, type, encoded, 0L, "")
+    }
+
+    private fun applyPortablePreference(preferences: MutablePreferences, entry: PortablePreference) {
+        if (entry.deleted) {
+            val existing = preferences.asMap().keys.firstOrNull { it.name == entry.key }
+            if (existing != null) {
+                @Suppress("UNCHECKED_CAST")
+                preferences.remove(existing as Preferences.Key<Any>)
+            }
+            return
+        }
+        when (entry.type) {
+            PortablePreference.TYPE_BOOLEAN -> preferences[booleanPreferencesKey(entry.key)] =
+                entry.value.toBooleanStrictOrNull() ?: return
+            PortablePreference.TYPE_INT -> preferences[intPreferencesKey(entry.key)] =
+                entry.value.toIntOrNull() ?: return
+            PortablePreference.TYPE_LONG -> preferences[longPreferencesKey(entry.key)] =
+                entry.value.toLongOrNull() ?: return
+            PortablePreference.TYPE_FLOAT -> preferences[floatPreferencesKey(entry.key)] =
+                entry.value.toFloatOrNull() ?: return
+            PortablePreference.TYPE_DOUBLE -> preferences[doublePreferencesKey(entry.key)] =
+                entry.value.toDoubleOrNull() ?: return
+            PortablePreference.TYPE_STRING -> preferences[stringPreferencesKey(entry.key)] = entry.value
+            PortablePreference.TYPE_STRING_SET -> {
+                val array = runCatching { JSONArray(entry.value) }.getOrNull() ?: return
+                preferences[stringSetPreferencesKey(entry.key)] = buildSet {
+                    for (index in 0 until array.length()) add(array.optString(index))
+                }
+            }
+        }
+    }
+
+    private fun isPortablePreferenceKey(key: String): Boolean {
+        if (key == PORTABLE_PREFERENCE_METADATA.name) return false
+        if (key.startsWith("webdav_")) return false
+        if (key == "authorized_book_directories") return false
+        if (key in nonPortablePreferenceKeys) return false
+        return true
+    }
+
+    private fun portablePreferenceFingerprint(type: String, value: String): String {
+        val bytes = MessageDigest.getInstance("SHA-256").digest("$type\u0000$value".toByteArray())
+        return bytes.joinToString("") { "%02x".format(it) }
+    }
+
+    private data class PortablePreferenceMetadata(
+        val fingerprint: String,
+        val updatedAt: Long,
+        val deviceId: String,
+        val deleted: Boolean
+    )
+
+    private fun parsePortablePreferenceMetadata(raw: String?): Map<String, PortablePreferenceMetadata> {
+        val root = runCatching { JSONObject(raw ?: "{}") }.getOrElse { JSONObject() }
+        return buildMap {
+            for (key in root.keys()) {
+                val item = root.optJSONObject(key) ?: continue
+                put(
+                    key,
+                    PortablePreferenceMetadata(
+                        fingerprint = item.optString("fingerprint"),
+                        updatedAt = item.optLong("updatedAt"),
+                        deviceId = item.optString("deviceId"),
+                        deleted = item.optBoolean("deleted")
+                    )
+                )
+            }
+        }
+    }
+
+    private fun portablePreferenceMetadataJson(
+        fingerprint: String,
+        updatedAt: Long,
+        deviceId: String,
+        deleted: Boolean
+    ) = JSONObject().apply {
+        put("fingerprint", fingerprint)
+        put("updatedAt", updatedAt)
+        put("deviceId", deviceId)
+        put("deleted", deleted)
+    }
+
+    private val nonPortablePreferenceKeys = setOf(
+            "accepted_terms_version",
+            "accepted_privacy_version",
+            "has_checked_update_on_start",
+            "acknowledged_notice_ids",
+            "ignored_app_update_version_code",
+            "has_seen_welcome",
+            "completed_welcome_install_time",
+            "has_completed_welcome_language_setup",
+            "builtin_guides_seeded_version",
+            "mineru_consent_version",
+            "mineru_consent_accepted_at",
+            "external_tts_consent_version",
+            "external_tts_consent_accepted_at",
+            "preferred_tts_engine",
+            "tts_floating_x_fraction",
+            "tts_floating_y_fraction",
+            "tts_floating_width_dp",
+            "tts_floating_height_dp",
+            "remote_font_versions"
+        )
 
     private fun Preferences.resolveLegacyBackgroundColorSelection(selection: String): String {
         val preset = ReaderBackgroundPresetCodec.decode(this[CUSTOM_READER_BACKGROUNDS])

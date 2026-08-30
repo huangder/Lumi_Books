@@ -7,7 +7,7 @@ import androidx.room.PrimaryKey
 @Entity(
     tableName = "reading_records",
     indices = [
-        Index(value = ["bookId", "date"], unique = true)
+        Index(value = ["bookId", "date", "sourceDeviceId"], unique = true)
     ]
 )
 data class ReadingRecordEntity(
@@ -17,5 +17,7 @@ data class ReadingRecordEntity(
     val date: String,
     val duration: Long,
     val startTime: Long,
-    val endTime: Long
+    val endTime: Long,
+    val sourceDeviceId: String = "",
+    val updatedAt: Long = endTime
 )

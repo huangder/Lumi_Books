@@ -20,6 +20,7 @@ import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 import kotlinx.coroutines.flow.collectLatest
+import com.huangder.lumibooks.data.sync.WebdavAutoSyncScheduler
 
 @HiltAndroidApp
 class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Configuration.Provider {
@@ -35,6 +36,9 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
 
     @Inject
     lateinit var floatingSubtitleOverlayController: FloatingSubtitleOverlayController
+
+    @Inject
+    lateinit var webdavAutoSyncScheduler: WebdavAutoSyncScheduler
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -54,6 +58,7 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
         LaunchThemeController.synchronizeLauncherComponents(this)
         registerActivityLifecycleCallbacks(this)
         floatingSubtitleOverlayController.start()
+        webdavAutoSyncScheduler.start()
         applicationScope.launch(Dispatchers.IO) {
             dataStoreManager.launchThemeSnapshot.collectLatest { snapshot ->
                 LaunchThemeController.updateThemeSnapshot(this@EBookReaderApp, snapshot)
@@ -72,6 +77,7 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
         if (startedActivityCount == 0 && !activity.isChangingConfigurations) {
             floatingSubtitleOverlayController.setAppInForeground(false)
             LaunchThemeController.applyPendingSplashSetting(this)
+            webdavAutoSyncScheduler.onAppBackgrounded()
         }
     }
 

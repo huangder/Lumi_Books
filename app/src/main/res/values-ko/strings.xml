@@ -178,6 +178,18 @@
     <string name="restore_in_progress">복원 중...</string>
     <string name="restore_success">복원 완료, 앱을 다시 시작해 주세요</string>
     <string name="restore_failed">복원 실패: %s</string>
+    <string name="backup_data_action">데이터 백업</string>
+    <string name="restore_data_action">데이터 복원</string>
+    <string name="backup_contents_title">백업 내용</string>
+    <string name="backup_content_profile_settings">프로필, 앱 설정 및 리더 설정</string>
+    <string name="backup_content_library">서재 배치, 폴더, 태그 및 사용자 지정 표지</string>
+    <string name="backup_content_reading">읽기 진행률, 통계, 북마크, 메모 및 하이라이트</string>
+    <string name="backup_content_resources">사용자 지정 글꼴 및 읽기 배경</string>
+    <string name="backup_content_books">SAF 도서를 포함한 읽을 수 있는 모든 원본 도서 파일</string>
+    <string name="backup_advice">비밀번호, 토큰, 폴더 권한 및 기기 상태는 제외됩니다. 정기적으로 백업하세요.</string>
+    <string name="restore_replace_title">복원하고 로컬 데이터를 교체할까요?</string>
+    <string name="restore_replace_message">현재 서재, 읽기 데이터, 이전 가능한 설정 및 사용자 지정 리소스가 완전히 교체됩니다. 비밀번호, 토큰, WebDAV 자격 증명, 폴더 권한 및 기기 ID는 유지됩니다.</string>
+    <string name="restore_confirm_action">백업 선택</string>
     <string name="select_backup_file">백업 파일 선택</string>
     <string name="select_restore_file">복원 파일 선택</string>
 
@@ -855,6 +867,14 @@
     <string name="webdav_sync_content_description">WebDAV에 저장할 콘텐츠를 선택하세요</string>
     <string name="webdav_sync_content_books">도서 원본 파일</string>
     <string name="webdav_sync_content_books_description">EPUB, PDF 및 TXT 파일</string>
+    <string name="webdav_sync_content_profile_settings">프로필 및 설정</string>
+    <string name="webdav_sync_content_profile_settings_description">아바타, 닉네임, 테마, 글꼴 및 읽기 환경설정</string>
+    <string name="webdav_sync_content_library">서재 구성</string>
+    <string name="webdav_sync_content_library_description">폴더, 태그, 표지 및 도서 배치</string>
+    <string name="webdav_sync_content_reading_data">독서 데이터 및 통계</string>
+    <string name="webdav_sync_content_reading_data_description">진행률, 독서 시간, 책갈피, 강조 표시 및 메모</string>
+    <string name="webdav_sync_category_result">%1$s: 동기화됨</string>
+    <string name="webdav_sync_assets_result">사용자 지정 리소스: 업로드 %1$d, 다운로드 %2$d</string>
     <string name="webdav_sync_content_reading_records">독서 기록</string>
     <string name="webdav_sync_content_reading_records_description">진행률, 마지막 위치 및 읽은 시간</string>
     <string name="webdav_sync_content_bookmarks">책갈피</string>

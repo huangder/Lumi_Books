@@ -79,6 +79,51 @@ class WebdavClientDownloadTest {
         }
     }
 
+    @Test
+    fun conditionalUploadUsesEtagAndReturnsUpdatedEtag() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(204).setHeader("ETag", "\"v2\""))
+        server.start()
+        try {
+            val result = WebdavClient().uploadConditional(
+                server.url("/state-v1/state.json").toString(),
+                "state".toByteArray(),
+                "user",
+                "password",
+                "\"v1\"",
+                "application/json"
+            )
+
+            val request = server.takeRequest()
+            assertEquals("PUT", request.method)
+            assertEquals("\"v1\"", request.getHeader("If-Match"))
+            assertEquals(null, request.getHeader("If-None-Match"))
+            assertEquals("\"v2\"", result)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun firstConditionalUploadRequiresMissingRemoteResource() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(201))
+        server.start()
+        try {
+            WebdavClient().uploadConditional(
+                server.url("/state-v1/state.json").toString(),
+                ByteArray(0),
+                "user",
+                "password",
+                etag = null
+            )
+
+            assertEquals("*", server.takeRequest().getHeader("If-None-Match"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
     private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
         .digest(bytes)
         .joinToString("") { "%02x".format(it) }

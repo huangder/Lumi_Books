@@ -178,6 +178,18 @@
     <string name="restore_in_progress">復元中...</string>
     <string name="restore_success">復元成功、アプリを再起動してください</string>
     <string name="restore_failed">復元失敗：%s</string>
+    <string name="backup_data_action">データをバックアップ</string>
+    <string name="restore_data_action">データを復元</string>
+    <string name="backup_contents_title">バックアップ内容</string>
+    <string name="backup_content_profile_settings">プロフィール、アプリ設定、リーダー設定</string>
+    <string name="backup_content_library">本棚レイアウト、フォルダー、タグ、カスタム表紙</string>
+    <string name="backup_content_reading">読書進捗、統計、しおり、メモ、ハイライト</string>
+    <string name="backup_content_resources">カスタムフォントと読書背景</string>
+    <string name="backup_content_books">SAF の本を含む、読み取り可能なすべての原本ファイル</string>
+    <string name="backup_advice">パスワード、トークン、フォルダー権限、端末状態は含まれません。定期的にバックアップしてください。</string>
+    <string name="restore_replace_title">復元して端末データを置き換えますか？</string>
+    <string name="restore_replace_message">現在の本棚、読書データ、移行可能な設定、カスタム素材がすべて置き換えられます。パスワード、トークン、WebDAV 認証情報、フォルダー権限、端末 ID は保持されます。</string>
+    <string name="restore_confirm_action">バックアップを選択</string>
     <string name="select_backup_file">バックアップファイルを選択</string>
     <string name="select_restore_file">復元ファイルを選択</string>
 
@@ -855,6 +867,14 @@
     <string name="webdav_sync_content_description">WebDAV に保存する内容を選択します</string>
     <string name="webdav_sync_content_books">書籍の元ファイル</string>
     <string name="webdav_sync_content_books_description">EPUB、PDF、TXT ファイル</string>
+    <string name="webdav_sync_content_profile_settings">プロフィールと設定</string>
+    <string name="webdav_sync_content_profile_settings_description">アバター、ニックネーム、テーマ、フォント、読書設定</string>
+    <string name="webdav_sync_content_library">本棚の整理</string>
+    <string name="webdav_sync_content_library_description">フォルダー、タグ、表紙、書籍の配置</string>
+    <string name="webdav_sync_content_reading_data">読書データと統計</string>
+    <string name="webdav_sync_content_reading_data_description">進捗、読書時間、しおり、ハイライト、メモ</string>
+    <string name="webdav_sync_category_result">%1$s：同期済み</string>
+    <string name="webdav_sync_assets_result">カスタム素材：アップロード %1$d、ダウンロード %2$d</string>
     <string name="webdav_sync_content_reading_records">読書履歴</string>
     <string name="webdav_sync_content_reading_records_description">進捗、最後の位置、読書日時</string>
     <string name="webdav_sync_content_bookmarks">しおり</string>

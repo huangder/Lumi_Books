@@ -25,5 +25,6 @@ import androidx.room.Index
 )
 data class BookFolderCrossRefEntity(
     val bookId: String,
-    val folderId: String
+    val folderId: String,
+    val updatedAt: Long = System.currentTimeMillis()
 )

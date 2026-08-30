@@ -16,6 +16,9 @@ interface BookDao {
     @Query("SELECT * FROM books ORDER BY lastReadTime DESC")
     fun getAllBooks(): Flow<List<BookEntity>>
 
+    @Query("SELECT * FROM books ORDER BY lastReadTime DESC")
+    suspend fun getAllBooksSnapshot(): List<BookEntity>
+
     @Query("SELECT * FROM books WHERE id = :bookId")
     suspend fun getBookById(bookId: String): BookEntity?
 
@@ -36,6 +39,12 @@ interface BookDao {
 
     @Upsert
     suspend fun insertBook(book: BookEntity)
+
+    @Upsert
+    suspend fun upsertBooks(books: List<BookEntity>)
+
+    @Query("DELETE FROM books")
+    suspend fun clearBooks()
 
     @Update
     suspend fun updateBook(book: BookEntity)

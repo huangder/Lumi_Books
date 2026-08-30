@@ -1,9 +1,13 @@
 package com.huangder.lumibooks.data.local.entity
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "notes")
+@Entity(
+    tableName = "notes",
+    indices = [Index(value = ["syncId"], unique = true)]
+)
 data class NoteEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
@@ -17,5 +21,7 @@ data class NoteEntity(
     val note: String,
     val color: String,
     val createdAt: Long,
-    val type: String = "highlight"
+    val type: String = "highlight",
+    val syncId: String = "",
+    val updatedAt: Long = createdAt
 )

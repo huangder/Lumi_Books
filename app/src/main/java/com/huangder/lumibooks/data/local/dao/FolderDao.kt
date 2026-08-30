@@ -33,24 +33,54 @@ abstract class FolderDao {
     @Insert
     abstract suspend fun insertFolder(folder: FolderEntity)
 
-    @Query("UPDATE folders SET name = :name, normalizedName = :normalizedName WHERE id = :folderId")
-    abstract suspend fun updateFolderName(folderId: String, name: String, normalizedName: String)
+    @Query(
+        "UPDATE folders SET name = :name, normalizedName = :normalizedName, updatedAt = :updatedAt " +
+            "WHERE id = :folderId"
+    )
+    abstract suspend fun updateFolderName(
+        folderId: String,
+        name: String,
+        normalizedName: String,
+        updatedAt: Long
+    )
 
-    @Query("UPDATE folders SET coverPath = :coverPath WHERE id = :folderId")
-    abstract suspend fun updateFolderCover(folderId: String, coverPath: String?): Int
+    @Query("UPDATE folders SET coverPath = :coverPath, updatedAt = :updatedAt WHERE id = :folderId")
+    abstract suspend fun updateFolderCover(folderId: String, coverPath: String?, updatedAt: Long): Int
+
+    open suspend fun updateFolderCover(folderId: String, coverPath: String?): Int =
+        updateFolderCover(folderId, coverPath, System.currentTimeMillis())
 
     @Query(
-        "UPDATE folders SET previewBookIds = :previewBookIds " +
+        "UPDATE folders SET previewBookIds = :previewBookIds, updatedAt = :updatedAt " +
             "WHERE id = :folderId AND previewBookIds IS NULL " +
             "AND length(trim(:previewBookIds)) > 2"
     )
     abstract suspend fun initializeFolderPreviewIfUnset(
         folderId: String,
-        previewBookIds: String
+        previewBookIds: String,
+        updatedAt: Long
     ): Int
 
-    @Query("UPDATE folders SET parentId = :parentId WHERE id = :folderId")
-    abstract suspend fun updateFolderParent(folderId: String, parentId: String?)
+    open suspend fun initializeFolderPreviewIfUnset(folderId: String, previewBookIds: String): Int =
+        initializeFolderPreviewIfUnset(folderId, previewBookIds, System.currentTimeMillis())
+
+    @Query("UPDATE folders SET parentId = :parentId, updatedAt = :updatedAt WHERE id = :folderId")
+    abstract suspend fun updateFolderParent(folderId: String, parentId: String?, updatedAt: Long)
+
+    @Query(
+        "WITH RECURSIVE folder_tree(id) AS (SELECT id FROM folders WHERE id = :folderId " +
+            "UNION ALL SELECT child.id FROM folders child JOIN folder_tree parent " +
+            "ON child.parentId = parent.id) SELECT id FROM folder_tree"
+    )
+    abstract suspend fun getFolderTreeIds(folderId: String): List<String>
+
+    @Query(
+        "WITH RECURSIVE folder_tree(id) AS (SELECT id FROM folders WHERE id = :folderId " +
+            "UNION ALL SELECT child.id FROM folders child JOIN folder_tree parent " +
+            "ON child.parentId = parent.id) SELECT links.* FROM book_folder_cross_refs links " +
+            "WHERE links.folderId IN (SELECT id FROM folder_tree)"
+    )
+    abstract suspend fun getBookLinksInTree(folderId: String): List<BookFolderCrossRefEntity>
 
     @Query(
         "WITH RECURSIVE folder_tree(id, coverPath) AS (" +
@@ -111,7 +141,7 @@ abstract class FolderDao {
         val folder = getFolderById(folderId) ?: return false
         val conflict = getFolderByNormalizedName(normalizedName, folder.parentId)
         if (conflict != null && conflict.id != folderId) return false
-        updateFolderName(folderId, name, normalizedName)
+        updateFolderName(folderId, name, normalizedName, System.currentTimeMillis())
         return true
     }
 
@@ -143,7 +173,7 @@ abstract class FolderDao {
         val conflict = getFolderByNormalizedName(folder.normalizedName, targetParentId)
         if (conflict != null && conflict.id != folderId) return FolderMoveResult.DuplicateName
 
-        updateFolderParent(folderId, targetParentId)
+        updateFolderParent(folderId, targetParentId, System.currentTimeMillis())
         return FolderMoveResult.Success
     }
 

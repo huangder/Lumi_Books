@@ -179,6 +179,18 @@
     <string name="restore_in_progress">正在恢复...</string>
     <string name="restore_success">恢复成功，请重启应用</string>
     <string name="restore_failed">恢复失败: %s</string>
+    <string name="backup_data_action">备份数据</string>
+    <string name="restore_data_action">恢复数据</string>
+    <string name="backup_contents_title">备份内容</string>
+    <string name="backup_content_profile_settings">头像、昵称、应用与阅读设置</string>
+    <string name="backup_content_library">书架布局、文件夹、标签与自定义封面</string>
+    <string name="backup_content_reading">阅读进度、统计、书签、笔记与高亮</string>
+    <string name="backup_content_resources">自定义字体与阅读背景</string>
+    <string name="backup_content_books">全部可读取的书籍原文件（包括 SAF 书籍）</string>
+    <string name="backup_advice">密码、令牌、目录授权和设备状态不会写入备份。建议定期备份。</string>
+    <string name="restore_replace_title">恢复并替换本机数据？</string>
+    <string name="restore_replace_message">恢复会完整替换当前书库、阅读数据、可迁移设置和自定义资源。密码、令牌、WebDAV 凭据、目录授权及设备标识会保留。</string>
+    <string name="restore_confirm_action">选择备份</string>
     <string name="select_backup_file">选择备份文件</string>
     <string name="select_restore_file">选择恢复文件</string>
 
@@ -869,6 +881,14 @@
     <string name="webdav_sync_content_description">选择要保存到 WebDAV 的内容</string>
     <string name="webdav_sync_content_books">书本原文件</string>
     <string name="webdav_sync_content_books_description">EPUB、PDF 和 TXT 文件</string>
+    <string name="webdav_sync_content_profile_settings">个人资料与设置</string>
+    <string name="webdav_sync_content_profile_settings_description">头像、昵称、主题、字体和阅读偏好</string>
+    <string name="webdav_sync_content_library">书架组织</string>
+    <string name="webdav_sync_content_library_description">文件夹、标签、封面和书籍归属</string>
+    <string name="webdav_sync_content_reading_data">阅读数据与统计</string>
+    <string name="webdav_sync_content_reading_data_description">进度、阅读时长、书签、划线与笔记</string>
+    <string name="webdav_sync_category_result">%1$s：已同步</string>
+    <string name="webdav_sync_assets_result">自定义资源：上传 %1$d，下载 %2$d</string>
     <string name="webdav_sync_content_reading_records">阅读记录</string>
     <string name="webdav_sync_content_reading_records_description">阅读进度、最后阅读位置和时间</string>
     <string name="webdav_sync_content_bookmarks">书签</string>

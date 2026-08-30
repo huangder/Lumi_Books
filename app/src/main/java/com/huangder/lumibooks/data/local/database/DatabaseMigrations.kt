@@ -107,4 +107,68 @@ object DatabaseMigrations {
             db.execSQL("ALTER TABLE folders ADD COLUMN previewBookIds TEXT DEFAULT NULL")
         }
     }
+
+    val MIGRATION_10_11 = object : Migration(10, 11) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS sync_state (`key` TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(`key`))"
+            )
+            db.execSQL(
+                "INSERT OR IGNORE INTO sync_state (`key`, value) VALUES " +
+                    "('device_id', lower(hex(randomblob(16))))"
+            )
+            db.execSQL(
+                "CREATE TABLE reading_records_new (" +
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, bookId TEXT NOT NULL, " +
+                    "date TEXT NOT NULL, duration INTEGER NOT NULL, startTime INTEGER NOT NULL, " +
+                    "endTime INTEGER NOT NULL, sourceDeviceId TEXT NOT NULL, updatedAt INTEGER NOT NULL)"
+            )
+            db.execSQL(
+                "INSERT INTO reading_records_new " +
+                    "(id,bookId,date,duration,startTime,endTime,sourceDeviceId,updatedAt) " +
+                    "SELECT id,bookId,date,duration,startTime,endTime," +
+                    "(SELECT value FROM sync_state WHERE `key`='device_id'),endTime FROM reading_records"
+            )
+            db.execSQL("DROP TABLE reading_records")
+            db.execSQL("ALTER TABLE reading_records_new RENAME TO reading_records")
+            db.execSQL(
+                "CREATE UNIQUE INDEX index_reading_records_bookId_date_sourceDeviceId " +
+                    "ON reading_records (bookId, date, sourceDeviceId)"
+            )
+
+            addStableSyncColumns(db, "bookmarks")
+            addStableSyncColumns(db, "notes")
+            db.execSQL("CREATE UNIQUE INDEX index_bookmarks_syncId ON bookmarks (syncId)")
+            db.execSQL("CREATE UNIQUE INDEX index_notes_syncId ON notes (syncId)")
+
+            db.execSQL("ALTER TABLE folders ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("UPDATE folders SET updatedAt = createdAt WHERE updatedAt = 0")
+            db.execSQL("ALTER TABLE tags ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("UPDATE tags SET updatedAt = createdAt WHERE updatedAt = 0")
+            db.execSQL("ALTER TABLE book_folder_cross_refs ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0")
+            db.execSQL(
+                "UPDATE book_folder_cross_refs SET updatedAt = " +
+                    "CAST(strftime('%s','now') AS INTEGER) * 1000 WHERE updatedAt = 0"
+            )
+            db.execSQL("ALTER TABLE book_tag_cross_refs ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0")
+            db.execSQL(
+                "UPDATE book_tag_cross_refs SET updatedAt = " +
+                    "CAST(strftime('%s','now') AS INTEGER) * 1000 WHERE updatedAt = 0"
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS sync_tombstones (" +
+                    "namespace TEXT NOT NULL, itemId TEXT NOT NULL, deletedAt INTEGER NOT NULL, " +
+                    "deviceId TEXT NOT NULL, PRIMARY KEY(namespace, itemId))"
+            )
+        }
+
+        private fun addStableSyncColumns(db: SupportSQLiteDatabase, table: String) {
+            db.execSQL("ALTER TABLE $table ADD COLUMN syncId TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE $table ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0")
+            db.execSQL(
+                "UPDATE $table SET syncId = lower(hex(randomblob(16))), " +
+                    "updatedAt = createdAt WHERE syncId = ''"
+            )
+        }
+    }
 }
