@@ -263,8 +263,14 @@
     <string name="sponsor_title">Support Development</string>
     <string name="sponsor_desc">Donations: If you enjoy using this app, feel free to support its development</string>
     <string name="sponsor_qr_desc">Donation QR Code</string>
+    <string name="sponsor_payment_menu">Choose donation method</string>
+    <string name="sponsor_payment_wechat">WeChat donation</string>
+    <string name="sponsor_payment_paypal">PayPal donation</string>
+    <string name="sponsor_wechat_qr_desc">WeChat donation QR code</string>
+    <string name="sponsor_paypal_qr_desc">PayPal donation QR code</string>
     <string name="sponsor_quote">"If you like it, buy me a meal😊"</string>
     <string name="sponsor_code_label">Donation code for Yufu</string>
+    <string name="sponsor_paypal_code_label">PayPal payment code</string>
     <string name="sponsor_thanks_title">Dream Sponsors</string>
     <string name="sponsor_dev_title">Developers</string>
     <string name="sponsor_maintainer_badge">Maintainer</string>

@@ -30,6 +30,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -39,6 +42,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -138,6 +142,9 @@ private fun SponsorPage(
 ) {
     val context = LocalContext.current
     var contributors by remember { mutableStateOf(fallbackContributors) }
+    var paymentMethod by rememberSaveable { mutableStateOf(PaymentMethod.WECHAT.name) }
+    var paymentMenuExpanded by remember { mutableStateOf(false) }
+    val selectedPayment = PaymentMethod.valueOf(paymentMethod)
 
     LaunchedEffect(Unit) {
         val fetched = runCatching { githubContributorsClient.fetchContributors() }.getOrNull()
@@ -201,10 +208,60 @@ private fun SponsorPage(
                     .padding(AppSpace.lg),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Spacer(Modifier.weight(1f))
+                    Box {
+                        IconButton(
+                            onClick = { paymentMenuExpanded = true },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.MoreVert,
+                                contentDescription = stringResource(R.string.sponsor_payment_menu),
+                                tint = AppColors.TextSecondary
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = paymentMenuExpanded,
+                            onDismissRequest = { paymentMenuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.sponsor_payment_wechat)) },
+                                onClick = {
+                                    paymentMethod = PaymentMethod.WECHAT.name
+                                    paymentMenuExpanded = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.sponsor_payment_paypal)) },
+                                onClick = {
+                                    paymentMethod = PaymentMethod.PAYPAL.name
+                                    paymentMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+
                 // 二维码
                 Image(
-                    painter = painterResource(id = R.drawable.donation_qr),
-                    contentDescription = stringResource(R.string.sponsor_qr_desc),
+                    painter = painterResource(
+                        id = if (selectedPayment == PaymentMethod.WECHAT) {
+                            R.drawable.donation_qr
+                        } else {
+                            R.drawable.paypal_donation_qr
+                        }
+                    ),
+                    contentDescription = stringResource(
+                        if (selectedPayment == PaymentMethod.WECHAT) {
+                            R.string.sponsor_wechat_qr_desc
+                        } else {
+                            R.string.sponsor_paypal_qr_desc
+                        }
+                    ),
                     modifier = Modifier
                         .size(220.dp)
                         .clip(RoundedCornerShape(AppRadius.md)),
@@ -244,7 +301,13 @@ private fun SponsorPage(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = stringResource(R.string.sponsor_code_label),
+                        text = stringResource(
+                            if (selectedPayment == PaymentMethod.WECHAT) {
+                                R.string.sponsor_code_label
+                            } else {
+                                R.string.sponsor_paypal_code_label
+                            }
+                        ),
                         fontSize = AppType.Body,
                         fontWeight = FontWeight.SemiBold,
                         color = Color.White
@@ -278,6 +341,11 @@ private fun SponsorPage(
             Spacer(Modifier.height(120.dp))
         }
     }
+}
+
+private enum class PaymentMethod {
+    WECHAT,
+    PAYPAL
 }
 
 @Composable
