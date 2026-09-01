@@ -94,7 +94,7 @@ internal fun currentTocVisibleIndex(
     collapsedGroups: Set<Int>,
     currentChapter: Int
 ): Int {
-    val sourceIndex = entries.indexOfFirst { !it.isGroup && it.chapterIndex == currentChapter }
+    val sourceIndex = entries.indexOfFirst { it.chapterIndex == currentChapter }
     if (sourceIndex < 0) return -1
 
     val directIndex = visibleEntries.indexOfFirst { it.sourceIndex == sourceIndex }

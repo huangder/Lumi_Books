@@ -1451,14 +1451,29 @@ internal fun EpubWebViewReader(
     }
 }
 
-private fun usesNativeEpubPageTurn(
+internal fun usesNativeEpubPageTurn(
     session: BookRenderSession,
     chapterIndex: Int,
     continuousScroll: Boolean,
     transition: String
-): Boolean = !continuousScroll &&
-    transition in setOf("slide", "curl") &&
-    session.renditionLayout(chapterIndex) != EpubRenditionLayout.PRE_PAGINATED
+): Boolean = usesNativeEpubPageTurn(
+    continuousScroll = continuousScroll,
+    transition = transition,
+    renditionLayout = session.renditionLayout(chapterIndex)
+)
+
+internal fun usesNativeEpubPageTurn(
+    continuousScroll: Boolean,
+    transition: String,
+    renditionLayout: EpubRenditionLayout
+): Boolean {
+    if (continuousScroll) return false
+    return when (transition) {
+        "scroll" -> true
+        "slide", "curl" -> renditionLayout != EpubRenditionLayout.PRE_PAGINATED
+        else -> false
+    }
+}
 
 private fun configKey(
     chapterIndex: Int,

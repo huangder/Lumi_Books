@@ -28,7 +28,8 @@ class MineruEpubBuilder @Inject constructor() {
         outputFile: File,
         workDirectory: File,
         title: String,
-        author: String
+        author: String,
+        defaultChapterTitle: String = "Content"
     ): MineruEpubBuildResult {
         val markdownFile = if (remoteResult.isZip) {
             val extractedDirectory = File(workDirectory, "extracted").apply {
@@ -52,7 +53,7 @@ class MineruEpubBuilder @Inject constructor() {
         if (markdown.isBlank()) {
             throw MineruApiException(MineruApiException.Kind.INVALID_RESULT, "MinerU returned empty Markdown")
         }
-        val chapters = splitIntoChapters(markdown)
+        val chapters = splitIntoChapters(markdown, defaultChapterTitle)
         val assets = collectAssets(markdownFile.parentFile ?: workDirectory)
         outputFile.parentFile?.mkdirs()
         outputFile.delete()
@@ -82,9 +83,9 @@ class MineruEpubBuilder @Inject constructor() {
         return MineruEpubBuildResult(chapterCount = chapters.size, markdownFile = markdownFile)
     }
 
-    private fun splitIntoChapters(markdown: String): List<MarkdownChapter> {
+    private fun splitIntoChapters(markdown: String, defaultChapterTitle: String): List<MarkdownChapter> {
         val result = mutableListOf<MarkdownChapter>()
-        var title = "正文"
+        var title = defaultChapterTitle
         val content = StringBuilder()
         var inFence = false
 
@@ -104,14 +105,14 @@ class MineruEpubBuilder @Inject constructor() {
             }
             if (heading != null && content.isNotBlank()) {
                 flush()
-                title = plainHeading(heading.groupValues[2])
+                title = plainHeading(heading.groupValues[2], defaultChapterTitle)
             } else if (heading != null) {
-                title = plainHeading(heading.groupValues[2])
+                title = plainHeading(heading.groupValues[2], defaultChapterTitle)
             }
             content.appendLine(line)
         }
         flush()
-        return result.ifEmpty { listOf(MarkdownChapter("正文", markdown)) }
+        return result.ifEmpty { listOf(MarkdownChapter(defaultChapterTitle, markdown)) }
     }
 
     private fun collectAssets(root: File): List<EpubAsset> {
@@ -294,8 +295,9 @@ class MineruEpubBuilder @Inject constructor() {
         zip.closeEntry()
     }
 
-    private fun plainHeading(value: String): String {
-        return value.replace(Regex("[*_`~\\[\\]#]"), "").trim().take(120).ifBlank { "正文" }
+    private fun plainHeading(value: String, defaultChapterTitle: String): String {
+        return value.replace(Regex("[*_`~\\[\\]#]"), "").trim().take(120)
+            .ifBlank { defaultChapterTitle }
     }
 
     private fun mediaType(file: File): String = when (file.extension.lowercase()) {

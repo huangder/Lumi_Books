@@ -9,51 +9,67 @@ internal data class BookmarkExportItem(
     val pageText: String?
 )
 
+internal data class BookNotesExportLabels(
+    val highlightSection: String,
+    val highlightContent: String,
+    val chapter: String,
+    val book: String,
+    val noteSection: String,
+    val noteSource: String,
+    val userNote: String,
+    val bookmarkSection: String,
+    val bookmarkPage: String,
+    val pageUnavailable: String,
+    val fileSuffix: String,
+    val chapterNumber: (Int) -> String
+)
+
 internal object BookNotesExportFormatter {
 
     fun format(
         bookTitle: String,
         notes: List<Note>,
         bookmarks: List<BookmarkExportItem>,
-        chapterTitles: Map<Int, String>
+        chapterTitles: Map<Int, String>,
+        labels: BookNotesExportLabels
     ): String = buildString {
-        appendLine("【高亮：】")
+        appendLine("【${labels.highlightSection}：】")
         notes.filter { it.note.isBlank() }.forEach { note ->
             appendLine()
-            appendLine("【高亮内容】${note.selectedText.trim()}")
-            appendLine("【所在章节】${chapterTitle(note.chapterIndex, chapterTitles)}")
-            appendLine("【书籍名】$bookTitle")
+            appendLine("【${labels.highlightContent}】${note.selectedText.trim()}")
+            appendLine("【${labels.chapter}】${chapterTitle(note.chapterIndex, chapterTitles, labels)}")
+            appendLine("【${labels.book}】$bookTitle")
         }
 
         appendLine()
-        appendLine("【笔记：】")
+        appendLine("【${labels.noteSection}：】")
         notes.filter { it.note.isNotBlank() }.forEach { note ->
             appendLine()
-            appendLine("【笔记原文内容】${note.selectedText.trim()}")
-            appendLine("【用户所写笔记内容】${note.note.trim()}")
-            appendLine("【所在章节】${chapterTitle(note.chapterIndex, chapterTitles)}")
-            appendLine("【书籍名】$bookTitle")
+            appendLine("【${labels.noteSource}】${note.selectedText.trim()}")
+            appendLine("【${labels.userNote}】${note.note.trim()}")
+            appendLine("【${labels.chapter}】${chapterTitle(note.chapterIndex, chapterTitles, labels)}")
+            appendLine("【${labels.book}】$bookTitle")
         }
 
         appendLine()
-        appendLine("【书签：】")
+        appendLine("【${labels.bookmarkSection}：】")
         bookmarks.forEach { item ->
             appendLine()
             appendLine(
-                "【书签页内容】${pageExcerpt(item.pageText, item.bookmark.title)}"
+                "【${labels.bookmarkPage}】${pageExcerpt(item.pageText, item.bookmark.title, labels.pageUnavailable)}"
             )
-            appendLine("【所在章节】${item.chapterTitle}")
-            appendLine("【书籍名】$bookTitle")
+            appendLine("【${labels.chapter}】${item.chapterTitle}")
+            appendLine("【${labels.book}】$bookTitle")
         }
     }.trimEnd() + "\n"
 
-    fun pageExcerpt(pageText: String?, fallback: String): String {
+    fun pageExcerpt(pageText: String?, fallback: String, pageUnavailable: String): String {
         val normalizedPage = pageText
             ?.replace("\r\n", "\n")
             ?.replace('\r', '\n')
             ?.trim()
             .orEmpty()
-        if (normalizedPage.isBlank()) return fallback.trim().ifBlank { "（无法提取页面文字）" }
+        if (normalizedPage.isBlank()) return fallback.trim().ifBlank { pageUnavailable }
 
         val firstParagraph = normalizedPage
             .lineSequence()
@@ -70,19 +86,23 @@ internal object BookNotesExportFormatter {
             flattenedPage.takeLastCodePoints(EXCERPT_CODE_POINTS)
     }
 
-    fun suggestedFileName(bookTitle: String): String {
+    fun suggestedFileName(bookTitle: String, fileSuffix: String): String {
         val safeTitle = bookTitle
             .replace(Regex("[\\\\/:*?\"<>|]"), "_")
             .trim()
             .ifBlank { "LumiBooks" }
-        return "$safeTitle-书签与笔记.txt"
+        return "$safeTitle-$fileSuffix.txt"
     }
 
-    private fun chapterTitle(chapterIndex: Int, chapterTitles: Map<Int, String>): String {
+    private fun chapterTitle(
+        chapterIndex: Int,
+        chapterTitles: Map<Int, String>,
+        labels: BookNotesExportLabels
+    ): String {
         return chapterTitles[chapterIndex]
             ?.trim()
             ?.takeIf(String::isNotEmpty)
-            ?: "第${chapterIndex + 1}章"
+            ?: labels.chapterNumber(chapterIndex + 1)
     }
 
     private fun String.collapseWhitespace(): String = replace(Regex("\\s+"), " ").trim()

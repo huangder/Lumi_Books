@@ -37,6 +37,18 @@ internal fun pageIndexForChapterFraction(
     return (normalizedFraction * pageCount).toInt().coerceIn(0, pageCount - 1)
 }
 
+internal fun pdfPageIndexForProgress(
+    progressPercent: Float,
+    pageCount: Int
+): Int {
+    val normalizedProgress = if (progressPercent.isFinite()) {
+        progressPercent.coerceIn(0f, 100f)
+    } else {
+        0f
+    }
+    return pageIndexForChapterFraction(normalizedProgress / 100f, pageCount)
+}
+
 internal class CatalogProgressDragSession {
     var currentProgress: Float = 0f
         private set

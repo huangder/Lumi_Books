@@ -2,16 +2,19 @@ package com.huangder.lumibooks.domain.model
 
 data class ReaderPageAnimationSettings(
     val slideDurationMs: Int = SLIDE_DEFAULT_MS,
+    val scrollDurationMs: Int = SCROLL_DEFAULT_MS,
     val fadeDurationMs: Int = FADE_DEFAULT_MS,
     val curlDurationMs: Int = CURL_DEFAULT_MS
 ) {
     fun durationFor(mode: String): Int = when (mode) {
+        MODE_SCROLL -> scrollDurationMs
         MODE_FADE -> fadeDurationMs
         MODE_CURL -> curlDurationMs
         else -> slideDurationMs
     }
 
     fun withDuration(mode: String, durationMs: Int): ReaderPageAnimationSettings = when (mode) {
+        MODE_SCROLL -> copy(scrollDurationMs = sanitizeDuration(mode, durationMs))
         MODE_FADE -> copy(fadeDurationMs = sanitizeDuration(mode, durationMs))
         MODE_CURL -> copy(curlDurationMs = sanitizeDuration(mode, durationMs))
         else -> copy(slideDurationMs = sanitizeDuration(MODE_SLIDE, durationMs))
@@ -19,10 +22,12 @@ data class ReaderPageAnimationSettings(
 
     companion object {
         const val MODE_SLIDE = "slide"
+        const val MODE_SCROLL = "scroll"
         const val MODE_FADE = "fade"
         const val MODE_CURL = "curl"
 
         const val SLIDE_DEFAULT_MS = 260
+        const val SCROLL_DEFAULT_MS = 260
         const val FADE_DEFAULT_MS = 400
         const val CURL_DEFAULT_MS = 800
 

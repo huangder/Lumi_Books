@@ -99,7 +99,10 @@ class PdfConversionWorker @AssistedInject constructor(
                     database.bookDao().insertBook(
                         BookEntity(
                             id = convertedBookId,
-                            title = sourceBook.title + "（解析后）",
+                            title = applicationContext.getString(
+                                R.string.pdf_convert_text_book_title,
+                                sourceBook.title
+                            ),
                             author = sourceBook.author,
                             filePath = outputFile.absolutePath,
                             coverPath = existingBook?.coverPath ?: sourceBook.coverPath,
@@ -128,7 +131,10 @@ class PdfConversionWorker @AssistedInject constructor(
             notifyCompleted(
                 sourceBookId = sourceBookId,
                 convertedBookId = convertedBookId,
-                bookTitle = sourceBook.title + "（解析后）",
+                bookTitle = applicationContext.getString(
+                    R.string.pdf_convert_text_book_title,
+                    sourceBook.title
+                ),
                 textPages = extraction.textPageCount,
                 totalPages = extraction.totalPageCount
             )

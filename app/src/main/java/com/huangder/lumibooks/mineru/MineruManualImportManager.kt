@@ -56,7 +56,8 @@ class MineruManualImportManager @Inject constructor(
                 outputFile = temporaryFile,
                 workDirectory = workDirectory,
                 title = title,
-                author = author
+                author = author,
+                defaultChapterTitle = context.getString(com.huangder.lumibooks.R.string.chapter_default_content)
             )
             moveReplacing(temporaryFile, outputFile)
             installed = true
@@ -114,7 +115,8 @@ class MineruManualImportManager @Inject constructor(
                 outputFile = temporaryFile,
                 workDirectory = workDirectory,
                 title = sourceBook.title,
-                author = sourceBook.author
+                author = sourceBook.author,
+                defaultChapterTitle = context.getString(com.huangder.lumibooks.R.string.chapter_default_content)
             )
             installOutputFile(temporaryFile, outputFile, backupFile)
 

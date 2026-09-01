@@ -631,13 +631,10 @@ fun ThemeSettingsSheet(
 
             Spacer(Modifier.height(16.dp))
 
-            // 翻页效果 + 显示效果（并排图标模块）
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
+            // 翻页效果 + 显示效果（上下两行全宽模块）
+            Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
                 if (eInkModeEnabled) {
-                    Column(Modifier.weight(1f)) {
+                    Column(Modifier.fillMaxWidth()) {
                         Text(
                             stringResource(R.string.page_turn_module_label),
                             fontSize = 14.sp,
@@ -654,12 +651,13 @@ fun ThemeSettingsSheet(
                 } else {
                     ReaderModeModule(
                         title = stringResource(R.string.page_turn_module_label),
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.fillMaxWidth(),
                         items = buildList {
                             add(
                                 ReaderModeOption(
                                     key = "slide",
                                     label = stringResource(R.string.transition_slide),
+                                    shortLabel = stringResource(R.string.page_animation_slide_short),
                                     icon = ReaderIconPageSlide
                                 )
                             )
@@ -668,7 +666,16 @@ fun ThemeSettingsSheet(
                                     ReaderModeOption(
                                         key = "continuous",
                                         label = stringResource(R.string.transition_scroll),
+                                        shortLabel = stringResource(R.string.page_turn_continuous_short),
                                         icon = ReaderIconPageScroll
+                                    )
+                                )
+                                add(
+                                    ReaderModeOption(
+                                        key = "scroll",
+                                        label = stringResource(R.string.transition_vertical_paging),
+                                        shortLabel = stringResource(R.string.page_animation_scroll_short),
+                                        icon = ReaderIconPageVerticalPaging
                                     )
                                 )
                             }
@@ -676,6 +683,7 @@ fun ThemeSettingsSheet(
                                 ReaderModeOption(
                                     key = "fade",
                                     label = stringResource(R.string.transition_fade),
+                                    shortLabel = stringResource(R.string.page_animation_fade_short),
                                     icon = ReaderIconPageFade
                                 )
                             )
@@ -683,6 +691,7 @@ fun ThemeSettingsSheet(
                                 ReaderModeOption(
                                     key = "curl",
                                     label = stringResource(R.string.transition_curl),
+                                    shortLabel = stringResource(R.string.page_animation_curl_short),
                                     icon = ReaderIconPageCurl
                                 )
                             )
@@ -692,25 +701,29 @@ fun ThemeSettingsSheet(
                         glass = isLiquidGlass
                     )
                 }
+                Spacer(Modifier.height(10.dp))
                 ReaderModeModule(
                     title = stringResource(R.string.display_module_label),
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
                     enabled = !eInkModeEnabled,
                     glass = isLiquidGlass,
                     items = listOf(
                         ReaderModeOption(
                             key = "day",
                             label = stringResource(R.string.display_mode_day),
+                            shortLabel = stringResource(R.string.display_mode_day_short),
                             icon = ReaderIconDisplayDay
                         ),
                         ReaderModeOption(
                             key = "night",
                             label = stringResource(R.string.display_mode_night),
+                            shortLabel = stringResource(R.string.display_mode_night_short),
                             icon = ReaderIconDisplayNight
                         ),
                         ReaderModeOption(
                             key = "auto",
                             label = stringResource(R.string.display_mode_auto),
+                            shortLabel = stringResource(R.string.display_mode_auto_short),
                             icon = ReaderIconDisplayAuto
                         )
                     ),
@@ -1388,7 +1401,9 @@ private fun ReaderBackgroundSelector(
             val isSelected = currentSelection == preset.selectionKey
             val isDeleteArmed = deleteArmedId == preset.id
             BackgroundPresetItem(
-                label = preset.displayName(index),
+                label = preset.displayName(
+                    stringResource(R.string.custom_background_numbered_name, index + 1)
+                ),
                 isSelected = isSelected,
                 onClick = {
                     if (isDeleteArmed) {
@@ -1751,6 +1766,7 @@ private fun ModeButton(
 private data class ReaderModeOption(
     val key: String,
     val label: String,
+    val shortLabel: String,
     val icon: ImageVector
 )
 
@@ -1862,6 +1878,7 @@ private fun ReaderModeModule(
                 items.forEach { item ->
                     ReaderModeIconButton(
                         icon = item.icon,
+                        label = item.shortLabel,
                         contentDescription = item.label,
                         isSelected = item.key == selectedKey,
                         enabled = enabled,
@@ -1877,13 +1894,14 @@ private fun ReaderModeModule(
 @Composable
 private fun ReaderModeIconButton(
     icon: ImageVector,
+    label: String,
     contentDescription: String,
     isSelected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true
 ) {
-    Box(
+    Row(
         modifier = modifier
             .height(40.dp)
             .clickable(
@@ -1895,7 +1913,8 @@ private fun ReaderModeIconButton(
                 this.contentDescription = contentDescription
                 this.selected = isSelected
             },
-        contentAlignment = Alignment.Center
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             imageVector = icon,
@@ -1905,7 +1924,20 @@ private fun ReaderModeIconButton(
                 isSelected -> AppColors.TextPrimary
                 else -> LightTextSecondary
             },
-            modifier = Modifier.size(22.dp)
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(Modifier.width(3.dp))
+        Text(
+            text = label,
+            color = when {
+                !enabled -> LightTextSecondary.copy(alpha = 0.35f)
+                isSelected -> AppColors.TextPrimary
+                else -> LightTextSecondary
+            },
+            fontSize = 11.sp,
+            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+            maxLines = 1,
+            softWrap = false
         )
     }
 }
@@ -2162,7 +2194,7 @@ fun AdvancedSettingsSheet(
                     Spacer(Modifier.weight(1f))
                     LiquidGlassIconButton(
                         imageVector = Icons.Outlined.Check,
-                        contentDescription = "确认",
+                        contentDescription = stringResource(R.string.confirm),
                         onClick = { isClosing = true },
                         size = 44.dp,
                         iconSize = 20.dp,
@@ -2282,7 +2314,15 @@ fun AdvancedSettingsSheet(
                             onParagraphSpacingChange
                         )
                         Spacer(Modifier.height(12.dp))
-                        SettingSlider(stringResource(R.string.label_first_line_indent), currentFirstLineIndent, 0f..4f, 0.5f, { "${it} 字符" }, onFirstLineIndentChange)
+                        val characterUnit = stringResource(R.string.reader_unit_character)
+                        SettingSlider(
+                            stringResource(R.string.label_first_line_indent),
+                            currentFirstLineIndent,
+                            0f..4f,
+                            0.5f,
+                            { "$it $characterUnit" },
+                            onFirstLineIndentChange
+                        )
                     }
                     Spacer(Modifier.height(12.dp))
                 }
@@ -3595,7 +3635,9 @@ private fun FontSelector(
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
-                                val label = preset.displayName(item.index)
+                                val label = preset.displayName(
+                                    stringResource(R.string.custom_font_numbered_name, item.index + 1)
+                                )
                                 Text(
                                     label,
                                     fontSize = if (label.codePointCount(0, label.length) > 4) 12.sp else 14.sp,

@@ -17,9 +17,9 @@ data class CustomFontPreset(
     val fontTypeKey: String get() = "custom:$id"
 
     /** 在 UI 中显示的名称；旧数据没有名称时继续显示兼容性的默认名称。 */
-    fun displayName(index: Int): String {
+    fun displayName(fallbackName: String): String {
         val customName = name.trim()
-        if (customName.isBlank()) return "自定义${index + 1}"
+        if (customName.isBlank()) return fallbackName
         val count = customName.codePointCount(0, customName.length)
         return customName.substring(0, customName.offsetByCodePoints(0, count.coerceAtMost(6)))
     }

@@ -88,7 +88,7 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
         }
         viewModelScope.launch {
             dataStoreManager.pageTransition().collectLatest { mode ->
-                if (mode in setOf("slide", "fade", "curl")) {
+                if (mode in setOf("slide", "scroll", "fade", "curl")) {
                     _uiState.update { it.copy(animationMode = mode) }
                 }
             }
@@ -203,7 +203,7 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
     }
 
     fun setAnimationMode(mode: String) {
-        if (mode !in setOf("slide", "fade", "curl") || _uiState.value.eInkMode) return
+        if (mode !in setOf("slide", "scroll", "fade", "curl") || _uiState.value.eInkMode) return
         _uiState.update { it.copy(animationMode = mode) }
         viewModelScope.launch { dataStoreManager.savePageTransition(mode) }
     }

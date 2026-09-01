@@ -3,6 +3,8 @@ package com.huangder.lumibooks.util.parser
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
+import android.text.TextUtils
+import com.huangder.lumibooks.R
 import com.huangder.lumibooks.util.BookFileAccess
 import com.huangder.lumibooks.util.FileUtils
 import java.io.File
@@ -36,15 +38,15 @@ class PdfParser(private val context: Context) : BookParser {
         val chapters = (0 until pageCount).map { pageIndex ->
             Chapter(
                 index = pageIndex,
-                title = "第${pageIndex + 1}页",
-                content = "PDF 第${pageIndex + 1}页 / 共${pageCount}页",
+                title = context.getString(R.string.pdf_page_number, pageIndex + 1),
+                content = context.getString(R.string.pdf_page_content, pageIndex + 1, pageCount),
                 htmlContent = "" // 按需渲染
             )
         }
 
         return BookContent(
             title = fileName,
-            author = "未知作者",
+            author = context.getString(R.string.book_author_unknown),
             chapters = chapters
         )
     }
@@ -91,7 +93,8 @@ class PdfParser(private val context: Context) : BookParser {
                 |<body><img src="data:image/jpeg;base64,$base64"></body></html>
             """.trimMargin()
         } catch (e: Exception) {
-            "<html><body><p>页面加载失败: ${e.message}</p></body></html>"
+            val message = context.getString(R.string.pdf_page_load_failed, e.message.orEmpty())
+            "<html><body><p>${TextUtils.htmlEncode(message)}</p></body></html>"
         }
 
         htmlCache[chapterIndex] = html
@@ -99,7 +102,9 @@ class PdfParser(private val context: Context) : BookParser {
     }
 
     override fun getChapterContent(chapterIndex: Int): CharSequence {
-        return if (chapterIndex in 0 until pageCount) "PDF 第${chapterIndex + 1}页 / 共${pageCount}页" else ""
+        return if (chapterIndex in 0 until pageCount) {
+            context.getString(R.string.pdf_page_content, chapterIndex + 1, pageCount)
+        } else ""
     }
 
     override fun getChapterCount(): Int = pageCount

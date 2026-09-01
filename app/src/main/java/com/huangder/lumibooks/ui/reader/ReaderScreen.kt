@@ -78,6 +78,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
@@ -92,6 +93,7 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Menu
@@ -249,6 +251,10 @@ import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.data.local.DataStoreManager
+import com.huangder.lumibooks.util.parser.TxtTocRule
+import com.huangder.lumibooks.util.parser.TxtTocRuleBuiltIns
+import com.huangder.lumibooks.util.parser.TxtTocRuleCompiler
+import com.huangder.lumibooks.util.parser.TxtTocRuleDiagnostics
 import com.huangder.lumibooks.MainActivity
 import com.huangder.lumibooks.ReaderPageDirection
 import com.huangder.lumibooks.ui.theme.KaiTi
@@ -289,7 +295,8 @@ private data class ReaderMenuSnapshot(
     val pageIndex: Int,
     val pageCount: Int,
     val bookProgressPercent: Float,
-    val rightPageIndex: Int? = null
+    val rightPageIndex: Int? = null,
+    val rightChapterIndex: Int? = null
 )
 
 private data class ReaderBookmarkPageKey(
@@ -308,11 +315,19 @@ private enum class BookmarkPullSettleMode {
 private fun formatReaderPageLabel(
     currentPage: Int,
     rightPageIndex: Int?,
-    chapterPageCount: Int
+    chapterPageCount: Int,
+    rightChapterIndex: Int? = null,
+    currentChapterIndex: Int? = null
 ): String {
     val total = chapterPageCount.coerceAtLeast(1)
     return if (rightPageIndex != null && rightPageIndex >= 0) {
-        "$currentPage–${rightPageIndex + 1} / $total"
+        if (rightChapterIndex != null && currentChapterIndex != null &&
+            rightChapterIndex >= 0 && rightChapterIndex != currentChapterIndex
+        ) {
+            "$currentPage / $total · 第${rightChapterIndex + 1}章 ${rightPageIndex + 1}"
+        } else {
+            "$currentPage–${rightPageIndex + 1} / $total"
+        }
     } else {
         "$currentPage / $total"
     }
@@ -655,7 +670,7 @@ fun ReaderScreen(
     val twoPageSpreadEligible = uiState.twoPageSpreadEnabled && isTablet &&
         uiState.useNewEngine && !isBookLayout && !eInkMode &&
         uiState.readerWritingMode == ReaderWritingMode.HORIZONTAL &&
-        basePageTransition != "continuous"
+        basePageTransition !in setOf("continuous", "scroll")
     val isBookLayoutContinuousScroll = isBookLayout &&
         uiState.readerWritingMode.usesContinuousScroll(basePageTransition, eInkMode)
     val effectivePageTransition = if (isBookLayout &&
@@ -1275,6 +1290,7 @@ fun ReaderScreen(
     var showAdvancedSheet by remember { mutableStateOf(false) }
     var openAdvancedAfterThemeClose by remember { mutableStateOf(false) }
     var showTxtEncodingDialog by remember(bookId) { mutableStateOf(false) }
+    var showTxtTocDialog by remember(bookId) { mutableStateOf(false) }
 
     // 搜索状态
     var showSearch by remember(bookId) { mutableStateOf(false) }
@@ -1288,7 +1304,7 @@ fun ReaderScreen(
 
     // 处理返回键：触发退出动画，而不是直接关闭
     val isAnySheetOpen = showNotesList || showNoteInput || showToc || showThemeSheet ||
-        showAdvancedSheet || showSearch || showTxtEncodingDialog || showReplaceInput
+        showAdvancedSheet || showSearch || showTxtEncodingDialog || showTxtTocDialog || showReplaceInput
     val bookmarkPullSupported = (isBookLayout && !isBookLayoutContinuousScroll) ||
         (uiState.useNewEngine && !renderedContinuousScrollMode && !isVerticalWriting)
     val bookmarkPullEnabled = bookmarkPullSupported &&
@@ -2512,7 +2528,8 @@ fun ReaderScreen(
                     pageIndex = uiState.currentPageIndex,
                     chapterPageCount = uiState.totalPages
                 ),
-                rightPageIndex = uiState.rightPageIndex
+                rightPageIndex = uiState.rightPageIndex,
+                rightChapterIndex = uiState.rightChapterIndex
             )
             var lastReadyMenuSnapshot by remember(bookId) {
                 mutableStateOf<ReaderMenuSnapshot?>(null)
@@ -2540,6 +2557,11 @@ fun ReaderScreen(
                 if (uiState.currentPageIndex <= 0) null else uiState.currentPageIndex * 2
             } else {
                 displayedMenuSnapshot.rightPageIndex
+            }
+            val displayRightChapterIndex = if (spreadDisplay) {
+                null
+            } else {
+                displayedMenuSnapshot.rightChapterIndex
             }
             val displayPageCount = if (spreadDisplay) {
                 (displayedMenuSnapshot.pageCount * 2 - 1).coerceAtLeast(1)
@@ -2638,6 +2660,10 @@ fun ReaderScreen(
                     onEncodingClick = {
                         viewModel.hideMenu()
                         showTxtEncodingDialog = true
+                    },
+                    onTocRuleClick = {
+                        viewModel.hideMenu()
+                        showTxtTocDialog = true
                     }
                 )
             }
@@ -2713,6 +2739,8 @@ fun ReaderScreen(
                         currentPage = displayCurrentPage,
                         chapterPageCount = displayPageCount,
                         rightPageIndex = displayRightPageIndex,
+                        rightChapterIndex = displayRightChapterIndex,
+                        currentChapterIndex = displayedMenuSnapshot.chapterIndex,
                         capsuleBgColor = capsuleBgColor,
                         capsuleContentColor = if (isLiquidGlass && !isBookLayout) menuContentColor else capsuleContentColor,
                         readerContentColor = menuContentColor,
@@ -2858,6 +2886,8 @@ fun ReaderScreen(
                         currentPage = displayCurrentPage,
                         chapterPageCount = displayPageCount,
                         rightPageIndex = displayRightPageIndex,
+                        rightChapterIndex = displayRightChapterIndex,
+                        currentChapterIndex = displayedMenuSnapshot.chapterIndex,
                         leftMarginDp = uiState.marginLeftDp,
                         rightMarginDp = uiState.marginRightDp,
                         topLeft = if (linkReturnLocation == null) {
@@ -3635,6 +3665,28 @@ fun ReaderScreen(
         )
     }
 
+    if (showTxtTocDialog) {
+        TxtTocRuleDialog(
+            currentRuleId = uiState.txtTocRuleId,
+            customRules = uiState.txtTocCustomRules,
+            diagnostics = uiState.txtTocDiagnostics,
+            isChanging = uiState.isTxtTocChanging,
+            backdrop = activeReaderGlassBackdrop,
+            onHelp = {
+                context.startActivity(Intent(context, TxtTocRuleHelpActivity::class.java))
+            },
+            onApply = { ruleId ->
+                showTxtTocDialog = false
+                viewModel.saveTxtTocRuleSelection(ruleId)
+            },
+            onSaveCustom = { rule ->
+                showTxtTocDialog = false
+                viewModel.saveTxtTocRule(rule)
+            },
+            onDismiss = { showTxtTocDialog = false }
+        )
+    }
+
     // 🔥 笔记输入弹窗（自定义菜单触发"笔记"时弹出）
     pendingExternalLink?.let { href ->
         AlertDialog(
@@ -3718,6 +3770,8 @@ private fun ReaderPageCornerOverlay(
     currentPage: Int,
     chapterPageCount: Int,
     rightPageIndex: Int? = null,
+    rightChapterIndex: Int? = null,
+    currentChapterIndex: Int? = null,
     leftMarginDp: Float,
     rightMarginDp: Float,
     topLeft: ReaderCornerContent,
@@ -3737,6 +3791,8 @@ private fun ReaderPageCornerOverlay(
                 currentPage = currentPage,
                 chapterPageCount = chapterPageCount,
                 rightPageIndex = rightPageIndex,
+                rightChapterIndex = rightChapterIndex,
+                currentChapterIndex = currentChapterIndex,
                 contentColor = contentColor,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -3756,6 +3812,8 @@ private fun ReaderPageCornerOverlay(
                 currentPage = currentPage,
                 chapterPageCount = chapterPageCount,
                 rightPageIndex = rightPageIndex,
+                rightChapterIndex = rightChapterIndex,
+                currentChapterIndex = currentChapterIndex,
                 contentColor = contentColor,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -3779,6 +3837,8 @@ private fun ReaderCornerStatusRow(
     currentPage: Int,
     chapterPageCount: Int,
     rightPageIndex: Int? = null,
+    rightChapterIndex: Int? = null,
+    currentChapterIndex: Int? = null,
     contentColor: Color,
     modifier: Modifier = Modifier
 ) {
@@ -3799,6 +3859,8 @@ private fun ReaderCornerStatusRow(
                 currentPage = currentPage,
                 chapterPageCount = chapterPageCount,
                 rightPageIndex = rightPageIndex,
+                rightChapterIndex = rightChapterIndex,
+                currentChapterIndex = currentChapterIndex,
                 contentColor = contentColor,
                 alignEnd = false
             )
@@ -3814,6 +3876,8 @@ private fun ReaderCornerStatusRow(
                 currentPage = currentPage,
                 chapterPageCount = chapterPageCount,
                 rightPageIndex = rightPageIndex,
+                rightChapterIndex = rightChapterIndex,
+                currentChapterIndex = currentChapterIndex,
                 contentColor = contentColor,
                 alignEnd = true
             )
@@ -3829,6 +3893,8 @@ private fun ReaderCornerContentValue(
     currentPage: Int,
     chapterPageCount: Int,
     rightPageIndex: Int? = null,
+    rightChapterIndex: Int? = null,
+    currentChapterIndex: Int? = null,
     contentColor: Color,
     alignEnd: Boolean
 ) {
@@ -3841,7 +3907,11 @@ private fun ReaderCornerContentValue(
                 ReaderCornerContent.CHAPTER_INFO -> chapterTitle
                 ReaderCornerContent.BOOK_PROGRESS -> formatReadingProgressPercent(bookProgressPercent)
                 ReaderCornerContent.PAGE_NUMBER -> formatReaderPageLabel(
-                    currentPage, rightPageIndex, chapterPageCount
+                    currentPage,
+                    rightPageIndex,
+                    chapterPageCount,
+                    rightChapterIndex,
+                    currentChapterIndex
                 )
                 else -> ""
             },
@@ -4379,7 +4449,8 @@ private fun ReaderTopBar(
     onBookmarkToggle: () -> Unit = {},
     isTxtBook: Boolean = false,
     onEditClick: () -> Unit = {},
-    onEncodingClick: () -> Unit = {}
+    onEncodingClick: () -> Unit = {},
+    onTocRuleClick: () -> Unit = {}
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !LocalEInkMode.current
     val controlBackground = if (forceSolidButtons) {
@@ -4481,6 +4552,15 @@ private fun ReaderTopBar(
                             forceSolid = forceSolidButtons,
                             onClick = onEncodingClick
                         )
+                        ReaderTopBarButton(
+                            icon = Icons.Default.Settings,
+                            contentDescription = stringResource(R.string.reader_txt_toc_rule),
+                            tint = contentColor,
+                            backgroundColor = controlBackground,
+                            contentScrimColor = glassContentScrimColor,
+                            forceSolid = forceSolidButtons,
+                            onClick = onTocRuleClick
+                        )
                     }
             }
         }
@@ -4503,7 +4583,7 @@ private fun ReaderTopBarButton(
         contentScrimColor = contentScrimColor,
         forceFallback = forceSolid,
         modifier = Modifier
-            .size(36.dp),
+            .requiredSize(36.dp),
         onClick = onClick,
         contentAlignment = Alignment.Center
     ) {
@@ -4526,6 +4606,8 @@ private fun FloatingReaderMenu(
     currentPage: Int,
     chapterPageCount: Int,
     rightPageIndex: Int? = null,
+    rightChapterIndex: Int? = null,
+    currentChapterIndex: Int? = null,
     capsuleBgColor: Color,
     capsuleContentColor: Color,
     readerContentColor: Color,
@@ -4621,6 +4703,8 @@ private fun FloatingReaderMenu(
             currentPage = currentPage,
             chapterPageCount = chapterPageCount,
             rightPageIndex = rightPageIndex,
+            rightChapterIndex = rightChapterIndex,
+            currentChapterIndex = currentChapterIndex,
             contentColor = readerContentColor
         )
         Row(
@@ -4653,6 +4737,8 @@ private fun ReaderMenuStatus(
     currentPage: Int,
     chapterPageCount: Int,
     rightPageIndex: Int? = null,
+    rightChapterIndex: Int? = null,
+    currentChapterIndex: Int? = null,
     contentColor: Color
 ) {
     Row(
@@ -4678,7 +4764,13 @@ private fun ReaderMenuStatus(
         )
         Spacer(Modifier.width(12.dp))
         Text(
-            text = formatReaderPageLabel(currentPage, rightPageIndex, chapterPageCount),
+            text = formatReaderPageLabel(
+                currentPage,
+                rightPageIndex,
+                chapterPageCount,
+                rightChapterIndex,
+                currentChapterIndex
+            ),
             color = contentColor.copy(alpha = 0.68f),
             fontSize = 11.sp,
             maxLines = 1
@@ -5580,7 +5672,7 @@ private fun TocSheet(
         visibleTocEntries(tocEntries, foldGroups, collapsedGroups)
     }
     val currentSourceIndex = remember(tocEntries, currentChapter) {
-        tocEntries.indexOfFirst { !it.isGroup && it.chapterIndex == currentChapter }
+        tocEntries.indexOfFirst { it.chapterIndex == currentChapter }
     }
 
     val currentEntryIndex = remember(
@@ -6098,6 +6190,323 @@ internal fun TocReturnToCurrentButton(
             normalContainerColor = AppColors.Accent,
             liquidContainerColor = AppColors.Accent,
             liquidScrimColor = AppColors.Accent.copy(alpha = 0.82f)
+        )
+    }
+
+}
+
+@Composable
+private fun TxtTocRuleDialog(
+    currentRuleId: String,
+    customRules: List<TxtTocRule>,
+    diagnostics: List<TxtTocRuleDiagnostics>,
+    isChanging: Boolean,
+    backdrop: Backdrop?,
+    onHelp: () -> Unit,
+    onApply: (String?) -> Unit,
+    onSaveCustom: (TxtTocRule) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val defaultRuleName = stringResource(R.string.txt_toc_rule_default_name)
+    val defaultChapterRegex = stringResource(R.string.txt_toc_rule_default_chapter_regex)
+    var chapterRegex by remember { mutableStateOf(defaultChapterRegex) }
+    var volumeRegex by remember { mutableStateOf("") }
+    var titleTemplate by remember { mutableStateOf("") }
+    var volumeTemplate by remember { mutableStateOf("") }
+    var ruleName by remember { mutableStateOf(defaultRuleName) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scrollState = rememberScrollState()
+    val invalidRuleMessage = stringResource(R.string.txt_toc_rule_invalid)
+
+    LiquidGlassAlertDialog(
+        onDismissRequest = onDismiss,
+        backdrop = backdrop,
+        contentScrimColor = AppColors.CardBg.copy(alpha = 0.82f),
+        backgroundScrimColor = Color.Black.copy(alpha = 0.10f),
+        backgroundBlurRadius = 0.dp,
+        transparencyOverride = 0.24f,
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    stringResource(R.string.txt_toc_rule_dialog_title),
+                    color = AppColors.TextPrimary,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f)
+                )
+                LiquidGlassIconButton(
+                    imageVector = Icons.Outlined.Info,
+                    contentDescription = stringResource(R.string.txt_toc_rule_help),
+                    onClick = onHelp,
+                    size = 36.dp,
+                    iconSize = 19.dp,
+                    contentColor = AppColors.TextSecondary,
+                    normalContainerColor = Color.Transparent,
+                    liquidContainerColor = AppColors.CardBg,
+                    liquidScrimColor = AppColors.BgGray.copy(alpha = 0.62f)
+                )
+            }
+        },
+        text = {
+            Column(Modifier.fillMaxWidth().heightIn(max = 520.dp).verticalScroll(scrollState)) {
+                Text(
+                    stringResource(R.string.txt_toc_rule_auto_section),
+                    color = AppColors.TextPrimary,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    stringResource(R.string.txt_toc_rule_auto_message),
+                    color = AppColors.TextSecondary,
+                    fontSize = 13.sp
+                )
+                Spacer(Modifier.height(8.dp))
+                TxtTocRuleOption(
+                    title = stringResource(R.string.txt_toc_rule_auto_title),
+                    description = stringResource(R.string.txt_toc_rule_auto_description),
+                    selected = currentRuleId == "auto",
+                    enabled = !isChanging,
+                    onClick = { onApply(null) }
+                )
+                Spacer(Modifier.height(8.dp))
+                TxtTocRuleBuiltIns.all.forEach { rule ->
+                    TxtTocRuleOption(
+                        title = txtTocRuleTitle(rule),
+                        description = txtTocRuleDescription(rule.id),
+                        selected = currentRuleId == rule.id,
+                        enabled = !isChanging,
+                        onClick = { onApply(rule.id) }
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+                diagnostics.firstOrNull { it.ruleId == currentRuleId }?.let { diagnostic ->
+                    Text(
+                        stringResource(
+                            R.string.txt_toc_rule_current_matches,
+                            diagnostic.chapterMatches + diagnostic.volumeMatches
+                        ) +
+                            (diagnostic.reason?.let {
+                                " · ${stringResource(R.string.txt_toc_rule_match_note)}"
+                            } ?: ""),
+                        color = AppColors.TextSecondary,
+                        fontSize = 12.sp
+                    )
+                }
+                customRules.forEach { rule ->
+                    TxtTocRuleOption(
+                        title = stringResource(R.string.txt_toc_rule_custom_prefix, rule.name),
+                        description = stringResource(R.string.txt_toc_rule_custom_description),
+                        selected = currentRuleId == rule.id,
+                        enabled = !isChanging,
+                        onClick = { onApply(rule.id) }
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    stringResource(R.string.txt_toc_rule_custom_section),
+                    color = AppColors.TextPrimary,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    stringResource(R.string.txt_toc_rule_custom_help),
+                    color = AppColors.TextSecondary,
+                    fontSize = 13.sp
+                )
+                TxtTocRuleExample()
+                Spacer(Modifier.height(6.dp))
+                TocRuleInput(stringResource(R.string.txt_toc_rule_name), ruleName) { ruleName = it }
+                TocRuleInput(stringResource(R.string.txt_toc_rule_chapter_regex), chapterRegex) { chapterRegex = it }
+                TocRuleInput(stringResource(R.string.txt_toc_rule_volume_regex), volumeRegex) { volumeRegex = it }
+                TocRuleInput(stringResource(R.string.txt_toc_rule_chapter_template), titleTemplate) { titleTemplate = it }
+                TocRuleInput(stringResource(R.string.txt_toc_rule_volume_template), volumeTemplate) { volumeTemplate = it }
+                error?.let {
+                    Text(
+                        it,
+                        color = Color(0xFFB3261E),
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            LiquidGlassTextButton(
+                text = stringResource(R.string.txt_toc_rule_save_apply),
+                onClick = {
+                    val rule = TxtTocRule(
+                        id = "custom-${ruleName.trim().lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')}-${System.currentTimeMillis()}",
+                        name = ruleName.trim(),
+                        chapterRegex = chapterRegex,
+                        volumeRegex = volumeRegex.trim().takeIf { it.isNotEmpty() },
+                        chapterTitleTemplate = titleTemplate.takeIf { it.isNotEmpty() },
+                        volumeTitleTemplate = volumeTemplate.takeIf { it.isNotEmpty() },
+                        example = "",
+                        order = 100
+                    )
+                    val result = TxtTocRuleCompiler.compile(rule)
+                    result.onSuccess { onSaveCustom(rule) }
+                        .onFailure { error = it.message ?: invalidRuleMessage }
+                },
+                tintedColor = AppColors.Accent,
+                contentColor = AppColors.OnAccent
+            )
+        },
+        dismissButton = {
+            LiquidGlassTextButton(
+                text = stringResource(R.string.cancel),
+                onClick = onDismiss,
+                tintedColor = AppColors.BgGray,
+                contentColor = AppColors.TextPrimary
+            )
+        }
+    )
+}
+
+@Composable
+private fun txtTocRuleTitle(rule: TxtTocRule): String = when (rule.id) {
+    "builtin-multilingual" -> stringResource(R.string.txt_toc_rule_multilingual_title)
+    "builtin-decorated" -> stringResource(R.string.txt_toc_rule_decorated_title)
+    "builtin-numbered" -> stringResource(R.string.txt_toc_rule_numbered_title)
+    else -> rule.name
+}
+
+@Composable
+private fun txtTocRuleDescription(ruleId: String): String = when (ruleId) {
+    "builtin-multilingual" -> stringResource(R.string.txt_toc_rule_multilingual_description)
+    "builtin-decorated" -> stringResource(R.string.txt_toc_rule_decorated_description)
+    "builtin-numbered" -> stringResource(R.string.txt_toc_rule_numbered_description)
+    else -> stringResource(R.string.txt_toc_rule_custom_description)
+}
+
+@Composable
+private fun TxtTocRuleOption(
+    title: String,
+    description: String,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val accent = AppColors.Accent
+    val selectedTextColor = Color.White.copy(alpha = if (enabled) 1f else 0.48f)
+    val titleColor = if (selected) {
+        selectedTextColor
+    } else {
+        AppColors.TextPrimary.copy(alpha = if (enabled) 1f else 0.48f)
+    }
+    val descriptionColor = if (selected) {
+        Color.White.copy(alpha = if (enabled) 0.86f else 0.42f)
+    } else {
+        AppColors.TextSecondary.copy(alpha = if (enabled) 1f else 0.48f)
+    }
+    LiquidGlassSurface(
+        shape = RoundedCornerShape(14.dp),
+        fallbackColor = if (selected) accent else AppColors.BgGray,
+        contentScrimColor = if (selected) accent.copy(alpha = 0.86f) else AppColors.CardBg.copy(alpha = 0.54f),
+        tintColor = accent.takeIf { selected },
+        transparencyOverride = if (selected) 0.18f else 0.36f,
+        enabled = enabled,
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 64.dp)
+            .then(
+                if (selected) {
+                    Modifier.border(1.dp, Color.White.copy(alpha = 0.72f), RoundedCornerShape(14.dp))
+                } else {
+                    Modifier
+                }
+            ),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    color = titleColor,
+                    fontSize = 14.sp,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
+                )
+                Text(
+                    text = description,
+                    color = descriptionColor,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+            if (selected) {
+                Spacer(Modifier.width(10.dp))
+                Icon(
+                    imageVector = Icons.Outlined.Check,
+                    contentDescription = stringResource(R.string.txt_toc_rule_selected),
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TxtTocRuleExample() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(LightBgGray)
+            .padding(horizontal = 10.dp, vertical = 9.dp)
+    ) {
+        Text(
+            text = stringResource(R.string.txt_toc_rule_example_title),
+            color = AppColors.TextPrimary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium
+        )
+        Text(
+            text = stringResource(R.string.txt_toc_rule_example_lines),
+            color = AppColors.TextSecondary,
+            fontSize = 12.sp,
+            lineHeight = 18.sp,
+            modifier = Modifier.padding(top = 3.dp)
+        )
+        Text(
+            text = stringResource(R.string.txt_toc_rule_example_regex),
+            color = AppColors.TextSecondary,
+            fontSize = 12.sp,
+            lineHeight = 18.sp,
+            modifier = Modifier.padding(top = 5.dp)
+        )
+        Text(
+            text = stringResource(R.string.txt_toc_rule_example_template),
+            color = AppColors.TextSecondary,
+            fontSize = 12.sp,
+            lineHeight = 18.sp
+        )
+        Text(
+            text = stringResource(R.string.txt_toc_rule_example_blank),
+            color = AppColors.TextSecondary,
+            fontSize = 12.sp,
+            lineHeight = 18.sp
+        )
+    }
+}
+
+@Composable
+private fun TocRuleInput(label: String, value: String, onValueChange: (String) -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Text(label, color = AppColors.TextSecondary, fontSize = 12.sp)
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier.fillMaxWidth().background(LightBgGray, RoundedCornerShape(8.dp)).padding(10.dp),
+            textStyle = TextStyle(color = AppColors.TextPrimary, fontSize = 14.sp),
+            singleLine = true
         )
     }
 }
@@ -7572,7 +7981,7 @@ private fun NoteInputSheet(
                     Text(stringResource(R.string.reader_notes), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = resolveAppFontFamily(KaiTi), color = AppColors.TextPrimary, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
                     LiquidGlassIconButton(
                         imageVector = Icons.Outlined.Check,
-                        contentDescription = "确认",
+                        contentDescription = stringResource(R.string.confirm),
                         onClick = {
                             onConfirm()
                             isClosing = true

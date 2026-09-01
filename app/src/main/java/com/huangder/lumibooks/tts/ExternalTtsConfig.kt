@@ -76,6 +76,6 @@ object ExternalTtsConfig {
 
     fun pitchInstruction(pitch: Float): String {
         val normalized = String.format(Locale.US, "%.2f", pitch.coerceIn(0.5f, 2f))
-        return "请以约 ${normalized} 倍的音高自然朗读。"
+        return "Read naturally at approximately ${normalized}x pitch."
     }
 }

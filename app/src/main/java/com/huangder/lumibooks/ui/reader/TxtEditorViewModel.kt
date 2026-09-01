@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.ui.reader
 
 import android.app.Application
+import com.huangder.lumibooks.R
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -239,7 +240,10 @@ class TxtEditorViewModel @Inject constructor(
                 val loaded = withContext(Dispatchers.IO) {
                     val book = bookRepository.getBookById(bookId) ?: error("Book not found")
                     val encoding = TxtEncoding.fromStorage(dataStoreManager.txtEncoding(bookId).first())
-                    val txtParser = TxtParser(application).apply { selectedEncoding = encoding }
+                    val txtParser = TxtParser(application).apply {
+                        selectedEncoding = encoding
+                        selectedTocRule = dataStoreManager.resolveTxtTocRule(bookId)
+                    }
                     val content = txtParser.parse(book.filePath)
                     Triple(book, txtParser, content)
                 }
@@ -274,7 +278,10 @@ class TxtEditorViewModel @Inject constructor(
             } catch (error: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    fatalErrorMessage = "加载失败：${error.message}"
+                    fatalErrorMessage = application.getString(
+                        R.string.error_load_failed_detail,
+                        error.message.orEmpty()
+                    )
                 )
             }
         }
@@ -532,7 +539,10 @@ class TxtEditorViewModel @Inject constructor(
                 } else {
                     _uiState.value = _uiState.value.copy(
                         isSaving = false,
-                        errorMessage = "保存失败：${result.errorMessage.orEmpty()}"
+                        errorMessage = application.getString(
+                            R.string.error_save_failed_detail,
+                            result.errorMessage.orEmpty()
+                        )
                     )
                 }
             } catch (cancelled: CancellationException) {
@@ -540,7 +550,10 @@ class TxtEditorViewModel @Inject constructor(
             } catch (error: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isSaving = false,
-                    errorMessage = "保存失败：${error.message ?: error.javaClass.simpleName}"
+                    errorMessage = application.getString(
+                        R.string.error_save_failed_detail,
+                        error.message ?: error.javaClass.simpleName
+                    )
                 )
             }
         }
@@ -553,7 +566,7 @@ class TxtEditorViewModel @Inject constructor(
         scrollPositions[chapterIndex] = scrollPosition.coerceAtLeast(0)
         if (text == state.chapterText) return
 
-        if (TxtChapterStructure.mayChange(state.chapterText, text)) {
+        if (TxtChapterStructure.mayChange(state.chapterText, text, parser?.selectedTocRule)) {
             structureChangedChapters += chapterIndex
         }
         val replacement = computeMinimalTxtReplacement(chapterIndex, state.chapterText, text)

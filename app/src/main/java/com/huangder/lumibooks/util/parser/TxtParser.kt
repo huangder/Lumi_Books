@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.util.parser
 
 import android.content.Context
+import com.huangder.lumibooks.R
 import com.huangder.lumibooks.util.BookFileAccess
 import com.huangder.lumibooks.util.FileUtils
 import com.huangder.lumibooks.util.SeekableBookSource
@@ -32,10 +33,16 @@ class TxtParser(private val context: Context? = null) : BookParser {
         val index: Int,
         val title: String,
         val startByte: Long,
-        val endByte: Long
+        val endByte: Long,
+        val role: TxtTocHeadingRole = TxtTocHeadingRole.CHAPTER,
+        val level: Int = 1
     )
 
-    private data class Heading(val title: String, val startByte: Long)
+    private data class Heading(
+        val title: String,
+        val startByte: Long,
+        val role: TxtTocHeadingRole = TxtTocHeadingRole.CHAPTER
+    )
     private data class NumberedHeading(val heading: Heading, val number: Int)
     private data class ByteRange(val startByte: Long, val endByte: Long)
     private data class EncodingInfo(val charset: Charset, val contentStart: Long)
@@ -44,6 +51,14 @@ class TxtParser(private val context: Context? = null) : BookParser {
     private var sourceLocation: String = ""
     private var sourceLease: SeekableBookSource? = null
     var selectedEncoding: TxtEncoding = TxtEncoding.AUTO
+    /** Null means automatic built-in detection. A non-null rule is a per-book fixed rule. */
+    var selectedTocRule: TxtTocRule? = null
+        set(value) {
+            field = value
+            lastTocDiagnostics = emptyList()
+        }
+    var lastTocDiagnostics: List<TxtTocRuleDiagnostics> = emptyList()
+        private set
     private var encodingInfo = EncodingInfo(Charsets.UTF_8, 0L)
     val activeCharsetName: String
         get() = encodingInfo.charset.name()
@@ -103,8 +118,11 @@ class TxtParser(private val context: Context? = null) : BookParser {
             val headings = ReaderOpenPerformance.trace("txt_heading_scan") {
                 findChapterHeadings(file, encodingInfo)
             }
+            if (selectedTocRule != null && headings.isEmpty()) {
+                error("TXT TOC rule '${selectedTocRule?.name}' did not match any heading")
+            }
             entries = ReaderOpenPerformance.trace("txt_index_build") {
-                if (headings.size >= 2) {
+                if (headings.size >= 2 || (selectedTocRule != null && headings.isNotEmpty())) {
                     buildHeadingEntries(file, headings, encodingInfo)
                 } else {
                     buildFallbackEntries(file, encodingInfo)
@@ -122,19 +140,27 @@ class TxtParser(private val context: Context? = null) : BookParser {
             }
             // 解析完成后写入缓存，供下次打开使用
             ReaderOpenPerformance.trace("txt_index_cache_write") {
-                saveChapterCache(file, encodingInfo, entries)
+            saveChapterCache(file, encodingInfo, entries)
             }
         }
 
         return BookContent(
             title = displayTitle,
-            author = "未知作者",
+            author = context?.getString(R.string.book_author_unknown) ?: "Unknown author",
             chapters = entries.map { entry ->
                 Chapter(
                     index = entry.index,
                     title = entry.title,
                     content = "",
                     htmlContent = ""
+                )
+            },
+            tocEntries = entries.map { entry ->
+                TocEntry(
+                    title = entry.title,
+                    level = entry.level,
+                    chapterIndex = entry.index,
+                    isGroup = entry.role == TxtTocHeadingRole.VOLUME
                 )
             }
         )
@@ -151,6 +177,9 @@ class TxtParser(private val context: Context? = null) : BookParser {
         val payload = ReaderCacheStore.get(ctx).readMetadata(txtIndexNamespace(), fingerprint) ?: return null
         return try {
             if (payload.getString("formatVersion") != CACHE_VERSION) return null
+            if (payload.optString("localeTag") != ctx.resources.configuration.locales[0].toLanguageTag()) {
+                return null
+            }
             val charset = Charset.forName(payload.getString("charset"))
             val contentStart = payload.getLong("contentStart")
             val encoding = EncodingInfo(charset, contentStart)
@@ -163,7 +192,10 @@ class TxtParser(private val context: Context? = null) : BookParser {
                             index = item.getInt("index"),
                             title = item.getString("title"),
                             startByte = item.getLong("startByte"),
-                            endByte = item.getLong("endByte")
+                            endByte = item.getLong("endByte"),
+                            role = runCatching { TxtTocHeadingRole.valueOf(item.optString("role", "CHAPTER")) }
+                                .getOrDefault(TxtTocHeadingRole.CHAPTER),
+                            level = item.optInt("level", 1)
                         )
                     )
                 }
@@ -189,10 +221,13 @@ class TxtParser(private val context: Context? = null) : BookParser {
                     .put("title", entry.title)
                     .put("startByte", entry.startByte)
                     .put("endByte", entry.endByte)
+                    .put("role", entry.role.name)
+                    .put("level", entry.level)
             )
         }
         val payload = JSONObject()
             .put("formatVersion", CACHE_VERSION)
+            .put("localeTag", ctx.resources.configuration.locales[0].toLanguageTag())
             .put("charset", encoding.charset.name())
             .put("contentStart", encoding.contentStart)
             .put("chapters", chapterArray)
@@ -201,7 +236,8 @@ class TxtParser(private val context: Context? = null) : BookParser {
         }
     }
 
-    private fun txtIndexNamespace(): String = "txt_index_${selectedEncoding.storageValue}"
+    private fun txtIndexNamespace(): String =
+        "txt_index_${selectedEncoding.storageValue}_${TxtTocRuleCodec.fingerprint(selectedTocRule)}"
 
     private fun resolveEncoding(file: File): EncodingInfo {
         val requestedCharset = selectedEncoding.charsetOrNull() ?: return detectEncoding(file)
@@ -291,10 +327,41 @@ class TxtParser(private val context: Context? = null) : BookParser {
     }
 
     private fun findChapterHeadings(file: File, encoding: EncodingInfo): List<Heading> {
+        selectedTocRule?.let { rule ->
+            val compiled = TxtTocRuleCompiler.compile(rule).getOrElse { error ->
+                throw IllegalArgumentException("Unable to compile TXT TOC rule '${rule.name}': ${error.message}", error)
+            }
+            val headings = mutableListOf<Heading>()
+            var nonBlankLines = 0
+            var samples = emptyList<String>()
+            forEachLinePrefix(file, encoding, encoding.contentStart, file.length()) { start, _, prefix ->
+                val line = prefix.trim()
+                if (line.isNotEmpty()) nonBlankLines++
+                val match = compiled.match(line) ?: return@forEachLinePrefix
+                if (samples.size < 3) samples = samples + match.title
+                headings += Heading(match.title.take(TITLE_PREFIX_BYTES), start, match.role)
+            }
+            lastTocDiagnostics = listOf(
+                TxtTocRuleDiagnostics(
+                    rule.id,
+                    rule.name,
+                    headings.count { it.role == TxtTocHeadingRole.CHAPTER },
+                    headings.count { it.role == TxtTocHeadingRole.VOLUME },
+                    nonBlankLines,
+                    headings.size * 20,
+                    headings.isNotEmpty(),
+                    reason = if (headings.isEmpty()) "No heading matched" else null,
+                    samples = samples
+                )
+            )
+            return normalizeHeadingLevels(headings)
+        }
+
         // 一次扫描同时匹配所有模式，避免对大文件重复全文扫描（原来最多 5 次）
         val matchesByPattern = Array(TxtChapterStructure.PATTERN_COUNT) { mutableListOf<Heading>() }
         val decoratedHeadings = mutableListOf<Heading>()
         val looseNumberedHeadings = mutableListOf<NumberedHeading>()
+        val sampleLines = ArrayList<String>(20_000)
         var pendingDecoratedHeading: Heading? = null
         var pendingLooseNumberedHeading: NumberedHeading? = null
         var previousLineWasBlank = true
@@ -302,6 +369,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
             // 🔥 同时 trim 首尾：中文TXT常见全角空格缩进如「　　第一章」
             // 原来只 trimEnd 导致 ^ 锚定失败，触发 fallback 用正文首行当标题
             val line = prefix.trim()
+            if (sampleLines.size < 20_000 && line.isNotEmpty()) sampleLines += line
             pendingDecoratedHeading?.let { pending ->
                 if (line.isNotEmpty()) {
                     if (!COPYRIGHT_LINE_PATTERN.containsMatchIn(line)) {
@@ -338,20 +406,46 @@ class TxtParser(private val context: Context? = null) : BookParser {
             previousLineWasBlank = line.isEmpty()
         }
         pendingDecoratedHeading?.let(decoratedHeadings::add)
+        lastTocDiagnostics = TxtTocRuleSelector.choose(
+            TxtTocRuleBuiltIns.all,
+            sampleLines.asSequence()
+        ).second
 
         // 数字加顿号/空格更常见于正文清单，不能作为通用章节规则。
-        val primaryHeadings = matchesByPattern.firstOrNull { it.size >= 2 } ?: return emptyList()
+        val primaryHeadings = matchesByPattern.firstOrNull { it.size >= 2 }
+        if (primaryHeadings == null) {
+            val automaticRule = TxtTocRuleSelector.choose(
+                TxtTocRuleBuiltIns.all,
+                sampleLines.asSequence()
+            ).first
+            if (automaticRule != null) {
+                val compiled = TxtTocRuleCompiler.compile(automaticRule).getOrNull()
+                if (compiled != null) {
+                    val headings = mutableListOf<Heading>()
+                    forEachLinePrefix(file, encoding, encoding.contentStart, file.length()) { start, _, prefix ->
+                        val match = compiled.match(prefix.trim()) ?: return@forEachLinePrefix
+                        headings += Heading(match.title.take(TITLE_PREFIX_BYTES), start, match.role)
+                    }
+                    return normalizeHeadingLevels(headings)
+                }
+            }
+            return emptyList()
+        }
         val headingsWithFilledGaps = fillSingleNumberGaps(primaryHeadings, looseNumberedHeadings)
         val firstNumber = extractArabicChapterNumber(headingsWithFilledGaps.first().title)
         val decoratedPrelude = decoratedHeadings.filter {
             it.startByte < headingsWithFilledGaps.first().startByte
         }
-        return if (firstNumber != null && firstNumber > 1 && decoratedPrelude.size == firstNumber - 1) {
+        val selected = if (firstNumber != null && firstNumber > 1 && decoratedPrelude.size == firstNumber - 1) {
             decoratedPrelude + headingsWithFilledGaps
         } else {
             headingsWithFilledGaps
         }
+        return normalizeHeadingLevels(selected)
     }
+
+    private fun normalizeHeadingLevels(headings: List<Heading>): List<Heading> = headings
+        .sortedBy { it.startByte }
 
     private fun fillSingleNumberGaps(
         headings: List<Heading>,
@@ -387,7 +481,25 @@ class TxtParser(private val context: Context? = null) : BookParser {
         encoding: EncodingInfo
     ): List<TxtChapterEntry> {
         val result = mutableListOf<TxtChapterEntry>()
+        val firstHeading = headings.minByOrNull { it.startByte }
+        if (firstHeading != null && firstHeading.startByte > encoding.contentStart) {
+            val prefaceRange = ByteRange(encoding.contentStart, firstHeading.startByte)
+            if (hasVisibleContent(file, encoding, prefaceRange)) {
+                result += TxtChapterEntry(
+                    index = result.size,
+                    title = context?.getString(R.string.chapter_preface_title) ?: "Preface",
+                    startByte = prefaceRange.startByte,
+                    endByte = prefaceRange.endByte,
+                    role = TxtTocHeadingRole.CHAPTER,
+                    level = 1
+                )
+            }
+        }
+        var seenVolume = false
         headings.forEachIndexed { headingIndex, heading ->
+            val headingRole = if (
+                heading.role == TxtTocHeadingRole.CHAPTER && TxtChapterStructure.isVolumeHeading(heading.title)
+            ) TxtTocHeadingRole.VOLUME else heading.role
             val range = ByteRange(
                 startByte = heading.startByte,
                 endByte = headings.getOrNull(headingIndex + 1)?.startByte ?: file.length()
@@ -397,12 +509,30 @@ class TxtParser(private val context: Context? = null) : BookParser {
                 val title = if (partIndex == 0) {
                     heading.title
                 } else {
-                    "${heading.title}（续${partIndex + 1}）"
+                    context?.getString(
+                        R.string.chapter_continued_title,
+                        heading.title,
+                        partIndex + 1
+                    ) ?: "${heading.title} (continued ${partIndex + 1})"
                 }
-                result += TxtChapterEntry(result.size, title, part.startByte, part.endByte)
+                val level = when {
+                    headingRole == TxtTocHeadingRole.VOLUME -> {
+                        seenVolume = true
+                        1
+                    }
+                    seenVolume -> 2
+                    else -> 1
+                }
+                result += TxtChapterEntry(result.size, title, part.startByte, part.endByte, headingRole, level)
             }
         }
         return result
+    }
+
+    private fun hasVisibleContent(file: File, encoding: EncodingInfo, range: ByteRange): Boolean {
+        if (range.endByte <= range.startByte) return false
+        val sample = decodePrefix(file, encoding.charset, range.startByte, range.endByte, 4096)
+        return sample.removePrefix("\uFEFF").any { !it.isWhitespace() }
     }
 
     private fun buildFallbackEntries(file: File, encoding: EncodingInfo): List<TxtChapterEntry> {
@@ -410,7 +540,12 @@ class TxtParser(private val context: Context? = null) : BookParser {
         val ranges = splitRange(file, encoding, fullRange, FALLBACK_TARGET_CHARS, splitAtTarget = true)
         return RandomAccessFile(file, "r").use { reader ->
             ranges.mapIndexed { index, range ->
-                TxtChapterEntry(index, "第${index + 1}章", range.startByte, range.endByte)
+                TxtChapterEntry(
+                    index,
+                    context?.getString(R.string.chapter_number, index + 1) ?: "Chapter ${index + 1}",
+                    range.startByte,
+                    range.endByte
+                )
             }
         }
     }
@@ -760,6 +895,50 @@ class TxtParser(private val context: Context? = null) : BookParser {
         return entry.startByte to entry.endByte
     }
 
+    /** Converts a visible chapter character offset to an absolute source byte offset. */
+    fun characterOffsetToByte(chapterIndex: Int, characterOffset: Int, endBias: Boolean = false): Long? {
+        val entry = entries.getOrNull(chapterIndex) ?: return null
+        val raw = decodeRange(sourceFile ?: return null, encodingInfo.charset, entry.startByte, entry.endByte)
+        val visibleStart = raw.indexOfFirst { it != '\uFEFF' && it != '\r' && it != '\n' }
+            .let { if (it < 0) raw.length else it }
+        val visibleEnd = raw.indexOfLast { it != '\uFEFF' && it != '\r' && it != '\n' } + 1
+        val visible = raw.substring(visibleStart, visibleEnd.coerceAtLeast(visibleStart))
+        var offset = characterOffset.coerceIn(0, visible.length)
+        if (offset < visible.length && visible[offset].isLowSurrogate()) {
+            offset += if (endBias) 1 else -1
+        }
+        val rawOffset = visibleStart + offset
+        return entry.startByte + strictEncode(raw.substring(0, rawOffset), encodingInfo.charset).size
+            .toLong().coerceAtMost(entry.endByte - entry.startByte)
+    }
+
+    /** Resolves an absolute source byte offset to a visible chapter character offset. */
+    fun byteToCharacterPosition(byteOffset: Long): Pair<Int, Int>? {
+        if (entries.isEmpty()) return null
+        val anchor = byteOffset.coerceAtLeast(encodingInfo.contentStart)
+        val entry = entries.lastOrNull { anchor >= it.startByte } ?: entries.first()
+        val bounded = anchor.coerceIn(entry.startByte, entry.endByte)
+        val raw = decodeRange(sourceFile ?: return null, encodingInfo.charset, entry.startByte, entry.endByte)
+        val visibleStart = raw.indexOfFirst { it != '\uFEFF' && it != '\r' && it != '\n' }
+            .let { if (it < 0) raw.length else it }
+        val visibleEnd = raw.indexOfLast { it != '\uFEFF' && it != '\r' && it != '\n' } + 1
+        val visible = raw.substring(visibleStart, visibleEnd.coerceAtLeast(visibleStart))
+        val targetBytes = (bounded - entry.startByte).toInt().coerceAtLeast(0)
+        var cursor = 0
+        var characterOffset = 0
+        while (characterOffset < visible.length) {
+            val step = if (
+                visible[characterOffset].isHighSurrogate() &&
+                characterOffset + 1 < visible.length && visible[characterOffset + 1].isLowSurrogate()
+            ) 2 else 1
+            val next = strictEncode(visible.substring(characterOffset, characterOffset + step), encodingInfo.charset).size
+            if (cursor + next > targetBytes) break
+            cursor += next
+            characterOffset += step
+        }
+        return entry.index to characterOffset
+    }
+
     override fun replaceChapterContent(chapterIndex: Int, newText: String): Boolean {
         return rewriteWithOperations(listOf(TxtSetChapterText(chapterIndex, newText))).success
     }
@@ -971,7 +1150,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
     }
 
     private companion object {
-        const val CACHE_VERSION = "TXT_INDEX_V5"  // V5: support mixed-format chapter sequences
+        const val CACHE_VERSION = "TXT_INDEX_V6"  // V6: rule fingerprint, roles and hierarchy
         const val STREAM_BUFFER_SIZE = 64 * 1024
         const val HEADING_PREFIX_BYTES = 512
         const val TITLE_PREFIX_BYTES = 512

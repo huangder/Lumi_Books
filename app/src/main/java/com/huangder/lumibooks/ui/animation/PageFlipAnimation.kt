@@ -384,7 +384,7 @@ object SlideCoverAnimation : PageFlipAnimation {
                 while (botLayer.firstChild) botLayer.firstChild.remove();
                 var ld = document.createElement('div');
                 ld.style.cssText = 'display:flex;align-items:center;justify-content:center;height:100%;font-size:14px;';
-                ld.innerHTML = '<div style="text-align:center;color:' + (BG === '#1a1a1a' ? '#666' : '#999') + ';"><div style="width:24px;height:24px;border:2px solid ' + (BG === '#1a1a1a' ? '#333' : '#ddd') + ';border-top-color:' + (BG === '#1a1a1a' ? '#888' : '#999') + ';border-radius:50%;display:inline-block;animation:_spin 0.8s linear infinite;"></div><div style="margin-top:12px;">加载中...</div></div>';
+                ld.innerHTML = '<div style="text-align:center"><div style="width:24px;height:24px;border:2px solid ' + (BG === '#1a1a1a' ? '#333' : '#ddd') + ';border-top-color:' + (BG === '#1a1a1a' ? '#888' : '#999') + ';border-radius:50%;display:inline-block;animation:_spin 0.8s linear infinite;"></div></div>';
                 if (!document.getElementById('_spinKeyframes')) {
                     var sk = document.createElement('style'); sk.id = '_spinKeyframes';
                     sk.textContent = '@keyframes _spin{to{transform:rotate(360deg)}}';

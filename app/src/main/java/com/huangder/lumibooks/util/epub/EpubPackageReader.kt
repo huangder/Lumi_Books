@@ -31,7 +31,6 @@ object EpubPackageReader {
         val title = metadata?.descendants("title")?.firstOrNull()?.textContent?.trim().orEmpty()
             .ifBlank { filePath.substringAfterLast('/').substringAfterLast('\\').substringBeforeLast('.') }
         val author = metadata?.descendants("creator")?.firstOrNull()?.textContent?.trim().orEmpty()
-            .ifBlank { "\u672A\u77E5\u4F5C\u8005" }
         val metaProperties = metadata?.descendants("meta").orEmpty().mapNotNull { node ->
             node.attribute("property").takeIf(String::isNotBlank)?.let { it to node.textContent.trim() }
         }.toMap()
@@ -209,7 +208,10 @@ object EpubPackageReader {
 
     private fun parseXml(input: InputStream): Document {
         val factory = DocumentBuilderFactory.newInstance().apply {
-            isNamespaceAware = true
+            // Some EPUB 2 OPF files use the `dc` prefix without declaring it.
+            // Keep the hardened entity settings, but parse qualified names as
+            // plain names and resolve their local part below.
+            isNamespaceAware = false
             runCatching { isXIncludeAware = false }
             runCatching { setExpandEntityReferences(false) }
             runCatching { setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true) }
@@ -257,7 +259,9 @@ object EpubPackageReader {
     }
 
     private fun Document.elements(name: String): List<Node> =
-        getElementsByTagNameNS("*", name).asSequence().toList()
+        getElementsByTagName("*").asSequence()
+            .filter { it.localNameValue().equals(name, ignoreCase = true) }
+            .toList()
     private fun Node.descendants(name: String): List<Node> =
         (if (localNameValue() == name) listOf(this) else emptyList()) +
             childNodes.asSequence().flatMap { it.descendants(name).asSequence() }.toList()

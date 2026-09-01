@@ -261,14 +261,14 @@ class PageContentView(context: Context) : FrameLayout(context) {
     private var justifyLastLine: Boolean = false
     private var writingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL
     private var verticalGeometry: VerticalPageGeometry? = null
-    // A page can only contain complete lines, so the unused line-box space is split between
-    // the two edges after layout. Translation keeps the configured padding (and line metrics)
-    // unchanged while moving all visible/interactive renderers together.
-    private var basePaddingLeft = 0
-    private var basePaddingTop = 0
-    private var basePaddingRight = 0
-    private var basePaddingBottom = 0
-    private var pageVerticalOffset = 0f
+    // Vertical placement is defined solely by the configured padding. The page
+    // itself may still move during a page-turn animation, but its text layers
+    // must not receive a page-specific offset.
+    private fun resetPageVerticalPosition() {
+        textView.translationY = 0f
+        justifiedView.translationY = 0f
+        verticalTextView.translationY = 0f
+    }
 
     fun setPageContent(
         fullText: CharSequence,
@@ -278,9 +278,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
         verticalGeometry: VerticalPageGeometry? = null
     ) {
         this.verticalGeometry = verticalGeometry
-        pageVerticalOffset = 0f
-        textView.translationY = 0f
-        justifiedView.translationY = 0f
+        resetPageVerticalPosition()
         if (startChar < 0 || endChar > fullText.length || startChar >= endChar) {
             chapterStartOffset = startChar
             textView.text = ""
@@ -470,7 +468,6 @@ class PageContentView(context: Context) : FrameLayout(context) {
         verticalTextView.setPage(actualSpannable, verticalGeometry, actualStart)
         onTextSet?.invoke(actualSpannable)
         invalidateRenderers()
-        balancePageVerticalPosition()
     }
 
     /** Update the sentence overlay without rebuilding text, images, or pagination. */
@@ -629,19 +626,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
         val mb = marginBottomPx.toInt()
         if (textView.paddingLeft != ml || textView.paddingTop != mt ||
             textView.paddingRight != mr || textView.paddingBottom != mb) {
-            basePaddingLeft = ml
-            basePaddingTop = mt
-            basePaddingRight = mr
-            basePaddingBottom = mb
             textView.setPadding(ml, mt, mr, mb)
-        }
-        if (textView.paddingLeft == ml && textView.paddingTop == mt &&
-            textView.paddingRight == mr && textView.paddingBottom == mb
-        ) {
-            basePaddingLeft = ml
-            basePaddingTop = mt
-            basePaddingRight = mr
-            basePaddingBottom = mb
         }
         textView.highlightColor = highlightColor
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
@@ -672,58 +657,11 @@ class PageContentView(context: Context) : FrameLayout(context) {
             verticalTextView.setPadding(ml, mt, mr, mb)
         }
         updateContentRendererVisibility()
-        balancePageVerticalPosition()
+        resetPageVerticalPosition()
     }
 
-    /**
-     * Split the unused space left by complete-line pagination across the page edges.
-     * TextView's line bottoms provide the actual line-box height, so this does not alter
-     * wrapping or page boundaries. All interactive coordinate paths subtract the same offset.
-     */
-    private fun balancePageVerticalPosition() {
-        if (writingMode.isVertical || showingCoverPage || width <= 0 || height <= 0) {
-            pageVerticalOffset = 0f
-            textView.translationY = 0f
-            justifiedView.translationY = 0f
-            return
-        }
-        val layout = textView.layout ?: return
-        val contentHeight = if (layout.lineCount > 0) {
-            layout.getLineBottom(layout.lineCount - 1)
-        } else {
-            0
-        }
-        val availableHeight = (height - basePaddingTop - basePaddingBottom).coerceAtLeast(0)
-        val remainder = (availableHeight - contentHeight).coerceAtLeast(0)
-        // Only balance the small quantization remainder left on a normal page. A short final
-        // page is intentionally top-aligned; centering two lines in a full viewport is jarring.
-        val firstLineHeight = if (layout.lineCount > 0) {
-            (layout.getLineBottom(0) - layout.getLineTop(0)).coerceAtLeast(1)
-        } else {
-            1
-        }
-        val lastLine = (layout.lineCount - 1).coerceAtLeast(0)
-        val firstInkTop = layout.getLineBaseline(0) + layout.getLineAscent(0)
-        val lastInkBottom = layout.getLineBaseline(lastLine) + layout.getLineDescent(lastLine)
-        val topMetricGap = (firstInkTop - layout.getLineTop(0)).toFloat()
-        val bottomMetricGap = (contentHeight - lastInkBottom).toFloat()
-        val metricCorrection = (bottomMetricGap - topMetricGap) / 2f
-        // Keep the first-line baseline stable on every page. Only a small remainder from a
-        // nearly full page is distributed; a short final page receives the same font-metric
-        // correction but is never centered in the viewport.
-        val remainderCorrection = if (remainder <= firstLineHeight * 1.5f) {
-            remainder / 2f
-        } else {
-            0f
-        }
-        val extra = (remainderCorrection + metricCorrection).coerceAtLeast(0f)
-        pageVerticalOffset = extra
-        textView.translationY = extra
-        justifiedView.translationY = extra
-    }
-
-    /** Additional top padding applied to the current page after line pagination. */
-    fun getPageVerticalOffset(): Float = pageVerticalOffset
+    /** Kept for coordinate callers; page content no longer has a page-specific offset. */
+    fun getPageVerticalOffset(): Float = 0f
 
     /** 获取当前 TextView 的 Spannable（用于读取选区等） */
     fun getTextSpannable(): Spannable? = textView.text as? Spannable
@@ -734,7 +672,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
     fun getLinkAt(x: Float, y: Float): String? = if (writingMode.isVertical) {
         verticalTextView.getLinkAt(x, y)
     } else {
-        justifiedView.getLinkAtPosition(x, y - pageVerticalOffset)
+        justifiedView.getLinkAtPosition(x, y)
     }
 
     /**
@@ -750,7 +688,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
         val spannable = textView.text as? Spannable ?: return null
         val textLayout = textView.layout ?: return null
         val localX = x - textView.totalPaddingLeft + textView.scrollX
-        val localY = y - textView.totalPaddingTop - pageVerticalOffset + textView.scrollY
+        val localY = y - textView.totalPaddingTop + textView.scrollY
         if (localX < 0f || localY < 0f || localY >= textLayout.height) return null
 
         val line = textLayout.getLineForVertical(localY.toInt())
@@ -875,7 +813,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
 
         // 屏幕坐标（ReadView 坐标系）→ TextView 内坐标
         val tx = x - textView.left - textView.paddingLeft
-        val ty = y - textView.top - textView.paddingTop - pageVerticalOffset
+        val ty = y - textView.top - textView.paddingTop
 
         if (tx < 0 || ty < 0) {
             Log.d(TAG, "selectWordAt: touch outside text area tx=$tx ty=$ty paddingLeft=${textView.paddingLeft} paddingTop=${textView.paddingTop}")
@@ -939,9 +877,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
         verticalTextView.clearPage()
         originalSpannable = null
         verticalGeometry = null
-        pageVerticalOffset = 0f
-        textView.translationY = 0f
-        justifiedView.translationY = 0f
+        resetPageVerticalPosition()
         clearCoverPage()
     }
 
@@ -969,9 +905,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
         this.chapterStartOffset = chapterStartOffset
         this.justifyLastLine = justifyLastLine
         this.verticalGeometry = verticalGeometry
-        pageVerticalOffset = 0f
-        textView.translationY = 0f
-        justifiedView.translationY = 0f
+        resetPageVerticalPosition()
         justifiedView.justifyLastLine = justifyLastLine
         // 🔥 先设置 justifiedView（只 invalidate，不触发父布局），再设置 textView（可能触发父布局）
         // 确保 textView 触发的 layout pass 中，justifiedView 已有正确内容供 onSizeChanged → rebuildLayout 使用
@@ -996,7 +930,6 @@ class PageContentView(context: Context) : FrameLayout(context) {
             onTextSet?.invoke(it)
         }
         invalidateRenderers()
-        balancePageVerticalPosition()
     }
 
     /**

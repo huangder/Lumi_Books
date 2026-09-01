@@ -118,7 +118,8 @@ class MineruPdfConversionWorker @AssistedInject constructor(
                 outputFile = temporaryFile,
                 workDirectory = workDirectory,
                 title = sourceBook.title,
-                author = sourceBook.author
+                author = sourceBook.author,
+                defaultChapterTitle = applicationContext.getString(R.string.chapter_default_content)
             )
             updateProgress(sourceBookId, 98, pageCount)
 

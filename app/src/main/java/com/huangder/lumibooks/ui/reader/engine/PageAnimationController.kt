@@ -25,6 +25,8 @@ abstract class PageAnimationController(
         const val BOUNCE_DURATION = 280
         /** 翻页触发阈值（占屏幕宽度的比例） */
         const val FLIP_THRESHOLD = 0.08f
+        /** 快速轻扫的最小方向速度（dp/s） */
+        private const val FLING_VELOCITY_DP_PER_SECOND = 450f
         /** 阴影渐隐时长 ms */
         private const val SHADOW_FADE_DURATION = 200
         private const val TAG = "PageAnim"
@@ -130,7 +132,7 @@ abstract class PageAnimationController(
                 lastX = startX
                 hasMoved = false
                 isLongPressed = false
-                downTime = System.currentTimeMillis()
+                downTime = event.eventTime
                 direction = Direction.NONE
                 isDragging = true
                 Log.d(TAG, "ACTION_DOWN: x=$startX y=$startY")
@@ -148,15 +150,17 @@ abstract class PageAnimationController(
                     touchY = event.y
                     hasMoved = true
                     isDragging = true
-                    downTime = System.currentTimeMillis() - 500 // 跳过长按检测
+                    downTime = event.eventTime - 500 // 跳过长按检测
                     Log.d(TAG, "Late intercept: starting drag at (${event.x}, ${event.y})")
                     return true
                 }
 
-                val dx = event.x - lastX
-                touchX = event.x
+                val width = readView.width.toFloat().coerceAtLeast(1f)
+                val boundedX = event.x.coerceIn(startX - width, startX + width)
+                val dx = boundedX - lastX
+                touchX = boundedX
                 touchY = event.y
-                lastX = event.x
+                lastX = boundedX
 
                 if (!hasMoved && Math.abs(event.x - startX) > longPressSlopPx) {
                     hasMoved = true
@@ -164,7 +168,7 @@ abstract class PageAnimationController(
 
                 // 🔥 时间检测长按：仅当没有边缘拦截且保持不动时触发
                 if (!hasMoved && !isLongPressed && isDragging &&
-                    System.currentTimeMillis() - downTime >= longPressTimeMs) {
+                    (event.eventTime - downTime).coerceAtLeast(0L) >= longPressTimeMs) {
                     isLongPressed = true
                     isDragging = false
                     Log.d(TAG, "LongPress triggered at (${startX}, ${startY})")
@@ -191,9 +195,11 @@ abstract class PageAnimationController(
                 if (!isDragging) return false
                 isDragging = false
 
-                val dx = event.x - startX
+                val width = readView.width.toFloat().coerceAtLeast(1f)
+                touchX = event.x.coerceIn(startX - width, startX + width)
+                val dx = touchX - startX
                 val vy = Math.abs(event.y - startY)
-                val dt = System.currentTimeMillis() - downTime
+                val dt = (event.eventTime - downTime).coerceAtLeast(0L)
 
                 if (!hasMoved && dt < 300L && vy < 50f) {
                     // 点击，非滑动
@@ -212,11 +218,19 @@ abstract class PageAnimationController(
                 if (hasMoved) {
                     val viewWidth = readView.width.toFloat()
                     val fraction = Math.abs(dx) / viewWidth
-
-                    // 🔥 根据最终累计偏移重算方向（支持手势反悔）
+                    // Recompute from the final displacement so a direction
+                    // reversal during the gesture cannot use stale velocity.
                     direction = directionForHorizontalDelta(dx, 12f)
+                    val directionalVelocity = if (dt > 0L && direction != Direction.NONE) {
+                        (dx * horizontalTurnSign(direction) * 1000f / dt)
+                    } else {
+                        0f
+                    }
 
-                    if (fraction >= FLIP_THRESHOLD && direction != Direction.NONE) {
+                    val fastSwipe = directionalVelocity >=
+                        FLING_VELOCITY_DP_PER_SECOND *
+                        readView.resources.displayMetrics.density
+                    if ((fraction >= FLIP_THRESHOLD || fastSwipe) && direction != Direction.NONE) {
                         if (onCanFlip?.invoke(direction) == true) {
                             isFlipAnim = true
                             startAnim(fromDrag = true)

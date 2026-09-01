@@ -153,6 +153,26 @@ class ReadingRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun applyTxtResegmentation(
+        bookmarkUpdates: List<Bookmark>,
+        noteUpdates: List<Note>,
+        noteInserts: List<Note>
+    ) {
+        if (bookmarkUpdates.isEmpty() && noteUpdates.isEmpty() && noteInserts.isEmpty()) return
+        val now = System.currentTimeMillis()
+        database.withTransaction {
+            if (bookmarkUpdates.isNotEmpty()) {
+                bookmarkDao.updateBookmarks(bookmarkUpdates.map { it.copy(updatedAt = now).toEntity() })
+            }
+            if (noteUpdates.isNotEmpty()) noteDao.updateNotes(noteUpdates.map { it.copy(updatedAt = now).toEntity() })
+            if (noteInserts.isNotEmpty()) {
+                noteDao.insertNotes(noteInserts.map {
+                    it.copy(id = 0L, syncId = UUID.randomUUID().toString(), updatedAt = now).toEntity()
+                })
+            }
+        }
+    }
+
     override suspend fun deleteAllNotesByBookId(bookId: String) {
         noteDao.deleteAllNotesByBookId(bookId)
     }

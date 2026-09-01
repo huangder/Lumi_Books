@@ -1028,7 +1028,11 @@ private fun TextPanel(
                 "serif" to stringResource(R.string.font_serif),
                 "kaiti" to stringResource(R.string.font_kaiti)
             ) +
-                customFonts.mapIndexed { index, font -> font.fontTypeKey to font.displayName(index) },
+                customFonts.mapIndexed { index, font ->
+                    font.fontTypeKey to font.displayName(
+                        stringResource(R.string.custom_font_numbered_name, index + 1)
+                    )
+                },
             selected = settings.fontType
         ) { onUpdate(settings.copy(fontType = it)) }
         SettingSlider(
@@ -1210,6 +1214,7 @@ private fun AnimationPreviewScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 AnimationCapsule(stringResource(R.string.page_animation_slide_short), "slide", mode, onModeChange)
+                AnimationCapsule(stringResource(R.string.page_animation_scroll_short), "scroll", mode, onModeChange)
                 AnimationCapsule(stringResource(R.string.page_animation_fade_short), "fade", mode, onModeChange)
                 AnimationCapsule(stringResource(R.string.page_animation_curl_short), "curl", mode, onModeChange)
                 DurationCapsule(

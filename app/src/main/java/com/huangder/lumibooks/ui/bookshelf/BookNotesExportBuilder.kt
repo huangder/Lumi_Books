@@ -47,12 +47,33 @@ class BookNotesExportBuilder @Inject constructor(
         bookmarks: List<Bookmark>,
         notes: List<Note>
     ): BookNotesExportDocument = withContext(Dispatchers.IO) {
+        val labels = BookNotesExportLabels(
+            highlightSection = context.getString(R.string.export_highlight_section),
+            highlightContent = context.getString(R.string.export_highlight_content),
+            chapter = context.getString(R.string.export_chapter),
+            book = context.getString(R.string.export_book),
+            noteSection = context.getString(R.string.export_note_section),
+            noteSource = context.getString(R.string.export_note_source),
+            userNote = context.getString(R.string.export_user_note),
+            bookmarkSection = context.getString(R.string.export_bookmark_section),
+            bookmarkPage = context.getString(R.string.export_bookmark_page),
+            pageUnavailable = context.getString(R.string.export_page_unavailable),
+            fileSuffix = context.getString(R.string.export_file_suffix),
+            chapterNumber = { context.getString(R.string.chapter_number, it) }
+        )
         var parserToClose: BookParser? = null
         val parsed = if (book.format == BookFormat.PDF) {
             null
         } else {
             runCatching {
-                val parser = BookParserFactory.createParser(book.format, context)
+                val parser = BookParserFactory.createParser(book.format, context).also { created ->
+                    if (created is com.huangder.lumibooks.util.parser.TxtParser) {
+                        created.selectedEncoding = com.huangder.lumibooks.util.parser.TxtEncoding.fromStorage(
+                            dataStoreManager.txtEncoding(book.id).first()
+                        )
+                        created.selectedTocRule = dataStoreManager.resolveTxtTocRule(book.id)
+                    }
+                }
                 parserToClose = parser
                 parser to parser.parse(book.filePath)
             }.getOrNull()
@@ -66,7 +87,9 @@ class BookNotesExportBuilder @Inject constructor(
                 if (book.format == BookFormat.PDF) {
                     (bookmarks.map { it.chapterIndex } + notes.map { it.chapterIndex })
                         .distinct()
-                        .forEach { pageIndex -> put(pageIndex, "第${pageIndex + 1}页") }
+                        .forEach { pageIndex ->
+                            put(pageIndex, context.getString(R.string.pdf_page_number, pageIndex + 1))
+                        }
                 }
             }
             val pageTexts = when (book.format) {
@@ -82,21 +105,22 @@ class BookNotesExportBuilder @Inject constructor(
                         ?.trim()
                         ?.takeIf(String::isNotEmpty)
                         ?: if (book.format == BookFormat.PDF) {
-                            "第${bookmark.chapterIndex + 1}页"
+                            context.getString(R.string.pdf_page_number, bookmark.chapterIndex + 1)
                         } else {
-                            "第${bookmark.chapterIndex + 1}章"
+                            context.getString(R.string.chapter_number, bookmark.chapterIndex + 1)
                         },
                     pageText = pageTexts[bookmark.id]
                 )
             }
 
             BookNotesExportDocument(
-                fileName = BookNotesExportFormatter.suggestedFileName(book.title),
+                fileName = BookNotesExportFormatter.suggestedFileName(book.title, labels.fileSuffix),
                 text = BookNotesExportFormatter.format(
                     bookTitle = book.title,
                     notes = notes,
                     bookmarks = exportBookmarks,
-                    chapterTitles = exportChapterTitles
+                    chapterTitles = exportChapterTitles,
+                    labels = labels
                 )
             )
         } finally {

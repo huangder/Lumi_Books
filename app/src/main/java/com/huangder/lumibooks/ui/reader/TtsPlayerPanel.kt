@@ -84,13 +84,11 @@ fun TtsPlayerPanel(
 ) {
     val rateOptions = remember { listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f) }
     val timerOptionsMinutes = remember { listOf(10, 20, 30, 40, 50, 60, 90, 120, 150, 180) }
-    val timerOptionLabels = remember {
-        timerOptionsMinutes.map { min ->
-            when {
-                min < 60 -> "${min}分钟"
-                min % 60 == 0 -> "${min / 60}小时"
-                else -> "${min / 60}.5小时"
-            }
+    val timerOptionLabels = timerOptionsMinutes.map { min ->
+        when {
+            min < 60 -> stringResource(R.string.time_minutes, min)
+            min % 60 == 0 -> stringResource(R.string.time_hours, min / 60)
+            else -> stringResource(R.string.tts_timer_decimal_hours, min / 60f)
         }
     }
     val timerActive = sleepTimerRemainingMs != null
@@ -283,7 +281,7 @@ fun TtsPlayerPanel(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "取消定时",
+                                text = stringResource(R.string.tts_timer_cancel),
                                 color = Color(0xFFE53935),
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium
@@ -414,7 +412,8 @@ fun TtsPlayerPanel(
                         )
 
                         Text(
-                            text = sleepTimerRemainingMs?.let(::formatSleepTimer) ?: "定时",
+                            text = sleepTimerRemainingMs?.let(::formatSleepTimer)
+                                ?: stringResource(R.string.tts_timer_label),
                             color = readerContentColor,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,

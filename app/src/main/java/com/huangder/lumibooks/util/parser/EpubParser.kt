@@ -13,6 +13,7 @@ import android.text.Spanned
 import android.text.style.LeadingMarginSpan
 import android.text.style.QuoteSpan
 import android.util.Base64
+import com.huangder.lumibooks.R
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
@@ -246,7 +247,9 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         parsedPackage = packageModel
         basePath = packageModel.basePath
         bookTitle = packageModel.title
-        bookAuthor = packageModel.author
+        bookAuthor = packageModel.author.ifBlank {
+            context?.getString(R.string.book_author_unknown) ?: "Unknown author"
+        }
         val spinePaths = packageModel.spine.map { it.manifestItem.fullPath }
         spineHrefs = packageModel.spine.map { it.manifestItem.href }
 
@@ -284,7 +287,9 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                             String(buffer, 0, count, Charsets.UTF_8)
                         }
                     }.orEmpty()
-                    extractTitle(preview) ?: "第${index + 1}章"
+                    extractTitle(preview)
+                        ?: context?.getString(R.string.chapter_number, index + 1)
+                        ?: "Chapter ${index + 1}"
                 }
             }
         chapters = chapterTitles.mapIndexed { index, title ->
@@ -535,7 +540,9 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                     val bytesRead = stream.read(preview).coerceAtLeast(0)
                     stream.close()
                     val rawHtml = String(preview, 0, bytesRead, Charsets.UTF_8)
-                    val title = extractTitle(rawHtml) ?: "第${index + 1}章"
+                    val title = extractTitle(rawHtml)
+                        ?: context?.getString(R.string.chapter_number, index + 1)
+                        ?: "Chapter ${index + 1}"
                     result.add(Triple(title, href, fullPath))
                     android.util.Log.d("EpubParser", "extractChapterInfo: [$index] title=$title path=$fullPath")
                 } else {
@@ -556,7 +563,9 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                 try {
                     val rawHtml = zipFile.getInputStream(entry).bufferedReader().readText()
                     if (rawHtml.isNotBlank()) {
-                        val title = extractTitle(rawHtml) ?: "第${index + 1}章"
+                        val title = extractTitle(rawHtml)
+                            ?: context?.getString(R.string.chapter_number, index + 1)
+                            ?: "Chapter ${index + 1}"
                         result.add(Triple(title, entry.name, entry.name))
                     }
                 } catch (e: Exception) {

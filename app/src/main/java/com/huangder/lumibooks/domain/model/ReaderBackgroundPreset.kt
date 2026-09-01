@@ -22,7 +22,7 @@ data class ReaderBackgroundPreset(
 ) {
     val selectionKey: String get() = "custom:$id"
 
-    fun displayName(index: Int): String = name.trim().ifBlank { "自定义${index + 1}" }
+    fun displayName(fallbackName: String): String = name.trim().ifBlank { fallbackName }
 }
 
 data class ReaderBackgroundImageSource(

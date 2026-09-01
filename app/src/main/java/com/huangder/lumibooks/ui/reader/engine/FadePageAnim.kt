@@ -97,7 +97,7 @@ class FadePageAnim(
                 startX = event.x; startY = event.y
                 touchX = startX;  touchY = startY
                 hasMoved = false
-                downTime = System.currentTimeMillis()
+                downTime = event.eventTime
                 direction = Direction.NONE
                 isDragging = true
                 return true
@@ -110,7 +110,7 @@ class FadePageAnim(
                 if (!isDragging) return false
                 isDragging = false
                 val dx = event.x - startX
-                val dt = System.currentTimeMillis() - downTime
+                val dt = (event.eventTime - downTime).coerceAtLeast(0L)
 
                 if (!hasMoved && dt < 300L) {
                     val relX = event.x / readView.width.toFloat()

@@ -71,6 +71,7 @@ data class ReaderPositionState(
     val totalPages: Int = 0,
     val globalPageIndex: Int = 0,
     val rightPageIndex: Int? = null,
+    val rightChapterIndex: Int? = null,
     val pendingPageFraction: Float = 0f,
     val epubLocatorJson: String? = null
 )
@@ -89,6 +90,7 @@ data class ReaderControlsState(
     val showTxtEncodingHint: Boolean = false,
     val isTxtEncodingChanging: Boolean = false,
     val readerDisplayMode: String = "auto",
+    /** PDF 阅读模式："vertical" | "vertical_paging" | "horizontal" */
     val pdfPageMode: String = "vertical",
     val showReaderChapterProgress: Boolean = true,
     val showReaderPageNumber: Boolean = true,
@@ -161,6 +163,7 @@ internal fun ReaderUiState.toPositionState() = ReaderPositionState(
     totalPages = totalPages,
     globalPageIndex = globalPageIndex,
     rightPageIndex = rightPageIndex,
+    rightChapterIndex = rightChapterIndex,
     pendingPageFraction = pendingPageFraction,
     epubLocatorJson = epubLocatorJson
 )

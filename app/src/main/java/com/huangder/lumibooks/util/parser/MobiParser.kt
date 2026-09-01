@@ -17,6 +17,7 @@ import android.text.style.StyleSpan
 import android.text.style.TypefaceSpan
 import android.text.style.UnderlineSpan
 import android.util.Base64
+import com.huangder.lumibooks.R
 import com.huangder.lumibooks.util.BookFileAccess
 import com.huangder.lumibooks.util.SeekableBookSource
 import com.huangder.lumibooks.util.epub.BookRenderSource
@@ -75,11 +76,15 @@ class MobiParser(private val context: Context? = null) : BookParser, BookRenderS
         val lease = context?.let { BookFileAccess.openSeekable(it, filePath) }
         sourceLease = lease
         mobiFilePath = lease?.path ?: filePath
-        val file = MobiFile.open(mobiFilePath)
+        val file = openMobiFile(mobiFilePath)
         mobiFile = file
 
         val header = file.header
-        val raw = file.decompressedText()
+        val raw = try {
+            file.decompressedText()
+        } catch (error: RuntimeException) {
+            throw localizedMobiError(error)
+        }
         val (bytes, adjustment) = locateRawmlStart(raw)
         rawmlBytes = bytes
         rawmlStartAdjustment = adjustment
@@ -106,7 +111,10 @@ class MobiParser(private val context: Context? = null) : BookParser, BookRenderS
         chapters = keptFragments.mapIndexed { index, fragment ->
             Chapter(
                 index = index,
-                title = MobiRawml.chapterTitle(fragment, "第${index + 1}章"),
+                title = MobiRawml.chapterTitle(
+                    fragment,
+                    context?.getString(R.string.chapter_number, index + 1) ?: "Chapter ${index + 1}"
+                ),
                 content = "",
                 htmlContent = ""
             )
@@ -181,6 +189,28 @@ class MobiParser(private val context: Context? = null) : BookParser, BookRenderS
         fragmentCache.clear()
         htmlCache.clear()
         contentCache.clear()
+    }
+
+    private fun openMobiFile(path: String): MobiFile = try {
+        MobiFile.open(path)
+    } catch (error: RuntimeException) {
+        throw localizedMobiError(error)
+    }
+
+    private fun localizedMobiError(error: RuntimeException): RuntimeException {
+        val message = when (error.message) {
+            MobiFile.UNSUPPORTED_COMPRESSION_MESSAGE -> context?.getString(
+                R.string.mobi_error_unsupported_compression
+            ) ?: "This MOBI uses unsupported KF8/HUFF-CDIC compression"
+            MobiFile.DRM_MESSAGE -> context?.getString(R.string.mobi_error_drm)
+                ?: "Encrypted books are not supported"
+            else -> context?.getString(R.string.mobi_error_invalid)
+                ?: "The MOBI file is invalid or damaged"
+        }
+        return when (error) {
+            is UnsupportedOperationException -> UnsupportedOperationException(message, error)
+            else -> IllegalArgumentException(message, error)
+        }
     }
 
     override fun extractCoverPath(filePath: String): String? {

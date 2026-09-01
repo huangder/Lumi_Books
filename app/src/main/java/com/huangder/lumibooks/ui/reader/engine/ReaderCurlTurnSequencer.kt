@@ -17,54 +17,107 @@ internal fun curlRunningInputDisposition(
         CurlRunningInputDisposition.ABORT_AND_REEVALUATE
 }
 
-/** Pending intent for reflowed Curl turns. It stores a signed balance, not pages. */
+internal data class QueuedCurlTurn(
+    val direction: PageAnimationController.Direction,
+    val gestureStartY: Float? = null,
+    val input: CurlTurnInput = CurlTurnInput.TAP,
+    val expedited: Boolean = false,
+    val pageGeneration: Long = 0L
+)
+
+internal enum class CurlTurnInput { TAP, SWIPE }
+
+/**
+ * Ordered pending curl intents shared by the reflowed and WebView readers.
+ *
+ * Same-direction input is lossless. An opposite input only cancels the newest
+ * turn that has not started yet, so changing direction cannot create a delayed
+ * back-and-forth animation through pages the user has not seen.
+ */
 internal class ReaderCurlTurnSequencer {
     enum class State { IDLE, DRAGGING, SETTLING, WAITING_FOR_TARGET, DESTROYED }
 
     var state: State = State.IDLE
         private set
-    var pendingSteps: Int = 0
-        private set
+    private val pendingTurns = ArrayDeque<QueuedCurlTurn>()
 
-    fun offer(direction: PageAnimationController.Direction) {
-        if (state == State.DESTROYED) return
-        when (direction) {
-            PageAnimationController.Direction.NEXT -> pendingSteps++
-            PageAnimationController.Direction.PREV -> pendingSteps--
-            PageAnimationController.Direction.NONE -> return
+    val pendingSteps: Int
+        get() {
+            val direction = pendingTurns.firstOrNull()?.direction ?: return 0
+            return if (direction == PageAnimationController.Direction.NEXT) {
+                pendingTurns.size
+            } else {
+                -pendingTurns.size
+            }
         }
+
+    fun offer(
+        direction: PageAnimationController.Direction,
+        gestureStartY: Float? = null,
+        input: CurlTurnInput = CurlTurnInput.TAP,
+        expedited: Boolean = false,
+        pageGeneration: Long = 0L
+    ) {
+        if (state == State.DESTROYED) return
+        if (direction == PageAnimationController.Direction.NONE) return
+        val newest = pendingTurns.lastOrNull()
+        if (newest != null && newest.direction != direction) {
+            pendingTurns.removeLast()
+            return
+        }
+        pendingTurns.addLast(
+            QueuedCurlTurn(
+                direction = direction,
+                gestureStartY = gestureStartY?.takeIf { it.isFinite() },
+                input = input,
+                expedited = expedited,
+                pageGeneration = pageGeneration
+            )
+        )
     }
 
     /**
-     * While no target frame exists, retain one latest intent instead of replaying
-     * a burst after the finger has already been released.
+     * Waiting changes lifecycle state only. It must never collapse accepted
+     * input because the missing target may simply be a cross-chapter preload.
      */
-    fun offerWhileWaiting(direction: PageAnimationController.Direction) {
-        if (state == State.DESTROYED || direction == PageAnimationController.Direction.NONE) return
-        val incoming = if (direction == PageAnimationController.Direction.NEXT) 1 else -1
-        pendingSteps = when {
-            pendingSteps == 0 -> incoming
-            pendingSteps.sign() == incoming -> incoming
-            else -> 0
-        }
+    fun offerWhileWaiting(
+        direction: PageAnimationController.Direction,
+        gestureStartY: Float? = null,
+        input: CurlTurnInput = CurlTurnInput.TAP,
+        expedited: Boolean = false,
+        pageGeneration: Long = 0L
+    ) {
+        offer(direction, gestureStartY, input, expedited, pageGeneration)
         state = State.WAITING_FOR_TARGET
     }
 
     fun poll(): PageAnimationController.Direction {
-        if (state == State.DESTROYED || pendingSteps == 0) {
-            return PageAnimationController.Direction.NONE
+        return pollTurn().direction
+    }
+
+    fun pollTurn(): QueuedCurlTurn {
+        if (state == State.DESTROYED || pendingTurns.isEmpty()) {
+            return QueuedCurlTurn(PageAnimationController.Direction.NONE)
         }
-        return if (pendingSteps > 0) {
-            pendingSteps--
-            PageAnimationController.Direction.NEXT
-        } else {
-            pendingSteps++
-            PageAnimationController.Direction.PREV
-        }
+        return pendingTurns.removeFirst()
     }
 
     fun restore(direction: PageAnimationController.Direction) {
-        offerWhileWaiting(direction)
+        restore(QueuedCurlTurn(direction))
+    }
+
+    fun restore(turn: QueuedCurlTurn) {
+        if (state == State.DESTROYED || turn.direction == PageAnimationController.Direction.NONE) return
+        pendingTurns.addFirst(turn)
+        state = State.WAITING_FOR_TARGET
+    }
+
+    fun cancelNewest(direction: PageAnimationController.Direction): Boolean {
+        if (state == State.DESTROYED || pendingTurns.lastOrNull()?.direction != direction) {
+            return false
+        }
+        pendingTurns.removeLast()
+        return true
     }
 
     fun dragging() = moveTo(State.DRAGGING)
@@ -77,22 +130,16 @@ internal class ReaderCurlTurnSequencer {
 
     fun clear() {
         if (state == State.DESTROYED) return
-        pendingSteps = 0
+        pendingTurns.clear()
         state = State.IDLE
     }
 
     fun destroy() {
-        pendingSteps = 0
+        pendingTurns.clear()
         state = State.DESTROYED
     }
 
     private fun moveTo(next: State) {
         if (state != State.DESTROYED) state = next
-    }
-
-    private fun Int.sign(): Int = when {
-        this > 0 -> 1
-        this < 0 -> -1
-        else -> 0
     }
 }

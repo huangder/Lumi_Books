@@ -7,6 +7,7 @@ import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.material.icons.rounded.WbSunny
+import androidx.compose.material.icons.filled.ViewDay
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.SolidColor
@@ -27,6 +28,9 @@ val ReaderIconPageSlide: ImageVector = Icons.Rounded.AutoStories
 
 /** 上下滑动：上下箭头 */
 val ReaderIconPageScroll: ImageVector = Icons.Rounded.SwapVert
+
+/** 上下整页翻页：纵向单页视口 */
+val ReaderIconPageVerticalPaging: ImageVector = Icons.Default.ViewDay
 
 /** 渐变：闪电 */
 val ReaderIconPageFade: ImageVector = Icons.Rounded.Bolt

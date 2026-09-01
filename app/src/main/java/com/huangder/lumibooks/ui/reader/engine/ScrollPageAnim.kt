@@ -1,9 +1,33 @@
 package com.huangder.lumibooks.ui.reader.engine
 
 import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.LinearGradient
-import android.graphics.Shader
+
+internal fun verticalPageDirectionForDelta(deltaY: Float, threshold: Float = 12f): Int = when {
+    !deltaY.isFinite() || !threshold.isFinite() || threshold < 0f -> 0
+    deltaY < -threshold -> 1
+    deltaY > threshold -> -1
+    else -> 0
+}
+
+internal fun shouldCommitVerticalPageTurn(
+    deltaY: Float,
+    viewportHeight: Float,
+    elapsedMillis: Long,
+    density: Float,
+    flipThreshold: Float = PageAnimationController.FLIP_THRESHOLD,
+    flingVelocityDpPerSecond: Float = 450f
+): Boolean {
+    if (!deltaY.isFinite() || !viewportHeight.isFinite() || viewportHeight <= 0f ||
+        !density.isFinite() || density <= 0f || elapsedMillis < 0L
+    ) return false
+    val distanceFraction = kotlin.math.abs(deltaY) / viewportHeight
+    val velocity = if (elapsedMillis > 0L) {
+        kotlin.math.abs(deltaY) * 1000f / elapsedMillis
+    } else {
+        0f
+    }
+    return distanceFraction >= flipThreshold || velocity >= flingVelocityDpPerSecond * density
+}
 
 /**
  * 垂直滚动翻页动画。
@@ -13,10 +37,18 @@ import android.graphics.Shader
  * - PREV：当前页下滑出，上一页从顶部滑入
  * - 触摸追踪 Y 轴偏移
  */
-class ScrollPageAnim(readView: PageAnimationSurface) : PageAnimationController(readView) {
+class ScrollPageAnim(
+    readView: PageAnimationSurface,
+    private var baseDurationMs: Int = ANIM_DURATION
+) : PageAnimationController(readView) {
 
     companion object {
         private const val SHADOW_HEIGHT_PX = 120
+        private const val FLING_VELOCITY_DP_PER_SECOND = 450f
+    }
+
+    fun setBaseDuration(durationMs: Int) {
+        baseDurationMs = durationMs.coerceIn(100, 1000)
     }
 
     private val density: Float get() = readView.resources.displayMetrics.density
@@ -28,7 +60,7 @@ class ScrollPageAnim(readView: PageAnimationSurface) : PageAnimationController(r
         if (vw <= 0 || vh <= 0) return
 
         // 垂直偏移（覆写父类的水平偏移逻辑）
-        val oy = touchY - startY
+        val oy = (touchY - startY).coerceIn(-vh, vh)
 
         when {
             direction == Direction.NEXT -> {
@@ -90,7 +122,14 @@ class ScrollPageAnim(readView: PageAnimationSurface) : PageAnimationController(r
         val dy = (toY - fromY).toInt()
         if (dy == 0) { direction = Direction.NONE; return }
         isRunning = true
-        scroller.startScroll(0, fromY.toInt(), 0, dy, ANIM_DURATION)
+        val duration = if (fromDrag && vh > 0f) {
+            (baseDurationMs * (kotlin.math.abs(dy) / vh))
+                .toInt()
+                .coerceIn(80, baseDurationMs)
+        } else {
+            baseDurationMs
+        }
+        scroller.startScroll(0, fromY.toInt(), 0, dy, duration)
         readView.postInvalidateOnAnimation()
     }
 
@@ -131,6 +170,21 @@ class ScrollPageAnim(readView: PageAnimationSurface) : PageAnimationController(r
         return false
     }
 
+    override fun holdRunningFlipAtEnd(): Boolean {
+        if (!isFlipAnim || !isRunning || direction == Direction.NONE) return false
+        if (!scroller.isFinished) scroller.abortAnimation()
+        touchX = startX
+        touchY = when (direction) {
+            Direction.NEXT -> startY - readView.height.toFloat()
+            Direction.PREV -> startY + readView.height.toFloat()
+            Direction.NONE -> startY
+        }
+        isRunning = false
+        isDragging = false
+        readView.postInvalidateOnAnimation()
+        return true
+    }
+
     override fun getOffsetX(): Float = touchY - startY
 
     // 覆写触摸处理：追踪垂直方向拖拽
@@ -144,7 +198,7 @@ class ScrollPageAnim(readView: PageAnimationSurface) : PageAnimationController(r
                 touchY = startY
                 lastX = startY  // 复用 lastX 追踪 Y
                 hasMoved = false
-                downTime = System.currentTimeMillis()
+                downTime = event.eventTime
                 direction = Direction.NONE
                 isDragging = true
                 return true
@@ -156,11 +210,12 @@ class ScrollPageAnim(readView: PageAnimationSurface) : PageAnimationController(r
                     touchY = event.y
                     hasMoved = true
                     isDragging = true
-                    downTime = System.currentTimeMillis() - 500
+                    downTime = event.eventTime - 500
                     return true
                 }
 
-                touchY = event.y
+                val height = readView.height.toFloat().coerceAtLeast(1f)
+                touchY = event.y.coerceIn(startY - height, startY + height)
                 touchX = event.x
 
                 if (!hasMoved && Math.abs(event.y - startY) > 12f) {
@@ -169,21 +224,29 @@ class ScrollPageAnim(readView: PageAnimationSurface) : PageAnimationController(r
 
                 if (hasMoved) {
                     val cumulativeDy = event.y - startY
-                    direction = when {
-                        cumulativeDy < -12f -> Direction.NEXT  // 上滑 = 下一页
-                        cumulativeDy > 12f -> Direction.PREV   // 下滑 = 上一页
+                    direction = when (verticalPageDirectionForDelta(cumulativeDy)) {
+                        1 -> Direction.NEXT
+                        -1 -> Direction.PREV
                         else -> Direction.NONE
                     }
                     readView.invalidate()
                 }
                 return true
             }
-            android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+            android.view.MotionEvent.ACTION_CANCEL -> {
+                if (!isDragging) return false
+                isDragging = false
+                startBounceBackVertical()
+                return true
+            }
+            android.view.MotionEvent.ACTION_UP -> {
                 if (!isDragging) return false
                 isDragging = false
 
-                val dy = event.y - startY
-                val dt = System.currentTimeMillis() - downTime
+                val viewHeight = readView.height.toFloat().coerceAtLeast(1f)
+                touchY = event.y.coerceIn(startY - viewHeight, startY + viewHeight)
+                val dy = touchY - startY
+                val dt = (event.eventTime - downTime).coerceAtLeast(0L)
 
                 if (!hasMoved && dt < 300L) {
                     // 点击
@@ -200,16 +263,21 @@ class ScrollPageAnim(readView: PageAnimationSurface) : PageAnimationController(r
                 }
 
                 if (hasMoved) {
-                    val viewHeight = readView.height.toFloat()
-                    val fraction = Math.abs(dy) / viewHeight
-
-                    direction = when {
-                        dy < -12f -> Direction.NEXT
-                        dy > 12f -> Direction.PREV
+                    direction = when (verticalPageDirectionForDelta(dy)) {
+                        1 -> Direction.NEXT
+                        -1 -> Direction.PREV
                         else -> Direction.NONE
                     }
 
-                    if (fraction >= FLIP_THRESHOLD && direction != Direction.NONE) {
+                    val shouldCommit = shouldCommitVerticalPageTurn(
+                        deltaY = dy,
+                        viewportHeight = viewHeight,
+                        elapsedMillis = dt,
+                        density = density,
+                        flipThreshold = FLIP_THRESHOLD,
+                        flingVelocityDpPerSecond = FLING_VELOCITY_DP_PER_SECOND
+                    )
+                    if (shouldCommit && direction != Direction.NONE) {
                         if (onCanFlip?.invoke(direction) == true) {
                             isFlipAnim = true
                             startAnim(fromDrag = true)

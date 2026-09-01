@@ -14,6 +14,8 @@ import android.graphics.Rect
 import android.graphics.Region
 import android.graphics.Shader
 import android.graphics.drawable.GradientDrawable
+import android.os.SystemClock
+import android.util.Log
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
@@ -47,12 +49,17 @@ class CurlPageAnim(
     var onMotionStateChanged: ((MotionState) -> Unit)? = null
 
     companion object {
-        private const val CSS_SETTLE_CORNER_DISTANCE_FACTOR = 0.18f
         private const val COMMIT_PROGRESS = 0.14f
         private const val FLING_VELOCITY_DP_PER_SECOND = 450f
+        /** Recover a gesture when a child/window consumes its terminal event. */
+        private const val DRAG_WATCHDOG_TIMEOUT_MS = 500L
     }
 
     override val drawsDirectlyOnCanvas: Boolean = true
+
+    /** EPUB keeps the legacy curl lifecycle; ReadView uses stable settling. */
+    private val useStableCornerSettling: Boolean
+        get() = !trackCornerTouchDirectly
 
     private val density = readView.resources.displayMetrics.density
     private val pagePaint = Paint(Paint.DITHER_FLAG).apply {
@@ -199,12 +206,26 @@ class CurlPageAnim(
 
     private var gestureStarted = false
     private var settleCompletesPage = false
+    /**
+     * Immutable-for-the-duration-of-settling gesture classification. The live
+     * gesture fields are intentionally reset when a new ACTION_DOWN arrives,
+     * but an in-flight curl must keep the corner selected by the old gesture.
+     */
+    private var settleGestureMode = CurlGestureMode.EDGE_VERTICAL
+    private var settleCornerY = Float.NaN
+    private var settleStateActive = false
     private var settleTargetY = Float.NaN
     private var settleExpedited = false
     private var capturedBaseDurationMs = baseDurationMs.coerceIn(300, 1200)
     private var finalFramePending = false
+    private var lastGeometryValid = false
+    private var settleGeneration = 0
     private var velocityTracker: VelocityTracker? = null
     private var destroyed = false
+    private var dragWatchdogGeneration = 0
+    private var lastPointerEventUptime = 0L
+    private var lastPointerX = 0f
+    private var lastPointerY = 0f
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (destroyed) return false
@@ -230,6 +251,9 @@ class CurlPageAnim(
                 touchX = event.x
                 touchY = event.y
                 lastX = event.x
+                lastPointerX = event.x
+                lastPointerY = event.y
+                lastPointerEventUptime = SystemClock.uptimeMillis()
                 gestureMode = CurlGestureMode.EDGE_VERTICAL
                 gestureModeLock.begin(event.x, event.y)
                 velocityTracker = VelocityTracker.obtain().also { it.addMovement(event) }
@@ -239,6 +263,9 @@ class CurlPageAnim(
             MotionEvent.ACTION_MOVE -> {
                 ensureGestureStarted(event)
                 velocityTracker?.addMovement(event)
+                lastPointerX = event.x
+                lastPointerY = event.y
+                lastPointerEventUptime = SystemClock.uptimeMillis()
 
                 val dx = event.x - startX
                 val newDirection = when {
@@ -281,6 +308,10 @@ class CurlPageAnim(
                         deltaY = event.y - startY
                     )
                     if (gestureModeLock.isLocked) {
+                        Log.d(
+                            "CurlPageAnimMode",
+                            "drag dir=$direction startY=$startY height=${readView.height} mode=$gestureMode"
+                        )
                         configureCorner(startY)
                         snapshotsReady = capturePages(direction)
                         isDragging = snapshotsReady
@@ -296,12 +327,16 @@ class CurlPageAnim(
                     touchY = gestureTouchY(event.y)
                     isDragging = true
                     lastX = event.x
+                    if (useStableCornerSettling) scheduleDragWatchdog()
                     readView.postInvalidateOnAnimation()
                 }
                 return true
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                dragWatchdogGeneration++
+                lastPointerX = event.x
+                lastPointerY = event.y
                 velocityTracker?.addMovement(event)
                 velocityTracker?.computeCurrentVelocity(1000)
                 val xVelocity = velocityTracker?.xVelocity ?: 0f
@@ -384,7 +419,15 @@ class CurlPageAnim(
         if (finalFramePending) {
             finalFramePending = false
             readView.post {
-                if (isRunning && !isDragging) finishSettle()
+                if (!isRunning || isDragging) return@post
+                if (useStableCornerSettling && settleCompletesPage &&
+                    !isCommittedFrameFullyOffscreen()
+                ) {
+                    finalFramePending = true
+                    readView.postInvalidateOnAnimation()
+                } else {
+                    finishSettle()
+                }
             }
         }
     }
@@ -396,7 +439,11 @@ class CurlPageAnim(
         settleToPage()
     }
 
-    fun startFromTap(dir: Direction, gestureStartY: Float? = null): Boolean {
+    fun startFromTap(
+        dir: Direction,
+        gestureStartY: Float? = null,
+        expedited: Boolean = false
+    ): Boolean {
         if (destroyed || isRunning || isDragging || dir == Direction.NONE) return false
         if (onCanFlip?.invoke(dir) != true) return false
 
@@ -413,6 +460,11 @@ class CurlPageAnim(
             downY = startY,
             physicalTurnSign = if (dir == Direction.NEXT) -1f else 1f
         )
+        Log.d(
+            "CurlPageAnimMode",
+            "replay dir=$dir inputY=$gestureStartY startY=$startY " +
+                "height=${readView.height} mode=$gestureMode"
+        )
         gestureModeLock.reset()
         configureCorner(startY)
         // PREV 从屏外平铺态起步，NEXT 保持右侧平铺态。
@@ -427,7 +479,10 @@ class CurlPageAnim(
 
         isFlipAnim = true
         onMotionStateChanged?.invoke(MotionState.SETTLING)
-        settleToPage(capturedBaseDurationMs)
+        settleToPage(
+            if (expedited) curlExpeditedDurationMs(capturedBaseDurationMs)
+            else capturedBaseDurationMs
+        )
         return true
     }
 
@@ -436,7 +491,7 @@ class CurlPageAnim(
             touchX = scroller.currX.toFloat()
             touchY = scroller.currY.toFloat()
             if (scroller.currX == scroller.finalX && scroller.currY == scroller.finalY) {
-                if (readView.hasDirectPageRenderer) {
+                if (drawsDirectlyOnCanvas && useStableCornerSettling) {
                     // Both commit and bounce-back keep the overlay alive until
                     // their terminal frame has actually passed through onDraw.
                     finalFramePending = true
@@ -451,7 +506,7 @@ class CurlPageAnim(
         }
 
         if (isRunning) {
-            if (readView.hasDirectPageRenderer) {
+            if (drawsDirectlyOnCanvas && useStableCornerSettling) {
                 finalFramePending = true
                 readView.postInvalidateOnAnimation()
             } else {
@@ -467,21 +522,28 @@ class CurlPageAnim(
             resetToIdle()
             return
         }
+        captureSettleState()
         isFlipAnim = false
         settleCompletesPage = false
         onMotionStateChanged?.invoke(MotionState.SETTLING)
-        startScrollTo(flatTouchX(), nearCornerY())
+        startScrollTo(flatTouchX(), resolvedSettleTargetY())
     }
 
     override fun abortAnim() {
+        settleGeneration++
+        dragWatchdogGeneration++
         if (!scroller.isFinished) scroller.abortAnimation()
         recycleVelocityTracker()
         releaseBorrowedFrames()
         gestureStarted = false
         settleCompletesPage = false
+        settleStateActive = false
+        settleGestureMode = CurlGestureMode.EDGE_VERTICAL
+        settleCornerY = Float.NaN
         settleTargetY = Float.NaN
         settleExpedited = false
         finalFramePending = false
+        lastGeometryValid = false
         isRunning = false
         isDragging = false
         isFlipAnim = false
@@ -495,12 +557,10 @@ class CurlPageAnim(
     }
 
     override fun completeRunningFlipForNewInput(): RunningFlipHandoff {
-        val committedDirection = if (
-            isFlipAnim && isRunning && settleCompletesPage && direction != Direction.NONE
-        ) direction else Direction.NONE
+        val committedDirection = committedRunningFlipDirection()
         if (committedDirection == Direction.NONE) return RunningFlipHandoff.NOT_COMMITTED
 
-        if (readView.hasDirectPageRenderer) {
+        if (drawsDirectlyOnCanvas && useStableCornerSettling) {
             if (!settleExpedited) {
                 if (!scroller.isFinished) scroller.abortAnimation()
                 settleExpedited = true
@@ -515,6 +575,26 @@ class CurlPageAnim(
             return RunningFlipHandoff.COMPLETING_ASYNCHRONOUSLY
         }
 
+        return completeRunningFlipSynchronously(committedDirection)
+    }
+
+    /**
+     * A confirmed drag has to own the next frame. Unlike another tap, it cannot
+     * wait for the old curl to animate out or the pointer stream will end first.
+     */
+    internal fun completeRunningFlipForGestureHandoff(): RunningFlipHandoff {
+        val committedDirection = committedRunningFlipDirection()
+        if (committedDirection == Direction.NONE) return RunningFlipHandoff.NOT_COMMITTED
+        return completeRunningFlipSynchronously(committedDirection)
+    }
+
+    private fun committedRunningFlipDirection(): Direction = if (
+        isFlipAnim && isRunning && settleCompletesPage && direction != Direction.NONE
+    ) direction else Direction.NONE
+
+    private fun completeRunningFlipSynchronously(
+        committedDirection: Direction
+    ): RunningFlipHandoff {
         if (!scroller.isFinished) scroller.abortAnimation()
         recycleVelocityTracker()
         gestureStarted = false
@@ -523,6 +603,10 @@ class CurlPageAnim(
         isDragging = false
         isFlipAnim = false
         snapshotsReady = false
+        settleStateActive = false
+        settleGestureMode = CurlGestureMode.EDGE_VERTICAL
+        settleCornerY = Float.NaN
+        settleTargetY = Float.NaN
         gestureMode = CurlGestureMode.EDGE_VERTICAL
         gestureModeLock.reset()
         resetChildViews()
@@ -564,15 +648,15 @@ class CurlPageAnim(
     }
 
     private fun settleToPage(fixedDurationMs: Int? = null) {
+        captureSettleState()
         settleCompletesPage = true
         settleExpedited = false
         finalFramePending = false
-        settleTargetY = resolvedSettleTargetY()
         if (hasReachedCompletionTarget()) {
             finishSettle()
             return
         }
-        startScrollTo(completionTargetX(), settleTargetY, fixedDurationMs)
+        startScrollTo(completionTargetX(), resolvedSettleTargetY(), fixedDurationMs)
     }
 
     private fun hasReachedCompletionTarget(): Boolean {
@@ -591,26 +675,48 @@ class CurlPageAnim(
             width,
             readView.height.toFloat(),
             simulationDirection,
-            readView.hasDirectPageRenderer
+            // The snapshot-based ReadView curl uses an extended endpoint;
+            // EPUB retains its legacy one-screen endpoint.
+            extendedNextTerminal = useStableCornerSettling
         )
     }
 
     private fun resolvedSettleTargetY(): Float {
-        if (gestureMode == CurlGestureMode.EDGE_VERTICAL) return nearCornerY()
-        if (!readView.hasDirectPageRenderer) return nearCornerY()
-        if (settleTargetY.isFinite()) return settleTargetY
-        return cssSettleTargetY()
+        if (!useStableCornerSettling) return nearCornerY()
+        if (settleStateActive && settleTargetY.isFinite()) return settleTargetY
+        return settleTargetYFor(gestureMode, cornerY)
     }
 
-    private fun cssSettleTargetY(): Float {
-        val height = readView.height.coerceAtLeast(1).toFloat()
-        val cornerDistance = height * CSS_SETTLE_CORNER_DISTANCE_FACTOR
-        return if (cornerY == 0f) cornerDistance else height - cornerDistance
+    /** Capture mode and corner before any settling path can mutate live input state. */
+    private fun captureSettleState() {
+        if (!useStableCornerSettling) return
+        if (settleStateActive) return
+        settleGestureMode = gestureMode
+        settleCornerY = cornerY
+        settleTargetY = settleTargetYFor(settleGestureMode, settleCornerY)
+        settleStateActive = true
+    }
+
+    private fun settleTargetYFor(
+        mode: CurlGestureMode,
+        capturedCornerY: Float
+    ): Float = when (mode) {
+        CurlGestureMode.CORNER_TOP -> {
+            val height = readView.height.coerceAtLeast(2).toFloat()
+            val maxY = (height * 0.3f).coerceIn(1f, height - 1f)
+            startY.coerceIn(1f, maxY)
+        }
+        CurlGestureMode.CORNER_BOTTOM -> {
+            val height = readView.height.coerceAtLeast(2).toFloat()
+            val minY = (height * 0.7f).coerceIn(1f, height - 1f)
+            startY.coerceIn(minY, height - 1f)
+        }
+        CurlGestureMode.EDGE_VERTICAL -> nearCornerY(capturedCornerY)
     }
 
     private fun startScrollTo(targetX: Float, targetY: Float, fixedDurationMs: Int? = null) {
         val flatX = flatTouchX()
-        val flatY = nearCornerY()
+        val flatY = nearCornerY(activeCornerY())
         val completionX = completionTargetX()
         val completionY = resolvedSettleTargetY()
         val fullDistance = hypot(completionX - flatX, completionY - flatY)
@@ -631,11 +737,85 @@ class CurlPageAnim(
         isRunning = true
         scroller.startScroll(touchX.toInt(), touchY.toInt(), dx, dy, duration)
         readView.postInvalidateOnAnimation()
+        if (useStableCornerSettling) scheduleSettleWatchdog(duration)
+    }
+
+    /**
+     * A WebView page handoff can temporarily stop ViewRoot from asking the host for another
+     * computeScroll frame. Never leave a committed curl overlay frozen waiting for that frame.
+     */
+    private fun scheduleSettleWatchdog(durationMs: Int) {
+        val generation = ++settleGeneration
+        readView.post {
+            readView.postDelayed(durationMs.toLong() + 80L) watchdog@{
+                if (destroyed || generation != settleGeneration || !isRunning || isDragging) {
+                    return@watchdog
+                }
+                if (!scroller.isFinished) scroller.abortAnimation()
+                touchX = scroller.finalX.toFloat()
+                touchY = scroller.finalY.toFloat()
+                if (drawsDirectlyOnCanvas && useStableCornerSettling) {
+                    finalFramePending = true
+                    readView.postInvalidateOnAnimation()
+                } else {
+                    finishSettle()
+                }
+            }
+        }
+    }
+
+    /**
+     * Recover a curl whose ACTION_UP/ACTION_CANCEL was consumed by a child or
+     * window transition. Every MOVE creates a new generation, so a slow drag
+     * remains live while a genuinely abandoned stream is finalized safely.
+     */
+    private fun scheduleDragWatchdog() {
+        val generation = ++dragWatchdogGeneration
+        readView.postDelayed(DRAG_WATCHDOG_TIMEOUT_MS) {
+            if (destroyed || generation != dragWatchdogGeneration ||
+                !gestureStarted || !isDragging || !snapshotsReady ||
+                direction == Direction.NONE
+            ) return@postDelayed
+
+            val idleFor = SystemClock.uptimeMillis() - lastPointerEventUptime
+            if (idleFor < DRAG_WATCHDOG_TIMEOUT_MS) {
+                scheduleDragWatchdog()
+                return@postDelayed
+            }
+
+            Log.w(
+                "CurlPageAnimState",
+                "recovering abandoned drag direction=$direction " +
+                    "x=$lastPointerX y=$lastPointerY idle=${idleFor}ms"
+            )
+            val now = SystemClock.uptimeMillis()
+            val syntheticUp = MotionEvent.obtain(
+                downTime,
+                now,
+                MotionEvent.ACTION_UP,
+                lastPointerX,
+                lastPointerY,
+                0
+            )
+            try {
+                // Enter through the public path so reversed page progress
+                // applies the same X mirroring as a real terminal event.
+                onTouchEvent(syntheticUp)
+            } finally {
+                syntheticUp.recycle()
+            }
+        }
     }
 
     private fun finishSettle() {
+        settleGeneration++
         val completedDirection = direction
         val completed = settleCompletesPage && isFlipAnim
+        Log.d(
+            "CurlPageAnimState",
+            "finish direction=$completedDirection committed=$completed " +
+                "running=$isRunning dragging=$isDragging x=$touchX target=${completionTargetX()}"
+        )
         isRunning = false
         isDragging = false
 
@@ -650,9 +830,13 @@ class CurlPageAnim(
     private fun resetToIdle() {
         releaseBorrowedFrames()
         settleCompletesPage = false
+        settleStateActive = false
+        settleGestureMode = CurlGestureMode.EDGE_VERTICAL
+        settleCornerY = Float.NaN
         settleTargetY = Float.NaN
         settleExpedited = false
         finalFramePending = false
+        lastGeometryValid = false
         snapshotsReady = false
         gestureMode = CurlGestureMode.EDGE_VERTICAL
         gestureModeLock.reset()
@@ -710,28 +894,61 @@ class CurlPageAnim(
 
     private fun touchXForPointer(pointerX: Float): Float {
         val width = readView.width.toFloat()
+        // Curl has its own gesture handler, so apply the same one-screen
+        // displacement bound as the base animation controller before mapping
+        // the pointer into curl coordinates.
+        val boundedPointerX = if (useStableCornerSettling) {
+            pointerX.coerceIn(startX - width, startX + width)
+        } else {
+            pointerX
+        }
         if (gestureMode == CurlGestureMode.CORNER_TOP ||
             gestureMode == CurlGestureMode.CORNER_BOTTOM
         ) {
             // In a corner curl the Bezier touch point is the fold tip. Keep it
             // at the real finger coordinate instead of adding displacement to
             // the right-edge origin.
-            return SimulationCurlGeometry.cornerTouchX(width, pointerX)
+            return SimulationCurlGeometry.cornerTouchX(width, boundedPointerX)
         }
         val simulationDirection = simulationDirection() ?: return touchX
         return SimulationCurlGeometry.canonicalTouchX(
             width,
             curlDragOriginX,
-            pointerX,
+            boundedPointerX,
             simulationDirection
         )
     }
 
-    private fun gestureTouchY(pointerY: Float): Float =
-        if (gestureMode == CurlGestureMode.EDGE_VERTICAL) nearCornerY() else pointerY
+    private fun gestureTouchY(pointerY: Float): Float {
+        if (!useStableCornerSettling) {
+            return if (gestureMode == CurlGestureMode.EDGE_VERTICAL) nearCornerY() else pointerY
+        }
+        return when (gestureMode) {
+            CurlGestureMode.EDGE_VERTICAL -> nearCornerY()
+            // Keep the live fold on the selected half even if a diagonal release
+            // crosses the page midpoint; the mode itself remains locked.
+            CurlGestureMode.CORNER_TOP -> pointerY.coerceIn(
+                1f,
+                (readView.height * 0.5f).coerceAtLeast(1f)
+            )
+            CurlGestureMode.CORNER_BOTTOM -> {
+                val height = readView.height.coerceAtLeast(1).toFloat()
+                pointerY.coerceIn(
+                    (height * 0.5f).coerceAtMost(height - 1f),
+                    height - 1f
+                )
+            }
+        }
+    }
 
-    private fun nearCornerY(): Float {
-        return if (cornerY == 0f) 1f else readView.height - 1f
+    private fun activeCornerY(): Float = if (settleStateActive && settleCornerY.isFinite()) {
+        settleCornerY
+    } else {
+        cornerY
+    }
+
+    private fun nearCornerY(capturedCornerY: Float = activeCornerY()): Float {
+        return if (capturedCornerY == 0f) 1f else readView.height - 1f
     }
 
     private fun calculateCurlPoints(): Boolean {
@@ -739,12 +956,13 @@ class CurlPageAnim(
         val height = readView.height.toFloat()
         if (width <= 0f || height <= 0f) return false
 
-        val horizontalLimit = if (readView.hasDirectPageRenderer) {
+        val horizontalLimit = if (useStableCornerSettling) {
             CurlTerminalGeometry.completionDistance(width, height)
         } else {
             width * 1.2f
         }
-        val corner = if (cornerY == 0f) {
+        val renderCornerY = activeCornerY()
+        val corner = if (renderCornerY == 0f) {
             SimulationCurlCorner.TOP
         } else {
             SimulationCurlCorner.BOTTOM
@@ -758,7 +976,10 @@ class CurlPageAnim(
                 simulationFrame,
                 horizontalLimit
             )
-        ) return false
+        ) {
+            lastGeometryValid = false
+            return false
+        }
 
         renderTouchX = simulationFrame.touchX
         renderTouchY = simulationFrame.touchY
@@ -773,6 +994,7 @@ class CurlPageAnim(
         bezierControl2.set(simulationFrame.control2X, simulationFrame.control2Y)
         bezierVertex2.set(simulationFrame.vertex2X, simulationFrame.vertex2Y)
         bezierEnd2.set(simulationFrame.end2X, simulationFrame.end2Y)
+        lastGeometryValid = true
         return true
     }
 
@@ -784,7 +1006,7 @@ class CurlPageAnim(
         path0.lineTo(renderTouchX, renderTouchY)
         path0.lineTo(bezierEnd2.x, bezierEnd2.y)
         path0.quadTo(bezierControl2.x, bezierControl2.y, bezierStart2.x, bezierStart2.y)
-        path0.lineTo(cornerX, cornerY)
+        path0.lineTo(cornerX, activeCornerY())
         path0.close()
 
         canvas.save()
@@ -800,12 +1022,12 @@ class CurlPageAnim(
         shadowClipPath.lineTo(bezierVertex1.x, bezierVertex1.y)
         shadowClipPath.lineTo(bezierVertex2.x, bezierVertex2.y)
         shadowClipPath.lineTo(bezierStart2.x, bezierStart2.y)
-        shadowClipPath.lineTo(cornerX, cornerY)
+        shadowClipPath.lineTo(cornerX, activeCornerY())
         shadowClipPath.close()
 
         val shadowExtent = touchToCornerDistance * 0.25f
         if (!shadowExtent.isFinite() || shadowExtent <= 0f) return
-        val upperCorner = cornerY == 0f
+        val upperCorner = activeCornerY() == 0f
         val left: Int
         val right: Int
         val drawable: GradientDrawable
@@ -836,7 +1058,7 @@ class CurlPageAnim(
     /** Two narrow directional gradients on the still-flat current page. */
     private fun drawCurrentPageShadow(canvas: Canvas) {
         val shadowWidth = SimulationCurlShadowStyle.widthPx(density)
-        val upperCorner = cornerY == 0f
+        val upperCorner = activeCornerY() == 0f
         val angle = if (upperCorner) {
             Math.PI / 4.0 - atan2(
                 (bezierControl1.y - renderTouchY).toDouble(),
@@ -955,7 +1177,7 @@ class CurlPageAnim(
     private fun foldRotationDegrees(): Float = Math.toDegrees(
         atan2(
             (bezierControl1.x - cornerX).toDouble(),
-            (bezierControl2.y - cornerY).toDouble()
+            (bezierControl2.y - activeCornerY()).toDouble()
         )
     ).toFloat()
 
@@ -965,9 +1187,10 @@ class CurlPageAnim(
     ).toFloat()
 
     private fun isCommittedFrameFullyOffscreen(): Boolean {
-        if (!readView.hasDirectPageRenderer || !settleCompletesPage ||
+        if (!drawsDirectlyOnCanvas || !settleCompletesPage ||
             !isRunning || isDragging
         ) return false
+        if (!lastGeometryValid) return true
         val width = readView.width
         val height = readView.height
         if (width <= 0 || height <= 0) return false
@@ -1038,7 +1261,7 @@ class CurlPageAnim(
         val shadowExtent = minOf(horizontalExtent, verticalExtent)
         if (!shadowExtent.isFinite() || shadowExtent <= 0.5f) return
 
-        val upperCorner = cornerY == 0f
+        val upperCorner = activeCornerY() == 0f
         val left: Int
         val right: Int
         val drawable: GradientDrawable
@@ -1067,7 +1290,7 @@ class CurlPageAnim(
     private fun drawFoldBackTexture(canvas: Canvas): Boolean {
         if (!CurlReflectionGeometry.evaluate(
                 cornerX = cornerX,
-                cornerY = cornerY,
+                cornerY = activeCornerY(),
                 touchX = renderTouchX,
                 touchY = renderTouchY,
                 out = reflectionFrame

@@ -2,12 +2,16 @@ package com.huangder.lumibooks.ui.reader.engine
 
 import android.content.Context
 import android.animation.ValueAnimator
+import android.graphics.Paint
+import android.graphics.Typeface
 import androidx.core.animation.doOnEnd
 import android.text.Selection
 import android.text.Spannable
 import android.util.Log
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
+import android.os.SystemClock
 import android.widget.FrameLayout
 import com.huangder.lumibooks.domain.model.Note
 import com.huangder.lumibooks.util.performance.ReaderPageTurnPerformance
@@ -20,6 +24,7 @@ import com.huangder.lumibooks.ui.reader.BionicReadingFormatter
 import com.huangder.lumibooks.ui.reader.mapGlobalProgress
 import com.huangder.lumibooks.ui.reader.pageIndexForChapterFraction
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 internal fun calculateReaderVerticalBalanceOffset(
     availableHeightPx: Float,
@@ -31,6 +36,56 @@ internal fun calculateReaderVerticalBalanceOffset(
     if (completeLines <= 0) return 0f
     val remainder = availableHeightPx - completeLines * lineHeightPx
     return (remainder / 2f).coerceIn(0f, maxShiftPx)
+}
+
+/**
+ * Resolves one vertical margin pair for the whole paged reader.
+ *
+ * The page breaker can only place complete lines, so a viewport usually has a
+ * small remainder after the last complete line. Move half of that remainder
+ * from the bottom margin to the top margin once per reader configuration. The
+ * result is quantized to the same integer pixels used by [TextView] padding
+ * and preserves the total inset exactly.
+ */
+internal data class ReaderVerticalMargins(
+    val topPx: Int,
+    val bottomPx: Int
+)
+
+internal fun resolveReaderVerticalMargins(
+    heightPx: Int,
+    baseMarginTopPx: Float,
+    baseMarginBottomPx: Float,
+    fontSizePx: Float,
+    lineHeightMultiplier: Float,
+    lineSpacingExtraPx: Float,
+    typeface: Typeface,
+    protectedBottomInsetPx: Float = 0f
+): ReaderVerticalMargins {
+    val baseTopPx = baseMarginTopPx.toInt().coerceAtLeast(0)
+    val baseBottomPx = baseMarginBottomPx.toInt().coerceAtLeast(0)
+    val protectedBottomPx = protectedBottomInsetPx
+        .toInt()
+        .coerceIn(0, baseBottomPx)
+    val maxShiftPx = (baseBottomPx - protectedBottomPx).coerceAtLeast(0)
+
+    val fontSpacing = Paint(Paint.ANTI_ALIAS_FLAG).run {
+        textSize = fontSizePx
+        this.typeface = typeface
+        fontSpacing
+    }
+    val estimatedLineHeight = fontSpacing * lineHeightMultiplier + lineSpacingExtraPx
+    val availableHeightPx = (heightPx - baseTopPx - baseBottomPx).coerceAtLeast(0)
+    val shiftPx = calculateReaderVerticalBalanceOffset(
+        availableHeightPx = availableHeightPx.toFloat(),
+        lineHeightPx = estimatedLineHeight,
+        maxShiftPx = maxShiftPx.toFloat()
+    ).roundToInt().coerceIn(0, maxShiftPx)
+
+    return ReaderVerticalMargins(
+        topPx = baseTopPx + shiftPx,
+        bottomPx = baseBottomPx - shiftPx
+    )
 }
 
 /**
@@ -102,6 +157,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     companion object {
         private const val TAG = "ReadView"
         private const val JUMP_SETTLE_TIMEOUT_MS = 5_000L
+        private const val CURL_COMMIT_FRACTION = 0.14f
+        private const val CURL_FLING_DP_PER_SECOND = 450f
     }
 
     // ── 子组件 ──
@@ -158,8 +215,14 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         get() = jumpGenerationGate.isSettling
     private var jumpTimeoutRunnable: Runnable? = null
     private val curlTurnSequencer = ReaderCurlTurnSequencer()
-    private var pendingCurlGestureStartY: Float? = null
+    private var curlPageGeneration = 0L
     private var rvDeferredCurlGesture = false
+    private var rvDeferredCurlDirection = PageAnimationController.Direction.NONE
+    private var rvDeferredCurlLatestX = 0f
+    private var rvDeferredCurlLatestY = 0f
+    private var rvDeferredCurlLatestTime = 0L
+    private var rvDeferredCurlMetaState = 0
+    private var pendingPageTurnDirection: PageAnimationController.Direction? = null
 
     /** 设置已保存的笔记/高亮并刷新当前页。 */
     fun setSavedNotes(notes: List<Note>) {
@@ -211,6 +274,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var currentChineseMode: String = "original"
     private var currentPageTransition: String = "slide"
     private var slideTransitionDurationMs = ReaderPageAnimationSettings.SLIDE_DEFAULT_MS
+    private var scrollTransitionDurationMs = ReaderPageAnimationSettings.SCROLL_DEFAULT_MS
     private var fadeTransitionDurationMs = ReaderPageAnimationSettings.FADE_DEFAULT_MS
     private var curlTransitionDurationMs = ReaderPageAnimationSettings.CURL_DEFAULT_MS
     private var currentEdgeTapMode: ReaderEdgeTapMode = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT
@@ -304,7 +368,19 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             if (isJumpSettling || isPageTurnBlockedAtBoundary(dir)) false else when (dir) {
                 PageAnimationController.Direction.NEXT -> {
                     val next = slotManager.getNextSlot()
-                    next.isLoaded
+                    if (next.isLoaded) {
+                        true
+                    } else {
+                        // A cross-chapter target can be waiting for the next
+                        // chapter layout. Let the slot manager prefetch it and
+                        // replay this direction when the slot becomes ready.
+                        if (animationController !is CurlPageAnim &&
+                            slotManager.hasPotentialNextPage()
+                        ) {
+                            pendingPageTurnDirection = PageAnimationController.Direction.NEXT
+                        }
+                        false
+                    }
                 }
                 PageAnimationController.Direction.PREV -> {
                     val cur = slotManager.getCurSlot()
@@ -319,6 +395,14 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         }
 
         animationController.onAnimationComplete = {
+            val before = slotManager.getCurSlot()
+            Log.d(
+                "ReadViewCurlState",
+                "complete direction=${animationController.currentDirection} " +
+                    "cur=${before.chapterIndex}:${before.pageIndex} loaded=${before.isLoaded} " +
+                    "next=${slotManager.getNextSlot().chapterIndex}:${slotManager.getNextSlot().pageIndex} " +
+                    "nextLoaded=${slotManager.getNextSlot().isLoaded}"
+            )
             when (animationController.currentDirection) {
                 PageAnimationController.Direction.NEXT -> slotManager.shiftForward()
                 PageAnimationController.Direction.PREV -> slotManager.shiftBackward()
@@ -326,7 +410,15 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             }
             if (animationController is CurlPageAnim) {
                 curlTurnSequencer.idle()
-                post(::drainPendingCurlTurns)
+                val after = slotManager.getCurSlot()
+                Log.d(
+                    "ReadViewCurlState",
+                    "shifted cur=${after.chapterIndex}:${after.pageIndex} loaded=${after.isLoaded} " +
+                        "pending=${curlTurnSequencer.pendingSteps}"
+                )
+                post {
+                    if (!resumeDeferredCurlGestureIfReady()) drainPendingCurlTurns()
+                }
             }
         }
 
@@ -366,6 +458,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
         // 翻页后刷新高亮
         slotManager.onPageChangedCallback = { globalPage, chapterIdx, pageInChapter, chapterTotal ->
+            curlPageGeneration++
             callbacks?.onPageChanged(globalPage, chapterIdx, pageInChapter, chapterTotal)
             startSearchHighlightAnimationIfReady(chapterIdx)
             configureCurrentPageView()
@@ -374,7 +467,12 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         slotManager.onSpreadPageChangedCallback = { rightGlobalPage, rightChapterIdx, rightPage ->
             callbacks?.onSpreadPageChanged(rightGlobalPage, rightChapterIdx, rightPage)
         }
-        slotManager.onSlotReadyCallback = { postOnAnimation(::drainPendingCurlTurns) }
+        slotManager.onSlotReadyCallback = {
+            postOnAnimation {
+                if (!resumeDeferredCurlGestureIfReady()) drainPendingCurlTurns()
+                drainPendingPageTurn()
+            }
+        }
 
         setWillNotDraw(false)
     }
@@ -410,7 +508,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     }
 
     /** 配置所有 PageContentView 的 TextView 样式（防止翻页错版） */
-    private fun configureCurrentPageView() {
+    private fun configureCurrentPageView(viewportHeightPx: Int = height) {
         val (themeBgColor, themeTextColor, accentColor) = getThemeColors(currentTheme)
         val bgColor = currentReaderBackgroundColor ?: themeBgColor
         val textColor = currentReaderTextColor ?: themeTextColor
@@ -436,6 +534,23 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             customFontPath = currentCustomFontPath,
             weight = currentBodyFontWeight
         )
+        val verticalMargins = if (currentWritingMode.isVertical) {
+            ReaderVerticalMargins(
+                topPx = baseMarginTop.toInt().coerceAtLeast(0),
+                bottomPx = baseMarginBottom.toInt().coerceAtLeast(0)
+            )
+        } else {
+            resolveReaderVerticalMargins(
+                heightPx = viewportHeightPx,
+                baseMarginTopPx = baseMarginTop,
+                baseMarginBottomPx = baseMarginBottom,
+                fontSizePx = currentFontSizePx,
+                lineHeightMultiplier = currentLineHeightMult,
+                lineSpacingExtraPx = lineSpacingExtra,
+                typeface = resolvedTypeface.typeface,
+                protectedBottomInsetPx = currentBottomOverlayInsetDp * density
+            )
+        }
         // 全部槽位都配置，确保翻页时样式一致；双页时左/右半页镜像边距
         for ((left, right) in listOf(
             prevPageView to prevPageRightView,
@@ -450,9 +565,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 letterSpacingPx = currentLetterSpacingDp * density,
                 typeface = resolvedTypeface.typeface,
                 marginLeftPx = marginLeft,
-                marginTopPx = baseMarginTop,
+                marginTopPx = verticalMargins.topPx.toFloat(),
                 marginRightPx = if (currentTwoPageSpread) gutterMargin else marginRight,
-                marginBottomPx = baseMarginBottom,
+                marginBottomPx = verticalMargins.bottomPx.toFloat(),
                 highlightColor = highlightColor,
                 accentColor = accentColor,
                 textAlignment = currentTextAlignment,
@@ -467,9 +582,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 letterSpacingPx = currentLetterSpacingDp * density,
                 typeface = resolvedTypeface.typeface,
                 marginLeftPx = if (currentTwoPageSpread) gutterMargin else marginLeft,
-                marginTopPx = baseMarginTop,
+                marginTopPx = verticalMargins.topPx.toFloat(),
                 marginRightPx = marginRight,
-                marginBottomPx = baseMarginBottom,
+                marginBottomPx = verticalMargins.bottomPx.toFloat(),
                 highlightColor = highlightColor,
                 accentColor = accentColor,
                 textAlignment = currentTextAlignment,
@@ -730,6 +845,23 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             customFontPath = customFontPath,
             weight = currentBodyFontWeight
         )
+        val verticalMargins = if (writingMode.isVertical) {
+            ReaderVerticalMargins(
+                topPx = baseMarginTop.toInt().coerceAtLeast(0),
+                bottomPx = baseMarginBottom.toInt().coerceAtLeast(0)
+            )
+        } else {
+            resolveReaderVerticalMargins(
+                heightPx = height,
+                baseMarginTopPx = baseMarginTop,
+                baseMarginBottomPx = baseMarginBottom,
+                fontSizePx = fontSizePx,
+                lineHeightMultiplier = lineHeightMult,
+                lineSpacingExtraPx = lineSpacing,
+                typeface = resolvedTypeface.typeface,
+                protectedBottomInsetPx = bottomOverlayInsetDp * density
+            )
+        }
 
         layoutEngine.configure(
             width = pageWidth,
@@ -744,8 +876,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             fontWeight = currentBodyFontWeight,
             marginLeftPx = marginLeft,
             marginRightPx = if (resolvedSpread) gutterMargin else marginRight,
-            marginTopPx = baseMarginTop,
-            marginBottomPx = baseMarginBottom,
+            marginTopPx = verticalMargins.topPx.toFloat(),
+            marginBottomPx = verticalMargins.bottomPx.toFloat(),
             textColor = textColor,
             chapterCount = chapterCount,
             useDisplayDensityForSpans = useDisplayDensityForSpans,
@@ -753,7 +885,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             writingMode = writingMode
         )
 
-        configureCurrentPageView()
+        configureCurrentPageView(height)
 
         // 🔥 共用 TextPaint：让 PageLayoutEngine 的 StaticLayout 使用与 TextView 完全相同的 Paint
         // 对象，消除两个引擎的字体度量（font metrics）差异。这是根除分页不一致的关键。
@@ -766,8 +898,16 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             if (writingModeChanged) {
                 slotManager.pendingStartCharOffset = writingModeAnchor ?: -1
             }
-            // 字号/旋转/模式变化前捕获当前内容位置，以便重新分页后修正页码
-            if (fontSizeChanged || bionicReadingChanged || sizeChanged || spreadModeChanged) {
+            // Capture the visible character before any pagination-affecting
+            // change so the new page geometry can restore the same content.
+            if (
+                fontSizeChanged || lineHeightChanged || letterSpacingChanged ||
+                textAlignmentChanged || fontTypeChanged || customFontPathChanged ||
+                marginChanged || overlayInsetChanged || paragraphSpacingChanged ||
+                firstLineIndentChanged || bodyFontWeightChanged ||
+                bionicReadingChanged || paginationLayoutChanged || writingModeChanged ||
+                sizeChanged || spreadModeChanged
+            ) {
                 val curSlot = slotManager.getCurSlot()
                 if (curSlot.isLoaded) {
                     val primaryOffset = slotManager.getPrimaryContentView().chapterStartOffset
@@ -798,11 +938,16 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
     fun forceRelayout() {
         if (!isConfigured) return
+        val current = slotManager.getCurSlot()
+        if (current.isLoaded) {
+            val primaryOffset = slotManager.getPrimaryContentView().chapterStartOffset
+            slotManager.pendingStartCharOffset =
+                primaryOffset.takeIf { it >= 0 } ?: current.contentView.chapterStartOffset
+        }
         slotManager.clearContentCache()
         layoutEngine.invalidateAll()
-        val curSlot = slotManager.getCurSlot()
-        if (curSlot.chapterIndex >= 0) {
-            slotManager.initialize(curSlot.chapterIndex, curSlot.pageIndex.coerceAtLeast(0))
+        if (current.chapterIndex >= 0) {
+            slotManager.initialize(current.chapterIndex, current.pageIndex.coerceAtLeast(0))
         }
     }
 
@@ -997,7 +1142,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val newController = when (mode) {
             "none", "instant", "no_animation" -> NoPageAnim(animationSurface)
             "fade" -> FadePageAnim(animationSurface, fadeTransitionDurationMs)
-            "scroll" -> ScrollPageAnim(animationSurface)
+            "scroll" -> ScrollPageAnim(animationSurface, scrollTransitionDurationMs)
             "curl" -> CurlPageAnim(animationSurface, baseDurationMs = curlTransitionDurationMs)
             else -> SlidePageAnim(animationSurface, slideTransitionDurationMs)
         }
@@ -1013,7 +1158,12 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         if (newController is CurlPageAnim) {
             newController.onMotionStateChanged = { state ->
                 when (state) {
-                    CurlPageAnim.MotionState.IDLE -> curlTurnSequencer.idle()
+                    CurlPageAnim.MotionState.IDLE -> {
+                        curlTurnSequencer.idle()
+                        post {
+                            if (!resumeDeferredCurlGestureIfReady()) drainPendingCurlTurns()
+                        }
+                    }
                     CurlPageAnim.MotionState.DRAGGING -> curlTurnSequencer.dragging()
                     CurlPageAnim.MotionState.SETTLING -> curlTurnSequencer.settling()
                     CurlPageAnim.MotionState.DESTROYED -> curlTurnSequencer.clear()
@@ -1029,6 +1179,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     fun setPageTransitionTiming(mode: String, durationMs: Int) {
         val sanitized = ReaderPageAnimationSettings.sanitizeDuration(mode, durationMs)
         when (mode) {
+            ReaderPageAnimationSettings.MODE_SCROLL -> scrollTransitionDurationMs = sanitized
             ReaderPageAnimationSettings.MODE_FADE -> fadeTransitionDurationMs = sanitized
             ReaderPageAnimationSettings.MODE_CURL -> curlTransitionDurationMs = sanitized
             else -> slideTransitionDurationMs = sanitized
@@ -1036,6 +1187,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         if (mode != currentPageTransition) return
         when (val controller = animationController) {
             is SlidePageAnim -> controller.setBaseDuration(sanitized)
+            is ScrollPageAnim -> controller.setBaseDuration(sanitized)
             is FadePageAnim -> controller.setBaseDuration(sanitized)
             is CurlPageAnim -> controller.setBaseDuration(sanitized)
         }
@@ -1139,7 +1291,13 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         if (isJumpSettling) return false
         finishRunningPageTurnForNewInput()
         val next = slotManager.getNextSlot()
-        if (!next.isLoaded) return false
+        if (!next.isLoaded) {
+            if (slotManager.hasPotentialNextPage()) {
+                pendingPageTurnDirection = PageAnimationController.Direction.NEXT
+                return true
+            }
+            return false
+        }
         clearCurrentSelection()
         val current = slotManager.getCurSlot()
         ReaderPageTurnPerformance.beginIntent(
@@ -1162,10 +1320,10 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
      *
      * 分类逻辑：
      * - 全区域 DOWN → 不拦截，穿透给 TextView（支持任意位置长按选词）
-     * - 水平 MOVE（500ms内）→ 拦截，PageAnimationController late-init 处理翻页
+     * - 水平 MOVE（卷曲达到 touch slop；其他模式 500ms 内）→ 拦截翻页
      * - 边缘短 UP → 触发 animationController.onTapLeft/Right（点击翻页）
      * - 中间短 UP → 触发 callbacks.onMenuToggle（菜单切换）
-     * - 长按（>500ms 或无明显移动）→ 不拦截，TextView 原生触发选词
+     * - 长按（非卷曲模式 >500ms 或无明显移动）→ 不拦截，TextView 原生触发选词
      */
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         // The vertical renderer owns its selection handles. Once a handle accepts DOWN,
@@ -1199,12 +1357,24 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 removeCallbacks(rvImageLongPressRunnable)
+                // A child can consume the terminal event of a curl stream. If
+                // the next gesture arrives while that stale drag is still
+                // active, clear it before classifying the new intent.
+                if (animationController is CurlPageAnim && animationController.isDragging) {
+                    animationController.abortAnim()
+                }
+                // A new touch is the latest user intent; replace any delayed
+                // turn that was waiting on an earlier gesture.
+                pendingPageTurnDirection = null
                 rvTouchStartX = ev.x
                 rvTouchStartY = ev.y
-                rvTouchDownTime = System.currentTimeMillis()
+                // MotionEvent timestamps use uptime; keep gesture classification
+                // on the same clock so delayed/coalesced events cannot skew it.
+                rvTouchDownTime = ev.eventTime
                 rvHasMoved = false
                 rvIsHandlingPageGesture = false
                 rvDeferredCurlGesture = false
+                rvDeferredCurlDirection = PageAnimationController.Direction.NONE
                 rvBoundaryGestureSuppressed = false
                 bookmarkPullTracker.start(
                     x = ev.rawX,
@@ -1239,15 +1409,21 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
             MotionEvent.ACTION_MOVE -> {
                 if (rvIsHandlingPageGesture) {
+                    if (rvDeferredCurlGesture) {
+                        updateDeferredCurlEvent(ev)
+                        resumeDeferredCurlGestureIfReady()
+                        return true
+                    }
                     animationController.onTouchEvent(ev)
                     return true
                 }
 
                 val dx = abs(ev.x - rvTouchStartX)
                 val dy = abs(ev.y - rvTouchStartY)
-                val dt = System.currentTimeMillis() - rvTouchDownTime
+                val dt = (ev.eventTime - rvTouchDownTime).coerceAtLeast(0L)
+                val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
 
-                if (dx > 24f || dy > 24f) {
+                if (dx > touchSlop || dy > touchSlop) {
                     rvHasMoved = true
                     removeCallbacks(rvImageLongPressRunnable)
                     rvPendingImageLongPress = null
@@ -1271,12 +1447,16 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                     return true
                 }
 
-                // 仅在 500ms 窗口内拦截翻页滑动（超过 500ms 视为选择扩展，不拦截）。
-                // 滚动模式沿 Y 轴，其余模式沿 X 轴。
+                // 滚动模式沿 Y 轴，其余模式沿 X 轴。卷曲一旦达到
+                // touch slop 就持续跟手；非卷曲模式仍保留 500ms 选择窗口。
                 val pageSwipeIntent = when (animationController) {
-                    is ScrollPageAnim -> dy > 8f && dy > dx * 0.3f
-                    is CurlPageAnim -> dx > 8f && isCurlSwipeIntent(dx, dy)
-                    else -> dx > 8f && dx > dy * 0.3f
+                    is ScrollPageAnim -> dy > touchSlop && dy > dx
+                    is CurlPageAnim -> isCurlPageSwipeIntent(
+                        ev.x - rvTouchStartX,
+                        ev.y - rvTouchStartY,
+                        touchSlop
+                    )
+                    else -> dx > touchSlop && dx > dy
                 }
                 if (rvSystemBackGestureCandidate &&
                     isSystemBackGestureSwipe(
@@ -1298,7 +1478,14 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 }
                 return super.dispatchTouchEvent(ev)
                 }
-                if (dt < 500L && pageSwipeIntent) {
+                // Curl is a direct-manipulation gesture: once the finger has
+                // moved far enough, it must keep following the pointer even
+                // when the user pauses longer than the text-selection window.
+                // Other transitions retain the short-window guard so a slow
+                // drag can still become a TextView selection.
+                val withinPageGestureWindow =
+                    animationController is CurlPageAnim || dt < 500L
+                if (withinPageGestureWindow && pageSwipeIntent) {
                     bookmarkPullTracker.reset()
                     Log.d(TAG, "Handle page swipe at dx=$dx dy=$dy dt=$dt")
                     removeCallbacks(rvImageLongPressRunnable)
@@ -1329,6 +1516,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                         !prepareCurlSwipe(pageDirection)
                     ) {
                         rvDeferredCurlGesture = true
+                        rvDeferredCurlDirection = pageDirection
+                        updateDeferredCurlEvent(ev)
                     }
 
                     // 先取消子 TextView 的原生触摸序列，再把完整序列交给动画控制器。
@@ -1341,7 +1530,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
                     val downEvent = MotionEvent.obtain(
                         ev.downTime,
-                        ev.eventTime,
+                        ev.downTime,
                         MotionEvent.ACTION_DOWN,
                         rvTouchStartX,
                         rvTouchStartY,
@@ -1369,13 +1558,51 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                     return true
                 }
                 if (rvIsHandlingPageGesture) {
-                    rvIsHandlingPageGesture = false
                     if (rvDeferredCurlGesture) {
+                        updateDeferredCurlEvent(ev)
+                        if (ev.actionMasked == MotionEvent.ACTION_UP &&
+                            resumeDeferredCurlGestureIfReady()
+                        ) {
+                            rvIsHandlingPageGesture = false
+                            animationController.onTouchEvent(ev)
+                            return true
+                        }
+                        if (ev.actionMasked == MotionEvent.ACTION_CANCEL ||
+                            !deferredCurlGestureCommits(ev)
+                        ) {
+                            curlTurnSequencer.cancelNewest(rvDeferredCurlDirection)
+                        }
                         rvDeferredCurlGesture = false
+                        rvDeferredCurlDirection = PageAnimationController.Direction.NONE
+                        // prepareCurlSwipe() deliberately withholds DOWN/MOVE
+                        // while a short cross-chapter target is loading. In
+                        // that case any remaining dragging flag belongs to a
+                        // previous stream, not this deferred gesture. Clear
+                        // it before replaying the queued intent so the curl
+                        // overlay cannot remain frozen between chapters.
+                        if (animationController is CurlPageAnim &&
+                            animationController.isDragging &&
+                            !animationController.isRunning
+                        ) {
+                            Log.d(TAG, "Clearing stale deferred curl drag")
+                            animationController.abortAnim()
+                        }
+                        // A target may have become ready while the finger was
+                        // still down. Wait until this stream ends before
+                        // starting the queued tap animation; otherwise the
+                        // remaining MOVE events can mutate its snapshots.
+                        post(::drainPendingCurlTurns)
                     } else {
                         animationController.onTouchEvent(ev)
                     }
+                    rvIsHandlingPageGesture = false
                     return true
+                }
+                if (ev.actionMasked == MotionEvent.ACTION_CANCEL) {
+                    rvDeferredCurlGesture = false
+                    rvDeferredCurlDirection = PageAnimationController.Direction.NONE
+                    rvIsHandlingPageGesture = false
+                    rvBoundaryGestureSuppressed = false
                 }
             }
         }
@@ -1386,7 +1613,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         if (isVerticalSelectionHandleDragActive()) return false
         when (ev.actionMasked) {
             MotionEvent.ACTION_UP -> {
-                if (!rvHasMoved && System.currentTimeMillis() - rvTouchDownTime < 300L) {
+                if (!rvHasMoved && (ev.eventTime - rvTouchDownTime).coerceAtLeast(0L) < 300L) {
                     val hitView = pageViewAt(rvTouchStartX, rvTouchStartY) ?: curPageView
                     val link = hitView.getLinkAt(
                         rvTouchStartX - hitView.left,
@@ -1446,7 +1673,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
         val cancelEvent = MotionEvent.obtain(
             rvTouchDownTime,
-            System.currentTimeMillis(),
+            SystemClock.uptimeMillis(),
             MotionEvent.ACTION_CANCEL,
             rvTouchStartX,
             rvTouchStartY,
@@ -1472,7 +1699,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     }
 
     /**
-     * 🔥 忽略触摸开始 500ms 内的 disallow 请求。
+     * 🔥 忽略非卷曲触摸开始 500ms 内的 disallow 请求。
      *
      * setTextIsSelectable(true) 的 TextView 可能在触摸后很快通过 Editor
      * 调用 requestDisallowInterceptTouchEvent(true)，阻止父 View 拦截滑动。
@@ -1485,7 +1712,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             return
         }
         if (disallowIntercept) {
-            val dt = System.currentTimeMillis() - rvTouchDownTime
+            val dt = SystemClock.uptimeMillis() - rvTouchDownTime
             if (dt < 500L) {
                 // 忽略早期的 disallow 请求（插入点光标控制器可能触发）
                 return
@@ -1596,20 +1823,94 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         }
     }
 
+    private fun updateDeferredCurlEvent(event: MotionEvent) {
+        rvDeferredCurlLatestX = event.x
+        rvDeferredCurlLatestY = event.y
+        rvDeferredCurlLatestTime = event.eventTime
+        rvDeferredCurlMetaState = event.metaState
+    }
+
+    private fun resumeDeferredCurlGestureIfReady(): Boolean {
+        val controller = animationController as? CurlPageAnim ?: return false
+        if (!rvDeferredCurlGesture || !rvIsHandlingPageGesture || isJumpSettling ||
+            controller.isRunning || controller.isDragging
+        ) return false
+        val direction = rvDeferredCurlDirection
+        val pendingDirection = when {
+            curlTurnSequencer.pendingSteps > 0 -> PageAnimationController.Direction.NEXT
+            curlTurnSequencer.pendingSteps < 0 -> PageAnimationController.Direction.PREV
+            else -> PageAnimationController.Direction.NONE
+        }
+        if (direction == PageAnimationController.Direction.NONE || pendingDirection != direction ||
+            !isCurlTargetReady(direction)
+        ) return false
+
+        val turn = curlTurnSequencer.pollTurn()
+        if (turn.input != CurlTurnInput.SWIPE || turn.direction != direction) {
+            curlTurnSequencer.restore(turn)
+            return false
+        }
+
+        clearCurrentSelection()
+        rvDeferredCurlGesture = false
+        rvDeferredCurlDirection = PageAnimationController.Direction.NONE
+        val down = MotionEvent.obtain(
+            rvTouchDownTime,
+            rvTouchDownTime,
+            MotionEvent.ACTION_DOWN,
+            rvTouchStartX,
+            rvTouchStartY,
+            rvDeferredCurlMetaState
+        )
+        val move = MotionEvent.obtain(
+            rvTouchDownTime,
+            rvDeferredCurlLatestTime.coerceAtLeast(rvTouchDownTime),
+            MotionEvent.ACTION_MOVE,
+            rvDeferredCurlLatestX,
+            rvDeferredCurlLatestY,
+            rvDeferredCurlMetaState
+        )
+        try {
+            controller.onTouchEvent(down)
+            controller.onTouchEvent(move)
+        } finally {
+            down.recycle()
+            move.recycle()
+        }
+        return true
+    }
+
+    private fun deferredCurlGestureCommits(event: MotionEvent): Boolean {
+        if (event.actionMasked != MotionEvent.ACTION_UP) return false
+        val dx = event.x - rvTouchStartX
+        val distanceCommit = abs(dx) / width.coerceAtLeast(1).toFloat() >= CURL_COMMIT_FRACTION
+        val elapsed = (event.eventTime - rvTouchDownTime).coerceAtLeast(1L)
+        val velocityCommit = abs(dx) * 1_000f / elapsed >=
+            CURL_FLING_DP_PER_SECOND * resources.displayMetrics.density
+        return distanceCommit || velocityCommit
+    }
+
     private fun requestCurlTurn(direction: PageAnimationController.Direction): Boolean {
         val controller = animationController as? CurlPageAnim ?: return false
         if (direction == PageAnimationController.Direction.NONE) return false
 
         if (isJumpSettling) {
-            pendingCurlGestureStartY = null
-            curlTurnSequencer.offerWhileWaiting(direction)
+            curlTurnSequencer.offerWhileWaiting(
+                direction = direction,
+                expedited = curlTurnSequencer.pendingSteps != 0,
+                pageGeneration = curlPageGeneration
+            )
             return true
         }
 
-        if (handoffRunningCurlInput(controller, direction)) return true
+        if (handoffRunningCurlInput(controller, direction, gestureStartY = null)) return true
 
         if (curlTurnSequencer.pendingSteps != 0) {
-            curlTurnSequencer.offerWhileWaiting(direction)
+            curlTurnSequencer.offerWhileWaiting(
+                direction = direction,
+                expedited = true,
+                pageGeneration = curlPageGeneration
+            )
             drainPendingCurlTurns()
             return true
         }
@@ -1621,50 +1922,66 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 ReaderPageTurnPerformance.markVisualStarted()
                 return true
             }
-            return retryCurlTurnAfterStartFailure(direction)
+            return retryCurlTurnAfterStartFailure(QueuedCurlTurn(direction))
         }
         if (hasCurlTarget(direction)) {
             recordCurlTurnIntent(direction, preloaded = false)
-            pendingCurlGestureStartY = null
-            curlTurnSequencer.offerWhileWaiting(direction)
+            curlTurnSequencer.offerWhileWaiting(
+                direction = direction,
+                pageGeneration = curlPageGeneration
+            )
             return true
         }
 
         curlTurnSequencer.clear()
-        pendingCurlGestureStartY = null
         return false
     }
 
     private fun prepareCurlSwipe(direction: PageAnimationController.Direction): Boolean {
         val controller = animationController as? CurlPageAnim ?: return true
         if (direction == PageAnimationController.Direction.NONE) return false
+        val gestureStartY = rvTouchStartY
+        // A live drag is the newest direct-manipulation intent. Old queued
+        // turns must not keep auto-playing after this pointer stream ends.
+        curlTurnSequencer.clear()
         if (isJumpSettling) {
-            pendingCurlGestureStartY = rvTouchStartY
-            curlTurnSequencer.offerWhileWaiting(direction)
+            curlTurnSequencer.offerWhileWaiting(
+                direction = direction,
+                gestureStartY = gestureStartY,
+                input = CurlTurnInput.SWIPE,
+                expedited = curlTurnSequencer.pendingSteps != 0,
+                pageGeneration = curlPageGeneration
+            )
             return false
         }
-        if (handoffRunningCurlInput(controller, direction)) {
-            pendingCurlGestureStartY = rvTouchStartY
+        if (handoffRunningCurlInput(controller, direction, gestureStartY)) {
             return false
         }
 
         if (curlTurnSequencer.pendingSteps != 0) {
-            pendingCurlGestureStartY = rvTouchStartY
-            curlTurnSequencer.offerWhileWaiting(direction)
+            curlTurnSequencer.offerWhileWaiting(
+                direction = direction,
+                gestureStartY = gestureStartY,
+                input = CurlTurnInput.SWIPE,
+                expedited = true,
+                pageGeneration = curlPageGeneration
+            )
             drainPendingCurlTurns()
             return false
         }
         if (isCurlTargetReady(direction)) {
-            pendingCurlGestureStartY = null
             curlTurnSequencer.dragging()
             return true
         }
         if (hasCurlTarget(direction)) {
-            pendingCurlGestureStartY = rvTouchStartY
-            curlTurnSequencer.offerWhileWaiting(direction)
+            curlTurnSequencer.offerWhileWaiting(
+                direction = direction,
+                gestureStartY = gestureStartY,
+                input = CurlTurnInput.SWIPE,
+                pageGeneration = curlPageGeneration
+            )
         } else {
             curlTurnSequencer.clear()
-            pendingCurlGestureStartY = null
         }
         return false
     }
@@ -1672,17 +1989,30 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     /** Returns true when the incoming turn was queued behind an in-flight curl. */
     private fun handoffRunningCurlInput(
         controller: CurlPageAnim,
-        direction: PageAnimationController.Direction
+        direction: PageAnimationController.Direction,
+        gestureStartY: Float?
     ): Boolean {
         if (!controller.isRunning) {
             if (controller.isDragging) controller.abortAnim()
             return false
         }
         return when (
-            curlRunningInputDisposition(controller.completeRunningFlipForNewInput())
+            curlRunningInputDisposition(
+                if (gestureStartY != null) {
+                    controller.completeRunningFlipForGestureHandoff()
+                } else {
+                    controller.completeRunningFlipForNewInput()
+                }
+            )
         ) {
             CurlRunningInputDisposition.QUEUE -> {
-                curlTurnSequencer.offer(direction)
+                curlTurnSequencer.offer(
+                    direction = direction,
+                    gestureStartY = gestureStartY,
+                    input = if (gestureStartY == null) CurlTurnInput.TAP else CurlTurnInput.SWIPE,
+                    expedited = true,
+                    pageGeneration = curlPageGeneration
+                )
                 true
             }
             CurlRunningInputDisposition.REEVALUATE -> false
@@ -1694,46 +2024,47 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     }
 
     private fun retryCurlTurnAfterStartFailure(
-        direction: PageAnimationController.Direction
+        turn: QueuedCurlTurn
     ): Boolean {
+        val direction = turn.direction
         if (hasCurlTarget(direction)) {
-            curlTurnSequencer.restore(direction)
+            curlTurnSequencer.restore(turn)
             // The target slot may have just been populated and still needs its
             // first layout pass before it can be captured into a curl frame.
             postOnAnimation { drainPendingCurlTurns() }
             return true
         }
         curlTurnSequencer.clear()
-        pendingCurlGestureStartY = null
         return false
     }
 
     private fun drainPendingCurlTurns() {
         val controller = animationController as? CurlPageAnim ?: return
-        if (isJumpSettling || controller.isRunning || controller.isDragging) return
-        val direction = curlTurnSequencer.poll()
+        if (isJumpSettling || rvIsHandlingPageGesture || rvDeferredCurlGesture ||
+            controller.isRunning || controller.isDragging
+        ) return
+        val turn = curlTurnSequencer.pollTurn()
+        val direction = turn.direction
         if (direction == PageAnimationController.Direction.NONE) {
             curlTurnSequencer.idle()
-            pendingCurlGestureStartY = null
             return
         }
         if (isCurlTargetReady(direction)) {
             clearCurrentSelection()
-            if (controller.startFromTap(direction, pendingCurlGestureStartY)) {
-                pendingCurlGestureStartY = null
+            val expedited = turn.expedited || curlTurnSequencer.pendingSteps != 0
+            if (controller.startFromTap(direction, turn.gestureStartY, expedited)) {
                 curlTurnSequencer.settling()
                 recordCurlTurnIntent(direction, preloaded = true)
                 ReaderPageTurnPerformance.markVisualStarted()
                 return
             }
-            retryCurlTurnAfterStartFailure(direction)
+            retryCurlTurnAfterStartFailure(turn)
             return
         }
         if (hasCurlTarget(direction)) {
-            curlTurnSequencer.restore(direction)
+            curlTurnSequencer.restore(turn)
         } else {
             curlTurnSequencer.clear()
-            pendingCurlGestureStartY = null
         }
     }
 
@@ -1750,7 +2081,10 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
     private fun hasCurlTarget(direction: PageAnimationController.Direction): Boolean =
         when (direction) {
-            PageAnimationController.Direction.NEXT -> getNextPageLocation().first >= 0
+            // A chapter boundary may not have a known page count yet. Keep
+            // the curl intent queued while PageSlotManager prepares the next
+            // non-empty chapter instead of dropping the gesture as a book end.
+            PageAnimationController.Direction.NEXT -> slotManager.hasPotentialNextPage()
             PageAnimationController.Direction.PREV -> {
                 val current = slotManager.getCurSlot()
                 current.pageIndex > 0 || current.chapterIndex > 0
@@ -1784,6 +2118,49 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         }
     }
 
+    /** Replays a non-curl turn that was accepted while NEXT was still loading. */
+    private fun drainPendingPageTurn() {
+        if (animationController is CurlPageAnim) return
+        val direction = pendingPageTurnDirection ?: return
+        if (isJumpSettling) return
+        if (animationController.isRunning || animationController.isDragging) {
+            // A slot can finish while a rejected gesture is still bouncing
+            // back. Re-check on the next frame so the queued turn is not lost
+            // when the one-shot slot-ready callback arrives too early.
+            postOnAnimation(::drainPendingPageTurn)
+            return
+        }
+        val ready = when (direction) {
+            PageAnimationController.Direction.NEXT -> slotManager.getNextSlot().isLoaded
+            PageAnimationController.Direction.PREV -> slotManager.getPrevSlot().isLoaded
+            PageAnimationController.Direction.NONE -> false
+        }
+        if (!ready) {
+            if (direction == PageAnimationController.Direction.NEXT &&
+                slotManager.hasPotentialNextPage()
+            ) {
+                return
+            }
+            pendingPageTurnDirection = null
+            return
+        }
+        pendingPageTurnDirection = null
+        if (isPageTurnBlockedAtBoundary(direction)) return
+        clearCurrentSelection()
+        val target = if (direction == PageAnimationController.Direction.NEXT) {
+            slotManager.getNextSlot()
+        } else {
+            slotManager.getPrevSlot()
+        }
+        val current = slotManager.getCurSlot()
+        ReaderPageTurnPerformance.beginIntent(
+            preloaded = true,
+            crossChapter = target.chapterIndex != current.chapterIndex
+        )
+        ReaderPageTurnPerformance.markVisualStarted()
+        startTapAnimation(direction)
+    }
+
     private fun directionForPageSwipe(
         deltaX: Float,
         deltaY: Float
@@ -1800,15 +2177,26 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
     private fun isPageTurnBlockedAtBoundary(
         direction: PageAnimationController.Direction
-    ): Boolean = when (direction) {
-        PageAnimationController.Direction.PREV -> slotManager.isAtBookStart()
-        PageAnimationController.Direction.NEXT -> slotManager.isAtBookEnd()
-        PageAnimationController.Direction.NONE -> false
+    ): Boolean {
+        val curl = animationController as? CurlPageAnim
+        if (curl?.isRunning == true &&
+            curl.currentDirection != PageAnimationController.Direction.NONE &&
+            curl.currentDirection != direction
+        ) {
+            // Resolve the request against the page that the committed curl is
+            // about to expose. This keeps reverse input usable at either book edge.
+            return false
+        }
+        return when (direction) {
+            PageAnimationController.Direction.PREV -> slotManager.isAtBookStart()
+            PageAnimationController.Direction.NEXT -> slotManager.isAtBookEnd()
+            PageAnimationController.Direction.NONE -> false
+        }
     }
 
     private fun clearCurlTurnIntent() {
         curlTurnSequencer.clear()
-        pendingCurlGestureStartY = null
+        pendingPageTurnDirection = null
         rvDeferredCurlGesture = false
         rvIsHandlingPageGesture = false
         rvBoundaryGestureSuppressed = false
@@ -1865,29 +2253,6 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             }
             start()
         }
-    }
-
-    private fun balancedVerticalMargins(
-        baseMarginTop: Float,
-        baseMarginBottom: Float,
-        fontSizePx: Float,
-        lineHeightMultiplier: Float,
-        lineSpacingExtraPx: Float,
-        typeface: android.graphics.Typeface
-    ): Pair<Float, Float> {
-        val fontSpacing = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).run {
-            textSize = fontSizePx
-            this.typeface = typeface
-            fontSpacing
-        }
-        val estimatedLineHeight = fontSpacing * lineHeightMultiplier + lineSpacingExtraPx
-        val availableHeight = height - baseMarginTop - baseMarginBottom
-        val shift = calculateReaderVerticalBalanceOffset(
-            availableHeightPx = availableHeight,
-            lineHeightPx = estimatedLineHeight,
-            maxShiftPx = baseMarginBottom
-        )
-        return (baseMarginTop + shift) to (baseMarginBottom - shift)
     }
 
     /** @return Triple(backgroundColor, textColor, accentColor) */

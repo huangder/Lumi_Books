@@ -2,7 +2,7 @@ package com.huangder.lumibooks.ui.reader
 
 internal enum class EpubCurlTurnDisposition { ACCEPT, QUEUE, PASS_BOUNDARY }
 
-/** Curl keeps one latest intent while animation, handoff, or target preparation is busy. */
+/** Curl queues input while animation, handoff, or target preparation is busy. */
 internal fun epubCurlTurnDisposition(
     idle: Boolean,
     targetExists: Boolean,

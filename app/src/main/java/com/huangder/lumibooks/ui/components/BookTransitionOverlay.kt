@@ -225,7 +225,7 @@ fun BookTransitionOverlay(
 
                     // 副标题占位
                     Text(
-                        text = "加载中",
+                        text = stringResource(R.string.loading_text),
                         fontSize = 14.sp,
                         color = AppColors.TextSecondary,
                         textAlign = TextAlign.Center

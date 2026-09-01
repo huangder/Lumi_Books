@@ -55,4 +55,6 @@ class PageAnimationSurface(
     fun postInvalidateOnAnimation() = root.postInvalidateOnAnimation()
 
     fun post(action: () -> Unit) = root.post(action)
+
+    fun postDelayed(delayMillis: Long, action: () -> Unit) = root.postDelayed(action, delayMillis)
 }

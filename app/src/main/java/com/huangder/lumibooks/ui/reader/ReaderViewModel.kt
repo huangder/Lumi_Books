@@ -27,11 +27,13 @@ import com.huangder.lumibooks.domain.model.ReaderCornerContent
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
 import com.huangder.lumibooks.domain.model.ReaderPageCorner
 import com.huangder.lumibooks.domain.model.ReaderPageAnimationSettings
+import com.huangder.lumibooks.domain.model.ReaderPageTransition
 import com.huangder.lumibooks.domain.model.ReaderTextAlignment
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.domain.model.ReaderThemeSettings
 import com.huangder.lumibooks.domain.model.ReaderThemeSuite
 import com.huangder.lumibooks.domain.model.ReaderThemeSuites
+import com.huangder.lumibooks.domain.model.PdfPageMode
 import com.huangder.lumibooks.domain.model.normalizeReaderThemeSuiteName
 import com.huangder.lumibooks.domain.model.readerThemeSuiteNameCodePointCount
 import com.huangder.lumibooks.domain.model.defaultReaderCornerContent
@@ -58,6 +60,8 @@ import com.huangder.lumibooks.util.parser.BookLinkTarget
 import com.huangder.lumibooks.util.parser.PdfParser
 import com.huangder.lumibooks.util.parser.TxtEncoding
 import com.huangder.lumibooks.util.parser.TxtParser
+import com.huangder.lumibooks.util.parser.TxtTocRule
+import com.huangder.lumibooks.util.parser.TxtTocRuleDiagnostics
 import com.huangder.lumibooks.util.parser.TxtReplaceText
 import com.huangder.lumibooks.util.parser.TxtReplaceRange
 import com.huangder.lumibooks.util.epub.EpubRenderMode
@@ -254,6 +258,11 @@ data class ReaderUiState(
     val showEpubLayoutHint: Boolean = false,
     val showMobiLayoutHint: Boolean = false,
     val txtEncoding: TxtEncoding = TxtEncoding.AUTO,
+    val txtTocRuleId: String = "auto",
+    val txtTocRuleName: String? = null,
+    val txtTocCustomRules: List<TxtTocRule> = emptyList(),
+    val txtTocDiagnostics: List<TxtTocRuleDiagnostics> = emptyList(),
+    val isTxtTocChanging: Boolean = false,
     val txtActiveCharsetName: String = "UTF-8",
     val showTxtEncodingHint: Boolean = false,
     val isTxtEncodingChanging: Boolean = false,
@@ -269,7 +278,7 @@ data class ReaderUiState(
     val paragraphSpacing: Float = 2f,
     /** 首行缩进字符数，默认 2 */
     val firstLineIndent: Float = 2f,
-    /** PDF 阅读方向："vertical" | "horizontal" */
+    /** PDF 阅读模式："vertical" | "vertical_paging" | "horizontal" */
     val pdfPageMode: String = "vertical",
     val showReaderChapterProgress: Boolean = true,
     val showReaderPageNumber: Boolean = true,
@@ -283,6 +292,8 @@ data class ReaderUiState(
     val twoPageSpreadEnabled: Boolean = true,
     /** 双页对开模式当前跨页的右半页（无右页时为 null） */
     val rightPageIndex: Int? = null,
+    /** 右半页所属章节；跨章对开时与 currentChapterIndex 不同。 */
+    val rightChapterIndex: Int? = null,
     val screenSleepTimeoutSeconds: Int = DataStoreManager.DEFAULT_SCREEN_SLEEP_TIMEOUT_SECONDS,
     val readerEdgeTapMode: ReaderEdgeTapMode = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT,
     val readerWritingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL,
@@ -1415,7 +1426,7 @@ class ReaderViewModel @Inject constructor(
             type = ReaderBackgroundType.COLOR,
             value = String.format(Locale.US, "#%08X", color),
             dominantColor = color,
-            name = displayName.trim().ifBlank { "自定义背景" }
+            name = displayName.trim().ifBlank { context.getString(R.string.background_name_default) }
         )
         saveAddedReaderBackground(preset)
     }
@@ -1435,7 +1446,7 @@ class ReaderViewModel @Inject constructor(
                         type = ReaderBackgroundType.IMAGE,
                         value = file.absolutePath,
                         dominantColor = extractDominantColor(file),
-                        name = displayName.trim().ifBlank { "自定义背景" }
+                        name = displayName.trim().ifBlank { context.getString(R.string.background_name_default) }
                     )
                 } catch (_: Exception) {
                     file.delete()
@@ -1655,7 +1666,7 @@ class ReaderViewModel @Inject constructor(
                 val content = withContext(Dispatchers.IO) { txtParser.parse(book.filePath) }
                 val chapterTitles = content.chapters.map { it.title }
                 val chapterCount = chapterTitles.size
-                require(chapterCount > 0) { "TXT 解析后没有可用章节" }
+                require(chapterCount > 0) { context.getString(R.string.error_txt_no_chapters) }
                 val restoredChapter = state.currentChapterIndex.coerceIn(0, chapterCount - 1)
                 val pageFraction = if (state.totalPages > 0) {
                     state.currentPageIndex.toFloat() / state.totalPages
@@ -1677,6 +1688,8 @@ class ReaderViewModel @Inject constructor(
                     currentChapterIndex = restoredChapter,
                     currentPageIndex = 0,
                     totalPages = 0,
+                    rightPageIndex = null,
+                    rightChapterIndex = null,
                     pendingPageFraction = pageFraction,
                     pendingPageFractionSemantics = ReaderPageFractionSemantics.START,
                     pendingReaderPosition = null,
@@ -1715,6 +1728,8 @@ class ReaderViewModel @Inject constructor(
             renderMode = mode,
             currentPageIndex = 0,
             totalPages = 0,
+            rightPageIndex = null,
+            rightChapterIndex = null,
             pageReady = false,
             isEpubChapterHandoffInProgress = false,
             isLoading = state.isLoading,
@@ -1774,7 +1789,8 @@ class ReaderViewModel @Inject constructor(
             pendingPageFraction = 0f,
             pendingPageFractionSemantics = ReaderPageFractionSemantics.START,
             pendingReaderPosition = null,
-            rightPageIndex = null
+            rightPageIndex = null,
+            rightChapterIndex = null
         )
         ttsController.onPageVisible(bookId, _uiState.value.currentChapterIndex, pageIndex)
         saveProgress()
@@ -1796,7 +1812,9 @@ class ReaderViewModel @Inject constructor(
             epubLocatorJson = null,
             pendingPageFraction = if (direction < 0) 1f else 0f,
             pendingPageFractionSemantics = ReaderPageFractionSemantics.START,
-            pendingReaderPosition = null
+            pendingReaderPosition = null,
+            rightPageIndex = null,
+            rightChapterIndex = null
         )
         preloadAdjacentChapters()
     }
@@ -1840,9 +1858,10 @@ class ReaderViewModel @Inject constructor(
 
     fun savePageTransition(mode: String) {
         if (_uiState.value.eInkModeEnabled) return
+        val normalizedMode = ReaderPageTransition.normalizeKey(mode)
         val state = _uiState.value
         val crossesContinuousBoundary =
-            (state.pageTransition == "continuous") != (mode == "continuous")
+            (state.pageTransition == "continuous") != (normalizedMode == "continuous")
         val chapterFraction = if (state.totalPages > 0) {
             state.currentPageIndex.toFloat().div(state.totalPages).coerceIn(0f, 0.9999f)
         } else {
@@ -1850,7 +1869,7 @@ class ReaderViewModel @Inject constructor(
         }
         _uiState.value = if (crossesContinuousBoundary) {
             state.copy(
-                pageTransition = mode,
+                pageTransition = normalizedMode,
                 currentPageIndex = 0,
                 totalPages = 0,
                 pendingPageFraction = chapterFraction,
@@ -1859,10 +1878,10 @@ class ReaderViewModel @Inject constructor(
                 pageReady = false
             )
         } else {
-            state.copy(pageTransition = mode)
+            state.copy(pageTransition = normalizedMode)
         }
         viewModelScope.launch {
-            dataStoreManager.savePageTransition(mode)
+            dataStoreManager.savePageTransition(normalizedMode)
         }
     }
 
@@ -1884,9 +1903,160 @@ class ReaderViewModel @Inject constructor(
 
     fun togglePdfPageMode() {
         if (_uiState.value.eInkModeEnabled) return
-        val nextMode = if (_uiState.value.pdfPageMode == "horizontal") "vertical" else "horizontal"
+        val nextMode = PdfPageMode.fromKey(_uiState.value.pdfPageMode).next().key
         _uiState.value = _uiState.value.copy(pdfPageMode = nextMode)
         viewModelScope.launch { dataStoreManager.savePdfPageMode(nextMode) }
+    }
+
+    /** Applies a built-in or user TXT TOC rule and keeps the reader near its old byte anchor. */
+    fun saveTxtTocRuleSelection(ruleId: String?) {
+        val txtParser = parser as? TxtParser ?: return
+        val state = _uiState.value
+        val book = state.book ?: return
+        if (state.isTxtTocChanging) return
+        viewModelScope.launch {
+            val previousId = state.txtTocRuleId
+            val previousRule = txtParser.selectedTocRule
+            val oldRange = txtParser.getChapterByteRange(state.currentChapterIndex)
+            val oldFraction = if (state.totalPages > 0) {
+                state.currentPageIndex.toFloat() / state.totalPages.toFloat()
+            } else state.pendingPageFraction
+            val oldAnchor = oldRange?.let { (start, end) ->
+                start + ((end - start).coerceAtLeast(0L) * oldFraction.coerceIn(0f, 1f)).toLong()
+            }
+            val oldBookmarks = readingRepository.getBookmarksByBookId(book.id).first()
+            val oldNotes = readingRepository.getNotesByBookId(book.id).first()
+            val bookmarkAnchors = oldBookmarks.mapNotNull { bookmark ->
+                val offset = bookmark.characterOffset ?: 0
+                txtParser.characterOffsetToByte(bookmark.chapterIndex, offset)?.let { bookmark to it }
+            }
+            val noteAnchors = oldNotes.mapNotNull { note ->
+                val start = txtParser.characterOffsetToByte(note.chapterIndex, note.startPosition) ?: return@mapNotNull null
+                val end = txtParser.characterOffsetToByte(note.chapterIndex, note.endPosition, endBias = true) ?: start
+                note to (start to end.coerceAtLeast(start))
+            }
+            val sourceFile = File(book.filePath).takeIf { it.isFile }
+            val sourceLengthBefore = sourceFile?.length()
+            val sourceModifiedBefore = sourceFile?.lastModified()
+            if (sourceFile != null &&
+                (sourceFile.length() != sourceLengthBefore || sourceFile.lastModified() != sourceModifiedBefore)
+            ) {
+                error("TXT source changed while preparing annotation migration")
+            }
+            _uiState.value = state.copy(isTxtTocChanging = true, pageReady = false)
+            try {
+                dataStoreManager.saveTxtTocRuleSelection(book.id, ruleId)
+                val resolvedRule = dataStoreManager.resolveTxtTocRule(book.id)
+                val effectiveRuleId = if (
+                    !ruleId.isNullOrBlank() && ruleId != "auto" && resolvedRule == null
+                ) {
+                    dataStoreManager.saveTxtTocRuleSelection(book.id, null)
+                    "auto"
+                } else {
+                    ruleId?.takeIf { it.isNotBlank() } ?: "auto"
+                }
+                txtParser.selectedTocRule = resolvedRule
+                val content = withContext(Dispatchers.IO) { txtParser.parse(book.filePath) }
+                if (sourceFile != null &&
+                    (sourceFile.length() != sourceLengthBefore || sourceFile.lastModified() != sourceModifiedBefore)
+                ) {
+                    error("TXT source changed while migrating annotations")
+                }
+                require(content.chapters.isNotEmpty()) { context.getString(R.string.error_txt_no_chapters) }
+                val bookmarkUpdates = bookmarkAnchors.mapNotNull { (bookmark, anchor) ->
+                    txtParser.byteToCharacterPosition(anchor)?.let { (chapter, offset) ->
+                        bookmark.copy(
+                            chapterIndex = chapter,
+                            position = bookmarkPositionForCharacterOffset(offset)
+                        )
+                    }
+                }
+                val noteUpdates = mutableListOf<Note>()
+                val noteInserts = mutableListOf<Note>()
+                noteAnchors.forEach { (note, range) ->
+                    val startPosition = txtParser.byteToCharacterPosition(range.first) ?: return@forEach
+                    val endPosition = txtParser.byteToCharacterPosition(range.second) ?: startPosition
+                    if (startPosition.first == endPosition.first) {
+                        noteUpdates += note.copy(
+                            chapterIndex = startPosition.first,
+                            startPosition = startPosition.second,
+                            endPosition = endPosition.second.coerceAtLeast(startPosition.second)
+                        )
+                    } else {
+                        var firstFragment = true
+                        for (chapter in startPosition.first..endPosition.first) {
+                            val chapterRange = txtParser.getChapterByteRange(chapter) ?: continue
+                            val fragmentStart = if (chapter == startPosition.first) range.first else chapterRange.first
+                            val fragmentEnd = if (chapter == endPosition.first) range.second else chapterRange.second
+                            if (fragmentEnd <= fragmentStart) continue
+                            val mappedStart = txtParser.byteToCharacterPosition(fragmentStart) ?: continue
+                            val mappedEnd = txtParser.byteToCharacterPosition(fragmentEnd) ?: mappedStart
+                            val relativeStart = (((fragmentStart - range.first).toDouble() / (range.second - range.first).coerceAtLeast(1L)) * note.selectedText.length)
+                                .toInt().coerceIn(0, note.selectedText.length)
+                            val relativeEnd = (((fragmentEnd - range.first).toDouble() / (range.second - range.first).coerceAtLeast(1L)) * note.selectedText.length)
+                                .toInt().coerceIn(relativeStart, note.selectedText.length)
+                            val fragment = note.copy(
+                                id = if (firstFragment) note.id else 0L,
+                                chapterIndex = chapter,
+                                startPosition = mappedStart.second,
+                                endPosition = mappedEnd.second.coerceAtLeast(mappedStart.second),
+                                selectedText = note.selectedText.substring(relativeStart, relativeEnd)
+                            )
+                            if (firstFragment) noteUpdates += fragment else noteInserts += fragment
+                            firstFragment = false
+                        }
+                    }
+                }
+                readingRepository.applyTxtResegmentation(bookmarkUpdates, noteUpdates, noteInserts)
+                val targetChapter = oldAnchor?.let { anchor ->
+                    (0 until txtParser.getChapterCount()).firstOrNull { index ->
+                        val range = txtParser.getChapterByteRange(index) ?: return@firstOrNull false
+                        anchor >= range.first && anchor < range.second
+                    }
+                } ?: state.currentChapterIndex.coerceIn(0, content.chapters.lastIndex)
+                preloadCache.clear()
+                pageLayoutEngine.invalidateAll()
+                _uiState.value = _uiState.value.copy(
+                    chapterCount = content.chapters.size,
+                    chapterTitles = content.chapters.map { it.title },
+                    tocEntries = content.tocEntries,
+                    currentChapterIndex = targetChapter,
+                    currentPageIndex = 0,
+                    totalPages = 0,
+                    pendingPageFraction = oldFraction.coerceIn(0f, 0.9999f),
+                    pendingPageFractionSemantics = ReaderPageFractionSemantics.START,
+                    pendingReaderPosition = null,
+                    txtTocRuleId = effectiveRuleId,
+                    txtTocRuleName = resolvedRule?.name,
+                    txtTocDiagnostics = txtParser.lastTocDiagnostics,
+                    isTxtTocChanging = false,
+                    contentRevision = _uiState.value.contentRevision + 1
+                )
+                loadChapterContent()
+                preloadAdjacentChapters()
+                saveProgress()
+            } catch (error: Exception) {
+                dataStoreManager.saveTxtTocRuleSelection(book.id, previousId)
+                txtParser.selectedTocRule = previousRule
+                runCatching { withContext(Dispatchers.IO) { txtParser.parse(book.filePath) } }
+                _uiState.value = _uiState.value.copy(
+                    isTxtTocChanging = false,
+                    pageReady = true,
+                    error = error.message
+                )
+            }
+        }
+    }
+
+    fun saveTxtTocRule(rule: TxtTocRule) {
+        viewModelScope.launch {
+            val existing = dataStoreManager.txtTocCustomRules().first()
+            val updated = (existing.filterNot { it.id == rule.id } + rule.copy(origin = com.huangder.lumibooks.util.parser.TxtTocRuleOrigin.CUSTOM))
+                .mapIndexed { index, item -> item.copy(order = index) }
+            dataStoreManager.saveTxtTocCustomRules(updated)
+            _uiState.value = _uiState.value.copy(txtTocCustomRules = updated)
+            saveTxtTocRuleSelection(rule.id)
+        }
     }
 
     fun saveShowReaderChapterProgress(show: Boolean) {
@@ -2192,6 +2362,14 @@ class ReaderViewModel @Inject constructor(
                     } else {
                         TxtEncoding.AUTO
                     }
+                    val txtTocRule = if (isTxt) dataStoreManager.resolveTxtTocRule(book.id) else null
+                    val txtTocCustomRules = if (isTxt) dataStoreManager.txtTocCustomRules().first() else emptyList()
+                    val txtTocRuleId = if (
+                        isTxt && preferences.txtTocRuleId != "auto" && txtTocRule == null
+                    ) "auto" else preferences.txtTocRuleId
+                    if (isTxt && txtTocRuleId == "auto" && preferences.txtTocRuleId != "auto") {
+                        dataStoreManager.saveTxtTocRuleSelection(book.id, null)
+                    }
                     val showTxtEncodingHint = isTxt &&
                         !preferences.txtEncodingHintShown
 
@@ -2213,6 +2391,7 @@ class ReaderViewModel @Inject constructor(
                     activeParser.firstLineIndentChars = firstLineIndent
                     activeParser.useEpubCss = useEpubCss
                     (activeParser as? TxtParser)?.selectedEncoding = txtEncoding
+                    (activeParser as? TxtParser)?.selectedTocRule = txtTocRule
 
                     val content = ReaderOpenPerformance.traceStageSuspend(
                         bookId,
@@ -2239,7 +2418,7 @@ class ReaderViewModel @Inject constructor(
                     }
 
                     val chapterCount = content.chapters.size
-                    require(chapterCount > 0) { "书籍没有可阅读内容" }
+                    require(chapterCount > 0) { context.getString(R.string.error_book_no_content) }
                     ReaderOpenPerformance.beginStage(bookId, ReaderOpenStage.PAGINATION)
                     val chapterTitles = content.chapters.map { it.title }
                     val tocEntries = content.tocEntries.ifEmpty {
@@ -2282,6 +2461,10 @@ class ReaderViewModel @Inject constructor(
                         showEpubLayoutHint = showEpubLayoutHint,
                         showMobiLayoutHint = showMobiLayoutHint,
                         txtEncoding = txtEncoding,
+                        txtTocRuleId = txtTocRuleId,
+                        txtTocRuleName = txtTocRule?.name,
+                        txtTocCustomRules = txtTocCustomRules,
+                        txtTocDiagnostics = (activeParser as? TxtParser)?.lastTocDiagnostics.orEmpty(),
                         txtActiveCharsetName = (activeParser as? TxtParser)?.activeCharsetName ?: "UTF-8",
                         showTxtEncodingHint = showTxtEncodingHint,
                         epubLocatorJson = book.locatorJson.takeIf {
@@ -2313,7 +2496,7 @@ class ReaderViewModel @Inject constructor(
                 } else {
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        error = "书籍未找到"
+                        error = context.getString(R.string.book_not_found)
                     )
                 }
             } catch (e: Exception) {
@@ -2378,7 +2561,9 @@ class ReaderViewModel @Inject constructor(
         val state = _uiState.value
         if (state.currentChapterIndex >= state.chapterCount - 1) return
         _uiState.value = _uiState.value.copy(
-            currentChapterIndex = state.currentChapterIndex + 1
+            currentChapterIndex = state.currentChapterIndex + 1,
+            rightPageIndex = null,
+            rightChapterIndex = null
         )
         if (!state.useNewEngine) loadChapterContent()
         saveProgress()
@@ -2392,7 +2577,9 @@ class ReaderViewModel @Inject constructor(
         val state = _uiState.value
         if (state.currentChapterIndex <= 0) return
         _uiState.value = _uiState.value.copy(
-            currentChapterIndex = state.currentChapterIndex - 1
+            currentChapterIndex = state.currentChapterIndex - 1,
+            rightPageIndex = null,
+            rightChapterIndex = null
         )
         if (!state.useNewEngine) loadChapterContent(startPage = targetPage)
         saveProgress()
@@ -2417,7 +2604,9 @@ class ReaderViewModel @Inject constructor(
             epubLocatorJson = if (isBookLayout) null else state.epubLocatorJson,
             pendingPageFraction = 0f,
             pendingPageFractionSemantics = ReaderPageFractionSemantics.START,
-            pendingReaderPosition = null
+            pendingReaderPosition = null,
+            rightPageIndex = null,
+            rightChapterIndex = null
         )
         if (!state.useNewEngine) loadChapterContent()
         if (!isBookLayout) saveProgress()
@@ -2526,6 +2715,7 @@ class ReaderViewModel @Inject constructor(
             currentPageIndex = pageInChapter,
             totalPages = chapterTotalPages,
             rightPageIndex = null,
+            rightChapterIndex = null,
             pageReady = true,
             pendingPageFraction = if (reachedPendingPosition) 0f else currentState.pendingPageFraction,
             pendingPageFractionSemantics = if (reachedPendingPosition) {
@@ -2564,7 +2754,8 @@ class ReaderViewModel @Inject constructor(
             )
         ) return
         _uiState.value = currentState.copy(
-            rightPageIndex = rightPageInChapter.takeIf { it >= 0 }
+            rightPageIndex = rightPageInChapter.takeIf { it >= 0 },
+            rightChapterIndex = rightChapterIndex.takeIf { it >= 0 }
         )
     }
 
@@ -2998,7 +3189,9 @@ class ReaderViewModel @Inject constructor(
         val newIdx = (state.currentChapterIndex + direction).coerceIn(0, state.chapterCount - 1)
         _uiState.value = _uiState.value.copy(
             currentChapterIndex = newIdx,
-            currentPageIndex = 0
+            currentPageIndex = 0,
+            rightPageIndex = null,
+            rightChapterIndex = null
         )
         saveProgress()
         preloadAdjacentChapters()
@@ -3069,7 +3262,11 @@ class ReaderViewModel @Inject constructor(
                 ?: state.currentPageIndex.toFloat(),
             locatorJson = state.epubLocatorJson.takeIf { state.renderMode == EpubRenderMode.BOOK_LAYOUT },
             title = title?.takeIf { it.isNotBlank() }
-                ?: "第${state.currentChapterIndex + 1}章 第${state.currentPageIndex + 1}页",
+                ?: context.getString(
+                    R.string.bookmark_default_title,
+                    state.currentChapterIndex + 1,
+                    state.currentPageIndex + 1
+                ),
             createdAt = System.currentTimeMillis()
         )
         viewModelScope.launch { readingRepository.insertBookmark(bookmark) }
@@ -3083,7 +3280,7 @@ class ReaderViewModel @Inject constructor(
             bookId = book.id,
             chapterIndex = pageIndex,
             position = 0f,
-            title = "第${pageIndex + 1}页  $bookTitle",
+            title = context.getString(R.string.pdf_bookmark_default_title, pageIndex + 1, bookTitle),
             createdAt = System.currentTimeMillis()
         )
         viewModelScope.launch { readingRepository.insertBookmark(bookmark) }
@@ -3571,8 +3768,8 @@ class ReaderViewModel @Inject constructor(
                     SearchResult(
                         chapterIndex = match.chapterIndex,
                         chapterTitle = titles.getOrElse(match.chapterIndex) {
-                            "第${match.chapterIndex + 1}章"
-                        }.ifBlank { "第${match.chapterIndex + 1}章" },
+                            context.getString(R.string.chapter_number, match.chapterIndex + 1)
+                        }.ifBlank { context.getString(R.string.chapter_number, match.chapterIndex + 1) },
                         charOffset = match.charOffset,
                         context = match.context,
                         matchLength = match.matchLength,
@@ -3595,18 +3792,19 @@ class ReaderViewModel @Inject constructor(
 
                     val ctxStart = (foundIdx - 12).coerceAtLeast(0)
                     val ctxEnd = (foundIdx + query.length + 20).coerceAtMost(text.length)
-                    val context = text.substring(ctxStart, ctxEnd)
+                    val contextSnippet = text.substring(ctxStart, ctxEnd)
                         .replace('\n', ' ')
                         .replace('\r', ' ')
 
-                    val title = titles.getOrElse(chIdx) { "第${chIdx + 1}章" }
-                        .ifBlank { "第${chIdx + 1}章" }
+                    val title = titles.getOrElse(chIdx) {
+                        context.getString(R.string.chapter_number, chIdx + 1)
+                    }.ifBlank { context.getString(R.string.chapter_number, chIdx + 1) }
                     results.add(
                         SearchResult(
                             chapterIndex = chIdx,
                             chapterTitle = title,
                             charOffset = foundIdx,
-                            context = context,
+                            context = contextSnippet,
                             matchLength = query.length
                         )
                     )

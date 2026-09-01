@@ -54,7 +54,9 @@ class SlidePageAnim(
         val vw = readView.width.toFloat()
         if (vw <= 0) return
 
-        val ox = snapTranslation(touchX - startX)
+        // A single gesture can only expose one neighbouring spread. Clamp the
+        // live offset so a large finger jump cannot visually skip pages.
+        val ox = snapTranslation((touchX - startX).coerceIn(-vw, vw))
 
         when {
             direction == Direction.NEXT -> {
@@ -121,7 +123,7 @@ class SlidePageAnim(
     private fun drawSnapshotPages(canvas: Canvas) {
         val width = readView.width.toFloat()
         if (width <= 0f) return
-        val offset = snapTranslation(touchX - startX)
+        val offset = snapTranslation((touchX - startX).coerceIn(-width, width))
         canvas.drawColor(readView.bgColor)
         when (direction) {
             Direction.NEXT -> {
@@ -165,7 +167,7 @@ class SlidePageAnim(
         val vh = readView.height.toFloat()
         if (vw <= 0 || vh <= 0) return
 
-        val ox = touchX - startX
+        val ox = (touchX - startX).coerceIn(-vw, vw)
 
         when {
             direction == Direction.NEXT -> {
@@ -261,7 +263,8 @@ class SlidePageAnim(
         val fromX: Float; val toX: Float
         when {
             direction == Direction.NEXT || direction == Direction.PREV -> {
-                fromX = if (fromDrag) touchX else startX
+                fromX = (if (fromDrag) touchX else startX)
+                    .coerceIn(startX - vw, startX + vw)
                 toX = startX + horizontalTurnSign(direction) * vw
             }
             else -> return

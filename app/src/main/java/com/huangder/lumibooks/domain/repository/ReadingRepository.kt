@@ -26,6 +26,11 @@ interface ReadingRepository {
     suspend fun updateNote(note: Note)
     suspend fun deleteNote(note: Note)
     suspend fun applyAnnotationEdit(plan: AnnotationEditPlan)
+    suspend fun applyTxtResegmentation(
+        bookmarkUpdates: List<Bookmark>,
+        noteUpdates: List<Note>,
+        noteInserts: List<Note>
+    )
     suspend fun deleteAllNotesByBookId(bookId: String)
     suspend fun deleteLegacyPdfAnnotationsByBookId(bookId: String)
     fun getMostReadBooks(limit: Int = 5): Flow<List<BookDuration>>

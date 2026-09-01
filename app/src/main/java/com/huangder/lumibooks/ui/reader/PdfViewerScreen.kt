@@ -64,6 +64,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -77,6 +78,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ViewAgenda
 import androidx.compose.material.icons.filled.ViewCarousel
+import androidx.compose.material.icons.filled.ViewDay
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Brush
@@ -90,8 +92,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -108,6 +112,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
@@ -154,6 +160,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import com.huangder.lumibooks.MainActivity
 import com.huangder.lumibooks.ReaderPageDirection
 import com.huangder.lumibooks.domain.model.Bookmark
+import com.huangder.lumibooks.domain.model.PdfPageMode
 import com.huangder.lumibooks.pdfconversion.PdfConversionContract
 import com.huangder.lumibooks.pdfconversion.PdfConversionEngine
 import com.huangder.lumibooks.pdfconversion.PdfConversionState
@@ -185,6 +192,11 @@ private enum class PdfMultiTouchMode {
     UNDECIDED,
     PAN,
     ZOOM
+}
+
+private enum class PdfPagerAxis {
+    HORIZONTAL,
+    VERTICAL
 }
 
 private sealed interface PdfConversionSheet {
@@ -367,6 +379,7 @@ fun PdfViewerScreen(
     }
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = startPage)
     val pagerState = rememberPagerState(initialPage = startPage) { pageCount }
+    val verticalPagerState = rememberPagerState(initialPage = startPage) { pageCount }
     val verticalPage by remember {
         derivedStateOf {
             val first = listState.firstVisibleItemIndex
@@ -374,22 +387,40 @@ fun PdfViewerScreen(
             (if (offset > 200) first + 1 else first).coerceIn(0, pageCount - 1)
         }
     }
-    val isHorizontal = effectivePdfPageMode == "horizontal"
-    val currentPage = if (isHorizontal) pagerState.currentPage else verticalPage
+    val pageMode = PdfPageMode.fromKey(effectivePdfPageMode)
+    val isHorizontal = pageMode == PdfPageMode.HORIZONTAL_PAGING
+    val isVerticalPaging = pageMode == PdfPageMode.VERTICAL_PAGING
+    val currentPage = when (pageMode) {
+        PdfPageMode.HORIZONTAL_PAGING -> pagerState.currentPage
+        PdfPageMode.VERTICAL_PAGING -> verticalPagerState.currentPage
+        PdfPageMode.VERTICAL_SCROLL -> verticalPage
+    }
 
-    LaunchedEffect(isHorizontal, pendingModePage) {
-        val targetPage = pendingModePage ?: return@LaunchedEffect
-        if (isHorizontal) {
-            pagerState.scrollToPage(targetPage)
-        } else {
-            listState.scrollToItem(targetPage)
+    suspend fun scrollToPdfPage(targetPage: Int, animate: Boolean = !eInkMode) {
+        val page = targetPage.coerceIn(0, pageCount - 1)
+        when (pageMode) {
+            PdfPageMode.HORIZONTAL_PAGING -> {
+                if (animate) pagerState.animateScrollToPage(page) else pagerState.scrollToPage(page)
+            }
+            PdfPageMode.VERTICAL_PAGING -> {
+                if (animate) verticalPagerState.animateScrollToPage(page)
+                else verticalPagerState.scrollToPage(page)
+            }
+            PdfPageMode.VERTICAL_SCROLL -> {
+                if (animate) listState.animateScrollToItem(page) else listState.scrollToItem(page)
+            }
         }
+    }
+
+    LaunchedEffect(pageMode, pendingModePage) {
+        val targetPage = pendingModePage ?: return@LaunchedEffect
+        scrollToPdfPage(targetPage, animate = false)
         pendingModePage = null
     }
     LaunchedEffect(
         bookId,
         pageCount,
-        isHorizontal,
+        pageMode,
         ttsState.activeBookId,
         ttsState.playbackState
     ) {
@@ -401,11 +432,7 @@ fun PdfViewerScreen(
             ) return@collect
             val targetPage = request.location.chapterIndex
             if (targetPage !in 0 until pageCount) return@collect
-            if (isHorizontal) {
-                if (eInkMode) pagerState.scrollToPage(targetPage) else pagerState.animateScrollToPage(targetPage)
-            } else {
-                if (eInkMode) listState.scrollToItem(targetPage) else listState.animateScrollToItem(targetPage)
-            }
+            scrollToPdfPage(targetPage)
         }
     }
 
@@ -443,7 +470,7 @@ fun PdfViewerScreen(
     DisposableEffect(
         activity,
         shouldHandleVolumePageTurn,
-        isHorizontal,
+        pageMode,
         currentPage,
         pageCount
     ) {
@@ -457,11 +484,7 @@ fun PdfViewerScreen(
             if (targetPage == currentPage) return@handler
 
             scope.launch {
-                if (isHorizontal) {
-                    if (eInkMode) pagerState.scrollToPage(targetPage) else pagerState.animateScrollToPage(targetPage)
-                } else {
-                    if (eInkMode) listState.scrollToItem(targetPage) else listState.animateScrollToItem(targetPage)
-                }
+                scrollToPdfPage(targetPage)
             }
         }
         activity.readerVolumeKeyHandler = handler
@@ -472,12 +495,10 @@ fun PdfViewerScreen(
         }
     }
 
-    LaunchedEffect(pagerState.currentPage, isHorizontal) {
-        if (isHorizontal) {
-            scale = 1f
-            offsetX = 0f
-            offsetY = 0f
-        }
+    LaunchedEffect(currentPage, pageMode) {
+        scale = 1f
+        offsetX = 0f
+        offsetY = 0f
     }
 
     // 菜单动画（同时淡入+移动，不是先后）
@@ -507,11 +528,11 @@ fun PdfViewerScreen(
                 alpha = 1f - readerBackProgress * 0.08f
             }
             .background(
-                if (isHorizontal) AppColors.WindowBg
+                if (isHorizontal || isVerticalPaging) AppColors.WindowBg
                 else com.huangder.lumibooks.ui.theme.ReaderColors.Light.background
             )
     ) {
-        // PDF 页面（上下连续滚动 / 相册式左右分页）
+        // PDF 页面（上下连续滚动 / 上下分页 / 相册式左右分页）
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -532,86 +553,26 @@ fun PdfViewerScreen(
                     }
                 }
         ) {
-            if (isHorizontal) {
-                HorizontalPager(
-                    state = pagerState,
-                    userScrollEnabled = !annotationMode && scale <= 1.01f,
-                    modifier = Modifier.fillMaxSize()
-                ) { pageIndex ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .pointerInput(pageIndex) {
-                                awaitEachGesture {
-                                    awaitFirstDown(requireUnconsumed = false)
-                                    var pointersPressed: Boolean
-                                    var transformGesture = false
-                                    var gestureMode = PdfMultiTouchMode.UNDECIDED
-                                    var documentPanX = 0f
-                                    var pendingPan = Offset.Zero
-                                    var pendingZoom = 1f
-                                    do {
-                                        val event = awaitPointerEvent(pass = PointerEventPass.Initial)
-                                        val pressedCount = event.changes.count { it.pressed }
-                                        if (pressedCount >= 2) transformGesture = true
-                                        if (transformGesture || scale > 1.01f) {
-                                            val pan = event.calculatePan()
-                                            val zoom = event.calculateZoom()
-                                            pendingPan += pan
-                                            pendingZoom *= zoom
-                                            if (gestureMode == PdfMultiTouchMode.UNDECIDED) {
-                                                gestureMode = when {
-                                                    scale > 1.01f -> PdfMultiTouchMode.ZOOM
-                                                    kotlin.math.abs(pendingZoom - 1f) >= 0.035f -> PdfMultiTouchMode.ZOOM
-                                                    pendingPan.getDistance() >= viewConfiguration.touchSlop -> PdfMultiTouchMode.PAN
-                                                    else -> PdfMultiTouchMode.UNDECIDED
-                                                }
-                                            }
-                                            if (gestureMode == PdfMultiTouchMode.PAN) {
-                                                documentPanX += pendingPan.x
-                                                pagerState.dispatchRawDelta(-pendingPan.x)
-                                                pendingPan = Offset.Zero
-                                                pendingZoom = 1f
-                                            } else if (gestureMode == PdfMultiTouchMode.ZOOM) {
-                                                val newScale = (scale * pendingZoom).coerceIn(1f, 5f)
-                                                val maxOffsetX = (newScale - 1f) * size.width / 2f
-                                                val maxOffsetY = (newScale - 1f) * size.height / 2f
-                                                scale = newScale
-                                                offsetX = (offsetX + pendingPan.x).coerceIn(-maxOffsetX, maxOffsetX)
-                                                offsetY = (offsetY + pendingPan.y).coerceIn(-maxOffsetY, maxOffsetY)
-                                                pendingPan = Offset.Zero
-                                                pendingZoom = 1f
-                                            }
-                                            event.changes.forEach { change ->
-                                                if (change.positionChanged()) change.consume()
-                                            }
-                                        }
-                                        pointersPressed = event.changes.any { it.pressed }
-                                    } while (pointersPressed)
-                                    if (transformGesture && gestureMode == PdfMultiTouchMode.PAN && scale <= 1.01f) {
-                                        val targetPage = when {
-                                            documentPanX < -48f -> pageIndex + 1
-                                            documentPanX > 48f -> pageIndex - 1
-                                            else -> pageIndex
-                                        }.coerceIn(0, pageCount - 1)
-                                        scope.launch { pagerState.animateScrollToPage(targetPage) }
-                                    }
-                                }
-                            }
-                            .graphicsLayer {
-                                scaleX = scale
-                                scaleY = scale
-                                translationX = offsetX
-                                translationY = offsetY
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        PdfPageItem(
-                            filePath = filePath,
+            when {
+                isHorizontal -> {
+                    HorizontalPager(
+                        state = pagerState,
+                        userScrollEnabled = !annotationMode && scale <= 1.01f,
+                        modifier = Modifier.fillMaxSize()
+                    ) { pageIndex ->
+                        PdfPagerPage(
                             pageIndex = pageIndex,
-                            fitToViewport = true,
-                            annotationEnabled = true,
-                            annotationInteractive = annotationMode,
+                            pageCount = pageCount,
+                            axis = PdfPagerAxis.HORIZONTAL,
+                            pagerState = pagerState,
+                            scope = scope,
+                            scale = scale,
+                            offsetX = offsetX,
+                            offsetY = offsetY,
+                            onScaleChange = { scale = it },
+                            onOffsetChange = { x, y -> offsetX = x; offsetY = y },
+                            filePath = filePath,
+                            annotationMode = annotationMode,
                             activeInkTool = selectedInkTool,
                             activeInkColor = ReaderHighlightPalette.getOrNull(selectedInkColorSlot)?.first
                                 ?: DefaultReaderHighlightColor,
@@ -621,11 +582,39 @@ fun PdfViewerScreen(
                         )
                     }
                 }
-            } else {
+                isVerticalPaging -> {
+                    VerticalPager(
+                        state = verticalPagerState,
+                        userScrollEnabled = !annotationMode && scale <= 1.01f,
+                        modifier = Modifier.fillMaxSize()
+                    ) { pageIndex ->
+                        PdfPagerPage(
+                            pageIndex = pageIndex,
+                            pageCount = pageCount,
+                            axis = PdfPagerAxis.VERTICAL,
+                            pagerState = verticalPagerState,
+                            scope = scope,
+                            scale = scale,
+                            offsetX = offsetX,
+                            offsetY = offsetY,
+                            onScaleChange = { scale = it },
+                            onOffsetChange = { x, y -> offsetX = x; offsetY = y },
+                            filePath = filePath,
+                            annotationMode = annotationMode,
+                            activeInkTool = selectedInkTool,
+                            activeInkColor = ReaderHighlightPalette.getOrNull(selectedInkColorSlot)?.first
+                                ?: DefaultReaderHighlightColor,
+                            existingStrokes = inkStrokes,
+                            onStrokeCommitted = viewModel::addPdfInkStroke,
+                            onStrokeErased = viewModel::deletePdfInkStroke
+                        )
+                    }
+                }
+                else -> {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .pointerInput(isHorizontal, annotationMode) {
+                        .pointerInput(pageMode, annotationMode) {
                             awaitEachGesture {
                                 awaitFirstDown(requireUnconsumed = false)
                                 var multiTouch = false
@@ -722,6 +711,7 @@ fun PdfViewerScreen(
                     }
                 }
             }
+            }
         }
 
         // ── 顶部栏（淡入淡出）──
@@ -744,7 +734,7 @@ fun PdfViewerScreen(
                 currentPage = currentPage,
                 pageCount = pageCount,
                 isBookmarked = isCurrentPageBookmarked,
-                pageMode = effectivePdfPageMode,
+                pageMode = pageMode,
                 eInkModeEnabled = eInkMode,
                 glassContentScrimColor = pdfGlassContentScrim,
                 isTtsActive = ttsState.activeBookId == bookId &&
@@ -847,11 +837,17 @@ fun PdfViewerScreen(
                             }
                         }
                     },
-                    onCatalogClick = {
-                        showMenu = false
-                        showPdfToc = true
-                    },
-                    onAnnotationClick = {
+                     onCatalogClick = {
+                         showMenu = false
+                         showPdfToc = true
+                     },
+                     onCatalogProgressDragEnd = { finalProgress ->
+                         val targetPage = pdfPageIndexForProgress(finalProgress, pageCount)
+                         lastSavedPage = targetPage
+                         viewModel.saveProgressDirect(bookId, targetPage.toFloat() / pageCount)
+                         scope.launch { scrollToPdfPage(targetPage) }
+                     },
+                     onAnnotationClick = {
                         annotationMode = !annotationMode
                         inkColorExpanded = false
                         showMenu = true
@@ -946,7 +942,7 @@ fun PdfViewerScreen(
             bookmarkedPages = bookmarkedPages,
             onPageSelected = { page ->
                 scope.launch {
-                    if (isHorizontal) pagerState.scrollToPage(page) else listState.scrollToItem(page)
+                    scrollToPdfPage(page)
                 }
                 showPdfToc = false
             },
@@ -960,7 +956,7 @@ fun PdfViewerScreen(
             currentPage = currentPage,
             onPageSelected = { page ->
                 scope.launch {
-                    if (isHorizontal) pagerState.scrollToPage(page) else listState.scrollToItem(page)
+                    scrollToPdfPage(page)
                 }
                 showPdfBookmarks = false
             },
@@ -1045,6 +1041,118 @@ fun PdfViewerScreen(
 }
 }
 
+@Composable
+private fun PdfPagerPage(
+    pageIndex: Int,
+    pageCount: Int,
+    axis: PdfPagerAxis,
+    pagerState: androidx.compose.foundation.pager.PagerState,
+    scope: kotlinx.coroutines.CoroutineScope,
+    scale: Float,
+    offsetX: Float,
+    offsetY: Float,
+    onScaleChange: (Float) -> Unit,
+    onOffsetChange: (Float, Float) -> Unit,
+    filePath: String,
+    annotationMode: Boolean,
+    activeInkTool: PdfInkTool,
+    activeInkColor: String,
+    existingStrokes: List<PdfInkStroke>,
+    onStrokeCommitted: (PdfInkStroke) -> Unit,
+    onStrokeErased: (PdfInkStroke) -> Unit
+) {
+    val latestScale = rememberUpdatedState(scale)
+    val latestOffsetX = rememberUpdatedState(offsetX)
+    val latestOffsetY = rememberUpdatedState(offsetY)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(pageIndex, axis) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    var pointersPressed: Boolean
+                    var transformGesture = false
+                    var gestureMode = PdfMultiTouchMode.UNDECIDED
+                    var documentPan = 0f
+                    var pendingPan = Offset.Zero
+                    var pendingZoom = 1f
+                    var gestureScale = latestScale.value
+                    var gestureOffsetX = latestOffsetX.value
+                    var gestureOffsetY = latestOffsetY.value
+                    do {
+                        val event = awaitPointerEvent(pass = PointerEventPass.Initial)
+                        val pressedCount = event.changes.count { it.pressed }
+                        if (pressedCount >= 2) transformGesture = true
+                        if (transformGesture || gestureScale > 1.01f) {
+                            val pan = event.calculatePan()
+                            val zoom = event.calculateZoom()
+                            pendingPan += pan
+                            pendingZoom *= zoom
+                            if (gestureMode == PdfMultiTouchMode.UNDECIDED) {
+                                gestureMode = when {
+                                    gestureScale > 1.01f -> PdfMultiTouchMode.ZOOM
+                                    kotlin.math.abs(pendingZoom - 1f) >= 0.035f -> PdfMultiTouchMode.ZOOM
+                                    pendingPan.getDistance() >= viewConfiguration.touchSlop -> PdfMultiTouchMode.PAN
+                                    else -> PdfMultiTouchMode.UNDECIDED
+                                }
+                            }
+                            if (gestureMode == PdfMultiTouchMode.PAN) {
+                                documentPan += if (axis == PdfPagerAxis.HORIZONTAL) pendingPan.x else pendingPan.y
+                                val delta = if (axis == PdfPagerAxis.HORIZONTAL) -pendingPan.x else -pendingPan.y
+                                pagerState.dispatchRawDelta(delta)
+                                pendingPan = Offset.Zero
+                                pendingZoom = 1f
+                            } else if (gestureMode == PdfMultiTouchMode.ZOOM) {
+                                val newScale = (gestureScale * pendingZoom).coerceIn(1f, 5f)
+                                val maxOffsetX = (newScale - 1f) * size.width / 2f
+                                val maxOffsetY = (newScale - 1f) * size.height / 2f
+                                gestureScale = newScale
+                                gestureOffsetX = (gestureOffsetX + pendingPan.x).coerceIn(-maxOffsetX, maxOffsetX)
+                                gestureOffsetY = (gestureOffsetY + pendingPan.y).coerceIn(-maxOffsetY, maxOffsetY)
+                                onScaleChange(newScale)
+                                onOffsetChange(gestureOffsetX, gestureOffsetY)
+                                pendingPan = Offset.Zero
+                                pendingZoom = 1f
+                            }
+                            event.changes.forEach { change ->
+                                if (change.positionChanged()) change.consume()
+                            }
+                        }
+                        pointersPressed = event.changes.any { it.pressed }
+                    } while (pointersPressed)
+                    if (transformGesture && gestureMode == PdfMultiTouchMode.PAN && gestureScale <= 1.01f) {
+                        val targetPage = when {
+                            documentPan < -48f -> pageIndex + 1
+                            documentPan > 48f -> pageIndex - 1
+                            else -> pageIndex
+                        }.coerceIn(0, pageCount - 1)
+                        scope.launch { pagerState.animateScrollToPage(targetPage) }
+                    }
+                }
+            }
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                translationX = offsetX
+                translationY = offsetY
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        PdfPageItem(
+            filePath = filePath,
+            pageIndex = pageIndex,
+            fitToViewport = true,
+            annotationEnabled = true,
+            annotationInteractive = annotationMode,
+            activeInkTool = activeInkTool,
+            activeInkColor = activeInkColor,
+            existingStrokes = existingStrokes,
+            onStrokeCommitted = onStrokeCommitted,
+            onStrokeErased = onStrokeErased
+        )
+    }
+}
+
 // ── 顶部栏（与 EPUB ReaderTopBar 一致，增加 PDF 专属页码显示）──
 @Composable
 private fun PdfTopBar(
@@ -1052,7 +1160,7 @@ private fun PdfTopBar(
     currentPage: Int,
     pageCount: Int,
     isBookmarked: Boolean = false,
-    pageMode: String,
+    pageMode: PdfPageMode,
     eInkModeEnabled: Boolean = false,
     glassContentScrimColor: Color,
     isTtsActive: Boolean,
@@ -1153,11 +1261,19 @@ private fun PdfTopBar(
                         onClick = onPageModeToggle,
                         contentAlignment = Alignment.Center
                     ) {
-                        val isHorizontal = pageMode == "horizontal"
+                        val nextPageMode = pageMode.next()
                         Icon(
-                            if (isHorizontal) Icons.Default.ViewCarousel else Icons.Default.ViewAgenda,
+                            when (pageMode) {
+                                PdfPageMode.HORIZONTAL_PAGING -> Icons.Default.ViewCarousel
+                                PdfPageMode.VERTICAL_PAGING -> Icons.Default.ViewDay
+                                PdfPageMode.VERTICAL_SCROLL -> Icons.Default.ViewAgenda
+                            },
                             contentDescription = stringResource(
-                                if (isHorizontal) R.string.pdf_switch_to_vertical else R.string.pdf_switch_to_horizontal
+                                when (nextPageMode) {
+                                    PdfPageMode.HORIZONTAL_PAGING -> R.string.pdf_switch_to_horizontal
+                                    PdfPageMode.VERTICAL_PAGING -> R.string.pdf_switch_to_vertical_paging
+                                    PdfPageMode.VERTICAL_SCROLL -> R.string.pdf_switch_to_vertical
+                                }
                             ),
                             tint = AppColors.TextPrimary,
                             modifier = Modifier.size(18.dp)
@@ -1209,6 +1325,7 @@ private fun PdfBottomMenu(
     glassContentScrimColor: Color,
     onConversionClick: () -> Unit,
     onCatalogClick: () -> Unit,
+    onCatalogProgressDragEnd: ((Float) -> Unit)? = null,
     onAnnotationClick: () -> Unit,
     onBookmarksClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -1230,7 +1347,8 @@ private fun PdfBottomMenu(
             title = chapterTitle,
             progress = chapterProgress,
             glassContentScrimColor = glassContentScrimColor,
-            onClick = onCatalogClick
+            onClick = onCatalogClick,
+            onProgressDragEnd = onCatalogProgressDragEnd
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -1801,63 +1919,137 @@ private fun PdfCatalogCapsule(
     title: String,
     progress: Float,
     glassContentScrimColor: Color,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onProgressDragEnd: ((Float) -> Unit)? = null
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !LocalEInkMode.current
-    LiquidGlassSurface(
-        shape = RoundedCornerShape(24.dp),
-        fallbackColor = AppColors.BgGray,
-        contentScrimColor = glassContentScrimColor,
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    var dragProgress by remember { mutableFloatStateOf(progress) }
+    var isDragging by remember { mutableStateOf(false) }
+    val dragSession = remember { CatalogProgressDragSession() }
+    val latestOnClick = rememberUpdatedState(onClick)
+    val latestOnDragEnd = rememberUpdatedState(onProgressDragEnd)
+    val latestExternalProgress = rememberUpdatedState(progress)
+
+    LaunchedEffect(progress) {
+        if (!isDragging) dragProgress = progress
+    }
+
+    val displayProgress = if (isDragging) dragProgress else progress
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(48.dp),
-        onClick = onClick,
-        contentAlignment = Alignment.TopStart
+            .height(48.dp)
     ) {
-        if (isLiquidGlass) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 5.dp)
-                    .height(3.dp)
-                    .clip(CircleShape)
-                    .background(AppColors.TextPrimary.copy(alpha = 0.10f))
-            ) {
+        LiquidGlassSurface(
+            shape = RoundedCornerShape(24.dp),
+            fallbackColor = AppColors.BgGray,
+            contentScrimColor = glassContentScrimColor,
+            modifier = Modifier.fillMaxSize(),
+            onClick = null,
+            interactive = false,
+            contentAlignment = Alignment.TopStart
+        ) {
+            if (isLiquidGlass) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .fillMaxWidth()
+                        .padding(horizontal = 18.dp, vertical = 5.dp)
+                        .height(3.dp)
+                        .clip(CircleShape)
+                        .background(AppColors.TextPrimary.copy(alpha = 0.10f))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .fillMaxWidth((displayProgress / 100f).coerceIn(0f, 1f))
+                            .clip(CircleShape)
+                            .background(AppColors.Accent.copy(alpha = 0.82f))
+                    )
+                }
+            } else {
                 Box(
                     modifier = Modifier
                         .fillMaxHeight()
-                        .fillMaxWidth((progress / 100f).coerceIn(0f, 1f))
-                        .clip(CircleShape)
-                        .background(AppColors.Accent.copy(alpha = 0.82f))
+                        .fillMaxWidth((displayProgress / 100f).coerceIn(0f, 1f))
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(AppColors.Accent.copy(alpha = 0.8f))
                 )
             }
-        } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth((progress / 100f).coerceIn(0f, 1f))
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(AppColors.Accent.copy(alpha = 0.8f))
-            )
+            Row(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val foreground = if (isLiquidGlass || displayProgress <= 5f) AppColors.TextPrimary else Color.White
+                Icon(Icons.Default.Bookmark, null, tint = foreground, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.pdf_toc), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = foreground)
+                Spacer(Modifier.weight(1f))
+                Text(
+                    formatReadingProgressPercent(displayProgress),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (!isLiquidGlass && displayProgress > 70f) Color.White.copy(alpha = 0.9f)
+                    else AppColors.TextSecondary
+                )
+            }
         }
-        Row(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            val foreground = if (isLiquidGlass || progress <= 5f) AppColors.TextPrimary else Color.White
-            Icon(Icons.Default.Bookmark, null, tint = foreground, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.pdf_toc), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = foreground)
-            Spacer(Modifier.weight(1f))
-            Text(
-                formatReadingProgressPercent(progress),
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (!isLiquidGlass && progress > 70f) Color.White.copy(alpha = 0.9f)
-                else AppColors.TextSecondary
-            )
-        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(onProgressDragEnd != null) {
+                    if (latestOnDragEnd.value == null) {
+                        detectTapGestures(onTap = { latestOnClick.value() })
+                        return@pointerInput
+                    }
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        var cumulativeDrag = 0f
+                        var dragging = false
+                        var committed = false
+                        try {
+                            while (true) {
+                                val event = awaitPointerEvent(pass = PointerEventPass.Initial)
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                val dx = change.positionChange().x
+                                if (!dragging) {
+                                    cumulativeDrag += dx
+                                    if (kotlin.math.abs(cumulativeDrag) >= viewConfiguration.touchSlop) {
+                                        dragging = true
+                                        isDragging = true
+                                        dragSession.begin(latestExternalProgress.value)
+                                        val dragDp = with(density) { cumulativeDrag.toDp().value }
+                                        dragProgress = dragSession.dragBy(dragDp * 0.25f)
+                                        change.consume()
+                                    }
+                                } else {
+                                    change.consume()
+                                    val dragDp = with(density) { dx.toDp().value }
+                                    dragProgress = dragSession.dragBy(dragDp * 0.25f)
+                                }
+
+                                if (change.changedToUpIgnoreConsumed()) {
+                                    if (!dragging) {
+                                        latestOnClick.value()
+                                    } else {
+                                        committed = true
+                                        dragSession.finish { latestOnDragEnd.value?.invoke(it) }
+                                    }
+                                    break
+                                }
+                                if (!change.pressed) break
+                            }
+                        } finally {
+                            if (dragging && !committed) {
+                                dragSession.cancel()
+                            }
+                            isDragging = false
+                        }
+                    }
+                }
+        )
     }
 }
 
@@ -1984,6 +2176,11 @@ private fun PdfAnnotationToolButton(
         PdfInkTool.HIGHLIGHTER -> Icons.Default.Brush
         PdfInkTool.ERASER -> Icons.Default.Delete
     }
+    val contentDescription = when (tool) {
+        PdfInkTool.PEN -> stringResource(R.string.pdf_annotation_pen)
+        PdfInkTool.HIGHLIGHTER -> stringResource(R.string.pdf_annotation_highlighter)
+        PdfInkTool.ERASER -> stringResource(R.string.pdf_annotation_eraser)
+    }
     Box(
         modifier = Modifier
             .width(50.dp)
@@ -2002,7 +2199,7 @@ private fun PdfAnnotationToolButton(
     ) {
         Icon(
             imageVector = icon,
-            contentDescription = tool.name,
+            contentDescription = contentDescription,
             tint = if (selected) AppColors.Accent else AppColors.TextPrimary,
             modifier = Modifier.size(22.dp)
         )
