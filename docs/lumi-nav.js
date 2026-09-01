@@ -1,5 +1,23 @@
 (function () {
   'use strict';
+
+  /* ── Scroll reveal（全站共用，页面加 html.js 类后 .reveal 才隐藏） ── */
+  var revealed = document.querySelectorAll('.reveal');
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          io.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -30px 0px' });
+    revealed.forEach(function (el) { io.observe(el); });
+  } else {
+    revealed.forEach(function (el) { el.classList.add('visible'); });
+  }
+
+  /* ── Top nav scroll state ── */
   var nav = document.querySelector('.top-nav');
   var menuButton = document.querySelector('.nav-more-btn');
   var menu = document.querySelector('.nav-more-dropdown');
