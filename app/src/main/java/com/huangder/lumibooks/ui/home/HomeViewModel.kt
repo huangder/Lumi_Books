@@ -660,9 +660,14 @@ class HomeViewModel @Inject constructor(
         persist = bookRepository::updateSourceSha256
     )
 
-    private fun discoverBooks(context: Context, treeUri: Uri): List<BookDocument> {
-        val scan = authorizedStorageManager.scan(context, treeUri)
-        val sourceDirectoryName = authorizedStorageManager.queryDisplayName(context, scan.rootUri)
+    private fun discoverBooks(
+        context: Context,
+        treeUri: Uri,
+        scan: AuthorizedStorageManager.ScanResult = authorizedStorageManager.scan(context, treeUri)
+    ): List<BookDocument> {
+        val sourceDirectoryName = scan.directories
+            .firstOrNull { it.relativePath == null }
+            ?.name
             ?.takeIf { it.isNotBlank() }
             ?: resolveAuthorizedDirectoryName(context, treeUri)
         val directoriesByPath = scan.directories.associateBy { it.relativePath.orEmpty() }
@@ -722,7 +727,7 @@ class HomeViewModel @Inject constructor(
                 allDirectories += scan.directories
                 scannedTreeUris += treeUri.toString()
                 ensureStorageFolders(scan)
-                allDocuments += discoverBooks(context, treeUri)
+                allDocuments += discoverBooks(context, treeUri, scan)
             }
                 .onFailure { inaccessibleDirectories++ }
         }
@@ -775,8 +780,13 @@ class HomeViewModel @Inject constructor(
                 books = existing,
                 claimedBookIds = matchedIds
             )
-            val hash = runCatching { authorizedStorageManager.sha256(context, uri) }
-                .getOrNull()
+            val hash = if (directMatch == null ||
+                shouldRefreshAuthorizedHash(directMatch, document.sourceLastModified)
+            ) {
+                runCatching { authorizedStorageManager.sha256(context, uri) }.getOrNull()
+            } else {
+                directMatch.sourceSha256
+            }
             if (directMatch == null && hash != null && !missingHashesChecked) {
                 existing = repairMissingSourceHashes(context, existing)
                 missingHashesChecked = true

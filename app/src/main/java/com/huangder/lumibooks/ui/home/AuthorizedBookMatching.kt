@@ -27,6 +27,15 @@ internal fun findMatchingAuthorizedBook(
             ?.let { hash -> available.filter { it.sourceSha256 == hash }.singleOrNull() }
 }
 
+/**
+ * A matched SAF document can reuse its stored hash when the provider reports the same reliable
+ * modification time. Providers that do not expose a timestamp (zero) are always revalidated.
+ */
+internal fun shouldRefreshAuthorizedHash(book: Book, documentLastModified: Long): Boolean =
+    book.sourceSha256.isNullOrBlank() ||
+        documentLastModified <= 0L ||
+        book.sourceLastModified != documentLastModified
+
 /** One-time lazy repair for books created before local source hashes were introduced. */
 internal suspend fun backfillMissingSourceHashes(
     books: List<Book>,
