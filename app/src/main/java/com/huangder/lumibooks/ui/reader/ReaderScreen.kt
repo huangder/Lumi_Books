@@ -108,6 +108,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -1860,19 +1861,24 @@ fun ReaderScreen(
                     bookmarkPullEnabled = bookmarkPullEnabled,
                     onPageTextProviderReady = { epubPageTextProvider = it },
                     onPageTurnHandlerReady = { epubPageTurnHandler = it },
-                    onPageChanged = { pageIndex, pageCount, locatorJson ->
-                        viewModel.onEpubPageReady(pageIndex, pageCount, locatorJson)
+                    onPageChanged = { chapterIndex, pageIndex, pageCount, locatorJson ->
+                        viewModel.onEpubPageCommitted(
+                            chapterIndex,
+                            pageIndex,
+                            pageCount,
+                            locatorJson
+                        )
                         epubPageRequest?.let { request ->
                             val expectedPage = request.chapterFraction?.let { fraction ->
                                 pageIndexForChapterFraction(fraction, pageCount)
                             } ?: request.pageIndex
-                            if (request.chapterIndex == uiState.currentChapterIndex &&
+                            if (request.chapterIndex == chapterIndex &&
                                 expectedPage == pageIndex
                             ) {
                                 epubPageRequest = null
                             }
                         }
-                        if (epubLocatorRequest?.chapterIndex == uiState.currentChapterIndex) {
+                        if (epubLocatorRequest?.chapterIndex == chapterIndex) {
                             epubLocatorRequest = null
                         }
                         epubPendingFragment = null
@@ -2588,6 +2594,18 @@ fun ReaderScreen(
                     glassContentScrimColor = readerGlassContentScrim,
                     forceSolid = isBookLayout,
                     onClick = returnToLinkedSource
+                )
+            }
+
+            if (uiState.isMenuVisible) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() },
+                            onClick = viewModel::hideMenu
+                        )
                 )
             }
 
@@ -3630,7 +3648,8 @@ fun ReaderScreen(
             message = stringResource(R.string.epub_layout_first_open_message),
             confirmText = stringResource(R.string.epub_layout_first_open_confirm),
             backdrop = activeReaderGlassBackdrop,
-            onDismiss = viewModel::dismissEpubLayoutHint
+            onDismissRequest = viewModel::hideEpubLayoutHint,
+            onConfirm = viewModel::dismissEpubLayoutHint
         )
     }
 
@@ -3640,7 +3659,8 @@ fun ReaderScreen(
             message = stringResource(R.string.mobi_layout_first_open_message),
             confirmText = stringResource(R.string.mobi_layout_first_open_confirm),
             backdrop = activeReaderGlassBackdrop,
-            onDismiss = viewModel::dismissMobiLayoutHint
+            onDismissRequest = viewModel::hideMobiLayoutHint,
+            onConfirm = viewModel::dismissMobiLayoutHint
         )
     }
 
@@ -3650,7 +3670,8 @@ fun ReaderScreen(
             message = stringResource(R.string.txt_encoding_first_open_message),
             confirmText = stringResource(R.string.txt_encoding_first_open_confirm),
             backdrop = activeReaderGlassBackdrop,
-            onDismiss = viewModel::dismissTxtEncodingHint
+            onDismissRequest = viewModel::hideTxtEncodingHint,
+            onConfirm = viewModel::dismissTxtEncodingHint
         )
     }
 
@@ -4253,10 +4274,13 @@ private fun ReaderFirstOpenHintDialog(
     message: String,
     confirmText: String,
     backdrop: Backdrop?,
-    onDismiss: () -> Unit
+    onDismissRequest: () -> Unit,
+    onConfirm: (doNotShowAgain: Boolean) -> Unit
 ) {
+    var doNotShowAgain by remember(title) { mutableStateOf(false) }
+
     LiquidGlassAlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = onDismissRequest,
         backdrop = backdrop,
         contentScrimColor = AppColors.CardBg.copy(alpha = 0.78f),
         backgroundScrimColor = Color.Black.copy(alpha = 0.10f),
@@ -4270,16 +4294,34 @@ private fun ReaderFirstOpenHintDialog(
             )
         },
         text = {
-            Text(
-                text = message,
-                color = AppColors.TextSecondary,
-                lineHeight = 22.sp
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = message,
+                    color = AppColors.TextSecondary,
+                    lineHeight = 22.sp
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { doNotShowAgain = !doNotShowAgain },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Checkbox(
+                        checked = doNotShowAgain,
+                        onCheckedChange = null
+                    )
+                    Text(
+                        text = stringResource(R.string.reader_first_open_hint_do_not_show_again),
+                        color = AppColors.TextPrimary
+                    )
+                }
+            }
         },
         confirmButton = {
             LiquidGlassTextButton(
                 text = confirmText,
-                onClick = onDismiss,
+                onClick = { onConfirm(doNotShowAgain) },
                 tintedColor = AppColors.Accent,
                 contentColor = AppColors.OnAccent
             )

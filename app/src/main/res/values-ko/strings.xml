@@ -109,7 +109,7 @@
     <string name="title_about">앱 정보</string>
     <string name="official_qq_group">공식 QQ 그룹</string>
     <string name="github_discussions">GitHub Discussions</string>
-    <string name="telegram_community">Telegram 커뮤니티</string>
+    <string name="community_contact_hint">중국 본토 사용자는 QQ 그룹을, 그 외 지역 사용자는 GitHub Discussions에서 토론할 수 있습니다</string>
     <string name="github_repository">GitHub 저장소</string>
 
     <!-- 읽기 설정 -->
@@ -807,6 +807,7 @@
     <string name="epub_layout_first_open_title">EPUB 레이아웃 안내</string>
     <string name="epub_layout_first_open_message">이 책에 자체 레이아웃이 포함되어 있다면 화면 중앙을 탭한 뒤 ‘테마’에서 ‘책 원본 레이아웃’을 선택할 수 있습니다.</string>
     <string name="epub_layout_first_open_confirm">확인</string>
+    <string name="reader_first_open_hint_do_not_show_again">다시 표시하지 않기</string>
     <string name="mobi_layout_first_open_title">MOBI 레이아웃 안내</string>
     <string name="mobi_layout_first_open_message">이 책에 자체 레이아웃이 포함되어 있다면 화면 중앙을 탭한 뒤 ‘테마’에서 ‘책 원본 레이아웃’을 선택할 수 있습니다.</string>
     <string name="mobi_layout_first_open_confirm">확인</string>

@@ -163,6 +163,7 @@ import kotlinx.coroutines.launch
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun BookshelfScreen(
+    initialLayoutMode: Int? = null,
     playEntranceAnimation: Boolean = false,
     onNavigateToReader: (bookId: String, coverPath: String?, title: String, sourceBounds: Rect?) -> Unit,
     onAddBook: (folderId: String?) -> Unit,
@@ -174,6 +175,11 @@ fun BookshelfScreen(
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val effectiveLayoutMode = if (uiState.bookshelfLayoutModeLoaded) {
+        uiState.bookshelfLayoutMode
+    } else {
+        initialLayoutMode ?: uiState.bookshelfLayoutMode
+    }
     var selectedFilter by remember { mutableStateOf<BookshelfFilter>(BookshelfFilter.All) }
     var currentFolderId by rememberSaveable { mutableStateOf<String?>(null) }
     var renderedFolderId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -535,7 +541,7 @@ fun BookshelfScreen(
         }
     }
 
-    LaunchedEffect(uiState.bookshelfLayoutMode, selectedFilter) {
+    LaunchedEffect(effectiveLayoutMode, selectedFilter) {
         expandedListBookId = null
         expandedListFolderId = null
         if (contextMenuState.phase != ContextMenuPhase.Idle) contextMenuState.dismiss()
@@ -705,7 +711,7 @@ fun BookshelfScreen(
             if (isLiquidGlass) {
                 OverscrollBounce(modifier = Modifier.fillMaxSize()) {
                     BookshelfCollection(
-                        layoutMode = uiState.bookshelfLayoutMode,
+                        layoutMode = effectiveLayoutMode,
                         books = filteredBooks,
                         folders = visibleFolders,
                         folderBookCounts = folderCounts,
@@ -803,7 +809,7 @@ fun BookshelfScreen(
                         },
                         onSyncClick = { viewModel.syncWebdavNow() },
                         onRefreshClick = onRefreshAuthorizedDirectories,
-                        layoutMode = uiState.bookshelfLayoutMode,
+                        layoutMode = effectiveLayoutMode,
                         isWebdavSyncing = uiState.isWebdavSyncing,
                         onSelectAll = toggleSelectAll,
                         onLayoutModeChange = viewModel::setBookshelfLayoutMode,
@@ -812,7 +818,7 @@ fun BookshelfScreen(
 
                     // ── 书架网格 ──
                     BookshelfCollection(
-                        layoutMode = uiState.bookshelfLayoutMode,
+                        layoutMode = effectiveLayoutMode,
                         books = filteredBooks,
                         folders = visibleFolders,
                         folderBookCounts = folderCounts,
@@ -920,7 +926,7 @@ fun BookshelfScreen(
                     },
                     onSyncClick = { viewModel.syncWebdavNow() },
                     onRefreshClick = onRefreshAuthorizedDirectories,
-                    layoutMode = uiState.bookshelfLayoutMode,
+                    layoutMode = effectiveLayoutMode,
                     isWebdavSyncing = uiState.isWebdavSyncing,
                     onSelectAll = toggleSelectAll,
                     onLayoutModeChange = viewModel::setBookshelfLayoutMode,
@@ -1710,16 +1716,16 @@ private fun BookshelfHeaderActions(
                                 )
                                 add(
                                     LiquidGlassMenuItem(
-                                        label = syncLabel,
-                                        icon = Icons.Outlined.Sync,
-                                        onClick = { if (!isSyncing) onSyncClick() }
+                                        label = refreshLabel,
+                                        icon = Icons.Outlined.Refresh,
+                                        onClick = onRefreshClick
                                     )
                                 )
                                 add(
                                     LiquidGlassMenuItem(
-                                        label = refreshLabel,
-                                        icon = Icons.Outlined.Refresh,
-                                        onClick = onRefreshClick
+                                        label = syncLabel,
+                                        icon = Icons.Outlined.Sync,
+                                        onClick = { if (!isSyncing) onSyncClick() }
                                     )
                                 )
                                 add(

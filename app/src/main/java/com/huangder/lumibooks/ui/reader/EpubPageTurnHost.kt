@@ -37,6 +37,8 @@ import com.huangder.lumibooks.domain.model.ReaderPageAnimationSettings
 import com.huangder.lumibooks.util.performance.ReaderPageTurnPerformance
 import kotlin.math.abs
 
+private const val BUSY_CURL_TAP_MOVE_LIMIT_PX = 12f
+
 internal data class EpubPageTarget(
     val chapterIndex: Int,
     val pageIndex: Int
@@ -89,6 +91,44 @@ internal fun isCrossChapterPageTurn(
     current: EpubPageTarget,
     target: EpubPageTarget
 ): Boolean = current.chapterIndex != target.chapterIndex
+
+internal fun hasPotentialEpubPageTurn(
+    current: EpubPageTarget,
+    currentPageCount: Int,
+    chapterCount: Int,
+    direction: Int
+): Boolean = when {
+    current.chapterIndex !in 0 until chapterCount -> false
+    direction > 0 -> current.pageIndex + 1 < currentPageCount ||
+        current.chapterIndex + 1 < chapterCount
+    direction < 0 -> current.pageIndex > 0 || current.chapterIndex > 0
+    else -> false
+}
+
+internal fun epubPageNotificationMatchesTarget(
+    target: EpubPageTarget,
+    chapterIndex: Int,
+    pageIndex: Int
+): Boolean = target == EpubPageTarget(chapterIndex, pageIndex.coerceAtLeast(0))
+
+internal fun curlTurnDirectionIsCompatible(
+    inFlight: PageAnimationController.Direction,
+    requested: PageAnimationController.Direction
+): Boolean = inFlight == PageAnimationController.Direction.NONE ||
+    requested == PageAnimationController.Direction.NONE ||
+    inFlight == requested
+
+internal fun isCapturedBusyCurlCenterTap(
+    gestureClaimed: Boolean,
+    direction: PageAnimationController.Direction,
+    elapsedMs: Long,
+    deltaX: Float,
+    deltaY: Float
+): Boolean = !gestureClaimed &&
+    direction == PageAnimationController.Direction.NONE &&
+    elapsedMs < 300L &&
+    abs(deltaX) <= BUSY_CURL_TAP_MOVE_LIMIT_PX &&
+    abs(deltaY) < 50f
 
 private class EpubSnapshotPageView(
     context: Context,
@@ -227,6 +267,7 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
     private var overlayActive = false
     private var waitingForTarget: EpubPageTarget? = null
     private var waitingForPreparedActivePage = false
+    private var waitingCurlDirection = PageAnimationController.Direction.NONE
     private var busyTouchStream = false
     private var busyCurlGestureClaimed = false
     private var busyCurlGestureDirection = PageAnimationController.Direction.NONE
@@ -261,11 +302,13 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
     private var currentBitmap: Bitmap? = null
     private var currentBitmapTarget: EpubPageTarget? = null
 
-    var onPageCommit: ((direction: Int, target: EpubPageTarget) -> Unit)? = null
+    var onPageCommit: ((direction: Int, target: EpubPageTarget, pageCount: Int) -> Unit)? = null
     var onBookmarkPullStart: (() -> Unit)? = null
     var onBookmarkPullProgress: ((distancePx: Float, armed: Boolean) -> Unit)? = null
     var onBookmarkPullFinished: ((commit: Boolean) -> Unit)? = null
     var onCapturedTapDirection: ((x: Float) -> Int)? = null
+    var onCapturedCenterTap: (() -> Unit)? = null
+    var onHasPotentialTurn: ((direction: Int, current: EpubPageTarget, pageCount: Int) -> Boolean)? = null
     var onSlideLookaheadRequested: ((PreloadSlot, EpubPageTarget) -> Unit)? = null
     var onSlideVisualPageAdvanced: ((EpubPageTarget, Int) -> Unit)? = null
     var onInvalidatePreloads: (() -> Unit)? = null
@@ -442,6 +485,7 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         activeWebView.bringToFront()
         waitingForTarget = null
         waitingForPreparedActivePage = false
+        waitingCurlDirection = PageAnimationController.Direction.NONE
         resetLivePageViews()
         onSettled?.invoke()
         post(::resumeBusyCurlGestureIfReady)
@@ -552,6 +596,11 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
                 }
             }
         }
+        Log.d(
+            "EpubCurlCommit",
+            "preloadReady slot=$slot requested=$requested actual=$actual " +
+                "previousReady=$previousReady nextReady=$nextReady"
+        )
         postInvalidateOnAnimation()
         post(::resumeBusyCurlGestureIfReady)
         post(::startQueuedTurnIfReady)
@@ -603,11 +652,20 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
             return true
         }
         if (transition == "curl") {
+            val inFlightDirection = when {
+                waitingForTarget != null -> waitingCurlDirection
+                controller.isRunning || controller.isDragging -> controller.currentDirection
+                else -> PageAnimationController.Direction.NONE
+            }
+            if (!curlTurnDirectionIsCompatible(inFlightDirection, controllerDirection)) {
+                return true
+            }
             return when (
                 epubCurlTurnDisposition(
                     idle = !overlayActive && waitingForTarget == null &&
                         !pagingGesture && !controller.isRunning && !controller.isDragging,
-                    targetExists = hasFlipTarget(controllerDirection),
+                    targetExists = hasFlipTarget(controllerDirection) ||
+                        hasPotentialTurn(controllerDirection),
                     targetReady = canFlip(controllerDirection)
                 )
                 ) {
@@ -691,6 +749,7 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
                 y = event.rawY,
                 density = resources.displayMetrics.density,
                 enabled = bookmarkPullEnabled &&
+                    transition != "scroll" &&
                     !overlayActive &&
                     waitingForTarget == null &&
                     !controller.isRunning &&
@@ -809,6 +868,21 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
                     post(::commitDirtySlideVisualPosition)
                     return true
                 }
+                if (event.actionMasked == MotionEvent.ACTION_UP) {
+                    val direction = capturedTapDirection(event.x)
+                    if (isCapturedBusyCurlCenterTap(
+                            gestureClaimed = false,
+                            direction = direction,
+                            elapsedMs = event.eventTime - touchDownTime,
+                            deltaX = event.x - touchStartX,
+                            deltaY = event.y - touchStartY
+                        )
+                    ) {
+                        cancelChildTouch(event)
+                        onCapturedCenterTap?.invoke()
+                        return true
+                    }
+                }
             }
         }
         val handled = super.dispatchTouchEvent(event)
@@ -899,6 +973,11 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
                 PageAnimationController.Direction.PREV -> frozenPreviousTarget
                 PageAnimationController.Direction.NONE -> null
             }
+            Log.d(
+                "EpubCurlCommit",
+                "complete dir=$direction current=$currentTarget target=$target " +
+                    "previousReady=$previousReady nextReady=$nextReady"
+            )
             pendingSlideVisualDirection = PageAnimationController.Direction.NONE
             if (target == null) {
                 resetAnimationOverlay()
@@ -911,6 +990,8 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
 
             waitingForTarget = target
             waitingForPreparedActivePage = promotedPreparedTarget
+            waitingCurlDirection = direction.takeIf { transition == "curl" }
+                ?: PageAnimationController.Direction.NONE
             overlayActive = false
             hideAnimationPages()
 
@@ -943,7 +1024,8 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
 
             onPageCommit?.invoke(
                 if (direction == PageAnimationController.Direction.NEXT) 1 else -1,
-                target
+                target,
+                currentPageCount
             )
             slideVisualPositionDirty = false
             lastSlideVisualDirection = PageAnimationController.Direction.NONE
@@ -970,6 +1052,15 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         PageAnimationController.Direction.NONE -> false
     }
 
+    private fun hasPotentialTurn(direction: PageAnimationController.Direction): Boolean {
+        val delta = direction.toTurnDelta()
+        return delta != 0 && onHasPotentialTurn?.invoke(
+            delta,
+            currentTarget,
+            currentPageCount
+        ) == true
+    }
+
     private fun tryBeginSlideGesture(event: MotionEvent): Boolean {
         val dx = abs(event.x - touchStartX)
         val dy = abs(event.y - touchStartY)
@@ -993,7 +1084,9 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
             PageAnimationController.Direction.PREV
         }
         if (!canFlip(direction)) {
-            if (transition == "curl" && hasFlipTarget(direction)) {
+            if (transition == "curl" &&
+                (hasFlipTarget(direction) || hasPotentialTurn(direction))
+            ) {
                 beginBusyCurlGesture(event, direction)
                 cancelChildTouch(event)
                 return true
@@ -1257,6 +1350,10 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         }
         if (direction == PageAnimationController.Direction.NONE) return
         if (!hasFlipTarget(direction)) {
+            if (hasPotentialTurn(direction)) {
+                curlTurnSequencer.waitingForTarget()
+                return
+            }
             curlTurnSequencer.clear()
             return
         }
@@ -1378,7 +1475,7 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         if (direction == PageAnimationController.Direction.NONE) return
         waitingForTarget = currentTarget
         waitingForPreparedActivePage = true
-        onPageCommit?.invoke(direction.toTurnDelta(), currentTarget)
+        onPageCommit?.invoke(direction.toTurnDelta(), currentTarget, currentPageCount)
         slideVisualPositionDirty = false
         lastSlideVisualDirection = PageAnimationController.Direction.NONE
     }
@@ -1420,7 +1517,8 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
                         busyCurlGestureDirection = curlDirectionForDelta(deltaX)
                         busyCurlGestureClaimed =
                             busyCurlGestureDirection != PageAnimationController.Direction.NONE &&
-                                hasFlipTarget(busyCurlGestureDirection)
+                                (hasFlipTarget(busyCurlGestureDirection) ||
+                                    hasPotentialTurn(busyCurlGestureDirection))
                         if (busyCurlGestureClaimed) {
                             // Direct manipulation supersedes queued automatic
                             // turns and must acquire the next page immediately.
@@ -1434,7 +1532,7 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
                 } else {
                     val updatedDirection = curlDirectionForDelta(event.x - touchStartX)
                     if (updatedDirection != PageAnimationController.Direction.NONE &&
-                        hasFlipTarget(updatedDirection)
+                        (hasFlipTarget(updatedDirection) || hasPotentialTurn(updatedDirection))
                     ) {
                         busyCurlGestureDirection = updatedDirection
                     }
@@ -1467,6 +1565,13 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
                 } else {
                     PageAnimationController.Direction.NONE
                 }
+                val capturedCenterTap = isCapturedBusyCurlCenterTap(
+                    gestureClaimed = busyCurlGestureClaimed,
+                    direction = direction,
+                    elapsedMs = elapsed,
+                    deltaX = deltaX,
+                    deltaY = deltaY
+                )
                 val input = if (busyCurlGestureClaimed) CurlTurnInput.SWIPE else CurlTurnInput.TAP
                 val shouldQueue = if (input == CurlTurnInput.SWIPE) {
                     busyCurlVelocityTracker?.computeCurrentVelocity(1000)
@@ -1484,7 +1589,12 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
                 } else {
                     direction != PageAnimationController.Direction.NONE
                 }
-                if (shouldQueue) {
+                val inFlightDirection = when {
+                    waitingForTarget != null -> waitingCurlDirection
+                    controller.isRunning || controller.isDragging -> controller.currentDirection
+                    else -> PageAnimationController.Direction.NONE
+                }
+                if (shouldQueue && curlTurnDirectionIsCompatible(inFlightDirection, direction)) {
                     queueCurlTurn(
                         direction = direction,
                         gestureStartY = touchStartY.takeIf { input == CurlTurnInput.SWIPE },
@@ -1492,6 +1602,7 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
                         expedited = true
                     )
                 }
+                if (capturedCenterTap) onCapturedCenterTap?.invoke()
                 if (controller.isRunning) controller.completeRunningFlipForNewInput()
                 busyTouchStream = false
                 clearBusyCurlGesture()
@@ -1821,6 +1932,8 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
     }
 
     private fun resetLivePageViews() {
+        val isScroll = transition == "scroll"
+        val pageHeight = height.toFloat()
         activeWebView.translationX = 0f
         activeWebView.translationY = 0f
         activeWebView.translationZ = 2f
@@ -1828,15 +1941,15 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         activeWebView.visibility = View.VISIBLE
 
         previousWebView.translationX = 0f
-        previousWebView.translationY = 0f
+        previousWebView.translationY = if (isScroll) -pageHeight else 0f
         previousWebView.translationZ = 0f
-        previousWebView.alpha = 1f
+        previousWebView.alpha = if (isScroll) 0f else 1f
         previousWebView.visibility = View.VISIBLE
 
         nextWebView.translationX = 0f
-        nextWebView.translationY = 0f
+        nextWebView.translationY = if (isScroll) pageHeight else 0f
         nextWebView.translationZ = 0f
-        nextWebView.alpha = 1f
+        nextWebView.alpha = if (isScroll) 0f else 1f
         nextWebView.visibility = View.VISIBLE
 
         preloadMask.visibility = View.VISIBLE
@@ -1850,6 +1963,7 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         waitingGestureDirection = PageAnimationController.Direction.NONE
         waitingForTarget = null
         waitingForPreparedActivePage = false
+        waitingCurlDirection = PageAnimationController.Direction.NONE
         frozenPreviousTarget = null
         frozenNextTarget = null
         resetLivePageViews()

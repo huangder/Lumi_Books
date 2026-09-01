@@ -61,6 +61,7 @@ import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
 import com.huangder.lumibooks.ui.theme.effectiveAppTheme
 import com.huangder.lumibooks.util.FileUtils
 import com.huangder.lumibooks.util.AuthorizedStorageManager
+import com.huangder.lumibooks.util.BookFileAccess
 import com.huangder.lumibooks.util.BuiltinGuideSeeder
 import com.huangder.lumibooks.util.LaunchThemeController
 import com.huangder.lumibooks.util.UpdateChecker
@@ -68,6 +69,7 @@ import com.huangder.lumibooks.util.parser.BookParserFactory
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import dagger.hilt.android.AndroidEntryPoint
+import java.io.File
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -154,6 +156,8 @@ class MainActivity : ComponentActivity() {
 
     private var systemDarkMode by mutableStateOf(false)
     private var requestedOpenBookId by mutableStateOf<String?>(null)
+    /** 外部文件打开已匹配到本地书籍时，绕过首页和书籍过渡页直达阅读器。 */
+    private var requestedOpenBookDirect by mutableStateOf(false)
     private var requestedOpenBookshelf by mutableStateOf(false)
     private var requestedOpenFolderId by mutableStateOf<String?>(null)
     private val authorizedStorageManager = AuthorizedStorageManager()
@@ -221,6 +225,7 @@ class MainActivity : ComponentActivity() {
             ?.getStringExtra(EXTRA_OPEN_BOOK_ID)
             ?.takeIf { it.isNotBlank() }
         requestedOpenBookId = requestedBookId
+        requestedOpenBookDirect = false
         requestedOpenFolderId = intent
             ?.getStringExtra(EXTRA_OPEN_FOLDER_ID)
             ?.takeIf { it.isNotBlank() }
@@ -270,22 +275,59 @@ class MainActivity : ComponentActivity() {
 
     private enum class ImportOutcome { IMPORTED, OPENED, UNSUPPORTED }
 
+    /**
+     * FileProvider URIs created by this app point at the same managed file stored in the book
+     * record. Match that exact canonical path before falling back to a whole-file hash scan.
+     */
+    private fun findAppManagedBook(uri: Uri, books: List<Book>): Book? {
+        if (!uri.scheme.equals("content", ignoreCase = true) ||
+            uri.authority != "${BuildConfig.APPLICATION_ID}.fileprovider"
+        ) {
+            return null
+        }
+        val segments = uri.pathSegments
+        if (segments.size < 2 || segments.first() != "books") return null
+
+        val booksRoot = runCatching { FileUtils.getBooksDirectory(this).canonicalFile }.getOrNull()
+            ?: return null
+        val candidate = runCatching {
+            segments.drop(1).fold(booksRoot) { parent, segment -> File(parent, segment) }.canonicalFile
+        }.getOrNull() ?: return null
+        if (!candidate.isFile || !candidate.path.startsWith(booksRoot.path + File.separator)) return null
+
+        return books.firstOrNull { book ->
+            if (book.isCloudOnly || book.filePath.isBlank() || BookFileAccess.isContentUri(book.filePath)) {
+                false
+            } else {
+                runCatching { File(book.filePath).canonicalFile == candidate }.getOrDefault(false)
+            }
+        }
+    }
+
     private suspend fun importBookFromUri(uri: Uri): ImportOutcome {
         val fileName = FileUtils.getFileNameFromUri(this, uri) ?: return ImportOutcome.UNSUPPORTED
         val extension = FileUtils.getFileExtension(fileName)
         if (extension !in listOf("epub", "pdf", "txt", "mobi")) return ImportOutcome.UNSUPPORTED
 
         val sourceKey = authorizedStorageManager.documentKey(uri)
-        val sourceHash = runCatching { authorizedStorageManager.sha256(this, uri.toString()) }.getOrNull()
         val sourceUri = uri.toString()
         var knownBooks = bookRepository.getAllBooks().first()
-        val directExisting = findMatchingAuthorizedBook(
+        val directExisting = findAppManagedBook(uri, knownBooks) ?: findMatchingAuthorizedBook(
             documentKey = sourceKey,
             uri = sourceUri,
             sha256 = null,
             books = knownBooks
         )
-        if (directExisting == null && sourceHash != null) {
+        if (directExisting != null) {
+            withContext(Dispatchers.Main) {
+                requestedOpenBookId = directExisting.id
+                requestedOpenBookDirect = true
+            }
+            return ImportOutcome.OPENED
+        }
+
+        val sourceHash = runCatching { authorizedStorageManager.sha256(this, sourceUri) }.getOrNull()
+        val existing = if (sourceHash != null) {
             knownBooks = backfillMissingSourceHashes(
                 books = knownBooks,
                 hashLocation = { location ->
@@ -293,15 +335,18 @@ class MainActivity : ComponentActivity() {
                 },
                 persist = bookRepository::updateSourceSha256
             )
-        }
-        val existing = directExisting ?: findMatchingAuthorizedBook(
-            documentKey = sourceKey,
-            uri = sourceUri,
-            sha256 = sourceHash,
-            books = knownBooks
-        )
+            findMatchingAuthorizedBook(
+                documentKey = sourceKey,
+                uri = sourceUri,
+                sha256 = sourceHash,
+                books = knownBooks
+            )
+        } else null
         if (existing != null) {
-            withContext(Dispatchers.Main) { requestedOpenBookId = existing.id }
+            withContext(Dispatchers.Main) {
+                requestedOpenBookId = existing.id
+                requestedOpenBookDirect = true
+            }
             return ImportOutcome.OPENED
         }
 
@@ -417,7 +462,10 @@ class MainActivity : ComponentActivity() {
         // 启动时自动检查更新（静默执行，有变更时弹窗）
         performStartupUpdateCheck()
 
-        val splashEnabledAtLaunch = if (intent.hasExtra(LaunchThemeController.EXTRA_SPLASH_ENABLED)) {
+        val isExternalBookOpen = intent.extractImportUris().isNotEmpty()
+        val splashEnabledAtLaunch = if (isExternalBookOpen) {
+            false
+        } else if (intent.hasExtra(LaunchThemeController.EXTRA_SPLASH_ENABLED)) {
             intent.getBooleanExtra(LaunchThemeController.EXTRA_SPLASH_ENABLED, false)
         } else {
             LaunchThemeController.splashEnabledSnapshot(this)
@@ -428,6 +476,9 @@ class MainActivity : ComponentActivity() {
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = "lumi")
             val startupScreen by produceState<String?>(initialValue = null, dataStoreManager) {
                 value = dataStoreManager.startupScreen.first()
+            }
+            val bookshelfLayoutMode by produceState<Int?>(initialValue = null, dataStoreManager) {
+                value = dataStoreManager.bookshelfLayoutMode.first()
             }
             val appAccentColor by dataStoreManager.appAccentColor.collectAsState(initial = DEFAULT_APP_ACCENT_HEX)
             val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = "system")
@@ -537,6 +588,7 @@ class MainActivity : ComponentActivity() {
                                 }
                         ) {
                             startupScreen?.let { configuredStartupScreen ->
+                                bookshelfLayoutMode?.let { configuredBookshelfLayoutMode ->
                                 val startupRoute = when (configuredStartupScreen) {
                                     DataStoreManager.STARTUP_SCREEN_BOOKSHELF -> Screen.Bookshelf.route
                                     DataStoreManager.STARTUP_SCREEN_STATISTICS -> Screen.Statistics.route
@@ -545,20 +597,26 @@ class MainActivity : ComponentActivity() {
                                 MainNavGraph(
                                     navController = navController,
                                     startDestination = startupRoute,
+                                    initialBookshelfLayoutMode = configuredBookshelfLayoutMode,
                                     entranceAnimationsEnabled = entranceAnimationsEnabled &&
                                         motionPreferenceValue == "standard" &&
                                         !showSplash && !eInkModeEnabled,
                                     predictiveBackEnabled = predictiveBackEnabled && !eInkModeEnabled,
                                     requestedOpenBookId = requestedOpenBookId,
+                                    requestedOpenBookDirect = requestedOpenBookDirect,
                                     requestedOpenBookshelf = requestedOpenBookshelf,
                                     requestedOpenFolderId = requestedOpenFolderId,
                                     onBeforeOpenDifferentBook = ttsController::stop,
-                                    onOpenBookRequestConsumed = { requestedOpenBookId = null },
+                                    onOpenBookRequestConsumed = {
+                                        requestedOpenBookId = null
+                                        requestedOpenBookDirect = false
+                                    },
                                     onOpenBookshelfRequestConsumed = {
                                         requestedOpenBookshelf = false
                                         requestedOpenFolderId = null
                                     }
                                 )
+                                }
                             }
                         }
 

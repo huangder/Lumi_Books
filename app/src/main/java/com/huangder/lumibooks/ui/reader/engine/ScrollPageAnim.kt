@@ -29,6 +29,50 @@ internal fun shouldCommitVerticalPageTurn(
     return distanceFraction >= flipThreshold || velocity >= flingVelocityDpPerSecond * density
 }
 
+internal data class VerticalPageFrame(
+    val currentY: Float,
+    val previousY: Float,
+    val nextY: Float,
+    val currentVisible: Boolean,
+    val previousVisible: Boolean,
+    val nextVisible: Boolean
+)
+
+internal fun verticalPageFrame(
+    direction: PageAnimationController.Direction,
+    offset: Float,
+    viewportHeight: Float
+): VerticalPageFrame {
+    val height = viewportHeight.coerceAtLeast(0f)
+    val boundedOffset = offset.coerceIn(-height, height)
+    return when (direction) {
+        PageAnimationController.Direction.NEXT -> VerticalPageFrame(
+            currentY = boundedOffset,
+            previousY = -height,
+            nextY = height + boundedOffset,
+            currentVisible = true,
+            previousVisible = false,
+            nextVisible = true
+        )
+        PageAnimationController.Direction.PREV -> VerticalPageFrame(
+            currentY = boundedOffset,
+            previousY = -height + boundedOffset,
+            nextY = height,
+            currentVisible = true,
+            previousVisible = true,
+            nextVisible = false
+        )
+        PageAnimationController.Direction.NONE -> VerticalPageFrame(
+            currentY = 0f,
+            previousY = -height,
+            nextY = height,
+            currentVisible = true,
+            previousVisible = false,
+            nextVisible = false
+        )
+    }
+}
+
 /**
  * 垂直滚动翻页动画。
  *
@@ -55,50 +99,45 @@ class ScrollPageAnim(
     private val shadowHeight: Float get() = SHADOW_HEIGHT_PX * density.coerceAtLeast(1f)
 
     override fun onDraw(canvas: Canvas) {
-        val vw = readView.width.toFloat()
         val vh = readView.height.toFloat()
-        if (vw <= 0 || vh <= 0) return
+        if (readView.width <= 0 || vh <= 0) return
 
-        // 垂直偏移（覆写父类的水平偏移逻辑）
-        val oy = (touchY - startY).coerceIn(-vh, vh)
+        val frame = verticalPageFrame(
+            direction = direction,
+            offset = touchY - startY,
+            viewportHeight = vh
+        )
+        applyPageFrame(
+            view = readView.curPageView,
+            translationY = frame.currentY,
+            visible = frame.currentVisible,
+            z = 2f
+        )
+        applyPageFrame(
+            view = readView.prevPageView,
+            translationY = frame.previousY,
+            visible = frame.previousVisible,
+            z = if (direction == Direction.PREV) 2f else 0f
+        )
+        applyPageFrame(
+            view = readView.nextPageView,
+            translationY = frame.nextY,
+            visible = frame.nextVisible,
+            z = if (direction == Direction.NEXT) 1f else 0f
+        )
+    }
 
-        when {
-            direction == Direction.NEXT -> {
-                // 当前页上滑，下一页从底部滑入
-                readView.curPageView.translationY = oy
-                readView.nextPageView.translationY = vh + oy
-                readView.prevPageView.translationY = -vh
-                readView.curPageView.translationX = 0f
-                readView.nextPageView.translationX = 0f
-                readView.prevPageView.translationX = 0f
-                readView.curPageView.translationZ = 2f
-                readView.nextPageView.translationZ = 1f
-                readView.prevPageView.translationZ = 0f
-            }
-            direction == Direction.PREV -> {
-                // 当前页下滑，上一页从顶部滑入
-                readView.curPageView.translationY = oy
-                readView.prevPageView.translationY = -vh + oy
-                readView.nextPageView.translationY = vh
-                readView.curPageView.translationX = 0f
-                readView.prevPageView.translationX = 0f
-                readView.nextPageView.translationX = 0f
-                readView.prevPageView.translationZ = 2f
-                readView.curPageView.translationZ = 1f
-                readView.nextPageView.translationZ = 0f
-            }
-            else -> {
-                readView.curPageView.translationX = 0f
-                readView.curPageView.translationY = 0f
-                readView.prevPageView.translationX = 0f
-                readView.prevPageView.translationY = -vh
-                readView.nextPageView.translationX = 0f
-                readView.nextPageView.translationY = vh
-                readView.curPageView.translationZ = 2f
-                readView.prevPageView.translationZ = 0f
-                readView.nextPageView.translationZ = 0f
-            }
-        }
+    private fun applyPageFrame(
+        view: android.view.View,
+        translationY: Float,
+        visible: Boolean,
+        z: Float
+    ) {
+        view.visibility = android.view.View.VISIBLE
+        view.alpha = if (visible) 1f else 0f
+        view.translationX = 0f
+        view.translationY = translationY
+        view.translationZ = z
     }
 
     fun drawOverlay(canvas: Canvas) {

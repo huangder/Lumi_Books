@@ -109,7 +109,7 @@
     <string name="title_about">關於應用程式</string>
     <string name="official_qq_group">官方QQ群</string>
     <string name="github_discussions">GitHub Discussions</string>
-    <string name="telegram_community">Telegram 社群</string>
+    <string name="community_contact_hint">中國大陸使用者可使用 QQ 群，非中國大陸使用者可以在 GitHub Discussions 中討論</string>
     <string name="github_repository">GitHub 儲存庫</string>
 
     <!-- 閱讀設定 -->
@@ -807,6 +807,7 @@
     <string name="epub_layout_first_open_title">EPUB 排版提示</string>
     <string name="epub_layout_first_open_message">如果本書內建排版，可點擊螢幕中央，在「主題」中選擇「書籍原排版」。</string>
     <string name="epub_layout_first_open_confirm">知道了</string>
+    <string name="reader_first_open_hint_do_not_show_again">不再提示</string>
     <string name="mobi_layout_first_open_title">MOBI 排版提示</string>
     <string name="mobi_layout_first_open_message">如果本書內建排版，可點擊螢幕中央，在「主題」中選擇「書籍原排版」。</string>
     <string name="mobi_layout_first_open_confirm">知道了</string>

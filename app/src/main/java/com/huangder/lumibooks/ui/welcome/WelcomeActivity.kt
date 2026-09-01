@@ -25,12 +25,8 @@ import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
 import com.huangder.lumibooks.ui.theme.effectiveAppTheme
 import com.huangder.lumibooks.util.LaunchThemeController
 import com.huangder.lumibooks.util.LocaleHelper
-import com.huangder.lumibooks.util.WelcomeLaunchSnapshot
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import java.io.File
 import javax.inject.Inject
 
 /**
@@ -72,30 +68,8 @@ class WelcomeActivity : ComponentActivity() {
             false
         )
         val isDebugWelcomePreview = isDebugLanguagePreview || isDebugPolicyPreview || isDebugSupportPreview
-        val installState = readInstallState()
-        val welcomeLaunch = LaunchThemeController.welcomeSnapshot(this).let { snapshot ->
-            if (LaunchThemeController.hasWelcomeSnapshot(this)) {
-                snapshot
-            } else {
-                // Migrate installs created before welcome state was mirrored to SharedPreferences.
-                // This runs only once per install and prevents the language page from flashing
-                // while a stale zero-valued snapshot is being replaced.
-                runBlocking {
-                    WelcomeLaunchSnapshot(
-                        completedInstallTime = dataStoreManager.completedWelcomeInstallTime.first(),
-                        splashEnabled = dataStoreManager.splashEnabled.first(),
-                        hasCompletedLanguageSetup = dataStoreManager.hasCompletedWelcomeLanguageSetup.first()
-                    )
-                }.also { hydrated ->
-                    LaunchThemeController.updateWelcomeSnapshot(
-                        context = this,
-                        completedInstallTime = hydrated.completedInstallTime,
-                        splashEnabled = hydrated.splashEnabled,
-                        hasCompletedLanguageSetup = hydrated.hasCompletedLanguageSetup
-                    )
-                }
-            }
-        }
+        val installState = readWelcomeInstallState()
+        val welcomeLaunch = resolveWelcomeLaunchSnapshot(this, dataStoreManager)
         val launchTheme = LaunchThemeController.themeSnapshot(this)
         val completedInstallTime = welcomeLaunch.completedInstallTime
         val splashEnabled = welcomeLaunch.splashEnabled
@@ -213,19 +187,4 @@ class WelcomeActivity : ComponentActivity() {
         finish()
     }
 
-    private fun readInstallState(): WelcomeInstallState {
-        return try {
-            packageManager.getPackageInfo(packageName, 0).let { packageInfo ->
-                WelcomeInstallState(
-                    firstInstallTime = packageInfo.firstInstallTime,
-                    lastUpdateTime = packageInfo.lastUpdateTime
-                )
-            }
-        } catch (_: Exception) {
-            WelcomeInstallState(
-                firstInstallTime = 0L,
-                lastUpdateTime = File(applicationInfo.sourceDir).lastModified()
-            )
-        }
-    }
 }

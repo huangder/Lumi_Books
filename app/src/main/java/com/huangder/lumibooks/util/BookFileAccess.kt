@@ -6,6 +6,8 @@ import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
 import android.util.Log
 import com.huangder.lumibooks.util.cache.ReaderCacheStore
+import com.huangder.lumibooks.util.diagnostics.DiagnosticLevel
+import com.huangder.lumibooks.util.diagnostics.DiagnosticLoggerRegistry
 import java.io.Closeable
 import java.io.File
 import java.io.FileInputStream
@@ -54,6 +56,12 @@ object BookFileAccess {
                 }
             }
             Log.d(TAG, "Opened SAF document through transient seekable cache: $uri")
+            DiagnosticLoggerRegistry.logger?.log(
+                category = "import",
+                event = "saf_cache_opened",
+                level = DiagnosticLevel.INFO,
+                attributes = mapOf("locationType" to "content", "sizeBytes" to temporaryFile.length())
+            )
             return SeekableBookSource(
                 path = temporaryFile.absolutePath,
                 temporaryFile = temporaryFile,
@@ -64,6 +72,7 @@ object BookFileAccess {
         } catch (error: Throwable) {
             temporaryFile.delete()
             Log.e(TAG, "Unable to prepare seekable SAF document: $uri", error)
+            DiagnosticLoggerRegistry.logger?.log("import", "saf_cache_failed", DiagnosticLevel.ERROR, throwable = error)
             throw error
         }
     }

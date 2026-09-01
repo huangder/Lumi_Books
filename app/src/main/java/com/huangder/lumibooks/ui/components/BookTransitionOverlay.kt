@@ -1,5 +1,9 @@
 package com.huangder.lumibooks.ui.components
 
+import android.os.SystemClock
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -12,7 +16,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsIgnoringVisibility
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -31,7 +37,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -51,9 +56,9 @@ import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import androidx.compose.ui.res.stringResource
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.first
 import java.io.File
 
 /**
@@ -79,6 +84,8 @@ fun BookTransitionOverlay(
     val sheetScale = remember { Animatable(0.9f) }
     val isClosing = remember { mutableStateOf(false) }
     val backRequested = remember { mutableStateOf(false) }
+    val showLoadingDetails = remember { mutableStateOf(false) }
+    val overlayShownAtMs = remember { mutableStateOf<Long?>(null) }
     val stableStatusBarPadding = WindowInsets.statusBarsIgnoringVisibility.asPaddingValues()
     val stableNavigationBarPadding = WindowInsets.navigationBarsIgnoringVisibility.asPaddingValues()
     val requestBack = {
@@ -94,15 +101,12 @@ fun BookTransitionOverlay(
         onBack = requestBack
     )
 
-    // 入场动画：遮罩 + 页面同步淡入放大
-    LaunchedEffect(Unit) {
-        launch { scrimAlpha.animateTo(1f, tween(300)) }
-        launch { sheetAlpha.animateTo(1f, tween(300)) }
-        launch { sheetScale.animateTo(1f, tween(400, easing = FastOutSlowInEasing)) }
-    }
-
     LaunchedEffect(backRequested.value) {
         if (backRequested.value) {
+            if (overlayShownAtMs.value == null) {
+                onBack()
+                return@LaunchedEffect
+            }
             coroutineScope {
                 launch { sheetAlpha.animateTo(0f, tween(240, easing = FastOutSlowInEasing)) }
                 launch { sheetScale.animateTo(0.94f, tween(280, easing = FastOutSlowInEasing)) }
@@ -112,14 +116,54 @@ fun BookTransitionOverlay(
         }
     }
 
-    // The reader can become ready before the entrance animation is visibly complete.
-    // Do not drop that one-shot ready signal just because the sheet alpha is still low.
+    // Do not reveal the loading page for fast opens. The reader is already loading underneath,
+    // so a ready signal during the grace period can transition directly to visible content.
     LaunchedEffect(isReady) {
-        if (!isReady || isClosing.value) return@LaunchedEffect
+        if (!isReady) {
+            delay(BookTransitionTiming.OVERLAY_REVEAL_DELAY_MS)
+            if (!isClosing.value) {
+                overlayShownAtMs.value = SystemClock.elapsedRealtime()
+                showLoadingDetails.value = true
+                coroutineScope {
+                    launch { scrimAlpha.animateTo(1f, tween(300)) }
+                    launch { sheetAlpha.animateTo(1f, tween(300)) }
+                    launch {
+                        sheetScale.animateTo(1f, tween(400, easing = FastOutSlowInEasing))
+                    }
+                }
+            }
+            return@LaunchedEffect
+        }
+        if (isClosing.value) return@LaunchedEffect
 
-        // Wait until the entrance is visible, unless the user requests back first.
-        snapshotFlow { sheetAlpha.value to isClosing.value }
-            .first { (alpha, closing) -> alpha > 0.35f || closing }
+        val shownAtMs = overlayShownAtMs.value
+        if (shownAtMs == null) {
+            isClosing.value = true
+            scrimAlpha.snapTo(0f)
+            sheetAlpha.snapTo(0f)
+            sheetScale.snapTo(0.9f)
+            onTransitionComplete()
+            return@LaunchedEffect
+        }
+
+        val remainingVisibleMs = BookTransitionTiming.remainingOverlayVisibleMillis(
+            shownAtMs = shownAtMs,
+            nowMs = SystemClock.elapsedRealtime()
+        )
+        // If readiness arrives during entrance, finish the entrance rather than reversing a
+        // partially visible surface. That partial reversal is perceived as a screen flash.
+        coroutineScope {
+            if (remainingVisibleMs > 0L) launch { delay(remainingVisibleMs) }
+            if (scrimAlpha.value < 0.999f) {
+                launch { scrimAlpha.animateTo(1f, tween(300)) }
+            }
+            if (sheetAlpha.value < 0.999f) {
+                launch { sheetAlpha.animateTo(1f, tween(300)) }
+            }
+            if (sheetScale.value < 0.999f) {
+                launch { sheetScale.animateTo(1f, tween(400, easing = FastOutSlowInEasing)) }
+            }
+        }
         if (isClosing.value) return@LaunchedEffect
 
         isClosing.value = true
@@ -223,35 +267,65 @@ fun BookTransitionOverlay(
 
                     Spacer(Modifier.height(8.dp))
 
-                    // 副标题占位
-                    Text(
-                        text = stringResource(R.string.loading_text),
-                        fontSize = 14.sp,
-                        color = AppColors.TextSecondary,
-                        textAlign = TextAlign.Center
-                    )
-
-                    Spacer(Modifier.height(32.dp))
-
-                    // 加载指示器
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(28.dp),
-                        color = AppColors.Accent,
-                        strokeWidth = 2.5.dp
-                    )
-
-                    Spacer(Modifier.height(18.dp))
-
-                    Text(
-                        text = stringResource(R.string.reader_first_open_hint),
-                        modifier = Modifier.padding(horizontal = AppSpace.lg),
-                        fontSize = 12.sp,
-                        lineHeight = 18.sp,
-                        color = AppColors.TextSecondary.copy(alpha = 0.78f),
-                        textAlign = TextAlign.Center
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 150.dp),
+                        contentAlignment = Alignment.TopCenter
+                    ) {
+                        BookTransitionLoadingDetails(visible = showLoadingDetails.value)
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun BookTransitionLoadingDetails(visible: Boolean) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(BookTransitionTiming.LOADING_DETAILS_FADE_IN_MS)),
+        exit = fadeOut(tween(BookTransitionTiming.LOADING_DETAILS_FADE_OUT_MS))
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = stringResource(R.string.loading_text),
+                fontSize = 14.sp,
+                color = AppColors.TextSecondary,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(Modifier.height(32.dp))
+
+            CircularProgressIndicator(
+                modifier = Modifier.size(28.dp),
+                color = AppColors.Accent,
+                strokeWidth = 2.5.dp
+            )
+
+            Spacer(Modifier.height(18.dp))
+
+            Text(
+                text = stringResource(R.string.reader_first_open_hint),
+                modifier = Modifier.padding(horizontal = AppSpace.lg),
+                fontSize = 12.sp,
+                lineHeight = 18.sp,
+                color = AppColors.TextSecondary.copy(alpha = 0.78f),
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+internal object BookTransitionTiming {
+    const val OVERLAY_REVEAL_DELAY_MS = 500L
+    const val MIN_OVERLAY_VISIBLE_MS = 300L
+    const val LOADING_DETAILS_FADE_IN_MS = 140
+    const val LOADING_DETAILS_FADE_OUT_MS = 100
+
+    fun remainingOverlayVisibleMillis(shownAtMs: Long, nowMs: Long): Long {
+        val visibleDurationMs = (nowMs - shownAtMs).coerceAtLeast(0L)
+        return (MIN_OVERLAY_VISIBLE_MS - visibleDurationMs).coerceAtLeast(0L)
     }
 }

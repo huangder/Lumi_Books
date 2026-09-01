@@ -14,6 +14,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.palette.graphics.Palette
 import com.huangder.lumibooks.data.local.DataStoreManager
+import com.huangder.lumibooks.domain.model.ReaderFirstOpenHintPolicy
 import com.huangder.lumibooks.data.local.ReaderPreferencesSnapshot
 import com.huangder.lumibooks.domain.model.AnnotationEditPlan
 import com.huangder.lumibooks.domain.model.AnnotationNoteEditPlanner
@@ -37,6 +38,8 @@ import com.huangder.lumibooks.domain.model.PdfPageMode
 import com.huangder.lumibooks.domain.model.normalizeReaderThemeSuiteName
 import com.huangder.lumibooks.domain.model.readerThemeSuiteNameCodePointCount
 import com.huangder.lumibooks.domain.model.defaultReaderCornerContent
+import com.huangder.lumibooks.util.diagnostics.DiagnosticLevel
+import com.huangder.lumibooks.util.diagnostics.DiagnosticLoggerRegistry
 import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.domain.repository.ReadingRepository
 import com.huangder.lumibooks.pdfconversion.PdfConversionManager
@@ -1628,28 +1631,40 @@ class ReaderViewModel @Inject constructor(
         return source.openRenderSession().also { renderSession = it }
     }
 
-    fun dismissEpubLayoutHint() {
+    fun dismissEpubLayoutHint(doNotShowAgain: Boolean = false) {
         if (!_uiState.value.showEpubLayoutHint) return
         _uiState.value = _uiState.value.copy(showEpubLayoutHint = false)
         viewModelScope.launch {
-            dataStoreManager.markEpubLayoutHintShown(bookId)
+            dataStoreManager.markEpubLayoutHintShown(bookId, doNotShowAgain)
         }
     }
 
-    fun dismissMobiLayoutHint() {
+    fun hideEpubLayoutHint() {
+        _uiState.value = _uiState.value.copy(showEpubLayoutHint = false)
+    }
+
+    fun dismissMobiLayoutHint(doNotShowAgain: Boolean = false) {
         if (!_uiState.value.showMobiLayoutHint) return
         _uiState.value = _uiState.value.copy(showMobiLayoutHint = false)
         viewModelScope.launch {
-            dataStoreManager.markMobiLayoutHintShown(bookId)
+            dataStoreManager.markMobiLayoutHintShown(bookId, doNotShowAgain)
         }
     }
 
-    fun dismissTxtEncodingHint() {
+    fun hideMobiLayoutHint() {
+        _uiState.value = _uiState.value.copy(showMobiLayoutHint = false)
+    }
+
+    fun dismissTxtEncodingHint(doNotShowAgain: Boolean = false) {
         if (!_uiState.value.showTxtEncodingHint) return
         _uiState.value = _uiState.value.copy(showTxtEncodingHint = false)
         viewModelScope.launch {
-            dataStoreManager.markTxtEncodingHintShown(bookId)
+            dataStoreManager.markTxtEncodingHintShown(bookId, doNotShowAgain)
         }
+    }
+
+    fun hideTxtEncodingHint() {
+        _uiState.value = _uiState.value.copy(showTxtEncodingHint = false)
     }
 
     fun saveTxtEncoding(encoding: TxtEncoding) {
@@ -1746,6 +1761,12 @@ class ReaderViewModel @Inject constructor(
                 }
             }.onFailure { error ->
                 android.util.Log.e("ReaderViewModel", "Failed to change render mode", error)
+                DiagnosticLoggerRegistry.logger?.log(
+                    category = "reader",
+                    event = "render_mode_change_failed",
+                    level = DiagnosticLevel.ERROR,
+                    throwable = error
+                )
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     pageReady = true,
@@ -1793,6 +1814,35 @@ class ReaderViewModel @Inject constructor(
             rightChapterIndex = null
         )
         ttsController.onPageVisible(bookId, _uiState.value.currentChapterIndex, pageIndex)
+        saveProgress()
+    }
+
+    fun onEpubPageCommitted(
+        chapterIndex: Int,
+        pageIndex: Int,
+        pageCount: Int,
+        locatorJson: String?
+    ) {
+        val previousState = _uiState.value
+        val chapterChanged = previousState.currentChapterIndex != chapterIndex
+        _uiState.value = previousState.copy(
+            currentChapterIndex = chapterIndex,
+            currentPageIndex = pageIndex.coerceAtLeast(0),
+            totalPages = pageCount.coerceAtLeast(1),
+            pageReady = true,
+            isEpubChapterHandoffInProgress = false,
+            isLoading = false,
+            epubLocatorJson = locatorJson ?: previousState.epubLocatorJson.takeUnless {
+                chapterChanged
+            },
+            pendingPageFraction = 0f,
+            pendingPageFractionSemantics = ReaderPageFractionSemantics.START,
+            pendingReaderPosition = null,
+            rightPageIndex = null,
+            rightChapterIndex = null
+        )
+        ttsController.onPageVisible(bookId, chapterIndex, pageIndex)
+        if (chapterChanged) preloadAdjacentChapters()
         saveProgress()
     }
 
@@ -2353,10 +2403,18 @@ class ReaderViewModel @Inject constructor(
                     val isTxt = book.format.name == "TXT"
                     val renderMode = if (supportsBookLayout) preferences.renderMode
                     else EpubRenderMode.READER_LAYOUT
-                    val showEpubLayoutHint = isEpub &&
-                        !preferences.epubLayoutHintShown
-                    val showMobiLayoutHint = book.format.name == "MOBI" &&
-                        !preferences.mobiLayoutHintShown
+                    val showEpubLayoutHint = ReaderFirstOpenHintPolicy.shouldShow(
+                        isSupportedFormat = isEpub,
+                        wasShownForBook = preferences.epubLayoutHintShown,
+                        acknowledgementCount = preferences.readerFirstOpenHintAcknowledgementCount,
+                        disabled = preferences.readerFirstOpenHintsDisabled
+                    )
+                    val showMobiLayoutHint = ReaderFirstOpenHintPolicy.shouldShow(
+                        isSupportedFormat = book.format.name == "MOBI",
+                        wasShownForBook = preferences.mobiLayoutHintShown,
+                        acknowledgementCount = preferences.readerFirstOpenHintAcknowledgementCount,
+                        disabled = preferences.readerFirstOpenHintsDisabled
+                    )
                     val txtEncoding = if (isTxt) {
                         TxtEncoding.fromStorage(preferences.txtEncoding)
                     } else {
@@ -2370,8 +2428,12 @@ class ReaderViewModel @Inject constructor(
                     if (isTxt && txtTocRuleId == "auto" && preferences.txtTocRuleId != "auto") {
                         dataStoreManager.saveTxtTocRuleSelection(book.id, null)
                     }
-                    val showTxtEncodingHint = isTxt &&
-                        !preferences.txtEncodingHintShown
+                    val showTxtEncodingHint = ReaderFirstOpenHintPolicy.shouldShow(
+                        isSupportedFormat = isTxt,
+                        wasShownForBook = preferences.txtEncodingHintShown,
+                        acknowledgementCount = preferences.readerFirstOpenHintAcknowledgementCount,
+                        disabled = preferences.readerFirstOpenHintsDisabled
+                    )
 
                     val optimize = preferences.optimizeLayout
                     val useEpubCss = preferences.useEpubCss
@@ -2518,6 +2580,12 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch {
             val html = withContext(Dispatchers.IO) { getChapterHtml(state.currentChapterIndex) }
             android.util.Log.e("PG", "loadChapterContent: chapter=" + state.currentChapterIndex + " html.length=" + html.length)
+            DiagnosticLoggerRegistry.logger?.log(
+                category = "reader",
+                event = "chapter_content_loaded",
+                level = DiagnosticLevel.INFO,
+                attributes = mapOf("chapter" to state.currentChapterIndex, "contentLength" to html.length)
+            )
             _uiState.value = _uiState.value.copy(chapterHtml = html)
             // 🔥 激进预加载：进入章节后立即在后台拉取前后相邻章节到 preloadCache
             eagerPreloadAdjacent(state.currentChapterIndex)
@@ -2671,6 +2739,12 @@ class ReaderViewModel @Inject constructor(
         )
         saveProgress()
         android.util.Log.e("PG", "onPageChanged page=$page total=$total")
+        DiagnosticLoggerRegistry.logger?.log(
+            category = "interaction",
+            event = "page_changed",
+            level = DiagnosticLevel.INFO,
+            attributes = mapOf("page" to page, "total" to total)
+        )
         preloadAdjacentChapters()
     }
 

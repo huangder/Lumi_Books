@@ -126,13 +126,12 @@ fun CloudAwareBookDeleteDialog(
                     modifier = Modifier.fillMaxWidth(),
                     onClick = { onDelete(BookDeleteMode.FORCE_LOCAL_AND_CLOUD) }
                 )
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.cancel),
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = onDismiss
+                )
             }
-        },
-        dismissButton = {
-            LiquidGlassTextButton(
-                text = stringResource(R.string.cancel),
-                onClick = onDismiss
-            )
         }
     )
 }

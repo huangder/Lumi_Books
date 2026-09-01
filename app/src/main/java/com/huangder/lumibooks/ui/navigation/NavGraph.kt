@@ -185,9 +185,11 @@ private fun rememberPageEntrancePlayback(
 fun MainNavGraph(
     navController: NavHostController,
     startDestination: String = Screen.Home.route,
+    initialBookshelfLayoutMode: Int? = null,
     entranceAnimationsEnabled: Boolean = true,
     predictiveBackEnabled: Boolean = true,
     requestedOpenBookId: String? = null,
+    requestedOpenBookDirect: Boolean = false,
     requestedOpenBookshelf: Boolean = false,
     requestedOpenFolderId: String? = null,
     onBeforeOpenDifferentBook: () -> Unit = {},
@@ -340,12 +342,18 @@ fun MainNavGraph(
             }
         }
     }
-    val openLocalBook: (Book) -> Unit = { book ->
+    fun openLocalBook(book: Book, animated: Boolean = true) {
         if (book.isMissing) {
             transientMessage = context.getString(R.string.book_file_unavailable)
         } else if (eInkMode) {
             ReaderOpenPerformance.start(book.id)
             transitionBookId = book.id
+            navController.navigate(Screen.Reader.createRoute(book.id))
+        } else if (!animated) {
+            ReaderOpenPerformance.start(book.id)
+            transitionBookId = null
+            readerReady = false
+            showTransition = false
             navController.navigate(Screen.Reader.createRoute(book.id))
         } else {
             ReaderOpenPerformance.start(book.id)
@@ -357,7 +365,16 @@ fun MainNavGraph(
             pendingBookId = book.id
         }
     }
-    val requestOpenBook: (String, String?, String) -> Unit = { bookId, coverPath, title ->
+
+    fun openBookRouteWithoutBook(bookId: String) {
+        ReaderOpenPerformance.start(bookId)
+        transitionBookId = null
+        readerReady = false
+        showTransition = false
+        navController.navigate(Screen.Reader.createRoute(bookId))
+    }
+
+    fun requestOpenBook(bookId: String, coverPath: String?, title: String, animated: Boolean = true) {
         val book = homeUiState.books.firstOrNull { it.id == bookId }
             ?: Book(
                 id = bookId,
@@ -377,7 +394,13 @@ fun MainNavGraph(
                 pendingCloudBook = book
             }
         } else {
-            openLocalBook(book)
+            if (homeUiState.books.any { it.id == bookId }) {
+                openLocalBook(book, animated)
+            } else if (!animated) {
+                // External open intents can arrive before HomeViewModel emits its first list.
+                // ReaderViewModel resolves the authoritative local record by ID.
+                openBookRouteWithoutBook(bookId)
+            }
         }
     }
     val snackbarMessage = transientMessage
@@ -409,9 +432,9 @@ fun MainNavGraph(
         }
     }
 
-    LaunchedEffect(requestedOpenBookId, homeUiState.isLoading) {
+    LaunchedEffect(requestedOpenBookId, requestedOpenBookDirect, homeUiState.isLoading) {
         val requestedId = requestedOpenBookId ?: return@LaunchedEffect
-        if (homeUiState.isLoading) return@LaunchedEffect
+        if (homeUiState.isLoading && !requestedOpenBookDirect) return@LaunchedEffect
         val currentReaderBookId = navController.currentBackStackEntry
             ?.arguments
             ?.getString("bookId")
@@ -421,7 +444,8 @@ fun MainNavGraph(
             requestOpenBook(
                 requestedId,
                 requestedBook?.coverPath,
-                requestedBook?.title.orEmpty()
+                requestedBook?.title.orEmpty(),
+                animated = !requestedOpenBookDirect
             )
         }
         onOpenBookRequestConsumed()
@@ -613,6 +637,7 @@ fun MainNavGraph(
                     tracker = entranceTracker
                 )
                 BookshelfScreen(
+                    initialLayoutMode = initialBookshelfLayoutMode,
                     playEntranceAnimation = playEntranceAnimation,
                     onNavigateToReader = { bookId, coverPath, title, _ ->
                         requestOpenBook(bookId, coverPath, title)

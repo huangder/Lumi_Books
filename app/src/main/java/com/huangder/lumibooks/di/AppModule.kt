@@ -30,10 +30,22 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
+import com.huangder.lumibooks.util.diagnostics.DefaultDiagnosticLogger
+import com.huangder.lumibooks.util.diagnostics.DefaultDiagnosticSessionManager
+import com.huangder.lumibooks.util.diagnostics.DiagnosticLogger
+import com.huangder.lumibooks.util.diagnostics.DiagnosticSessionManager
 
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
+
+    @Provides
+    @Singleton
+    fun provideDiagnosticLogger(logger: DefaultDiagnosticLogger): DiagnosticLogger = logger
+
+    @Provides
+    @Singleton
+    fun provideDiagnosticSessionManager(manager: DefaultDiagnosticSessionManager): DiagnosticSessionManager = manager
 
     @Provides
     @Singleton

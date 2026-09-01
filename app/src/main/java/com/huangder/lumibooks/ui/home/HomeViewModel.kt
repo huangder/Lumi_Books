@@ -82,6 +82,7 @@ data class HomeUiState(
     val sortBy: SortBy = SortBy.LAST_READ,
     val isLoading: Boolean = true,
     val bookshelfLayoutMode: Int = 2,
+    val bookshelfLayoutModeLoaded: Boolean = false,
     val importBooksLayoutMode: Int = 2,
     val importMessage: String? = null,
     val authorizedBookDirectories: List<String> = emptyList(),
@@ -314,7 +315,10 @@ class HomeViewModel @Inject constructor(
     private fun loadBookshelfLayoutMode() {
         viewModelScope.launch {
             dataStoreManager.bookshelfLayoutMode.collectLatest { mode ->
-                _uiState.value = _uiState.value.copy(bookshelfLayoutMode = mode)
+                _uiState.value = _uiState.value.copy(
+                    bookshelfLayoutMode = mode,
+                    bookshelfLayoutModeLoaded = true
+                )
             }
         }
     }

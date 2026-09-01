@@ -53,13 +53,25 @@
             android:theme="@style/Theme.EBookReader.NoPreview"
             android:windowSoftInputMode="adjustResize" />
 
+        <activity
+            android:name=".ui.splash.SplashLaunchActivity"
+            android:exported="false"
+            android:noHistory="true"
+            android:theme="@style/Theme.EBookReader.NoPreview" />
+
+        <activity
+            android:name=".ui.splash.DirectLaunchActivity"
+            android:exported="false"
+            android:noHistory="true"
+            android:theme="@style/Theme.EBookReader.NoPreview" />
+
         <activity-alias
             android:name=".ui.splash.SplashLauncherActivity"
             android:enabled="true"
             android:exported="true"
             android:icon="@mipmap/ic_launcher_lumi2"
             android:label="@string/app_name"
-            android:targetActivity=".ui.welcome.WelcomeActivity"
+            android:targetActivity=".ui.splash.SplashLaunchActivity"
             android:theme="@style/Theme.EBookReader.Launch">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -73,7 +85,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_lumi2"
             android:label="@string/app_name"
-            android:targetActivity=".ui.welcome.WelcomeActivity"
+            android:targetActivity=".ui.splash.DirectLaunchActivity"
             android:theme="@style/Theme.EBookReader">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -89,7 +101,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
             android:label="@string/app_name"
-            android:targetActivity=".ui.welcome.WelcomeActivity"
+            android:targetActivity=".ui.splash.SplashLaunchActivity"
             android:theme="@style/Theme.EBookReader.Launch.Classic">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -103,7 +115,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
             android:label="@string/app_name"
-            android:targetActivity=".ui.welcome.WelcomeActivity"
+            android:targetActivity=".ui.splash.DirectLaunchActivity"
             android:theme="@style/Theme.EBookReader">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -206,6 +218,12 @@
 
         <activity
             android:name=".ui.settings.FeedbackActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+            android:theme="@style/Theme.EBookReader"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".ui.settings.DiagnosticActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
             android:theme="@style/Theme.EBookReader"
             android:windowSoftInputMode="adjustResize" />

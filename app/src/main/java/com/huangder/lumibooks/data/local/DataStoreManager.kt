@@ -41,6 +41,7 @@ import com.huangder.lumibooks.domain.model.ReaderThemeSuites
 import com.huangder.lumibooks.domain.model.PdfPageMode
 import com.huangder.lumibooks.domain.model.ReaderPageAnimationSettings
 import com.huangder.lumibooks.domain.model.ReaderPageTransition
+import com.huangder.lumibooks.domain.model.ReaderFirstOpenHintPolicy
 import com.huangder.lumibooks.domain.model.defaultReaderCornerContent
 import com.huangder.lumibooks.util.LaunchThemeController
 import com.huangder.lumibooks.util.LaunchThemeSnapshot
@@ -131,6 +132,8 @@ data class ReaderPreferencesSnapshot(
     val txtEncodingHintShown: Boolean,
     val epubLayoutHintShown: Boolean,
     val mobiLayoutHintShown: Boolean,
+    val readerFirstOpenHintAcknowledgementCount: Int,
+    val readerFirstOpenHintsDisabled: Boolean,
     val optimizeLayout: Boolean,
     val useEpubCss: Boolean,
     val readerWritingMode: ReaderWritingMode
@@ -259,6 +262,12 @@ class DataStoreManager @Inject constructor(
         private val COMPLETED_WELCOME_INSTALL_TIME = longPreferencesKey("completed_welcome_install_time")
         private val HAS_COMPLETED_WELCOME_LANGUAGE_SETUP = booleanPreferencesKey("has_completed_welcome_language_setup")
         private val BUILTIN_GUIDES_SEEDED_VERSION = intPreferencesKey("builtin_guides_seeded_version")
+        private val BUILTIN_GUIDES_FOLDER_COVER_VERSION =
+            intPreferencesKey("builtin_guides_folder_cover_version")
+        private val READER_FIRST_OPEN_HINT_ACKNOWLEDGEMENT_COUNT =
+            intPreferencesKey("reader_first_open_hint_acknowledgement_count")
+        private val READER_FIRST_OPEN_HINTS_DISABLED =
+            booleanPreferencesKey("reader_first_open_hints_disabled")
 
         // MinerU 第三方云解析设置
         private val MINERU_MODE = stringPreferencesKey("mineru_mode")
@@ -436,6 +445,9 @@ class DataStoreManager @Inject constructor(
                     ?: false,
                 mobiLayoutHintShown = preferences[booleanPreferencesKey("mobi_layout_hint_shown_$bookId")]
                     ?: false,
+                readerFirstOpenHintAcknowledgementCount =
+                    preferences.readerFirstOpenHintAcknowledgementCount(),
+                readerFirstOpenHintsDisabled = preferences[READER_FIRST_OPEN_HINTS_DISABLED] ?: false,
                 optimizeLayout = preferences[optimizeKey] ?: true,
                 useEpubCss = preferences[cssKey] ?: false,
                 readerWritingMode = ReaderWritingMode.fromKey(
@@ -1689,9 +1701,9 @@ class DataStoreManager @Inject constructor(
         return context.dataStore.data.map { preferences -> preferences[key] ?: false }
     }
 
-    suspend fun markTxtEncodingHintShown(bookId: String) {
+    suspend fun markTxtEncodingHintShown(bookId: String, doNotShowAgain: Boolean = false) {
         val key = booleanPreferencesKey("txt_encoding_hint_shown_$bookId")
-        context.dataStore.edit { preferences -> preferences[key] = true }
+        recordReaderFirstOpenHintAcknowledgement(key, doNotShowAgain)
     }
 
     fun epubLayoutHintShown(bookId: String): Flow<Boolean> {
@@ -1699,9 +1711,9 @@ class DataStoreManager @Inject constructor(
         return context.dataStore.data.map { preferences -> preferences[key] ?: false }
     }
 
-    suspend fun markEpubLayoutHintShown(bookId: String) {
+    suspend fun markEpubLayoutHintShown(bookId: String, doNotShowAgain: Boolean = false) {
         val key = booleanPreferencesKey("epub_layout_hint_shown_$bookId")
-        context.dataStore.edit { preferences -> preferences[key] = true }
+        recordReaderFirstOpenHintAcknowledgement(key, doNotShowAgain)
     }
 
     fun mobiLayoutHintShown(bookId: String): Flow<Boolean> {
@@ -1709,9 +1721,42 @@ class DataStoreManager @Inject constructor(
         return context.dataStore.data.map { preferences -> preferences[key] ?: false }
     }
 
-    suspend fun markMobiLayoutHintShown(bookId: String) {
+    suspend fun markMobiLayoutHintShown(bookId: String, doNotShowAgain: Boolean = false) {
         val key = booleanPreferencesKey("mobi_layout_hint_shown_$bookId")
-        context.dataStore.edit { preferences -> preferences[key] = true }
+        recordReaderFirstOpenHintAcknowledgement(key, doNotShowAgain)
+    }
+
+    private suspend fun recordReaderFirstOpenHintAcknowledgement(
+        bookHintKey: Preferences.Key<Boolean>,
+        doNotShowAgain: Boolean
+    ) {
+        context.dataStore.edit { preferences ->
+            val currentCount = preferences.readerFirstOpenHintAcknowledgementCount()
+            preferences[bookHintKey] = true
+            preferences[READER_FIRST_OPEN_HINT_ACKNOWLEDGEMENT_COUNT] = if (doNotShowAgain) {
+                currentCount
+            } else {
+                (currentCount + 1).coerceAtMost(ReaderFirstOpenHintPolicy.MAX_ACKNOWLEDGEMENTS)
+            }
+            if (doNotShowAgain) {
+                preferences[READER_FIRST_OPEN_HINTS_DISABLED] = true
+            }
+        }
+    }
+
+    private fun Preferences.readerFirstOpenHintAcknowledgementCount(): Int {
+        this[READER_FIRST_OPEN_HINT_ACKNOWLEDGEMENT_COUNT]?.let {
+            return it.coerceIn(0, ReaderFirstOpenHintPolicy.MAX_ACKNOWLEDGEMENTS)
+        }
+
+        // Preserve acknowledgements recorded by releases that only stored per-book flags.
+        return asMap().count { (key, value) ->
+            value == true && (
+                key.name.startsWith("txt_encoding_hint_shown_") ||
+                    key.name.startsWith("epub_layout_hint_shown_") ||
+                    key.name.startsWith("mobi_layout_hint_shown_")
+                )
+        }.coerceAtMost(ReaderFirstOpenHintPolicy.MAX_ACKNOWLEDGEMENTS)
     }
 
     fun optimizeLayout(bookId: String): Flow<Boolean> {
@@ -2031,6 +2076,15 @@ class DataStoreManager @Inject constructor(
 
     suspend fun markBuiltinGuidesSeeded(version: Int) {
         context.dataStore.edit { preferences -> preferences[BUILTIN_GUIDES_SEEDED_VERSION] = version }
+    }
+
+    val builtinGuidesFolderCoverVersion: Flow<Int> =
+        context.dataStore.data.map { preferences -> preferences[BUILTIN_GUIDES_FOLDER_COVER_VERSION] ?: 0 }
+
+    suspend fun markBuiltinGuidesFolderCoverSeeded(version: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[BUILTIN_GUIDES_FOLDER_COVER_VERSION] = version
+        }
     }
 
     suspend fun saveMineruMode(mode: String) {

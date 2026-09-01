@@ -113,7 +113,7 @@
     <string name="title_about">About</string>
     <string name="official_qq_group">Official QQ Group</string>
     <string name="github_discussions">GitHub Discussions</string>
-    <string name="telegram_community">Telegram Community</string>
+    <string name="community_contact_hint">Users in mainland China can use the QQ group; users elsewhere can discuss in GitHub Discussions</string>
     <string name="github_repository">GitHub Repository</string>
 
     <!-- Reading Settings -->
@@ -290,6 +290,47 @@
     <string name="feedback_github_issues_desc">Report an issue or suggestion</string>
     <string name="feedback_qq_channel">QQ Channel</string>
     <string name="feedback_qq_channel_desc">Submit issues and suggestions on the QQ Channel</string>
+    <string name="diagnostic_title">Generate diagnostic package</string>
+    <string name="diagnostic_capture_title">Capture logs</string>
+    <string name="diagnostic_entry_desc">Record and export issue logs</string>
+    <string name="diagnostic_issue_type">Issue type</string>
+    <string name="diagnostic_issue_import">Import / parsing</string>
+    <string name="diagnostic_issue_open_book">Open book</string>
+    <string name="diagnostic_issue_render">Layout / rendering</string>
+    <string name="diagnostic_issue_page_turn">Page turning</string>
+    <string name="diagnostic_issue_selection">Text selection / annotation</string>
+    <string name="diagnostic_issue_tts">TTS</string>
+    <string name="diagnostic_issue_sync">Sync</string>
+    <string name="diagnostic_issue_backup">Backup / conversion</string>
+    <string name="diagnostic_issue_other">Other</string>
+    <string name="diagnostic_description_label">Describe what you saw (required)</string>
+    <string name="diagnostic_description_hint">Example: Chapter 3 is blank after opening an EPUB and remains blank after re-entering.</string>
+    <string name="diagnostic_missing_description">Logging started, but no symptom description was provided.</string>
+    <string name="diagnostic_consent_title">Before logging starts</string>
+    <string name="diagnostic_consent_body">After you choose “Agree and start”, Lumi records structured diagnostic events locally for the most recent 20 minutes, capped at about 2 MB. Events may include timestamps, levels, fixed module/event names, screen names, operation IDs, durations, results, app lifecycle, import/parsing, reader open/render/page turns, text selection, TTS, sync, backup, and conversion states. When an error occurs, the package may include the exception type, error message, and a cleaned stack trace with class names, method names, and source line numbers. The package also includes app version, Android API, device manufacturer/model, CPU ABI, language, theme, screen size, and density.</string>
+    <string name="diagnostic_consent_body_extra">Book identifiers are hashed with an installation-specific random salt. Local paths, URIs, URL parameters, email addresses, IP addresses, tokens, passwords, cookies, and Authorization values are removed or redacted. Book content, chapter text, note text, annotation text, spoken text, credential files, and Room database snapshots are not recorded. Your description and up to 3 selected screenshots are included in the package; screenshots are compressed before export and may contain personal content. If a previous uncaught-crash marker is still present, the package may also include that crash type and cleaned stack trace. Logs stay in the app-private directory first and leave the device only when you explicitly share or save the package. Logging continues after leaving this page until you finish and generate the package. Choosing “Decline” does not start logging.</string>
+    <string name="diagnostic_consent_agree">Agree and start</string>
+    <string name="diagnostic_consent_decline">Decline</string>
+    <string name="diagnostic_start">Start logging</string>
+    <string name="diagnostic_stop">Finish and generate package</string>
+    <string name="diagnostic_add_screenshot">Add screenshots (optional)</string>
+    <string name="diagnostic_generating">Generating diagnostic package...</string>
+    <string name="diagnostic_share">Share diagnostic package</string>
+    <string name="diagnostic_save">Save to file</string>
+    <string name="diagnostic_previous_crash">A previous abnormal exit was found. Generate its package.</string>
+    <string name="diagnostic_preview">Only redacted structured events are included. Book content and credentials are excluded. Your description and screenshots may contain personal content.</string>
+    <string name="diagnostic_preview_files">Includes summary.md, errors.json, events.ndjson.gz, device.json, and %1$d screenshot(s); about %2$d buffered events are available.</string>
+    <string name="diagnostic_preview_range">Event time range: %1$s - %2$s</string>
+    <string name="diagnostic_screenshot_preview">Selected screenshot preview</string>
+    <string name="diagnostic_failed">Diagnostic package failed: %1$s</string>
+    <string name="diagnostic_saved">Diagnostic package saved</string>
+    <string name="diagnostic_export_recent">Export recent logs</string>
+    <string name="diagnostic_recent_description">Intermittent issue that cannot be reproduced reliably</string>
+    <string name="diagnostic_recording_note">Recording continues after leaving this page until you generate the diagnostic package.</string>
+    <string name="diagnostic_step_one">Step 1</string>
+    <string name="diagnostic_step_one_desc">Choose an issue type and describe what happened, then start recording. You can leave this page to reproduce the issue.</string>
+    <string name="diagnostic_step_two">Step 2</string>
+    <string name="diagnostic_step_two_desc">Return to generate the package after reproducing it, or export recent logs if the issue is intermittent.</string>
 
     <!-- Home -->
     <string name="section_previously_read">Previously Read</string>
@@ -911,6 +952,7 @@
     <string name="epub_layout_first_open_title">EPUB layout</string>
     <string name="epub_layout_first_open_message">If this book includes its own layout, tap the center of the screen, open Theme, and choose Book layout.</string>
     <string name="epub_layout_first_open_confirm">Got it</string>
+    <string name="reader_first_open_hint_do_not_show_again">Don\'t show again</string>
     <string name="mobi_layout_first_open_title">MOBI layout</string>
     <string name="mobi_layout_first_open_message">If this book includes its own layout, tap the center of the screen, open Theme, and choose Book layout.</string>
     <string name="mobi_layout_first_open_confirm">Got it</string>

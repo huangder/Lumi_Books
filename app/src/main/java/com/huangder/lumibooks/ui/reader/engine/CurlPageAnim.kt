@@ -358,10 +358,16 @@ class CurlPageAnim(
                     Direction.PREV -> xVelocity
                     Direction.NONE -> 0f
                 }
+                val canFlipTarget = onCanFlip?.invoke(direction) == true
                 val canComplete = event.actionMasked != MotionEvent.ACTION_CANCEL &&
-                    onCanFlip?.invoke(direction) == true &&
+                    canFlipTarget &&
                     (progress >= COMMIT_PROGRESS ||
                         directionalVelocity >= FLING_VELOCITY_DP_PER_SECOND * density)
+                Log.d(
+                    "CurlCommit",
+                    "up dir=$direction progress=$progress velocity=$directionalVelocity " +
+                        "canFlip=$canFlipTarget complete=$canComplete snapshots=$snapshotsReady"
+                )
 
                 if (canComplete) {
                     isFlipAnim = true

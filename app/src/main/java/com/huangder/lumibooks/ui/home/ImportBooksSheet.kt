@@ -48,6 +48,8 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Sort
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -849,6 +851,7 @@ private fun ImportSortButton(
     sortBy: ImportBookSort,
     onSortChange: (ImportBookSort) -> Unit
 ) {
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val menuHost = LocalLiquidGlassMenuHost.current
     var sortAnchorBounds by remember { mutableStateOf(Rect.Zero) }
     var sortExpanded by remember { mutableStateOf(false) }
@@ -863,43 +866,95 @@ private fun ImportSortButton(
         }
     }
 
-    LiquidGlassIconButton(
-        imageVector = Icons.Outlined.Sort,
-        contentDescription = stringResource(R.string.import_sort),
-        onClick = {
-            if (sortExpanded) {
-                menuHost?.dismiss()
-            } else if (menuHost != null && sortAnchorBounds != Rect.Zero) {
-                sortExpanded = true
-                menuHost.show(
-                    LiquidGlassMenuSpec(
-                        anchorBounds = sortAnchorBounds,
-                        width = 176.dp,
-                        maxVisibleItems = 8,
-                        onDismiss = { sortExpanded = false },
-                        items = ImportBookSort.entries.map { option ->
-                            LiquidGlassMenuItem(
-                                label = when (option) {
-                                    ImportBookSort.DEFAULT -> defaultLabel
-                                    ImportBookSort.NAME -> nameLabel
-                                    ImportBookSort.FORMAT -> formatLabel
-                                    ImportBookSort.TIME -> timeLabel
-                                },
-                                selected = option == sortBy,
-                                onClick = { onSortChange(option) }
+    Box {
+        LiquidGlassIconButton(
+            imageVector = Icons.Outlined.Sort,
+            contentDescription = stringResource(R.string.import_sort),
+            onClick = {
+                if (isLiquidGlass && menuHost != null && sortAnchorBounds != Rect.Zero) {
+                    if (sortExpanded) {
+                        menuHost.dismiss()
+                    } else {
+                        sortExpanded = true
+                        menuHost.show(
+                            LiquidGlassMenuSpec(
+                                anchorBounds = sortAnchorBounds,
+                                width = 176.dp,
+                                maxVisibleItems = 8,
+                                onDismiss = { sortExpanded = false },
+                                items = ImportBookSort.entries.map { option ->
+                                    LiquidGlassMenuItem(
+                                        label = when (option) {
+                                            ImportBookSort.DEFAULT -> defaultLabel
+                                            ImportBookSort.NAME -> nameLabel
+                                            ImportBookSort.FORMAT -> formatLabel
+                                            ImportBookSort.TIME -> timeLabel
+                                        },
+                                        selected = option == sortBy,
+                                        onClick = { onSortChange(option) }
+                                    )
+                                }
                             )
+                        )
+                    }
+                } else {
+                    sortExpanded = true
+                }
+            },
+            size = 44.dp,
+            iconSize = 20.dp,
+            normalContainerColor = AppColors.BgGray,
+            liquidContainerColor = AppColors.CardBg,
+            liquidScrimColor = AppColors.CardBg.copy(alpha = 0.58f),
+            modifier = Modifier.onGloballyPositioned { sortAnchorBounds = it.boundsInRoot() }
+        )
+
+        if (!isLiquidGlass) {
+            DropdownMenu(
+                expanded = sortExpanded,
+                onDismissRequest = { sortExpanded = false },
+                modifier = Modifier.width(176.dp),
+                shape = RoundedCornerShape(16.dp),
+                containerColor = AppColors.WindowBg,
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp
+            ) {
+                ImportBookSort.entries.forEach { option ->
+                    val label = when (option) {
+                        ImportBookSort.DEFAULT -> defaultLabel
+                        ImportBookSort.NAME -> nameLabel
+                        ImportBookSort.FORMAT -> formatLabel
+                        ImportBookSort.TIME -> timeLabel
+                    }
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = label,
+                                color = if (option == sortBy) AppColors.Accent else AppColors.TextPrimary,
+                                fontSize = 14.sp
+                            )
+                        },
+                        onClick = {
+                            sortExpanded = false
+                            onSortChange(option)
+                        },
+                        trailingIcon = if (option == sortBy) {
+                            {
+                                Icon(
+                                    imageVector = Icons.Filled.Check,
+                                    contentDescription = null,
+                                    tint = AppColors.Accent,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        } else {
+                            null
                         }
                     )
-                )
+                }
             }
-        },
-        size = 44.dp,
-        iconSize = 20.dp,
-        normalContainerColor = AppColors.BgGray,
-        liquidContainerColor = AppColors.CardBg,
-        liquidScrimColor = AppColors.CardBg.copy(alpha = 0.58f),
-        modifier = Modifier.onGloballyPositioned { sortAnchorBounds = it.boundsInRoot() }
-    )
+        }
+    }
 }
 
 @Composable

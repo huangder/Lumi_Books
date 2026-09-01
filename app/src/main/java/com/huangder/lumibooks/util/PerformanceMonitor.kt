@@ -1,6 +1,8 @@
 package com.huangder.lumibooks.util
 
 import android.util.Log
+import com.huangder.lumibooks.util.diagnostics.DiagnosticLevel
+import com.huangder.lumibooks.util.diagnostics.DiagnosticLoggerRegistry
 
 object PerformanceMonitor {
     private const val TAG = "PerformanceMonitor"
@@ -9,6 +11,7 @@ object PerformanceMonitor {
     fun startTimer(label: String) {
         timers[label] = System.currentTimeMillis()
         Log.d(TAG, "Started timer: $label")
+        DiagnosticLoggerRegistry.logger?.log("app", "timer_started", DiagnosticLevel.DEBUG, mapOf("label" to label))
     }
 
     fun endTimer(label: String): Long {
@@ -16,6 +19,7 @@ object PerformanceMonitor {
         val duration = System.currentTimeMillis() - startTime
         timers.remove(label)
         Log.d(TAG, "Timer $label: ${duration}ms")
+        DiagnosticLoggerRegistry.logger?.log("app", "timer_finished", DiagnosticLevel.INFO, mapOf("label" to label), durationMs = duration)
         return duration
     }
 

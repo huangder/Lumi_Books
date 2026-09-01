@@ -110,7 +110,7 @@
     <string name="title_about">关于应用</string>
     <string name="official_qq_group">官方QQ群</string>
     <string name="github_discussions">GitHub Discussions</string>
-    <string name="telegram_community">Telegram 社群</string>
+    <string name="community_contact_hint">中国大陆用户可使用 QQ 群，非中国大陆用户可以在 GitHub Discussions 中讨论</string>
     <string name="github_repository">GitHub 仓库</string>
 
     <!-- 阅读设置 -->
@@ -233,6 +233,47 @@
     <string name="feedback_github_issues_desc">提交问题与建议</string>
     <string name="feedback_qq_channel">QQ频道</string>
     <string name="feedback_qq_channel_desc">在 QQ 频道提交问题与建议</string>
+    <string name="diagnostic_title">生成诊断包</string>
+    <string name="diagnostic_capture_title">抓取日志</string>
+    <string name="diagnostic_entry_desc">记录并导出问题相关日志</string>
+    <string name="diagnostic_issue_type">问题类型</string>
+    <string name="diagnostic_issue_import">导入/解析</string>
+    <string name="diagnostic_issue_open_book">打开书籍</string>
+    <string name="diagnostic_issue_render">排版/渲染</string>
+    <string name="diagnostic_issue_page_turn">翻页</string>
+    <string name="diagnostic_issue_selection">文本选择/标注</string>
+    <string name="diagnostic_issue_tts">TTS</string>
+    <string name="diagnostic_issue_sync">同步</string>
+    <string name="diagnostic_issue_backup">备份/转换</string>
+    <string name="diagnostic_issue_other">其他</string>
+    <string name="diagnostic_description_label">请描述你看到的现象（必填）</string>
+    <string name="diagnostic_description_hint">例如：打开某本 EPUB 后第 3 章空白，返回再进入仍然如此</string>
+    <string name="diagnostic_missing_description">已开始抓取，但未补充现象描述</string>
+    <string name="diagnostic_consent_title">开始抓取前请了解</string>
+    <string name="diagnostic_consent_body">点击“同意并开始”后，Lumi 会在本机持续记录最近 20 分钟的结构化诊断事件，最多保留约 2 MB。记录内容包括：事件发生时间、级别、模块和固定事件名称、当前页面、操作 ID、耗时、结果、应用启动/后台/恢复、导入解析、阅读打开/渲染/翻页、文本选择、TTS、同步、备份和转换状态；发生错误时还会记录异常类型、错误信息和经过清理的类名/方法名/源码行号堆栈。诊断包还会包含应用版本、Android API、设备厂商和型号、CPU ABI、语言、主题、屏幕尺寸与密度等运行环境信息。</string>
+    <string name="diagnostic_consent_body_extra">书籍 ID 等标识会使用安装级随机盐哈希；本地路径、URI、URL 参数、邮箱、IP、Token、密码、Cookie 和 Authorization 等会被移除或脱敏。不会记录书籍正文、章节正文、笔记正文、标注文本、朗读文本、凭据文件或 Room 数据库快照。你主动填写的现象描述和最多 3 张截图会随诊断包导出，截图会在导出前压缩，可能包含个人内容；如果设备保留了上次未捕获崩溃标记，生成时也可能附带该崩溃的类型和清理后的堆栈。日志先保存在应用私有目录，诊断包只在你主动点击分享或保存时离开设备。离开此页面后抓取仍会继续，直到你结束并生成诊断包。拒绝不会开始抓取。</string>
+    <string name="diagnostic_consent_agree">同意并开始</string>
+    <string name="diagnostic_consent_decline">拒绝</string>
+    <string name="diagnostic_start">开始抓取日志</string>
+    <string name="diagnostic_stop">结束并生成诊断包</string>
+    <string name="diagnostic_add_screenshot">添加截图（可选）</string>
+    <string name="diagnostic_generating">正在生成诊断包...</string>
+    <string name="diagnostic_share">分享诊断包</string>
+    <string name="diagnostic_save">保存到文件</string>
+    <string name="diagnostic_previous_crash">发现上次异常退出的现场，可生成诊断包</string>
+    <string name="diagnostic_preview">包内仅包含脱敏后的结构化事件，不包含书籍正文或访问凭据。描述和截图可能包含个人内容。</string>
+    <string name="diagnostic_preview_files">将包含 summary.md、errors.json、events.ndjson.gz、device.json 和 %1$d 张截图；当前缓冲约 %2$d 条事件。</string>
+    <string name="diagnostic_preview_range">事件时间范围：%1$s - %2$s</string>
+    <string name="diagnostic_screenshot_preview">已选择的截图预览</string>
+    <string name="diagnostic_failed">诊断包生成失败：%1$s</string>
+    <string name="diagnostic_saved">诊断包已保存</string>
+    <string name="diagnostic_export_recent">导出最近日志</string>
+    <string name="diagnostic_recent_description">偶发问题，无法稳定复现</string>
+    <string name="diagnostic_recording_note">抓取会话会在退出此页面后继续运行，直到你生成诊断包。</string>
+    <string name="diagnostic_step_one">第一步</string>
+    <string name="diagnostic_step_one_desc">选择问题类型并填写现象，然后开始记录。你可以退出此页面去复现问题。</string>
+    <string name="diagnostic_step_two">第二步</string>
+    <string name="diagnostic_step_two_desc">复现完成后回来生成诊断包；无法复现时可直接导出最近日志。</string>
 
     <!-- 首页 -->
     <string name="section_previously_read">之前读过</string>
@@ -800,6 +841,7 @@
     <string name="epub_layout_first_open_title">EPUB 排版提示</string>
     <string name="epub_layout_first_open_message">如果本书内置排版，可点击屏幕中央，在“主题”中选择“书籍原排版”。</string>
     <string name="epub_layout_first_open_confirm">知道了</string>
+    <string name="reader_first_open_hint_do_not_show_again">不再提示</string>
     <string name="mobi_layout_first_open_title">MOBI 排版提示</string>
     <string name="mobi_layout_first_open_message">如果本书内置排版，可点击屏幕中央，在“主题”中选择“书籍原排版”。</string>
     <string name="mobi_layout_first_open_confirm">知道了</string>

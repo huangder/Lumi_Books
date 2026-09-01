@@ -1357,6 +1357,12 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 removeCallbacks(rvImageLongPressRunnable)
+                // A committed curl belongs to the page the user can already see. Commit it
+                // before classifying the next pointer stream so rapid swipes start from that
+                // visible page instead of repeatedly reusing the old current slot.
+                (animationController as? CurlPageAnim)
+                    ?.takeIf { it.isRunning }
+                    ?.completeRunningFlipForGestureHandoff()
                 // A child can consume the terminal event of a curl stream. If
                 // the next gesture arrives while that stale drag is still
                 // active, clear it before classifying the new intent.
@@ -1381,6 +1387,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                     y = ev.rawY,
                     density = resources.displayMetrics.density,
                     enabled = bookmarkPullEnabled &&
+                        animationController !is ScrollPageAnim &&
                         !animationController.isRunning &&
                         !animationController.isDragging &&
                         !isJumpSettling,
@@ -1639,8 +1646,21 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                                 Log.d(TAG, "EPUB action image tap ignored by preview")
                             }
                             image != null -> {
-                                // Plain image taps are deliberately inert; preview is long-press only.
-                                Log.d(TAG, "Plain EPUB image tap ignored")
+                                // Covers are commonly a full-page plain image. Their center tap
+                                // must behave like the rest of the reading surface; image preview
+                                // remains a long-press action.
+                                if (rvIsEdgeTouch) {
+                                    Log.d(TAG, "Plain EPUB image edge tap at x=${ev.x} -> page turn")
+                                    if (rvTouchStartX / width < 0.3f) {
+                                        animationController.onTapLeft?.invoke()
+                                    } else {
+                                        animationController.onTapRight?.invoke()
+                                    }
+                                } else {
+                                    Log.d(TAG, "Plain EPUB image center tap -> toggle menu")
+                                    clearCurrentSelection()
+                                    callbacks?.onMenuToggle()
+                                }
                             }
                             rvIsEdgeTouch -> {
                                 // Edge short tap: turn the page through the existing animation callback.

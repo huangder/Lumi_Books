@@ -53,7 +53,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Brightness6
 import androidx.compose.material.icons.outlined.Animation
@@ -3011,18 +3010,16 @@ fun AboutDetail(viewModel: SettingsViewModel) {
                 Toast.makeText(context, R.string.network_error, Toast.LENGTH_LONG).show()
             }
         }
-        SettingsDivider()
-        ActionRow(Icons.AutoMirrored.Outlined.Send, stringResource(R.string.telegram_community)) {
-            val opened = runCatching {
-                context.startActivity(
-                    Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/+TAOugTwmD6ExMzY0"))
-                )
-            }.isSuccess
-            if (!opened) {
-                Toast.makeText(context, R.string.network_error, Toast.LENGTH_LONG).show()
-            }
-        }
     }
+
+    Text(
+        text = stringResource(R.string.community_contact_hint),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AppSpace.md, vertical = AppSpace.sm),
+        fontSize = AppType.Caption,
+        color = AppColors.TextSecondary
+    )
 
     Spacer(Modifier.height(AppSpace.md))
 

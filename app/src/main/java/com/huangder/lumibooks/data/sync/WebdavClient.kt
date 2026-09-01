@@ -22,6 +22,8 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import javax.xml.parsers.DocumentBuilderFactory
 import javax.xml.parsers.ParserConfigurationException
+import com.huangder.lumibooks.util.diagnostics.DiagnosticLevel
+import com.huangder.lumibooks.util.diagnostics.DiagnosticLoggerRegistry
 
 /**
  * Lightweight WebDAV client over OkHttp.
@@ -443,6 +445,18 @@ class WebdavClient @Inject constructor() {
         Log.e(
             TAG,
             "$operation failed: HTTP $code, url=$url, server=$server, requestId=${requestId.orEmpty()}, body=$detail"
+        )
+        DiagnosticLoggerRegistry.logger?.log(
+            category = "sync",
+            event = "http_request_failed",
+            level = DiagnosticLevel.ERROR,
+            attributes = mapOf(
+                "operation" to operation,
+                "statusCode" to code,
+                "server" to server,
+                "requestId" to requestId,
+                "responseBodyPresent" to detail.isNotBlank()
+            )
         )
         val suffix = if (detail.isBlank()) "" else " - $detail"
         val quotaMatch = Regex(

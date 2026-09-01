@@ -25,6 +25,12 @@ internal object TxtChapterStructure {
             if (index > 1 && index < line.length && line[index] in STRICT_CHAPTER_SUFFIXES) return 0
         }
 
+        // Some Chinese TXT sources prefix every chapter with a short series or volume label,
+        // for example "剑中仙 第一章：..." or "===剑中仙 第二章：...". Only accept a marker
+        // near the beginning when it is separated from that label, so body sentences such as
+        // "他说：第一章..." are not treated as headings.
+        prefixedChapterIndex(line)?.let { return 0 }
+
         if (line[0] == '卷' || line[0] == '篇') {
             var index = 1
             while (index < line.length && line[index].isStrictChapterNumberCharacter()) index++
@@ -63,6 +69,21 @@ internal object TxtChapterStructure {
             line.last() == '>' &&
             line.substring(1, line.lastIndex).none { it == '<' || it == '>' || it == '\r' || it == '\n' }
 
+    private fun prefixedChapterIndex(line: String): Int? {
+        val searchEnd = minOf(line.length, MAX_PREFIXED_CHAPTER_MARKER_INDEX)
+        for (index in 1 until searchEnd) {
+            if (line[index] != '第') continue
+            if (line[index - 1] !in PREFIXED_HEADING_SEPARATORS) continue
+
+            var cursor = index + 1
+            while (cursor < line.length && line[cursor].isStrictChapterNumberCharacter()) cursor++
+            if (cursor > index + 1 && cursor < line.length && line[cursor] in STRICT_CHAPTER_SUFFIXES) {
+                return index
+            }
+        }
+        return null
+    }
+
     fun headingLines(text: String): List<String> = text.lineSequence()
         .map { it.trim() }
         .filter { line ->
@@ -92,6 +113,8 @@ internal object TxtChapterStructure {
     private const val STANDALONE_CHAPTER_NUMBER_CHARACTERS = "一二三四五六七八九十百千零〇两壹贰叁肆伍陆柒捌玖拾佰仟萬０１２３４５６７８９"
     private const val STRICT_CHAPTER_SUFFIXES = "章节回卷话節"
     private const val REGEX_WHITESPACE_CHARACTERS = " \t\n\u000B\u000C\r"
+    private const val MAX_PREFIXED_CHAPTER_MARKER_INDEX = 32
+    private const val PREFIXED_HEADING_SEPARATORS = " \t=|-_·"
 }
 
 data class TxtTextMatch(

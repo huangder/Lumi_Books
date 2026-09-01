@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.graphics.Canvas
 import android.graphics.Color
 import android.net.Uri
+import android.util.Log
 import android.view.ActionMode
 import android.view.ContextMenu
 import android.view.Menu
@@ -186,6 +187,27 @@ internal data class EpubPageRequest(
     val chapterFraction: Float? = null
 )
 
+internal fun epubPageTargetMatchesPayload(
+    requested: EpubPageTarget,
+    actualPageIndex: Int,
+    actualPageCount: Int
+): Boolean {
+    val pageIndex = actualPageIndex.coerceAtLeast(0)
+    val pageCount = actualPageCount.coerceAtLeast(1)
+    val expectedPage = if (requested.pageIndex == Int.MAX_VALUE) {
+        pageCount - 1
+    } else {
+        requested.pageIndex.coerceAtLeast(0)
+    }
+    return pageIndex == expectedPage
+}
+
+internal fun isEpubPageNotificationCurrent(
+    notificationSerial: Long,
+    minimumSerial: Long?
+): Boolean = minimumSerial == null ||
+    (notificationSerial >= 0L && notificationSerial >= minimumSerial)
+
 internal data class EpubSelectionInfo(
     val text: String,
     val startPosition: Int,
@@ -210,6 +232,7 @@ private data class EpubPreparedPage(
     val generation: Int,
     val actualTarget: EpubPageTarget,
     val pageCount: Int,
+    val pageSerial: Long,
     val locatorJson: String?,
     val reverseAxis: Boolean
 )
@@ -259,7 +282,7 @@ internal fun EpubWebViewReader(
     bookmarkPullEnabled: Boolean = true,
     onPageTextProviderReady: ((suspend (chapterIndex: Int, pageIndex: Int) -> EpubPageText?)?) -> Unit,
     onPageTurnHandlerReady: (((direction: Int) -> Boolean)?) -> Unit,
-    onPageChanged: (pageIndex: Int, pageCount: Int, locatorJson: String?) -> Unit,
+    onPageChanged: (chapterIndex: Int, pageIndex: Int, pageCount: Int, locatorJson: String?) -> Unit,
     onBookmarkPullStart: () -> Unit = {},
     onBookmarkPullProgress: (distancePx: Float, armed: Boolean) -> Unit = { _, _ -> },
     onBookmarkPullFinished: (commit: Boolean) -> Unit = {},
@@ -367,6 +390,8 @@ internal fun EpubWebViewReader(
                 val activeVisualRequestByView = mutableMapOf<EpubContentWebView, Long>()
                 val preloadRequestByView = mutableMapOf<EpubContentWebView, EpubPreloadRequest>()
                 val preparedPageByView = mutableMapOf<EpubContentWebView, EpubPreparedPage>()
+                val minimumActivePageSerialByView = mutableMapOf<EpubContentWebView, Long>()
+                val promotedActiveTargetByView = mutableMapOf<EpubContentWebView, EpubPageTarget>()
                 val preloadConfigurationByView = mutableMapOf<EpubContentWebView, String>()
                 val readyTtsPageViewByChapter = mutableMapOf<Int, EpubContentWebView>()
                 var nextPreloadGeneration = 0
@@ -527,6 +552,8 @@ internal fun EpubWebViewReader(
                     ) return
                     val generation = ++nextPreloadGeneration
                     preparedPageByView.remove(view)
+                    minimumActivePageSerialByView.remove(view)
+                    promotedActiveTargetByView.remove(view)
                     forgetTtsPageView(view)
                     if (target == null) {
                         preloadRequestByView.remove(view)
@@ -578,6 +605,7 @@ internal fun EpubWebViewReader(
                     if (view.url.orEmpty().substringBefore('#') != expectedUrl) return
                     val actualPage = payload.optInt("pageIndex", 0).coerceAtLeast(0)
                     val actualCount = payload.optInt("pageCount", 1).coerceAtLeast(1)
+                    val pageSerial = payload.optLong("pageSerial", -1L)
                     val actualTarget = EpubPageTarget(target.chapterIndex, actualPage)
                     val locator = payload.optJSONObject("locator")?.withChapterHref(
                         session.chapterHref(target.chapterIndex)
@@ -585,11 +613,11 @@ internal fun EpubWebViewReader(
                     val packageRtl = session.pageProgressionDirection(target.chapterIndex) ==
                         EpubPageProgressionDirection.RTL
                     val reverseAxis = payload.optBoolean("reverseAxis", packageRtl)
-                    val targetReached = if (target.pageIndex == Int.MAX_VALUE) {
-                        actualPage == actualCount - 1
-                    } else {
-                        actualPage == target.pageIndex
-                    }
+                    val targetReached = epubPageTargetMatchesPayload(
+                        requested = target,
+                        actualPageIndex = actualPage,
+                        actualPageCount = actualCount
+                    )
                     if (!targetReached) return
                     val visualRequestId = System.nanoTime()
                     view.postVisualStateCallback(
@@ -619,6 +647,7 @@ internal fun EpubWebViewReader(
                                         generation = request.generation,
                                         actualTarget = actualTarget,
                                         pageCount = actualCount,
+                                        pageSerial = pageSerial,
                                         locatorJson = locator,
                                         reverseAxis = reverseAxis
                                     )
@@ -652,6 +681,52 @@ internal fun EpubWebViewReader(
                             if (view.url.orEmpty().substringBefore('#') != expectedDocumentUrl) return
                             val pageIndex = payload.optInt("pageIndex", 0).coerceAtLeast(0)
                             val pageCount = payload.optInt("pageCount", 1).coerceAtLeast(1)
+                            val pageSerial = payload.optLong("pageSerial", -1L)
+                            val requestAtReceipt = preloadRequestByView[view]
+                            if (requestAtReceipt != null &&
+                                !epubPageTargetMatchesPayload(
+                                    requested = requestAtReceipt.target,
+                                    actualPageIndex = pageIndex,
+                                    actualPageCount = pageCount
+                                )
+                            ) return
+                            val minimumPageSerial = minimumActivePageSerialByView[view]
+                            if (!isEpubPageNotificationCurrent(pageSerial, minimumPageSerial)) return
+                            // A promoted preload view may still emit its old
+                            // initial page after the handoff. Its serial can
+                            // match the prepared page, so also require the
+                            // payload to describe the promoted target.
+                            val promotedTarget = promotedActiveTargetByView[view]
+                            if (promotedTarget != null &&
+                                !epubPageNotificationMatchesTarget(
+                                    promotedTarget,
+                                    messageChapterIndex,
+                                    pageIndex
+                                )
+                            ) return
+                            fun activeCallbackStillCurrent(): Boolean {
+                                if (pageTurnHost.roleOf(view) !=
+                                    EpubPageTurnHost.WebViewRole.ACTIVE ||
+                                    loadedChapterByView[view] != messageChapterIndex
+                                ) return false
+                                val currentRequest = preloadRequestByView[view]
+                                if (!isEpubPageNotificationCurrent(pageSerial, minimumPageSerial)) {
+                                    return false
+                                }
+                                val currentPromotedTarget = promotedActiveTargetByView[view]
+                                if (currentPromotedTarget != null &&
+                                    !epubPageNotificationMatchesTarget(
+                                        currentPromotedTarget,
+                                        messageChapterIndex,
+                                        pageIndex
+                                    )
+                                ) return false
+                                return if (requestAtReceipt == null) {
+                                    currentRequest == null
+                                } else {
+                                    currentRequest === requestAtReceipt
+                                }
+                            }
                             activePageCount.value = pageCount
                             val locator = payload.optJSONObject("locator")?.withChapterHref(
                                 session.chapterHref(messageChapterIndex)
@@ -669,26 +744,26 @@ internal fun EpubWebViewReader(
                                 object : WebView.VisualStateCallback() {
                                     override fun onComplete(requestId: Long) {
                                         if (activeVisualRequestByView[view] != requestId ||
-                                            pageTurnHost.roleOf(view) !=
-                                            EpubPageTurnHost.WebViewRole.ACTIVE ||
-                                            loadedChapterByView[view] != messageChapterIndex
+                                            !activeCallbackStillCurrent()
                                         ) return
                                         val commitPage = commit@{
                                             if (activeVisualRequestByView[view] != requestId ||
-                                                pageTurnHost.roleOf(view) !=
-                                                EpubPageTurnHost.WebViewRole.ACTIVE
+                                                !activeCallbackStillCurrent()
                                             ) return@commit
-                                            pageTurnHost.setCurrentPage(
-                                                messageChapterIndex,
-                                                pageIndex,
-                                                pageCount
-                                            ) {
-                                                updateAdjacentPreloads(
+                            pageTurnHost.setCurrentPage(
+                                messageChapterIndex,
+                                pageIndex,
+                                pageCount
+                            ) {
+                                minimumActivePageSerialByView.remove(view)
+                                promotedActiveTargetByView.remove(view)
+                                updateAdjacentPreloads(
                                                     messageChapterIndex,
                                                     pageIndex,
                                                     pageCount
                                                 )
                                                 latestPageChanged.value(
+                                                    messageChapterIndex,
                                                     pageIndex,
                                                     pageCount,
                                                     locator
@@ -1041,6 +1116,8 @@ internal fun EpubWebViewReader(
                             loadedChapterByView.clear()
                             preloadRequestByView.clear()
                             preparedPageByView.clear()
+                            minimumActivePageSerialByView.clear()
+                            promotedActiveTargetByView.clear()
                             val affectedViews = pageTurnHost.allWebViews().toList()
                             pageTurnHost.removeAllViews()
                             affectedViews.forEach { affected ->
@@ -1143,6 +1220,17 @@ internal fun EpubWebViewReader(
                         else -> 0
                     }
                 }
+                pageTurnHost.onCapturedCenterTap = {
+                    latestCenterTap.value()
+                }
+                pageTurnHost.onHasPotentialTurn = { direction, current, pageCount ->
+                    hasPotentialEpubPageTurn(
+                        current = current,
+                        currentPageCount = pageCount,
+                        chapterCount = session.chapterCount,
+                        direction = direction
+                    )
+                }
                 pageTurnHost.onBookmarkPullStart = {
                     latestBookmarkPullStart.value()
                 }
@@ -1152,7 +1240,7 @@ internal fun EpubWebViewReader(
                 pageTurnHost.onBookmarkPullFinished = { commit ->
                     latestBookmarkPullFinished.value(commit)
                 }
-                pageTurnHost.onPageCommit = { direction, target ->
+                pageTurnHost.onPageCommit = { _, target, hostPageCount ->
                     val activeView = pageTurnHost.activeWebView
                     val request = preloadRequestByView[activeView]
                     val prepared = preparedPageByView[activeView]
@@ -1161,43 +1249,70 @@ internal fun EpubWebViewReader(
                             target.chapterIndex,
                             target.pageIndex
                         ) &&
-                            request != null &&
-                            request.generation == it.generation &&
-                            request.target == it.requestedTarget &&
+                            // The role can be rotated by the visual-page
+                            // callback before the request bookkeeping is
+                            // consumed. The prepared record already carries
+                            // its generation and requested target, so a
+                            // missing request must not demote a ready page to
+                            // the slow chapter-reload path.
+                            (request == null ||
+                                (request.generation == it.generation &&
+                                    request.target == it.requestedTarget)) &&
                             it.actualTarget == target
                     }
+                    Log.d(
+                        "EpubCurlCommit",
+                        "commit target=$target hostCount=$hostPageCount prepared=" +
+                            (promotedPreparedPage != null)
+                    )
                     val crossesChapter = target.chapterIndex != loadedChapter.value
-                    if (crossesChapter && promotedPreparedPage != null) {
+                    if (crossesChapter) {
                         loadedChapter.value = target.chapterIndex
                         activeDocumentUrl.value = session.chapterUrl(target.chapterIndex)
                             .substringBefore('#')
                         configuredKey.value = activeConfigurationKey(target.chapterIndex)
                         chapterLoadPending.value = false
                         readyChapter.value = target.chapterIndex
-                        latestChapterTurn.value(direction)
                     }
+                    // The active view has just been promoted from a preload role.
+                    // Consume its request and preparation record before accepting
+                    // callbacks that may already be queued for the old role.
+                    preparedPageByView.remove(activeView)
+                    preloadRequestByView.remove(activeView)
+                    val committedPageCount = promotedPreparedPage?.pageCount
+                        ?: hostPageCount.coerceAtLeast(1)
                     if (promotedPreparedPage != null) {
-                        activePageCount.value = promotedPreparedPage.pageCount
+                        promotedActiveTargetByView[activeView] = target
+                        // Keep the promoted page's notification serial as a
+                        // lower bound for callbacks arriving after promotion.
+                        promotedPreparedPage.pageSerial.takeIf { it >= 0L }?.let {
+                            minimumActivePageSerialByView[activeView] = it
+                        } ?: minimumActivePageSerialByView.remove(activeView)
                         pageTurnHost.setReverseAxis(promotedPreparedPage.reverseAxis)
-                        pageTurnHost.setCurrentPage(
-                            target.chapterIndex,
-                            target.pageIndex,
-                            promotedPreparedPage.pageCount
-                        ) {
-                            updateAdjacentPreloads(
-                                target.chapterIndex,
-                                target.pageIndex,
-                                promotedPreparedPage.pageCount
-                            )
-                            latestPageChanged.value(
-                                target.pageIndex,
-                                promotedPreparedPage.pageCount,
-                                promotedPreparedPage.locatorJson
-                            )
-                        }
-                    } else if (crossesChapter) {
-                        latestChapterTurn.value(direction)
                     } else {
+                        // The curl host has already promoted the visual target.
+                        // Keep late callbacks from the outgoing page from
+                        // overwriting the committed target while WebView catches up.
+                        promotedActiveTargetByView[activeView] = target
+                    }
+                    activePageCount.value = committedPageCount
+                    pageTurnHost.setCurrentPage(
+                        target.chapterIndex,
+                        target.pageIndex,
+                        committedPageCount
+                    )
+                    updateAdjacentPreloads(
+                        target.chapterIndex,
+                        target.pageIndex,
+                        committedPageCount
+                    )
+                    latestPageChanged.value(
+                        target.chapterIndex,
+                        target.pageIndex,
+                        committedPageCount,
+                        promotedPreparedPage?.locatorJson
+                    )
+                    if (promotedPreparedPage == null) {
                         activeView.evaluateJavascript(
                             "window.LumiReader&&window.LumiReader.goToPage(" +
                                 target.pageIndex + ");",
@@ -1230,7 +1345,11 @@ internal fun EpubWebViewReader(
             )
             pageTurnHost.setNativePagingEnabled(nativePageTurn)
             pageTurnHost.setNativeTouchPagingEnabled(nativePageTurn)
-            pageTurnHost.setBookmarkPullEnabled(bookmarkPullEnabled && !continuousScroll)
+            // Vertical native paging uses downward swipes for PREV turns, so
+            // reserve that gesture for paging instead of bookmark pull.
+            pageTurnHost.setBookmarkPullEnabled(
+                bookmarkPullEnabled && !continuousScroll && pageTransition != "scroll"
+            )
             if (nativePageTurn) {
                 pageTurnHost.setTransition(pageTransition, latestPageTransitionDurationMs.value)
             }
@@ -1469,8 +1588,8 @@ internal fun usesNativeEpubPageTurn(
 ): Boolean {
     if (continuousScroll) return false
     return when (transition) {
-        "scroll" -> true
-        "slide", "curl" -> renditionLayout != EpubRenditionLayout.PRE_PAGINATED
+        "scroll", "curl" -> true
+        "slide" -> renditionLayout != EpubRenditionLayout.PRE_PAGINATED
         else -> false
     }
 }

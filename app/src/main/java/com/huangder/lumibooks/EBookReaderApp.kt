@@ -22,6 +22,10 @@ import javax.inject.Inject
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import com.huangder.lumibooks.data.sync.WebdavAutoSyncScheduler
+import com.huangder.lumibooks.util.diagnostics.DiagnosticLevel
+import com.huangder.lumibooks.util.diagnostics.DiagnosticLogger
+import com.huangder.lumibooks.util.diagnostics.DiagnosticLoggerRegistry
+import com.huangder.lumibooks.util.ErrorHandler
 
 @HiltAndroidApp
 class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Configuration.Provider {
@@ -41,6 +45,9 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
     @Inject
     lateinit var webdavAutoSyncScheduler: WebdavAutoSyncScheduler
 
+    @Inject
+    lateinit var diagnosticLogger: DiagnosticLogger
+
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
             .setWorkerFactory(workerFactory)
@@ -56,6 +63,10 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
 
     override fun onCreate() {
         super.onCreate()
+        installDiagnosticExceptionHandler()
+        ErrorHandler.installDiagnosticLogger(diagnosticLogger)
+        DiagnosticLoggerRegistry.logger = diagnosticLogger
+        diagnosticLogger.log("app", "process_started", DiagnosticLevel.INFO)
         LaunchThemeController.synchronizeLauncherComponents(this)
         registerActivityLifecycleCallbacks(this)
         floatingSubtitleOverlayController.start()
@@ -87,6 +98,7 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
         val wasInBackground = startedActivityCount == 0
         startedActivityCount++
         if (wasInBackground) floatingSubtitleOverlayController.setAppInForeground(true)
+        diagnosticLogger.log("app", "activity_started", screen = activity.javaClass.simpleName)
     }
 
     override fun onActivityStopped(activity: Activity) {
@@ -95,6 +107,7 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
             floatingSubtitleOverlayController.setAppInForeground(false)
             LaunchThemeController.applyPendingSplashSetting(this)
             webdavAutoSyncScheduler.onAppBackgrounded()
+            diagnosticLogger.log("app", "app_backgrounded", screen = activity.javaClass.simpleName)
         }
     }
 
@@ -117,5 +130,13 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
         floatingSubtitleOverlayController.onDisplayConfigurationChanged()
+    }
+
+    private fun installDiagnosticExceptionHandler() {
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            diagnosticLogger.recordCrashSynchronously(throwable, thread.name)
+            previous?.uncaughtException(thread, throwable)
+        }
     }
 }

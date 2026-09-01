@@ -589,6 +589,16 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     };
   }
 
+  function currentPagePayload() {
+    return {
+      pageIndex: state.page,
+      pageCount: state.total,
+      reverseAxis: state.reverseAxis,
+      pageSerial: pageNotifySerial,
+      locator: currentLocator()
+    };
+  }
+
   function textIndex() {
     var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     var nodes = [];
@@ -902,7 +912,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     ++pageNotifySerial;
     settlePageStage(state.page);
     if (notify !== false) {
-      post('page', { pageIndex: state.page, pageCount: state.total, reverseAxis: state.reverseAxis, locator: currentLocator() });
+      post('page', currentPagePayload());
     }
     return true;
   }
@@ -1004,7 +1014,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       state.page = settledPage;
       settlePageStage(settledPage);
       if (commit && notify !== false) {
-        post('page', { pageIndex: state.page, pageCount: state.total, reverseAxis: state.reverseAxis, locator: currentLocator() });
+        post('page', currentPagePayload());
       }
     }, duration + 24);
   }
@@ -1062,7 +1072,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     if (notify !== false) {
       var notifyPage = function () {
         if (notificationSerial !== pageNotifySerial || state.page !== targetPage) return;
-        post('page', { pageIndex: state.page, pageCount: state.total, reverseAxis: state.reverseAxis, locator: currentLocator() });
+        post('page', currentPagePayload());
       };
       if (state.transition === 'none' && state.flow === 'paginated') {
         requestAnimationFrame(function () {
@@ -1099,12 +1109,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       void body.offsetWidth;
       requestAnimationFrame(function () {
         if (notificationSerial !== pageNotifySerial || state.page !== targetPage) return;
-        post('page', {
-          pageIndex: state.page,
-          pageCount: state.total,
-          reverseAxis: state.reverseAxis,
-          locator: currentLocator()
-        });
+        post('page', currentPagePayload());
       });
     });
   }
@@ -1134,6 +1139,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
           pageIndex: state.page,
           pageCount: state.total,
           reverseAxis: state.reverseAxis,
+          pageSerial: pageNotifySerial,
           locator: currentLocator()
         });
       });
@@ -1494,7 +1500,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     state.paginating = false;
     rebuildHighlightLayer();
     fulfillPreparedPageRequest();
-    post('ready', { pageIndex: state.page, pageCount: state.total, reverseAxis: state.reverseAxis, locator: currentLocator() });
+    post('ready', currentPagePayload());
     if (location.hash && !state.initialFragmentApplied) {
       state.initialFragmentApplied = true;
       requestAnimationFrame(function () { window.LumiReader.goToFragment(location.hash); });
@@ -2236,7 +2242,8 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
   function imageFromTarget(target) {
     var image = target && target.closest ? target.closest('img') : null;
     if (!image) return null;
-    if (interactiveFromTarget(image) || image.hasAttribute('usemap') || image.hasAttribute('ismap')) return null;
+    var isCoverMedia = image.getAttribute('data-lumi-cover-media') === 'true';
+    if ((!isCoverMedia && interactiveFromTarget(image)) || image.hasAttribute('usemap') || image.hasAttribute('ismap')) return null;
     return image;
   }
 
@@ -2605,7 +2612,14 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     var shouldTurn = !state.nativePaging && horizontal && (Math.abs(dx) >= Math.min(72, state.viewportWidth * 0.16) ||
       (Math.abs(dx) >= 18 && Math.abs(velocityX) >= 0.42));
     var imageTap = !touchPaging && !shouldTurn && !!tappedImage && Math.abs(dx) < 12 && Math.abs(dy) < 12;
-    var isTap = !touchPaging && !shouldTurn && !anchor && !interactiveTarget && !tappedImage && Math.abs(dx) < 12 && Math.abs(dy) < 12;
+    var tapRatio = touch.clientX / viewportWidth();
+    var centerImageTap = imageTap && tapRatio >= 0.3 && tapRatio <= 0.7;
+    // Covers are commonly wrapped in an anchor by EPUB generators. A short
+    // center tap on that image is still the reader menu gesture; edge taps
+    // and non-cover links retain their normal link/image behavior.
+    var isTap = !touchPaging && !shouldTurn && (!anchor || centerImageTap) &&
+      (!interactiveTarget || centerImageTap) && (!tappedImage || centerImageTap) &&
+      Math.abs(dx) < 12 && Math.abs(dy) < 12;
     var selection = window.getSelection && window.getSelection();
     var hasSelection = !!(selection && !selection.isCollapsed && selection.rangeCount > 0);
     if (touchPaging || shouldTurn || imageTap || isTap) event.preventDefault();
@@ -2631,13 +2645,13 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       return;
     }
     if (wasPaging && state.transition !== 'fade' && state.transition !== 'none') snapBackPage();
-    if (imageTap) {
+    if (imageTap && !centerImageTap) {
       pageStageDurationOverride = 0;
       state.suppressClickUntil = Date.now() + 450;
       return;
     }
     if (isTap && (!window.getSelection || window.getSelection().isCollapsed)) {
-      var ratio = touch.clientX / viewportWidth();
+      var ratio = tapRatio;
       if (ratio < 0.3) {
         if (state.nativePaging) post('tap', { zone: 'left' });
         else turnByDirection(state.edgeTapLeft);
@@ -2813,7 +2827,8 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
           Math.floor((window.scrollY + state.viewportHeight * 0.42) / Math.max(1, state.viewportHeight))));
         if (nextPage !== state.page) {
           state.page = nextPage;
-          post('page', { pageIndex: state.page, pageCount: state.total, reverseAxis: state.reverseAxis, locator: currentLocator() });
+          ++pageNotifySerial;
+          post('page', currentPagePayload());
         }
       }, 70);
       return;
