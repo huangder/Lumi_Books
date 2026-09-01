@@ -28,9 +28,17 @@ class FolderRepositoryImpl @Inject constructor(
     override fun getAllBookFolderLinks(): Flow<List<BookFolderLink>> =
         folderDao.getAllBookFolderLinks().map { links -> links.map { it.toDomain() } }
 
-    override suspend fun createFolder(rawName: String, parentId: String?): LibraryFolder? {
+    override suspend fun createFolder(
+        rawName: String,
+        parentId: String?,
+        storageTreeUri: String?,
+        storageDocumentUri: String?,
+        storageParentUri: String?
+    ): LibraryFolder? {
         require(FolderNameValidator.isValid(rawName))
-        return folderDao.createFolderIfAvailable(newFolder(rawName, parentId))?.toDomain()
+        return folderDao.createFolderIfAvailable(
+            newFolder(rawName, parentId, storageTreeUri, storageDocumentUri, storageParentUri)
+        )?.toDomain()
     }
 
     override suspend fun getOrCreateRootFolder(rawName: String): LibraryFolder {
@@ -40,23 +48,81 @@ class FolderRepositoryImpl @Inject constructor(
 
     override suspend fun getOrCreateFolderPath(
         rootName: String,
-        relativeDirectory: String?
+        relativeDirectory: String?,
+        storageBindings: List<FolderRepository.StorageBinding>
     ): LibraryFolder {
         val sanitizedRoot = sanitizeFolderSegment(rootName)
             ?: error("Invalid authorized folder name")
-        val path = buildList {
-            add(newFolder(sanitizedRoot, null))
+        val segments = buildList {
+            add(sanitizedRoot)
             relativeDirectory
                 .orEmpty()
                 .split('/')
                 .asSequence()
                 .mapNotNull(::sanitizeFolderSegment)
-                .forEach { segment ->
-                    add(newFolder(segment, last().id))
-                }
+                .forEach(::add)
+        }
+        val path = mutableListOf<FolderEntity>()
+        var parentId: String? = null
+        segments.forEachIndexed { index, segment ->
+            val binding = storageBindings.getOrNull(index)
+            val proposed = newFolder(
+                rawName = segment,
+                parentId = parentId,
+                storageTreeUri = binding?.treeUri,
+                storageDocumentUri = binding?.documentUri,
+                storageParentUri = binding?.parentUri
+            )
+            path += proposed
+            parentId = proposed.id
         }
         return folderDao.getOrCreateFolderPath(path).toDomain()
     }
+
+    override suspend fun bindFolder(
+        folderId: String,
+        storageTreeUri: String?,
+        storageDocumentUri: String?,
+        storageParentUri: String?
+    ): Boolean = folderDao.updateFolderStorage(
+        folderId,
+        storageTreeUri,
+        storageDocumentUri,
+        storageParentUri,
+        System.currentTimeMillis()
+    ) > 0
+
+    override suspend fun reconcileStorageFolder(
+        folderId: String,
+        name: String,
+        storageTreeUri: String?,
+        storageDocumentUri: String?,
+        storageParentUri: String?,
+        storageMissing: Boolean
+    ): Boolean = folderDao.updateFolderStorageState(
+        folderId = folderId,
+        name = FolderNameValidator.clean(name),
+        normalizedName = FolderNameValidator.normalized(name),
+        treeUri = storageTreeUri,
+        documentUri = storageDocumentUri,
+        parentUri = storageParentUri,
+        storageMissing = storageMissing,
+        updatedAt = System.currentTimeMillis()
+    ) > 0
+
+    override suspend fun markStorageMissing(folderId: String, missing: Boolean): Boolean =
+        folderDao.updateFolderStorageMissing(folderId, missing, System.currentTimeMillis()) > 0
+
+    override suspend fun reconcileFolderParent(
+        folderId: String,
+        parentId: String?,
+        storageParentUri: String?
+    ): Boolean = folderDao.reconcileFolderParent(
+        folderId,
+        parentId,
+        storageParentUri,
+        System.currentTimeMillis()
+    ) > 0
 
     override suspend fun renameFolder(folderId: String, rawName: String): Boolean {
         if (!FolderNameValidator.isValid(rawName)) return false
@@ -89,6 +155,23 @@ class FolderRepositoryImpl @Inject constructor(
         ) > 0
     }
 
+    override suspend fun refreshFolderPreview(
+        folderId: String,
+        orderedBookIds: List<String>
+    ): Boolean {
+        val ids = orderedBookIds
+            .asSequence()
+            .filter { it.isNotBlank() }
+            .distinct()
+            .take(4)
+            .toList()
+        return folderDao.updateFolderPreviewIfChanged(
+            folderId = folderId,
+            previewBookIds = ids.takeIf { it.isNotEmpty() }?.let { JSONArray(it).toString() },
+            updatedAt = System.currentTimeMillis()
+        ) > 0
+    }
+
     override suspend fun moveFolder(
         folderId: String,
         targetParentId: String?
@@ -117,14 +200,23 @@ class FolderRepositoryImpl @Inject constructor(
         }
     }
 
-    private fun newFolder(rawName: String, parentId: String?): FolderEntity {
+    private fun newFolder(
+        rawName: String,
+        parentId: String?,
+        storageTreeUri: String? = null,
+        storageDocumentUri: String? = null,
+        storageParentUri: String? = null
+    ): FolderEntity {
         val name = FolderNameValidator.clean(rawName)
         return FolderEntity(
             id = UUID.randomUUID().toString(),
             name = name,
             normalizedName = FolderNameValidator.normalized(name),
             parentId = parentId,
-            createdAt = System.currentTimeMillis()
+            createdAt = System.currentTimeMillis(),
+            storageTreeUri = storageTreeUri,
+            storageDocumentUri = storageDocumentUri,
+            storageParentUri = storageParentUri
         )
     }
 
@@ -150,7 +242,11 @@ class FolderRepositoryImpl @Inject constructor(
                 }
             }.getOrDefault(emptyList())
         },
-        updatedAt = updatedAt
+        updatedAt = updatedAt,
+        storageTreeUri = storageTreeUri,
+        storageDocumentUri = storageDocumentUri,
+        storageParentUri = storageParentUri,
+        storageMissing = storageMissing
     )
 
     private fun BookFolderCrossRefEntity.toDomain() = BookFolderLink(bookId, folderId, updatedAt)

@@ -7,8 +7,12 @@ interface BookRepository {
     fun getAllBooks(): Flow<List<Book>>
     fun searchBooks(query: String): Flow<List<Book>>
     suspend fun getBookById(bookId: String): Book?
+    suspend fun getBookBySourceDocumentKey(key: String): Book?
+    suspend fun getBookBySourceUri(uri: String): Book?
+    suspend fun getBooksBySourceSha256(sha256: String): List<Book>
     suspend fun insertBook(book: Book)
     suspend fun updateBook(book: Book)
+    suspend fun updateSourceSha256(bookId: String, sha256: String)
     suspend fun updateBookMetadata(book: Book)
     suspend fun deleteBook(book: Book)
     suspend fun markBookCloudOnly(bookId: String)

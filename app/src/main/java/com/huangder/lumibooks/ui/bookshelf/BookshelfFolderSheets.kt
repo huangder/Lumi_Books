@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -33,20 +34,24 @@ import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.HideImage
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -62,32 +67,136 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.util.AuthorizedStorageManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 internal fun FolderNameDialog(
     title: String,
     initialName: String = "",
     onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit
+    onConfirm: (String) -> Unit,
+    storageChoices: List<Pair<String, String?>> = emptyList(),
+    onConfirmWithStorage: ((String, String?) -> Unit)? = null
 ) {
+    var selectedStorage by remember(storageChoices) { mutableStateOf(storageChoices.firstOrNull()?.second) }
+    val context = LocalContext.current
+    val resolvedStorageChoices by produceState(
+        initialValue = storageChoices,
+        key1 = storageChoices,
+        key2 = context
+    ) {
+        val manager = AuthorizedStorageManager()
+        value = withContext(Dispatchers.IO) {
+            storageChoices.map { (label, uri) ->
+                if (uri.isNullOrBlank()) {
+                    label to uri
+                } else {
+                    val displayName = runCatching {
+                        manager.queryDisplayName(context, manager.treeRootUri(android.net.Uri.parse(uri)))
+                    }.getOrNull()?.takeIf { it.isNotBlank() }
+                    val fallbackName = uri.substringAfterLast('/').let(android.net.Uri::decode)
+                        .substringAfterLast(':')
+                        .ifBlank { uri }
+                    context.getString(R.string.folder_storage_authorized, displayName ?: fallbackName) to uri
+                }
+            }
+        }
+    }
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
         backgroundScrimColor = Color.Transparent,
         backgroundBlurRadius = 18.dp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .widthIn(max = 520.dp),
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        EditInputDialog(
-            title = title,
-            fields = listOf(
-                Triple(
-                    stringResource(R.string.folder_name),
-                    stringResource(R.string.folder_name_hint),
-                    initialName
-                )
-            ),
-            onBack = onDismiss,
-            onConfirm = { values -> onConfirm(values.firstOrNull().orEmpty()) }
-        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 520.dp),
+            verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
+        ) {
+            EditInputDialog(
+                title = title,
+                fields = listOf(
+                    Triple(
+                        stringResource(R.string.folder_name),
+                        stringResource(R.string.folder_name_hint),
+                        initialName
+                    )
+                ),
+                onBack = onDismiss,
+                onConfirm = { values ->
+                    val name = values.firstOrNull().orEmpty()
+                    if (onConfirmWithStorage != null) onConfirmWithStorage(name, selectedStorage)
+                    else onConfirm(name)
+                }
+            )
+            if (storageChoices.isNotEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset(y = (-8).dp)
+                        .padding(horizontal = AppSpace.sm)
+                ) {
+                    Text(
+                        text = stringResource(R.string.folder_storage_section_title),
+                        color = AppColors.TextSecondary,
+                        fontSize = AppType.Caption,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(start = AppSpace.xs, bottom = 2.dp)
+                    )
+                    LiquidGlassSurface(
+                        shape = RoundedCornerShape(14.dp),
+                        fallbackColor = AppColors.BgGray,
+                        contentScrimColor = AppColors.CardBg.copy(alpha = 0.42f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(Modifier.padding(vertical = 4.dp)) {
+                            resolvedStorageChoices.forEach { (label, uri) ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { selectedStorage = uri }
+                                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(selected = selectedStorage == uri, onClick = { selectedStorage = uri })
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(1.dp)
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            color = AppColors.TextPrimary,
+                                            fontSize = AppType.BodySmall,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = stringResource(
+                                                if (uri.isNullOrBlank()) {
+                                                    R.string.folder_storage_virtual_description
+                                                } else {
+                                                    R.string.folder_storage_authorized_description
+                                                }
+                                            ),
+                                            color = AppColors.TextSecondary,
+                                            fontSize = AppType.Caption,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -594,21 +703,36 @@ internal fun FolderBreadcrumb(
                 tint = AppColors.TextSecondary,
                 modifier = Modifier.size(18.dp)
             )
-            Text(
-                text = folder.name,
-                color = if (index == path.lastIndex) AppColors.TextPrimary else AppColors.Accent,
-                fontSize = AppType.BodySmall,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+            Row(
                 modifier = Modifier
                     .then(if (index == path.lastIndex) Modifier.weight(1f, fill = false) else Modifier)
                     .clickable(
                         enabled = index != path.lastIndex,
                         indication = null,
                         interactionSource = remember { MutableInteractionSource() }
-                    ) { onFolderClick(folder) }
-            )
+                    ) { onFolderClick(folder) },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = folder.name,
+                    color = if (index == path.lastIndex) AppColors.TextPrimary else AppColors.Accent,
+                    fontSize = AppType.BodySmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (folder.storageDocumentUri != null) {
+                    Icon(
+                        imageVector = Icons.Outlined.Link,
+                        contentDescription = stringResource(R.string.folder_storage_linked),
+                        tint = if (folder.storageMissing) Color(0xFFD92D3A) else AppColors.Accent,
+                        modifier = Modifier
+                            .padding(start = 3.dp)
+                            .size(14.dp)
+                    )
+                }
+            }
         }
     }
 }
@@ -641,6 +765,24 @@ private fun FolderDestinationRow(folder: LibraryFolder, onClick: () -> Unit) {
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
+            if (folder.storageDocumentUri != null) {
+                Icon(
+                    imageVector = Icons.Outlined.Link,
+                    contentDescription = stringResource(R.string.folder_storage_linked),
+                    tint = if (folder.storageMissing) Color(0xFFD92D3A) else AppColors.Accent,
+                    modifier = Modifier
+                        .padding(start = 4.dp)
+                        .size(15.dp)
+                )
+            }
+            if (folder.storageMissing) {
+                Text(
+                    text = stringResource(R.string.folder_storage_missing),
+                    color = Color(0xFFD92D3A),
+                    fontSize = AppType.Caption,
+                    maxLines = 1
+                )
+            }
             Icon(Icons.Outlined.KeyboardArrowRight, null, tint = AppColors.TextSecondary)
         }
     }

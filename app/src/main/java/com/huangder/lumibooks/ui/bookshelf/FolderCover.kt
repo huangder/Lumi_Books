@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,6 +33,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.huangder.lumibooks.domain.model.LibraryFolder
 import com.huangder.lumibooks.domain.model.Book
@@ -133,12 +138,12 @@ private fun FolderBookPreview(
     previewBooks: List<Book?>,
     modifier: Modifier = Modifier
 ) {
-    val slotBackground = Color(0xFFE5E5E5)
+    val slotBackground = AppColors.BgGray
     val outerPadding = 8.dp
     val slotGap = 6.dp
     Column(
         modifier = modifier
-            .background(Color.White)
+            .background(AppColors.CardBg)
             .padding(outerPadding),
         verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(slotGap)
     ) {
@@ -160,12 +165,25 @@ private fun FolderBookPreview(
                             .background(slotBackground),
                         contentAlignment = Alignment.Center
                     ) {
-                        book?.coverPath?.takeIf { it.isNotBlank() }?.let { coverPath ->
+                        val coverPath = book?.coverPath?.takeIf { it.isNotBlank() }
+                        if (coverPath != null) {
                             AsyncImage(
                                 model = coverPath,
                                 contentDescription = book.title,
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize()
+                            )
+                        } else if (book != null) {
+                            Text(
+                                text = book.title,
+                                color = AppColors.TextPrimary,
+                                fontSize = 9.sp,
+                                lineHeight = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                textAlign = TextAlign.Center,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(4.dp)
                             )
                         }
                     }

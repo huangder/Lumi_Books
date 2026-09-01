@@ -107,8 +107,17 @@ data class SelectedImportBook(
     val name: String,
     val sourceDirectoryUri: String? = null,
     val sourceDirectoryName: String? = null,
-    val sourceRelativeDirectory: String? = null
-)
+    val sourceRelativeDirectory: String? = null,
+    val sourceDirectoryDocumentUri: String? = null,
+    val sourceDocumentKey: String? = null,
+    val sourceLastModified: Long = 0L,
+    val sourceSize: Long = 0L,
+    val sourceDirectoryBindings: List<com.huangder.lumibooks.domain.repository.FolderRepository.StorageBinding> = emptyList()
+) {
+    val lastModified: Long get() = sourceLastModified
+    val documentKey: String? get() = sourceDocumentKey
+    val physicalParentUri: String? get() = sourceDirectoryDocumentUri
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -370,11 +379,13 @@ private fun ImportActionsStage(
             }
         }
         Spacer(Modifier.height(18.dp))
-        val authorizedDirectoryLabel = remember(authorizedDirectoryUris) {
+        val internalStorageLabel = stringResource(R.string.book_detail_internal_storage)
+        val listSeparator = stringResource(R.string.list_separator)
+        val authorizedDirectoryLabel = remember(authorizedDirectoryUris, internalStorageLabel, listSeparator) {
             authorizedDirectoryUris
-                .map(::formatAuthorizedDirectory)
+                .map { formatAuthorizedDirectory(it, internalStorageLabel) }
                 .distinct()
-                .joinToString(separator = "\u3001")
+                .joinToString(separator = listSeparator)
         }
         Text(
             text = if (authorizedDirectoryLabel.isBlank()) {
@@ -389,7 +400,7 @@ private fun ImportActionsStage(
     }
 }
 
-private fun formatAuthorizedDirectory(uriString: String): String {
+private fun formatAuthorizedDirectory(uriString: String, internalStorageLabel: String): String {
     return runCatching {
         val treeId = DocumentsContract.getTreeDocumentId(Uri.parse(uriString))
         val volume = treeId.substringBefore(':', missingDelimiterValue = "")
@@ -397,7 +408,7 @@ private fun formatAuthorizedDirectory(uriString: String): String {
             .trim('/')
         when {
             volume.equals("primary", ignoreCase = true) && relativePath.isNotBlank() ->
-                "\u5185\u90e8\u5b58\u50a8/$relativePath"
+                "$internalStorageLabel/$relativePath"
             volume.isNotBlank() && relativePath.isNotBlank() -> "$volume/$relativePath"
             relativePath.isNotBlank() -> relativePath
             else -> treeId
@@ -478,6 +489,11 @@ private fun SelectedBooksStage(
             ImportBookSort.FORMAT -> selectedBooks.sortedBy {
                 it.name.substringAfterLast('.', missingDelimiterValue = "").lowercase()
             }
+            ImportBookSort.TIME -> selectedBooks.sortedWith(
+                compareByDescending<SelectedImportBook> { it.sourceLastModified > 0L }
+                    .thenByDescending { it.sourceLastModified }
+                    .thenBy { it.name.lowercase() }
+            )
         }
         val query = searchQuery.trim()
         if (query.isEmpty()) sorted
@@ -717,7 +733,8 @@ private fun SelectedBookPreview(
 private enum class ImportBookSort {
     DEFAULT,
     NAME,
-    FORMAT
+    FORMAT,
+    TIME
 }
 
 @Composable
@@ -838,6 +855,7 @@ private fun ImportSortButton(
     val defaultLabel = stringResource(R.string.import_sort_default)
     val nameLabel = stringResource(R.string.import_sort_name)
     val formatLabel = stringResource(R.string.import_sort_format)
+    val timeLabel = stringResource(R.string.import_sort_time)
 
     DisposableEffect(menuHost) {
         onDispose {
@@ -865,6 +883,7 @@ private fun ImportSortButton(
                                     ImportBookSort.DEFAULT -> defaultLabel
                                     ImportBookSort.NAME -> nameLabel
                                     ImportBookSort.FORMAT -> formatLabel
+                                    ImportBookSort.TIME -> timeLabel
                                 },
                                 selected = option == sortBy,
                                 onClick = { onSortChange(option) }

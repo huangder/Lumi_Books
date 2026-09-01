@@ -24,6 +24,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -44,6 +45,8 @@ import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.ui.navigation.MainNavGraph
 import com.huangder.lumibooks.ui.navigation.Screen
+import com.huangder.lumibooks.ui.home.backfillMissingSourceHashes
+import com.huangder.lumibooks.ui.home.findMatchingAuthorizedBook
 import com.huangder.lumibooks.tts.TtsController
 import com.huangder.lumibooks.ui.splash.SplashScreen
 import com.huangder.lumibooks.ui.components.AppUpdateDialog
@@ -57,6 +60,7 @@ import com.huangder.lumibooks.ui.theme.MotionPreference
 import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
 import com.huangder.lumibooks.ui.theme.effectiveAppTheme
 import com.huangder.lumibooks.util.FileUtils
+import com.huangder.lumibooks.util.AuthorizedStorageManager
 import com.huangder.lumibooks.util.BuiltinGuideSeeder
 import com.huangder.lumibooks.util.LaunchThemeController
 import com.huangder.lumibooks.util.UpdateChecker
@@ -152,6 +156,7 @@ class MainActivity : ComponentActivity() {
     private var requestedOpenBookId by mutableStateOf<String?>(null)
     private var requestedOpenBookshelf by mutableStateOf(false)
     private var requestedOpenFolderId by mutableStateOf<String?>(null)
+    private val authorizedStorageManager = AuthorizedStorageManager()
 
     override fun attachBaseContext(newBase: android.content.Context) {
         super.attachBaseContext(com.huangder.lumibooks.util.LocaleHelper.applyLanguage(newBase))
@@ -235,11 +240,16 @@ class MainActivity : ComponentActivity() {
         if (uris.isEmpty()) return
         lifecycleScope.launch(Dispatchers.IO) {
             var imported = 0
+            var opened = 0
             var failed = 0
             uris.forEach { uri ->
                 runCatching { importBookFromUri(uri) }
-                    .onSuccess { wasImported ->
-                        if (wasImported) imported++ else failed++
+                    .onSuccess { outcome ->
+                        when (outcome) {
+                            ImportOutcome.IMPORTED -> imported++
+                            ImportOutcome.OPENED -> opened++
+                            ImportOutcome.UNSUPPORTED -> failed++
+                        }
                     }
                     .onFailure { error ->
                         failed++
@@ -249,6 +259,8 @@ class MainActivity : ComponentActivity() {
             withContext(Dispatchers.Main) {
                 val message = when {
                     failed > 0 -> getString(R.string.import_summary_with_failures, imported, failed)
+                    imported == 0 && opened > 0 -> getString(R.string.import_already_opened, opened)
+                    opened > 0 -> getString(R.string.import_summary_with_opened, imported, opened)
                     else -> getString(R.string.import_summary, imported)
                 }
                 Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
@@ -256,12 +268,44 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private suspend fun importBookFromUri(uri: Uri): Boolean {
-        val fileName = FileUtils.getFileNameFromUri(this, uri) ?: return false
-        val extension = FileUtils.getFileExtension(fileName)
-        if (extension !in listOf("epub", "pdf", "txt", "mobi")) return false
+    private enum class ImportOutcome { IMPORTED, OPENED, UNSUPPORTED }
 
-        val file = FileUtils.copyFileToInternal(this, uri, fileName) ?: return false
+    private suspend fun importBookFromUri(uri: Uri): ImportOutcome {
+        val fileName = FileUtils.getFileNameFromUri(this, uri) ?: return ImportOutcome.UNSUPPORTED
+        val extension = FileUtils.getFileExtension(fileName)
+        if (extension !in listOf("epub", "pdf", "txt", "mobi")) return ImportOutcome.UNSUPPORTED
+
+        val sourceKey = authorizedStorageManager.documentKey(uri)
+        val sourceHash = runCatching { authorizedStorageManager.sha256(this, uri.toString()) }.getOrNull()
+        val sourceUri = uri.toString()
+        var knownBooks = bookRepository.getAllBooks().first()
+        val directExisting = findMatchingAuthorizedBook(
+            documentKey = sourceKey,
+            uri = sourceUri,
+            sha256 = null,
+            books = knownBooks
+        )
+        if (directExisting == null && sourceHash != null) {
+            knownBooks = backfillMissingSourceHashes(
+                books = knownBooks,
+                hashLocation = { location ->
+                    runCatching { authorizedStorageManager.sha256(this, location) }.getOrNull()
+                },
+                persist = bookRepository::updateSourceSha256
+            )
+        }
+        val existing = directExisting ?: findMatchingAuthorizedBook(
+            documentKey = sourceKey,
+            uri = sourceUri,
+            sha256 = sourceHash,
+            books = knownBooks
+        )
+        if (existing != null) {
+            withContext(Dispatchers.Main) { requestedOpenBookId = existing.id }
+            return ImportOutcome.OPENED
+        }
+
+        val file = FileUtils.copyFileToInternal(this, uri, fileName) ?: return ImportOutcome.UNSUPPORTED
         val format = when (extension) {
             "epub" -> BookFormat.EPUB
             "pdf" -> BookFormat.PDF
@@ -285,16 +329,18 @@ class MainActivity : ComponentActivity() {
                     val content = parser.parse(file.absolutePath)
                     val t = content.title.takeIf { it.isNotBlank() && it != file.nameWithoutExtension }
                         ?: fileName.substringBeforeLast('.')
-                    val a = content.author.takeIf { it.isNotBlank() && it != "未知作者" } ?: "未知作者"
+                    val unknownAuthor = getString(R.string.book_author_unknown)
+                    val a = content.author.takeIf { it.isNotBlank() && it != unknownAuthor }
+                        ?: unknownAuthor
                     t to a
                 } finally {
                     runCatching { parser.close() }
                 }
             } catch (_: Exception) {
-                fileName.substringBeforeLast('.') to "未知作者"
+                fileName.substringBeforeLast('.') to getString(R.string.book_author_unknown)
             }
         } else {
-            fileName.substringBeforeLast('.') to "未知作者"
+            fileName.substringBeforeLast('.') to getString(R.string.book_author_unknown)
         }
 
         val book = Book(
@@ -306,8 +352,15 @@ class MainActivity : ComponentActivity() {
             format = format,
             lastReadTime = System.currentTimeMillis(),
             readingProgress = 0f,
-            createdAt = System.currentTimeMillis()
-        )
+            createdAt = System.currentTimeMillis(),
+            sourceUri = uri.toString(),
+            sourceDocumentKey = sourceKey,
+             sourceSha256 = sourceHash ?: runCatching {
+                 authorizedStorageManager.sha256(this, file.absolutePath)
+             }.getOrNull(),
+             sourceDisplayName = fileName,
+             sourceLastModified = authorizedStorageManager.queryLastModified(this, uri)
+         )
         try {
             bookRepository.insertBook(book)
         } catch (error: Throwable) {
@@ -316,7 +369,7 @@ class MainActivity : ComponentActivity() {
             throw error
         }
         Log.d("MainActivity", "Imported book from intent: ${book.title}")
-        return true
+        return ImportOutcome.IMPORTED
     }
 
     /**
@@ -373,6 +426,9 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = "lumi")
+            val startupScreen by produceState<String?>(initialValue = null, dataStoreManager) {
+                value = dataStoreManager.startupScreen.first()
+            }
             val appAccentColor by dataStoreManager.appAccentColor.collectAsState(initial = DEFAULT_APP_ACCENT_HEX)
             val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = "system")
             val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = 0.55f)
@@ -480,22 +536,30 @@ class MainActivity : ComponentActivity() {
                                     translationY = mainContentOffset.toPx()
                                 }
                         ) {
-                            MainNavGraph(
-                                navController = navController,
-                                entranceAnimationsEnabled = entranceAnimationsEnabled &&
-                                    motionPreferenceValue == "standard" &&
-                                    !showSplash && !eInkModeEnabled,
-                                predictiveBackEnabled = predictiveBackEnabled && !eInkModeEnabled,
-                                requestedOpenBookId = requestedOpenBookId,
-                                requestedOpenBookshelf = requestedOpenBookshelf,
-                                requestedOpenFolderId = requestedOpenFolderId,
-                                onBeforeOpenDifferentBook = ttsController::stop,
-                                onOpenBookRequestConsumed = { requestedOpenBookId = null },
-                                onOpenBookshelfRequestConsumed = {
-                                    requestedOpenBookshelf = false
-                                    requestedOpenFolderId = null
+                            startupScreen?.let { configuredStartupScreen ->
+                                val startupRoute = when (configuredStartupScreen) {
+                                    DataStoreManager.STARTUP_SCREEN_BOOKSHELF -> Screen.Bookshelf.route
+                                    DataStoreManager.STARTUP_SCREEN_STATISTICS -> Screen.Statistics.route
+                                    else -> Screen.Home.route
                                 }
-                            )
+                                MainNavGraph(
+                                    navController = navController,
+                                    startDestination = startupRoute,
+                                    entranceAnimationsEnabled = entranceAnimationsEnabled &&
+                                        motionPreferenceValue == "standard" &&
+                                        !showSplash && !eInkModeEnabled,
+                                    predictiveBackEnabled = predictiveBackEnabled && !eInkModeEnabled,
+                                    requestedOpenBookId = requestedOpenBookId,
+                                    requestedOpenBookshelf = requestedOpenBookshelf,
+                                    requestedOpenFolderId = requestedOpenFolderId,
+                                    onBeforeOpenDifferentBook = ttsController::stop,
+                                    onOpenBookRequestConsumed = { requestedOpenBookId = null },
+                                    onOpenBookshelfRequestConsumed = {
+                                        requestedOpenBookshelf = false
+                                        requestedOpenFolderId = null
+                                    }
+                                )
+                            }
                         }
 
                     // Remote startup dialog priority: app update > notice > policy.
@@ -559,8 +623,12 @@ class MainActivity : ComponentActivity() {
                                         policyDialog = null
                                     },
                                     onDecline = { finishAffinity() },
-                                    onViewTerms = { openUpdateDocument("用户协议", "terms.html") },
-                                    onViewPrivacy = { openUpdateDocument("隐私政策", "privacy.html") }
+                                    onViewTerms = {
+                                        openUpdateDocument(getString(R.string.terms_of_service), "terms.html")
+                                    },
+                                    onViewPrivacy = {
+                                        openUpdateDocument(getString(R.string.privacy_policy), "privacy.html")
+                                    }
                                 )
                             }
                         }

@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.data.local.dao
 
+import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
@@ -20,6 +22,9 @@ abstract class FolderDao {
 
     @Query("SELECT * FROM folders WHERE id = :folderId LIMIT 1")
     abstract suspend fun getFolderById(folderId: String): FolderEntity?
+
+    @Query("SELECT * FROM folders WHERE storageDocumentUri = :uri LIMIT 1")
+    abstract suspend fun getFolderByStorageUri(uri: String): FolderEntity?
 
     @Query(
         "SELECT * FROM folders WHERE normalizedName = :normalizedName " +
@@ -51,6 +56,39 @@ abstract class FolderDao {
         updateFolderCover(folderId, coverPath, System.currentTimeMillis())
 
     @Query(
+        "UPDATE folders SET storageTreeUri = :treeUri, storageDocumentUri = :documentUri, " +
+            "storageParentUri = :parentUri, storageMissing = 0, updatedAt = :updatedAt " +
+            "WHERE id = :folderId"
+    )
+    abstract suspend fun updateFolderStorage(
+        folderId: String,
+        treeUri: String?,
+        documentUri: String?,
+        parentUri: String?,
+        updatedAt: Long
+    ): Int
+
+    @Query(
+        "UPDATE folders SET name = :name, normalizedName = :normalizedName, " +
+            "storageTreeUri = :treeUri, storageDocumentUri = :documentUri, " +
+            "storageParentUri = :parentUri, storageMissing = :storageMissing, updatedAt = :updatedAt " +
+            "WHERE id = :folderId"
+    )
+    abstract suspend fun updateFolderStorageState(
+        folderId: String,
+        name: String,
+        normalizedName: String,
+        treeUri: String?,
+        documentUri: String?,
+        parentUri: String?,
+        storageMissing: Boolean,
+        updatedAt: Long
+    ): Int
+
+    @Query("UPDATE folders SET storageMissing = :missing, updatedAt = :updatedAt WHERE id = :folderId")
+    abstract suspend fun updateFolderStorageMissing(folderId: String, missing: Boolean, updatedAt: Long): Int
+
+    @Query(
         "UPDATE folders SET previewBookIds = :previewBookIds, updatedAt = :updatedAt " +
             "WHERE id = :folderId AND previewBookIds IS NULL " +
             "AND length(trim(:previewBookIds)) > 2"
@@ -64,8 +102,27 @@ abstract class FolderDao {
     open suspend fun initializeFolderPreviewIfUnset(folderId: String, previewBookIds: String): Int =
         initializeFolderPreviewIfUnset(folderId, previewBookIds, System.currentTimeMillis())
 
+    @Query(
+        "UPDATE folders SET previewBookIds = :previewBookIds, updatedAt = :updatedAt " +
+            "WHERE id = :folderId AND (" +
+            "(previewBookIds IS NULL AND :previewBookIds IS NOT NULL) OR " +
+            "(previewBookIds IS NOT NULL AND :previewBookIds IS NULL) OR " +
+            "previewBookIds != :previewBookIds)"
+    )
+    abstract suspend fun updateFolderPreviewIfChanged(
+        folderId: String,
+        previewBookIds: String?,
+        updatedAt: Long
+    ): Int
+
+    open suspend fun updateFolderPreviewIfChanged(folderId: String, previewBookIds: String?): Int =
+        updateFolderPreviewIfChanged(folderId, previewBookIds, System.currentTimeMillis())
+
     @Query("UPDATE folders SET parentId = :parentId, updatedAt = :updatedAt WHERE id = :folderId")
     abstract suspend fun updateFolderParent(folderId: String, parentId: String?, updatedAt: Long)
+
+    @Query("UPDATE folders SET parentId = :parentId, storageParentUri = :storageParentUri, storageMissing = 0, updatedAt = :updatedAt WHERE id = :folderId")
+    abstract suspend fun reconcileFolderParent(folderId: String, parentId: String?, storageParentUri: String?, updatedAt: Long): Int
 
     @Query(
         "WITH RECURSIVE folder_tree(id) AS (SELECT id FROM folders WHERE id = :folderId " +
@@ -124,12 +181,118 @@ abstract class FolderDao {
     @Transaction
     open suspend fun getOrCreateFolderPath(path: List<FolderEntity>): FolderEntity {
         require(path.isNotEmpty()) { "Folder path cannot be empty" }
-        var current = getOrCreateRootFolder(path.first())
-        for (proposed in path.drop(1)) {
-            current = getFolderByNormalizedName(proposed.normalizedName, current.id)
-                ?: proposed.copy(parentId = current.id).also { insertFolder(it) }
+        val first = path.first()
+        var current = first.storageDocumentUri?.let { uri -> getFolderByStorageUri(uri) }
+        if (current == null) {
+            val sameName = getFolderByNormalizedName(first.normalizedName, null)
+            current = when (val existing = sameName) {
+                null -> getOrCreateRootFolder(first)
+                else -> when {
+                    existing.storageDocumentUri == null || first.storageDocumentUri == null -> {
+                        if (first.storageDocumentUri != null) {
+                            updateFolderStorage(
+                                existing.id,
+                                first.storageTreeUri,
+                                first.storageDocumentUri,
+                                first.storageParentUri,
+                                System.currentTimeMillis()
+                            )
+                            existing.copy(
+                                storageTreeUri = first.storageTreeUri,
+                                storageDocumentUri = first.storageDocumentUri,
+                                storageParentUri = first.storageParentUri,
+                                storageMissing = false
+                            )
+                        } else {
+                            existing
+                        }
+                    }
+                    sameStorageDocument(existing.storageDocumentUri, first.storageDocumentUri) -> {
+                        if (existing.storageDocumentUri != first.storageDocumentUri) {
+                            updateFolderStorage(
+                                existing.id,
+                                first.storageTreeUri,
+                                first.storageDocumentUri,
+                                first.storageParentUri,
+                                System.currentTimeMillis()
+                            )
+                        }
+                        existing.copy(
+                            storageTreeUri = first.storageTreeUri,
+                            storageDocumentUri = first.storageDocumentUri,
+                            storageParentUri = first.storageParentUri
+                        )
+                    }
+                    // Same display name, but a different authorized tree. Keep a distinct
+                    // physical root instead of attaching its children to the first tree's folder.
+                    else -> first.also { insertFolder(it) }
+                }
+            }
         }
-        return current
+        var currentFolder = checkNotNull(current)
+        for (proposed in path.drop(1)) {
+            val byStorage = proposed.storageDocumentUri?.let { uri -> getFolderByStorageUri(uri) }
+            if (byStorage != null) {
+                currentFolder = byStorage
+                continue
+            }
+            val sameName = getFolderByNormalizedName(proposed.normalizedName, currentFolder.id)
+            currentFolder = when (val existing = sameName) {
+                null -> proposed.copy(parentId = currentFolder.id).also { insertFolder(it) }
+                else -> when {
+                    existing.storageDocumentUri == null || proposed.storageDocumentUri == null -> {
+                        if (proposed.storageDocumentUri != null) {
+                            updateFolderStorage(
+                                existing.id,
+                                proposed.storageTreeUri,
+                                proposed.storageDocumentUri,
+                                proposed.storageParentUri,
+                                System.currentTimeMillis()
+                            )
+                            existing.copy(
+                                storageTreeUri = proposed.storageTreeUri,
+                                storageDocumentUri = proposed.storageDocumentUri,
+                                storageParentUri = proposed.storageParentUri,
+                                storageMissing = false
+                            )
+                        } else {
+                            existing
+                        }
+                    }
+                    sameStorageDocument(existing.storageDocumentUri, proposed.storageDocumentUri) -> {
+                        if (existing.storageDocumentUri != proposed.storageDocumentUri) {
+                            updateFolderStorage(
+                                existing.id,
+                                proposed.storageTreeUri,
+                                proposed.storageDocumentUri,
+                                proposed.storageParentUri,
+                                System.currentTimeMillis()
+                            )
+                        }
+                        existing.copy(
+                            storageTreeUri = proposed.storageTreeUri,
+                            storageDocumentUri = proposed.storageDocumentUri,
+                            storageParentUri = proposed.storageParentUri
+                        )
+                    }
+                    // A same-named directory can exist in another physical tree. Do not merge it
+                    // into the current parent just because its display name happens to match.
+                    else -> proposed.copy(parentId = currentFolder.id).also { insertFolder(it) }
+                }
+            }
+        }
+        return currentFolder
+    }
+
+    private fun sameStorageDocument(first: String?, second: String?): Boolean {
+        if (first.isNullOrBlank() || second.isNullOrBlank()) return first == second
+        if (first == second) return true
+        return runCatching {
+            val left = Uri.parse(first)
+            val right = Uri.parse(second)
+            left.authority == right.authority &&
+                DocumentsContract.getDocumentId(left) == DocumentsContract.getDocumentId(right)
+        }.getOrDefault(false)
     }
 
     @Transaction

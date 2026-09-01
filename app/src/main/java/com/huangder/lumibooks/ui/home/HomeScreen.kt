@@ -491,6 +491,15 @@ private fun ContinueReadingCard(
                 color = AppColors.TextSecondary,
                 maxLines = 1
             )
+            if (book.isMissing) {
+                Text(
+                    text = stringResource(R.string.book_file_unavailable),
+                    fontSize = AppType.Caption,
+                    color = Color(0xFFD92D3A),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
             Spacer(Modifier.height(AppSpace.xs))
             Text(
                 text = if (downloadState is BookDownloadState.Downloading) {
@@ -697,7 +706,9 @@ private fun ReadingGoalCard(
     val goalMs = if (hasGoal) dailyGoal * 60 * 1000L else 0L
     val progress = if (hasGoal) (readingTime.toFloat() / goalMs).coerceIn(0f, 1f) else 0f
     val hasReadToday = readingTime > 0L
-    val todayStatusText = if (hasReadToday) "今日已阅读" else "今日未阅读"
+    val todayStatusText = stringResource(
+        if (hasReadToday) R.string.today_read_status_done else R.string.today_read_status_empty
+    )
     val todayEmoji = if (hasReadToday) "📖 ✨ 🌿" else "🌙 ☕ 📚"
 
     Column(
@@ -752,7 +763,9 @@ private fun ReadingGoalCard(
                 color = AppColors.TextPrimary
             )
             Text(
-                text = if (hasReadToday) "今天已经和书页碰面了" else "今天还没留下阅读记录",
+                text = stringResource(
+                    if (hasReadToday) R.string.today_read_message_done else R.string.today_read_message_empty
+                ),
                 fontSize = AppType.Caption,
                 color = AppColors.TextSecondary
             )

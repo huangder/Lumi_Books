@@ -22,7 +22,14 @@ data class BookEntity(
     val remoteFileName: String? = null,
     val remoteFileSize: Long = 0L,
     val remoteFileSha256: String? = null,
-    val metadataUpdatedAt: Long = createdAt
+    val metadataUpdatedAt: Long = createdAt,
+    val sourceUri: String? = null,
+    val sourceDocumentKey: String? = null,
+    val sourceParentUri: String? = null,
+    val sourceSha256: String? = null,
+    val sourceDisplayName: String? = null,
+    val sourceLastModified: Long = 0L,
+    val isMissing: Boolean = false
 )
 
 enum class BookFormat {

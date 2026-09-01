@@ -41,6 +41,7 @@ import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Label
 import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material3.Icon
@@ -296,7 +297,11 @@ private fun BookshelfCategoriesScreen(
                 runCatching { folderCoverPicker.launch("image/*") }
                     .onFailure {
                         folderCoverTarget = null
-                        Toast.makeText(context, it.message ?: "Unable to open the image picker", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(
+                            context,
+                            it.message ?: context.getString(R.string.image_picker_open_failed),
+                            Toast.LENGTH_SHORT
+                        ).show()
                     }
             },
             onRemoveCover = {
@@ -495,6 +500,7 @@ private fun CategoryListPage(
                         title = row.folder.name,
                         count = folderBookCounts[row.folder.id] ?: 0,
                         icon = Icons.Outlined.Folder,
+                        linked = row.folder.storageDocumentUri != null,
                         startIndent = (row.depth * 20).dp,
                         onClick = { onFolderSelected(row.folder) },
                         onLongClick = { onFolderLongClick(row.folder) }
@@ -575,6 +581,7 @@ private fun CategoryRow(
     title: String,
     count: Int,
     icon: ImageVector,
+    linked: Boolean = false,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
     startIndent: Dp = 0.dp
@@ -603,6 +610,15 @@ private fun CategoryRow(
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier.weight(1f)
             )
+            if (linked) {
+                Icon(
+                    imageVector = Icons.Outlined.Link,
+                    contentDescription = stringResource(R.string.folder_storage_linked),
+                    tint = AppColors.Accent,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+            }
             Text(
                 text = stringResource(R.string.bookshelf_category_book_count, count),
                 color = AppColors.TextSecondary,
@@ -668,6 +684,7 @@ private fun CategoryBooksPage(
     var coverTargetBook by remember { mutableStateOf<Book?>(null) }
     var coverSourceBook by remember { mutableStateOf<Book?>(null) }
     var moveTargetBook by remember { mutableStateOf<Book?>(null) }
+    var pendingCrossStorageMove by remember { mutableStateOf<PendingCrossStorageBookMove?>(null) }
     var headerHeightPx by remember { mutableStateOf(0) }
     val collectionTopPadding = if (headerHeightPx > 0) {
         with(density) { headerHeightPx.toDp() } + 12.dp
@@ -702,6 +719,40 @@ private fun CategoryBooksPage(
     ConfigurableBackHandler(enabled = isEditing) {
         isEditing = false
         selectedBookIds = emptySet()
+    }
+
+    fun completeBookMove(request: PendingCrossStorageBookMove, allowCrossStorageMove: Boolean) {
+        viewModel.moveBooksToFolder(
+            bookIds = request.bookIds,
+            targetFolderId = request.targetFolderId,
+            allowCrossStorageMove = allowCrossStorageMove
+        ) { success ->
+            if (!success) return@moveBooksToFolder
+            if (request.isBatch) {
+                showBatchMoveSheet = false
+                selectedBookIds = emptySet()
+                isEditing = false
+            } else {
+                moveTargetBook = null
+            }
+            Toast.makeText(
+                context,
+                context.getString(R.string.folder_move_success, request.bookIds.size, request.targetName),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    fun requestBookMove(bookIds: Set<String>, targetFolderId: String?, isBatch: Boolean) {
+        val targetName = targetFolderId
+            ?.let { id -> viewModel.uiState.value.folders.firstOrNull { it.id == id }?.name }
+            ?: context.getString(R.string.library_root)
+        val request = PendingCrossStorageBookMove(bookIds, targetFolderId, isBatch, targetName)
+        if (viewModel.requiresCrossStorageMoveConfirmation(bookIds, targetFolderId)) {
+            pendingCrossStorageMove = request
+        } else {
+            completeBookMove(request, allowCrossStorageMove = false)
+        }
     }
 
     ProvideLiquidGlassBackdrop(null) {
@@ -853,25 +904,7 @@ private fun CategoryBooksPage(
             onDismiss = { showBatchMoveSheet = false },
             onCreateFolder = { name, parentId -> viewModel.createFolder(name, parentId) },
             onMove = { targetFolderId ->
-                viewModel.moveBooksToFolder(selectedBookIds, targetFolderId) { success ->
-                    if (success) {
-                        val targetName = targetFolderId
-                            ?.let { id -> viewModel.uiState.value.folders.firstOrNull { it.id == id }?.name }
-                            ?: context.getString(R.string.bookshelf_title)
-                        Toast.makeText(
-                            context,
-                            context.getString(
-                                R.string.folder_move_success,
-                                selectedBookIds.size,
-                                targetName
-                            ),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                        showBatchMoveSheet = false
-                        selectedBookIds = emptySet()
-                        isEditing = false
-                    }
-                }
+                requestBookMove(selectedBookIds, targetFolderId, isBatch = true)
             }
         )
     }
@@ -885,19 +918,29 @@ private fun CategoryBooksPage(
             onDismiss = { moveTargetBook = null },
             onCreateFolder = { name, parentId -> viewModel.createFolder(name, parentId) },
             onMove = { targetFolderId ->
-                val targetName = targetFolderId
-                    ?.let { id -> viewModel.uiState.value.folders.firstOrNull { it.id == id }?.name }
-                    ?: context.getString(R.string.library_root)
-                viewModel.moveBooksToFolder(setOf(targetBook.id), targetFolderId) { success ->
-                    if (success) {
-                        moveTargetBook = null
-                        Toast.makeText(
-                            context,
-                            context.getString(R.string.folder_move_success, 1, targetName),
-                            Toast.LENGTH_SHORT
-                        ).show()
+                requestBookMove(setOf(targetBook.id), targetFolderId, isBatch = false)
+            }
+        )
+    }
+    pendingCrossStorageMove?.let { request ->
+        LiquidGlassAlertDialog(
+            onDismissRequest = { pendingCrossStorageMove = null },
+            title = { Text(stringResource(R.string.folder_cross_storage_confirmation_title)) },
+            text = { Text(stringResource(R.string.folder_cross_storage_confirmation_message)) },
+            confirmButton = {
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.confirm),
+                    onClick = {
+                        pendingCrossStorageMove = null
+                        completeBookMove(request, allowCrossStorageMove = true)
                     }
-                }
+                )
+            },
+            dismissButton = {
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.cancel),
+                    onClick = { pendingCrossStorageMove = null }
+                )
             }
         )
     }

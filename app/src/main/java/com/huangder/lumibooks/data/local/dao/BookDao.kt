@@ -22,6 +22,15 @@ interface BookDao {
     @Query("SELECT * FROM books WHERE id = :bookId")
     suspend fun getBookById(bookId: String): BookEntity?
 
+    @Query("SELECT * FROM books WHERE sourceDocumentKey = :key LIMIT 1")
+    suspend fun getBookBySourceDocumentKey(key: String): BookEntity?
+
+    @Query("SELECT * FROM books WHERE sourceUri = :uri LIMIT 1")
+    suspend fun getBookBySourceUri(uri: String): BookEntity?
+
+    @Query("SELECT * FROM books WHERE sourceSha256 = :sha256")
+    suspend fun getBooksBySourceSha256(sha256: String): List<BookEntity>
+
     @Query(
         "SELECT id AS bookId, title, author, coverPath, readingProgress " +
             "FROM books ORDER BY lastReadTime DESC LIMIT 1"
@@ -48,6 +57,9 @@ interface BookDao {
 
     @Update
     suspend fun updateBook(book: BookEntity)
+
+    @Query("UPDATE books SET sourceSha256 = :sha256 WHERE id = :bookId")
+    suspend fun updateSourceSha256(bookId: String, sha256: String)
 
     @Query("UPDATE books SET filePath = '', isCloudOnly = 1 WHERE id = :bookId")
     suspend fun markBookCloudOnly(bookId: String)

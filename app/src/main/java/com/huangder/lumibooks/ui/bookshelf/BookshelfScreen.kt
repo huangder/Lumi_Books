@@ -55,10 +55,12 @@ import androidx.compose.material.icons.outlined.FormatListBulleted
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Label
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.ViewModule
 import androidx.compose.material.icons.outlined.ViewList
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -167,6 +169,7 @@ fun BookshelfScreen(
     requestedFolderId: String? = null,
     onRequestedFolderConsumed: () -> Unit = {},
     onMessage: (String) -> Unit = {},
+    onRefreshAuthorizedDirectories: () -> Unit = {},
     onOverlayProgressChange: (Float) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
@@ -208,6 +211,7 @@ fun BookshelfScreen(
     var showBatchTagSheet by remember { mutableStateOf(false) }
     var showBatchMoveSheet by remember { mutableStateOf(false) }
     var moveTargetBook by remember { mutableStateOf<Book?>(null) }
+    var pendingCrossStorageMove by remember { mutableStateOf<PendingCrossStorageBookMove?>(null) }
     var showCreateFolderDialog by remember { mutableStateOf(false) }
     var renameFolder by remember { mutableStateOf<LibraryFolder?>(null) }
     var deleteFolder by remember { mutableStateOf<LibraryFolder?>(null) }
@@ -476,8 +480,16 @@ fun BookshelfScreen(
     }
     val folderPreviewBooks = remember(uiState.folders, uiState.books, uiState.bookFolderLinks) {
         uiState.folders.associate { folder ->
+            // Prefer the live folder membership so a newly moved/imported book appears in the
+            // collage immediately, while the persisted snapshot is refreshed in the background.
+            val livePreviewIds = FolderPreviewPlanner.selectBookIds(
+                booksInLibraryOrder = uiState.books,
+                folders = uiState.folders,
+                links = uiState.bookFolderLinks,
+                folderId = folder.id
+            )
             folder.id to FolderPreviewPlanner.slots(
-                previewBookIds = folder.previewBookIds,
+                previewBookIds = livePreviewIds.takeIf { it.isNotEmpty() } ?: folder.previewBookIds,
                 booksById = booksById,
                 presentBookIds = folderPreviewBookIds[folder.id].orEmpty()
             )
@@ -598,6 +610,36 @@ fun BookshelfScreen(
     val moveFolderFromList: (LibraryFolder) -> Unit = { folder ->
         expandedListFolderId = null
         relocateFolder = folder
+    }
+
+    fun completeBookMove(request: PendingCrossStorageBookMove, allowCrossStorageMove: Boolean) {
+        viewModel.moveBooksToFolder(
+            bookIds = request.bookIds,
+            targetFolderId = request.targetFolderId,
+            allowCrossStorageMove = allowCrossStorageMove
+        ) { success ->
+            if (!success) return@moveBooksToFolder
+            if (request.isBatch) {
+                showBatchMoveSheet = false
+                selectedBookIds = emptySet()
+                isEditing = false
+            } else {
+                moveTargetBook = null
+            }
+            onMessage(context.getString(R.string.folder_move_success, request.bookIds.size, request.targetName))
+        }
+    }
+
+    fun requestBookMove(bookIds: Set<String>, targetFolderId: String?, isBatch: Boolean) {
+        val targetName = targetFolderId
+            ?.let { id -> uiState.folders.firstOrNull { it.id == id }?.name }
+            ?: context.getString(R.string.library_root)
+        val request = PendingCrossStorageBookMove(bookIds, targetFolderId, isBatch, targetName)
+        if (viewModel.requiresCrossStorageMoveConfirmation(bookIds, targetFolderId)) {
+            pendingCrossStorageMove = request
+        } else {
+            completeBookMove(request, allowCrossStorageMove = false)
+        }
     }
 
     val searchBlurProgress by animateFloatAsState(
@@ -760,6 +802,7 @@ fun BookshelfScreen(
                             isSearchActive = true
                         },
                         onSyncClick = { viewModel.syncWebdavNow() },
+                        onRefreshClick = onRefreshAuthorizedDirectories,
                         layoutMode = uiState.bookshelfLayoutMode,
                         isWebdavSyncing = uiState.isWebdavSyncing,
                         onSelectAll = toggleSelectAll,
@@ -876,6 +919,7 @@ fun BookshelfScreen(
                         isSearchActive = true
                     },
                     onSyncClick = { viewModel.syncWebdavNow() },
+                    onRefreshClick = onRefreshAuthorizedDirectories,
                     layoutMode = uiState.bookshelfLayoutMode,
                     isWebdavSyncing = uiState.isWebdavSyncing,
                     onSelectAll = toggleSelectAll,
@@ -1074,8 +1118,16 @@ fun BookshelfScreen(
                 com.huangder.lumibooks.ui.components.EditInputDialog(
                     title = stringResource(R.string.edit_book_info),
                     fields = listOf(
-                        Triple(stringResource(R.string.book_title_label), "显示原始书名", currentEditingBook.title),
-                        Triple(stringResource(R.string.book_author_label), "显示原始作者", currentEditingBook.author)
+                        Triple(
+                            stringResource(R.string.book_title_label),
+                            stringResource(R.string.book_title_original_hint),
+                            currentEditingBook.title
+                        ),
+                        Triple(
+                            stringResource(R.string.book_author_label),
+                            stringResource(R.string.book_author_original_hint),
+                            currentEditingBook.author
+                        )
                     ),
                     onBack = {
                         showEditDialog = false
@@ -1142,20 +1194,7 @@ fun BookshelfScreen(
                     viewModel.createFolder(name, parentId)
                 },
                 onMove = { targetFolderId ->
-                    val movedCount = selectedBookIds.size
-                    val targetName = targetFolderId
-                        ?.let { id -> uiState.folders.firstOrNull { it.id == id }?.name }
-                        ?: context.getString(R.string.library_root)
-                    viewModel.moveBooksToFolder(selectedBookIds, targetFolderId) { success ->
-                        if (success) {
-                            showBatchMoveSheet = false
-                            selectedBookIds = emptySet()
-                            isEditing = false
-                            onMessage(
-                                context.getString(R.string.folder_move_success, movedCount, targetName)
-                            )
-                        }
-                    }
+                    requestBookMove(selectedBookIds, targetFolderId, isBatch = true)
                 }
             )
         }
@@ -1171,15 +1210,30 @@ fun BookshelfScreen(
                 onDismiss = { moveTargetBook = null },
                 onCreateFolder = { name, parentId -> viewModel.createFolder(name, parentId) },
                 onMove = { targetFolderId ->
-                    val targetName = targetFolderId
-                        ?.let { id -> uiState.folders.firstOrNull { it.id == id }?.name }
-                        ?: context.getString(R.string.library_root)
-                    viewModel.moveBooksToFolder(setOf(targetBook.id), targetFolderId) { success ->
-                        if (success) {
-                            moveTargetBook = null
-                            onMessage(context.getString(R.string.folder_move_success, 1, targetName))
+                    requestBookMove(setOf(targetBook.id), targetFolderId, isBatch = false)
+                }
+            )
+        }
+
+        pendingCrossStorageMove?.let { request ->
+            LiquidGlassAlertDialog(
+                onDismissRequest = { pendingCrossStorageMove = null },
+                title = { Text(stringResource(R.string.folder_cross_storage_confirmation_title)) },
+                text = { Text(stringResource(R.string.folder_cross_storage_confirmation_message)) },
+                confirmButton = {
+                    LiquidGlassTextButton(
+                        text = stringResource(R.string.confirm),
+                        onClick = {
+                            pendingCrossStorageMove = null
+                            completeBookMove(request, allowCrossStorageMove = true)
                         }
-                    }
+                    )
+                },
+                dismissButton = {
+                    LiquidGlassTextButton(
+                        text = stringResource(R.string.cancel),
+                        onClick = { pendingCrossStorageMove = null }
+                    )
                 }
             )
         }
@@ -1190,6 +1244,19 @@ fun BookshelfScreen(
                 onDismiss = { showCreateFolderDialog = false },
                 onConfirm = { name ->
                     viewModel.createFolder(name, renderedFolderId) { created ->
+                        if (created != null) showCreateFolderDialog = false
+                    }
+                },
+                storageChoices = buildList {
+                    add(context.getString(R.string.folder_storage_virtual) to "")
+                    uiState.authorizedBookDirectories.forEach { uri ->
+                        add(
+                            context.getString(R.string.folder_storage_authorized, uri.substringAfterLast('/')) to uri
+                        )
+                    }
+                },
+                onConfirmWithStorage = { name, storageUri ->
+                    viewModel.createFolder(name, renderedFolderId, storageUri) { created ->
                         if (created != null) showCreateFolderDialog = false
                     }
                 }
@@ -1599,6 +1666,7 @@ private fun BookshelfHeaderActions(
     layoutMode: Int,
     isSyncing: Boolean,
     onSyncClick: () -> Unit,
+    onRefreshClick: () -> Unit,
     onLayoutModeChange: (Int) -> Unit,
     onCreateFolder: () -> Unit,
     modifier: Modifier = Modifier
@@ -1613,6 +1681,7 @@ private fun BookshelfHeaderActions(
     val compactGridLabel = stringResource(R.string.bookshelf_compact_grid)
     val listLayoutLabel = stringResource(R.string.bookshelf_list_layout)
     val createFolderLabel = stringResource(R.string.new_category_folder)
+    val refreshLabel = stringResource(R.string.refresh_authorized_folders)
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1644,6 +1713,13 @@ private fun BookshelfHeaderActions(
                                         label = syncLabel,
                                         icon = Icons.Outlined.Sync,
                                         onClick = { if (!isSyncing) onSyncClick() }
+                                    )
+                                )
+                                add(
+                                    LiquidGlassMenuItem(
+                                        label = refreshLabel,
+                                        icon = Icons.Outlined.Refresh,
+                                        onClick = onRefreshClick
                                     )
                                 )
                                 add(
@@ -1691,8 +1767,8 @@ private fun layoutIcon(layoutMode: Int, compact: Boolean): ImageVector = when {
     compact && layoutMode == 1 -> Icons.Outlined.ViewList
     compact -> Icons.Outlined.GridView
     layoutMode == 1 -> Icons.Outlined.ViewList
-    layoutMode == 2 -> Icons.Outlined.ViewModule
-    else -> Icons.Outlined.GridView
+    layoutMode == 2 -> Icons.Outlined.GridView
+    else -> Icons.Outlined.ViewModule
 }
 
 @Composable
@@ -1712,6 +1788,7 @@ private fun BookshelfCapsuleHeader(
     onBrowseFilters: () -> Unit,
     onSearchClick: () -> Unit,
     onSyncClick: () -> Unit,
+    onRefreshClick: () -> Unit,
     onSelectAll: () -> Unit,
     layoutMode: Int,
     isWebdavSyncing: Boolean,
@@ -1975,6 +2052,7 @@ private fun BookshelfCapsuleHeader(
                         layoutMode = layoutMode,
                         isSyncing = isWebdavSyncing,
                         onSyncClick = onSyncClick,
+                        onRefreshClick = onRefreshClick,
                         onLayoutModeChange = onLayoutModeChange,
                         onCreateFolder = onCreateFolder
                     )
@@ -2010,6 +2088,13 @@ private enum class PendingBookMenuActionType {
 private data class PendingBookMenuAction(
     val type: PendingBookMenuActionType,
     val book: Book
+)
+
+internal data class PendingCrossStorageBookMove(
+    val bookIds: Set<String>,
+    val targetFolderId: String?,
+    val isBatch: Boolean,
+    val targetName: String
 )
 
 private enum class PendingFolderMenuActionType {
@@ -2275,6 +2360,15 @@ private fun BookGridItem(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
+        if (book.isMissing) {
+            Text(
+                text = stringResource(R.string.book_file_unavailable),
+                fontSize = AppType.Caption,
+                color = Color(0xFFD92D3A),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 
@@ -2336,19 +2430,35 @@ private fun FolderListItem(
                         .height(92.dp)
                 )
                 Spacer(Modifier.width(16.dp))
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text(
-                        text = folder.name,
-                        color = AppColors.TextPrimary,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        fontFamily = resolveAppFontFamily(KaiTi),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = folder.name,
+                            color = AppColors.TextPrimary,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = resolveAppFontFamily(KaiTi),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (folder.storageDocumentUri != null) {
+                            Icon(
+                                imageVector = Icons.Outlined.Link,
+                                contentDescription = stringResource(R.string.folder_storage_linked),
+                                tint = if (folder.storageMissing) Color(0xFFD92D3A) else AppColors.Accent,
+                                modifier = Modifier
+                                    .padding(start = 5.dp)
+                                    .size(16.dp)
+                            )
+                        }
+                    }
                     Spacer(Modifier.height(3.dp))
                     Text(
                         text = stringResource(R.string.bookshelf_category_book_count, bookCount),
@@ -2464,14 +2574,30 @@ private fun FolderGridItem(
                 )
         )
         Spacer(Modifier.height(AppSpace.sm))
-        Text(
-            text = folder.name,
-            fontSize = AppType.BodySmall,
-            fontWeight = FontWeight.SemiBold,
-            color = AppColors.TextPrimary,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = folder.name,
+                fontSize = AppType.BodySmall,
+                fontWeight = FontWeight.SemiBold,
+                color = AppColors.TextPrimary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            if (folder.storageDocumentUri != null) {
+                Icon(
+                    imageVector = Icons.Outlined.Link,
+                    contentDescription = stringResource(R.string.folder_storage_linked),
+                    tint = if (folder.storageMissing) Color(0xFFD92D3A) else AppColors.Accent,
+                    modifier = Modifier
+                        .padding(start = 4.dp)
+                        .size(15.dp)
+                )
+            }
+        }
         Text(
             text = stringResource(R.string.bookshelf_category_book_count, bookCount),
             fontSize = AppType.Caption,

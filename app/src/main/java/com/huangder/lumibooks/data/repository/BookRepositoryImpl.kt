@@ -34,12 +34,25 @@ class BookRepositoryImpl @Inject constructor(
         return bookDao.getBookById(bookId)?.toDomain()
     }
 
+    override suspend fun getBookBySourceDocumentKey(key: String): Book? =
+        bookDao.getBookBySourceDocumentKey(key)?.toDomain()
+
+    override suspend fun getBookBySourceUri(uri: String): Book? =
+        bookDao.getBookBySourceUri(uri)?.toDomain()
+
+    override suspend fun getBooksBySourceSha256(sha256: String): List<Book> =
+        bookDao.getBooksBySourceSha256(sha256).map { it.toDomain() }
+
     override suspend fun insertBook(book: Book) {
         bookDao.insertBook(book.toEntity())
     }
 
     override suspend fun updateBook(book: Book) {
         bookDao.updateBook(book.toEntity())
+    }
+
+    override suspend fun updateSourceSha256(bookId: String, sha256: String) {
+        bookDao.updateSourceSha256(bookId, sha256)
     }
 
     override suspend fun updateBookMetadata(book: Book) {
@@ -98,7 +111,14 @@ class BookRepositoryImpl @Inject constructor(
             remoteFileName = remoteFileName,
             remoteFileSize = remoteFileSize,
             remoteFileSha256 = remoteFileSha256,
-            metadataUpdatedAt = metadataUpdatedAt
+            metadataUpdatedAt = metadataUpdatedAt,
+            sourceUri = sourceUri,
+            sourceDocumentKey = sourceDocumentKey,
+            sourceParentUri = sourceParentUri,
+            sourceSha256 = sourceSha256,
+            sourceDisplayName = sourceDisplayName,
+            sourceLastModified = sourceLastModified,
+            isMissing = isMissing
         )
     }
 
@@ -120,7 +140,14 @@ class BookRepositoryImpl @Inject constructor(
             remoteFileName = remoteFileName,
             remoteFileSize = remoteFileSize,
             remoteFileSha256 = remoteFileSha256,
-            metadataUpdatedAt = metadataUpdatedAt
+            metadataUpdatedAt = metadataUpdatedAt,
+            sourceUri = sourceUri,
+            sourceDocumentKey = sourceDocumentKey,
+            sourceParentUri = sourceParentUri,
+            sourceSha256 = sourceSha256,
+            sourceDisplayName = sourceDisplayName,
+            sourceLastModified = sourceLastModified,
+            isMissing = isMissing
         )
     }
 }

@@ -9,7 +9,11 @@ data class LibraryFolder(
     val createdAt: Long,
     val coverPath: String? = null,
     val previewBookIds: List<String>? = null,
-    val updatedAt: Long = createdAt
+    val updatedAt: Long = createdAt,
+    val storageTreeUri: String? = null,
+    val storageDocumentUri: String? = null,
+    val storageParentUri: String? = null,
+    val storageMissing: Boolean = false
 )
 
 enum class FolderMoveResult {

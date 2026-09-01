@@ -171,4 +171,20 @@ object DatabaseMigrations {
             )
         }
     }
+
+    val MIGRATION_11_12 = object : Migration(11, 12) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE books ADD COLUMN sourceUri TEXT DEFAULT NULL")
+            db.execSQL("ALTER TABLE books ADD COLUMN sourceDocumentKey TEXT DEFAULT NULL")
+            db.execSQL("ALTER TABLE books ADD COLUMN sourceParentUri TEXT DEFAULT NULL")
+            db.execSQL("ALTER TABLE books ADD COLUMN sourceSha256 TEXT DEFAULT NULL")
+            db.execSQL("ALTER TABLE books ADD COLUMN sourceDisplayName TEXT DEFAULT NULL")
+            db.execSQL("ALTER TABLE books ADD COLUMN sourceLastModified INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE books ADD COLUMN isMissing INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE folders ADD COLUMN storageTreeUri TEXT DEFAULT NULL")
+            db.execSQL("ALTER TABLE folders ADD COLUMN storageDocumentUri TEXT DEFAULT NULL")
+            db.execSQL("ALTER TABLE folders ADD COLUMN storageParentUri TEXT DEFAULT NULL")
+            db.execSQL("ALTER TABLE folders ADD COLUMN storageMissing INTEGER NOT NULL DEFAULT 0")
+        }
+    }
 }

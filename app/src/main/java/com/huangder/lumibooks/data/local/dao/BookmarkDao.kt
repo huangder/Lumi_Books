@@ -20,6 +20,9 @@ interface BookmarkDao {
     @Update
     suspend fun updateBookmark(bookmark: BookmarkEntity)
 
+    @Update
+    suspend fun updateBookmarks(bookmarks: List<BookmarkEntity>)
+
     @Delete
     suspend fun deleteBookmark(bookmark: BookmarkEntity)
 

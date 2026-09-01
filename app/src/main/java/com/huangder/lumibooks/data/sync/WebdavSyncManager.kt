@@ -68,7 +68,7 @@ class WebdavSyncManager @Inject constructor(
      * Returns a result description string.
      */
     suspend fun fullSync(): SyncResult {
-        if (!syncMutex.tryLock()) return SyncResult("正在同步中", false)
+        if (!syncMutex.tryLock()) return SyncResult(context.getString(R.string.webdav_syncing), false)
         _isSyncing.value = true
         return try {
             withContext(Dispatchers.IO) { runFullSync() }
@@ -81,14 +81,14 @@ class WebdavSyncManager @Inject constructor(
     private suspend fun runFullSync(): SyncResult {
         cleanupStalePartialDownloads()
         val config = dataStoreManager.webdavConfig.first()
-        if (!config.enabled) return SyncResult("WebDAV \u672a\u542f\u7528", false)
+        if (!config.enabled) return SyncResult(context.getString(R.string.webdav_disabled), false)
 
         val password = tokenStore.read()
-        if (password.isNullOrBlank()) return SyncResult("\u672a\u914d\u7f6e\u5bc6\u7801", false)
+        if (password.isNullOrBlank()) return SyncResult(context.getString(R.string.webdav_password_missing), false)
 
         val normalized = config.normalized()
         if (!normalized.hasSelectedContent) {
-            return SyncResult("\u8bf7\u81f3\u5c11\u9009\u62e9\u4e00\u9879\u540c\u6b65\u5185\u5bb9", false)
+            return SyncResult(context.getString(R.string.webdav_select_content_required), false)
         }
         val serverUrl = normalized.serverUrl
         val username = normalized.username
@@ -326,25 +326,39 @@ class WebdavSyncManager @Inject constructor(
             }
             dataStoreManager.saveWebdavConfig(normalized.copy(lastSyncTime = now))
 
-            val failedNames = failedBookTitles.take(2).joinToString("\u3001")
+            val failedNames = failedBookTitles.take(2).joinToString(
+                separator = context.getString(R.string.list_separator)
+            )
             val summaries = mutableListOf<String>()
             if (normalized.syncBookFiles) {
                 val failureHint = if (booksFailed > 0) {
-                    "\uff0c\u5931\u8d25 $booksFailed \u672c" +
-                        if (failedNames.isNotBlank()) "\uff1a$failedNames" else ""
+                    context.getString(R.string.webdav_sync_failure_suffix, booksFailed, failedNames)
                 } else ""
-                summaries += "\u4e66\u672c\u539f\u6587\u4ef6\uff1a\u5df2\u540c\u6b65 ${confirmedBooks.size} \u672c" +
-                    "\uff08\u65b0\u4e0a\u4f20 $booksUploaded \u672c\uff0c\u4e91\u7aef\u5df2\u6709 $booksAlreadyPresent \u672c\uff0c\u65b0\u53d1\u73b0 $cloudBooksDiscovered \u672c\uff09" +
+                summaries += context.getString(
+                    R.string.webdav_sync_books_summary,
+                    confirmedBooks.size,
+                    booksUploaded,
+                    booksAlreadyPresent,
+                    cloudBooksDiscovered,
                     failureHint
+                )
             }
             if (normalized.syncsBookData) {
                 val selectedData = buildList {
-                    if (normalized.syncReadingRecords) add("\u9605\u8bfb\u8bb0\u5f55")
-                    if (normalized.syncBookmarks) add("\u4e66\u7b7e")
-                    if (normalized.syncNotes) add("\u7b14\u8bb0")
-                }.joinToString("\u3001")
-                val dataFailureHint = if (dataFailed > 0) "\uff0c\u5931\u8d25 $dataFailed \u672c" else ""
-                summaries += "$selectedData\uff1a\u4e0a\u4f20 $dataSynced \u672c\uff0c\u4e0b\u8f7d $dataDownloaded \u672c$dataFailureHint"
+                    if (normalized.syncReadingRecords) add(context.getString(R.string.webdav_sync_content_reading_records))
+                    if (normalized.syncBookmarks) add(context.getString(R.string.webdav_sync_content_bookmarks))
+                    if (normalized.syncNotes) add(context.getString(R.string.webdav_sync_content_notes))
+                }.joinToString(context.getString(R.string.list_separator))
+                val dataFailureHint = if (dataFailed > 0) {
+                    context.getString(R.string.webdav_sync_failure_count_suffix, dataFailed)
+                } else ""
+                summaries += context.getString(
+                    R.string.webdav_sync_data_summary,
+                    selectedData,
+                    dataSynced,
+                    dataDownloaded,
+                    dataFailureHint
+                )
             }
             if (normalized.syncProfileAndSettings) {
                 summaries += context.getString(R.string.webdav_sync_category_result,
@@ -367,9 +381,15 @@ class WebdavSyncManager @Inject constructor(
                 success = booksFailed == 0 && dataFailed == 0
             )
         } catch (error: WebdavException) {
-            SyncResult(message = "\u540c\u6b65\u5931\u8d25\uff1a${userFacingWebdavError(error)}", success = false)
+            SyncResult(
+                message = context.getString(R.string.webdav_sync_failed_detail, userFacingWebdavError(error)),
+                success = false
+            )
         } catch (error: Exception) {
-            SyncResult(message = "\u540c\u6b65\u5931\u8d25\uff1a${error.message.orEmpty()}", success = false)
+            SyncResult(
+                message = context.getString(R.string.webdav_sync_failed_detail, error.message.orEmpty()),
+                success = false
+            )
         }
     }
 
@@ -661,9 +681,9 @@ class WebdavSyncManager @Inject constructor(
     suspend fun testConnection(serverUrl: String, username: String, password: String): SyncResult {
         return try {
             webdavClient.testConnection(serverUrl, username, password)
-            SyncResult(message = "连接成功", success = true)
-        } catch (e: WebdavException) {
-            SyncResult(message = e.message ?: "连接失败", success = false)
+            SyncResult(message = context.getString(R.string.webdav_test_success), success = true)
+        } catch (_: WebdavException) {
+            SyncResult(message = context.getString(R.string.webdav_test_failed), success = false)
         }
     }
 
@@ -676,13 +696,14 @@ class WebdavSyncManager @Inject constructor(
 
     private fun userFacingWebdavError(error: WebdavException): String {
         if (error.serverCode == "TrafficRateExhausted") {
-            val remaining = error.availableBytes?.let(::formatBytes) ?: "\u672a\u77e5"
-            val required = error.requiredBytes?.let(::formatBytes) ?: "\u672a\u77e5"
-            return "WebDAV \u670d\u52a1\u7aef\u4e0a\u4f20\u6d41\u91cf\u989d\u5ea6\u4e0d\u8db3" +
-                "\uff08\u5269\u4f59 $remaining\uff0c\u5f53\u524d\u6587\u4ef6\u9700\u8981 $required\uff09\u3002" +
-                "\u8bf7\u7b49\u5f85\u989d\u5ea6\u6062\u590d\uff0c\u6216\u5728 WebDAV \u670d\u52a1\u5546\u8c03\u6574\u4e0a\u4f20\u989d\u5ea6\u3002"
+            val unknown = context.getString(R.string.webdav_unknown_value)
+            val remaining = error.availableBytes?.let(::formatBytes) ?: unknown
+            val required = error.requiredBytes?.let(::formatBytes) ?: unknown
+            return context.getString(R.string.webdav_upload_quota_exhausted, remaining, required)
         }
-        return error.message ?: "WebDAV \u8bf7\u6c42\u5931\u8d25"
+        return error.statusCode?.let {
+            context.getString(R.string.webdav_request_failed_http, it)
+        } ?: context.getString(R.string.webdav_request_failed)
     }
 
     private fun formatBytes(bytes: Long): String = when {
@@ -1439,7 +1460,8 @@ class WebdavSyncManager @Inject constructor(
                     val content = metadataParser.parse(file.absolutePath)
                     val t = content.title.takeIf { it.isNotBlank() && it != file.nameWithoutExtension }
                         ?: existing.title
-                    val a = content.author.takeIf { it.isNotBlank() && it != "未知作者" }
+                    val unknownAuthor = context.getString(R.string.book_author_unknown)
+                    val a = content.author.takeIf { it.isNotBlank() && it != unknownAuthor }
                         ?: existing.author
                     t to a
                 } finally {

@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.Uri
 import android.content.Intent
 import android.provider.DocumentsContract
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.huangder.lumibooks.R
@@ -27,6 +28,7 @@ import com.huangder.lumibooks.domain.repository.ReadingRepository
 import com.huangder.lumibooks.domain.repository.TagRepository
 import com.huangder.lumibooks.util.FileUtils
 import com.huangder.lumibooks.util.TimeUtils
+import com.huangder.lumibooks.util.AuthorizedStorageManager
 import com.huangder.lumibooks.util.parser.BookParserFactory
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -41,6 +43,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.util.Calendar
@@ -56,8 +60,17 @@ data class BookImportCandidate(
     val sourceDirectoryUri: String? = null,
     val sourceDirectoryName: String? = null,
     /** Directory path relative to the authorized root, separated by '/'. */
-    val sourceRelativeDirectory: String? = null
-)
+    val sourceRelativeDirectory: String? = null,
+    val sourceDirectoryDocumentUri: String? = null,
+    val sourceDocumentKey: String? = null,
+    val sourceLastModified: Long = 0L,
+    val sourceSize: Long = 0L,
+    val sourceDirectoryBindings: List<FolderRepository.StorageBinding> = emptyList()
+) {
+    val lastModified: Long get() = sourceLastModified
+    val documentKey: String? get() = sourceDocumentKey
+    val physicalParentUri: String? get() = sourceDirectoryDocumentUri
+}
 
 data class HomeUiState(
     val books: List<Book> = emptyList(),
@@ -102,7 +115,8 @@ class HomeViewModel @Inject constructor(
     private val readingRepository: ReadingRepository,
     private val dataStoreManager: DataStoreManager,
     private val application: Application,
-    private val webdavSyncManager: com.huangder.lumibooks.data.sync.WebdavSyncManager
+    private val webdavSyncManager: com.huangder.lumibooks.data.sync.WebdavSyncManager,
+    private val authorizedStorageManager: AuthorizedStorageManager
 ) : ViewModel() {
 
     private companion object {
@@ -115,10 +129,10 @@ class HomeViewModel @Inject constructor(
     private val _downloadedBooks = MutableSharedFlow<Book>(extraBufferCapacity = 1)
     val downloadedBooks: SharedFlow<Book> = _downloadedBooks.asSharedFlow()
 
-    // Importing several documents writes books and folder links one at a time. Defer the
-    // first-non-empty folder snapshot until the whole batch is complete, otherwise the first
-    // document would permanently consume the folder's one-time snapshot.
+    // Importing several documents writes books and folder links one at a time. Defer preview
+    // refreshes until the whole batch is complete so the cover collage is computed once.
     private var folderPreviewInitializationSuspended = false
+    private val authorizedStorageMutex = Mutex()
 
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
     private val dayLabels = listOf(
@@ -210,32 +224,25 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Initializes each folder's book-cover snapshot exactly once, after the current database
-     * state contains both books and folder links. The DAO conditionally updates the nullable
-     * snapshot field, so repeated calls from independent book/folder flows are harmless.
-     */
+    /** Refreshes each folder's four-book cover snapshot after books or links change. */
     private fun scheduleFolderPreviewInitialization(
         books: List<Book>,
         folders: List<LibraryFolder>,
         links: List<BookFolderLink>
     ) {
         if (folderPreviewInitializationSuspended) return
-        val uninitializedFolders = folders.filter { it.previewBookIds == null }
-        if (uninitializedFolders.isEmpty() || books.isEmpty() || links.isEmpty()) return
+        if (folders.isEmpty()) return
 
         val orderedBooks = books.toList()
         viewModelScope.launch(Dispatchers.IO) {
-            uninitializedFolders.forEach { folder ->
+            folders.forEach { folder ->
                 val previewIds = FolderPreviewPlanner.selectBookIds(
                     booksInLibraryOrder = orderedBooks,
                     folders = folders,
                     links = links,
                     folderId = folder.id
                 )
-                if (previewIds.isNotEmpty()) {
-                    folderRepository.initializeFolderPreview(folder.id, previewIds)
-                }
+                folderRepository.refreshFolderPreview(folder.id, previewIds)
             }
         }
     }
@@ -456,7 +463,13 @@ class HomeViewModel @Inject constructor(
             context = context,
             documents = uris.mapNotNull { uri ->
                 val name = FileUtils.getFileNameFromUri(context, uri) ?: return@mapNotNull null
-                BookDocument(uri, name)
+                BookDocument(
+                    uri = uri,
+                    name = name,
+                    sourceDocumentKey = authorizedStorageManager.documentKey(uri),
+                    sourceLastModified = authorizedStorageManager.queryLastModified(context, uri),
+                    sourceSize = runCatching { com.huangder.lumibooks.util.BookFileAccess.size(context, uri.toString()) }.getOrDefault(0L)
+                )
             },
             copyIntoApp = true,
             targetFolderId = targetFolderId,
@@ -477,7 +490,12 @@ class HomeViewModel @Inject constructor(
                     name = candidate.name,
                     sourceDirectoryUri = candidate.sourceDirectoryUri,
                     sourceDirectoryName = candidate.sourceDirectoryName,
-                    sourceRelativeDirectory = candidate.sourceRelativeDirectory
+                    sourceRelativeDirectory = candidate.sourceRelativeDirectory,
+                    sourceDirectoryDocumentUri = candidate.sourceDirectoryDocumentUri,
+                    sourceDocumentKey = candidate.sourceDocumentKey,
+                    sourceLastModified = candidate.sourceLastModified,
+                    sourceSize = candidate.sourceSize,
+                    sourceDirectoryBindings = candidate.sourceDirectoryBindings
                 )
             },
             copyIntoApp = false,
@@ -570,7 +588,7 @@ class HomeViewModel @Inject constructor(
                 if (directories.isEmpty()) {
                     return@runCatching BookDiscoveryResult(noAuthorizedDirectories = true)
                 }
-                withContext(Dispatchers.IO) { discoverNewBooks(context, directories) }
+                withContext(Dispatchers.IO) { reconcileAuthorizedBooks(context, directories) }
             }
             result.fold(
                 onSuccess = { discovery ->
@@ -593,79 +611,292 @@ class HomeViewModel @Inject constructor(
         context: Context,
         directories: List<Uri>
     ): BookDiscoveryResult {
-        val existingLocations = _uiState.value.books.mapTo(mutableSetOf()) { it.filePath }
         val documents = mutableListOf<BookDocument>()
         var inaccessibleDirectories = 0
         directories.forEach { treeUri ->
             runCatching { documents += discoverBooks(context, treeUri) }
                 .onFailure {
                     inaccessibleDirectories++
-                    dataStoreManager.removeAuthorizedBookDirectory(treeUri.toString())
                 }
         }
-        val newDocuments = documents
-            .distinctBy { it.uri.toString() }
-            .filterNot { it.uri.toString() in existingLocations }
+        var existing = bookRepository.getAllBooks().first()
+        var missingHashesChecked = false
+        val newDocuments = mutableListOf<BookDocument>()
+        documents.distinctBy {
+            authorizedDocumentIdentity(it.sourceDocumentKey, it.uri.toString())
+        }.forEach { document ->
+            val uri = document.uri.toString()
+            val directMatch = findMatchingAuthorizedBook(
+                documentKey = document.sourceDocumentKey,
+                uri = uri,
+                sha256 = null,
+                books = existing
+            )
+            if (directMatch != null) return@forEach
+
+            val hash = runCatching { authorizedStorageManager.sha256(context, uri) }.getOrNull()
+            if (hash != null && !missingHashesChecked) {
+                existing = repairMissingSourceHashes(context, existing)
+                missingHashesChecked = true
+            }
+            if (findMatchingAuthorizedBook(document.sourceDocumentKey, uri, hash, existing) == null) {
+                newDocuments += document
+            }
+        }
         return BookDiscoveryResult(
             documents = newDocuments,
             inaccessibleDirectories = inaccessibleDirectories
         )
     }
 
-    private fun discoverBooks(context: Context, treeUri: Uri): List<BookDocument> {
-        val resolver = context.contentResolver
-        val sourceDirectoryName = resolveAuthorizedDirectoryName(context, treeUri)
-        val pendingDirectories = ArrayDeque<PendingAuthorizedDirectory>()
-        pendingDirectories += PendingAuthorizedDirectory(
-            documentId = DocumentsContract.getTreeDocumentId(treeUri),
-            relativeDirectory = null
-        )
-        val visitedDirectories = mutableSetOf<String>()
-        val discovered = mutableListOf<BookDocument>()
-        val projection = arrayOf(
-            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
-            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-            DocumentsContract.Document.COLUMN_MIME_TYPE
-        )
+    private suspend fun repairMissingSourceHashes(
+        context: Context,
+        books: List<Book>
+    ): List<Book> = backfillMissingSourceHashes(
+        books = books,
+        hashLocation = { location ->
+            runCatching { authorizedStorageManager.sha256(context, location) }.getOrNull()
+        },
+        persist = bookRepository::updateSourceSha256
+    )
 
-        while (pendingDirectories.isNotEmpty()) {
-            val pending = pendingDirectories.removeFirst()
-            if (!visitedDirectories.add(pending.documentId)) continue
-            val parentId = pending.documentId
-            val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentId)
-            resolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
-                val idIndex = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
-                val nameIndex = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
-                val mimeIndex = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
-                while (cursor.moveToNext()) {
-                    val documentId = cursor.getString(idIndex)
-                    val name = cursor.getString(nameIndex).orEmpty()
-                    val mimeType = cursor.getString(mimeIndex).orEmpty()
-                    if (mimeType == DocumentsContract.Document.MIME_TYPE_DIR) {
-                        val childName = name.trim()
-                        val childRelativeDirectory = if (childName.isBlank()) {
-                            pending.relativeDirectory
-                        } else {
-                            listOfNotNull(pending.relativeDirectory, childName)
-                                .joinToString("/")
-                        }
-                        pendingDirectories += PendingAuthorizedDirectory(
-                            documentId = documentId,
-                            relativeDirectory = childRelativeDirectory
-                        )
-                    } else if (FileUtils.getFileExtension(name) in SUPPORTED_BOOK_EXTENSIONS) {
-                        discovered += BookDocument(
-                            uri = DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId),
-                            name = name,
-                            sourceDirectoryUri = treeUri.toString(),
-                            sourceDirectoryName = sourceDirectoryName,
-                            sourceRelativeDirectory = pending.relativeDirectory
-                        )
-                    }
+    private fun discoverBooks(context: Context, treeUri: Uri): List<BookDocument> {
+        val scan = authorizedStorageManager.scan(context, treeUri)
+        val sourceDirectoryName = authorizedStorageManager.queryDisplayName(context, scan.rootUri)
+            ?.takeIf { it.isNotBlank() }
+            ?: resolveAuthorizedDirectoryName(context, treeUri)
+        val directoriesByPath = scan.directories.associateBy { it.relativePath.orEmpty() }
+        return scan.documents.map { item ->
+            val rootBinding = scan.directories.firstOrNull { it.relativePath == null }?.let { directory ->
+                FolderRepository.StorageBinding(
+                    name = directory.name,
+                    treeUri = directory.treeUri.toString(),
+                    documentUri = directory.uri.toString(),
+                    parentUri = directory.parentUri?.toString()
+                )
+            }
+            val childBindings = item.relativeDirectory.orEmpty()
+                .split('/')
+                .filter(String::isNotBlank)
+                .runningFold("") { path, segment ->
+                    if (path.isBlank()) segment else "$path/$segment"
                 }
+                .drop(1)
+                .mapNotNull { path -> directoriesByPath[path] }
+                .map { directory ->
+                    FolderRepository.StorageBinding(
+                        name = directory.name,
+                        treeUri = directory.treeUri.toString(),
+                        documentUri = directory.uri.toString(),
+                        parentUri = directory.parentUri?.toString()
+                    )
+                }
+            val bindings = listOfNotNull(rootBinding) + childBindings
+            BookDocument(
+                uri = item.uri,
+                name = item.name,
+                sourceDirectoryUri = treeUri.toString(),
+                sourceDirectoryName = sourceDirectoryName,
+                sourceRelativeDirectory = item.relativeDirectory,
+                sourceDirectoryDocumentUri = item.parentUri.toString(),
+                sourceDocumentKey = item.documentKey,
+                sourceLastModified = item.lastModified,
+                sourceSize = item.size,
+                sourceDirectoryBindings = bindings
+            )
+        }
+    }
+
+    /** Reconciles authorized documents with existing records without deleting user data. */
+    private suspend fun reconcileAuthorizedBooks(
+        context: Context,
+        directories: List<Uri>
+    ): BookDiscoveryResult = authorizedStorageMutex.withLock {
+        val allDocuments = mutableListOf<BookDocument>()
+        val allDirectories = mutableListOf<AuthorizedStorageManager.ScannedDirectory>()
+        val scannedTreeUris = mutableSetOf<String>()
+        var inaccessibleDirectories = 0
+        directories.forEach { treeUri ->
+            runCatching {
+                val scan = authorizedStorageManager.scan(context, treeUri)
+                allDirectories += scan.directories
+                scannedTreeUris += treeUri.toString()
+                ensureStorageFolders(scan)
+                allDocuments += discoverBooks(context, treeUri)
+            }
+                .onFailure { inaccessibleDirectories++ }
+        }
+        var existing = bookRepository.getAllBooks().first()
+        val folders = folderRepository.getAllFolders().first()
+        val foldersByStorageUri = folders.mapNotNull { folder ->
+            folder.storageDocumentUri?.let { it to folder }
+        }.toMap()
+
+        // Rebind physical folders first so subsequent book reconciliation can resolve ownership.
+        allDirectories.forEach { directory ->
+            val folder = foldersByStorageUri[directory.uri.toString()] ?: return@forEach
+            val parentFolderId = directory.parentUri?.toString()
+                ?.let { parentUri -> foldersByStorageUri[parentUri]?.id }
+            folderRepository.reconcileStorageFolder(
+                folderId = folder.id,
+                name = directory.name,
+                storageTreeUri = directory.treeUri.toString(),
+                storageDocumentUri = directory.uri.toString(),
+                storageParentUri = directory.parentUri?.toString(),
+                storageMissing = false
+            )
+            if (folder.parentId != parentFolderId) {
+                folderRepository.reconcileFolderParent(
+                    folderId = folder.id,
+                    parentId = parentFolderId,
+                    storageParentUri = directory.parentUri?.toString()
+                )
             }
         }
-        return discovered
+        val scannedDocumentUris = allDirectories.mapTo(mutableSetOf()) { it.uri.toString() }
+        folders.filter { it.storageTreeUri in scannedTreeUris && it.storageDocumentUri != null }
+            .filter { it.storageDocumentUri !in scannedDocumentUris }
+            .forEach { folderRepository.markStorageMissing(it.id, true) }
+        folders.filter { it.storageTreeUri != null && it.storageTreeUri !in scannedTreeUris }
+            .forEach { folderRepository.markStorageMissing(it.id, true) }
+        val matchedIds = mutableSetOf<String>()
+        var updatedCount = 0
+        val newDocuments = mutableListOf<BookDocument>()
+        var missingHashesChecked = false
+
+        for (document in allDocuments.distinctBy {
+            authorizedDocumentIdentity(it.sourceDocumentKey, it.uri.toString())
+        }) {
+            val uri = document.uri.toString()
+            val directMatch = findMatchingAuthorizedBook(
+                documentKey = document.sourceDocumentKey,
+                uri = uri,
+                sha256 = null,
+                books = existing,
+                claimedBookIds = matchedIds
+            )
+            val hash = runCatching { authorizedStorageManager.sha256(context, uri) }
+                .getOrNull()
+            if (directMatch == null && hash != null && !missingHashesChecked) {
+                existing = repairMissingSourceHashes(context, existing)
+                missingHashesChecked = true
+            }
+            val match = directMatch ?: findMatchingAuthorizedBook(
+                documentKey = document.sourceDocumentKey,
+                uri = uri,
+                sha256 = hash,
+                books = existing,
+                claimedBookIds = matchedIds
+            )
+            if (match == null) {
+                newDocuments += document
+                continue
+            }
+
+            matchedIds += match.id
+            val oldDefaultTitle = match.sourceDisplayName
+                ?.substringBeforeLast('.', match.sourceDisplayName)
+                .orEmpty()
+            val shouldUpdateTitle = oldDefaultTitle.isNotBlank() &&
+                match.title == oldDefaultTitle
+            val updated = match.copy(
+                title = if (shouldUpdateTitle) document.name.substringBeforeLast('.') else match.title,
+                filePath = document.uri.toString(),
+                sourceUri = match.sourceUri ?: document.uri.toString(),
+                sourceDocumentKey = document.sourceDocumentKey,
+                sourceParentUri = document.sourceDirectoryDocumentUri,
+                sourceSha256 = hash ?: match.sourceSha256,
+                sourceDisplayName = document.name,
+                sourceLastModified = document.sourceLastModified,
+                isMissing = false
+            )
+            if (updated != match) {
+                bookRepository.updateBook(updated)
+                updatedCount++
+            }
+            val physicalFolder = folders.firstOrNull {
+                !it.storageDocumentUri.isNullOrBlank() &&
+                    it.storageDocumentUri == document.sourceDirectoryDocumentUri
+            }
+            if (physicalFolder != null) {
+                runCatching { folderRepository.moveBooks(setOf(match.id), physicalFolder.id) }
+            }
+        }
+
+        var missingCount = 0
+        existing.filter { it.id !in matchedIds && it.sourceParentUri != null }.forEach { book ->
+            if (!book.isMissing) {
+                bookRepository.updateBook(book.copy(isMissing = true))
+                missingCount++
+            }
+        }
+        BookDiscoveryResult(
+            documents = newDocuments,
+            inaccessibleDirectories = inaccessibleDirectories,
+            updatedCount = updatedCount,
+            missingCount = missingCount
+        )
+    }
+
+    private suspend fun ensureStorageFolders(scan: AuthorizedStorageManager.ScanResult) {
+        val root = scan.directories.firstOrNull { it.relativePath == null } ?: return
+        val byPath = scan.directories.associateBy { it.relativePath.orEmpty() }
+        val rootBinding = FolderRepository.StorageBinding(
+            name = root.name,
+            treeUri = root.treeUri.toString(),
+            documentUri = root.uri.toString(),
+            parentUri = root.parentUri?.toString()
+        )
+
+        // Providers are free to return children in any order. Creating shallow paths first
+        // makes the parent relationship deterministic and also ensures empty directories are
+        // represented even when they contain no supported book files.
+        scan.directories
+            .sortedBy { it.relativePath?.count { ch -> ch == '/' } ?: -1 }
+            .forEach { directory ->
+                val bindings = directory.relativePath.orEmpty()
+                    .split('/')
+                    .filter(String::isNotBlank)
+                    .runningFold("") { path, segment ->
+                        if (path.isBlank()) segment else "$path/$segment"
+                    }
+                    .drop(1)
+                    .mapNotNull { byPath[it] }
+                    .map { item ->
+                        FolderRepository.StorageBinding(
+                            name = item.name,
+                            treeUri = item.treeUri.toString(),
+                            documentUri = item.uri.toString(),
+                            parentUri = item.parentUri?.toString()
+                        )
+                    }
+                // One malformed provider row must not prevent all other physical folders from
+                // being reconciled. The associated book scan will still report the directory as
+                // inaccessible if its contents cannot be read.
+                runCatching {
+                    val folder = folderRepository.getOrCreateFolderPath(
+                        rootName = root.name,
+                        relativeDirectory = directory.relativePath,
+                        storageBindings = listOf(rootBinding) + bindings
+                    )
+                    check(
+                        folderRepository.reconcileStorageFolder(
+                            folderId = folder.id,
+                            name = directory.name,
+                            storageTreeUri = directory.treeUri.toString(),
+                            storageDocumentUri = directory.uri.toString(),
+                            storageParentUri = directory.parentUri?.toString(),
+                            storageMissing = false
+                        )
+                    ) { "Unable to persist physical folder binding" }
+                }.onFailure { error ->
+                    Log.w(
+                        "AuthorizedStorage",
+                        "Unable to reconcile physical folder ${directory.relativePath ?: root.name}",
+                        error
+                    )
+                }
+            }
     }
 
     private fun resolveAuthorizedDirectoryName(context: Context, treeUri: Uri): String {
@@ -700,9 +931,37 @@ class HomeViewModel @Inject constructor(
         var imported = 0
         var skipped = 0
         var failed = 0
+        var knownBooks = bookRepository.getAllBooks().first()
+        var missingHashesChecked = false
         documents.forEach { document ->
             val extension = FileUtils.getFileExtension(document.name)
             if (extension !in SUPPORTED_BOOK_EXTENSIONS) {
+                skipped++
+                return@forEach
+            }
+            val incomingKey = document.sourceDocumentKey
+                ?: authorizedStorageManager.documentKey(document.uri)
+            val incomingUri = document.uri.toString()
+            val incomingHash = runCatching {
+                authorizedStorageManager.sha256(context, incomingUri)
+            }.getOrNull()
+            val directDuplicate = findMatchingAuthorizedBook(
+                documentKey = incomingKey,
+                uri = incomingUri,
+                sha256 = null,
+                books = knownBooks
+            )
+            if (directDuplicate == null && incomingHash != null && !missingHashesChecked) {
+                knownBooks = repairMissingSourceHashes(context, knownBooks)
+                missingHashesChecked = true
+            }
+            val duplicate = directDuplicate ?: findMatchingAuthorizedBook(
+                documentKey = incomingKey,
+                uri = incomingUri,
+                sha256 = incomingHash,
+                books = knownBooks
+            )
+            if (duplicate != null) {
                 skipped++
                 return@forEach
             }
@@ -738,7 +997,14 @@ class HomeViewModel @Inject constructor(
                         format = format,
                         lastReadTime = now,
                         readingProgress = 0f,
-                        createdAt = now
+                        createdAt = now,
+                        sourceUri = incomingUri,
+                        sourceDocumentKey = incomingKey,
+                        sourceParentUri = document.sourceDirectoryDocumentUri,
+                        sourceSha256 = incomingHash,
+                        sourceDisplayName = document.name,
+                        sourceLastModified = document.sourceLastModified,
+                        isMissing = false
                     )
                 bookRepository.insertBook(book)
                 insertedBook = book
@@ -750,7 +1016,8 @@ class HomeViewModel @Inject constructor(
                         ?.let {
                             folderRepository.getOrCreateFolderPath(
                                 rootName = it,
-                                relativeDirectory = document.sourceRelativeDirectory
+                                relativeDirectory = document.sourceRelativeDirectory,
+                                storageBindings = document.sourceDirectoryBindings
                             ).id
                         }
                 } else {
@@ -761,6 +1028,7 @@ class HomeViewModel @Inject constructor(
                 }
             }.onSuccess {
                 imported++
+                insertedBook?.let { knownBooks = knownBooks + it }
             }.onFailure {
                 failed++
                 insertedBook?.let { book -> runCatching { bookRepository.deleteBook(book) } }
@@ -778,14 +1046,24 @@ class HomeViewModel @Inject constructor(
         val name: String,
         val sourceDirectoryUri: String? = null,
         val sourceDirectoryName: String? = null,
-        val sourceRelativeDirectory: String? = null
+        val sourceRelativeDirectory: String? = null,
+        val sourceDirectoryDocumentUri: String? = null,
+        val sourceDocumentKey: String? = null,
+        val sourceLastModified: Long = 0L,
+        val sourceSize: Long = 0L,
+        val sourceDirectoryBindings: List<FolderRepository.StorageBinding> = emptyList()
     ) {
         fun toCandidate() = BookImportCandidate(
             uri = uri,
             name = name,
             sourceDirectoryUri = sourceDirectoryUri,
             sourceDirectoryName = sourceDirectoryName,
-            sourceRelativeDirectory = sourceRelativeDirectory
+            sourceRelativeDirectory = sourceRelativeDirectory,
+            sourceDirectoryDocumentUri = sourceDirectoryDocumentUri,
+            sourceDocumentKey = sourceDocumentKey,
+            sourceLastModified = sourceLastModified,
+            sourceSize = sourceSize,
+            sourceDirectoryBindings = sourceDirectoryBindings
         )
     }
 
@@ -797,13 +1075,20 @@ class HomeViewModel @Inject constructor(
     private data class BookDiscoveryResult(
         val documents: List<BookDocument> = emptyList(),
         val inaccessibleDirectories: Int = 0,
-        val noAuthorizedDirectories: Boolean = false
+        val noAuthorizedDirectories: Boolean = false,
+        val updatedCount: Int = 0,
+        val missingCount: Int = 0
     ) {
         fun messageWhenEmpty(context: Context): String? {
             if (documents.isNotEmpty()) return null
             return when {
                 noAuthorizedDirectories -> context.getString(R.string.import_no_authorized_directory)
                 inaccessibleDirectories > 0 -> context.getString(R.string.import_directory_permission_lost)
+                updatedCount > 0 || missingCount > 0 -> context.getString(
+                    R.string.import_refresh_summary,
+                    updatedCount,
+                    missingCount
+                )
                 else -> context.getString(R.string.import_no_new_books)
             }
         }
@@ -907,6 +1192,7 @@ class HomeViewModel @Inject constructor(
     fun createFolder(
         rawName: String,
         parentId: String?,
+        storageTreeUri: String? = null,
         onResult: (LibraryFolder?) -> Unit = {}
     ) {
         if (!validateFolderName(rawName)) {
@@ -914,7 +1200,46 @@ class HomeViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
-            runCatching { folderRepository.createFolder(rawName, parentId) }
+            runCatching {
+                authorizedStorageMutex.withLock {
+                val folders = folderRepository.getAllFolders().first()
+                val parent = parentId?.let { id -> folders.firstOrNull { it.id == id } }
+                val explicitVirtual = storageTreeUri == ""
+                val treeUri = if (explicitVirtual) null else storageTreeUri ?: parent?.storageTreeUri
+                val physicalParentUri: Uri? = if (explicitVirtual) null else {
+                    if (storageTreeUri != null) {
+                        treeUri?.let { authorizedStorageManager.treeRootUri(Uri.parse(it)) }
+                    } else {
+                        parent?.storageDocumentUri?.let(Uri::parse)
+                            ?: treeUri?.let { authorizedStorageManager.treeRootUri(Uri.parse(it)) }
+                    }
+                }
+                if (physicalParentUri == null) {
+                    folderRepository.createFolder(rawName, parentId)
+                } else {
+                    val createdUri = withContext(Dispatchers.IO) {
+                        authorizedStorageManager.createDirectory(application, physicalParentUri, FolderNameValidator.clean(rawName))
+                    }
+                    val storedDocumentUri = authorizedStorageManager.documentUriUsingTree(
+                        treeUri?.let(Uri::parse) ?: error("Missing authorized tree URI"),
+                        createdUri
+                    )
+                    runCatching {
+                        folderRepository.createFolder(
+                            rawName = rawName,
+                            parentId = parentId,
+                            storageTreeUri = treeUri,
+                            storageDocumentUri = storedDocumentUri.toString(),
+                            storageParentUri = physicalParentUri.toString()
+                        ) ?: error(application.getString(R.string.folder_name_exists))
+                    }.onFailure {
+                        // Do not leave an orphaned physical directory when Room rejects the name.
+                        runCatching { DocumentsContract.deleteDocument(application.contentResolver, createdUri) }
+                        throw it
+                    }.getOrThrow()
+                }
+                }
+            }
                 .onSuccess { folder ->
                     if (folder == null) showFolderMessage(application.getString(R.string.folder_name_exists))
                     onResult(folder)
@@ -932,7 +1257,40 @@ class HomeViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
-            runCatching { folderRepository.renameFolder(folderId, rawName) }
+            runCatching {
+                val folder = folderRepository.getAllFolders().first().firstOrNull { it.id == folderId }
+                    ?: return@runCatching false
+                val cleanName = FolderNameValidator.clean(rawName)
+                val oldName = folder.name
+                val renamedUri = folder.storageDocumentUri?.let { uri ->
+                    withContext(Dispatchers.IO) {
+                        authorizedStorageManager.rename(application, Uri.parse(uri), cleanName)
+                    }
+                }
+                val renamed = folderRepository.renameFolder(folderId, cleanName)
+                if (!renamed) {
+                    renamedUri?.let { uri ->
+                        runCatching {
+                            withContext(Dispatchers.IO) {
+                                authorizedStorageManager.rename(application, uri, oldName)
+                            }
+                        }
+                    }
+                    false
+                } else {
+                    if (renamedUri != null) {
+                        folderRepository.reconcileStorageFolder(
+                            folderId = folderId,
+                            name = cleanName,
+                            storageTreeUri = folder.storageTreeUri,
+                            storageDocumentUri = renamedUri.toString(),
+                            storageParentUri = folder.storageParentUri,
+                            storageMissing = false
+                        )
+                    }
+                    true
+                }
+            }
                 .onSuccess { renamed ->
                     if (!renamed) showFolderMessage(application.getString(R.string.folder_name_exists))
                     onResult(renamed)
@@ -1013,7 +1371,57 @@ class HomeViewModel @Inject constructor(
         onResult: (FolderMoveResult) -> Unit = {}
     ) {
         viewModelScope.launch {
-            runCatching { folderRepository.moveFolder(folderId, targetParentId) }
+            runCatching {
+                authorizedStorageMutex.withLock {
+                val folders = folderRepository.getAllFolders().first()
+                val source = folders.firstOrNull { it.id == folderId }
+                    ?: return@runCatching FolderMoveResult.SourceNotFound
+                val target = targetParentId?.let { id -> folders.firstOrNull { it.id == id } }
+                if (source.storageDocumentUri != null) {
+                    if (targetParentId != null && target?.storageDocumentUri == null) {
+                        showFolderMessage(application.getString(R.string.folder_physical_move_blocked))
+                        return@runCatching FolderMoveResult.InvalidTarget
+                    }
+                    val targetParentUri: Uri? = target?.storageDocumentUri?.let(Uri::parse)
+                        ?: source.storageTreeUri?.let { authorizedStorageManager.treeRootUri(Uri.parse(it)) }
+                    if (targetParentUri == null || source.storageParentUri.isNullOrBlank()) {
+                        showFolderMessage(application.getString(R.string.folder_physical_move_blocked))
+                        return@runCatching FolderMoveResult.InvalidTarget
+                    }
+                    val movedUri = withContext(Dispatchers.IO) {
+                        authorizedStorageManager.move(
+                            application,
+                            Uri.parse(source.storageDocumentUri),
+                            Uri.parse(source.storageParentUri),
+                            targetParentUri
+                        )
+                    }
+                    val result = folderRepository.moveFolder(folderId, targetParentId)
+                    if (result != FolderMoveResult.Success) {
+                        runCatching {
+                            withContext(Dispatchers.IO) {
+                                authorizedStorageManager.move(application, movedUri, targetParentUri, Uri.parse(source.storageParentUri))
+                            }
+                        }
+                    } else {
+                        folderRepository.reconcileStorageFolder(
+                            folderId = folderId,
+                            name = source.name,
+                            storageTreeUri = source.storageTreeUri,
+                            storageDocumentUri = movedUri.toString(),
+                            storageParentUri = targetParentUri.toString(),
+                            storageMissing = false
+                        )
+                    }
+                    result
+                } else if (target?.storageDocumentUri != null) {
+                    showFolderMessage(application.getString(R.string.folder_physical_move_blocked))
+                    FolderMoveResult.InvalidTarget
+                } else {
+                    folderRepository.moveFolder(folderId, targetParentId)
+                }
+                }
+            }
                 .onSuccess { result ->
                     val message = when (result) {
                         FolderMoveResult.Success -> R.string.folder_relocation_success
@@ -1035,6 +1443,7 @@ class HomeViewModel @Inject constructor(
     fun moveBooksToFolder(
         bookIds: Set<String>,
         targetFolderId: String?,
+        allowCrossStorageMove: Boolean = false,
         onResult: (Boolean) -> Unit = {}
     ) {
         if (bookIds.isEmpty()) {
@@ -1042,8 +1451,125 @@ class HomeViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
-            runCatching { folderRepository.moveBooks(bookIds, targetFolderId) }
-                .onSuccess {
+            runCatching {
+                authorizedStorageMutex.withLock {
+                val folders = folderRepository.getAllFolders().first()
+                val books = bookRepository.getAllBooks().first().filter { it.id in bookIds }
+                val target = targetFolderId?.let { id -> folders.firstOrNull { it.id == id } }
+                val failures = mutableListOf<String>()
+                var movedCount = 0
+                books.forEach { book ->
+                    try {
+                        if (target == null) {
+                            if (book.sourceParentUri != null) {
+                                error(application.getString(R.string.folder_physical_move_blocked))
+                            }
+                            folderRepository.moveBooks(setOf(book.id), null)
+                        } else if (target.storageDocumentUri == null) {
+                            if (book.sourceParentUri != null) {
+                                error(application.getString(R.string.folder_physical_move_blocked))
+                            }
+                            folderRepository.moveBooks(setOf(book.id), target.id)
+                        } else {
+                            val targetParent = Uri.parse(target.storageDocumentUri).let { documentUri ->
+                                target.storageTreeUri
+                                    ?.let { treeUri ->
+                                        authorizedStorageManager.documentUriUsingTree(
+                                            Uri.parse(treeUri),
+                                            documentUri
+                                        )
+                                    }
+                                    ?: documentUri
+                            }
+                            val sourceIsAuthorized = book.sourceParentUri != null && book.filePath.startsWith("content://")
+                            if (!sourceIsAuthorized && !allowCrossStorageMove) {
+                                error(application.getString(R.string.folder_cross_storage_confirmation))
+                            }
+                            val movedUri: Uri
+                            val hash: String
+                            if (sourceIsAuthorized) {
+                                val sourceParent = Uri.parse(book.sourceParentUri).let { documentUri ->
+                                    val treeUri = target.storageTreeUri?.let(Uri::parse)
+                                    val sameTree = treeUri != null &&
+                                        treeUri.authority == documentUri.authority &&
+                                        runCatching {
+                                            DocumentsContract.getTreeDocumentId(treeUri) ==
+                                                DocumentsContract.getTreeDocumentId(documentUri)
+                                        }.getOrDefault(false)
+                                    if (sameTree) {
+                                        authorizedStorageManager.documentUriUsingTree(treeUri, documentUri)
+                                    } else {
+                                        documentUri
+                                    }
+                                }
+                                if (sourceParent == targetParent) {
+                                    movedUri = Uri.parse(book.filePath)
+                                    hash = book.sourceSha256 ?: withContext(Dispatchers.IO) {
+                                        authorizedStorageManager.sha256(application, book.filePath)
+                                    }
+                                } else {
+                                    movedUri = withContext(Dispatchers.IO) {
+                                        runCatching {
+                                            authorizedStorageManager.move(application, Uri.parse(book.filePath), sourceParent, targetParent)
+                                        }.getOrElse {
+                                            authorizedStorageManager.copyThenDelete(
+                                                application,
+                                                book.filePath,
+                                                targetParent,
+                                                book.sourceDisplayName ?: Uri.parse(book.filePath).lastPathSegment.orEmpty(),
+                                                expectedSha256 = runCatching {
+                                                    authorizedStorageManager.sha256(application, book.filePath)
+                                                }.getOrNull()
+                                            ).destinationUri
+                                        }
+                                    }
+                                    hash = withContext(Dispatchers.IO) {
+                                        authorizedStorageManager.sha256(application, movedUri.toString())
+                                    }
+                                }
+                            } else {
+                                check(FileUtils.isAppManagedBookLocation(application, book.filePath)) {
+                                    application.getString(R.string.folder_physical_move_blocked)
+                                }
+                                val result = withContext(Dispatchers.IO) {
+                                    val currentHash = authorizedStorageManager.sha256(application, book.filePath)
+                                    authorizedStorageManager.copyThenDelete(
+                                        application,
+                                        book.filePath,
+                                        targetParent,
+                                        book.sourceDisplayName ?: FileUtils.getFileNameFromUri(application, Uri.parse(book.filePath))
+                                            ?: java.io.File(book.filePath).name.takeIf { it.isNotBlank() }
+                                            ?: book.title,
+                                        expectedSha256 = currentHash
+                                    )
+                                }
+                                movedUri = result.destinationUri
+                                hash = result.sha256
+                            }
+                            val movedBook = book.copy(
+                                filePath = movedUri.toString(),
+                                sourceDocumentKey = authorizedStorageManager.documentKey(movedUri),
+                                sourceParentUri = target.storageDocumentUri,
+                                sourceSha256 = hash,
+                                sourceDisplayName = withContext(Dispatchers.IO) {
+                                    authorizedStorageManager.queryDisplayName(application, movedUri)
+                                } ?: book.sourceDisplayName,
+                                isMissing = false
+                            )
+                            bookRepository.updateBook(movedBook)
+                            folderRepository.moveBooks(setOf(book.id), target.id)
+                        }
+                        movedCount++
+                    } catch (error: Throwable) {
+                        failures += error.message ?: book.title
+                    }
+                }
+                if (failures.isNotEmpty()) {
+                    showFolderMessage(application.getString(R.string.folder_move_partial, movedCount, failures.size))
+                }
+                check(failures.isEmpty()) { failures.joinToString("; ") }
+                }
+            }.onSuccess {
                     scheduleFolderPreviewInitialization(
                         books = _uiState.value.books,
                         folders = _uiState.value.folders,
@@ -1057,6 +1583,28 @@ class HomeViewModel @Inject constructor(
                 }
         }
     }
+
+    /**
+     * Returns whether moving these books to the target would copy files out of the app-managed
+     * books directory. The UI uses this to show an explicit confirmation before the destructive
+     * copy-and-delete operation begins.
+     */
+    fun requiresCrossStorageMoveConfirmation(bookIds: Set<String>, targetFolderId: String?): Boolean {
+        val target = targetFolderId?.let { id -> _uiState.value.folders.firstOrNull { it.id == id } }
+        if (target?.storageDocumentUri == null) return false
+        return _uiState.value.books.any { book ->
+            book.id in bookIds &&
+                book.sourceParentUri == null &&
+                FileUtils.isAppManagedBookLocation(application, book.filePath)
+        }
+    }
+
+    /** Compatibility overload for existing callers that pass the completion lambda third. */
+    fun moveBooksToFolder(
+        bookIds: Set<String>,
+        targetFolderId: String?,
+        onResult: (Boolean) -> Unit
+    ) = moveBooksToFolder(bookIds, targetFolderId, false, onResult)
 
     fun clearFolderMessage() {
         _uiState.value = _uiState.value.copy(folderMessage = null)

@@ -6,6 +6,7 @@ import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -93,6 +94,8 @@ import com.huangder.lumibooks.ui.components.LiquidGlassDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
+import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
+import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.home.HomeViewModel
 import com.huangder.lumibooks.ui.theme.AppColors
@@ -242,9 +245,45 @@ fun BookDetailsScreen(
         ?: stringResource(R.string.library_root)
     val tags = library.bookTagLinks.filter { it.bookId == book.id }.mapNotNull { link -> library.tags.firstOrNull { it.id == link.tagId } }
     var coverTarget by remember { mutableStateOf<Book?>(null) }
+    var pendingCrossStorageMove by remember { mutableStateOf<PendingCrossStorageBookMove?>(null) }
     val coverPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         coverTarget?.let { target -> if (uri != null) homeViewModel.updateCustomCover(target, uri) }
         coverTarget = null
+    }
+
+    LaunchedEffect(library.folderMessage) {
+        val message = library.folderMessage ?: return@LaunchedEffect
+        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+        homeViewModel.clearFolderMessage()
+    }
+
+    fun completeBookMove(request: PendingCrossStorageBookMove, allowCrossStorageMove: Boolean) {
+        homeViewModel.moveBooksToFolder(
+            bookIds = request.bookIds,
+            targetFolderId = request.targetFolderId,
+            allowCrossStorageMove = allowCrossStorageMove
+        ) { success ->
+            if (success) {
+                moveOpen = false
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.folder_move_success, request.bookIds.size, request.targetName),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    fun requestBookMove(targetFolderId: String?) {
+        val targetName = targetFolderId
+            ?.let { id -> library.folders.firstOrNull { it.id == id }?.name }
+            ?: context.getString(R.string.library_root)
+        val request = PendingCrossStorageBookMove(setOf(book.id), targetFolderId, false, targetName)
+        if (homeViewModel.requiresCrossStorageMoveConfirmation(setOf(book.id), targetFolderId)) {
+            pendingCrossStorageMove = request
+        } else {
+            completeBookMove(request, allowCrossStorageMove = false)
+        }
     }
 
     Box(Modifier.fillMaxSize().background(AppColors.WindowBg)) {
@@ -278,7 +317,29 @@ fun BookDetailsScreen(
 
     if (editing) EditBookDialog(book, homeViewModel) { editing = false }
     if (tagsOpen) BookTagBottomSheet(library.tags, library.bookTagLinks.filter { it.bookId == book.id }.map { it.tagId }.toSet(), { tagsOpen = false }, { tag, checked -> homeViewModel.setBookTag(book.id, tag.id, checked) }, { name, parent -> homeViewModel.createAndAssignTag(book.id, name, parent) }, { tag, children -> homeViewModel.deleteTag(tag.id, children) })
-    if (moveOpen) FolderMoveSheet(library.folders, 1, currentFolderId, { moveOpen = false }, { name, parent -> homeViewModel.createFolder(name, parent) }) { target -> homeViewModel.moveBooksToFolder(setOf(book.id), target) { if (it) moveOpen = false } }
+    if (moveOpen) FolderMoveSheet(library.folders, 1, currentFolderId, { moveOpen = false }, { name, parent -> homeViewModel.createFolder(name, parent) }) { target -> requestBookMove(target) }
+    pendingCrossStorageMove?.let { request ->
+        LiquidGlassAlertDialog(
+            onDismissRequest = { pendingCrossStorageMove = null },
+            title = { Text(stringResource(R.string.folder_cross_storage_confirmation_title)) },
+            text = { Text(stringResource(R.string.folder_cross_storage_confirmation_message)) },
+            confirmButton = {
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.confirm),
+                    onClick = {
+                        pendingCrossStorageMove = null
+                        completeBookMove(request, allowCrossStorageMove = true)
+                    }
+                )
+            },
+            dismissButton = {
+                LiquidGlassTextButton(
+                    text = stringResource(R.string.cancel),
+                    onClick = { pendingCrossStorageMove = null }
+                )
+            }
+        )
+    }
     if (coverOpen) CustomCoverSourceSheet(book, { coverOpen = false }, { coverOpen = false; coverTarget = book; coverPicker.launch("image/*") }, { coverOpen = false; CoverSearchActivity.start(context, book.id, book.title) })
     if (deleteOpen) CloudAwareBookDeleteDialog(
         bookCount = 1,
@@ -328,7 +389,13 @@ fun BookDetailsScreen(
     val context = LocalContext.current
     LiquidGlassSurface(RoundedCornerShape(AppRadius.lg), AppColors.CardBg, Modifier.fillMaxWidth(), contentScrimColor = Color.Transparent) {
         Column {
-            DetailRow(stringResource(R.string.book_detail_file_name), remember(book.filePath, book.remoteFileName) { fileName(context, book) }, false)
+            DetailRow(
+                stringResource(R.string.book_detail_file_name),
+                remember(book.filePath, book.remoteFileName, book.sourceDisplayName) {
+                    fileName(context, book)
+                },
+                false
+            )
             DetailRow(stringResource(R.string.book_title_label), book.title, true, onEdit)
             DetailRow(stringResource(R.string.book_author_label), book.author, true, onEdit)
             DetailRow(stringResource(R.string.book_detail_format), book.format.name, false)
@@ -516,14 +583,33 @@ private fun fileSize(context: Context, book: Book): String = when {
     else -> runCatching { File(book.filePath).length() }.getOrDefault(0L).takeIf { it > 0 }?.let(FileUtils::formatFileSize) ?: "?"
 }
 
-private fun fileName(context: Context, book: Book): String =
-    book.remoteFileName?.takeIf { book.isCloudOnly }
-        ?: if (book.filePath.startsWith("content://")) {
-            queryOpenable(context, book.filePath, OpenableColumns.DISPLAY_NAME)
-        } else {
-            File(book.filePath).name
-        }
-        ?: book.filePath.substringAfterLast('/').substringAfterLast('\\')
+private fun fileName(context: Context, book: Book): String {
+    book.remoteFileName?.takeIf { book.isCloudOnly }?.let { return cleanDisplayName(it) }
+
+    // Authorized-folder scans already read the provider's real display name. Prefer this
+    // persisted value because some DocumentsProviders return an inconsistent/garbled name
+    // when queried again from the detail page.
+    book.sourceDisplayName
+        ?.takeIf { it.isNotBlank() }
+        ?.let { return cleanDisplayName(it) }
+
+    if (!book.filePath.startsWith("content://")) {
+        return File(book.filePath).name.ifBlank { book.title }
+    }
+
+    queryOpenable(context, book.filePath, OpenableColumns.DISPLAY_NAME)
+        ?.takeIf { it.isNotBlank() }
+        ?.let { return cleanDisplayName(it) }
+
+    // Never expose the raw content URI as a user-facing file name. A readable title is
+    // preferable when a provider temporarily refuses metadata access.
+    return book.title.ifBlank { "book" }
+}
+
+private fun cleanDisplayName(value: String): String {
+    val decoded = runCatching { Uri.decode(value) }.getOrDefault(value)
+    return decoded.substringAfterLast('/').substringAfterLast('\\').ifBlank { value }
+}
 
 private fun queryOpenable(context: Context, uriString: String, column: String): String? = runCatching {
     context.contentResolver.query(Uri.parse(uriString), arrayOf(column), null, null, null)?.use { cursor ->
