@@ -22,16 +22,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -45,11 +41,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -68,12 +64,9 @@ import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
-import com.huangder.lumibooks.ui.theme.fangSongFamily
-import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
 import com.huangder.lumibooks.ui.theme.effectiveAppTheme
-import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -123,14 +116,10 @@ class SponsorActivity : ComponentActivity() {
                     predictiveBackEnabled = predictiveBackEnabled,
                     onBack = { finish() }
                 )
-                com.huangder.lumibooks.ui.components.LiquidGlassDialogHost(
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    SponsorPage(
-                        githubContributorsClient = githubContributorsClient,
-                        onBack = { finish() }
-                    )
-                }
+                SponsorPage(
+                    githubContributorsClient = githubContributorsClient,
+                    onBack = { finish() }
+                )
             }
         }
     }
@@ -155,161 +144,130 @@ private fun SponsorPage(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(AppColors.WindowBg)
+    DetailPage(
+        title = stringResource(R.string.sponsor_title),
+        onBack = onBack
     ) {
+        // 副标题
+        Text(
+            text = stringResource(R.string.sponsor_desc),
+            fontSize = AppType.BodySmall,
+            color = AppColors.TextSecondary,
+            modifier = Modifier.padding(horizontal = AppSpace.lg)
+        )
+
+        Spacer(Modifier.height(AppSpace.md))
+
+        SponsorPaymentTagSwitcher(
+            selectedPayment = selectedPayment,
+            onPaymentSelected = { paymentMethod = it.name },
+            modifier = Modifier.padding(horizontal = AppSpace.lg)
+        )
+
+        Spacer(Modifier.height(AppSpace.md))
+
+        // 二维码卡片
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .verticalScroll(rememberScrollState())
+                .fillMaxWidth()
+                .padding(horizontal = AppSpace.lg)
+                .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+                .clip(RoundedCornerShape(AppRadius.lg))
+                .background(AppColors.CardBg)
+                .padding(AppSpace.lg),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // 顶栏
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = AppSpace.sm, vertical = AppSpace.sm),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                LiquidGlassIconButton(
-                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                    contentDescription = stringResource(R.string.back),
-                    onClick = onBack,
-                    settingsBackButton = true
-                )
-                Spacer(Modifier.weight(1f))
-                Text(stringResource(R.string.sponsor_title), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = resolveAppFontFamily(fangSongFamily()), color = AppColors.TextPrimary)
-                Spacer(Modifier.weight(1f))
-                Spacer(Modifier.size(48.dp))
-            }
-
-            Spacer(Modifier.height(AppSpace.md))
-
-            // 副标题
-            Text(
-                text = stringResource(R.string.sponsor_desc),
-                fontSize = AppType.BodySmall,
-                color = AppColors.TextSecondary,
-                modifier = Modifier.padding(horizontal = AppSpace.lg)
-            )
-
-            Spacer(Modifier.height(AppSpace.md))
-
-            SponsorPaymentTagSwitcher(
-                selectedPayment = selectedPayment,
-                onPaymentSelected = { paymentMethod = it.name },
-                modifier = Modifier.padding(horizontal = AppSpace.lg)
-            )
-
-            Spacer(Modifier.height(AppSpace.md))
-
-            // 二维码卡片
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = AppSpace.lg)
-                    .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
-                    .clip(RoundedCornerShape(AppRadius.lg))
-                    .background(AppColors.CardBg)
-                    .padding(AppSpace.lg),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // 二维码
-                Image(
-                    painter = painterResource(
-                        id = if (selectedPayment == PaymentMethod.WECHAT) {
-                            R.drawable.donation_qr
-                        } else {
-                            R.drawable.paypal_donation_qr
-                        }
-                    ),
-                    contentDescription = stringResource(
-                        if (selectedPayment == PaymentMethod.WECHAT) {
-                            R.string.sponsor_wechat_qr_desc
-                        } else {
-                            R.string.sponsor_paypal_qr_desc
-                        }
-                    ),
-                    modifier = Modifier
-                        .size(220.dp)
-                        .clip(RoundedCornerShape(AppRadius.md)),
-                    contentScale = ContentScale.Fit
-                )
-
-                Spacer(Modifier.height(AppSpace.md))
-
-                // 文案
-                Text(
-                    text = stringResource(R.string.sponsor_quote),
-                    fontSize = AppType.Body,
-                    fontWeight = FontWeight.Medium,
-                    color = AppColors.TextPrimary,
-                    textAlign = TextAlign.Center
-                )
-                Text(
-                    text = "( ^ - ^ )o 🍱\"",
-                    fontSize = AppType.Caption,
-                    color = AppColors.TextSecondary,
-                    textAlign = TextAlign.Center
-                )
-
-                Spacer(Modifier.height(AppSpace.md))
-
-                // 绘屿浮的赞赏码
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .clip(RoundedCornerShape(AppRadius.capsule))
-                        .background(Color(0xFFD4A542))
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() }
-                        ) { /* 复制或分享 */ },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = stringResource(
-                            if (selectedPayment == PaymentMethod.WECHAT) {
-                                R.string.sponsor_code_label
-                            } else {
-                                R.string.sponsor_paypal_code_label
-                            }
-                        ),
-                        fontSize = AppType.Body,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.White
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(AppSpace.lg))
-
-            // 感谢列表
-            CreditSection(
-                title = stringResource(R.string.sponsor_thanks_title),
-                names = listOf("雋乂、匿名、匿名、匿名、Jun.、BennyBlack、百年老字号、匿名、匿名、白飘飘")
-            )
-
-            Spacer(Modifier.height(AppSpace.md))
-
-            // 开发人员
-            DeveloperSection(
-                contributors = contributors,
-                onContributorClick = { contributor ->
-                    val url = if (contributor.login.equals("huangder", ignoreCase = true)) {
-                        "https://xhslink.com/m/5AbhNhfh7hE"
+            // 二维码
+            Image(
+                painter = painterResource(
+                    id = if (selectedPayment == PaymentMethod.WECHAT) {
+                        R.drawable.donation_qr
                     } else {
-                        contributor.htmlUrl.ifBlank { "https://github.com/${contributor.login}" }
+                        R.drawable.paypal_donation_qr
                     }
-                    openExternalLink(context, url)
-                }
+                ),
+                contentDescription = stringResource(
+                    if (selectedPayment == PaymentMethod.WECHAT) {
+                        R.string.sponsor_wechat_qr_desc
+                    } else {
+                        R.string.sponsor_paypal_qr_desc
+                    }
+                ),
+                modifier = Modifier
+                    .size(220.dp)
+                    .clip(RoundedCornerShape(AppRadius.md)),
+                contentScale = ContentScale.Fit
             )
 
-            Spacer(Modifier.height(120.dp))
+            Spacer(Modifier.height(AppSpace.md))
+
+            // 文案
+            Text(
+                text = stringResource(R.string.sponsor_quote),
+                fontSize = AppType.Body,
+                fontWeight = FontWeight.Medium,
+                color = AppColors.TextPrimary,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = "( ^ - ^ )o 🍱\"",
+                fontSize = AppType.Caption,
+                color = AppColors.TextSecondary,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(Modifier.height(AppSpace.md))
+
+            // 绘屿浮的赞赏码
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(AppRadius.capsule))
+                    .background(Color(0xFFD4A542))
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { /* 复制或分享 */ },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = stringResource(
+                        if (selectedPayment == PaymentMethod.WECHAT) {
+                            R.string.sponsor_code_label
+                        } else {
+                            R.string.sponsor_paypal_code_label
+                        }
+                    ),
+                    fontSize = AppType.Body,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White
+                )
+            }
         }
+
+        Spacer(Modifier.height(AppSpace.lg))
+
+        // 感谢列表
+        CreditSection(
+            title = stringResource(R.string.sponsor_thanks_title),
+            names = listOf("雋乂、匿名、匿名、匿名、Jun.、BennyBlack、百年老字号、匿名、匿名、白飘飘")
+        )
+
+        Spacer(Modifier.height(AppSpace.md))
+
+        // 开发人员
+        DeveloperSection(
+            contributors = contributors,
+            onContributorClick = { contributor ->
+                val url = if (contributor.login.equals("huangder", ignoreCase = true)) {
+                    "https://xhslink.com/m/5AbhNhfh7hE"
+                } else {
+                    contributor.htmlUrl.ifBlank { "https://github.com/${contributor.login}" }
+                }
+                openExternalLink(context, url)
+            }
+        )
     }
 }
 
