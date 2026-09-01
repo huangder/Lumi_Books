@@ -130,6 +130,7 @@ private val DarkTextSecondary = Color(0xFF98989D)
 private val DarkBgGray = Color(0xFF2C2C2E)
 private val DarkBackground = Color(0xFF000000)
 private val DarkCardBg = Color(0xFF1C1C1E)
+private val WelcomeContentMaxWidth = 560.dp
 
 private enum class WelcomePage {
     LANGUAGE_SETUP,
@@ -357,12 +358,18 @@ private fun UpdatePreviewPage(
         label = "themeSwitchContentBlur"
     )
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(if (isDark) DarkBackground else LightBackground)
+    ) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
+                .widthIn(max = WelcomeContentMaxWidth)
+                .fillMaxWidth()
+                .fillMaxHeight()
+                .align(Alignment.TopCenter)
                 .blur(contentBlurRadius)
-                .background(if (isDark) DarkBackground else LightBackground)
                 .navigationBarsPadding(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {

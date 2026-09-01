@@ -216,12 +216,17 @@ fun SettingsScreen(
                     if (uiState.avatarUri != null) {
                         AsyncImage(
                             model = File(uiState.avatarUri),
-                            contentDescription = "头像",
+                            contentDescription = stringResource(R.string.avatar),
                             modifier = Modifier.fillMaxSize().clip(CircleShape),
                             contentScale = ContentScale.Crop
                         )
                     } else {
-                        Icon(Icons.Outlined.AccountCircle, "默认头像", tint = AppColors.TextSecondary, modifier = Modifier.size(48.dp))
+                        Icon(
+                            Icons.Outlined.AccountCircle,
+                            stringResource(R.string.default_avatar),
+                            tint = AppColors.TextSecondary,
+                            modifier = Modifier.size(48.dp)
+                        )
                     }
                 }
                 Spacer(Modifier.width(AppSpace.md))

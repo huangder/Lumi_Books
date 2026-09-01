@@ -16,6 +16,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.CustomFontPreset
 import com.huangder.lumibooks.domain.model.CustomFontPresetCodec
 import com.huangder.lumibooks.domain.model.HighlightPalette
@@ -37,11 +38,16 @@ import com.huangder.lumibooks.domain.model.ReaderThemeSuite
 import com.huangder.lumibooks.domain.model.ReaderThemeSuiteCodec
 import com.huangder.lumibooks.domain.model.ReaderThemeSuiteState
 import com.huangder.lumibooks.domain.model.ReaderThemeSuites
+import com.huangder.lumibooks.domain.model.PdfPageMode
 import com.huangder.lumibooks.domain.model.ReaderPageAnimationSettings
+import com.huangder.lumibooks.domain.model.ReaderPageTransition
 import com.huangder.lumibooks.domain.model.defaultReaderCornerContent
 import com.huangder.lumibooks.util.LaunchThemeController
 import com.huangder.lumibooks.util.LaunchThemeSnapshot
 import com.huangder.lumibooks.util.epub.EpubRenderMode
+import com.huangder.lumibooks.util.parser.TxtTocRule
+import com.huangder.lumibooks.util.parser.TxtTocRuleBuiltIns
+import com.huangder.lumibooks.util.parser.TxtTocRuleCodec
 import com.huangder.lumibooks.tts.ExternalTtsProtocol
 import com.huangder.lumibooks.tts.ExternalTtsResumePosition
 import com.huangder.lumibooks.tts.ExternalTtsSettings
@@ -121,6 +127,7 @@ data class ReaderPreferencesSnapshot(
     val activeHighlightPaletteId: String?,
     val renderMode: EpubRenderMode,
     val txtEncoding: String,
+    val txtTocRuleId: String,
     val txtEncodingHintShown: Boolean,
     val epubLayoutHintShown: Boolean,
     val mobiLayoutHintShown: Boolean,
@@ -145,6 +152,17 @@ class DataStoreManager @Inject constructor(
         const val SCREEN_SLEEP_TIMEOUT_FOLLOW_SYSTEM = 0
         val SCREEN_SLEEP_TIMEOUT_SECONDS_OPTIONS = listOf(SCREEN_SLEEP_TIMEOUT_FOLLOW_SYSTEM, 30, 60, 300, 600, 1200, 1800, 2400, 3000, 3600, 5400, 7200)
         const val DEFAULT_SCREEN_SLEEP_TIMEOUT_SECONDS = SCREEN_SLEEP_TIMEOUT_FOLLOW_SYSTEM
+
+        const val STARTUP_SCREEN_HOME = "home"
+        const val STARTUP_SCREEN_BOOKSHELF = "bookshelf"
+        const val STARTUP_SCREEN_STATISTICS = "statistics"
+        const val DEFAULT_STARTUP_SCREEN = STARTUP_SCREEN_HOME
+
+        fun normalizeStartupScreen(value: String?): String = when (value) {
+            STARTUP_SCREEN_BOOKSHELF -> STARTUP_SCREEN_BOOKSHELF
+            STARTUP_SCREEN_STATISTICS -> STARTUP_SCREEN_STATISTICS
+            else -> STARTUP_SCREEN_HOME
+        }
 
         // 阅读设置
         private val FONT_SIZE = floatPreferencesKey("font_size")
@@ -172,9 +190,11 @@ class DataStoreManager @Inject constructor(
         private val READER_TEXT_COLOR = intPreferencesKey("reader_text_color")
         private val READER_THEME_SUITES = stringPreferencesKey("reader_theme_suites")
         private val ACTIVE_READER_THEME_SUITE_ID = stringPreferencesKey("active_reader_theme_suite_id")
+        private val TXT_TOC_CUSTOM_RULES = stringPreferencesKey("txt_toc_custom_rules_v1")
         private val READER_THEME_SUITES_VERSION = intPreferencesKey("reader_theme_suites_version")
         private val PAGE_TRANSITION = stringPreferencesKey("page_transition")
         private val PAGE_TRANSITION_SLIDE_DURATION_MS = intPreferencesKey("page_transition_slide_duration_ms")
+        private val PAGE_TRANSITION_SCROLL_DURATION_MS = intPreferencesKey("page_transition_scroll_duration_ms")
         private val PAGE_TRANSITION_FADE_DURATION_MS = intPreferencesKey("page_transition_fade_duration_ms")
         private val PAGE_TRANSITION_CURL_DURATION_MS = intPreferencesKey("page_transition_curl_duration_ms")
         private val CUSTOM_HIGHLIGHT_COLORS = stringPreferencesKey("custom_highlight_colors")
@@ -218,6 +238,7 @@ class DataStoreManager @Inject constructor(
         // 应用设置
         private val APP_ICON_STYLE = stringPreferencesKey("app_icon_style")
         private val APP_THEME = stringPreferencesKey("app_theme")
+        private val STARTUP_SCREEN = stringPreferencesKey("startup_screen")
         private val APP_ACCENT_COLOR = stringPreferencesKey("app_accent_color")
         private val GLOBAL_FONT_MODE = stringPreferencesKey("global_font_mode")
         private val LIQUID_GLASS_TRANSPARENCY = floatPreferencesKey("liquid_glass_transparency")
@@ -361,6 +382,11 @@ class DataStoreManager @Inject constructor(
                         preferences[PAGE_TRANSITION_SLIDE_DURATION_MS]
                             ?: ReaderPageAnimationSettings.SLIDE_DEFAULT_MS
                     ),
+                    scrollDurationMs = ReaderPageAnimationSettings.sanitizeDuration(
+                        ReaderPageAnimationSettings.MODE_SCROLL,
+                        preferences[PAGE_TRANSITION_SCROLL_DURATION_MS]
+                            ?: ReaderPageAnimationSettings.SCROLL_DEFAULT_MS
+                    ),
                     fadeDurationMs = ReaderPageAnimationSettings.sanitizeDuration(
                         ReaderPageAnimationSettings.MODE_FADE,
                         preferences[PAGE_TRANSITION_FADE_DURATION_MS]
@@ -372,11 +398,11 @@ class DataStoreManager @Inject constructor(
                             ?: ReaderPageAnimationSettings.CURL_DEFAULT_MS
                     )
                 ),
-                pageTransition = preferences[PAGE_TRANSITION] ?: "slide",
+                pageTransition = ReaderPageTransition.normalizeKey(preferences[PAGE_TRANSITION]),
                 readerThemeSuiteState = suiteState,
                 readerThemeSuiteBookScoped = preferences[themeSuiteBookScopedKey] ?: false,
                 readerThemeSuiteBookActiveId = preferences[themeSuiteBookActiveKey],
-                pdfPageMode = preferences[PDF_PAGE_MODE].takeIf { it == "horizontal" } ?: "vertical",
+                pdfPageMode = PdfPageMode.normalizeKey(preferences[PDF_PAGE_MODE]),
                 showReaderChapterProgress = preferences[SHOW_READER_CHAPTER_PROGRESS] ?: true,
                 showReaderPageNumber = preferences[SHOW_READER_PAGE_NUMBER] ?: true,
                 showReaderBattery = preferences[SHOW_READER_BATTERY] ?: true,
@@ -403,6 +429,7 @@ class DataStoreManager @Inject constructor(
                 activeHighlightPaletteId = preferences[ACTIVE_HIGHLIGHT_PALETTE_ID],
                 renderMode = resolvedRenderMode,
                 txtEncoding = preferences[stringPreferencesKey("txt_encoding_$bookId")] ?: "auto",
+                txtTocRuleId = preferences[stringPreferencesKey("txt_toc_rule_$bookId")] ?: "auto",
                 txtEncodingHintShown = preferences[booleanPreferencesKey("txt_encoding_hint_shown_$bookId")]
                     ?: false,
                 epubLayoutHintShown = preferences[booleanPreferencesKey("epub_layout_hint_shown_$bookId")]
@@ -538,7 +565,7 @@ class DataStoreManager @Inject constructor(
             val arr = JSONArray(oldRaw)
             val colors = (0 until arr.length()).map { arr.optString(it).takeIf(String::isNotBlank) }.take(6)
             if (colors.isEmpty()) emptyList()
-            else listOf(HighlightPalette(id = "legacy", name = "自定义", colors = colors))
+            else listOf(HighlightPalette(id = "legacy", name = context.getString(R.string.background_custom), colors = colors))
         }.getOrDefault(emptyList())
     }
 
@@ -613,6 +640,11 @@ class DataStoreManager @Inject constructor(
                     preferences[PAGE_TRANSITION_SLIDE_DURATION_MS]
                         ?: ReaderPageAnimationSettings.SLIDE_DEFAULT_MS
                 ),
+                scrollDurationMs = ReaderPageAnimationSettings.sanitizeDuration(
+                    ReaderPageAnimationSettings.MODE_SCROLL,
+                    preferences[PAGE_TRANSITION_SCROLL_DURATION_MS]
+                        ?: ReaderPageAnimationSettings.SCROLL_DEFAULT_MS
+                ),
                 fadeDurationMs = ReaderPageAnimationSettings.sanitizeDuration(
                     ReaderPageAnimationSettings.MODE_FADE,
                     preferences[PAGE_TRANSITION_FADE_DURATION_MS]
@@ -636,9 +668,9 @@ class DataStoreManager @Inject constructor(
         )
     }
 
-    /** PDF 阅读方向："vertical" | "horizontal"，所有 PDF 共用。 */
+    /** PDF 阅读模式："vertical" | "vertical_paging" | "horizontal"，所有 PDF 共用。 */
     val pdfPageMode: Flow<String> = context.dataStore.data.map { preferences ->
-        preferences[PDF_PAGE_MODE].takeIf { it == "horizontal" } ?: "vertical"
+        PdfPageMode.normalizeKey(preferences[PDF_PAGE_MODE])
     }
 
     val showReaderChapterProgress: Flow<Boolean> = context.dataStore.data.map { preferences ->
@@ -703,6 +735,10 @@ class DataStoreManager @Inject constructor(
 
     val appTheme: Flow<String> = context.dataStore.data.map { preferences ->
         preferences[APP_THEME] ?: "lumi"
+    }
+
+    val startupScreen: Flow<String> = context.dataStore.data.map { preferences ->
+        normalizeStartupScreen(preferences[STARTUP_SCREEN])
     }
 
     val appAccentColor: Flow<String> = context.dataStore.data.map { preferences ->
@@ -905,7 +941,7 @@ class DataStoreManager @Inject constructor(
     }
 
     val nickname: Flow<String> = context.dataStore.data.map { preferences ->
-        preferences[NICKNAME] ?: "读者"
+        preferences[NICKNAME] ?: context.getString(R.string.default_nickname)
     }
 
     // 保存方法
@@ -1208,7 +1244,7 @@ class DataStoreManager @Inject constructor(
 
     suspend fun savePdfPageMode(mode: String) {
         context.dataStore.edit { preferences ->
-            preferences[PDF_PAGE_MODE] = if (mode == "horizontal") "horizontal" else "vertical"
+            preferences[PDF_PAGE_MODE] = PdfPageMode.normalizeKey(mode)
         }
     }
 
@@ -1726,20 +1762,87 @@ class DataStoreManager @Inject constructor(
         context.dataStore.edit { it[key] = mode }
     }
 
-    /** 翻页效果："slide" | "scroll" | "fade" | "curl" */
-    fun pageTransition(): Flow<String> = context.dataStore.data.map { it[PAGE_TRANSITION] ?: "slide" }
+    /** 翻页效果："slide" | "continuous" | "scroll" | "fade" | "curl" */
+    fun pageTransition(): Flow<String> = context.dataStore.data.map {
+        ReaderPageTransition.normalizeKey(it[PAGE_TRANSITION])
+    }
+
+    fun txtTocRuleSelection(bookId: String): Flow<String> {
+        val key = stringPreferencesKey("txt_toc_rule_$bookId")
+        return context.dataStore.data.map { preferences -> preferences[key] ?: "auto" }
+    }
+
+    suspend fun saveTxtTocRuleSelection(bookId: String, ruleId: String?) {
+        val key = stringPreferencesKey("txt_toc_rule_$bookId")
+        context.dataStore.edit { preferences ->
+            preferences[key] = ruleId?.takeIf { it.isNotBlank() } ?: "auto"
+        }
+    }
+
+    fun txtTocCustomRules(): Flow<List<TxtTocRule>> = context.dataStore.data.map { preferences ->
+        runCatching { TxtTocRuleCodec.decode(preferences[TXT_TOC_CUSTOM_RULES] ?: "") }
+            .getOrDefault(emptyList())
+    }.distinctUntilChanged()
+
+    suspend fun saveTxtTocCustomRules(rules: List<TxtTocRule>) {
+        require(rules.map { it.id }.distinct().size == rules.size) { "TXT TOC rule IDs must be unique" }
+        require(rules.none { TxtTocRuleBuiltIns.byId(it.id) != null }) { "Built-in rule IDs are reserved" }
+        rules.forEach { com.huangder.lumibooks.util.parser.TxtTocRuleCompiler.compile(it).getOrThrow() }
+        context.dataStore.edit { preferences -> preferences[TXT_TOC_CUSTOM_RULES] = TxtTocRuleCodec.encode(rules) }
+    }
+
+    suspend fun exportTxtTocRules(): String = TxtTocRuleCodec.encode(txtTocCustomRules().first())
+
+    /** Validates and merges an imported Lumi JSON rule file. Built-in IDs are never overwritten. */
+    suspend fun importTxtTocRules(payload: String): List<TxtTocRule> {
+        val imported = TxtTocRuleCodec.decode(payload)
+        require(imported.none { TxtTocRuleBuiltIns.byId(it.id) != null }) {
+            "Imported rules cannot replace built-in rules"
+        }
+        val current = txtTocCustomRules().first().associateBy { it.id }.toMutableMap()
+        imported.forEach { current[it.id] = it }
+        val merged = current.values.sortedBy { it.order }.mapIndexed { index, rule -> rule.copy(order = index) }
+        saveTxtTocCustomRules(merged)
+        return merged
+    }
+
+    suspend fun upsertTxtTocRule(rule: TxtTocRule) {
+        val current = txtTocCustomRules().first()
+        val updated = (current.filterNot { it.id == rule.id } + rule.copy(origin = com.huangder.lumibooks.util.parser.TxtTocRuleOrigin.CUSTOM))
+            .mapIndexed { index, item -> item.copy(order = index) }
+        saveTxtTocCustomRules(updated)
+    }
+
+    suspend fun deleteTxtTocRule(ruleId: String) {
+        val updated = txtTocCustomRules().first().filterNot { it.id == ruleId }
+            .mapIndexed { index, item -> item.copy(order = index) }
+        saveTxtTocCustomRules(updated)
+    }
+
+    suspend fun resolveTxtTocRule(bookId: String): TxtTocRule? {
+        val preferences = context.dataStore.data.first()
+        val selectedId = preferences[stringPreferencesKey("txt_toc_rule_$bookId")] ?: "auto"
+        if (selectedId == "auto") return null
+        val builtIn = TxtTocRuleBuiltIns.byId(selectedId)?.takeIf { it.enabled }
+        if (builtIn != null) return builtIn
+        val custom = runCatching { TxtTocRuleCodec.decode(preferences[TXT_TOC_CUSTOM_RULES] ?: "") }
+            .getOrDefault(emptyList())
+        return custom.firstOrNull { it.id == selectedId && it.enabled }
+    }
 
     suspend fun savePageTransition(mode: String) {
-        context.dataStore.edit { it[PAGE_TRANSITION] = mode }
+        context.dataStore.edit { it[PAGE_TRANSITION] = ReaderPageTransition.normalizeKey(mode) }
     }
 
     suspend fun savePageTransitionDuration(mode: String, durationMs: Int) {
         val normalizedMode = when (mode) {
+            ReaderPageAnimationSettings.MODE_SCROLL -> ReaderPageAnimationSettings.MODE_SCROLL
             ReaderPageAnimationSettings.MODE_FADE -> ReaderPageAnimationSettings.MODE_FADE
             ReaderPageAnimationSettings.MODE_CURL -> ReaderPageAnimationSettings.MODE_CURL
             else -> ReaderPageAnimationSettings.MODE_SLIDE
         }
         val key = when (normalizedMode) {
+            ReaderPageAnimationSettings.MODE_SCROLL -> PAGE_TRANSITION_SCROLL_DURATION_MS
             ReaderPageAnimationSettings.MODE_FADE -> PAGE_TRANSITION_FADE_DURATION_MS
             ReaderPageAnimationSettings.MODE_CURL -> PAGE_TRANSITION_CURL_DURATION_MS
             else -> PAGE_TRANSITION_SLIDE_DURATION_MS
@@ -1793,6 +1896,12 @@ class DataStoreManager @Inject constructor(
     suspend fun saveAppTheme(theme: String) {
         context.dataStore.edit { preferences ->
             preferences[APP_THEME] = theme
+        }
+    }
+
+    suspend fun saveStartupScreen(screen: String) {
+        context.dataStore.edit { preferences ->
+            preferences[STARTUP_SCREEN] = normalizeStartupScreen(screen)
         }
     }
 
@@ -2498,6 +2607,12 @@ class DataStoreManager @Inject constructor(
     /** 清除所有偏好设置 */
     suspend fun clearAll() {
         context.dataStore.edit { it.clear() }
+        LaunchThemeController.updateWelcomeSnapshot(
+            context = context,
+            completedInstallTime = 0L,
+            splashEnabled = true,
+            hasCompletedLanguageSetup = false
+        )
         LaunchThemeController.deferSplashEnabled(context, true)
     }
 }

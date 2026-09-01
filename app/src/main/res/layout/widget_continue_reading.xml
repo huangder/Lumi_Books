@@ -74,7 +74,7 @@
                     android:includeFontPadding="false"
                     android:maxLines="1"
                     android:textColor="@color/widget_text_primary"
-                    android:text="0%"
+                    android:text="@string/widget_preview_progress"
                     android:textSize="23sp"
                     android:textStyle="bold" />
             </LinearLayout>

@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.settings
 
+import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.domain.model.DEFAULT_APP_ACCENT_HEX
 import com.huangder.lumibooks.domain.model.AppIconStyle
 
@@ -32,7 +33,7 @@ data class UpdateCheckDisplay(
     val appVersion: String = "",
     val latestVersionCode: Long = 0L,
     val releaseUrl: String = "",
-    val updateTitle: String = "\u53d1\u73b0\u65b0\u7248\u672c",
+    val updateTitle: String = "",
     val updateMessage: String = "",
     val changelog: String = "",
     val hasTermsUpdate: Boolean = false,
@@ -52,7 +53,7 @@ data class UpdateCheckDisplay(
 data class SettingsUiState(
     // 个人信息
     val avatarUri: String? = null,
-    val nickname: String = "读者",
+    val nickname: String = "",
 
     // 阅读设置
     val fontSize: Float = 16f,
@@ -65,6 +66,7 @@ data class SettingsUiState(
     // 显示与外观
     val appIconStyle: String = AppIconStyle.LUMI_2.storedValue,
     val appTheme: String = "lumi",         // "lumi" / "material3" / "liquid_glass"
+    val startupScreen: String = DataStoreManager.DEFAULT_STARTUP_SCREEN,
     val appAccentColor: String = DEFAULT_APP_ACCENT_HEX,
     val globalFontMode: String = "system", // "default" / "system"
     val liquidGlassTransparency: Float = 0.55f,
@@ -104,6 +106,7 @@ data class SettingsUiState(
 
     // 备份恢复
     val backupStatus: String = "",     // 操作状态提示
+    val backupFailed: Boolean = false,
     val isProcessing: Boolean = false, // 是否正在执行备份/恢复
 
     // WebDAV 同步

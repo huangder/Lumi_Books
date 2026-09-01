@@ -105,6 +105,19 @@ object LaunchThemeController {
         )
     }
 
+    /**
+     * Returns whether the welcome snapshot was written by the current launch-state format.
+     *
+     * Older installs can have the DataStore values but none of these mirror keys. Callers can
+     * use this to perform a one-time migration without blocking every normal cold start.
+     */
+    fun hasWelcomeSnapshot(context: Context): Boolean {
+        val preferences = context.getSharedPreferences(STATE_PREFERENCES, Context.MODE_PRIVATE)
+        return preferences.contains(COMPLETED_WELCOME_INSTALL_TIME) &&
+            preferences.contains(SPLASH_ENABLED_SNAPSHOT) &&
+            preferences.contains(HAS_COMPLETED_WELCOME_LANGUAGE_SETUP)
+    }
+
     fun updateThemeSnapshot(context: Context, snapshot: LaunchThemeSnapshot) {
         context.getSharedPreferences(STATE_PREFERENCES, Context.MODE_PRIVATE)
             .edit()
@@ -136,6 +149,20 @@ object LaunchThemeController {
         context.getSharedPreferences(STATE_PREFERENCES, Context.MODE_PRIVATE)
             .edit()
             .putLong(COMPLETED_WELCOME_INSTALL_TIME, installTime)
+            .apply()
+    }
+
+    fun updateWelcomeSnapshot(
+        context: Context,
+        completedInstallTime: Long,
+        splashEnabled: Boolean,
+        hasCompletedLanguageSetup: Boolean
+    ) {
+        context.getSharedPreferences(STATE_PREFERENCES, Context.MODE_PRIVATE)
+            .edit()
+            .putLong(COMPLETED_WELCOME_INSTALL_TIME, completedInstallTime)
+            .putBoolean(SPLASH_ENABLED_SNAPSHOT, splashEnabled)
+            .putBoolean(HAS_COMPLETED_WELCOME_LANGUAGE_SETUP, hasCompletedLanguageSetup)
             .apply()
     }
 

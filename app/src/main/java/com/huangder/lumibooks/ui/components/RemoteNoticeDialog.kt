@@ -13,9 +13,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
+import com.huangder.lumibooks.R
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
@@ -60,7 +62,7 @@ fun RemoteNoticeDialog(
         },
         confirmButton = {
             LiquidGlassTextButton(
-                text = "\u6536\u5230",
+                text = stringResource(R.string.remote_notice_acknowledge),
                 tintedColor = AppColors.Accent,
                 onClick = onConfirm
             )

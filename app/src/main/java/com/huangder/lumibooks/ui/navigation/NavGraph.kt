@@ -184,6 +184,7 @@ private fun rememberPageEntrancePlayback(
 @Composable
 fun MainNavGraph(
     navController: NavHostController,
+    startDestination: String = Screen.Home.route,
     entranceAnimationsEnabled: Boolean = true,
     predictiveBackEnabled: Boolean = true,
     requestedOpenBookId: String? = null,
@@ -193,7 +194,20 @@ fun MainNavGraph(
     onOpenBookRequestConsumed: () -> Unit = {},
     onOpenBookshelfRequestConsumed: () -> Unit = {}
 ) {
-    var selectedTab by remember { mutableIntStateOf(0) }
+    val mainStartDestination = when (startDestination) {
+        Screen.Bookshelf.route -> Screen.Bookshelf.route
+        Screen.Statistics.route -> Screen.Statistics.route
+        else -> Screen.Home.route
+    }
+    var selectedTab by remember(mainStartDestination) {
+        mutableIntStateOf(
+            when (mainStartDestination) {
+                Screen.Bookshelf.route -> 1
+                Screen.Statistics.route -> 2
+                else -> 0
+            }
+        )
+    }
     var showTransition by remember { mutableStateOf(false) }
     var transitionCover by remember { mutableStateOf<String?>(null) }
     var transitionTitle by remember { mutableStateOf("") }
@@ -226,6 +240,7 @@ fun MainNavGraph(
     val liquidGlassBackdrop = rememberLayerBackdrop()
     val homeViewModel: HomeViewModel = hiltViewModel()
     val context = LocalContext.current
+    val authorizedStorageManager = remember { com.huangder.lumibooks.util.AuthorizedStorageManager() }
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris: List<Uri> ->
@@ -235,7 +250,13 @@ fun MainNavGraph(
                 if (FileUtils.getFileExtension(name) !in setOf("epub", "pdf", "txt", "mobi")) {
                     return@mapNotNull null
                 }
-                SelectedImportBook(uri = uri, name = name)
+                SelectedImportBook(
+                    uri = uri,
+                    name = name,
+                    sourceDocumentKey = authorizedStorageManager.documentKey(uri),
+                    sourceLastModified = authorizedStorageManager.queryLastModified(context, uri),
+                    sourceSize = com.huangder.lumibooks.util.BookFileAccess.size(context, uri.toString())
+                )
             }.distinctBy { it.uri.toString() }
             if (candidates.isNotEmpty()) {
                 isPreparingImport = false
@@ -265,7 +286,12 @@ fun MainNavGraph(
                             name = candidate.name,
                             sourceDirectoryUri = candidate.sourceDirectoryUri,
                             sourceDirectoryName = candidate.sourceDirectoryName,
-                            sourceRelativeDirectory = candidate.sourceRelativeDirectory
+                            sourceRelativeDirectory = candidate.sourceRelativeDirectory,
+                            sourceDirectoryDocumentUri = candidate.sourceDirectoryDocumentUri,
+                            sourceDocumentKey = candidate.sourceDocumentKey,
+                            sourceLastModified = candidate.sourceLastModified,
+                            sourceSize = candidate.sourceSize,
+                            sourceDirectoryBindings = candidate.sourceDirectoryBindings
                         )
                     }
                     if (selected.isNotEmpty()) {
@@ -282,8 +308,42 @@ fun MainNavGraph(
         }
     }
     val homeUiState by homeViewModel.uiState.collectAsState()
+    val startAuthorizedRefresh: (Boolean) -> Unit = { keepActionSheet ->
+        val requestGeneration = importPreparationGeneration + 1
+        importPreparationGeneration = requestGeneration
+        isPreparingImport = true
+        showImportConfirmation = false
+        if (!keepActionSheet) showImportActions = false
+        homeViewModel.scanAuthorizedBookDirectories(context) { candidates ->
+            if (importPreparationGeneration != requestGeneration) return@scanAuthorizedBookDirectories
+            isPreparingImport = false
+            val selected = candidates.map { candidate ->
+                SelectedImportBook(
+                    uri = candidate.uri,
+                    name = candidate.name,
+                    sourceDirectoryUri = candidate.sourceDirectoryUri,
+                    sourceDirectoryName = candidate.sourceDirectoryName,
+                    sourceRelativeDirectory = candidate.sourceRelativeDirectory,
+                    sourceDirectoryDocumentUri = candidate.sourceDirectoryDocumentUri,
+                    sourceDocumentKey = candidate.sourceDocumentKey,
+                    sourceLastModified = candidate.sourceLastModified,
+                    sourceSize = candidate.sourceSize,
+                    sourceDirectoryBindings = candidate.sourceDirectoryBindings
+                )
+            }
+            if (selected.isNotEmpty()) {
+                selectedImportBooks = selected
+                selectedImportBookUris = emptySet()
+                importCopiesIntoApp = false
+                showImportActions = false
+                showImportConfirmation = true
+            }
+        }
+    }
     val openLocalBook: (Book) -> Unit = { book ->
-        if (eInkMode) {
+        if (book.isMissing) {
+            transientMessage = context.getString(R.string.book_file_unavailable)
+        } else if (eInkMode) {
             ReaderOpenPerformance.start(book.id)
             transitionBookId = book.id
             navController.navigate(Screen.Reader.createRoute(book.id))
@@ -372,7 +432,7 @@ fun MainNavGraph(
         onBeforeOpenDifferentBook()
         if (navController.currentDestination?.route != Screen.Bookshelf.route) {
             navController.navigate(Screen.Bookshelf.route) {
-                popUpTo(Screen.Home.route)
+                popUpTo(mainStartDestination)
                 launchSingleTop = true
             }
         }
@@ -446,12 +506,12 @@ fun MainNavGraph(
         ) {
         ConfigurableNavigationBack(
             predictiveBackEnabled = predictiveBackEnabled,
-            bridgeEnabled = currentRoute != null && currentRoute != Screen.Home.route
+            bridgeEnabled = currentRoute != null && navController.previousBackStackEntry != null
         ) {
             // 主内容
             NavHost(
                 navController = navController,
-                startDestination = Screen.Home.route,
+                startDestination = mainStartDestination,
                 modifier = Modifier
                     .fillMaxSize()
                     .then(
@@ -497,7 +557,7 @@ fun MainNavGraph(
                     onNavigateToStatistics = {
                         selectedTab = 2
                         navController.navigate(Screen.Statistics.route) {
-                            popUpTo(Screen.Home.route) { saveState = true }
+                            popUpTo(mainStartDestination) { saveState = true }
                             launchSingleTop = true
                             restoreState = true
                         }
@@ -505,7 +565,7 @@ fun MainNavGraph(
                     onNavigateToBookshelf = {
                         selectedTab = 1
                         navController.navigate(Screen.Bookshelf.route) {
-                            popUpTo(Screen.Home.route) { saveState = true }
+                            popUpTo(mainStartDestination) { saveState = true }
                             launchSingleTop = true
                             restoreState = true
                         }
@@ -570,6 +630,7 @@ fun MainNavGraph(
                     requestedFolderId = requestedOpenFolderId,
                     onRequestedFolderConsumed = onOpenBookshelfRequestConsumed,
                     onMessage = { transientMessage = it },
+                    onRefreshAuthorizedDirectories = { startAuthorizedRefresh(false) },
                     onOverlayProgressChange = { progress ->
                         bookshelfOverlayProgress = progress.coerceIn(0f, 1f)
                     },
@@ -692,7 +753,7 @@ fun MainNavGraph(
                     else -> Screen.Home.route
                 }
                 navController.navigate(route) {
-                    popUpTo(Screen.Home.route) { saveState = true }
+                    popUpTo(mainStartDestination) { saveState = true }
                     launchSingleTop = true
                     restoreState = true
                 }
@@ -779,31 +840,8 @@ fun MainNavGraph(
                         )
                     }
                 },
-                onRefreshDirectories = {
-                    val requestGeneration = importPreparationGeneration + 1
-                    importPreparationGeneration = requestGeneration
-                    isPreparingImport = true
-                    homeViewModel.scanAuthorizedBookDirectories(context) { candidates ->
-                        if (showImportActions && importPreparationGeneration == requestGeneration) {
-                            isPreparingImport = false
-                            val selected = candidates.map { candidate ->
-                                SelectedImportBook(
-                                    uri = candidate.uri,
-                                    name = candidate.name,
-                                    sourceDirectoryUri = candidate.sourceDirectoryUri,
-                                    sourceDirectoryName = candidate.sourceDirectoryName,
-                                    sourceRelativeDirectory = candidate.sourceRelativeDirectory
-                                )
-                            }
-                            if (selected.isNotEmpty()) {
-                                selectedImportBooks = selected
-                                selectedImportBookUris = emptySet()
-                                importCopiesIntoApp = false
-                                showImportActions = false
-                                showImportConfirmation = true
-                            }
-                        }
-                    }
+                    onRefreshDirectories = {
+                    startAuthorizedRefresh(true)
                 }
             )
         }
@@ -918,7 +956,12 @@ fun MainNavGraph(
                                     name = book.name,
                                     sourceDirectoryUri = book.sourceDirectoryUri,
                                     sourceDirectoryName = book.sourceDirectoryName,
-                                    sourceRelativeDirectory = book.sourceRelativeDirectory
+                                    sourceRelativeDirectory = book.sourceRelativeDirectory,
+                                    sourceDirectoryDocumentUri = book.sourceDirectoryDocumentUri,
+                                    sourceDocumentKey = book.sourceDocumentKey,
+                                    sourceLastModified = book.sourceLastModified,
+                                    sourceSize = book.sourceSize,
+                                    sourceDirectoryBindings = book.sourceDirectoryBindings
                                 )
                             },
                             groupBySourceFolder = true
@@ -938,7 +981,12 @@ fun MainNavGraph(
                                     name = book.name,
                                     sourceDirectoryUri = book.sourceDirectoryUri,
                                     sourceDirectoryName = book.sourceDirectoryName,
-                                    sourceRelativeDirectory = book.sourceRelativeDirectory
+                                    sourceRelativeDirectory = book.sourceRelativeDirectory,
+                                    sourceDirectoryDocumentUri = book.sourceDirectoryDocumentUri,
+                                    sourceDocumentKey = book.sourceDocumentKey,
+                                    sourceLastModified = book.sourceLastModified,
+                                    sourceSize = book.sourceSize,
+                                    sourceDirectoryBindings = book.sourceDirectoryBindings
                                 )
                             },
                             groupBySourceFolder = false

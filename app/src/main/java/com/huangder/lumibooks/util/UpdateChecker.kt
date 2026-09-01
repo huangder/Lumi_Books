@@ -71,7 +71,7 @@ object UpdateChecker {
         val appVersion: String = "",
         val latestVersionCode: Long = 0L,
         val releaseUrl: String = "",
-        val updateTitle: String = "\u53d1\u73b0\u65b0\u7248\u672c",
+        val updateTitle: String = "",
         val updateMessage: String = "",
         val changelog: String = "",
         val notice: NoticeConfig? = null,
@@ -116,8 +116,8 @@ object UpdateChecker {
                 ),
                 updateTitle = updateJson.optStringCompat(
                     keys = arrayOf("title"),
-                    fallback = json.optString("update_title", "\u53d1\u73b0\u65b0\u7248\u672c")
-                ).ifBlank { "\u53d1\u73b0\u65b0\u7248\u672c" },
+                    fallback = json.optString("update_title", "")
+                ),
                 updateMessage = updateJson.optStringCompat(
                     keys = arrayOf("message"),
                     fallback = json.optString("update_message", "")

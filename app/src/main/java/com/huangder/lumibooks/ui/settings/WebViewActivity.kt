@@ -25,10 +25,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppSpace
@@ -122,7 +124,7 @@ private fun WebViewPage(title: String, assetFile: String, isDark: Boolean, onBac
             ) {
                 LiquidGlassIconButton(
                     imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                    contentDescription = "返回",
+                    contentDescription = stringResource(R.string.back),
                     onClick = onBack,
                     settingsBackButton = true
                 )

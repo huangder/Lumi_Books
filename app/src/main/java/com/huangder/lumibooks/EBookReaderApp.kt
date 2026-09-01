@@ -20,6 +20,7 @@ import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import com.huangder.lumibooks.data.sync.WebdavAutoSyncScheduler
 
 @HiltAndroidApp
@@ -62,6 +63,22 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
         applicationScope.launch(Dispatchers.IO) {
             dataStoreManager.launchThemeSnapshot.collectLatest { snapshot ->
                 LaunchThemeController.updateThemeSnapshot(this@EBookReaderApp, snapshot)
+            }
+        }
+        applicationScope.launch(Dispatchers.IO) {
+            combine(
+                dataStoreManager.completedWelcomeInstallTime,
+                dataStoreManager.splashEnabled,
+                dataStoreManager.hasCompletedWelcomeLanguageSetup
+            ) { completedInstallTime, splashEnabled, hasCompletedLanguageSetup ->
+                Triple(completedInstallTime, splashEnabled, hasCompletedLanguageSetup)
+            }.collectLatest { (completedInstallTime, splashEnabled, hasCompletedLanguageSetup) ->
+                LaunchThemeController.updateWelcomeSnapshot(
+                    context = this@EBookReaderApp,
+                    completedInstallTime = completedInstallTime,
+                    splashEnabled = splashEnabled,
+                    hasCompletedLanguageSetup = hasCompletedLanguageSetup
+                )
             }
         }
     }

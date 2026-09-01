@@ -2,6 +2,7 @@ package com.huangder.lumibooks.util
 
 import android.content.Context
 import android.widget.Toast
+import com.huangder.lumibooks.R
 import kotlinx.coroutines.CoroutineExceptionHandler
 
 object ErrorHandler {
@@ -9,10 +10,10 @@ object ErrorHandler {
 
     fun handleException(context: Context, exception: Throwable) {
         val message = when (exception) {
-            is java.io.FileNotFoundException -> "文件未找到"
-            is java.io.IOException -> "文件读取错误"
-            is SecurityException -> "权限不足"
-            else -> "发生未知错误: ${exception.message}"
+            is java.io.FileNotFoundException -> context.getString(R.string.error_file_not_found)
+            is java.io.IOException -> context.getString(R.string.error_file_read)
+            is SecurityException -> context.getString(R.string.error_permission_denied)
+            else -> context.getString(R.string.error_unknown_detail, exception.message.orEmpty())
         }
 
         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()

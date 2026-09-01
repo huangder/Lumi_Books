@@ -55,6 +55,7 @@ import com.huangder.lumibooks.tts.FloatingSubtitleSettings
 import com.huangder.lumibooks.service.FloatingSubtitleOverlayController
 import com.huangder.lumibooks.mineru.MineruTokenStore
 import com.huangder.lumibooks.data.backup.BackupArchiveManager
+import com.huangder.lumibooks.util.parser.TxtTocRule
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
@@ -74,7 +75,26 @@ class SettingsViewModel @Inject constructor(
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(SettingsUiState())
+    val txtTocCustomRules: kotlinx.coroutines.flow.Flow<List<TxtTocRule>> = dataStoreManager.txtTocCustomRules()
+
+    fun saveTxtTocCustomRules(rules: List<TxtTocRule>) {
+        viewModelScope.launch { dataStoreManager.saveTxtTocCustomRules(rules) }
+    }
+
+    fun importTxtTocRules(payload: String, onResult: (Result<List<TxtTocRule>>) -> Unit = {}) {
+        viewModelScope.launch {
+            val result = runCatching { dataStoreManager.importTxtTocRules(payload) }
+            onResult(result)
+        }
+    }
+
+    fun exportTxtTocRules(onResult: (String) -> Unit) {
+        viewModelScope.launch { onResult(dataStoreManager.exportTxtTocRules()) }
+    }
+
+    private val _uiState = MutableStateFlow(
+        SettingsUiState(nickname = context.getString(R.string.default_nickname))
+    )
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
     private var predictiveBackVisualOverride: Boolean? = null
     private var predictiveBackTransitionJob: Job? = null
@@ -141,6 +161,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.appTheme.collectLatest { theme ->
                 _uiState.value = _uiState.value.copy(appTheme = theme)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.startupScreen.collectLatest { screen ->
+                _uiState.value = _uiState.value.copy(startupScreen = screen)
             }
         }
         viewModelScope.launch {
@@ -435,6 +460,15 @@ class SettingsViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(appTheme = theme)
         viewModelScope.launch {
             dataStoreManager.saveAppTheme(theme)
+        }
+    }
+
+    fun saveStartupScreen(screen: String) {
+        val normalized = DataStoreManager.normalizeStartupScreen(screen)
+        if (_uiState.value.startupScreen == normalized) return
+        _uiState.value = _uiState.value.copy(startupScreen = normalized)
+        viewModelScope.launch {
+            dataStoreManager.saveStartupScreen(normalized)
         }
     }
 
@@ -830,7 +864,7 @@ class SettingsViewModel @Inject constructor(
                 try { Coil.imageLoader(context).memoryCache?.clear() } catch (_: Exception) { }
                 refreshStorageBreakdown()
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "缓存已清除", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, R.string.cache_cleared, Toast.LENGTH_SHORT).show()
                 }
             } catch (_: Exception) { }
         }
@@ -889,7 +923,7 @@ class SettingsViewModel @Inject constructor(
 
                 refreshStorageBreakdown()
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "所有数据已清除", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, R.string.all_data_cleared, Toast.LENGTH_SHORT).show()
                 }
             } catch (_: Exception) { }
         }
@@ -977,7 +1011,8 @@ class SettingsViewModel @Inject constructor(
     suspend fun backup(outputUri: Uri): String {
         _uiState.value = _uiState.value.copy(
             isProcessing = true,
-            backupStatus = context.getString(R.string.backup_in_progress)
+            backupStatus = context.getString(R.string.backup_in_progress),
+            backupFailed = false
         )
         try {
             val result = backupArchiveManager.create(outputUri)
@@ -985,13 +1020,15 @@ class SettingsViewModel @Inject constructor(
 
             _uiState.value = _uiState.value.copy(
                 isProcessing = false,
-                backupStatus = context.getString(R.string.backup_complete, sizeStr)
+                backupStatus = context.getString(R.string.backup_complete, sizeStr),
+                backupFailed = false
             )
             return sizeStr
         } catch (e: Exception) {
             _uiState.value = _uiState.value.copy(
                 isProcessing = false,
-                backupStatus = context.getString(R.string.backup_failed, e.message ?: context.getString(R.string.error))
+                backupStatus = context.getString(R.string.backup_failed, e.message ?: context.getString(R.string.error)),
+                backupFailed = true
             )
             throw e
         }
@@ -1000,25 +1037,28 @@ class SettingsViewModel @Inject constructor(
     suspend fun restore(inputUri: Uri) {
         _uiState.value = _uiState.value.copy(
             isProcessing = true,
-            backupStatus = context.getString(R.string.restore_in_progress)
+            backupStatus = context.getString(R.string.restore_in_progress),
+            backupFailed = false
         )
         try {
             backupArchiveManager.restore(inputUri)
             _uiState.value = _uiState.value.copy(
                 isProcessing = false,
-                backupStatus = context.getString(R.string.restore_success)
+                backupStatus = context.getString(R.string.restore_success),
+                backupFailed = false
             )
         } catch (e: Exception) {
             _uiState.value = _uiState.value.copy(
                 isProcessing = false,
-                backupStatus = context.getString(R.string.restore_failed, e.message ?: context.getString(R.string.error))
+                backupStatus = context.getString(R.string.restore_failed, e.message ?: context.getString(R.string.error)),
+                backupFailed = true
             )
             throw e
         }
     }
 
     fun clearBackupStatus() {
-        _uiState.value = _uiState.value.copy(backupStatus = "")
+        _uiState.value = _uiState.value.copy(backupStatus = "", backupFailed = false)
     }
 
     // ─── 检查更新 ──────────────────────────────────────────
@@ -1042,7 +1082,7 @@ class SettingsViewModel @Inject constructor(
                     )
                 )
                 if (!isAutoCheck) {
-                    Toast.makeText(context, "网络连接失败，请稍后重试", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, R.string.network_error, Toast.LENGTH_SHORT).show()
                 }
                 return@launch
             }

@@ -24,10 +24,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.huangder.lumibooks.R
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 
@@ -43,9 +45,9 @@ fun PolicyUpdateDialog(
     onViewPrivacy: () -> Unit
 ) {
     val title = when {
-        hasTermsUpdate && hasPrivacyUpdate -> "协议与隐私政策已更新"
-        hasTermsUpdate -> "用户协议已更新"
-        else -> "隐私政策已更新"
+        hasTermsUpdate && hasPrivacyUpdate -> stringResource(R.string.policy_update_both_title)
+        hasTermsUpdate -> stringResource(R.string.policy_update_terms_title)
+        else -> stringResource(R.string.policy_update_privacy_title)
     }
 
     LiquidGlassAlertDialog(
@@ -61,7 +63,7 @@ fun PolicyUpdateDialog(
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "请查看本次更新内容后，确认是否继续使用 Lumi。",
+                    text = stringResource(R.string.policy_update_prompt),
                     fontSize = 14.sp,
                     lineHeight = 21.sp,
                     color = AppColors.TextSecondary
@@ -71,9 +73,9 @@ fun PolicyUpdateDialog(
 
                 if (hasTermsUpdate) {
                     PolicyUpdateItem(
-                        title = "用户协议",
+                        title = stringResource(R.string.terms_of_service),
                         version = termsVersion,
-                        subtitle = "了解本次服务规则更新",
+                        subtitle = stringResource(R.string.policy_update_terms_subtitle),
                         iconContent = {
                             Icon(
                                 imageVector = Icons.Outlined.Description,
@@ -91,9 +93,9 @@ fun PolicyUpdateDialog(
 
                 if (hasPrivacyUpdate) {
                     PolicyUpdateItem(
-                        title = "隐私政策",
+                        title = stringResource(R.string.privacy_policy),
                         version = privacyVersion,
-                        subtitle = "了解个人信息保护更新",
+                        subtitle = stringResource(R.string.policy_update_privacy_subtitle),
                         iconContent = {
                             Icon(
                                 imageVector = Icons.Outlined.PrivacyTip,
@@ -108,14 +110,14 @@ fun PolicyUpdateDialog(
         },
         confirmButton = {
             LiquidGlassTextButton(
-                text = "同意并继续",
+                text = stringResource(R.string.policy_update_accept),
                 tintedColor = AppColors.Accent,
                 onClick = onAccept
             )
         },
         dismissButton = {
             LiquidGlassTextButton(
-                text = "不同意并退出",
+                text = stringResource(R.string.policy_update_decline),
                 contentColor = AppColors.TextSecondary,
                 onClick = onDecline
             )
@@ -221,7 +223,7 @@ private fun PolicyUpdateItemContent(
         Spacer(modifier = Modifier.width(8.dp))
         Icon(
             imageVector = Icons.AutoMirrored.Outlined.ArrowForward,
-            contentDescription = "查看更新内容",
+            contentDescription = stringResource(R.string.policy_update_view_content),
             modifier = Modifier.size(18.dp),
             tint = AppColors.TextSecondary
         )

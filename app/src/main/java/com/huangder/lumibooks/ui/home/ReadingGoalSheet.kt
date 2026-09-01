@@ -286,7 +286,9 @@ private fun TodayReadingContent(
     val dividerColor = AppColors.Divider
     val hasGoal = dailyGoal > 0
     val hasReadToday = totalMinutes > 0
-    val todayStatusText = if (hasReadToday) "今日已阅读" else "今日未阅读"
+    val todayStatusText = stringResource(
+        if (hasReadToday) R.string.today_read_status_done else R.string.today_read_status_empty
+    )
     val todayEmoji = if (hasReadToday) "📖 ✅ 🌿" else "🌙 ☕ 📚"
 
     Text(
@@ -370,7 +372,9 @@ private fun TodayReadingContent(
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = if (hasReadToday) "今天已经和书页碰面了" else "今天还没有留下阅读记录",
+            text = stringResource(
+                if (hasReadToday) R.string.today_read_message_done else R.string.today_read_message_empty
+            ),
             fontSize = 13.sp,
             color = textSecondary,
             modifier = Modifier.fillMaxWidth(),
@@ -598,7 +602,7 @@ private fun CustomGoalInputPanel(
                         contentAlignment = Alignment.CenterStart
                     ) {
                         if (value.isBlank()) {
-                            Text("输入分钟数", fontSize = 16.sp, color = textSecondary)
+                            Text(stringResource(R.string.goal_minutes_input_hint), fontSize = 16.sp, color = textSecondary)
                         }
                         innerTextField()
                     }
@@ -628,7 +632,7 @@ private fun CustomGoalInputPanel(
         }
         Spacer(modifier = Modifier.height(6.dp))
         Text(
-            text = "请输入 1-1439 分钟",
+            text = stringResource(R.string.goal_minutes_invalid),
             fontSize = 12.sp,
             color = if (value.isBlank() || isValid) textSecondary else AppColors.Accent
         )

@@ -30,7 +30,9 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.huangder.lumibooks.R
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
@@ -114,7 +116,7 @@ fun EditInputDialog(
             // 返回箭头（左）
             LiquidGlassIconButton(
                 imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                contentDescription = "返回",
+                contentDescription = stringResource(R.string.back),
                 onClick = onBack,
                 modifier = Modifier.align(Alignment.CenterStart),
                 size = 40.dp,
@@ -134,7 +136,7 @@ fun EditInputDialog(
             // 确认按钮（右）—— 黑色圆形 + 白色对勾
             LiquidGlassIconButton(
                 imageVector = Icons.Outlined.Check,
-                contentDescription = "确认",
+                contentDescription = stringResource(R.string.confirm),
                 onClick = { onConfirm(values.map { it.value }) },
                 modifier = Modifier.align(Alignment.CenterEnd),
                 size = 40.dp,

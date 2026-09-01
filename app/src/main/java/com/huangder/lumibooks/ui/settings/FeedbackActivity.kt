@@ -11,25 +11,18 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -54,12 +47,9 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
-import com.huangder.lumibooks.ui.theme.fangSongFamily
-import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
 import com.huangder.lumibooks.ui.theme.effectiveAppTheme
-import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -106,11 +96,7 @@ class FeedbackActivity : ComponentActivity() {
                     predictiveBackEnabled = predictiveBackEnabled,
                     onBack = { finish() }
                 )
-                com.huangder.lumibooks.ui.components.LiquidGlassDialogHost(
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    FeedbackPage(onBack = { finish() })
-                }
+                FeedbackPage(onBack = { finish() })
             }
         }
     }
@@ -120,129 +106,98 @@ class FeedbackActivity : ComponentActivity() {
 private fun FeedbackPage(onBack: () -> Unit) {
     val context = LocalContext.current
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(AppColors.WindowBg)
+    DetailPage(
+        title = stringResource(R.string.feedback_title),
+        onBack = onBack
     ) {
+        // 副标题
+        Text(
+            text = stringResource(R.string.feedback_desc),
+            fontSize = AppType.BodySmall,
+            color = AppColors.TextSecondary,
+            modifier = Modifier.padding(horizontal = AppSpace.lg)
+        )
+
+        Spacer(Modifier.height(AppSpace.md))
+
+        // 二维码卡片
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .verticalScroll(rememberScrollState())
+                .fillMaxWidth()
+                .padding(horizontal = AppSpace.lg)
+                .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+                .clip(RoundedCornerShape(AppRadius.lg))
+                .background(AppColors.CardBg)
+                .padding(AppSpace.lg),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // 顶栏
-            Row(
+            // 二维码
+            Image(
+                painter = painterResource(id = R.drawable.feedback_qr),
+                contentDescription = stringResource(R.string.feedback_qr_desc),
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = AppSpace.sm, vertical = AppSpace.sm),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                LiquidGlassIconButton(
-                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                    contentDescription = stringResource(R.string.back),
-                    onClick = onBack,
-                    settingsBackButton = true
-                )
-                Spacer(Modifier.weight(1f))
-                Text(stringResource(R.string.feedback_title), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = resolveAppFontFamily(fangSongFamily()), color = AppColors.TextPrimary)
-                Spacer(Modifier.weight(1f))
-                Spacer(Modifier.size(48.dp))
-            }
+                    .size(220.dp)
+                    .clip(RoundedCornerShape(AppRadius.md)),
+                contentScale = ContentScale.Fit
+            )
 
             Spacer(Modifier.height(AppSpace.md))
 
-            // 副标题
+            // 文案
             Text(
-                text = stringResource(R.string.feedback_desc),
-                fontSize = AppType.BodySmall,
-                color = AppColors.TextSecondary,
-                modifier = Modifier.padding(horizontal = AppSpace.lg)
+                text = stringResource(R.string.feedback_thanks),
+                fontSize = AppType.Body,
+                fontWeight = FontWeight.Medium,
+                color = AppColors.TextPrimary,
+                textAlign = TextAlign.Center
             )
-
-            Spacer(Modifier.height(AppSpace.md))
-
-            // 二维码卡片
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = AppSpace.lg)
-                    .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
-                    .clip(RoundedCornerShape(AppRadius.lg))
-                    .background(AppColors.CardBg)
-                    .padding(AppSpace.lg),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // 二维码
-                Image(
-                    painter = painterResource(id = R.drawable.feedback_qr),
-                    contentDescription = stringResource(R.string.feedback_qr_desc),
-                    modifier = Modifier
-                        .size(220.dp)
-                        .clip(RoundedCornerShape(AppRadius.md)),
-                    contentScale = ContentScale.Fit
-                )
-
-                Spacer(Modifier.height(AppSpace.md))
-
-                // 文案
-                Text(
-                    text = stringResource(R.string.feedback_thanks),
-                    fontSize = AppType.Body,
-                    fontWeight = FontWeight.Medium,
-                    color = AppColors.TextPrimary,
-                    textAlign = TextAlign.Center
-                )
-            }
-
-            Spacer(Modifier.height(AppSpace.lg))
-
-            FeedbackLinkSection(
-                label = stringResource(R.string.feedback_website),
-                title = "huangder.top",
-                onClick = {
-                    runCatching {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://huangder.top")))
-                    }.onFailure {
-                        Toast.makeText(context, R.string.network_error, Toast.LENGTH_LONG).show()
-                    }
-                }
-            )
-
-            Spacer(Modifier.height(AppSpace.md))
-
-            FeedbackLinkSection(
-                label = stringResource(R.string.feedback_github_issues),
-                title = stringResource(R.string.feedback_github_issues_desc),
-                onClick = {
-                    runCatching {
-                        context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/huangder/Lumi_Books/issues"))
-                        )
-                    }.onFailure {
-                        Toast.makeText(context, R.string.network_error, Toast.LENGTH_LONG).show()
-                    }
-                }
-            )
-
-            Spacer(Modifier.height(AppSpace.md))
-
-            FeedbackLinkSection(
-                label = stringResource(R.string.feedback_qq_channel),
-                title = stringResource(R.string.feedback_qq_channel_desc),
-                onClick = {
-                    runCatching {
-                        context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse("https://pd.qq.com/s/29t6pms4a?b=9"))
-                        )
-                    }.onFailure {
-                        Toast.makeText(context, R.string.network_error, Toast.LENGTH_LONG).show()
-                    }
-                }
-            )
-
-            Spacer(Modifier.height(120.dp))
         }
+
+        Spacer(Modifier.height(AppSpace.lg))
+
+        FeedbackLinkSection(
+            label = stringResource(R.string.feedback_website),
+            title = "huangder.top",
+            onClick = {
+                runCatching {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://huangder.top")))
+                }.onFailure {
+                    Toast.makeText(context, R.string.network_error, Toast.LENGTH_LONG).show()
+                }
+            }
+        )
+
+        Spacer(Modifier.height(AppSpace.md))
+
+        FeedbackLinkSection(
+            label = stringResource(R.string.feedback_github_issues),
+            title = stringResource(R.string.feedback_github_issues_desc),
+            onClick = {
+                runCatching {
+                    context.startActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/huangder/Lumi_Books/issues"))
+                    )
+                }.onFailure {
+                    Toast.makeText(context, R.string.network_error, Toast.LENGTH_LONG).show()
+                }
+            }
+        )
+
+        Spacer(Modifier.height(AppSpace.md))
+
+        FeedbackLinkSection(
+            label = stringResource(R.string.feedback_qq_channel),
+            title = stringResource(R.string.feedback_qq_channel_desc),
+            onClick = {
+                runCatching {
+                    context.startActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse("https://pd.qq.com/s/29t6pms4a?b=9"))
+                    )
+                }.onFailure {
+                    Toast.makeText(context, R.string.network_error, Toast.LENGTH_LONG).show()
+                }
+            }
+        )
     }
 }
 

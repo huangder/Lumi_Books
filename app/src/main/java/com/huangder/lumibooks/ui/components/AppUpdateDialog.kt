@@ -13,9 +13,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
+import com.huangder.lumibooks.R
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
@@ -23,7 +25,7 @@ import com.huangder.lumibooks.ui.theme.LocalAppTheme
 @Composable
 fun AppUpdateDialog(
     appVersion: String,
-    updateTitle: String = "\u53d1\u73b0\u65b0\u7248\u672c",
+    updateTitle: String = "",
     updateMessage: String = "",
     changelog: String = "",
     force: Boolean = false,
@@ -34,19 +36,19 @@ fun AppUpdateDialog(
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val displayMessage = updateMessage.ifBlank {
         if (force) {
-            "\u5f53\u524d\u7248\u672c\u9700\u8981\u66f4\u65b0\u540e\u624d\u80fd\u7ee7\u7eed\u4f7f\u7528\u3002"
+            stringResource(R.string.app_update_required_message)
         } else {
-            "\u65b0\u7248\u672c $appVersion \u5df2\u53d1\u5e03\uff0c\u662f\u5426\u524d\u5f80\u4e0b\u8f7d\uff1f"
+            stringResource(R.string.app_update_available_message, appVersion)
         }
     }
-    val displayChangelog = changelog.ifBlank { "\u6682\u65e0\u66f4\u65b0\u65e5\u5fd7\u3002" }
+    val displayChangelog = changelog.ifBlank { stringResource(R.string.app_update_empty_changelog) }
 
     LiquidGlassAlertDialog(
         onDismissRequest = {},
         title = {
             Text(
                 text = updateTitle.ifBlank {
-                    if (force) "\u9700\u8981\u66f4\u65b0" else "\u53d1\u73b0\u65b0\u7248\u672c"
+                    stringResource(if (force) R.string.app_update_required_title else R.string.app_update_default_title)
                 },
                 fontSize = AppType.Body,
                 fontWeight = FontWeight.Bold,
@@ -62,7 +64,7 @@ fun AppUpdateDialog(
                 )
                 Spacer(modifier = Modifier.height(14.dp))
                 Text(
-                    text = "\u66f4\u65b0\u65e5\u5fd7",
+                    text = stringResource(R.string.app_update_changelog_label),
                     fontSize = AppType.BodySmall,
                     fontWeight = FontWeight.SemiBold,
                     color = AppColors.TextPrimary
@@ -87,7 +89,7 @@ fun AppUpdateDialog(
         },
         confirmButton = {
             LiquidGlassTextButton(
-                text = if (force) "\u4e0b\u8f7d\u65b0\u7248\u672c" else "\u4e0b\u8f7d",
+                text = stringResource(if (force) R.string.app_update_download_new_version else R.string.app_update_download),
                 tintedColor = AppColors.Accent,
                 onClick = onDownload
             )
@@ -96,13 +98,13 @@ fun AppUpdateDialog(
             {
                 onIgnoreVersion?.let { ignore ->
                     LiquidGlassTextButton(
-                        text = "\u5ffd\u7565\u8be5\u7248\u672c",
+                        text = stringResource(R.string.app_update_ignore_version),
                         contentColor = AppColors.TextSecondary,
                         onClick = ignore
                     )
                 }
                 LiquidGlassTextButton(
-                    text = "\u7a0d\u540e",
+                    text = stringResource(R.string.later),
                     contentColor = AppColors.TextSecondary,
                     onClick = onLater
                 )

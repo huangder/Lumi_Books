@@ -53,6 +53,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Brightness6
 import androidx.compose.material.icons.outlined.Animation
@@ -69,8 +70,10 @@ import androidx.compose.material.icons.outlined.FormatBold
 import androidx.compose.material.icons.outlined.RecordVoiceOver
 import androidx.compose.material.icons.outlined.Subtitles
 import androidx.compose.material.icons.outlined.TextFields
-import androidx.compose.material.icons.outlined.GroupAdd
+import androidx.compose.material.icons.outlined.Forum
+import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.HdrOn
+import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Landscape
 import androidx.compose.material.icons.outlined.LineWeight
@@ -143,6 +146,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import com.huangder.lumibooks.R
+import com.huangder.lumibooks.data.local.DataStoreManager
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
@@ -340,6 +344,8 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     LaunchedEffect(Unit) { viewModel.refreshInstalledTtsEngines() }
+    TxtTocRulesManagerCard(viewModel)
+    Spacer(Modifier.height(12.dp))
     DetailCard {
         Row(
             modifier = Modifier.fillMaxWidth().clickable {
@@ -999,6 +1005,94 @@ fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
     }
 }
 
+@Composable
+private fun TxtTocRulesManagerCard(viewModel: SettingsViewModel) {
+    val context = LocalContext.current
+    val rules by viewModel.txtTocCustomRules.collectAsState(initial = emptyList())
+    val scope = rememberCoroutineScope()
+    var dialogVisible by remember { mutableStateOf(false) }
+    var pendingExport by remember { mutableStateOf<String?>(null) }
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        val payload = pendingExport
+        pendingExport = null
+        if (uri != null && payload != null) {
+            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openOutputStream(uri)?.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+                }
+            }
+        }
+    }
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                val payload = runCatching {
+                    context.contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                }.getOrNull()
+                if (!payload.isNullOrBlank()) {
+                    viewModel.importTxtTocRules(payload) { result ->
+                        if (result.isFailure) Toast.makeText(context, result.exceptionOrNull()?.message ?: "导入失败", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
+
+    DetailCard {
+        Row(
+            modifier = Modifier.fillMaxWidth().clickable { dialogVisible = true }.padding(AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Outlined.Source, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.width(AppSpace.md))
+            Column(Modifier.weight(1f)) {
+                Text("TXT目录规则", fontSize = AppType.Body, color = AppColors.TextPrimary)
+                Text("${rules.size} 条自定义规则，可导入或导出", fontSize = AppType.Caption, color = AppColors.TextSecondary)
+            }
+            Icon(Icons.Outlined.ChevronRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+        }
+    }
+
+    if (dialogVisible) {
+        LiquidGlassAlertDialog(
+            onDismissRequest = { dialogVisible = false },
+            title = { Text("TXT目录规则库", color = AppColors.TextPrimary, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold) },
+            text = {
+                Column(Modifier.fillMaxWidth().heightIn(max = 460.dp).verticalScroll(rememberScrollState())) {
+                    if (rules.isEmpty()) Text("暂无自定义规则", color = AppColors.TextSecondary)
+                    rules.forEach { rule ->
+                        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(rule.name, color = AppColors.TextPrimary)
+                                Text(rule.chapterRegex, color = AppColors.TextSecondary, fontSize = 11.sp, maxLines = 2)
+                            }
+                            IconButton(onClick = {
+                                viewModel.saveTxtTocCustomRules(rules.filterNot { it.id == rule.id })
+                            }) { Icon(Icons.Outlined.DeleteForever, "删除", tint = AppColors.TextSecondary) }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Row {
+                    TextButton(onClick = { importLauncher.launch(arrayOf("application/json", "text/*")) }) { Text("导入") }
+                    TextButton(onClick = {
+                        viewModel.exportTxtTocRules { payload ->
+                            pendingExport = payload
+                            exportLauncher.launch("lumi-txt-toc-rules.json")
+                        }
+                    }) { Text("导出") }
+                    TextButton(onClick = { dialogVisible = false }) { Text("完成") }
+                }
+            }
+        )
+    }
+}
+
 private enum class FloatingSubtitleValueField {
     X_POSITION,
     Y_POSITION,
@@ -1132,8 +1226,21 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
             "green" to stringResource(R.string.theme_green)
         )
     }
+    val startupScreenOptions = listOf(
+        DataStoreManager.STARTUP_SCREEN_HOME to stringResource(R.string.startup_screen_home),
+        DataStoreManager.STARTUP_SCREEN_BOOKSHELF to stringResource(R.string.startup_screen_bookshelf),
+        DataStoreManager.STARTUP_SCREEN_STATISTICS to stringResource(R.string.startup_screen_statistics)
+    )
 
     DetailCard {
+        DropdownSettingRow(
+            icon = Icons.Outlined.Home,
+            label = stringResource(R.string.label_startup_screen),
+            options = startupScreenOptions,
+            selected = DataStoreManager.normalizeStartupScreen(uiState.startupScreen),
+            onSelect = viewModel::saveStartupScreen
+        )
+        SettingsDivider()
         DropdownSettingRow(
             icon = Icons.Outlined.Palette,
             label = stringResource(R.string.label_app_theme),
@@ -2718,7 +2825,7 @@ fun BackupRestoreDetail(viewModel: SettingsViewModel) {
                     androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = AppColors.Accent)
                     Spacer(Modifier.width(AppSpace.md))
                 }
-                Text(uiState.backupStatus, fontSize = AppType.BodySmall, color = if (uiState.backupStatus.contains("失败")) Color.Red else AppColors.TextSecondary)
+                Text(uiState.backupStatus, fontSize = AppType.BodySmall, color = if (uiState.backupFailed) Color.Red else AppColors.TextSecondary)
             }
         }
     }
@@ -2785,8 +2892,8 @@ fun AboutDetail(viewModel: SettingsViewModel) {
             onDecline = {
                 (context as? android.app.Activity)?.finishAffinity()
             },
-            onViewTerms = { openDoc("用户协议", "terms.html") },
-            onViewPrivacy = { openDoc("隐私政策", "privacy.html") }
+            onViewTerms = { openDoc(context.getString(R.string.terms_of_service), "terms.html") },
+            onViewPrivacy = { openDoc(context.getString(R.string.privacy_policy), "privacy.html") }
         )
     }
 
@@ -2863,7 +2970,7 @@ fun AboutDetail(viewModel: SettingsViewModel) {
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = if (update.isChecking) "正在查更新" else stringResource(R.string.check_update),
+                    text = stringResource(if (update.isChecking) R.string.checking_update else R.string.check_update),
                     color = Color.White,
                     fontSize = AppType.BodySmall,
                     fontWeight = FontWeight.SemiBold
@@ -2883,10 +2990,32 @@ fun AboutDetail(viewModel: SettingsViewModel) {
     Spacer(Modifier.height(AppSpace.md))
 
     DetailCard {
-        ActionRow(Icons.Outlined.GroupAdd, stringResource(R.string.join_community)) {
+        ActionRow(Icons.Outlined.Groups, stringResource(R.string.official_qq_group)) {
             val opened = runCatching {
                 context.startActivity(
                     Intent(Intent.ACTION_VIEW, Uri.parse("https://qm.qq.com/q/pq77woweNG"))
+                )
+            }.isSuccess
+            if (!opened) {
+                Toast.makeText(context, R.string.network_error, Toast.LENGTH_LONG).show()
+            }
+        }
+        SettingsDivider()
+        ActionRow(Icons.Outlined.Forum, stringResource(R.string.github_discussions)) {
+            val opened = runCatching {
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/huangder/Lumi_Books/discussions"))
+                )
+            }.isSuccess
+            if (!opened) {
+                Toast.makeText(context, R.string.network_error, Toast.LENGTH_LONG).show()
+            }
+        }
+        SettingsDivider()
+        ActionRow(Icons.AutoMirrored.Outlined.Send, stringResource(R.string.telegram_community)) {
+            val opened = runCatching {
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/+TAOugTwmD6ExMzY0"))
                 )
             }.isSuccess
             if (!opened) {
@@ -2914,14 +3043,17 @@ fun AboutDetail(viewModel: SettingsViewModel) {
 
     // ── 法律条款 Card ──
     DetailCard {
-        // 隐私条款
-        ActionRow(Icons.Outlined.NightsStay, "隐私条款") { openDoc("隐私条款", "privacy.html") }
+        ActionRow(Icons.Outlined.NightsStay, stringResource(R.string.privacy_policy)) {
+            openDoc(context.getString(R.string.privacy_policy), "privacy.html")
+        }
         SettingsDivider()
-        // 用户协议
-        ActionRow(Icons.Outlined.Info, "用户协议") { openDoc("用户协议", "terms.html") }
+        ActionRow(Icons.Outlined.Info, stringResource(R.string.terms_of_service)) {
+            openDoc(context.getString(R.string.terms_of_service), "terms.html")
+        }
         SettingsDivider()
-        // 开放源代码许可
-        ActionRow(Icons.Outlined.Code, "开放源代码许可") { openDoc("开放源代码许可", "licenses.html") }
+        ActionRow(Icons.Outlined.Code, stringResource(R.string.open_source_licenses)) {
+            openDoc(context.getString(R.string.open_source_licenses), "licenses.html")
+        }
     }
 }
 
@@ -2966,7 +3098,7 @@ fun ChangelogDetail() {
                                     .background(AppColors.Accent)
                                     .padding(horizontal = AppSpace.sm, vertical = 2.dp)
                             ) {
-                                Text("最新", fontSize = AppType.Caption, color = Color.White)
+                                Text(stringResource(R.string.latest_label), fontSize = AppType.Caption, color = Color.White)
                             }
                         }
                     }
@@ -3569,11 +3701,15 @@ private fun SettingsSliderItem(
 
 @Composable
 private fun FontTypeRow(selected: String, onSelect: (String) -> Unit) {
-    val options = listOf("system" to "系统默认", "serif" to "宋体", "monospace" to "等宽")
+    val options = listOf(
+        "system" to stringResource(R.string.tts_engine_system_default),
+        "serif" to stringResource(R.string.font_serif),
+        "monospace" to stringResource(R.string.font_monospace)
+    )
     Row(Modifier.fillMaxWidth().padding(horizontal = AppSpace.md, vertical = AppSpace.md), verticalAlignment = Alignment.CenterVertically) {
         Icon(Icons.Outlined.FontDownload, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
         Spacer(Modifier.width(AppSpace.md))
-        Text("字体", fontSize = AppType.Body, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
+        Text(stringResource(R.string.font_label), fontSize = AppType.Body, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
         Row(horizontalArrangement = Arrangement.spacedBy(AppSpace.xs)) {
             options.forEach { (key, label) ->
                 val sel = key == selected
