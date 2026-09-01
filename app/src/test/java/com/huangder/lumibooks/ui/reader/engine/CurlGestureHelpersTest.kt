@@ -13,6 +13,20 @@ class CurlGestureHelpersTest {
     }
 
     @Test
+    fun curlPageIntentUsesTouchSlopAndAllowsCornerDiagonalTravel() {
+        assertFalse(isCurlPageSwipeIntent(18f, 4f, touchSlop = 24f))
+        assertTrue(isCurlPageSwipeIntent(70f, 110f, touchSlop = 24f))
+        assertFalse(isCurlPageSwipeIntent(40f, 100f, touchSlop = 24f))
+    }
+
+    @Test
+    fun curlPageIntentHasNoElapsedTimeDependency() {
+        // The gesture gate only receives deltas, so a qualifying move remains
+        // valid after the text-selection long-press window has elapsed.
+        assertTrue(isCurlPageSwipeIntent(-240f, 12f, touchSlop = 24f))
+    }
+
+    @Test
     fun bottomFifthScreenEdgesAreReservedForSystemBack() {
         assertTrue(isSystemBackGestureStart(1080f, 2340f, 40f, 2000f, 3f))
         assertTrue(isSystemBackGestureStart(1080f, 2340f, 1040f, 2000f, 3f))

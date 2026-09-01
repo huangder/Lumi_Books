@@ -31,6 +31,153 @@ class TxtParserTest {
     }
 
     @Test
+    fun appliesUserRuleWithVolumeHierarchyAndTitleTemplate() {
+        val file = writeText(
+            "custom-rule.txt",
+            "说明文字\n@@ 1 开端\n## 1 第一节\n正文一\n## 2 第二节\n正文二\n@@ 2 终局\n## 3 第三节\n正文三",
+            Charsets.UTF_8
+        )
+        val parser = TxtParser().apply {
+            selectedTocRule = TxtTocRule(
+                id = "custom",
+                name = "hash headings",
+                chapterRegex = "^##\\s*(\\d+)\\s*(.*)$",
+                volumeRegex = "^@@\\s*(\\d+)\\s*(.*)$",
+                chapterTitleTemplate = "第\$1节 \$2",
+                volumeTitleTemplate = "卷\$1 \$2"
+            )
+        }
+
+        val book = parser.parse(file.absolutePath)
+
+        assertEquals(listOf("Preface", "卷1 开端", "第1节 第一节", "第2节 第二节", "卷2 终局", "第3节 第三节"), book.chapters.map { it.title })
+        assertEquals(listOf(1, 1, 2, 2, 1, 2), book.tocEntries.map { it.level })
+        assertTrue(book.tocEntries[1].isGroup)
+        assertEquals("说明文字", parser.getChapterContent(0).trim())
+    }
+
+    @Test
+    fun mapsCharacterOffsetsThroughMultibyteSourceAnchors() {
+        val file = writeText("anchors.txt", "第1章\n甲😀乙\n第2章\n丙丁", Charsets.UTF_8)
+        val parser = TxtParser().apply { parse(file.absolutePath) }
+
+        val byte = parser.characterOffsetToByte(0, 2, endBias = true)!!
+        val position = parser.byteToCharacterPosition(byte)
+
+        assertEquals(0, position?.first)
+        assertEquals(2, position?.second)
+    }
+
+    @Test
+    fun detectsDecoratedHeadingOnlyBooksAutomatically() {
+        val file = writeText(
+            "decorated-only.txt",
+            "<序幕>\n开场\n<第一幕>\n冲突\n<终幕>\n结尾",
+            Charsets.UTF_8
+        )
+        val parser = TxtParser()
+
+        val book = parser.parse(file.absolutePath)
+
+        assertEquals(listOf("<序幕>", "<第一幕>", "<终幕>"), book.chapters.map { it.title })
+    }
+
+    @Test
+    fun skipsEmbeddedTableOfContentsBeforeChapterBodies() {
+        val text = "简介文字\n\n目录\n\n第1章 一\n\n第2章 二\n\n第3章 三\n\n" +
+            "第1章 一\n\n正文一\n\n第2章 二\n\n正文二\n\n第3章 三\n\n正文三"
+        val file = writeText(
+            "embedded-toc.txt",
+            text,
+            Charsets.UTF_8
+        )
+        val parser = TxtParser()
+
+        val book = parser.parse(file.absolutePath)
+
+        assertEquals(listOf("Preface", "第1章 一", "第2章 二", "第3章 三"), book.chapters.map { it.title })
+        assertEquals("简介文字", parser.getChapterContent(0).trim())
+        assertTrue(parser.getChapterContent(1).contains("正文一"))
+        assertTrue(parser.getChapterContent(2).contains("正文二"))
+        assertTrue(parser.getChapterContent(3).contains("正文三"))
+
+        val firstChapterRange = parser.getChapterByteRange(1)!!
+        val sourceBytes = file.readBytes()
+        val firstChapterText = String(
+            sourceBytes.copyOfRange(firstChapterRange.first.toInt(), firstChapterRange.second.toInt()),
+            Charsets.UTF_8
+        )
+        assertTrue(firstChapterText.trimStart().startsWith("第1章 一"))
+        val secondHeading = text.indexOf("第1章 一", text.indexOf("第1章 一") + 1)
+        val expectedStart = text.substring(0, secondHeading)
+            .toByteArray(Charsets.UTF_8)
+            .size
+            .toLong()
+        assertEquals(expectedStart, firstChapterRange.first)
+    }
+
+    @Test
+    fun keepsEmbeddedTocWhenUserConfiguresCustomRule() {
+        val file = writeText(
+            "custom-rule-with-toc.txt",
+            "简介文字\n\n目录\n\n第1章 一\n\n第2章 二\n\n" +
+                "第1章 一\n\n正文一\n\n第2章 二\n\n正文二",
+            Charsets.UTF_8
+        )
+        val parser = TxtParser().apply {
+            selectedTocRule = TxtTocRule(
+                id = "chapters",
+                name = "chapter headings",
+                chapterRegex = "^第(\\d+)章\\s*(.*)$",
+                chapterTitleTemplate = "第\$1章 \$2"
+            )
+        }
+
+        val book = parser.parse(file.absolutePath)
+
+        assertEquals(5, book.chapters.size)
+        assertTrue(parser.getChapterContent(0).contains("目录"))
+        assertEquals("第1章 一", book.chapters[1].title)
+        assertEquals("第1章 一", book.chapters[3].title)
+        assertTrue(parser.getChapterContent(3).contains("正文一"))
+    }
+
+    @Test
+    fun preservesTitleOnlyChaptersWithoutTocMarker() {
+        val file = writeText(
+            "empty-chapters.txt",
+            "第1章 一\n\n第2章 二\n\n第3章 三\n\n第4章 四\n正文四\n\n第5章 五\n正文五",
+            Charsets.UTF_8
+        )
+        val parser = TxtParser()
+
+        val book = parser.parse(file.absolutePath)
+
+        assertEquals(5, book.chapters.size)
+        assertEquals("第1章 一", parser.getChapterContent(0))
+        assertTrue(parser.getChapterContent(3).contains("正文四"))
+    }
+
+    @Test
+    fun skipsEmbeddedTableOfContentsInLargeFileFastScan() {
+        val text = buildString {
+            append("简介文字\n")
+            append("说明文字".repeat(1_100_000))
+            append("\n\n目录\n\n第1章 一\n\n第2章 二\n\n第3章 三\n\n")
+            append("第1章 一\n\n正文一\n\n第2章 二\n\n正文二\n\n第3章 三\n\n正文三")
+        }
+        val file = writeText("embedded-toc-large.txt", text, Charsets.UTF_8)
+        val parser = TxtParser()
+
+        val book = parser.parse(file.absolutePath)
+
+        assertEquals(listOf("Preface", "第1章 一", "第2章 二", "第3章 三"), book.chapters.map { it.title })
+        assertTrue(parser.getChapterContent(1).contains("正文一"))
+        assertTrue(parser.getChapterContent(2).contains("正文二"))
+        assertTrue(parser.getChapterContent(3).contains("正文三"))
+    }
+
+    @Test
     fun detectsGbkAndUtf16Bom() {
         val gbk = writeText(
             "gbk.txt",
@@ -163,6 +310,29 @@ class TxtParserTest {
         assertEquals("海贼王124：清洁的终结", book.chapters[123].title)
         assertEquals("第125章 艾琳（1）", book.chapters[124].title)
         assertTrue(parser.getChapterContent(123).contains("第一百二十四章的正文"))
+    }
+
+    @Test
+    fun recognizesChaptersWithShortSeriesPrefix() {
+        val text = buildString {
+            repeat(120) { chapter ->
+                if (chapter == 0) {
+                    append("剑中仙 第一章：谁敢动我妹！\n")
+                } else {
+                    append("===剑中仙 第${chapter + 1}章：章节标题\n")
+                }
+                append("这是第${chapter + 1}章正文。\n")
+            }
+        }
+        val file = writeText("prefixed-chapters.txt", text, Charsets.UTF_8)
+        val parser = TxtParser()
+
+        val book = parser.parse(file.absolutePath)
+
+        assertEquals(120, book.chapters.size)
+        assertEquals("剑中仙 第一章：谁敢动我妹！", book.chapters.first().title)
+        assertEquals("===剑中仙 第120章：章节标题", book.chapters.last().title)
+        assertTrue(parser.getChapterContent(119).contains("这是第120章正文"))
     }
 
     @Test

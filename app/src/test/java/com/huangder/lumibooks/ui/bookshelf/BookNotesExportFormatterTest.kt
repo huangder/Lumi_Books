@@ -31,7 +31,8 @@ class BookNotesExportFormatterTest {
                     pageText = "一二三四五六七八九十甲乙"
                 )
             ),
-            chapterTitles = mapOf(0 to "开篇", 1 to "转折")
+            chapterTitles = mapOf(0 to "开篇", 1 to "转折"),
+            labels = labels
         )
 
         assertTrue(text.contains("【高亮：】"))
@@ -50,7 +51,8 @@ class BookNotesExportFormatterTest {
     fun pageExcerptCountsUnicodeCodePointsAndUsesFirstParagraph() {
         val excerpt = BookNotesExportFormatter.pageExcerpt(
             pageText = "😀甲乙丙丁戊\n\n中间内容收尾甲乙丙丁戊",
-            fallback = "fallback"
+            fallback = "fallback",
+            pageUnavailable = labels.pageUnavailable
         )
 
         assertEquals("😀甲乙丙丁…甲乙丙丁戊", excerpt)
@@ -60,7 +62,7 @@ class BookNotesExportFormatterTest {
     fun pageExcerptFallsBackWhenPageTextIsUnavailable() {
         assertEquals(
             "第2章 第3页",
-            BookNotesExportFormatter.pageExcerpt(null, "第2章 第3页")
+            BookNotesExportFormatter.pageExcerpt(null, "第2章 第3页", labels.pageUnavailable)
         )
     }
 
@@ -68,7 +70,7 @@ class BookNotesExportFormatterTest {
     fun suggestedFileNameRemovesInvalidPathCharacters() {
         assertEquals(
             "书_名-书签与笔记.txt",
-            BookNotesExportFormatter.suggestedFileName("书/名")
+            BookNotesExportFormatter.suggestedFileName("书/名", labels.fileSuffix)
         )
     }
 
@@ -86,5 +88,20 @@ class BookNotesExportFormatterTest {
         note = noteText,
         color = "#FFEB3B",
         createdAt = chapterIndex.toLong()
+    )
+
+    private val labels = BookNotesExportLabels(
+        highlightSection = "高亮",
+        highlightContent = "高亮内容",
+        chapter = "所在章节",
+        book = "书籍名",
+        noteSection = "笔记",
+        noteSource = "笔记原文内容",
+        userNote = "用户所写笔记内容",
+        bookmarkSection = "书签",
+        bookmarkPage = "书签页内容",
+        pageUnavailable = "（无法提取页面文字）",
+        fileSuffix = "书签与笔记",
+        chapterNumber = { "第${it}章" }
     )
 }

@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Typeface
 import android.text.Layout
 import android.text.Spannable
 import android.text.SpannableStringBuilder
@@ -107,6 +108,98 @@ class ReaderPagingLayoutInstrumentedTest {
         }
 
         assertEquals(expectedLines, chapter.pages.first().endLine)
+    }
+
+    @Test
+    fun globalVerticalMarginsAreDeterministicAndProtectBottomInset() {
+        val first = resolveReaderVerticalMargins(
+            heightPx = 720,
+            baseMarginTopPx = 56f,
+            baseMarginBottomPx = 56f,
+            fontSizePx = 36f,
+            lineHeightMultiplier = 1f,
+            lineSpacingExtraPx = 0f,
+            typeface = Typeface.DEFAULT
+        )
+        val second = resolveReaderVerticalMargins(
+            heightPx = 720,
+            baseMarginTopPx = 56f,
+            baseMarginBottomPx = 56f,
+            fontSizePx = 36f,
+            lineHeightMultiplier = 1f,
+            lineSpacingExtraPx = 0f,
+            typeface = Typeface.DEFAULT
+        )
+        val protected = resolveReaderVerticalMargins(
+            heightPx = 720,
+            baseMarginTopPx = 56f,
+            baseMarginBottomPx = 56f,
+            fontSizePx = 36f,
+            lineHeightMultiplier = 1f,
+            lineSpacingExtraPx = 0f,
+            typeface = Typeface.DEFAULT,
+            protectedBottomInsetPx = 48f
+        )
+
+        assertEquals(first, second)
+        assertEquals(112, first.topPx + first.bottomPx)
+        assertTrue("global balance should move some space above the text", first.topPx > 56)
+        assertTrue("global balance should reduce the bottom remainder", first.bottomPx < 56)
+        assertEquals(112, protected.topPx + protected.bottomPx)
+        assertTrue("protected bottom inset must remain available", protected.bottomPx >= 48)
+    }
+
+    @Test
+    fun pageContentKeepsOneVerticalOriginAcrossDifferentPageLengths() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        var firstBaseline = 0
+        var secondBaseline = 0
+        var firstTranslation = 0f
+        var secondTranslation = 0f
+        var firstOffset = 0f
+        var secondOffset = 0f
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val page = PageContentView(context)
+            page.configure(
+                fontSizePx = 36f,
+                textColor = Color.BLACK,
+                lineHeightMult = 1f,
+                lineSpacingExtraPx = 0f,
+                marginLeftPx = 40f,
+                marginTopPx = 56f,
+                marginRightPx = 40f,
+                marginBottomPx = 56f
+            )
+            page.measure(
+                android.view.View.MeasureSpec.makeMeasureSpec(600, android.view.View.MeasureSpec.EXACTLY),
+                android.view.View.MeasureSpec.makeMeasureSpec(720, android.view.View.MeasureSpec.EXACTLY)
+            )
+            page.layout(0, 0, 600, 720)
+
+            fun setPage(text: String): Int {
+                page.setPageContent(text, 0, text.length)
+                page.measure(
+                    android.view.View.MeasureSpec.makeMeasureSpec(600, android.view.View.MeasureSpec.EXACTLY),
+                    android.view.View.MeasureSpec.makeMeasureSpec(720, android.view.View.MeasureSpec.EXACTLY)
+                )
+                page.layout(0, 0, 600, 720)
+                val layout = requireNotNull(page.textView.layout)
+                return page.textView.paddingTop + layout.getLineBaseline(0)
+            }
+
+            firstBaseline = setPage("第一行内容保持相同起点。\n".repeat(28))
+            firstTranslation = page.textView.translationY
+            firstOffset = page.getPageVerticalOffset()
+            secondBaseline = setPage("第一行内容保持相同起点。\n第二行内容。")
+            secondTranslation = page.textView.translationY
+            secondOffset = page.getPageVerticalOffset()
+        }
+
+        assertEquals(firstBaseline, secondBaseline)
+        assertEquals(0f, firstTranslation, 0f)
+        assertEquals(0f, secondTranslation, 0f)
+        assertEquals(0f, firstOffset, 0f)
+        assertEquals(0f, secondOffset, 0f)
     }
 
     @Test

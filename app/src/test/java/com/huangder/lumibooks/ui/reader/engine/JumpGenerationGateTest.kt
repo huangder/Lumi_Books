@@ -49,7 +49,7 @@ class JumpGenerationGateTest {
     }
 
     @Test
-    fun `rapid swipes during jump retain one latest turn`() {
+    fun `rapid swipes during jump retain every accepted turn`() {
         val gate = JumpGenerationGate()
         val sequencer = ReaderCurlTurnSequencer()
         val generation = gate.begin()
@@ -59,8 +59,10 @@ class JumpGenerationGateTest {
         }
 
         assertTrue(gate.resolve(generation))
-        assertEquals(1, sequencer.pendingSteps)
-        assertEquals(PageAnimationController.Direction.NEXT, sequencer.poll())
+        assertEquals(10, sequencer.pendingSteps)
+        repeat(10) {
+            assertEquals(PageAnimationController.Direction.NEXT, sequencer.poll())
+        }
         assertEquals(PageAnimationController.Direction.NONE, sequencer.poll())
     }
 

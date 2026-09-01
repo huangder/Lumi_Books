@@ -16,6 +16,8 @@ class BuiltinGuideSeederTest {
     @Test
     fun manifestUsesStableFilesInsideLumiFolder() {
         assertEquals("lumi", BuiltinGuideSeeder.FOLDER_NAME)
+        assertEquals("builtin/lumi/folder_cover.png", BuiltinGuideSeeder.FOLDER_COVER_ASSET_PATH)
+        assertTrue(BuiltinGuideSeeder.FOLDER_COVER_VERSION >= 1)
         BuiltinGuideSeeder.GUIDE_MANIFEST.forEach { guide ->
             assertTrue(guide.fileName.endsWith(".epub"))
             assertTrue(guide.assetPath.startsWith("builtin/lumi/"))

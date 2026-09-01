@@ -78,7 +78,9 @@ class ReaderEdgeTapModeTest {
         val preferred = "continuous"
 
         assertEquals("slide", ReaderWritingMode.VERTICAL_RL.effectivePageTransition(preferred))
+        assertEquals("slide", ReaderWritingMode.VERTICAL_RL.effectivePageTransition("scroll"))
         assertEquals("continuous", ReaderWritingMode.HORIZONTAL.effectivePageTransition(preferred))
+        assertEquals("scroll", ReaderWritingMode.HORIZONTAL.effectivePageTransition("scroll"))
         assertEquals("curl", ReaderWritingMode.VERTICAL_RL.effectivePageTransition("curl"))
         assertEquals("continuous", preferred)
     }

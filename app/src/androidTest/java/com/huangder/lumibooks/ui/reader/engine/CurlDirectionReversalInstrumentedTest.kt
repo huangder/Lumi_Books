@@ -17,6 +17,46 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class CurlDirectionReversalInstrumentedTest {
     @Test
+    fun curlPositionFollowsMoveBeforeRelease() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val context = instrumentation.targetContext
+            val root = FrameLayout(context)
+            val previous = View(context)
+            val current = View(context)
+            val next = View(context)
+            val width = 1080
+            val height = 1920
+            root.layout(0, 0, width, height)
+            previous.layout(0, 0, width, height)
+            current.layout(0, 0, width, height)
+            next.layout(0, 0, width, height)
+
+            val surface = PageAnimationSurface(
+                root = root,
+                prevPageView = previous,
+                curPageView = current,
+                nextPageView = next,
+                backgroundColorProvider = { Color.WHITE },
+                directPageRenderer = { _, _ -> true }
+            )
+            val controller = CurlPageAnim(surface)
+            controller.onCanFlip = { true }
+
+            dispatch(controller, MotionEvent.ACTION_DOWN, 900f, 220f)
+            dispatch(controller, MotionEvent.ACTION_MOVE, 760f, 220f)
+            val firstOffset = controller.getOffsetX()
+            dispatch(controller, MotionEvent.ACTION_MOVE, 520f, 220f)
+            val secondOffset = controller.getOffsetX()
+
+            assertTrue(controller.isDragging)
+            assertTrue("curl offset must follow MOVE", secondOffset > firstOffset)
+            dispatch(controller, MotionEvent.ACTION_CANCEL, 520f, 220f)
+            controller.destroy()
+        }
+    }
+
+    @Test
     fun reversingFromPreviousToNextRebasesPageRolesWithoutCompleting() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
