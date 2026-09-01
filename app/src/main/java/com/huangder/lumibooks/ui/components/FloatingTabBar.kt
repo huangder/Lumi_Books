@@ -51,6 +51,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -64,6 +65,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
@@ -318,28 +320,6 @@ fun FloatingTabBar(
                     end = endPadding
                 )
         ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(barHeight)
-                .drawBehind {
-                    val shadowRadius = 28.dp.toPx()
-                    val cornerRadius = size.height / 2f
-                    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                        color = Color.White.copy(alpha = 0.01f).toArgb()
-                        setShadowLayer(shadowRadius, 0f, 0f, shadowColor.toArgb())
-                    }
-                    drawIntoCanvas { canvas ->
-                        canvas.nativeCanvas.drawRoundRect(
-                            RectF(0f, 0f, size.width, size.height),
-                            cornerRadius,
-                            cornerRadius,
-                            paint
-                        )
-                    }
-                }
-        )
-
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
@@ -356,6 +336,7 @@ fun FloatingTabBar(
             val indicatorExtraWidthPx = with(density) { indicatorExtraWidth.toPx() }
             val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
             var currentIndex by remember { mutableIntStateOf(selectedIndex) }
+            var pointerPosition by remember { mutableStateOf(Offset.Zero) }
             val dragState = remember(animationScope, indicatorWidthPx, motionEnabled) {
                 LiquidGlassDampedMotionState(
                     animationScope = animationScope,
@@ -393,6 +374,95 @@ fun FloatingTabBar(
                 modifier = Modifier
                     .fillMaxSize()
                     .then(
+                        if (isLiquidGlass) {
+                            Modifier.liquidGlassTabDrag(
+                                state = dragState,
+                                onDragStart = { position ->
+                                    pointerPosition = position
+                                    panelDragDistancePx = 0f
+                                    panelOffsetTargetPx = 0f
+                                },
+                                onPointerMove = { position ->
+                                    pointerPosition = position
+                                },
+                                onDrag = { dragAmount ->
+                                    val direction = if (isLtr) 1f else -1f
+                                    dragState.dragTo(
+                                        dragState.targetValue +
+                                            dragAmount.x / indicatorWidthPx * direction
+                                    )
+                                    panelDragDistancePx += dragAmount.x
+                                    panelOffsetTargetPx = dampedTabPanelOffset(
+                                        dragDistancePx = panelDragDistancePx,
+                                        panelWidthPx = contentWidthPx,
+                                        maxOffsetPx = with(density) { 4.dp.toPx() }
+                                    )
+                                },
+                                onDragEnd = { dragged ->
+                                    val target = if (dragged) {
+                                        projectedTabTarget(
+                                            currentValue = dragState.targetValue,
+                                            velocity = dragState.velocity,
+                                            lastIndex = tabs.lastIndex
+                                        )
+                                    } else {
+                                        currentIndex
+                                    }
+                                    dragState.settleTo(target.toFloat())
+                                    panelOffsetTargetPx = 0f
+                                    if (target != currentIndex) {
+                                        currentIndex = target
+                                        currentOnTabSelected(target)
+                                    }
+                                },
+                                onDragCancel = {
+                                    dragState.cancelInteraction(currentIndex.toFloat())
+                                    panelOffsetTargetPx = 0f
+                                }
+                            )
+                        } else {
+                            Modifier
+                        }
+                    )
+            ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        val scale = if (motionEnabled) {
+                            1f + 0.014f * dragState.pressProgress
+                        } else {
+                            1f
+                        }
+                        scaleX = scale
+                        scaleY = scale
+                    }
+            ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .drawBehind {
+                        val shadowRadius = 28.dp.toPx()
+                        val cornerRadius = size.height / 2f
+                        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                            color = Color.White.copy(alpha = 0.01f).toArgb()
+                            setShadowLayer(shadowRadius, 0f, 0f, shadowColor.toArgb())
+                        }
+                        drawIntoCanvas { canvas ->
+                            canvas.nativeCanvas.drawRoundRect(
+                                RectF(0f, 0f, size.width, size.height),
+                                cornerRadius,
+                                cornerRadius,
+                                paint
+                            )
+                        }
+                    }
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(
                         if (isLiquidGlass && liquidGlassBackdrop != null) Modifier
                         else Modifier.clip(glassShape)
                     )
@@ -408,11 +478,18 @@ fun FloatingTabBar(
                         .drawBehind {
                             val progress = dragState.pressProgress
                             if (progress > 0f) {
-                                val center = androidx.compose.ui.geometry.Offset(
-                                    x = contentPaddingPx +
-                                        (dragState.value + 0.5f) * indicatorWidthPx +
-                                        panelOffsetPx,
-                                    y = size.height / 2f
+                                val barScale = if (motionEnabled) {
+                                    1f + 0.014f * progress
+                                } else {
+                                    1f
+                                }
+                                // Counter the bar's visual scale so the rendered glow
+                                // remains exactly beneath the physical pointer.
+                                val center = Offset(
+                                    x = size.width / 2f +
+                                        (pointerPosition.x - size.width / 2f) / barScale,
+                                    y = size.height / 2f +
+                                        (pointerPosition.y - size.height / 2f) / barScale
                                 )
                                 val radius = size.minDimension * 1.8f
                                 drawCircle(
@@ -510,7 +587,6 @@ fun FloatingTabBar(
             }
 
             if (isLiquidGlass) {
-                val maxPanelOffsetPx = with(density) { 4.dp.toPx() }
                 val prismGestureModifier = Modifier
                     .width(indicatorWidth + indicatorExtraWidth)
                     .fillMaxHeight()
@@ -526,47 +602,6 @@ fun FloatingTabBar(
                         IntOffset((baseTranslation + panelOffsetPx).roundToInt(), 0)
                     }
                     .padding(3.dp)
-                    .liquidGlassTabDrag(
-                        state = dragState,
-                        onDragStart = {
-                            panelDragDistancePx = 0f
-                            panelOffsetTargetPx = 0f
-                        },
-                        onDrag = { dragAmount ->
-                            val direction = if (isLtr) 1f else -1f
-                            dragState.dragTo(
-                                dragState.targetValue +
-                                    dragAmount.x / indicatorWidthPx * direction
-                            )
-                            panelDragDistancePx += dragAmount.x
-                            panelOffsetTargetPx = dampedTabPanelOffset(
-                                dragDistancePx = panelDragDistancePx,
-                                panelWidthPx = contentWidthPx,
-                                maxOffsetPx = maxPanelOffsetPx
-                            )
-                        },
-                        onDragEnd = { dragged ->
-                            val target = if (dragged) {
-                                projectedTabTarget(
-                                    currentValue = dragState.targetValue,
-                                    velocity = dragState.velocity,
-                                    lastIndex = tabs.lastIndex
-                                )
-                            } else {
-                                currentIndex
-                            }
-                            dragState.settleTo(target.toFloat())
-                            panelOffsetTargetPx = 0f
-                            if (target != currentIndex) {
-                                currentIndex = target
-                                currentOnTabSelected(target)
-                            }
-                        },
-                        onDragCancel = {
-                            dragState.cancelInteraction(currentIndex.toFloat())
-                            panelOffsetTargetPx = 0f
-                        }
-                    )
                 val prismVisualModifier = if (combinedTabsBackdrop != null) {
                     Modifier.drawBackdrop(
                         backdrop = combinedTabsBackdrop,
@@ -597,13 +632,6 @@ fun FloatingTabBar(
                                 widthPx = size.width,
                                 heightPx = size.height
                             )
-                            if (motionEnabled) {
-                                val velocity = dragState.velocity / 10f
-                                scaleX /= 1f -
-                                    (velocity * 0.75f).coerceIn(-0.2f, 0.2f)
-                                scaleY *= 1f -
-                                    (velocity * 0.25f).coerceIn(-0.2f, 0.2f)
-                            }
                         },
                         onDrawSurface = {
                             val progress = dragState.pressProgress
@@ -628,7 +656,9 @@ fun FloatingTabBar(
                 )
             }
 
-        }
+            }
+            }
+            }
     }
     }
 }
