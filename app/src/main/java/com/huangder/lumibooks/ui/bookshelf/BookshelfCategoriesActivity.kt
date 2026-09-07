@@ -1,4 +1,6 @@
 package com.huangder.lumibooks.ui.bookshelf
+import com.huangder.lumibooks.ui.icons.directionalIcon
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import android.content.Intent
 import android.content.res.Configuration
@@ -31,19 +33,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.BookmarkBorder
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.DriveFileMove
-import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.FolderOpen
-import androidx.compose.material.icons.outlined.KeyboardArrowRight
-import androidx.compose.material.icons.outlined.Link
-import androidx.compose.material.icons.outlined.Label
-import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -256,17 +245,17 @@ private fun BookshelfCategoriesScreen(
     val epubMobiTitle = stringResource(R.string.filter_epub_mobi)
     val favoritesTitle = stringResource(R.string.filter_favorites)
     val rows = buildList {
-        add(CategoryRowModel(BookshelfCategoryTarget.All(allTitle), uiState.books.size, Icons.Outlined.MenuBook))
+        add(CategoryRowModel(BookshelfCategoryTarget.All(allTitle), uiState.books.size, AppIcons.BookOpen))
         add(
             CategoryRowModel(
                 BookshelfCategoryTarget.EpubMobi(epubMobiTitle),
                 uiState.books.count(Book::isEpubMobi),
-                Icons.Outlined.FolderOpen
+                AppIcons.FolderOpen
             )
         )
-        add(CategoryRowModel(BookshelfCategoryTarget.Pdf("PDF"), uiState.books.count { it.format == BookFormat.PDF }, Icons.Outlined.Description))
-        add(CategoryRowModel(BookshelfCategoryTarget.Txt("TXT"), uiState.books.count { it.format == BookFormat.TXT }, Icons.Outlined.Description))
-        add(CategoryRowModel(BookshelfCategoryTarget.Favorites(favoritesTitle), uiState.books.count { it.isFavorite }, Icons.Outlined.FavoriteBorder))
+        add(CategoryRowModel(BookshelfCategoryTarget.Pdf("PDF"), uiState.books.count { it.format == BookFormat.PDF }, AppIcons.FileText))
+        add(CategoryRowModel(BookshelfCategoryTarget.Txt("TXT"), uiState.books.count { it.format == BookFormat.TXT }, AppIcons.FileText))
+        add(CategoryRowModel(BookshelfCategoryTarget.Favorites(favoritesTitle), uiState.books.count { it.isFavorite }, AppIcons.Heart.regular))
     }
     CategoryListPage(
         categories = rows,
@@ -499,7 +488,7 @@ private fun CategoryListPage(
                     CategoryRow(
                         title = row.folder.name,
                         count = folderBookCounts[row.folder.id] ?: 0,
-                        icon = Icons.Outlined.Folder,
+                        icon = AppIcons.Folder,
                         linked = row.folder.storageDocumentUri != null,
                         startIndent = (row.depth * 20).dp,
                         onClick = { onFolderSelected(row.folder) },
@@ -527,7 +516,7 @@ private fun CategoryListPage(
                     CategoryRow(
                         title = tag.name,
                         count = tagIdsByBook.values.count { tag.id in it },
-                        icon = Icons.Outlined.Label,
+                        icon = AppIcons.Tag,
                         onClick = {
                             onTargetSelected(BookshelfCategoryTarget.Tag(tag.id, tag.name))
                         }
@@ -547,7 +536,7 @@ private fun CategoriesPageHeader(title: String, onBack: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         LiquidGlassIconButton(
-            imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+            imageVector = directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight),
             contentDescription = stringResource(R.string.back),
             onClick = onBack,
             settingsBackButton = true
@@ -612,7 +601,7 @@ private fun CategoryRow(
             )
             if (linked) {
                 Icon(
-                    imageVector = Icons.Outlined.Link,
+                    imageVector = AppIcons.Link,
                     contentDescription = stringResource(R.string.folder_storage_linked),
                     tint = AppColors.Accent,
                     modifier = Modifier.size(16.dp)
@@ -626,7 +615,7 @@ private fun CategoryRow(
             )
             Spacer(Modifier.width(6.dp))
             Icon(
-                Icons.Outlined.KeyboardArrowRight,
+                directionalIcon(AppIcons.CaretRight, AppIcons.CaretLeft),
                 null,
                 tint = AppColors.TextSecondary,
                 modifier = Modifier.size(20.dp)
@@ -1031,7 +1020,7 @@ private fun CategoryBooksHeader(
             }
             Spacer(Modifier.width(10.dp))
             LiquidGlassIconButton(
-                imageVector = Icons.Outlined.Delete,
+                imageVector = AppIcons.Trash,
                 contentDescription = stringResource(R.string.delete),
                 onClick = onDelete,
                 enabled = selectedCount > 0,
@@ -1044,7 +1033,7 @@ private fun CategoryBooksHeader(
             )
             Spacer(Modifier.width(10.dp))
             LiquidGlassIconButton(
-                imageVector = Icons.Outlined.Label,
+                imageVector = AppIcons.Tag,
                 contentDescription = stringResource(R.string.tag_sheet_title),
                 onClick = onTags,
                 enabled = selectedCount > 0,
@@ -1057,7 +1046,7 @@ private fun CategoryBooksHeader(
             )
             Spacer(Modifier.width(10.dp))
             LiquidGlassIconButton(
-                imageVector = Icons.Outlined.DriveFileMove,
+                imageVector = AppIcons.FolderSimple,
                 contentDescription = stringResource(R.string.move_books),
                 onClick = onMove,
                 enabled = selectedCount > 0,
@@ -1070,7 +1059,7 @@ private fun CategoryBooksHeader(
             )
         } else {
             LiquidGlassIconButton(
-                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                imageVector = directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight),
                 contentDescription = stringResource(R.string.back),
                 onClick = onBack,
                 settingsBackButton = true

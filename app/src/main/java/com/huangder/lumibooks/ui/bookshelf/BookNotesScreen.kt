@@ -1,4 +1,6 @@
 package com.huangder.lumibooks.ui.bookshelf
+import com.huangder.lumibooks.ui.icons.directionalIcon
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -28,11 +30,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.outlined.Bookmark
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -160,7 +157,7 @@ fun BookNotesScreen(
                     )
             ) {
                 LiquidGlassIconButton(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    imageVector = directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight),
                     contentDescription = stringResource(R.string.back),
                     onClick = onNavigateBack,
                     size = if (isLiquidGlass) 48.dp else 36.dp,
@@ -480,7 +477,7 @@ private fun HighlightNoteItem(
                 )
                 Spacer(Modifier.width(AppSpace.sm))
                 Icon(
-                    imageVector = Icons.Outlined.Delete,
+                    imageVector = AppIcons.Trash,
                     contentDescription = stringResource(R.string.delete),
                     tint = AppColors.TextSecondary,
                     modifier = Modifier
@@ -508,7 +505,7 @@ private fun BookmarkItem(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
-            imageVector = Icons.Outlined.Bookmark,
+            imageVector = AppIcons.Bookmark.regular,
             contentDescription = null,
             tint = AppColors.Accent,
             modifier = Modifier.size(20.dp)
@@ -531,7 +528,7 @@ private fun BookmarkItem(
             )
         }
         Icon(
-            imageVector = Icons.Outlined.Delete,
+            imageVector = AppIcons.Trash,
             contentDescription = stringResource(R.string.delete),
             tint = AppColors.TextSecondary,
             modifier = Modifier
@@ -562,7 +559,7 @@ private fun ExportBookmarksButton(
             )
         } else {
             Icon(
-                imageVector = Icons.Outlined.Download,
+                imageVector = AppIcons.DownloadSimple,
                 contentDescription = stringResource(R.string.export_bookmarks),
                 tint = Color.White,
                 modifier = Modifier.size(27.dp)

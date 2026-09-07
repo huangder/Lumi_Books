@@ -23,7 +23,22 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.util.LinkedHashMap
 
+enum class TxtIndexState {
+    FAST_PARTIAL,
+    COMPLETE,
+    FAILED
+}
+
+data class TxtOpenResult(
+    val content: BookContent,
+    val state: TxtIndexState,
+    val sourceLength: Long
+)
+
 class TxtParser(private val context: Context? = null) : BookParser {
+    /** Guards the parser's active source, encoding, entries, and caches as one snapshot. */
+    private val parserStateLock = Any()
+
     override var paragraphSpacingDp: Float = 0f
     override var firstLineIndentChars: Float = 0f
     override var contentWidth: Int = 0
@@ -66,8 +81,17 @@ class TxtParser(private val context: Context? = null) : BookParser {
     private var encodingInfo = EncodingInfo(Charsets.UTF_8, 0L)
     private var detectedEmbeddedTocRange: ByteRange? = null
     val activeCharsetName: String
-        get() = encodingInfo.charset.name()
+        get() = synchronized(parserStateLock) { encodingInfo.charset.name() }
     private var entries: List<TxtChapterEntry> = emptyList()
+    @Volatile
+    var indexState: TxtIndexState = TxtIndexState.COMPLETE
+        private set
+    @Volatile
+    var indexedSourceLength: Long = 0L
+        private set
+
+    /** When true, open the file as plain content without semantic TOC detection. */
+    var skipTocParsing: Boolean = false
 
     private val contentCache = object : LinkedHashMap<Int, String>(6, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, String>?): Boolean {
@@ -82,7 +106,72 @@ class TxtParser(private val context: Context? = null) : BookParser {
     }
 
     override fun parse(filePath: String): BookContent = synchronized(parseLock(filePath)) {
-        parseLocked(filePath)
+        synchronized(parserStateLock) { parseLocked(filePath) }
+    }
+
+    /**
+     * Opens a large TXT without scanning the complete file. The returned chapters are
+     * deterministic byte windows and can be replaced by the semantic index later.
+     */
+    fun parseFastOpen(filePath: String): TxtOpenResult = synchronized(parseLock(filePath)) {
+        synchronized(parserStateLock) {
+        sourceLease?.close()
+        val lease = ReaderOpenPerformance.trace("txt_open_seekable") {
+            if (BookFileAccess.isContentUri(filePath)) {
+                BookFileAccess.openSeekable(
+                    requireNotNull(context) { "Context is required for document URIs" },
+                    filePath,
+                    writable = true
+                )
+            } else null
+        }
+        val file = File(lease?.path ?: filePath)
+        require(file.isFile) { "TXT file not found: $filePath" }
+        sourceLocation = filePath
+        sourceLease = lease
+        sourceFile = file
+        synchronized(contentCache) { contentCache.clear() }
+        synchronized(htmlCache) { htmlCache.clear() }
+        detectedEmbeddedTocRange = null
+        encodingInfo = ReaderOpenPerformance.trace("txt_encoding_detect") { resolveEncoding(file) }
+        entries = buildFastEntries(file, encodingInfo)
+        indexState = TxtIndexState.FAST_PARTIAL
+        indexedSourceLength = file.length()
+        val title = context?.let { FileUtils.getFileNameFromLocation(it, filePath) }
+            ?.substringBeforeLast('.')?.ifBlank { null } ?: file.nameWithoutExtension
+        TxtOpenResult(
+            content = BookContent(
+                title = title,
+                author = context?.getString(R.string.book_author_unknown) ?: "Unknown author",
+                chapters = entries.map { entry -> Chapter(entry.index, entry.title, "", "") },
+                tocEntries = emptyList()
+            ),
+            state = indexState,
+            sourceLength = indexedSourceLength
+        )
+        }
+    }
+
+    /** Rebuilds the semantic index in the background and atomically updates this parser. */
+    fun rebuildSemanticIndex(filePath: String): BookContent = synchronized(parseLock(filePath)) {
+        synchronized(parserStateLock) { parseLocked(filePath) }
+    }
+
+    /**
+     * Reopens the same source using encoding detection and fallback content chunks only.
+     * This is used when a user TXT TOC rule or automatic heading scan rejects an otherwise
+     * readable file.
+     */
+    fun parseWithoutToc(filePath: String): BookContent = synchronized(parseLock(filePath)) {
+        synchronized(parserStateLock) {
+            val previous = skipTocParsing
+            skipTocParsing = true
+            try {
+                parseLocked(filePath)
+            } finally {
+                skipTocParsing = previous
+            }
+        }
     }
 
     private fun parseLocked(filePath: String): BookContent {
@@ -102,6 +191,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
         sourceLocation = filePath
         sourceLease = lease
         sourceFile = file
+        indexedSourceLength = file.length()
         val displayTitle = context?.let { FileUtils.getFileNameFromLocation(it, filePath) }
             ?.substringBeforeLast('.')
             ?.ifBlank { null }
@@ -110,8 +200,9 @@ class TxtParser(private val context: Context? = null) : BookParser {
         synchronized(htmlCache) { htmlCache.clear() }
         detectedEmbeddedTocRange = null
 
-        // 优先从磁盘缓存加载章节索引，避免每次重新全文扫描
-        val cached = ReaderOpenPerformance.trace("txt_index_cache_read") {
+        // Fallback mode deliberately bypasses semantic index caches: a cached TOC can
+        // otherwise reintroduce the same bad headings that caused the initial failure.
+        val cached = if (skipTocParsing) null else ReaderOpenPerformance.trace("txt_index_cache_read") {
             loadChapterCache(file)
         }
         if (cached != null) {
@@ -121,10 +212,14 @@ class TxtParser(private val context: Context? = null) : BookParser {
             encodingInfo = ReaderOpenPerformance.trace("txt_encoding_detect") {
                 resolveEncoding(file)
             }
-            val headings = ReaderOpenPerformance.trace("txt_heading_scan") {
-                findChapterHeadings(file, encodingInfo)
+            val headings = if (skipTocParsing) {
+                emptyList()
+            } else {
+                ReaderOpenPerformance.trace("txt_heading_scan") {
+                    findChapterHeadings(file, encodingInfo)
+                }
             }
-            if (selectedTocRule != null && headings.isEmpty()) {
+            if (!skipTocParsing && selectedTocRule != null && headings.isEmpty()) {
                 error("TXT TOC rule '${selectedTocRule?.name}' did not match any heading")
             }
             entries = ReaderOpenPerformance.trace("txt_index_build") {
@@ -133,6 +228,16 @@ class TxtParser(private val context: Context? = null) : BookParser {
                 } else {
                     buildFallbackEntries(file, encodingInfo)
                 }
+            }
+            // A TOC heading can leave a very large preface/chapter range (for example,
+            // when an export contains an unrecognised body before the first heading).
+            // StaticLayout materializes the whole range and can stall the reader or exhaust
+            // the heap. Force the caller's plain-text fallback so the body is split safely.
+            if (!skipTocParsing &&
+                detectedEmbeddedTocRange == null &&
+                entries.any { it.endByte - it.startByte > MAX_LAYOUT_CHAPTER_BYTES }
+            ) {
+                error("TXT chapter range is too large for paged layout")
             }
             if (entries.isEmpty()) {
                 entries = listOf(
@@ -145,10 +250,14 @@ class TxtParser(private val context: Context? = null) : BookParser {
                 )
             }
             // 解析完成后写入缓存，供下次打开使用
-            ReaderOpenPerformance.trace("txt_index_cache_write") {
-            saveChapterCache(file, encodingInfo, entries)
+            if (!skipTocParsing) {
+                ReaderOpenPerformance.trace("txt_index_cache_write") {
+                    saveChapterCache(file, encodingInfo, entries)
+                }
             }
         }
+        indexState = TxtIndexState.COMPLETE
+        indexedSourceLength = file.length()
 
         return BookContent(
             title = displayTitle,
@@ -161,7 +270,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
                     htmlContent = ""
                 )
             },
-            tocEntries = entries.map { entry ->
+            tocEntries = if (skipTocParsing) emptyList() else entries.map { entry ->
                 TocEntry(
                     title = entry.title,
                     level = entry.level,
@@ -170,6 +279,76 @@ class TxtParser(private val context: Context? = null) : BookParser {
                 )
             }
         )
+    }
+
+    private fun buildFastEntries(file: File, encoding: EncodingInfo): List<TxtChapterEntry> {
+        val start = encoding.contentStart.coerceAtMost(file.length())
+        if (file.length() <= start) return emptyList()
+        val result = ArrayList<TxtChapterEntry>(((file.length() - start) / FAST_OPEN_CHUNK_BYTES + 1L).toInt())
+        RandomAccessFile(file, "r").use { reader ->
+            var chunkStart = start
+            var index = 0
+            while (chunkStart < file.length()) {
+                val proposed = minOf(chunkStart + FAST_OPEN_CHUNK_BYTES, file.length())
+                val chunkEnd = if (proposed >= file.length()) proposed
+                else safeFastBoundary(reader, encoding.charset, chunkStart, proposed, file.length())
+                val end = chunkEnd.coerceIn(chunkStart + 1L, file.length())
+                result += TxtChapterEntry(
+                    index = index,
+                    title = context?.getString(R.string.chapter_number, index + 1)
+                        ?: "Part ${index + 1}",
+                    startByte = chunkStart,
+                    endByte = end
+                )
+                index++
+                chunkStart = end
+            }
+        }
+        return result
+    }
+
+    private fun safeFastBoundary(
+        reader: RandomAccessFile,
+        charset: Charset,
+        start: Long,
+        proposed: Long,
+        fileLength: Long
+    ): Long {
+        var candidate = proposed
+        if (charset == Charsets.UTF_16LE || charset == Charsets.UTF_16BE) {
+            candidate -= (candidate - start) % 2L
+            return candidate.coerceAtLeast(start + 1L)
+        }
+        // Validate only a few bytes around the boundary. This avoids scanning the file while
+        // ensuring a decoder never receives a truncated UTF-8/GB18030 sequence.
+        val windowStart = maxOf(start, proposed - 4L)
+        val windowEnd = minOf(fileLength, proposed + 4L)
+        val window = ByteArray((windowEnd - windowStart).toInt())
+        reader.seek(windowStart)
+        reader.readFully(window)
+        fun decodeRange(from: Long, to: Long, endOfInput: Boolean): Boolean {
+            if (to <= from) return true
+            val fromIndex = (from - windowStart).toInt().coerceIn(0, window.size)
+            val toIndex = (to - windowStart).toInt().coerceIn(fromIndex, window.size)
+            val length = toIndex - fromIndex
+            val decoder = charset.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+            val input = java.nio.ByteBuffer.wrap(window, fromIndex, length)
+            val output = CharBuffer.allocate(length.coerceAtLeast(1))
+            return !decoder.decode(input, output, endOfInput).isError
+        }
+        for (offset in 0..8) {
+            val left = proposed - offset
+            if (left <= start || left >= fileLength) continue
+            val suffixStart = maxOf(start, left - 4L)
+            val leftValid = (suffixStart..left).any { candidateStart ->
+                decodeRange(candidateStart, left, endOfInput = true)
+            }
+            val rightValid = decodeRange(left, minOf(fileLength, left + 4L), endOfInput = false)
+            if (leftValid && rightValid) return left
+        }
+        return proposed
     }
 
     /**
@@ -183,6 +362,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
         val payload = ReaderCacheStore.get(ctx).readMetadata(txtIndexNamespace(), fingerprint) ?: return null
         return try {
             if (payload.getString("formatVersion") != CACHE_VERSION) return null
+            if (payload.optString("indexKind", "complete") != "complete") return null
             if (payload.optString("localeTag") != ctx.resources.configuration.locales[0].toLanguageTag()) {
                 return null
             }
@@ -207,6 +387,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
                 }
             }
             if (chapterEntries.isEmpty()) return null
+            if (chapterEntries.any { it.endByte - it.startByte > MAX_LAYOUT_CHAPTER_BYTES }) return null
             Pair(encoding, chapterEntries)
         } catch (_: Exception) {
             null
@@ -233,6 +414,8 @@ class TxtParser(private val context: Context? = null) : BookParser {
         }
         val payload = JSONObject()
             .put("formatVersion", CACHE_VERSION)
+            .put("indexKind", "complete")
+            .put("sourceLength", file.length())
             .put("localeTag", ctx.resources.configuration.locales[0].toLanguageTag())
             .put("charset", encoding.charset.name())
             .put("contentStart", encoding.contentStart)
@@ -565,6 +748,9 @@ class TxtParser(private val context: Context? = null) : BookParser {
         val matchesByPattern = Array(TxtChapterStructure.PATTERN_COUNT) { mutableListOf<Heading>() }
         val decoratedHeadings = mutableListOf<Heading>()
         val looseNumberedHeadings = mutableListOf<NumberedHeading>()
+        val symbolRule = TxtTocRuleBuiltIns.byId("builtin-symbol-prefixed")
+        val symbolMatcher = symbolRule?.let { TxtTocRuleCompiler.compile(it).getOrNull() }
+        val symbolHeadings = mutableListOf<Heading>()
         val sampleLines = ArrayList<String>(FAST_AUTO_SAMPLE_LINES)
         forEachPotentialHeadingLine(file, encoding, encoding.contentStart, file.length()) {
             start,
@@ -576,6 +762,10 @@ class TxtParser(private val context: Context? = null) : BookParser {
             if (line.isEmpty()) return@forEachPotentialHeadingLine
             if (sampleLines.size < FAST_AUTO_SAMPLE_LINES) sampleLines += line
             if (!candidate) return@forEachPotentialHeadingLine
+
+            symbolMatcher?.match(line)?.let { match ->
+                symbolHeadings += Heading(match.title.take(TITLE_PREFIX_BYTES), start, match.role)
+            }
 
             if (TxtChapterStructure.isDecoratedHeading(line)) {
                 decoratedHeadings += Heading(line.take(50), start)
@@ -598,12 +788,19 @@ class TxtParser(private val context: Context? = null) : BookParser {
                 }
             }
         }
-        lastTocDiagnostics = TxtTocRuleSelector.choose(
+        val automaticRule = TxtTocRuleSelector.choose(
             TxtTocRuleBuiltIns.all,
             sampleLines.asSequence()
-        ).second
+        ).also { lastTocDiagnostics = it.second }.first
 
-        val primaryHeadings = matchesByPattern.firstOrNull { it.size >= 2 } ?: return null
+        val primaryHeadings = matchesByPattern.firstOrNull { it.size >= 2 }
+        if (primaryHeadings == null) {
+            return if (automaticRule?.id == "builtin-symbol-prefixed" && symbolHeadings.size >= 2) {
+                normalizeHeadingLevels(symbolHeadings)
+            } else {
+                null
+            }
+        }
         val headingsWithFilledGaps = fillSingleNumberGaps(primaryHeadings, looseNumberedHeadings)
         val firstNumber = extractArabicChapterNumber(headingsWithFilledGaps.first().title)
         val decoratedPrelude = decoratedHeadings.filter {
@@ -653,7 +850,9 @@ class TxtParser(private val context: Context? = null) : BookParser {
         val markerStrings = listOf(
             "第", "卷", "篇", "序章", "楔子", "前言", "终章", "尾声", "后记", "番外",
             "Chapter", "Section", "Episode", "Part", "Volume", "Vol.", "Book",
-            "<", "【", "["
+            "<", "【", "[", "☆", "★", "✦", "✧", "◆", "◇", "●", "○", "■", "□",
+            "▪", "▫", "•", "※", "✱", "✲", "✳", "✴", "✵", "✶", "✷", "✸", "✹", "✺",
+            "✻", "✼", "✽", "✾", "✿"
         )
         val candidateLineStarts = HashSet<Int>()
         val firstSearchOffset = encoding.contentStart.toInt().coerceIn(0, bytes.size)
@@ -676,9 +875,15 @@ class TxtParser(private val context: Context? = null) : BookParser {
         val matchesByPattern = Array(TxtChapterStructure.PATTERN_COUNT) { mutableListOf<Heading>() }
         val headings = mutableListOf<Heading>()
         val decoratedHeadings = mutableListOf<Heading>()
+        val symbolRule = TxtTocRuleBuiltIns.byId("builtin-symbol-prefixed")
+        val symbolMatcher = symbolRule?.let { TxtTocRuleCompiler.compile(it).getOrNull() }
+        val symbolHeadings = mutableListOf<Heading>()
         candidateLineStarts.sorted().forEach { lineStart ->
             val lineEnd = raw.indexOf('\n', lineStart).let { if (it < 0) raw.length else it }
             val line = String(bytes, lineStart, lineEnd - lineStart, encoding.charset).trim()
+            symbolMatcher?.match(line)?.let { match ->
+                symbolHeadings += Heading(match.title.take(TITLE_PREFIX_BYTES), lineStart.toLong(), match.role)
+            }
             if (TxtChapterStructure.isDecoratedHeading(line)) {
                 decoratedHeadings += Heading(line.take(50), lineStart.toLong())
             }
@@ -689,7 +894,18 @@ class TxtParser(private val context: Context? = null) : BookParser {
                 }
             }
         }
-        val primaryHeadings = matchesByPattern.firstOrNull { it.size >= 2 } ?: return null
+        val automaticRule = TxtTocRuleSelector.choose(
+            TxtTocRuleBuiltIns.all,
+            sampleLines.asSequence()
+        ).also { lastTocDiagnostics = it.second }.first
+        val primaryHeadings = matchesByPattern.firstOrNull { it.size >= 2 }
+        if (primaryHeadings == null) {
+            return if (automaticRule?.id == "builtin-symbol-prefixed" && symbolHeadings.size >= 2) {
+                normalizeHeadingLevels(symbolHeadings)
+            } else {
+                null
+            }
+        }
         headings += primaryHeadings
         if (headings.size < 2) return null
         val firstNumber = extractArabicChapterNumber(headings.first().title)
@@ -938,7 +1154,9 @@ class TxtParser(private val context: Context? = null) : BookParser {
     ) {
         if (endByte <= startByte) return
         val markerBytes = listOf(
-            "第", "卷", "篇", "序章", "楔子", "前言", "终章", "尾声", "后记", "番外"
+            "第", "卷", "篇", "序章", "楔子", "前言", "终章", "尾声", "后记", "番外",
+            "☆", "★", "✦", "✧", "◆", "◇", "●", "○", "■", "□", "▪", "▫", "•", "※",
+            "✱", "✲", "✳", "✴", "✵", "✶", "✷", "✸", "✹", "✺", "✻", "✼", "✽", "✾", "✿"
         ).map { it.toByteArray(encoding.charset) }
         val markerFirstBytes = BooleanArray(256).also { firstBytes ->
             markerBytes.forEach { marker ->
@@ -1217,26 +1435,30 @@ class TxtParser(private val context: Context? = null) : BookParser {
     }
 
     override fun getChapterContent(chapterIndex: Int): CharSequence {
-        synchronized(contentCache) {
-            contentCache[chapterIndex]?.let { return it }
+        return synchronized(parserStateLock) {
+            synchronized(contentCache) {
+                contentCache[chapterIndex]?.let { return@synchronized it }
+            }
+            val entry = entries.getOrNull(chapterIndex) ?: return@synchronized ""
+            val file = sourceFile ?: return@synchronized ""
+            val text = decodeRange(file, encodingInfo.charset, entry.startByte, entry.endByte)
+                .trim('\uFEFF', '\r', '\n')
+            synchronized(contentCache) { contentCache[chapterIndex] = text }
+            text
         }
-        val entry = entries.getOrNull(chapterIndex) ?: return ""
-        val file = sourceFile ?: return ""
-        val text = decodeRange(file, encodingInfo.charset, entry.startByte, entry.endByte)
-            .trim('\uFEFF', '\r', '\n')
-        synchronized(contentCache) { contentCache[chapterIndex] = text }
-        return text
     }
 
     override fun getChapterHtml(chapterIndex: Int, optimizeLayout: Boolean): String {
-        synchronized(htmlCache) {
-            htmlCache[chapterIndex]?.let { return it }
+        return synchronized(parserStateLock) {
+            synchronized(htmlCache) {
+                htmlCache[chapterIndex]?.let { return@synchronized it }
+            }
+            val text = getChapterContent(chapterIndex).toString()
+            if (text.isEmpty()) return@synchronized ""
+            val html = wrapHtml(text)
+            synchronized(htmlCache) { htmlCache[chapterIndex] = html }
+            html
         }
-        val text = getChapterContent(chapterIndex).toString()
-        if (text.isEmpty()) return ""
-        val html = wrapHtml(text)
-        synchronized(htmlCache) { htmlCache[chapterIndex] = html }
-        return html
     }
 
     private fun wrapHtml(text: String): String {
@@ -1261,61 +1483,72 @@ class TxtParser(private val context: Context? = null) : BookParser {
     }
 
     override fun clearHtmlCache() {
-        synchronized(htmlCache) { htmlCache.clear() }
+        synchronized(parserStateLock) {
+            synchronized(htmlCache) { htmlCache.clear() }
+        }
     }
 
-    override fun getChapterCount(): Int = entries.size
+    override fun getChapterCount(): Int = synchronized(parserStateLock) { entries.size }
 
     /**
      * 返回指定章节在源文件中的字节范围 (startByte, endByte)，用于编辑时定位
      */
     override fun getChapterByteRange(chapterIndex: Int): Pair<Long, Long>? {
-        val entry = entries.getOrNull(chapterIndex) ?: return null
-        return entry.startByte to entry.endByte
+        return synchronized(parserStateLock) {
+            val entry = entries.getOrNull(chapterIndex) ?: return@synchronized null
+            entry.startByte to entry.endByte
+        }
     }
 
     /** Converts a visible chapter character offset to an absolute source byte offset. */
     fun characterOffsetToByte(chapterIndex: Int, characterOffset: Int, endBias: Boolean = false): Long? {
-        val entry = entries.getOrNull(chapterIndex) ?: return null
-        val raw = decodeRange(sourceFile ?: return null, encodingInfo.charset, entry.startByte, entry.endByte)
-        val visibleStart = raw.indexOfFirst { it != '\uFEFF' && it != '\r' && it != '\n' }
-            .let { if (it < 0) raw.length else it }
-        val visibleEnd = raw.indexOfLast { it != '\uFEFF' && it != '\r' && it != '\n' } + 1
-        val visible = raw.substring(visibleStart, visibleEnd.coerceAtLeast(visibleStart))
-        var offset = characterOffset.coerceIn(0, visible.length)
-        if (offset < visible.length && visible[offset].isLowSurrogate()) {
-            offset += if (endBias) 1 else -1
+        return synchronized(parserStateLock) {
+            val entry = entries.getOrNull(chapterIndex) ?: return@synchronized null
+            val file = sourceFile ?: return@synchronized null
+            val charset = encodingInfo.charset
+            val raw = decodeRange(file, charset, entry.startByte, entry.endByte)
+            val visibleStart = raw.indexOfFirst { it != '\uFEFF' && it != '\r' && it != '\n' }
+                .let { if (it < 0) raw.length else it }
+            val visibleEnd = raw.indexOfLast { it != '\uFEFF' && it != '\r' && it != '\n' } + 1
+            val visible = raw.substring(visibleStart, visibleEnd.coerceAtLeast(visibleStart))
+            var offset = characterOffset.coerceIn(0, visible.length)
+            if (offset < visible.length && visible[offset].isLowSurrogate()) {
+                offset += if (endBias) 1 else -1
+            }
+            val rawOffset = visibleStart + offset
+            entry.startByte + strictEncode(raw.substring(0, rawOffset), charset).size
+                .toLong().coerceAtMost(entry.endByte - entry.startByte)
         }
-        val rawOffset = visibleStart + offset
-        return entry.startByte + strictEncode(raw.substring(0, rawOffset), encodingInfo.charset).size
-            .toLong().coerceAtMost(entry.endByte - entry.startByte)
     }
 
     /** Resolves an absolute source byte offset to a visible chapter character offset. */
     fun byteToCharacterPosition(byteOffset: Long): Pair<Int, Int>? {
-        if (entries.isEmpty()) return null
-        val anchor = byteOffset.coerceAtLeast(encodingInfo.contentStart)
-        val entry = entries.lastOrNull { anchor >= it.startByte } ?: entries.first()
-        val bounded = anchor.coerceIn(entry.startByte, entry.endByte)
-        val raw = decodeRange(sourceFile ?: return null, encodingInfo.charset, entry.startByte, entry.endByte)
-        val visibleStart = raw.indexOfFirst { it != '\uFEFF' && it != '\r' && it != '\n' }
-            .let { if (it < 0) raw.length else it }
-        val visibleEnd = raw.indexOfLast { it != '\uFEFF' && it != '\r' && it != '\n' } + 1
-        val visible = raw.substring(visibleStart, visibleEnd.coerceAtLeast(visibleStart))
-        val targetBytes = (bounded - entry.startByte).toInt().coerceAtLeast(0)
-        var cursor = 0
-        var characterOffset = 0
-        while (characterOffset < visible.length) {
-            val step = if (
-                visible[characterOffset].isHighSurrogate() &&
-                characterOffset + 1 < visible.length && visible[characterOffset + 1].isLowSurrogate()
-            ) 2 else 1
-            val next = strictEncode(visible.substring(characterOffset, characterOffset + step), encodingInfo.charset).size
-            if (cursor + next > targetBytes) break
-            cursor += next
-            characterOffset += step
+        return synchronized(parserStateLock) {
+            if (entries.isEmpty()) return@synchronized null
+            val charset = encodingInfo.charset
+            val anchor = byteOffset.coerceAtLeast(encodingInfo.contentStart)
+            val entry = entries.lastOrNull { anchor >= it.startByte } ?: entries.first()
+            val bounded = anchor.coerceIn(entry.startByte, entry.endByte)
+            val raw = decodeRange(sourceFile ?: return@synchronized null, charset, entry.startByte, entry.endByte)
+            val visibleStart = raw.indexOfFirst { it != '\uFEFF' && it != '\r' && it != '\n' }
+                .let { if (it < 0) raw.length else it }
+            val visibleEnd = raw.indexOfLast { it != '\uFEFF' && it != '\r' && it != '\n' } + 1
+            val visible = raw.substring(visibleStart, visibleEnd.coerceAtLeast(visibleStart))
+            val targetBytes = (bounded - entry.startByte).toInt().coerceAtLeast(0)
+            var cursor = 0
+            var characterOffset = 0
+            while (characterOffset < visible.length) {
+                val step = if (
+                    visible[characterOffset].isHighSurrogate() &&
+                    characterOffset + 1 < visible.length && visible[characterOffset + 1].isLowSurrogate()
+                ) 2 else 1
+                val next = strictEncode(visible.substring(characterOffset, characterOffset + step), charset).size
+                if (cursor + next > targetBytes) break
+                cursor += next
+                characterOffset += step
+            }
+            entry.index to characterOffset
         }
-        return entry.index to characterOffset
     }
 
     override fun replaceChapterContent(chapterIndex: Int, newText: String): Boolean {
@@ -1326,10 +1559,15 @@ class TxtParser(private val context: Context? = null) : BookParser {
     fun rewriteWithOperations(
         operations: List<TxtEditOperation>,
         reparseAfterWrite: Boolean = true
-    ): TxtRewriteResult = synchronized(
-        parseLock(sourceLocation.ifBlank { sourceFile?.absolutePath.orEmpty() })
-    ) {
-        rewriteWithOperationsLocked(operations, reparseAfterWrite)
+    ): TxtRewriteResult {
+        val location = synchronized(parserStateLock) {
+            sourceLocation.ifBlank { sourceFile?.absolutePath.orEmpty() }
+        }
+        return synchronized(parseLock(location)) {
+            synchronized(parserStateLock) {
+                rewriteWithOperationsLocked(operations, reparseAfterWrite)
+            }
+        }
     }
 
     private fun rewriteWithOperationsLocked(
@@ -1523,13 +1761,21 @@ class TxtParser(private val context: Context? = null) : BookParser {
     }
 
     override fun close() {
-        sourceLease?.close()
-        sourceLease = null
-        sourceFile = null
+        synchronized(parserStateLock) {
+            sourceLease?.close()
+            sourceLease = null
+            sourceFile = null
+            sourceLocation = ""
+            entries = emptyList()
+            synchronized(contentCache) { contentCache.clear() }
+            synchronized(htmlCache) { htmlCache.clear() }
+        }
     }
 
-    private companion object {
-        const val CACHE_VERSION = "TXT_INDEX_V7"  // V7: skip embedded title-only TOC prefixes
+    companion object {
+        const val LARGE_FILE_THRESHOLD_BYTES = 10L * 1024L * 1024L
+        const val FAST_OPEN_CHUNK_BYTES = 32L * 1024L
+        const val CACHE_VERSION = "TXT_INDEX_V8"  // V8: persist complete/fast index metadata
         const val STREAM_BUFFER_SIZE = 64 * 1024
         const val HEADING_PREFIX_BYTES = 512
         const val TITLE_PREFIX_BYTES = 512
@@ -1539,6 +1785,8 @@ class TxtParser(private val context: Context? = null) : BookParser {
         const val FAST_AUTO_SAMPLE_LINES = 2_000
         const val FALLBACK_TARGET_CHARS = 3_000
         const val MAX_RAW_CHUNK_BYTES = 32_000L
+        /** Keep each TXT chapter small enough for a bounded StaticLayout allocation. */
+        const val MAX_LAYOUT_CHAPTER_BYTES = MAX_RAW_CHUNK_BYTES
         const val CONTENT_CACHE_SIZE = 5
         const val HTML_CACHE_SIZE = 3
         const val MIN_EMBEDDED_TOC_HEADINGS = 3

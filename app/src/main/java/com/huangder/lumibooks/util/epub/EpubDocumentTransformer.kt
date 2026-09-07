@@ -244,6 +244,28 @@ html.lumi-sepia-dark body { color: #e8d5bc !important; }
 html.lumi-green-dark { background: #142a1a !important; }
 html.lumi-green-dark body { color: #c8e6c9 !important; }
 ::selection { background: rgba(255, 193, 7, 0.42); }
+/* Duokan exports use a tiny 48x48 image as the only visible footnote marker.
+   Keep the publisher layout but give the marker a practical visual and touch size. */
+a[id*="footnotebookmark_start_"],
+a[href*="#ref_footnotebookmark_end_"],
+a[href*="#ref-footnotebookmark-end-"] {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 4px;
+  margin: -4px;
+  box-sizing: content-box;
+  vertical-align: middle;
+  touch-action: manipulation;
+}
+a[id*="footnotebookmark_start_"] img,
+a[href*="#ref_footnotebookmark_end_"] img,
+a[href*="#ref-footnotebookmark-end-"] img {
+  width: 20px !important;
+  height: 20px !important;
+}
 #lumi-footnote-popover {
   position: fixed;
   left: 12px;
@@ -446,7 +468,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     transition: 'slide', transitionDurationMs: 260, nativePaging: false, animationTimer: 0, suppressClickUntil: 0, preservePublisherBackground: true,
     edgeTapLeft: -1, edgeTapRight: 1, canTurnPrevious: true, canTurnNext: true,
     bionicReading: false, chineseMode: 'original', chineseMap: null, pendingPreparedPage: null, prepareSerial: 0,
-    highlightItems: [], searchHighlight: null,
+    highlightItems: [], ttsHighlight: null, searchHighlight: null,
     insets: { top: 0, right: 0, bottom: 0, left: 0 }
   };
   var resizeTimer = 0;
@@ -2204,6 +2226,13 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
         appendHighlightRange(layer, range, color);
       }
     });
+    if (state.ttsHighlight) {
+      var tts = state.ttsHighlight;
+      var ttsRange = rangeAtOffsets(textIndex(), tts.start, tts.end);
+      if (ttsRange) appendHighlightRange(
+        layer, ttsRange, tts.color, 'lumi-tts-highlight-block'
+      );
+    }
     if (state.searchHighlight && state.searchHighlight.exact) {
       var searchRange = quoteRange(state.searchHighlight);
       if (searchRange) appendHighlightRange(
@@ -2215,6 +2244,26 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
 
   function setHighlights(items) {
     state.highlightItems = Array.isArray(items) ? items : [];
+    return rebuildHighlightLayer();
+  }
+
+  function setTtsHighlight(start, end, color) {
+    var index = textIndex();
+    var normalizedStart = Number(start);
+    var normalizedEnd = Number(end);
+    var normalizedColor = String(color || '');
+    if (!isFinite(normalizedStart) || !isFinite(normalizedEnd) ||
+        normalizedStart < 0 || normalizedEnd <= normalizedStart ||
+        normalizedEnd > index.text.length ||
+        !/^#[0-9a-f]{6,8}$/i.test(normalizedColor)) {
+      state.ttsHighlight = null;
+    } else {
+      state.ttsHighlight = {
+        start: Math.floor(normalizedStart),
+        end: Math.floor(normalizedEnd),
+        color: normalizedColor
+      };
+    }
     return rebuildHighlightLayer();
   }
 
@@ -2312,7 +2361,13 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
   }
 
   function hasFootnoteHint(value) {
-    return /(^|[\s_#./-])(footnotes?|endnotes?|rearnotes?|notes?|fn|en)([\s_./-]|\d|$)/i.test(String(value || ''));
+    var candidate = String(value || '');
+    return /(^|[\s_#./-])(footnotes?|endnotes?|rearnotes?|notes?|fn|en)([\s_./-]|\d|$)/i.test(candidate) ||
+      /(?:footnotebookmark|duokan[-_]footnote)/i.test(candidate);
+  }
+
+  function isFootnoteBacklinkHint(value) {
+    return /footnotebookmark[-_]?(?:start|back)/i.test(String(value || ''));
   }
 
   function hasFootnoteMarkerLabel(anchor) {
@@ -2343,6 +2398,8 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     try { url = new URL(anchor.href, document.baseURI); } catch (_) { return false; }
     var fragment = decodedFragment(url);
     if (!fragment) return false;
+    // Duokan footnote bodies link back to the source marker via *_start_*.
+    if (isFootnoteBacklinkHint(fragment)) return false;
     if (hasFootnoteSemantics(anchor, true)) return true;
     if (hasFootnoteMarkerLabel(anchor)) return true;
     if (hasFootnoteHint(anchor.className) || hasFootnoteHint(anchor.id) ||
@@ -2499,7 +2556,13 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       scrollChapterStartedAtBottom = boundary.atBottom;
       scrollChapterDragStartY = touchStartY;
     }
-    beginImageLongPress(imageFromTarget(event.target));
+    var initialAnchor = event.target && event.target.closest ?
+      event.target.closest('a[href],area[href]') : null;
+    // Footnote markers are often tiny images wrapped in an anchor. Let their
+    // short tap reach the link handler instead of arming image preview.
+    beginImageLongPress(
+      initialAnchor && isFootnoteReference(initialAnchor) ? null : imageFromTarget(event.target)
+    );
     if (pageStageActive) {
       settleActivePageStageForInput(true);
       pageStageDurationOverride = state.transition === 'curl' ? 210 : 170;
@@ -2594,6 +2657,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     var anchor = event.target && event.target.closest ? event.target.closest('a[href],area[href]') : null;
     var interactiveTarget = interactiveFromTarget(event.target);
     var tappedImage = imageFromTarget(event.target);
+    var footnoteAnchor = anchor && isFootnoteReference(anchor);
 
     if (state.flow === 'scrolled' && !state.fixed) {
       pageStageDurationOverride = 0;
@@ -2611,13 +2675,14 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     var horizontal = state.flow === 'paginated' && !state.fixed && Math.abs(dx) >= Math.abs(dy) * 1.15;
     var shouldTurn = !state.nativePaging && horizontal && (Math.abs(dx) >= Math.min(72, state.viewportWidth * 0.16) ||
       (Math.abs(dx) >= 18 && Math.abs(velocityX) >= 0.42));
-    var imageTap = !touchPaging && !shouldTurn && !!tappedImage && Math.abs(dx) < 12 && Math.abs(dy) < 12;
+    var imageTap = !footnoteAnchor && !touchPaging && !shouldTurn && !!tappedImage &&
+      Math.abs(dx) < 12 && Math.abs(dy) < 12;
     var tapRatio = touch.clientX / viewportWidth();
     var centerImageTap = imageTap && tapRatio >= 0.3 && tapRatio <= 0.7;
     // Covers are commonly wrapped in an anchor by EPUB generators. A short
     // center tap on that image is still the reader menu gesture; edge taps
     // and non-cover links retain their normal link/image behavior.
-    var isTap = !touchPaging && !shouldTurn && (!anchor || centerImageTap) &&
+    var isTap = !footnoteAnchor && !touchPaging && !shouldTurn && (!anchor || centerImageTap) &&
       (!interactiveTarget || centerImageTap) && (!tappedImage || centerImageTap) &&
       Math.abs(dx) < 12 && Math.abs(dy) < 12;
     var selection = window.getSelection && window.getSelection();
@@ -2704,13 +2769,13 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       event.stopPropagation();
       return;
     }
+    var anchor = event.target && event.target.closest ? event.target.closest('a[href],area[href]') : null;
     var tappedImage = imageFromTarget(event.target);
-    if (tappedImage) {
+    if (tappedImage && !(anchor && isFootnoteReference(anchor))) {
       event.preventDefault();
       event.stopPropagation();
       return;
     }
-    var anchor = event.target && event.target.closest ? event.target.closest('a[href],area[href]') : null;
     if (anchor) {
       event.preventDefault();
       event.stopPropagation();
@@ -2877,6 +2942,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     restore: restore,
     currentLocator: currentLocator,
     setHighlights: setHighlights,
+    setTtsHighlight: setTtsHighlight,
     findText: findText,
     clearSearchHighlight: clearSearchHighlight,
     cancelChapterTurn: function () { resetScrolledChapterDrag(true); },

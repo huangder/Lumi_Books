@@ -50,6 +50,7 @@ import com.huangder.lumibooks.domain.model.Note
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapAction
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
 import com.huangder.lumibooks.domain.model.ReaderTextAlignment
+import com.huangder.lumibooks.ui.reader.engine.TtsSentenceHighlightSpan
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.ByteArrayInputStream
@@ -247,6 +248,12 @@ internal data class EpubPageText(
     val endCharacterOffset: Int
 )
 
+/** Return only annotations belonging to the chapter rendered by a WebView. */
+internal fun epubNotesForChapter(
+    notes: List<Note>,
+    chapterIndex: Int
+): List<Note> = notes.filter { it.chapterIndex == chapterIndex }
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 internal fun EpubWebViewReader(
@@ -275,6 +282,8 @@ internal fun EpubWebViewReader(
     marginLeftDp: Float = 0f,
     edgeTapMode: ReaderEdgeTapMode = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT,
     notes: List<Note> = emptyList(),
+    ttsCurrentSentence: TtsSentencePosition? = null,
+    ttsHighlightColor: Int = TtsSentenceHighlightSpan.computeHighlightColor(Color.WHITE),
     searchRequest: EpubSearchRequest? = null,
     locatorRequest: EpubLocatorRequest? = null,
     pageRequest: EpubPageRequest? = null,
@@ -334,6 +343,8 @@ internal fun EpubWebViewReader(
     val latestMarginLeftDp = rememberUpdatedState(marginLeftDp)
     val latestEdgeTapMode = rememberUpdatedState(edgeTapMode)
     val latestNotes = rememberUpdatedState(notes)
+    val latestTtsCurrentSentence = rememberUpdatedState(ttsCurrentSentence)
+    val latestTtsHighlightColor = rememberUpdatedState(ttsHighlightColor)
     val latestSearchRequest = rememberUpdatedState(searchRequest)
     val latestLocatorRequest = rememberUpdatedState(locatorRequest)
     val latestPageRequest = rememberUpdatedState(pageRequest)
@@ -412,6 +423,41 @@ internal fun EpubWebViewReader(
                     val matched = session.chapterIndexForUrl(documentUrl)
                     if (matched != null) loadedChapterByView[view] = matched
                     return matched ?: loadedChapterByView[view] ?: latestChapterIndex.value
+                }
+
+                fun applyCurrentTtsHighlight(view: EpubContentWebView, chapter: Int? = null) {
+                    val viewChapter = chapter ?: session.chapterIndexForUrl(
+                        view.url.orEmpty().substringBefore('#')
+                    ) ?: loadedChapterByView[view] ?: return
+                    applyTtsHighlight(
+                        view = view,
+                        viewChapter = viewChapter,
+                        sentence = latestTtsCurrentSentence.value,
+                        color = latestTtsHighlightColor.value
+                    )
+                }
+
+                fun restoreActiveHighlights(view: EpubContentWebView, target: EpubPageTarget) {
+                    fun isCurrentActivePage(): Boolean {
+                        val expectedUrl = session.chapterUrl(target.chapterIndex).substringBefore('#')
+                        return pageTurnHost.activeWebView === view &&
+                            pageTurnHost.roleOf(view) == EpubPageTurnHost.WebViewRole.ACTIVE &&
+                            view.isAttachedToWindow &&
+                            loadedChapterByView[view] == target.chapterIndex &&
+                            view.url.orEmpty().substringBefore('#') == expectedUrl
+                    }
+
+                    fun redraw() {
+                        if (!isCurrentActivePage()) return
+                        applyHighlights(view, epubNotesForChapter(latestNotes.value, target.chapterIndex))
+                        applyCurrentTtsHighlight(view, target.chapterIndex)
+                        view.postInvalidateOnAnimation()
+                    }
+
+                    // Restore the DOM immediately, then repeat after a real WebView draw so the
+                    // promoted compositor layer cannot retain the outgoing page's visual state.
+                    redraw()
+                    view.runAfterNextDraw(::redraw)
                 }
 
                 fun preloadRequestFor(
@@ -521,11 +567,7 @@ internal fun EpubWebViewReader(
                         marginRightDp = latestMarginRightDp.value,
                         marginBottomDp = latestMarginBottomDp.value,
                         marginLeftDp = latestMarginLeftDp.value,
-                        notes = if (target.chapterIndex == latestChapterIndex.value) {
-                            latestNotes.value
-                        } else {
-                            emptyList()
-                        },
+                        notes = epubNotesForChapter(latestNotes.value, target.chapterIndex),
                         locatorRequest = null,
                         pageRequest = EpubPageRequest(
                             token = request.generation,
@@ -661,6 +703,7 @@ internal fun EpubWebViewReader(
                                     )
                                     readyTtsPageViewByChapter[target.chapterIndex] = view
                                     publishTtsPageViews()
+                                    applyCurrentTtsHighlight(view, target.chapterIndex)
                                 }
                             }
                         }
@@ -769,6 +812,10 @@ internal fun EpubWebViewReader(
                                                     locator
                                                 )
                                             }
+                                            restoreActiveHighlights(
+                                                view,
+                                                EpubPageTarget(messageChapterIndex, pageIndex)
+                                            )
                                         }
                                         if (pageTurnHost.isAwaitingPage(
                                                 messageChapterIndex,
@@ -788,6 +835,7 @@ internal fun EpubWebViewReader(
                             if (type == "ready") {
                                 readyTtsPageViewByChapter[messageChapterIndex] = view
                                 publishTtsPageViews()
+                                applyCurrentTtsHighlight(view, messageChapterIndex)
                                 readyChapter.value = messageChapterIndex
                                 chapterLoadPending.value = false
                                 view.animate().cancel()
@@ -1190,7 +1238,7 @@ internal fun EpubWebViewReader(
                                 marginRightDp = latestMarginRightDp.value,
                                 marginBottomDp = latestMarginBottomDp.value,
                                 marginLeftDp = latestMarginLeftDp.value,
-                                notes = latestNotes.value,
+                                notes = epubNotesForChapter(latestNotes.value, sourceChapter),
                                 locatorRequest = latestLocatorRequest.value,
                                 pageRequest = latestPageRequest.value
                             )
@@ -1301,6 +1349,7 @@ internal fun EpubWebViewReader(
                         target.pageIndex,
                         committedPageCount
                     )
+                    restoreActiveHighlights(activeView, target)
                     updateAdjacentPreloads(
                         target.chapterIndex,
                         target.pageIndex,
@@ -1335,6 +1384,9 @@ internal fun EpubWebViewReader(
         update = { pageTurnHost ->
             val webView = pageTurnHost.activeWebView
             webViewState.value = webView
+            val activeChapterForNotes = session.chapterIndexForUrl(
+                webView.url.orEmpty()
+            ) ?: chapterIndex
             val isFixedLayout = session.renditionLayout(chapterIndex) ==
                 EpubRenditionLayout.PRE_PAGINATED
             val nativePageTurn = usesNativeEpubPageTurn(
@@ -1456,14 +1508,19 @@ internal fun EpubWebViewReader(
                     marginRightDp = marginRightDp,
                     marginBottomDp = marginBottomDp,
                     marginLeftDp = marginLeftDp,
-                    notes = notes,
+                    notes = epubNotesForChapter(notes, activeChapterForNotes),
                     locatorRequest = locatorRequest,
                     pageRequest = pageRequest
                 )
                 configuredKey.value = nextConfigKey
             } else {
                 pageTurnHost.allWebViews().forEach { view ->
-                    applyHighlights(view, notes)
+                    val viewChapter = session.chapterIndexForUrl(view.url.orEmpty())
+                    if (viewChapter != null) {
+                        applyHighlights(view, epubNotesForChapter(notes, viewChapter))
+                        applyTtsHighlight(view, viewChapter, ttsCurrentSentence, ttsHighlightColor)
+                        view.postInvalidateOnAnimation()
+                    }
                 }
             }
         },
@@ -1486,6 +1543,23 @@ internal fun EpubWebViewReader(
         if (selectionClearToken <= 0) return@LaunchedEffect
         pageTurnHostState.value?.let { host ->
             host.allWebViews().forEach(EpubContentWebView::clearTextSelection)
+        }
+    }
+
+    LaunchedEffect(
+        ttsCurrentSentence,
+        ttsHighlightColor,
+        loadedChapter.value,
+        readyChapter.value,
+        pageTurnHostState.value
+    ) {
+        val host = pageTurnHostState.value ?: return@LaunchedEffect
+        host.allWebViews().forEach { view ->
+            val viewChapter = session.chapterIndexForUrl(
+                view.url.orEmpty().substringBefore('#')
+            ) ?: return@forEach
+            applyTtsHighlight(view, viewChapter, ttsCurrentSentence, ttsHighlightColor)
+            view.postInvalidateOnAnimation()
         }
     }
 
@@ -1874,6 +1948,22 @@ private fun applyHighlights(view: WebView, notes: List<Note>) {
     )
 }
 
+private fun applyTtsHighlight(
+    view: WebView,
+    viewChapter: Int,
+    sentence: TtsSentencePosition?,
+    color: Int
+) {
+    val command = if (sentence != null && sentence.chapterIndex == viewChapter) {
+        "window.LumiReader&&window.LumiReader.setTtsHighlight(" +
+            "${sentence.startOffset},${sentence.endOffset}," +
+            JSONObject.quote(color.toCssColor()) + ");"
+    } else {
+        "window.LumiReader&&window.LumiReader.setTtsHighlight(null,null,null);"
+    }
+    view.evaluateJavascript(command, null)
+}
+
 private fun highlightsJson(notes: List<Note>): JSONArray = JSONArray().apply {
     notes.forEach { note ->
         val item = JSONObject().put("exact", note.selectedText).put("color", note.color.toCssColor()).put("type", note.type)
@@ -1891,6 +1981,9 @@ private fun String.toCssColor(): String {
     if (length == 9 && startsWith("#")) return "#" + substring(3) + substring(1, 3)
     return this
 }
+
+private fun Int.toCssColor(): String =
+    ("#" + Integer.toHexString(this).padStart(8, '0').takeLast(8)).toCssColor()
 
 private fun JSONObject.withChapterHref(href: String): JSONObject = apply {
     put("version", optInt("version", 1))

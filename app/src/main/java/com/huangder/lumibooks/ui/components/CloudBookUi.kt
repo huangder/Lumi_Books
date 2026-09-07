@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.ui.components
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import android.text.format.Formatter
 import androidx.compose.foundation.background
@@ -12,8 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CloudDownload
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -163,7 +162,7 @@ fun BookCoverProgressOverlay(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Outlined.CloudDownload,
+                    imageVector = AppIcons.CloudArrowDown,
                     contentDescription = stringResource(R.string.download_book_file),
                     tint = Color.White,
                     modifier = Modifier.size(if (compact) 15.dp else 18.dp)

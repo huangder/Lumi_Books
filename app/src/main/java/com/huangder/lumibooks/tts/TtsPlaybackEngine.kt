@@ -28,6 +28,9 @@ interface TtsPlaybackEngine {
     /** Current rendered PCM frame offset within the active cached utterance. */
     fun currentPcmFrameOffset(): Long = 0L
 
+    /** Total cached PCM frames for the active utterance, when known. */
+    fun currentPcmFrameCount(): Long = 0L
+
     /** Pauses buffered audio when supported; system TTS implementations may stop instead. */
     suspend fun pause()
 

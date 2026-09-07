@@ -16,6 +16,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -217,6 +218,7 @@ fun MainNavGraph(
     var readerReady by remember { mutableStateOf(false) }
     var pendingBookId by remember { mutableStateOf<String?>(null) }
     var tabBarVisible by remember { mutableStateOf(true) }
+    var bookshelfContextMenuVisible by remember { mutableStateOf(false) }
     var useMainReturnTabBarTransition by remember { mutableStateOf(false) }
     var previousRoute by remember { mutableStateOf<String?>(null) }
     var bookshelfOverlayProgress by remember { mutableFloatStateOf(0f) }
@@ -659,6 +661,9 @@ fun MainNavGraph(
                     onOverlayProgressChange = { progress ->
                         bookshelfOverlayProgress = progress.coerceIn(0f, 1f)
                     },
+                    onContextMenuVisibleChange = { visible ->
+                        bookshelfContextMenuVisible = visible
+                    },
                     viewModel = homeViewModel
                 )
             }
@@ -756,16 +761,34 @@ fun MainNavGraph(
                     }
                 }
         ) {
+        // Keep the transition host composed so the bar animates out for context menus
+        // and animates back in after the menu returns to Idle.
         AnimatedVisibility(
-            visible = tabBarVisible,
+            visible = tabBarVisible && !bookshelfContextMenuVisible,
             enter = if (eInkMode) {
                 EnterTransition.None
             } else if (useMainReturnTabBarTransition) {
-                fadeIn(animationSpec = tween(300, easing = FastOutSlowInEasing))
+                fadeIn(animationSpec = tween(300, easing = FastOutSlowInEasing)) +
+                    slideInVertically(
+                        animationSpec = tween(300, easing = FastOutSlowInEasing),
+                        initialOffsetY = { it / 3 }
+                    )
             } else {
-                fadeIn(animationSpec = tween(400))
+                fadeIn(animationSpec = tween(400)) +
+                    slideInVertically(
+                        animationSpec = tween(400, easing = FastOutSlowInEasing),
+                        initialOffsetY = { it / 3 }
+                    )
             },
-            exit = if (eInkMode) ExitTransition.None else fadeOut(animationSpec = tween(300)),
+            exit = if (eInkMode) {
+                ExitTransition.None
+            } else {
+                fadeOut(animationSpec = tween(300)) +
+                    slideOutVertically(
+                        animationSpec = tween(300, easing = FastOutSlowInEasing),
+                        targetOffsetY = { it / 3 }
+                    )
+            },
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             val showLiquidImport = isLiquidGlass

@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.ui.settings
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import android.content.Intent
 import android.net.Uri
@@ -27,8 +28,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -412,7 +411,7 @@ private fun DeveloperCard(contributor: Contributor, onClick: () -> Unit) {
         }
         Spacer(Modifier.width(AppSpace.sm))
         Icon(
-            imageVector = Icons.Outlined.ChevronRight,
+            imageVector = AppIcons.CaretRight,
             contentDescription = null,
             tint = AppColors.TextSecondary,
             modifier = Modifier.size(20.dp)

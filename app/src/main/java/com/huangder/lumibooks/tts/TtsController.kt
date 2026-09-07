@@ -105,7 +105,10 @@ class TtsController(
             }
 
             override fun onProgress(utteranceId: String, cacheKey: String, pcmFrameOffset: Long) {
-                scope.launch { persistExternalProgress(utteranceId, cacheKey, pcmFrameOffset) }
+                scope.launch {
+                    updateExternalClauseProgress(utteranceId, pcmFrameOffset)
+                    persistExternalProgress(utteranceId, cacheKey, pcmFrameOffset)
+                }
             }
 
             override fun onPlaybackInterrupted() {
@@ -121,7 +124,7 @@ class TtsController(
 
         scope.launch {
             dataStoreManager.ttsSpeechRate.collectLatest { rate ->
-                _speechRate.value = rate.coerceIn(0.5f, 2f)
+                _speechRate.value = rate.coerceIn(0.5f, 5f)
                 systemTtsEngine.setSpeechRate(_speechRate.value)
                 externalTtsEngine.setSpeechRate(_speechRate.value)
             }
@@ -340,7 +343,7 @@ class TtsController(
     }
 
     suspend fun setSpeechRate(rate: Float) = withContext(Dispatchers.Main.immediate) {
-        val safeRate = rate.coerceIn(0.5f, 2f)
+        val safeRate = rate.coerceIn(0.5f, 5f)
         _speechRate.value = safeRate
         dataStoreManager.saveTtsSpeechRate(safeRate)
         activeEngine.setSpeechRate(safeRate)
@@ -372,6 +375,27 @@ class TtsController(
         activeSegment = null
         activeSentenceSegment = null
         pendingResume = null
+        if (activeEngine.isExternal) {
+            resetClausePlayback()
+            if (sentenceIndex + 1 < segments.size) {
+                sentenceIndex++
+                speakCurrentSegment()
+                return
+            }
+            val merge = crossPageMerge
+            if (merge != null) {
+                crossPageMerge = null
+                moveToPage(
+                    location = merge.landingLocation,
+                    startAtEnd = false,
+                    publishLocation = true,
+                    startCharacterOffset = merge.landingStartCharacterOffset
+                )
+                return
+            }
+            moveToAdjacentPage(forward = true)
+            return
+        }
         if (clauseIndex + 1 < clauses.size) {
             clauseIndex++
             speakCurrentSegment()
@@ -555,7 +579,8 @@ class TtsController(
         val generation = sessionGeneration
         val page = _currentPage.value ?: return
         val sentence = prepareCurrentSentence(page, generation) ?: return
-        val segment = clauses.getOrNull(clauseIndex) ?: return
+        val clause = clauses.getOrNull(clauseIndex) ?: return
+        val segment = if (activeEngine.isExternal) sentence else clause
         if (generation != sessionGeneration ||
             _currentPage.value?.location != page.location ||
             _playbackState.value != TtsPlaybackState.PLAYING
@@ -576,7 +601,7 @@ class TtsController(
         activeUtteranceId = utteranceId
         activeSegment = segment
         activeSentenceSegment = sentence
-        _currentSentence.value = segment
+        _currentSentence.value = if (activeEngine.isExternal) clause else segment
         val resume = pendingResume?.takeIf {
             it.chapterIndex == page.location.chapterIndex &&
                 it.pageIndex == page.location.pageIndex &&
@@ -656,6 +681,9 @@ class TtsController(
     }
 
     private fun nextPrefetchText(): String? {
+        if (activeEngine.isExternal) {
+            return segments.getOrNull(sentenceIndex + 1)?.text
+        }
         clauses.getOrNull(clauseIndex + 1)?.let { return it.text }
         return segments.getOrNull(sentenceIndex + 1)
             ?.let { textExtractor.splitIntoClauses(it) }
@@ -779,6 +807,20 @@ class TtsController(
         scope.cancel()
         systemTtsEngine.shutdown()
         externalTtsEngine.shutdown()
+    }
+
+    private fun updateExternalClauseProgress(utteranceId: String, pcmFrameOffset: Long) {
+        if (!activeEngine.isExternal || utteranceId != activeUtteranceId) return
+        val sentence = activeSentenceSegment ?: return
+        val totalFrames = activeEngine.currentPcmFrameCount()
+        if (totalFrames <= 0L || clauses.size <= 1) return
+        val ratio = (pcmFrameOffset.toDouble() / totalFrames.toDouble()).coerceIn(0.0, 0.999999)
+        val targetOffset = (ratio * sentence.text.length).toInt()
+        val targetClause = clauses.indexOfLast { it.startCharacterOffset - sentence.startCharacterOffset <= targetOffset }
+            .coerceIn(0, clauses.lastIndex)
+        if (targetClause == clauseIndex) return
+        clauseIndex = targetClause
+        _currentSentence.value = clauses[targetClause]
     }
 
     private companion object {

@@ -870,7 +870,13 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
                 }
                 if (event.actionMasked == MotionEvent.ACTION_UP) {
                     val direction = capturedTapDirection(event.x)
-                    if (isCapturedBusyCurlCenterTap(
+                    // Once the page-turn host is idle, the child WebView must see ACTION_UP.
+                    // Its DOM handler distinguishes center-menu taps from links (including
+                    // footnote markers). Capture the center tap only while a native animation
+                    // or handoff is actually owning the gesture stream.
+                    if ((overlayActive || waitingForTarget != null ||
+                        controller.isRunning || controller.isDragging) &&
+                        isCapturedBusyCurlCenterTap(
                             gestureClaimed = false,
                             direction = direction,
                             elapsedMs = event.eventTime - touchDownTime,

@@ -1,4 +1,6 @@
 package com.huangder.lumibooks.ui.bookshelf
+import com.huangder.lumibooks.ui.icons.directionalIcon
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -23,18 +25,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.CreateNewFolder
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.DriveFileMove
-import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.HideImage
-import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.outlined.KeyboardArrowRight
-import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
@@ -237,7 +227,7 @@ internal fun FolderActionsSheet(
                     )
                 }
                 LiquidGlassIconButton(
-                    imageVector = Icons.Outlined.Close,
+                    imageVector = AppIcons.X,
                     contentDescription = stringResource(R.string.close),
                     onClick = onDismiss,
                     size = 40.dp,
@@ -247,12 +237,12 @@ internal fun FolderActionsSheet(
             }
             Spacer(Modifier.height(AppSpace.md))
             FolderActionRow(
-                icon = Icons.Outlined.Edit,
+                icon = AppIcons.PencilSimple,
                 title = stringResource(R.string.rename_folder),
                 onClick = onRename
             )
             FolderActionRow(
-                icon = Icons.Outlined.Image,
+                icon = AppIcons.Image,
                 title = stringResource(
                     if (folder.coverPath == null) R.string.set_folder_cover else R.string.change_folder_cover
                 ),
@@ -260,18 +250,18 @@ internal fun FolderActionsSheet(
             )
             if (folder.coverPath != null) {
                 FolderActionRow(
-                    icon = Icons.Outlined.HideImage,
+                    icon = AppIcons.ImageBroken,
                     title = stringResource(R.string.remove_folder_cover),
                     onClick = onRemoveCover
                 )
             }
             FolderActionRow(
-                icon = Icons.Outlined.DriveFileMove,
+                icon = AppIcons.FolderSimple,
                 title = stringResource(R.string.move_folder),
                 onClick = onMove
             )
             FolderActionRow(
-                icon = Icons.Outlined.Delete,
+                icon = AppIcons.Trash,
                 title = stringResource(R.string.delete_folder),
                 tint = Color(0xFFD92D3A),
                 onClick = onDelete
@@ -378,7 +368,7 @@ internal fun FolderMoveSheet(
                     )
                 }
                 LiquidGlassIconButton(
-                    imageVector = Icons.Outlined.Close,
+                    imageVector = AppIcons.X,
                     contentDescription = stringResource(R.string.close),
                     onClick = onDismiss,
                     size = 40.dp,
@@ -410,7 +400,7 @@ internal fun FolderMoveSheet(
                         .padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Outlined.CreateNewFolder, null, tint = AppColors.Accent)
+                    Icon(AppIcons.FolderPlus, null, tint = AppColors.Accent)
                     Spacer(Modifier.width(12.dp))
                     Text(
                         text = stringResource(R.string.new_category_folder),
@@ -553,7 +543,7 @@ internal fun FolderRelocationSheet(
                     )
                 }
                 LiquidGlassIconButton(
-                    imageVector = Icons.Outlined.Close,
+                    imageVector = AppIcons.X,
                     contentDescription = stringResource(R.string.close),
                     onClick = onDismiss,
                     size = 40.dp,
@@ -585,7 +575,7 @@ internal fun FolderRelocationSheet(
                         .padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Outlined.CreateNewFolder, null, tint = AppColors.Accent)
+                    Icon(AppIcons.FolderPlus, null, tint = AppColors.Accent)
                     Spacer(Modifier.width(12.dp))
                     Text(
                         text = stringResource(R.string.new_category_folder),
@@ -698,7 +688,7 @@ internal fun FolderBreadcrumb(
         )
         path.forEachIndexed { index, folder ->
             Icon(
-                imageVector = Icons.Outlined.KeyboardArrowRight,
+                imageVector = directionalIcon(AppIcons.CaretRight, AppIcons.CaretLeft),
                 contentDescription = null,
                 tint = AppColors.TextSecondary,
                 modifier = Modifier.size(18.dp)
@@ -724,7 +714,7 @@ internal fun FolderBreadcrumb(
                 )
                 if (folder.storageDocumentUri != null) {
                     Icon(
-                        imageVector = Icons.Outlined.Link,
+                        imageVector = AppIcons.Link,
                         contentDescription = stringResource(R.string.folder_storage_linked),
                         tint = if (folder.storageMissing) Color(0xFFD92D3A) else AppColors.Accent,
                         modifier = Modifier
@@ -754,7 +744,7 @@ private fun FolderDestinationRow(folder: LibraryFolder, onClick: () -> Unit) {
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Outlined.Folder, null, tint = AppColors.Accent)
+            Icon(AppIcons.Folder, null, tint = AppColors.Accent)
             Spacer(Modifier.width(12.dp))
             Text(
                 text = folder.name,
@@ -767,7 +757,7 @@ private fun FolderDestinationRow(folder: LibraryFolder, onClick: () -> Unit) {
             )
             if (folder.storageDocumentUri != null) {
                 Icon(
-                    imageVector = Icons.Outlined.Link,
+                    imageVector = AppIcons.Link,
                     contentDescription = stringResource(R.string.folder_storage_linked),
                     tint = if (folder.storageMissing) Color(0xFFD92D3A) else AppColors.Accent,
                     modifier = Modifier
@@ -783,7 +773,7 @@ private fun FolderDestinationRow(folder: LibraryFolder, onClick: () -> Unit) {
                     maxLines = 1
                 )
             }
-            Icon(Icons.Outlined.KeyboardArrowRight, null, tint = AppColors.TextSecondary)
+            Icon(directionalIcon(AppIcons.CaretRight, AppIcons.CaretLeft), null, tint = AppColors.TextSecondary)
         }
     }
 }

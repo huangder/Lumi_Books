@@ -1,4 +1,6 @@
 package com.huangder.lumibooks.ui.settings
+import com.huangder.lumibooks.ui.icons.directionalIcon
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import android.content.res.Configuration
 import android.os.Bundle
@@ -48,17 +50,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Animation
-import androidx.compose.material.icons.outlined.Check
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.DragHandle
-import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.outlined.Palette
-import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -383,7 +374,7 @@ private fun ThemeSuiteListScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 LiquidGlassIconButton(
-                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                    imageVector = directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight),
                     contentDescription = stringResource(R.string.reader_back),
                     onClick = onClose,
                     settingsBackButton = true
@@ -397,7 +388,7 @@ private fun ThemeSuiteListScreen(
                 )
                 Spacer(Modifier.weight(1f))
                 LiquidGlassIconButton(
-                    imageVector = Icons.Outlined.Add,
+                    imageVector = AppIcons.Plus,
                     contentDescription = stringResource(R.string.add_theme_suite),
                     onClick = { createDialog = true }
                 )
@@ -557,7 +548,7 @@ private fun ThemeSuiteRow(
                 }
                 if (active) {
                     Icon(
-                        Icons.Outlined.Check,
+                        AppIcons.Check,
                         contentDescription = null,
                         tint = AppColors.Accent,
                         modifier = Modifier.size(20.dp)
@@ -565,7 +556,7 @@ private fun ThemeSuiteRow(
                 }
                 Spacer(Modifier.width(AppSpace.sm))
                 Icon(
-                    Icons.Outlined.DragHandle,
+                    AppIcons.DotsSixVertical,
                     contentDescription = stringResource(R.string.theme_suite_drag_to_reorder),
                     tint = AppColors.TextSecondary,
                     modifier = Modifier
@@ -601,14 +592,14 @@ private fun ThemeSuiteRow(
                     }
                     if (!suite.isBuiltIn) {
                         LiquidGlassIconButton(
-                            imageVector = Icons.Outlined.Edit,
+                            imageVector = AppIcons.PencilSimple,
                             contentDescription = stringResource(R.string.rename),
                             onClick = onRename,
                             size = 40.dp,
                             iconSize = 18.dp
                         )
                         LiquidGlassIconButton(
-                            imageVector = Icons.Outlined.Delete,
+                            imageVector = AppIcons.Trash,
                             contentDescription = stringResource(R.string.delete),
                             onClick = onDelete,
                             size = 40.dp,
@@ -818,7 +809,7 @@ private fun ThemeEditorScreen(
             ) {
                 CapsuleButton(
                     text = stringResource(R.string.reader_background_settings),
-                    icon = Icons.Outlined.Palette,
+                    icon = AppIcons.PalettePair,
                     selected = panel == ThemePanel.BACKGROUND
                 ) {
                     panel = if (panel == ThemePanel.BACKGROUND) {
@@ -829,7 +820,7 @@ private fun ThemeEditorScreen(
                 }
                 CapsuleButton(
                     text = stringResource(R.string.reader_text_settings),
-                    icon = Icons.Outlined.TextFields,
+                    icon = AppIcons.TextAaPair,
                     selected = panel == ThemePanel.TEXT
                 ) {
                     panel = if (panel == ThemePanel.TEXT) ThemePanel.NONE else ThemePanel.TEXT
@@ -899,7 +890,7 @@ private fun BackgroundPanel(
             }
             item {
                 LiquidGlassIconButton(
-                    imageVector = Icons.Outlined.Add,
+                    imageVector = AppIcons.Plus,
                     contentDescription = stringResource(R.string.background_custom_color),
                     onClick = { colorDialog = true },
                     size = 36.dp,
@@ -936,14 +927,14 @@ private fun BackgroundPanel(
             )
             CommandCapsuleButton(
                 text = stringResource(R.string.background_remove_photo),
-                icon = Icons.Outlined.Delete,
+                icon = AppIcons.Trash,
                 onClick = onRemovePhoto,
                 secondary = true
             )
         } else {
             CommandCapsuleButton(
                 text = stringResource(R.string.background_add_photo),
-                icon = Icons.Outlined.Image,
+                icon = AppIcons.Image,
                 onClick = onAddPhoto
             )
         }
@@ -1253,7 +1244,7 @@ private fun AnimationCapsule(
     mode: String,
     selectedMode: String,
     onClick: (String) -> Unit
-) = CapsuleButton(label, Icons.Outlined.Animation, mode == selectedMode) { onClick(mode) }
+) = CapsuleButton(label, AppIcons.FilmStripPair, mode == selectedMode) { onClick(mode) }
 
 @Composable
 private fun PreviewReadView(
@@ -1363,7 +1354,7 @@ private fun rememberSampleText(): String {
 @Composable
 private fun ExitButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     LiquidGlassIconButton(
-        imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+        imageVector = directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight),
         contentDescription = stringResource(R.string.exit_preview),
         onClick = onClick,
         modifier = modifier,
@@ -1374,7 +1365,7 @@ private fun ExitButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
 @Composable
 private fun CapsuleButton(
     text: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: com.huangder.lumibooks.ui.icons.IconPair,
     selected: Boolean,
     onClick: () -> Unit
 ) {
@@ -1388,7 +1379,7 @@ private fun CapsuleButton(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(17.dp))
+            Icon(icon.resolve(selected), contentDescription = null, modifier = Modifier.size(17.dp))
             Spacer(Modifier.width(5.dp))
             Text(text, fontSize = AppType.Caption, fontWeight = FontWeight.SemiBold)
         }

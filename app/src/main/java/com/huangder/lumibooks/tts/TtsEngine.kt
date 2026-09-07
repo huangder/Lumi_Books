@@ -324,7 +324,7 @@ class TtsEngine(
     }
 
     override suspend fun setSpeechRate(rate: Float) = withContext(Dispatchers.Main.immediate) {
-        pendingSpeechRate = rate.coerceIn(0.5f, 2f)
+        pendingSpeechRate = rate.coerceIn(0.5f, 5f)
         engine?.setSpeechRate(pendingSpeechRate)
         Unit
     }

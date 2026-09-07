@@ -21,21 +21,32 @@ abstract class BaseLauncherActivity : Activity() {
 }
 
 class SplashLaunchActivity : BaseLauncherActivity() {
-    override fun createDestinationIntent(): Intent = Intent(this, WelcomeActivity::class.java)
+    override fun createDestinationIntent(): Intent = welcomeOrMainIntent()
 }
 
 class DirectLaunchActivity : BaseLauncherActivity() {
-    override fun createDestinationIntent(): Intent {
-        val welcomeLaunch = resolveWelcomeLaunchSnapshot(
-            context = this,
-            dataStoreManager = DataStoreManager(applicationContext)
-        )
-        val shouldShowWelcome = readWelcomeInstallState()
-            .shouldShowWelcome(welcomeLaunch.completedInstallTime)
-        return if (shouldShowWelcome) {
-            Intent(this, WelcomeActivity::class.java)
-        } else {
-            LaunchThemeController.mainIntent(this, splashEnabled = false)
-        }
+    override fun createDestinationIntent(): Intent = welcomeOrMainIntent()
+}
+
+/**
+ * Resolve the launcher route before any welcome Activity can draw a frame.
+ *
+ * Some launchers cache the previously enabled alias for a while after the splash setting is
+ * changed. Both aliases therefore need the same guard; checking only the direct alias still
+ * lets a stale splash alias show the welcome screen for one frame on affected devices.
+ */
+private fun Activity.welcomeOrMainIntent(): Intent {
+    val welcomeLaunch = resolveWelcomeLaunchSnapshot(
+        context = this,
+        dataStoreManager = DataStoreManager(applicationContext)
+    )
+    val shouldShowWelcome = readWelcomeInstallState()
+        .shouldShowWelcome(welcomeLaunch.completedInstallTime)
+    return if (shouldShowWelcome) {
+        Intent(this, WelcomeActivity::class.java)
+    } else {
+        // Use the persisted preference rather than the alias that happened to be cached by the
+        // launcher. This also prevents a stale splash alias from re-enabling the Compose splash.
+        LaunchThemeController.mainIntent(this, welcomeLaunch.splashEnabled)
     }
 }

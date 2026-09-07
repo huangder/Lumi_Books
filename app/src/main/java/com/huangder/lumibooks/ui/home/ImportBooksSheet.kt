@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.ui.home
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import android.net.Uri
 import android.provider.DocumentsContract
@@ -41,11 +42,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.Sort
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -815,7 +811,7 @@ private fun ImportSearchField(
                         innerTextField()
                     }
                     Icon(
-                        imageVector = Icons.Outlined.Search,
+                        imageVector = AppIcons.MagnifyingGlass,
                         contentDescription = stringResource(R.string.search),
                         tint = AppColors.TextSecondary,
                         modifier = Modifier.size(20.dp)
@@ -833,7 +829,7 @@ private fun ImportSearchField(
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.Close,
+                                imageVector = AppIcons.X,
                                 contentDescription = stringResource(R.string.import_search_clear),
                                 tint = AppColors.TextSecondary,
                                 modifier = Modifier.size(16.dp)
@@ -868,7 +864,7 @@ private fun ImportSortButton(
 
     Box {
         LiquidGlassIconButton(
-            imageVector = Icons.Outlined.Sort,
+            imageVector = AppIcons.SortAscending,
             contentDescription = stringResource(R.string.import_sort),
             onClick = {
                 if (isLiquidGlass && menuHost != null && sortAnchorBounds != Rect.Zero) {
@@ -941,7 +937,7 @@ private fun ImportSortButton(
                         trailingIcon = if (option == sortBy) {
                             {
                                 Icon(
-                                    imageVector = Icons.Filled.Check,
+                                    imageVector = AppIcons.CheckFilled,
                                     contentDescription = null,
                                     tint = AppColors.Accent,
                                     modifier = Modifier.size(18.dp)
@@ -1037,7 +1033,7 @@ private fun SelectedBookListRow(
         ) {
             if (isSelected) {
                 Icon(
-                    imageVector = Icons.Filled.Check,
+                    imageVector = AppIcons.CheckFilled,
                     contentDescription = null,
                     tint = AppColors.OnAccent,
                     modifier = Modifier.size(16.dp)

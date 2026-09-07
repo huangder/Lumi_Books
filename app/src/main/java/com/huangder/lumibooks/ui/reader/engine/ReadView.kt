@@ -1326,9 +1326,13 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
      * - 长按（非卷曲模式 >500ms 或无明显移动）→ 不拦截，TextView 原生触发选词
      */
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        // The vertical renderer owns its selection handles. Once a handle accepts DOWN,
+        // Selection renderers own their handle streams. Once a handle accepts DOWN,
         // keep the complete stream away from page-swipe classification until UP/CANCEL.
-        if (ev.actionMasked != MotionEvent.ACTION_DOWN && isVerticalSelectionHandleDragActive()) {
+        // This must be checked before the normal MOVE classifier: a short horizontal
+        // move is otherwise interpreted as a page turn and cancels the TextView drag.
+        if (ev.actionMasked != MotionEvent.ACTION_DOWN &&
+            (isVerticalSelectionHandleDragActive() || isReaderSelectionHandleDragActive())
+        ) {
             return super.dispatchTouchEvent(ev)
         }
         if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
@@ -1353,6 +1357,18 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 rvBoundaryGestureSuppressed = false
             }
             return true
+        }
+        // A few OEMs deliver the selection-handle popup's stream back through
+        // the parent. Once a long-press selection exists, keep that stream with
+        // TextView instead of classifying its horizontal movement as a page turn.
+        // The initial DOWN still goes through the normal classifier so a fresh
+        // tap can clear the old selection and start a new gesture.
+        if (ev.actionMasked != MotionEvent.ACTION_DOWN &&
+            !rvIsHandlingPageGesture &&
+            hasActiveTextSelection() &&
+            ev.eventTime - rvTouchDownTime >= 500L
+        ) {
+            return super.dispatchTouchEvent(ev)
         }
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
@@ -1727,7 +1743,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
      * 500ms 后（长按已触发），允许 disallow 以支持选择拖拽。
      */
     override fun requestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {
-        if (disallowIntercept && isVerticalSelectionHandleDragActive()) {
+        if (disallowIntercept && (isVerticalSelectionHandleDragActive() || hasActiveTextSelection())) {
             super.requestDisallowInterceptTouchEvent(true)
             return
         }
@@ -1748,6 +1764,19 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             prevPageRightView.isVerticalSelectionHandleDragActive() ||
             curPageRightView.isVerticalSelectionHandleDragActive() ||
             nextPageRightView.isVerticalSelectionHandleDragActive()
+
+    private fun isReaderSelectionHandleDragActive(): Boolean =
+        prevPageView.isReaderSelectionHandleDragActive() ||
+            curPageView.isReaderSelectionHandleDragActive() ||
+            nextPageView.isReaderSelectionHandleDragActive() ||
+            prevPageRightView.isReaderSelectionHandleDragActive() ||
+            curPageRightView.isReaderSelectionHandleDragActive() ||
+            nextPageRightView.isReaderSelectionHandleDragActive()
+
+    private fun hasActiveTextSelection(): Boolean = listOf(
+        prevPageView, curPageView, nextPageView,
+        prevPageRightView, curPageRightView, nextPageRightView
+    ).any { it.getSelectionRange() != null }
 
     /** 返回触摸位置所在的当前页半页视图（双页模式按 x 命中左/右半页）。 */
     private fun pageViewAt(x: Float, y: Float): PageContentView? {
@@ -2370,8 +2399,12 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         // 双页模式下右半页视图位于父容器右半区，需要加上半页偏移，
         // 选区菜单/手柄坐标才能对齐屏幕。
         val viewOffsetX = pageView.left.toFloat()
-        val startX = tv.left + tv.paddingLeft + layout.getPrimaryHorizontal(selStart) + viewOffsetX
-        val endX = tv.left + tv.paddingLeft + layout.getPrimaryHorizontal(selEnd) + viewOffsetX
+        val startHorizontal = (tv as? RoundedHighlightTextView)?.readerHorizontalPosition(selStart)
+            ?: layout.getPrimaryHorizontal(selStart)
+        val endHorizontal = (tv as? RoundedHighlightTextView)?.readerHorizontalPosition(selEnd, trailing = true)
+            ?: layout.getPrimaryHorizontal(selEnd)
+        val startX = tv.left + tv.paddingLeft + startHorizontal + viewOffsetX
+        val endX = tv.left + tv.paddingLeft + endHorizontal + viewOffsetX
 
         // ── 跨页选择合并 ──
         // 如果有跨页选择状态，且当前选区所在的章节与跨页选择的章节相同（或相邻），
@@ -2423,8 +2456,14 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
      * 因为 setPageContent 创建新的 SpannableStringBuilder，旧 watcher 会丢失。
      */
     private fun setupSelectionWatcher(pageView: PageContentView) {
+        var installedWatcher: android.text.SpanWatcher? = null
         pageView.onTextSet = { sp ->
-            sp.setSpan(object : android.text.SpanWatcher {
+            installedWatcher?.let { old ->
+                sp.getSpans(0, sp.length, android.text.SpanWatcher::class.java)
+                    .filter { it === old }
+                    .forEach(sp::removeSpan)
+            }
+            val watcher = object : android.text.SpanWatcher {
                 private fun checkSelection(s: android.text.Spannable) {
                     val start = android.text.Selection.getSelectionStart(s)
                     val end = android.text.Selection.getSelectionEnd(s)
@@ -2445,7 +2484,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                     }
                 }
                 override fun onSpanRemoved(s: android.text.Spannable, what: Any, start: Int, end: Int) {}
-            }, 0, sp.length, android.text.Spannable.SPAN_INCLUSIVE_INCLUSIVE)
+            }
+            installedWatcher = watcher
+            sp.setSpan(watcher, 0, sp.length, android.text.Spannable.SPAN_INCLUSIVE_INCLUSIVE)
         }
     }
 

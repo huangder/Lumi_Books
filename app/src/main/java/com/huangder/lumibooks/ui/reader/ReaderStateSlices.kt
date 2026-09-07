@@ -16,6 +16,7 @@ import com.huangder.lumibooks.domain.model.defaultReaderCornerContent
 import com.huangder.lumibooks.util.epub.EpubRenderMode
 import com.huangder.lumibooks.util.parser.TocEntry
 import com.huangder.lumibooks.util.parser.TxtEncoding
+import com.huangder.lumibooks.util.parser.TxtIndexState
 
 data class ReaderDocumentState(
     val book: Book? = null,
@@ -25,6 +26,8 @@ data class ReaderDocumentState(
     val chapterHtml: String = "",
     val isLoading: Boolean = true,
     val pageReady: Boolean = false,
+    val txtIndexState: TxtIndexState = TxtIndexState.COMPLETE,
+    val txtIndexProgress: Float? = null,
     val isEpubChapterHandoffInProgress: Boolean = false,
     val error: String? = null,
     val useNewEngine: Boolean = true,
@@ -117,6 +120,8 @@ internal fun ReaderUiState.toDocumentState() = ReaderDocumentState(
     chapterHtml = chapterHtml,
     isLoading = isLoading,
     pageReady = pageReady,
+    txtIndexState = txtIndexState,
+    txtIndexProgress = txtIndexProgress,
     isEpubChapterHandoffInProgress = isEpubChapterHandoffInProgress,
     error = error,
     useNewEngine = useNewEngine,

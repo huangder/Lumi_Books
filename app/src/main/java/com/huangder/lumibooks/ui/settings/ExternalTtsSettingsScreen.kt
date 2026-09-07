@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.ui.settings
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -31,19 +32,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.ChevronRight
-import androidx.compose.material.icons.outlined.CloudOff
-import androidx.compose.material.icons.outlined.DeleteOutline
-import androidx.compose.material.icons.outlined.ExpandMore
-import androidx.compose.material.icons.outlined.NetworkCheck
-import androidx.compose.material.icons.outlined.SettingsVoice
-import androidx.compose.material.icons.outlined.PrivacyTip
-import androidx.compose.material.icons.outlined.Security
-import androidx.compose.material.icons.outlined.Visibility
-import androidx.compose.material.icons.outlined.VisibilityOff
-import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -153,7 +141,7 @@ fun ExternalTtsSettingsDetail(
         if (isEnabled && hasToken) {
             ExternalTtsSecondaryButton(
                 label = stringResource(R.string.external_tts_test_connection),
-                icon = Icons.Outlined.NetworkCheck,
+                icon = AppIcons.Pulse,
                 onClick = viewModel::testExternalTtsConnection
             )
         }
@@ -161,19 +149,19 @@ fun ExternalTtsSettingsDetail(
         if (isEnabled) {
             ExternalTtsSecondaryButton(
                 label = stringResource(R.string.external_tts_disable_only),
-                icon = Icons.Outlined.CloudOff,
+                icon = AppIcons.CloudSlash,
                 onClick = { viewModel.disableExternalTts(clearKey = false) }
             )
             ExternalTtsSecondaryButton(
                 label = stringResource(R.string.external_tts_disable_and_clear),
-                icon = Icons.Outlined.DeleteOutline,
+                icon = AppIcons.Trash,
                 destructive = true,
                 onClick = { viewModel.disableExternalTts(clearKey = true) }
             )
         } else if (hasToken) {
             ExternalTtsSecondaryButton(
                 label = stringResource(R.string.external_tts_clear_key),
-                icon = Icons.Outlined.DeleteOutline,
+                icon = AppIcons.Trash,
                 destructive = true,
                 onClick = viewModel::clearExternalTtsToken
             )
@@ -412,7 +400,7 @@ fun ExternalTtsConfigurationDetail(
             trailingIcon = {
                 IconButton(onClick = { tokenVisible = !tokenVisible }) {
                     Icon(
-                        if (tokenVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                        if (tokenVisible) AppIcons.EyeSlash else AppIcons.Eye,
                         contentDescription = stringResource(
                             if (tokenVisible) R.string.external_tts_hide_key else R.string.external_tts_show_key
                         )
@@ -442,7 +430,7 @@ fun ExternalTtsConfigurationDetail(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                Icons.Outlined.WarningAmber,
+                AppIcons.Warning,
                 contentDescription = null,
                 tint = if (draftAllowHttp) MaterialTheme.colorScheme.error else AppColors.TextSecondary,
                 modifier = Modifier.size(22.dp)
@@ -595,7 +583,7 @@ private fun ExternalTtsVoiceSelection(
                         modifier = Modifier.weight(1f)
                     )
                     Icon(
-                        Icons.Outlined.ExpandMore,
+                        AppIcons.CaretDown,
                         contentDescription = null,
                         tint = AppColors.TextSecondary,
                         modifier = Modifier.size(18.dp)
@@ -711,7 +699,7 @@ private fun ExternalTtsStatusCard(
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                if (settings.enabled) Icons.Outlined.CheckCircle else Icons.Outlined.CloudOff,
+                if (settings.enabled) AppIcons.CheckCircle else AppIcons.CloudSlash,
                 contentDescription = null,
                 tint = if (settings.enabled) AppColors.Accent else AppColors.TextSecondary,
                 modifier = Modifier.size(22.dp)
@@ -739,7 +727,7 @@ private fun ExternalTtsStatusCard(
             }
         }
         Icon(
-            Icons.Outlined.ChevronRight,
+            AppIcons.CaretRight,
             contentDescription = null,
             tint = AppColors.TextSecondary,
             modifier = Modifier.size(24.dp)
@@ -775,7 +763,7 @@ private fun ExternalTtsProtocolCard(
         verticalAlignment = Alignment.Top
     ) {
         Icon(
-            Icons.Outlined.SettingsVoice,
+            AppIcons.MicrophonePair.resolve(selected),
             null,
             tint = if (selected) AppColors.Accent else AppColors.TextSecondary,
             modifier = Modifier.size(22.dp)
@@ -807,7 +795,7 @@ private fun ExternalTtsDisclosureCard() {
         verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Outlined.PrivacyTip, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+            Icon(AppIcons.ShieldCheck, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
             Spacer(Modifier.size(AppSpace.sm))
             Text(
                 stringResource(R.string.external_tts_third_party_title),
@@ -948,7 +936,7 @@ private fun ExternalTtsConsentSheet(
                     modifier = Modifier.fillMaxWidth().padding(vertical = AppSpace.sm),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Outlined.Security, null, tint = AppColors.TextSecondary, modifier = Modifier.size(18.dp))
+                    Icon(AppIcons.Shield, null, tint = AppColors.TextSecondary, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.size(AppSpace.sm))
                     Text(
                         stringResource(R.string.external_tts_key_local),
@@ -970,7 +958,7 @@ private fun ExternalTtsConsentSheet(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            Icons.Outlined.WarningAmber,
+                            AppIcons.Warning,
                             null,
                             tint = MaterialTheme.colorScheme.error,
                             modifier = Modifier.size(20.dp)

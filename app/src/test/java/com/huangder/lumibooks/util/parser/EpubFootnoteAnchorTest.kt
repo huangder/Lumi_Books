@@ -44,6 +44,22 @@ class EpubFootnoteAnchorTest {
     }
 
     @Test
+    fun `recognizes compound duokan footnote bookmarks and excludes backlinks`() {
+        assertTrue(
+            classify(
+                """<a href="text00019.html#ref_footnotebookmark_end_1_1" id="ref_footnotebookmark_start_1_1">""",
+                "<img alt='' src='Image00014.png' />"
+            )
+        )
+        assertFalse(
+            classify(
+                """<a class="calibre4" href="text00007.html#ref_footnotebookmark_start_1_1">""",
+                "注释正文"
+            )
+        )
+    }
+
+    @Test
     fun `note bodies backlinks and plain links are not references`() {
         // 自身是注释正文/返回链接
         assertFalse(classify("""<a epub:type="footnote" id="fn1" href="#ref1">""", "注释正文"))

@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.ui.reader
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import android.Manifest
 import android.content.ActivityNotFoundException
@@ -85,27 +86,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.blur
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.outlined.BookmarkBorder
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.outlined.Check
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Headphones
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.TextFields
-import androidx.compose.material.icons.filled.VerticalAlignBottom
-import androidx.compose.material.icons.filled.VerticalAlignTop
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Checkbox
@@ -176,6 +156,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
@@ -238,6 +219,7 @@ import com.huangder.lumibooks.ui.reader.engine.TtsHighlightRange
 import com.huangder.lumibooks.ui.reader.engine.TtsSentenceHighlightSpan
 import com.huangder.lumibooks.ui.reader.engine.WaveUnderlineSpan
 import com.huangder.lumibooks.ui.reader.engine.RoundedHighlightTextView
+import com.huangder.lumibooks.ui.reader.engine.ReaderLineGeometry
 import com.huangder.lumibooks.ui.reader.engine.ReaderBackgroundConfig
 import com.huangder.lumibooks.ui.reader.engine.ReaderLayoutConfig
 import com.huangder.lumibooks.ui.reader.engine.ReaderRenderConfig
@@ -388,7 +370,9 @@ private class ContinuousSelectableTextView(context: Context) : RoundedHighlightT
         includeFontPadding = false
         gravity = android.view.Gravity.TOP
         setTextIsSelectable(true)
-        highlightColor = 0x40007AFF
+        readerSelectionColor = 0x40007AFF
+        highlightColor = android.graphics.Color.TRANSPARENT
+        configureReaderSelectionHandles(0xFF448AFF.toInt())
         setBackgroundColor(android.graphics.Color.TRANSPARENT)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             setTextClassifier(android.view.textclassifier.TextClassifier.NO_OP)
@@ -445,7 +429,8 @@ private class ContinuousSelectableTextView(context: Context) : RoundedHighlightT
         val localY = y - totalPaddingTop + scrollY
         if (localX < 0f || localY < 0f || localY >= textLayout.height) return null
         val line = textLayout.getLineForVertical(localY.toInt())
-        val offset = textLayout.getOffsetForHorizontal(line, localX)
+        val offset = (readerOffsetForHorizontal(line, localX)
+            ?: textLayout.getOffsetForHorizontal(line, localX))
             .coerceIn(0, spannable.length - 1)
         return spannable.getSpans(offset, (offset + 1).coerceAtMost(spannable.length), URLSpan::class.java)
             .firstOrNull()?.url
@@ -461,6 +446,11 @@ private class ContinuousSelectableTextView(context: Context) : RoundedHighlightT
         val lineEnd = textLayout.getLineEnd(line)
         val images = spannable.getSpans(lineStart, lineEnd, ImageSpan::class.java)
         if (images.isEmpty()) return null
+        val geometry = ReaderLineGeometry(
+            layout = textLayout,
+            text = spannable,
+            justificationMode = readerJustificationMode
+        )
         val location = IntArray(2)
         getLocationOnScreen(location)
         for (image in images) {
@@ -469,7 +459,9 @@ private class ContinuousSelectableTextView(context: Context) : RoundedHighlightT
             val drawable = image.drawable
             val width = drawable.bounds.width().toFloat().coerceAtLeast(1f)
             val height = drawable.bounds.height().toFloat().coerceAtLeast(1f)
-            val left = totalPaddingLeft + textLayout.getPrimaryHorizontal(spanStart) - scrollX
+            val left = totalPaddingLeft +
+                (geometry.horizontalPosition(spanStart)
+                    ?: textLayout.getPrimaryHorizontal(spanStart)) - scrollX
             val bottom = (totalPaddingTop + textLayout.getLineBottom(line) - scrollY).toFloat()
             val top = bottom - height
             if (x in left..(left + width) && y in top..bottom) {
@@ -535,8 +527,10 @@ private class ContinuousSelectableTextView(context: Context) : RoundedHighlightT
                 start = start,
                 end = end,
                 selectedText = spannable.subSequence(start, end).toString(),
-                startX = originX + textLayout.getPrimaryHorizontal(start),
-                endX = originX + textLayout.getPrimaryHorizontal(end),
+                startX = originX + (readerHorizontalPosition(start)
+                    ?: textLayout.getPrimaryHorizontal(start)),
+                endX = originX + (readerHorizontalPosition(end, trailing = true)
+                    ?: textLayout.getPrimaryHorizontal(end)),
                 topY = (originY + textLayout.getLineTop(startLine)).toFloat(),
                 bottomY = (originY + textLayout.getLineBottom(endLine)).toFloat()
             )
@@ -1172,6 +1166,10 @@ fun ReaderScreen(
         uiState.pageReady,
         uiState.pendingPageFraction,
         uiState.pendingReaderPosition,
+        uiState.currentChapterIndex,
+        uiState.totalPages,
+        uiState.contentRevision,
+        readViewRef.value,
         isContinuousScrollMode
     ) {
         // Continuous scroll owns pendingPageFraction while crossing the mode boundary. Letting the
@@ -1182,6 +1180,10 @@ fun ReaderScreen(
         val readView = readViewRef.value ?: return@LaunchedEffect
         val readerPosition = uiState.pendingReaderPosition
         if (readerPosition != null) {
+            if (readerPosition.chapterIndex !in 0 until uiState.chapterCount) {
+                viewModel.clearPendingPageFraction()
+                return@LaunchedEffect
+            }
             val characterOffset = readerPosition.characterOffset
             if (characterOffset != null) {
                 readView.jumpToCharacter(readerPosition.chapterIndex, characterOffset)
@@ -1853,7 +1855,12 @@ fun ReaderScreen(
                     marginBottomDp = uiState.marginBottomDp,
                     marginLeftDp = uiState.marginLeftDp,
                     edgeTapMode = uiState.readerEdgeTapMode,
-                    notes = renderedNotes.filter { it.chapterIndex == uiState.currentChapterIndex },
+                    // Keep all notes available; each EPUB WebView routes them by loaded chapter.
+                    notes = renderedNotes,
+                    ttsCurrentSentence = ttsCurrentSentence,
+                    ttsHighlightColor = TtsSentenceHighlightSpan.computeHighlightColor(
+                        readerBackgroundColorInt
+                    ),
                     searchRequest = epubSearchRequest,
                     locatorRequest = epubLocatorRequest,
                     pageRequest = epubPageRequest,
@@ -2411,7 +2418,7 @@ fun ReaderScreen(
                 modifier = Modifier.fillMaxSize()
             )
 
-            LaunchedEffect(uiState.contentRevision) {
+            LaunchedEffect(uiState.contentRevision, readViewRef.value) {
                 if (uiState.contentRevision > 0L) {
                     readViewRef.value?.forceRelayout()
                 }
@@ -2477,7 +2484,7 @@ fun ReaderScreen(
             (bookmarkPullActive || bookmarkPullSettleMode != null || isCurrentPageBookmarked)
         if (showBookmarkIndicator) {
             Icon(
-                imageVector = Icons.Outlined.BookmarkBorder,
+                imageVector = AppIcons.Bookmark.regular,
                 contentDescription = stringResource(R.string.reader_bookmark),
                 tint = Color(readerTextColorInt),
                 modifier = Modifier
@@ -3406,21 +3413,26 @@ fun ReaderScreen(
         onColorPicked = { slot ->
             pendingAnnotationColorTarget?.let { target ->
                 val colorReference = readerHighlightColorReference(slot, target.noteType)
-                val fresh = if (isBookLayout) null else readViewRef.value?.getSelectionInfo()
-                if (fresh != null) {
+                // The overlay may receive the color tap after the native TextView has
+                // relinquished focus or the primary page has rotated. The selection
+                // state captured during the drag is the authoritative absolute range;
+                // re-reading the primary view here can apply the color to another word.
+                val selection = selectionState
+                if (selection != null) {
                     viewModel.replaceAnnotationRange(
-                        chapterIndex = fresh.chapterIndex,
-                        startPosition = fresh.chapterStartOffset + fresh.pageStart,
-                        endPosition = fresh.chapterStartOffset + fresh.pageEnd,
+                        chapterIndex = selection.chapterIndex,
+                        startPosition = selection.charStart,
+                        endPosition = selection.charEnd,
                         type = target.noteType,
                         color = colorReference
                     )
                 } else {
-                    selectionState?.let { selection ->
+                    val fresh = if (isBookLayout) null else readViewRef.value?.getSelectionInfo()
+                    fresh?.let {
                         viewModel.replaceAnnotationRange(
-                            chapterIndex = selection.chapterIndex,
-                            startPosition = selection.charStart,
-                            endPosition = selection.charEnd,
+                            chapterIndex = it.chapterIndex,
+                            startPosition = it.chapterStartOffset + it.pageStart,
+                            endPosition = it.chapterStartOffset + it.pageEnd,
                             type = target.noteType,
                             color = colorReference
                         )
@@ -4250,7 +4262,7 @@ private fun LinkReturnButton(
             modifier = Modifier.padding(horizontal = 12.dp)
         ) {
             Icon(
-                imageVector = Icons.Default.KeyboardArrowLeft,
+                imageVector = AppIcons.CaretLeft,
                 contentDescription = null,
                 tint = contentColor,
                 modifier = Modifier.size(16.dp)
@@ -4458,7 +4470,7 @@ private fun TxtEncodingCapsule(
         ) {
             if (selected) {
                 Icon(
-                    imageVector = Icons.Outlined.Check,
+                    imageVector = AppIcons.Check,
                     contentDescription = null,
                     tint = contentColor,
                     modifier = Modifier.size(16.dp)
@@ -4532,7 +4544,7 @@ private fun ReaderTopBar(
             verticalAlignment = Alignment.Top
         ) {
             ReaderTopBarButton(
-                icon = Icons.Default.KeyboardArrowLeft,
+                icon = AppIcons.CaretLeft,
                 contentDescription = stringResource(R.string.reader_back),
                 tint = contentColor,
                 backgroundColor = controlBackground,
@@ -4558,7 +4570,7 @@ private fun ReaderTopBar(
                 verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.Top)
             ) {
                 ReaderTopBarButton(
-                    icon = Icons.Default.Headphones,
+                    icon = AppIcons.Headphones,
                     contentDescription = stringResource(R.string.tts_listen),
                     tint = if (isTtsActive) AppColors.Accent else contentColor,
                     backgroundColor = controlBackground,
@@ -4567,7 +4579,7 @@ private fun ReaderTopBar(
                     onClick = onTtsClick
                 )
                 ReaderTopBarButton(
-                        icon = if (isBookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder,
+                        icon = AppIcons.Bookmark.resolve(isBookmarked),
                         contentDescription = stringResource(R.string.reader_bookmark),
                         tint = if (isBookmarked) AppColors.Accent else contentColor,
                         backgroundColor = controlBackground,
@@ -4577,7 +4589,7 @@ private fun ReaderTopBar(
                     )
                     if (isTxtBook) {
                         ReaderTopBarButton(
-                            icon = Icons.Default.Edit,
+                            icon = AppIcons.PencilSimple,
                             contentDescription = stringResource(R.string.reader_edit),
                             tint = contentColor,
                             backgroundColor = controlBackground,
@@ -4586,7 +4598,7 @@ private fun ReaderTopBar(
                             onClick = onEditClick
                         )
                         ReaderTopBarButton(
-                            icon = Icons.Default.TextFields,
+                            icon = AppIcons.TextAa,
                             contentDescription = stringResource(R.string.reader_switch_encoding),
                             tint = contentColor,
                             backgroundColor = controlBackground,
@@ -4595,7 +4607,7 @@ private fun ReaderTopBar(
                             onClick = onEncodingClick
                         )
                         ReaderTopBarButton(
-                            icon = Icons.Default.Settings,
+                            icon = AppIcons.Gear,
                             contentDescription = stringResource(R.string.reader_txt_toc_rule),
                             tint = contentColor,
                             backgroundColor = controlBackground,
@@ -4756,17 +4768,17 @@ private fun FloatingReaderMenu(
             Box(modifier = Modifier.weight(1f).graphicsLayer {
                 alpha = alpha1.value; translationY = offset1.value
             }) {
-                ActionCapsule(Icons.Default.Bookmark, stringResource(R.string.reader_notes), capsuleBgColor, capsuleContentColor, glassContentScrimColor, forceSolidCapsules, Modifier.fillMaxWidth(), enabled = visible, onBookmarkClick)
+                ActionCapsule(AppIcons.Bookmark.filled, stringResource(R.string.reader_notes), capsuleBgColor, capsuleContentColor, glassContentScrimColor, forceSolidCapsules, Modifier.fillMaxWidth(), enabled = visible, onBookmarkClick)
             }
             Box(modifier = Modifier.weight(1f).graphicsLayer {
                 alpha = alpha2.value; translationY = offset2.value
             }) {
-                ActionCapsule(Icons.Default.Search, stringResource(R.string.reader_search), capsuleBgColor, capsuleContentColor, glassContentScrimColor, forceSolidCapsules, Modifier.fillMaxWidth(), enabled = visible, onSearchClick)
+                ActionCapsule(AppIcons.MagnifyingGlass, stringResource(R.string.reader_search), capsuleBgColor, capsuleContentColor, glassContentScrimColor, forceSolidCapsules, Modifier.fillMaxWidth(), enabled = visible, onSearchClick)
             }
             Box(modifier = Modifier.weight(1f).graphicsLayer {
                 alpha = alpha3.value; translationY = offset3.value
             }) {
-                ActionCapsule(Icons.Default.Settings, stringResource(R.string.reader_theme), capsuleBgColor, capsuleContentColor, glassContentScrimColor, forceSolidCapsules, Modifier.fillMaxWidth(), enabled = visible, onThemeClick)
+                ActionCapsule(AppIcons.Gear, stringResource(R.string.reader_theme), capsuleBgColor, capsuleContentColor, glassContentScrimColor, forceSolidCapsules, Modifier.fillMaxWidth(), enabled = visible, onThemeClick)
             }
         }
     }
@@ -4984,7 +4996,7 @@ private fun CatalogCapsule(
                     .padding(horizontal = 64.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Default.List, contentDescription = null, tint = leftColor, modifier = Modifier.size(18.dp))
+                Icon(AppIcons.List, contentDescription = null, tint = leftColor, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
                 Text(stringResource(R.string.reader_toc), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = leftColor)
                 Spacer(Modifier.weight(1f))
@@ -5059,7 +5071,7 @@ private fun CatalogCapsule(
         )
 
         CatalogChapterButton(
-            icon = Icons.Default.KeyboardArrowLeft,
+            icon = AppIcons.CaretLeft,
             contentDescription = stringResource(R.string.reader_previous_chapter),
             contentColor = if (isLiquidGlass || displayProgress <= 5f) contentColor else Color.White,
             fallbackColor = contentColor.copy(alpha = 0.14f),
@@ -5072,7 +5084,7 @@ private fun CatalogCapsule(
             detachWhenDisabled = !enabled
         )
         CatalogChapterButton(
-            icon = Icons.Default.KeyboardArrowRight,
+            icon = AppIcons.CaretRight,
             contentDescription = stringResource(R.string.reader_next_chapter),
             contentColor = if (isLiquidGlass || displayProgress <= 95f) contentColor else Color.White,
             fallbackColor = contentColor.copy(alpha = 0.14f),
@@ -5551,6 +5563,7 @@ private fun ContinuousScrollReader(
                             textView.breakStrategy = breakStrategy
                         }
                         textView.justificationMode = textAlignment.readerJustificationMode()
+                        textView.readerJustificationMode = textAlignment.readerJustificationMode()
                         textView.setReaderText(selectableText)
                     },
                     modifier = Modifier.fillMaxWidth()
@@ -5662,7 +5675,7 @@ private fun continuousSpannableText(
         val start = sentence.startOffset.coerceIn(0, content.length)
         val end = sentence.endOffset.coerceIn(0, content.length)
         if (start < end) {
-            val ttsHighlightColor = TtsSentenceHighlightSpan.computeHighlightColor(backgroundColor, 0.06f)
+            val ttsHighlightColor = TtsSentenceHighlightSpan.computeHighlightColor(backgroundColor)
             content.setSpan(
                 TtsSentenceHighlightSpan(ttsHighlightColor),
                 start,
@@ -5877,7 +5890,7 @@ private fun TocSheet(
                 )
                 Spacer(Modifier.weight(1f))
                 LiquidGlassIconButton(
-                    imageVector = Icons.Default.VerticalAlignTop,
+                    imageVector = AppIcons.AlignTop,
                     contentDescription = stringResource(R.string.reader_toc_scroll_to_top),
                     onClick = {
                         val target = if (activeSection == "toc") visibleEntries else sortedBookmarks
@@ -5894,7 +5907,7 @@ private fun TocSheet(
                 )
                 Spacer(Modifier.width(8.dp))
                 LiquidGlassIconButton(
-                    imageVector = Icons.Default.VerticalAlignBottom,
+                    imageVector = AppIcons.AlignBottom,
                     contentDescription = stringResource(R.string.reader_toc_scroll_to_bottom),
                     onClick = {
                         if (activeSection == "toc") {
@@ -5916,7 +5929,7 @@ private fun TocSheet(
                 Spacer(Modifier.width(8.dp))
                 // 关闭按钮
                 LiquidGlassIconButton(
-                    imageVector = Icons.Default.Close,
+                    imageVector = AppIcons.X,
                     contentDescription = stringResource(R.string.reader_close),
                     onClick = { isClosing = true },
                     size = 44.dp,
@@ -6003,7 +6016,7 @@ private fun TocSheet(
                                             modifier = Modifier.size(40.dp)
                                         ) {
                                             Icon(
-                                                imageVector = Icons.Default.KeyboardArrowDown,
+                                                imageVector = AppIcons.CaretDown,
                                                 contentDescription = if (collapsed) stringResource(R.string.reader_toc_group_expand)
                                                 else stringResource(R.string.reader_toc_group_collapse),
                                                 tint = Color.Gray,
@@ -6223,7 +6236,7 @@ internal fun TocReturnToCurrentButton(
         }
     ) {
         LiquidGlassIconButton(
-            imageVector = Icons.Default.Refresh,
+            imageVector = AppIcons.ArrowClockwise,
             contentDescription = stringResource(R.string.reader_toc_return_to_current),
             onClick = onClick,
             size = 48.dp,
@@ -6279,7 +6292,7 @@ private fun TxtTocRuleDialog(
                     modifier = Modifier.weight(1f)
                 )
                 LiquidGlassIconButton(
-                    imageVector = Icons.Outlined.Info,
+                    imageVector = AppIcons.Info,
                     contentDescription = stringResource(R.string.txt_toc_rule_help),
                     onClick = onHelp,
                     size = 36.dp,
@@ -6410,6 +6423,7 @@ private fun txtTocRuleTitle(rule: TxtTocRule): String = when (rule.id) {
     "builtin-multilingual" -> stringResource(R.string.txt_toc_rule_multilingual_title)
     "builtin-decorated" -> stringResource(R.string.txt_toc_rule_decorated_title)
     "builtin-numbered" -> stringResource(R.string.txt_toc_rule_numbered_title)
+    "builtin-symbol-prefixed" -> stringResource(R.string.txt_toc_rule_symbol_title)
     else -> rule.name
 }
 
@@ -6418,6 +6432,7 @@ private fun txtTocRuleDescription(ruleId: String): String = when (ruleId) {
     "builtin-multilingual" -> stringResource(R.string.txt_toc_rule_multilingual_description)
     "builtin-decorated" -> stringResource(R.string.txt_toc_rule_decorated_description)
     "builtin-numbered" -> stringResource(R.string.txt_toc_rule_numbered_description)
+    "builtin-symbol-prefixed" -> stringResource(R.string.txt_toc_rule_symbol_description)
     else -> stringResource(R.string.txt_toc_rule_custom_description)
 }
 
@@ -6485,7 +6500,7 @@ private fun TxtTocRuleOption(
             if (selected) {
                 Spacer(Modifier.width(10.dp))
                 Icon(
-                    imageVector = Icons.Outlined.Check,
+                    imageVector = AppIcons.Check,
                     contentDescription = stringResource(R.string.txt_toc_rule_selected),
                     tint = Color.White,
                     modifier = Modifier.size(20.dp)
@@ -6536,6 +6551,27 @@ private fun TxtTocRuleExample() {
             fontSize = 12.sp,
             lineHeight = 18.sp
         )
+        Spacer(Modifier.height(9.dp))
+        Text(
+            text = stringResource(R.string.txt_toc_rule_symbol_example_title),
+            color = AppColors.TextPrimary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium
+        )
+        Text(
+            text = stringResource(R.string.txt_toc_rule_symbol_example_lines),
+            color = AppColors.TextSecondary,
+            fontSize = 12.sp,
+            lineHeight = 18.sp,
+            modifier = Modifier.padding(top = 3.dp)
+        )
+        Text(
+            text = stringResource(R.string.txt_toc_rule_symbol_example_regex),
+            color = AppColors.TextSecondary,
+            fontSize = 12.sp,
+            lineHeight = 18.sp,
+            modifier = Modifier.padding(top = 5.dp)
+        )
     }
 }
 
@@ -6574,7 +6610,7 @@ private fun TocBookmarkItem(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
-            Icons.Default.Bookmark,
+            AppIcons.Bookmark.filled,
             contentDescription = stringResource(R.string.reader_bookmark),
             tint = Color(0xFFFFB300),
             modifier = Modifier.size(20.dp)
@@ -6602,7 +6638,7 @@ private fun TocBookmarkItem(
             )
         }
         LiquidGlassIconButton(
-            imageVector = Icons.Default.Edit,
+            imageVector = AppIcons.PencilSimple,
             contentDescription = stringResource(R.string.edit),
             onClick = onEdit,
             size = 36.dp,
@@ -6611,7 +6647,7 @@ private fun TocBookmarkItem(
             normalContainerColor = Color.Transparent
         )
         LiquidGlassIconButton(
-            imageVector = Icons.Default.Delete,
+            imageVector = AppIcons.Trash,
             contentDescription = stringResource(R.string.delete),
             onClick = onDelete,
             size = 36.dp,
@@ -6846,7 +6882,7 @@ private fun SearchSheet(
                     Spacer(Modifier.weight(1f))
                     // 关闭按钮
                     LiquidGlassIconButton(
-                        imageVector = Icons.Default.Close,
+                        imageVector = AppIcons.X,
                         contentDescription = stringResource(R.string.reader_close),
                         onClick = { isClosing = true },
                         size = 44.dp,
@@ -7299,11 +7335,12 @@ private fun SelectionMenuOverlay(
             Box(
                 Modifier
                     .matchParentSize()
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onDismiss
-                    )
+                    .zIndex(-1f)
+                    // Do not install a pointer handler here. AndroidView children
+                    // can still win/lose hit testing against a negative-z Compose
+                    // sibling, which would swallow selection-handle DOWN events.
+                    // The reader surface dismisses the menu on an outside tap;
+                    // action/menu children below remain interactive.
             )
         }
         AnimatedContent(
@@ -7671,7 +7708,7 @@ private fun ReplaceInputSheet(
                     )
                     Spacer(Modifier.weight(1f))
                     LiquidGlassIconButton(
-                        imageVector = Icons.Default.Close,
+                        imageVector = AppIcons.X,
                         contentDescription = stringResource(R.string.reader_close),
                         onClick = { isClosing = true },
                         size = 44.dp,
@@ -7939,7 +7976,7 @@ private fun SelectionMenuSettingsButton(
         contentAlignment = Alignment.Center
     ) {
         Icon(
-            Icons.Default.Settings,
+            AppIcons.Gear,
             contentDescription = stringResource(R.string.menu_settings),
             tint = menuText.copy(alpha = 0.5f),
             modifier = Modifier.size(16.dp)
@@ -8012,7 +8049,7 @@ private fun NoteInputSheet(
             Column(Modifier.padding(top = 2.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     LiquidGlassIconButton(
-                        imageVector = Icons.Default.Close,
+                        imageVector = AppIcons.X,
                         contentDescription = stringResource(R.string.cancel),
                         onClick = { isClosing = true },
                         size = 44.dp,
@@ -8022,7 +8059,7 @@ private fun NoteInputSheet(
                     )
                     Text(stringResource(R.string.reader_notes), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = resolveAppFontFamily(KaiTi), color = AppColors.TextPrimary, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
                     LiquidGlassIconButton(
-                        imageVector = Icons.Outlined.Check,
+                        imageVector = AppIcons.Check,
                         contentDescription = stringResource(R.string.confirm),
                         onClick = {
                             onConfirm()
@@ -8157,7 +8194,7 @@ private fun NotesListSheet(
                 Spacer(Modifier.weight(1f))
                 // 关闭按钮
                 LiquidGlassIconButton(
-                    imageVector = Icons.Default.Close,
+                    imageVector = AppIcons.X,
                     contentDescription = stringResource(R.string.reader_close),
                     onClick = { isClosing = true },
                     size = 44.dp,
@@ -8376,7 +8413,7 @@ private fun HighlightNoteItem(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.Delete, stringResource(R.string.delete), tint = Color.White, modifier = Modifier.size(20.dp))
+                Icon(AppIcons.Trash, stringResource(R.string.delete), tint = Color.White, modifier = Modifier.size(20.dp))
             }
         }
 

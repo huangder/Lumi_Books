@@ -74,6 +74,16 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             """(^|[\s_#./-])(footnotes?|endnotes?|rearnotes?|notes?|fn|en)([\s_./-]|\d|$)""",
             RegexOption.IGNORE_CASE
         )
+        // 多看/掌阅等导出器会把注释锚点拼成 footnotebookmark，单词边界
+        // 不在 footnote 后面，因此不能只依赖上面的通用边界表达式。
+        private val COMPOUND_FOOTNOTE_HINT_REGEX = Regex(
+            """(?:footnotebookmark|duokan[-_]footnote)""",
+            RegexOption.IGNORE_CASE
+        )
+        private val FOOTNOTE_BACKLINK_HINT_REGEX = Regex(
+            """footnotebookmark[-_]?(?:start|back)""",
+            RegexOption.IGNORE_CASE
+        )
         private val NOTEREF_SEMANTICS_REGEX = Regex("""(^|\s)(noteref|doc-noteref)(\s|$)""")
         private val NOTE_BODY_SEMANTICS_REGEX = Regex("""(^|\s)(footnote|endnote|rearnote|doc-footnote|doc-endnote)(\s|$)""")
         private val BACKLINK_SEMANTICS_REGEX = Regex("""(^|\s)(backlink|doc-backlink)(\s|$)""")
@@ -82,6 +92,12 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         private val ASTERISK_MARKER_REGEX = Regex("""^[*＊]{1,3}$""")
         private val LINK_SCHEME_REGEX = Regex("""^[A-Za-z][A-Za-z0-9+.-]*:""")
         private val PARAGRAPH_LIKE_TAGS = setOf("p", "li", "dd", "dt", "td", "h1", "h2", "h3", "h4", "h5", "h6")
+
+        private fun hasFootnoteHint(value: String?): Boolean {
+            val candidate = value.orEmpty()
+            return FOOTNOTE_HINT_REGEX.containsMatchIn(candidate) ||
+                COMPOUND_FOOTNOTE_HINT_REGEX.containsMatchIn(candidate)
+        }
 
         /** 提取标签属性值，兼容单双引号。 */
         internal fun tagAttribute(tag: String, name: String): String? {
@@ -112,6 +128,8 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             if (!decodedHref.contains('#')) return false
             val fragment = decodedHref.substringAfter('#')
             if (fragment.isBlank()) return false
+            // 多看注释正文中的链接指回正文锚点（*_start_*），它不是新的注释引用。
+            if (FOOTNOTE_BACKLINK_HINT_REGEX.containsMatchIn(fragment)) return false
 
             val semantics = listOf("epub:type", "role", "rel")
                 .mapNotNull { tagAttribute(openTag, it) }
@@ -120,9 +138,9 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             if (NOTE_BODY_SEMANTICS_REGEX.containsMatchIn(semantics)) return false
             if (NOTEREF_SEMANTICS_REGEX.containsMatchIn(semantics)) return true
             if (listOf("class", "id", "title").any {
-                    tagAttribute(openTag, it)?.let(FOOTNOTE_HINT_REGEX::containsMatchIn) == true
+                    tagAttribute(openTag, it)?.let(::hasFootnoteHint) == true
                 }) return true
-            if (FOOTNOTE_HINT_REGEX.containsMatchIn(fragment)) return true
+            if (hasFootnoteHint(fragment)) return true
 
             val label = innerHtml
                 .replace(Regex("<[^>]*>"), "")

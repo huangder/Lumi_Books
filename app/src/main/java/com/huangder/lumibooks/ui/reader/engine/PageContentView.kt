@@ -58,12 +58,11 @@ private class PagedSelectableTextView(context: Context) : RoundedHighlightTextVi
  * 单页内容 View，替代 PageSurfaceView（Bitmap 容器）。
  *
  * 双层架构：
- * - **JustifiedTextView**（可见）：中文两端对齐渲染，逐字绘制 + 行尾字间距自动填充
- * - **TextView**（隐藏）：计算 StaticLayout，处理文字选择（泪滴手柄 + 浮动工具栏）
+ * - **JustifiedTextView**（可见）：按选择层的同一个 Layout 绘制文字和排版装饰
+ * - **TextView**（选择层）：文字本身不绘制，只保留系统选择、复制、手柄和触摸流程
  *
- * 选择手柄位置基于 TextView 的 layout 计算，
- * 实际文字渲染使用 JustifiedTextView 的逐字绘制，
- * 两者之间的微小偏差（< 5% 行宽）在视觉上可接受。
+ * 两层共享 Layout 行边界和 ReaderLineGeometry，避免厂商 Editor 的光标坐标与可见文字
+ * 来自不同排版结果而产生累计偏移。
  */
 class PageContentView(context: Context) : FrameLayout(context) {
 
@@ -88,8 +87,9 @@ class PageContentView(context: Context) : FrameLayout(context) {
         visibility = View.GONE
     }
 
-    /** The single visible text, image, highlight, and native-selection renderer. */
+    /** Transparent selection/controller layer. Its Layout remains the canonical geometry source. */
     val textView: TextView = PagedSelectableTextView(context).apply {
+        readerSelectionOnly = true
         setTextIsSelectable(true)
         gravity = Gravity.TOP
         includeFontPadding = false
@@ -104,11 +104,11 @@ class PageContentView(context: Context) : FrameLayout(context) {
         setTextSize(TypedValue.COMPLEX_UNIT_PX, 56f)
     }
 
-    /** 可见的 JustifiedTextView：中文两端对齐渲染 */
+    /** 可见文字层；它 reuses textView's Layout so glyphs and selection share coordinates. */
     private val justifiedView = JustifiedTextView(context).apply {
         setDefaultTextColor(0xFF333333.toInt())
         setTextSize(56f)
-        visibility = View.INVISIBLE
+        visibility = View.VISIBLE
     }
 
     private val verticalTextView = VerticalTextView(context).apply {
@@ -121,11 +121,16 @@ class PageContentView(context: Context) : FrameLayout(context) {
         isLongClickable = false
         addView(backgroundImageView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(coverImageView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-        // 再添加隐藏的 TextView（处理触摸）
-        addView(textView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-        // 再添加可见的 JustifiedTextView（顶层，渲染文字）
+        // Visible text is drawn first; the transparent selection layer is kept
+        // above it so its custom selection/handle overlay is visible and can
+        // receive the touch stream.
         addView(justifiedView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        addView(textView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(verticalTextView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        justifiedView.setSourceLayoutProvider { textView.layout }
+        (textView as? RoundedHighlightTextView)?.onReaderTextReplaced = { sp ->
+            onTextSet?.invoke(sp)
+        }
     }
 
     private var readerBackgroundImagePath: String? = null
@@ -227,24 +232,34 @@ class PageContentView(context: Context) : FrameLayout(context) {
         textView.customSelectionActionModeCallback = object : android.view.ActionMode.Callback {
             override fun onCreateActionMode(mode: android.view.ActionMode?, menu: android.view.Menu?): Boolean {
                 menu?.clear()
-                mode?.hide(Long.MAX_VALUE)
-                textView.post {
-                    menu?.clear()
-                    mode?.hide(Long.MAX_VALUE)
-                }
+                // Keep the native selection controller alive for its handles, but hide
+                // the platform floating toolbar. Finishing/returning false here also
+                // tears down the handles, while an empty menu still leaves a toolbar
+                // container visible on several Android versions.
+                hideSelectionToolbar(mode, menu)
                 return true
             }
             override fun onPrepareActionMode(mode: android.view.ActionMode?, menu: android.view.Menu?): Boolean {
                 menu?.clear()
-                mode?.hide(Long.MAX_VALUE)
-                textView.post {
-                    menu?.clear()
-                    mode?.hide(Long.MAX_VALUE)
-                }
+                hideSelectionToolbar(mode, menu)
                 return true
             }
             override fun onActionItemClicked(mode: android.view.ActionMode?, item: android.view.MenuItem?): Boolean = false
             override fun onDestroyActionMode(mode: android.view.ActionMode?) {}
+        }
+    }
+
+    private fun hideSelectionToolbar(
+        mode: android.view.ActionMode?,
+        menu: android.view.Menu?
+    ) {
+        menu?.clear()
+        mode?.hide(Long.MAX_VALUE)
+        // FloatingToolbar can be re-prepared after the callback returns. Reapply
+        // the hidden state on the next main-loop turn without ending selection.
+        textView.post {
+            menu?.clear()
+            mode?.hide(Long.MAX_VALUE)
         }
     }
 
@@ -283,6 +298,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
             chapterStartOffset = startChar
             textView.text = ""
             justifyLastLine = false
+            (textView as? RoundedHighlightTextView)?.readerForceLastLineJustification = false
             justifiedView.justifyLastLine = false
             justifiedView.text = null
             verticalTextView.clearPage()
@@ -304,6 +320,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
         if (actualStart >= endChar) {
             textView.text = ""
             justifyLastLine = false
+            (textView as? RoundedHighlightTextView)?.readerForceLastLineJustification = false
             justifiedView.justifyLastLine = false
             justifiedView.text = null
             verticalTextView.clearPage()
@@ -315,6 +332,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
             endChar > actualStart &&
             fullText[endChar - 1] != '\n' &&
             fullText[endChar - 1] != '\r'
+        (textView as? RoundedHighlightTextView)?.readerForceLastLineJustification = justifyLastLine
         justifiedView.justifyLastLine = justifyLastLine
 
         val subText = fullText.subSequence(actualStart, endChar)
@@ -396,7 +414,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
                         Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
                     )
                 } else if ((hColor and 0x00FFFFFF) == TTS_HIGHLIGHT_RGB) {
-                    val ttsColor = TtsSentenceHighlightSpan.computeHighlightColor(currentBgColor, 0.06f)
+                    val ttsColor = TtsSentenceHighlightSpan.computeHighlightColor(currentBgColor)
                     spannable.setSpan(
                         TtsSentenceHighlightSpan(ttsColor),
                         localStart, localEnd,
@@ -486,7 +504,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
         val localStart = chapterStart?.minus(chapterStartOffset)?.coerceIn(0, actualSpannable?.length ?: 0)
         val localEnd = chapterEnd?.minus(chapterStartOffset)?.coerceIn(0, actualSpannable?.length ?: 0)
         if (localStart != null && localEnd != null && localStart < localEnd) {
-            val color = TtsSentenceHighlightSpan.computeHighlightColor(currentBgColor, 0.06f)
+            val color = TtsSentenceHighlightSpan.computeHighlightColor(currentBgColor)
             targets.forEach { text ->
                 text.setSpan(
                     TtsSentenceHighlightSpan(color),
@@ -540,6 +558,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
     private fun updateContentRendererVisibility() {
         val vertical = writingMode.isVertical
         textView.visibility = if (showingCoverPage || vertical) View.INVISIBLE else View.VISIBLE
+        justifiedView.visibility = if (!showingCoverPage && !vertical) View.VISIBLE else View.GONE
         verticalTextView.visibility = if (!showingCoverPage && vertical) View.VISIBLE else View.GONE
     }
 
@@ -619,6 +638,8 @@ class PageContentView(context: Context) : FrameLayout(context) {
         if (textView.justificationMode != justificationMode) {
             textView.justificationMode = justificationMode
         }
+        (textView as? RoundedHighlightTextView)?.readerJustificationMode = justificationMode
+        justifiedView.readerJustificationMode = justificationMode
         // 🔥 守卫：仅在 padding 实际变更时调用 setPadding，避免无谓的 requestLayout()
         val ml = marginLeftPx.toInt()
         val mt = marginTopPx.toInt()
@@ -628,17 +649,12 @@ class PageContentView(context: Context) : FrameLayout(context) {
             textView.paddingRight != mr || textView.paddingBottom != mb) {
             textView.setPadding(ml, mt, mr, mb)
         }
-        textView.highlightColor = highlightColor
+        // Native selection geometry does not include TextLine's justification spacing.
+        // Keep its handles/action mode, but draw the selection background ourselves.
+        (textView as? RoundedHighlightTextView)?.readerSelectionColor = highlightColor
+        textView.highlightColor = android.graphics.Color.TRANSPARENT
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            val density = textView.resources.displayMetrics.density
-            val handle = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(accentColor)
-                setSize((14 * density).toInt(), (18 * density).toInt())
-            }
-            textView.setTextSelectHandle(handle)
-            textView.setTextSelectHandleLeft(handle)
-            textView.setTextSelectHandleRight(handle)
+            (textView as? RoundedHighlightTextView)?.configureReaderSelectionHandles(accentColor)
         }
 
         // 配置可见的 JustifiedTextView（两端对齐渲染）
@@ -696,6 +712,9 @@ class PageContentView(context: Context) : FrameLayout(context) {
         val lineEnd = textLayout.getLineEnd(line)
         val images = spannable.getSpans(lineStart, lineEnd, ImageSpan::class.java)
         if (images.isEmpty()) return null
+        val geometry = (textView as? RoundedHighlightTextView)?.let {
+            ReaderLineGeometry(textLayout, spannable, it.readerJustificationMode)
+        }
 
         for (image in images) {
             val spanStart = spannable.getSpanStart(image).coerceAtLeast(0)
@@ -704,7 +723,8 @@ class PageContentView(context: Context) : FrameLayout(context) {
             val imageWidth = drawable.bounds.width().toFloat().coerceAtLeast(1f)
             val imageHeight = drawable.bounds.height().toFloat().coerceAtLeast(1f)
             val imageLeft = textView.totalPaddingLeft +
-                textLayout.getPrimaryHorizontal(spanStart) - textView.scrollX
+                (geometry?.horizontalPosition(spanStart)
+                    ?: textLayout.getPrimaryHorizontal(spanStart)) - textView.scrollX
             val lineTop = textLayout.getLineTop(line).toFloat()
             val lineBottom = textLayout.getLineBottom(line).toFloat()
             val imageTopInLayout = when (image.verticalAlignment) {
@@ -821,17 +841,20 @@ class PageContentView(context: Context) : FrameLayout(context) {
         }
 
         val line = layout.getLineForVertical(ty.toInt())
-        val offset = layout.getOffsetForHorizontal(line, tx).coerceIn(0, spannable.length - 1)
+        val offset = (textView as? RoundedHighlightTextView)
+            ?.readerOffsetForHorizontal(line, tx)
+            ?: layout.getOffsetForHorizontal(line, tx)
+        val safeOffset = offset.coerceIn(0, spannable.length - 1)
 
         // 扩词：CJK 左2右3，英文到词边界
         val text = spannable.toString()
-        var start = offset
-        var end = offset
-        val charCode = text[offset].code
+        var start = safeOffset
+        var end = safeOffset
+        val charCode = text[safeOffset].code
         val isCJK = charCode in 0x4E00..0x9FFF || charCode in 0x3400..0x4DBF
         if (isCJK) {
-            start = (offset - 2).coerceAtLeast(0)
-            end = (offset + 3).coerceAtMost(text.length)
+            start = (safeOffset - 2).coerceAtLeast(0)
+            end = (safeOffset + 3).coerceAtMost(text.length)
         } else {
             fun isWordSep(c: Char): Boolean = c.isWhitespace() || (!c.isLetterOrDigit() && c != '\'' && c != '-')
             while (start > 0 && !isWordSep(text[start - 1])) start--
@@ -872,6 +895,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
     fun clear() {
         textView.text = ""
         justifyLastLine = false
+        (textView as? RoundedHighlightTextView)?.readerForceLastLineJustification = false
         justifiedView.justifyLastLine = false
         justifiedView.text = null
         verticalTextView.clearPage()
@@ -905,6 +929,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
         this.chapterStartOffset = chapterStartOffset
         this.justifyLastLine = justifyLastLine
         this.verticalGeometry = verticalGeometry
+        (textView as? RoundedHighlightTextView)?.readerForceLastLineJustification = justifyLastLine
         resetPageVerticalPosition()
         justifiedView.justifyLastLine = justifyLastLine
         // 🔥 先设置 justifiedView（只 invalidate，不触发父布局），再设置 textView（可能触发父布局）
@@ -967,4 +992,9 @@ class PageContentView(context: Context) : FrameLayout(context) {
 
     fun isVerticalSelectionHandleDragActive(): Boolean =
         writingMode.isVertical && verticalTextView.isSelectionHandleDragActive()
+
+    /** Whether the horizontal TextView owns an in-progress custom handle drag. */
+    fun isReaderSelectionHandleDragActive(): Boolean =
+        !writingMode.isVertical &&
+            (textView as? RoundedHighlightTextView)?.isReaderSelectionHandleDragActive() == true
 }

@@ -49,4 +49,26 @@ class TxtTocRulesTest {
         assertEquals(null, selected)
         assertTrue(diagnostics.single().reason != null)
     }
+
+    @Test
+    fun symbolPrefixedRuleMatchesStarAndSeparator() {
+        val rule = TxtTocRuleBuiltIns.byId("builtin-symbol-prefixed")!!
+        val compiled = TxtTocRuleCompiler.compile(rule).getOrThrow()
+
+        assertEquals("☆、第一章 误入江湖", compiled.match("☆、第一章 误入江湖")?.title)
+        assertEquals("★、新的开始", compiled.match("★、新的开始")?.title)
+        assertEquals("◆：章节标题", compiled.match("◆：章节标题")?.title)
+        assertEquals(null, compiled.match("正文中的项目符号"))
+    }
+
+    @Test
+    fun selectorChoosesSymbolPrefixedRule() {
+        val (selected, diagnostics) = TxtTocRuleSelector.choose(
+            TxtTocRuleBuiltIns.all,
+            sequenceOf("前言", "☆、第一章 误入江湖", "正文", "★、第二章 夜探山门", "◆：终章")
+        )
+
+        assertEquals("builtin-symbol-prefixed", selected?.id)
+        assertTrue(diagnostics.first { it.ruleId == "builtin-symbol-prefixed" }.accepted)
+    }
 }

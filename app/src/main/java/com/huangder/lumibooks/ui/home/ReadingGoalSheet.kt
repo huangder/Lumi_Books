@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.ui.home
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.ScrollState
@@ -28,8 +29,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -253,7 +252,7 @@ private fun ReadingGoalContainer(
         ) {
             Spacer(modifier = Modifier.weight(1f))
             LiquidGlassIconButton(
-                imageVector = Icons.Outlined.Close,
+                imageVector = AppIcons.X,
                 contentDescription = stringResource(R.string.close),
                 onClick = onClose,
                 size = 44.dp,

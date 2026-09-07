@@ -2,14 +2,24 @@ package com.huangder.lumibooks.ui.reader.engine
 
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.Rect
 import android.graphics.RectF
+import android.graphics.ColorFilter
+import android.graphics.PixelFormat
+import android.graphics.drawable.Drawable
+import android.graphics.drawable.GradientDrawable
 import android.text.Layout
+import android.text.Selection
+import android.text.Spannable
 import android.text.Spanned
 import android.text.TextPaint
 import android.text.style.CharacterStyle
 import android.text.style.UpdateAppearance
-import android.widget.TextView
+import android.widget.ReaderGeometryTextView
+import kotlin.math.roundToInt
 
 /** A non-persistent highlight whose opacity is animated after navigating to a search result. */
 internal class ReaderSearchHighlightSpan(var alpha: Int) : CharacterStyle(), UpdateAppearance {
@@ -28,7 +38,10 @@ internal class TtsSentenceHighlightSpan(val color: Int) : CharacterStyle(), Upda
     override fun updateDrawState(textPaint: TextPaint) = Unit
 
     companion object {
-        fun computeHighlightColor(bgColor: Int, delta: Float = 0.06f): Int {
+        /** Small theme-aware contrast boost used by every TTS renderer. */
+        const val DEFAULT_CONTRAST_DELTA = 0.10f
+
+        fun computeHighlightColor(bgColor: Int, delta: Float = DEFAULT_CONTRAST_DELTA): Int {
             val r = android.graphics.Color.red(bgColor)
             val g = android.graphics.Color.green(bgColor)
             val b = android.graphics.Color.blue(bgColor)
@@ -57,14 +70,500 @@ internal class TtsSentenceHighlightSpan(val color: Int) : CharacterStyle(), Upda
 internal class WaveUnderlineSpan(val color: Int) : CharacterStyle(), UpdateAppearance {
     override fun updateDrawState(textPaint: TextPaint) = Unit
 }
-internal open class RoundedHighlightTextView(context: Context) : TextView(context) {
+
+/**
+ * Keeps Editor's selection controller alive without exposing the OEM popup.
+ * ColorOS can tint/wrap a normal transparent drawable and still paint its own
+ * handle. A true no-op drawable avoids that second set of pixels; the actual
+ * handle is drawn and hit-tested in this view below.
+ */
+private class OffsetSelectionHandleDrawable(
+    private val delegate: Drawable,
+    private val extraWidthPx: Int,
+    private val isStartHandle: Boolean
+) : Drawable() {
+    var offsetX: Float = 0f
+    var isRtlRun: Boolean = false
+
+    override fun draw(canvas: Canvas) = Unit
+
+    override fun setAlpha(alpha: Int) { delegate.alpha = alpha; invalidateSelf() }
+    override fun setColorFilter(colorFilter: ColorFilter?) { delegate.colorFilter = colorFilter; invalidateSelf() }
+    override fun getOpacity(): Int = if (delegate.opacity == PixelFormat.OPAQUE) PixelFormat.OPAQUE else PixelFormat.TRANSLUCENT
+    // A 1px popup minimizes the chance that the OEM window intercepts touches
+    // intended for the corrected in-view handle. The in-view hit radius is the
+    // real touch target.
+    override fun getIntrinsicWidth(): Int = 1
+    override fun getIntrinsicHeight(): Int = 1
+    override fun onBoundsChange(bounds: Rect) = Unit
+    override fun setTint(tintColor: Int) = Unit
+    override fun setTintList(tint: android.content.res.ColorStateList?) = Unit
+    override fun setTintMode(tintMode: android.graphics.PorterDuff.Mode?) = Unit
+}
+
+internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryTextView(context) {
     private val highlightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val selectionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val highlightBounds = RectF()
+    private val selectionPath = Path()
+    private var leftSelectionHandle: OffsetSelectionHandleDrawable? = null
+    private var rightSelectionHandle: OffsetSelectionHandleDrawable? = null
+    private var selectionHandleColor: Int? = null
+    private var draggingSelectionHandle: Boolean? = null
+    private val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private var nativeSelectionSuppressed = false
+    private var internalSelectionMutation = false
+
+    /** Selection-only layers keep the native layout/controller but do not paint glyphs. */
+    var readerSelectionOnly: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            invalidate()
+        }
+
+    /** Page slots may justify their final visible line when the page ends mid-paragraph. */
+    var readerForceLastLineJustification: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            updateSelectionHandleOffsets()
+            invalidate()
+        }
+
+    /** The mode used by the visible TextView's Layout while drawing. */
+    var readerJustificationMode: Int = Layout.JUSTIFICATION_MODE_NONE
+        set(value) {
+            if (field == value) return
+            field = value
+            installReaderOffsetMapper()
+            updateSelectionHandleOffsets()
+            invalidate()
+        }
+
+    /** Color for the custom selection background; native Layout selection is disabled. */
+    var readerSelectionColor: Int = 0x40007AFF
+        set(value) {
+            if (field == value) return
+            field = value
+            invalidate()
+        }
+
+    init {
+        installReaderOffsetMapper()
+    }
+
+    /**
+     * Editor's handle drag path uses getOffsetAtCoordinate(), which is not
+     * exposed as an overridable public API from the app package. The superclass
+     * bridge lives in android.widget and forwards this mapper to the same
+     * geometry used by selection painting and hit testing.
+     */
+    private fun installReaderOffsetMapper() {
+        readerOffsetMapper = { targetLayout, line, x ->
+            val spanned = text as? Spanned
+            if (spanned == null || readerJustificationMode == Layout.JUSTIFICATION_MODE_NONE ||
+                line !in 0 until targetLayout.lineCount || !x.isFinite()
+            ) {
+                null
+            } else {
+                ReaderLineGeometry(
+                    layout = targetLayout,
+                    text = spanned,
+                    justificationMode = readerJustificationMode,
+                    forceLastLineJustification = readerForceLastLineJustification
+                ).offsetForHorizontal(line, x)
+            }
+        }
+    }
+
+    /** Public counterpart used by framework/OEM code paths that skip the bridge. */
+    override fun getOffsetForPosition(x: Float, y: Float): Int {
+        if (readerJustificationMode == Layout.JUSTIFICATION_MODE_NONE) {
+            return super.getOffsetForPosition(x, y)
+        }
+        val spanned = text as? Spanned ?: return super.getOffsetForPosition(x, y)
+        val textLayout = layout ?: return super.getOffsetForPosition(x, y)
+        val localX = x - totalPaddingLeft + scrollX
+        val localY = y - totalPaddingTop + scrollY
+        if (!localX.isFinite() || !localY.isFinite() || textLayout.lineCount == 0) {
+            return super.getOffsetForPosition(x, y)
+        }
+        val line = textLayout.getLineForVertical(localY.toInt())
+        val mapped = ReaderLineGeometry(
+            layout = textLayout,
+            text = spanned,
+            justificationMode = readerJustificationMode,
+            forceLastLineJustification = readerForceLastLineJustification
+        ).offsetForHorizontal(line, localX)
+        return mapped ?: super.getOffsetForPosition(x, y)
+    }
+
+    internal fun configureReaderSelectionHandles(color: Int) {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) return
+        if (selectionHandleColor == color &&
+            leftSelectionHandle != null && rightSelectionHandle != null
+        ) return
+        val density = resources.displayMetrics.density
+        // HandleView already guarantees a platform minimum touch target (normally
+        // 48dp). Add only a modest transparent gutter so the correction does not
+        // make the two selection popups overlap and steal each other's touches.
+        val extraWidth = (24f * density).roundToInt()
+        fun newHandle(isStart: Boolean): OffsetSelectionHandleDrawable {
+            val drawable = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                // The real handle is drawn in-view below. Keep the framework
+                // Popup/controller alive, but do not expose its OEM-positioned
+                // pixels or let its stale window be mistaken for the handle.
+                setColor(Color.TRANSPARENT)
+                setSize((14 * density).toInt(), (18 * density).toInt())
+            }
+            return OffsetSelectionHandleDrawable(drawable, extraWidth, isStart)
+        }
+        val left = newHandle(isStart = true)
+        val right = newHandle(isStart = false)
+        leftSelectionHandle = left
+        rightSelectionHandle = right
+        selectionHandleColor = color
+        setTextSelectHandleLeft(left)
+        setTextSelectHandleRight(right)
+        setTextSelectHandle(right)
+        updateSelectionHandleOffsets()
+        invalidate()
+    }
+
+    override fun onSelectionChanged(selStart: Int, selEnd: Int) {
+        super.onSelectionChanged(selStart, selEnd)
+        // Editor may move its handle popup without causing another draw pass on
+        // the TextView. Refresh the drawable offsets as soon as the range moves.
+        updateSelectionHandleOffsets()
+        invalidate()
+        postInvalidateOnAnimation()
+        // Let Editor finish creating its action mode, then detach only its
+        // selection controller. The Editable and Selection spans remain intact,
+        // so copy/menu callbacks continue to read the exact same range.
+        if (!internalSelectionMutation && selStart >= 0 && selEnd >= 0 && selStart != selEnd) {
+            post { suppressNativeSelectionController() }
+        }
+    }
+
+    private fun suppressNativeSelectionController() {
+        if (nativeSelectionSuppressed || internalSelectionMutation) return
+        val source = text as? Spannable ?: return
+        val start = Selection.getSelectionStart(source)
+        val end = Selection.getSelectionEnd(source)
+        if (start < 0 || end <= start) return
+        nativeSelectionSuppressed = true
+        internalSelectionMutation = true
+        try {
+            // setTextIsSelectable(false) detaches ColorOS' popup controller.
+            // Restore a Spannable copy immediately because the platform method
+            // otherwise changes the buffer to NORMAL and drops selection spans.
+            val copy = android.text.SpannableStringBuilder(source)
+            setTextIsSelectable(false)
+            setText(copy, android.widget.TextView.BufferType.SPANNABLE)
+            (text as? Spannable)?.let {
+                Selection.setSelection(it, start.coerceIn(0, it.length), end.coerceIn(0, it.length))
+                // setText() replaced the Editable, so listeners attached to the
+                // previous buffer no longer observe subsequent handle movement.
+                // Give the owning page a chance to re-register them on this live
+                // buffer before the drag continues.
+                onReaderTextReplaced?.invoke(it)
+            }
+        } finally {
+            internalSelectionMutation = false
+        }
+        updateSelectionHandleOffsets()
+        invalidate()
+    }
+
+    private fun restoreNativeSelectionController() {
+        if (!nativeSelectionSuppressed || internalSelectionMutation) return
+        val source = text as? Spannable ?: return
+        val start = Selection.getSelectionStart(source)
+        val end = Selection.getSelectionEnd(source)
+        internalSelectionMutation = true
+        try {
+            setTextIsSelectable(true)
+            setText(source, android.widget.TextView.BufferType.SPANNABLE)
+            (text as? Spannable)?.let {
+                if (start >= 0 && end >= 0) {
+                    Selection.setSelection(it, start.coerceIn(0, it.length), end.coerceIn(0, it.length))
+                }
+            }
+        } finally {
+            internalSelectionMutation = false
+            nativeSelectionSuppressed = false
+        }
+    }
+
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        super.onLayout(changed, left, top, right, bottom)
+        if (changed) {
+            updateSelectionHandleOffsets()
+            invalidate()
+        }
+    }
+
+    override fun onTextChanged(text: CharSequence?, start: Int, before: Int, count: Int) {
+        super.onTextChanged(text, start, before, count)
+        if (!internalSelectionMutation) nativeSelectionSuppressed = false
+        updateSelectionHandleOffsets()
+        invalidate()
+    }
 
     override fun onDraw(canvas: Canvas) {
+        updateSelectionHandleOffsets()
+        if (readerSelectionOnly) {
+            drawReaderSelection(canvas)
+            drawCustomSelectionHandles(canvas)
+            return
+        }
         drawRoundedHighlights(canvas)
         drawWaveUnderlines(canvas)
+        drawReaderSelection(canvas)
         super.onDraw(canvas)
+        drawCustomSelectionHandles(canvas)
+    }
+
+    /**
+     * ColorOS may anchor the native selection popup at the next line's x=0 when
+     * the cursor is at a wrapped-line boundary. Keep that popup transparent and
+     * draw the actual touch target in this view, using the corrected geometry.
+     */
+    private fun drawCustomSelectionHandles(canvas: Canvas) {
+        val spanned = text as? Spanned ?: return
+        val textLayout = layout ?: return
+        val rawStart = Selection.getSelectionStart(spanned)
+        val rawEnd = Selection.getSelectionEnd(spanned)
+        if (rawStart < 0 || rawEnd < 0 || rawStart == rawEnd) return
+        val geometry = ReaderLineGeometry(
+            textLayout,
+            spanned,
+            readerJustificationMode,
+            readerForceLastLineJustification
+        )
+        val start = minOf(rawStart, rawEnd)
+        val end = maxOf(rawStart, rawEnd)
+        handlePaint.color = selectionHandleColor ?: Color.TRANSPARENT
+        if (handlePaint.color ushr 24 == 0) return
+        // Layout coordinates are content-local. TextView's normal Layout.draw()
+        // path applies this translation before painting; custom handles must do
+        // the same or they drift by the page margins (and by scroll offset).
+        val save = canvas.save()
+        canvas.translate(totalPaddingLeft.toFloat() - scrollX, totalPaddingTop.toFloat() - scrollY)
+        drawCustomHandle(canvas, geometry, textLayout, start, trailing = false)
+        drawCustomHandle(canvas, geometry, textLayout, end, trailing = true)
+        canvas.restoreToCount(save)
+    }
+
+    private fun drawCustomHandle(
+        canvas: Canvas,
+        geometry: ReaderLineGeometry,
+        textLayout: Layout,
+        offset: Int,
+        trailing: Boolean
+    ) {
+        val x = geometry.horizontalPosition(offset, trailing) ?: return
+        val safeOffset = offset.coerceIn(0, text?.length ?: 0)
+        val line = if (trailing && safeOffset > 0 && safeOffset < (text?.length ?: 0) &&
+            textLayout.getLineForOffset(safeOffset) > 0 &&
+            textLayout.getLineStart(textLayout.getLineForOffset(safeOffset)) == safeOffset
+        ) {
+            textLayout.getLineForOffset(safeOffset) - 1
+        } else {
+            textLayout.getLineForOffset(safeOffset.coerceAtMost((text?.length ?: 1) - 1))
+        }
+        val bottom = textLayout.getLineBottom(line).toFloat()
+        val stemTop = bottom - 1f
+        val circleY = bottom + resources.displayMetrics.density * 7f
+        canvas.drawRect(x - 1.5f, stemTop, x + 1.5f, circleY, handlePaint)
+        canvas.drawCircle(x, circleY, resources.displayMetrics.density * 8f, handlePaint)
+    }
+
+    private fun customHandleHit(eventX: Float, eventY: Float): Boolean {
+        val spanned = text as? Spanned ?: return false
+        val textLayout = layout ?: return false
+        val rawStart = Selection.getSelectionStart(spanned)
+        val rawEnd = Selection.getSelectionEnd(spanned)
+        if (rawStart < 0 || rawEnd < 0 || rawStart == rawEnd) return false
+        val geometry = ReaderLineGeometry(
+            textLayout,
+            spanned,
+            readerJustificationMode,
+            readerForceLastLineJustification
+        )
+        val start = minOf(rawStart, rawEnd)
+        val end = maxOf(rawStart, rawEnd)
+        val forwardSelection = rawStart < rawEnd
+        val density = resources.displayMetrics.density
+        val hitRadius = 26f * density
+        fun near(offset: Int, trailing: Boolean): Boolean {
+            val x = geometry.horizontalPosition(offset, trailing) ?: return false
+            val safeOffset = offset.coerceIn(0, spanned.length)
+            val line = if (trailing && safeOffset > 0 && safeOffset < spanned.length &&
+                textLayout.getLineForOffset(safeOffset) > 0 &&
+                textLayout.getLineStart(textLayout.getLineForOffset(safeOffset)) == safeOffset
+            ) textLayout.getLineForOffset(safeOffset) - 1
+            else textLayout.getLineForOffset(safeOffset.coerceAtMost(spanned.length - 1))
+            val y = textLayout.getLineBottom(line).toFloat() + density * 7f
+            return kotlin.math.abs(eventX - (x + totalPaddingLeft - scrollX)) <= hitRadius &&
+                kotlin.math.abs(eventY - (y + totalPaddingTop - scrollY)) <= hitRadius
+        }
+        return when {
+            near(start, false) -> { draggingSelectionHandle = forwardSelection; true }
+            near(end, true) -> { draggingSelectionHandle = !forwardSelection; true }
+            else -> false
+        }
+    }
+
+    override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
+        val drag = draggingSelectionHandle
+        if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN) {
+            val hit = customHandleHit(event.x, event.y)
+            if (hit) {
+                parent?.requestDisallowInterceptTouchEvent(true)
+                return true
+            }
+            if (nativeSelectionSuppressed) {
+                restoreNativeSelectionController()
+            }
+        } else if (drag != null) {
+            when (event.actionMasked) {
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    val spanned = text as? Spannable
+                    val textLayout = layout
+                    if (spanned != null && textLayout != null && spanned.isNotEmpty()) {
+                        val localX = event.x - totalPaddingLeft + scrollX
+                        val localY = event.y - totalPaddingTop + scrollY
+                        val line = textLayout.getLineForVertical(localY.toInt().coerceIn(0, textLayout.height - 1))
+                        val mapped = ReaderLineGeometry(
+                            textLayout,
+                            spanned,
+                            readerJustificationMode,
+                            readerForceLastLineJustification
+                        ).offsetForHorizontal(line, localX)
+                        if (mapped != null) {
+                            if (drag) Selection.setSelection(spanned, mapped, Selection.getSelectionEnd(spanned))
+                            else Selection.setSelection(spanned, Selection.getSelectionStart(spanned), mapped)
+                        }
+                    }
+                    return true
+                }
+                android.view.MotionEvent.ACTION_UP,
+                android.view.MotionEvent.ACTION_CANCEL -> {
+                    draggingSelectionHandle = null
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                    return true
+                }
+            }
+            return true
+        }
+        return super.onTouchEvent(event)
+    }
+
+    /**
+     * True after a custom handle accepted ACTION_DOWN and until the stream ends.
+     * ReadView uses this to keep page-swipe classification from stealing the
+     * subsequent MOVE/UP events from this TextView.
+     */
+    internal fun isReaderSelectionHandleDragActive(): Boolean =
+        draggingSelectionHandle != null
+
+    /** Called when the OEM-controller workaround replaces the Editable buffer. */
+    internal var onReaderTextReplaced: ((Spannable) -> Unit)? = null
+
+    private fun updateSelectionHandleOffsets() {
+        val spanned = text as? Spanned
+        val textLayout = layout
+        if (spanned == null || textLayout == null) {
+            leftSelectionHandle?.offsetX = 0f
+            rightSelectionHandle?.offsetX = 0f
+            leftSelectionHandle?.isRtlRun = false
+            rightSelectionHandle?.isRtlRun = false
+            return
+        }
+        val rawStart = Selection.getSelectionStart(spanned)
+        val rawEnd = Selection.getSelectionEnd(spanned)
+        if (rawStart < 0 || rawEnd < 0 || rawStart == rawEnd) {
+            leftSelectionHandle?.offsetX = 0f
+            rightSelectionHandle?.offsetX = 0f
+            leftSelectionHandle?.isRtlRun = false
+            rightSelectionHandle?.isRtlRun = false
+            return
+        }
+        val start = minOf(rawStart, rawEnd)
+        val end = maxOf(rawStart, rawEnd)
+        val geometry = ReaderLineGeometry(
+            textLayout,
+            spanned,
+            readerJustificationMode,
+            readerForceLastLineJustification
+        )
+        val nativeStart = textLayout.getPrimaryHorizontal(start).takeIf { it.isFinite() } ?: 0f
+        val nativeEnd = textLayout.getPrimaryHorizontal(end).takeIf { it.isFinite() } ?: nativeStart
+        val correctedStart = geometry.horizontalPosition(start) ?: nativeStart
+        val correctedEnd = geometry.horizontalPosition(end, trailing = true) ?: nativeEnd
+        leftSelectionHandle?.isRtlRun = runCatching { textLayout.isRtlCharAt(start) }.getOrDefault(false)
+        rightSelectionHandle?.isRtlRun = runCatching { textLayout.isRtlCharAt(end) }.getOrDefault(false)
+        leftSelectionHandle?.offsetX = (correctedStart - nativeStart).takeIf { it.isFinite() } ?: 0f
+        rightSelectionHandle?.offsetX = (correctedEnd - nativeEnd).takeIf { it.isFinite() } ?: 0f
+    }
+
+    private fun drawReaderSelection(canvas: Canvas) {
+        val spanned = text as? Spanned ?: return
+        val textLayout = layout ?: return
+        val rawStart = Selection.getSelectionStart(spanned)
+        val rawEnd = Selection.getSelectionEnd(spanned)
+        val start = minOf(rawStart, rawEnd)
+        val end = maxOf(rawStart, rawEnd)
+        if (start < 0 || end <= start || readerSelectionColor ushr 24 == 0) return
+
+        val geometry = ReaderLineGeometry(
+            layout = textLayout,
+            text = spanned,
+            justificationMode = readerJustificationMode,
+            forceLastLineJustification = readerForceLastLineJustification
+        )
+        selectionPaint.color = readerSelectionColor
+        val saveCount = canvas.save()
+        canvas.translate(totalPaddingLeft.toFloat() - scrollX, totalPaddingTop.toFloat() - scrollY)
+        val firstLine = textLayout.getLineForOffset(start)
+        val lastLine = textLayout.getLineForOffset((end - 1).coerceAtLeast(start))
+        for (line in firstLine..lastLine) {
+            val range = geometry.horizontalRange(
+                line,
+                maxOf(start, textLayout.getLineStart(line)),
+                minOf(end, readerLineContentEnd(spanned, textLayout.getLineStart(line), textLayout.getLineEnd(line)))
+            ) ?: continue
+            val top = textLayout.getLineTop(line).toFloat()
+            val bottom = textLayout.getLineBottom(line).toFloat()
+            canvas.drawRect(range.left, top, range.right, bottom, selectionPaint)
+        }
+        canvas.restoreToCount(saveCount)
+    }
+
+    /** Returns the same horizontal coordinate used by reader highlights. */
+    internal fun readerHorizontalPosition(offset: Int, trailing: Boolean = false): Float? {
+        val spanned = text as? Spanned ?: return null
+        val textLayout = layout ?: return null
+        return ReaderLineGeometry(
+            layout = textLayout,
+            text = spanned,
+            justificationMode = readerJustificationMode,
+            forceLastLineJustification = readerForceLastLineJustification
+        ).horizontalPosition(offset, trailing)
+    }
+
+    internal fun readerOffsetForHorizontal(line: Int, x: Float): Int? {
+        val spanned = text as? Spanned ?: return null
+        val textLayout = layout ?: return null
+        return ReaderLineGeometry(
+            layout = textLayout,
+            text = spanned,
+            justificationMode = readerJustificationMode,
+            forceLastLineJustification = readerForceLastLineJustification
+        ).offsetForHorizontal(line, x)
     }
 
     /** Draws each non-blank line segment without changing the underlying text layout. */
@@ -97,15 +596,15 @@ internal open class RoundedHighlightTextView(context: Context) : TextView(contex
                 val lineStart = maxOf(spanStart, layoutLineStart)
                 val lineEnd = minOf(spanEnd, contentEnd)
                 if (lineStart >= lineEnd || !spanned.substring(lineStart, lineEnd).any { !it.isWhitespace() }) continue
-                val x0 = textLayout.getPrimaryHorizontal(lineStart)
-                val x1 = if (
-                    lineEnd == rawLineEnd && line < textLayout.lineCount - 1 &&
-                    spanned[rawLineEnd - 1] != '\n'
-                ) {
-                    textLayout.getLineRight(line)
-                } else {
-                    textLayout.getPrimaryHorizontal(lineEnd)
-                }
+                val geometry = ReaderLineGeometry(
+                    layout = textLayout,
+                    text = spanned,
+                    justificationMode = readerJustificationMode,
+                    forceLastLineJustification = readerForceLastLineJustification
+                )
+                val range = geometry.horizontalRange(line, lineStart, lineEnd) ?: continue
+                val x0 = range.left
+                val x1 = range.right
                 if (x1 <= x0) continue
                 val baseline = textLayout.getLineBaseline(line).toFloat()
                 val underlineCenter = baseline + paint.fontMetrics.descent.coerceAtLeast(1f) + 1f * density
@@ -166,6 +665,12 @@ internal open class RoundedHighlightTextView(context: Context) : TextView(contex
         val firstLine = textLayout.getLineForOffset(spanStart)
         val lastLine = textLayout.getLineForOffset(spanEnd - 1)
         highlightPaint.color = color
+        val geometry = ReaderLineGeometry(
+            layout = textLayout,
+            text = spanned,
+            justificationMode = readerJustificationMode,
+            forceLastLineJustification = readerForceLastLineJustification
+        )
 
         for (line in firstLine..lastLine) {
             val lineStart = textLayout.getLineStart(line)
@@ -176,17 +681,32 @@ internal open class RoundedHighlightTextView(context: Context) : TextView(contex
             if (segmentStart >= segmentEnd) continue
 
             val paragraphIsLtr = textLayout.getParagraphDirection(line) == Layout.DIR_LEFT_TO_RIGHT
-            val segmentStartX = textLayout.getPrimaryHorizontal(segmentStart)
-            val segmentEndX = if (
-                segmentEnd == rawLineEnd && line < textLayout.lineCount - 1 &&
-                spanned[rawLineEnd - 1] != '\n'
-            ) {
-                if (paragraphIsLtr) textLayout.getLineRight(line) else textLayout.getLineLeft(line)
+            val geometryRange = geometry.horizontalRange(line, segmentStart, segmentEnd) ?: continue
+            val segmentStartX = geometryRange.left
+            val segmentEndX = geometryRange.right
+            // In ordinary LTR text the endpoint metrics are the exact character
+            // advances used by Layout.draw(). Selection-path bounds can include an
+            // adjacent run at punctuation boundaries, so reserve them for RTL or
+            // mixed-direction lines only.
+            val hasRtlRun = !paragraphIsLtr || (segmentStart until segmentEnd)
+                .any { offset -> textLayout.isRtlCharAt(offset) }
+            val pathBounds = if (hasRtlRun) {
+                selectionPath.reset()
+                textLayout.getSelectionPath(segmentStart, segmentEnd, selectionPath)
+                RectF().also { selectionPath.computeBounds(it, true) }
             } else {
-                textLayout.getPrimaryHorizontal(segmentEnd)
+                null
             }
-            val segmentLeft = minOf(segmentStartX, segmentEndX)
-            val segmentRight = maxOf(segmentStartX, segmentEndX)
+            val segmentLeft = if (pathBounds != null && !pathBounds.isEmpty() && !paragraphIsLtr) {
+                pathBounds.left
+            } else {
+                minOf(segmentStartX, segmentEndX)
+            }
+            val segmentRight = if (pathBounds != null && !pathBounds.isEmpty() && !paragraphIsLtr) {
+                pathBounds.right
+            } else {
+                maxOf(segmentStartX, segmentEndX)
+            }
             if (segmentRight <= segmentLeft) continue
 
             val lineTop = textLayout.getLineTop(line).toFloat() + minimumLineGap

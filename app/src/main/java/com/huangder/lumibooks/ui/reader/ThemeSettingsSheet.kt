@@ -1,4 +1,6 @@
 package com.huangder.lumibooks.ui.reader
+import com.huangder.lumibooks.ui.icons.AppIcons
+import com.huangder.lumibooks.ui.icons.IconPair
 
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -41,13 +43,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.outlined.Check
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Surface
@@ -333,7 +328,7 @@ fun ThemeSettingsSheet(
                 Spacer(Modifier.width(8.dp))
                 // 关闭按钮
                 LiquidGlassIconButton(
-                    imageVector = Icons.Outlined.Close,
+                    imageVector = AppIcons.X,
                     contentDescription = stringResource(R.string.close),
                     onClick = { isClosing = true },
                     size = 44.dp,
@@ -1131,7 +1126,7 @@ private fun ThemeSuiteCard(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            Icons.Outlined.Delete,
+                            AppIcons.Trash,
                             contentDescription = stringResource(R.string.delete_theme_suite),
                             tint = Color.White,
                             modifier = Modifier.size(19.dp)
@@ -1177,7 +1172,7 @@ private fun AddThemeSuiteCard(onClick: () -> Unit) {
             )
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Icon(
-                    Icons.Outlined.Add,
+                    AppIcons.Plus,
                     contentDescription = stringResource(R.string.add_theme_suite),
                     tint = strokeColor,
                     modifier = Modifier.size(30.dp)
@@ -1443,7 +1438,7 @@ private fun ReaderBackgroundSelector(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Outlined.Delete,
+                            imageVector = AppIcons.Trash,
                             contentDescription = stringResource(R.string.delete_custom_background),
                             tint = Color.White,
                             modifier = Modifier.size(23.dp)
@@ -1463,7 +1458,7 @@ private fun ReaderBackgroundSelector(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Outlined.Add,
+                    imageVector = AppIcons.Plus,
                     contentDescription = stringResource(R.string.background_add),
                     tint = LightTextSecondary,
                     modifier = Modifier.size(24.dp)
@@ -1655,7 +1650,7 @@ private fun CustomBackgroundDialog(
                         .border(1.dp, LightDivider, RoundedCornerShape(22.dp))
                 ) {
                         Icon(
-                            imageVector = Icons.Outlined.Image,
+                            imageVector = AppIcons.Image,
                             contentDescription = null,
                             tint = AppColors.TextPrimary,
                             modifier = Modifier.size(18.dp)
@@ -1767,7 +1762,7 @@ private data class ReaderModeOption(
     val key: String,
     val label: String,
     val shortLabel: String,
-    val icon: ImageVector
+    val icon: IconPair
 )
 
 /**
@@ -1893,7 +1888,7 @@ private fun ReaderModeModule(
 
 @Composable
 private fun ReaderModeIconButton(
-    icon: ImageVector,
+    icon: IconPair,
     label: String,
     contentDescription: String,
     isSelected: Boolean,
@@ -1917,7 +1912,7 @@ private fun ReaderModeIconButton(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
-            imageVector = icon,
+            imageVector = icon.resolve(isSelected),
             contentDescription = null,
             tint = when {
                 !enabled -> LightTextSecondary.copy(alpha = 0.35f)
@@ -2183,7 +2178,7 @@ fun AdvancedSettingsSheet(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     LiquidGlassIconButton(
-                        imageVector = Icons.Outlined.Close,
+                        imageVector = AppIcons.X,
                         contentDescription = stringResource(R.string.close),
                         onClick = { isClosing = true },
                         size = 44.dp,
@@ -2193,7 +2188,7 @@ fun AdvancedSettingsSheet(
                     )
                     Spacer(Modifier.weight(1f))
                     LiquidGlassIconButton(
-                        imageVector = Icons.Outlined.Check,
+                        imageVector = AppIcons.Check,
                         contentDescription = stringResource(R.string.confirm),
                         onClick = { isClosing = true },
                         size = 44.dp,
@@ -2592,7 +2587,7 @@ private fun ReaderCornerSelectionRow(
                     modifier = Modifier.fillMaxWidth()
                 )
                 Icon(
-                    imageVector = Icons.Default.KeyboardArrowDown,
+                    imageVector = AppIcons.CaretDown,
                     contentDescription = null,
                     tint = LightTextSecondary,
                     modifier = Modifier
@@ -2696,7 +2691,7 @@ private fun TextAlignmentSetting(
                         .padding(end = 16.dp)
                 )
                 Icon(
-                    imageVector = Icons.Default.KeyboardArrowDown,
+                    imageVector = AppIcons.CaretDown,
                     contentDescription = null,
                     tint = LightTextSecondary,
                     modifier = Modifier
@@ -2810,7 +2805,7 @@ private fun ReaderEdgeTapModeSetting(
                         .padding(end = 16.dp)
                 )
                 Icon(
-                    imageVector = Icons.Default.KeyboardArrowDown,
+                    imageVector = AppIcons.CaretDown,
                     contentDescription = null,
                     tint = LightTextSecondary,
                     modifier = Modifier
@@ -2923,7 +2918,7 @@ private fun ScreenSleepTimeoutSetting(
                         .padding(end = 16.dp)
                 )
                 Icon(
-                    imageVector = Icons.Default.KeyboardArrowDown,
+                    imageVector = AppIcons.CaretDown,
                     contentDescription = null,
                     tint = LightTextSecondary,
                     modifier = Modifier
@@ -3187,7 +3182,7 @@ private fun TextColorSetting(
         ) {
             if (!isCustomColor) {
                 Icon(
-                    imageVector = Icons.Outlined.Add,
+                    imageVector = AppIcons.Plus,
                     contentDescription = null,
                     tint = LightTextSecondary,
                     modifier = Modifier.size(19.dp)
@@ -3650,7 +3645,7 @@ private fun FontSelector(
                                 if (isDeleteArmed) {
                                     Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.48f)),
                                         contentAlignment = Alignment.Center) {
-                                        Icon(Icons.Outlined.Delete, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                                        Icon(AppIcons.Trash, null, tint = Color.White, modifier = Modifier.size(20.dp))
                                     }
                                 }
                             }
@@ -3668,7 +3663,7 @@ private fun FontSelector(
                                 },
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Outlined.Add, addLabel, tint = LightTextSecondary, modifier = Modifier.size(20.dp))
+                            Icon(AppIcons.Plus, addLabel, tint = LightTextSecondary, modifier = Modifier.size(20.dp))
                         }
                     }
                 }

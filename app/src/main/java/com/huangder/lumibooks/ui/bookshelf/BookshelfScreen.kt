@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.ui.bookshelf
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -43,24 +44,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.CreateNewFolder
-import androidx.compose.material.icons.outlined.DriveFileMove
-import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.FormatListBulleted
-import androidx.compose.material.icons.outlined.GridView
-import androidx.compose.material.icons.outlined.Label
-import androidx.compose.material.icons.outlined.MoreVert
-import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.Sync
-import androidx.compose.material.icons.outlined.ViewModule
-import androidx.compose.material.icons.outlined.ViewList
-import androidx.compose.material.icons.outlined.KeyboardArrowDown
-import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -172,6 +155,7 @@ fun BookshelfScreen(
     onMessage: (String) -> Unit = {},
     onRefreshAuthorizedDirectories: () -> Unit = {},
     onOverlayProgressChange: (Float) -> Unit = {},
+    onContextMenuVisibleChange: (Boolean) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -671,11 +655,20 @@ fun BookshelfScreen(
             with(density) { 34.dp.toPx() } * searchBlurProgress
         )
     }
+    // Read the phases during composition so changes invalidate this screen and the
+    // navigation host can reliably restore the bottom bar after dismissal completes.
+    val contextMenuVisible =
+        contextMenuState.phase != ContextMenuPhase.Idle ||
+            folderContextMenuState.phase != ContextMenuPhase.Idle
     SideEffect {
         onOverlayProgressChange(overlayProgress)
+        onContextMenuVisibleChange(contextMenuVisible)
     }
     DisposableEffect(Unit) {
-        onDispose { onOverlayProgressChange(0f) }
+        onDispose {
+            onOverlayProgressChange(0f)
+            onContextMenuVisibleChange(false)
+        }
     }
 
     ProvideLiquidGlassBackdrop(bookshelfBackdrop.takeIf { isLiquidGlass }) {
@@ -1694,7 +1687,7 @@ private fun BookshelfHeaderActions(
         verticalAlignment = Alignment.CenterVertically
     ) {
         LiquidGlassIconButton(
-            imageVector = Icons.Outlined.MoreVert,
+            imageVector = AppIcons.DotsThreeVertical,
             contentDescription = stringResource(R.string.more_options),
             onClick = {
                 if (menuExpanded) {
@@ -1710,21 +1703,21 @@ private fun BookshelfHeaderActions(
                                 add(
                                     LiquidGlassMenuItem(
                                         label = createFolderLabel,
-                                        icon = Icons.Outlined.CreateNewFolder,
+                                        icon = AppIcons.FolderPlus,
                                         onClick = onCreateFolder
                                     )
                                 )
                                 add(
                                     LiquidGlassMenuItem(
                                         label = refreshLabel,
-                                        icon = Icons.Outlined.Refresh,
+                                        icon = AppIcons.ArrowClockwise,
                                         onClick = onRefreshClick
                                     )
                                 )
                                 add(
                                     LiquidGlassMenuItem(
                                         label = syncLabel,
-                                        icon = Icons.Outlined.Sync,
+                                        icon = AppIcons.ArrowsClockwise,
                                         onClick = { if (!isSyncing) onSyncClick() }
                                     )
                                 )
@@ -1747,7 +1740,7 @@ private fun BookshelfHeaderActions(
                                 add(
                                     LiquidGlassMenuItem(
                                         label = listLayoutLabel,
-                                        icon = Icons.Outlined.ViewList,
+                                        icon = AppIcons.List,
                                         selected = layoutMode == 1,
                                         onClick = { onLayoutModeChange(1) }
                                     )
@@ -1770,11 +1763,11 @@ private fun BookshelfHeaderActions(
 }
 
 private fun layoutIcon(layoutMode: Int, compact: Boolean): ImageVector = when {
-    compact && layoutMode == 1 -> Icons.Outlined.ViewList
-    compact -> Icons.Outlined.GridView
-    layoutMode == 1 -> Icons.Outlined.ViewList
-    layoutMode == 2 -> Icons.Outlined.GridView
-    else -> Icons.Outlined.ViewModule
+    compact && layoutMode == 1 -> AppIcons.List
+    compact -> AppIcons.SquaresFour
+    layoutMode == 1 -> AppIcons.List
+    layoutMode == 2 -> AppIcons.SquaresFour
+    else -> AppIcons.SquaresFour
 }
 
 @Composable
@@ -1863,7 +1856,7 @@ private fun BookshelfCapsuleHeader(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Spacer(Modifier.width(10.dp))
                     LiquidGlassIconButton(
-                        imageVector = Icons.Outlined.Delete,
+                        imageVector = AppIcons.Trash,
                         contentDescription = stringResource(R.string.delete),
                         onClick = onDeleteSelected,
                         enabled = selectedCount > 0,
@@ -1876,7 +1869,7 @@ private fun BookshelfCapsuleHeader(
                     )
                     Spacer(Modifier.width(10.dp))
                     LiquidGlassIconButton(
-                        imageVector = Icons.Outlined.Label,
+                        imageVector = AppIcons.Tag,
                         contentDescription = stringResource(R.string.tag_sheet_title),
                         onClick = onTagSelected,
                         enabled = selectedCount > 0,
@@ -1889,7 +1882,7 @@ private fun BookshelfCapsuleHeader(
                     )
                     Spacer(Modifier.width(10.dp))
                     LiquidGlassIconButton(
-                        imageVector = Icons.Outlined.DriveFileMove,
+                        imageVector = AppIcons.FolderSimple,
                         contentDescription = stringResource(R.string.move_books),
                         onClick = onMoveSelected,
                         enabled = selectedCount > 0,
@@ -1939,7 +1932,7 @@ private fun BookshelfCapsuleHeader(
                             )
                             Spacer(Modifier.width(4.dp))
                             Icon(
-                                imageVector = Icons.Outlined.KeyboardArrowDown,
+                                imageVector = AppIcons.CaretDown,
                                 contentDescription = null,
                                 tint = AppColors.TextPrimary,
                                 modifier = Modifier
@@ -1948,7 +1941,7 @@ private fun BookshelfCapsuleHeader(
                             )
                             Spacer(Modifier.width(18.dp))
                             Icon(
-                                imageVector = Icons.Outlined.FormatListBulleted,
+                                imageVector = AppIcons.ListBullets,
                                 contentDescription = null,
                                 tint = AppColors.TextPrimary,
                                 modifier = Modifier.size(25.dp)
@@ -2341,7 +2334,7 @@ private fun BookGridItem(
             if (book.isFavorite) {
                 Spacer(Modifier.width(4.dp))
                 Icon(
-                    imageVector = Icons.Filled.Favorite,
+                    imageVector = AppIcons.Heart.filled,
                     contentDescription = stringResource(R.string.favorite),
                     tint = AppColors.Accent,
                     modifier = Modifier.size(12.dp)
@@ -2350,7 +2343,7 @@ private fun BookGridItem(
             if (book.id in syncedBookIds) {
                 Spacer(Modifier.width(4.dp))
                 Icon(
-                    imageVector = Icons.Filled.Cloud,
+                    imageVector = AppIcons.CloudFilled,
                     contentDescription = stringResource(R.string.category_webdav),
                     tint = AppColors.TextSecondary,
                     modifier = Modifier.size(13.dp)
@@ -2456,7 +2449,7 @@ private fun FolderListItem(
                         )
                         if (folder.storageDocumentUri != null) {
                             Icon(
-                                imageVector = Icons.Outlined.Link,
+                                imageVector = AppIcons.Link,
                                 contentDescription = stringResource(R.string.folder_storage_linked),
                                 tint = if (folder.storageMissing) Color(0xFFD92D3A) else AppColors.Accent,
                                 modifier = Modifier
@@ -2595,7 +2588,7 @@ private fun FolderGridItem(
             )
             if (folder.storageDocumentUri != null) {
                 Icon(
-                    imageVector = Icons.Outlined.Link,
+                    imageVector = AppIcons.Link,
                     contentDescription = stringResource(R.string.folder_storage_linked),
                     tint = if (folder.storageMissing) Color(0xFFD92D3A) else AppColors.Accent,
                     modifier = Modifier
@@ -2650,7 +2643,7 @@ private fun AddBookListItem(onClick: () -> Unit) {
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Filled.Add,
+                    imageVector = AppIcons.PlusFilled,
                     contentDescription = null,
                     tint = Color.White,
                     modifier = Modifier.size(22.dp)
@@ -2698,7 +2691,7 @@ private fun AddBookItem(onClick: () -> Unit) {
                 )
             }
             Icon(
-                Icons.Default.Add,
+                AppIcons.Plus,
                 contentDescription = stringResource(R.string.import_books),
                 tint = AppColors.TextSecondary,
                 modifier = Modifier.size(32.dp)

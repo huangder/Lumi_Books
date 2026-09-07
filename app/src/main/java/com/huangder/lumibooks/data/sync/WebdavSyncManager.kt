@@ -453,8 +453,22 @@ class WebdavSyncManager @Inject constructor(
         cleanupStalePartialDownloads()
         val book = bookRepository.getBookById(bookId)
             ?: return CloudBookDownloadResult(null, context.getString(R.string.book_not_found), false)
-        if (!book.isCloudOnly) {
-            return CloudBookDownloadResult(book, context.getString(R.string.book_already_downloaded), true)
+        val localFileSize = runCatching { BookFileAccess.size(context, book.filePath) }
+            .getOrDefault(0L)
+        // 记录仍标记为仅云端但本地已有完整文件（例如曾被 bodyless 状态快照误翻转过）时，
+        // 直接修复记录并视为已下载，避免无谓地重新下载同一文件。
+        val repairedBook = if (cloudBookNeedsLocalRepair(book, localFileSize)) {
+            bookRepository.markBookDownloaded(bookId, book.filePath)
+            bookRepository.getBookById(bookId) ?: book.copy(isCloudOnly = false)
+        } else {
+            null
+        }
+        if (!book.isCloudOnly || repairedBook != null) {
+            return CloudBookDownloadResult(
+                repairedBook ?: book,
+                context.getString(R.string.book_already_downloaded),
+                true
+            )
         }
 
         val config = dataStoreManager.webdavConfig.first().normalized()
@@ -1528,3 +1542,14 @@ data class CloudBookDownloadResult(
     val message: String,
     val success: Boolean
 )
+
+/**
+ * 判断一本仍标记为“仅云端”的书是否其实已有完整本地文件，可以只修复记录而不重新下载。
+ * 云端占位记录正常时 filePath 为空；只有被 bodyless 状态快照误翻转过（或状态损坏）时，
+ * 才会出现 isCloudOnly=true 且 filePath 指向现存文件的情况。
+ */
+internal fun cloudBookNeedsLocalRepair(book: Book, localFileSize: Long): Boolean =
+    book.isCloudOnly &&
+        book.filePath.isNotBlank() &&
+        localFileSize > 0L &&
+        (book.remoteFileSize <= 0L || localFileSize == book.remoteFileSize)

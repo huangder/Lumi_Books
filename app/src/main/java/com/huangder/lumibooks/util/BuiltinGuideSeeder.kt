@@ -126,19 +126,19 @@ class BuiltinGuideSeeder @Inject constructor(
 
     companion object {
         private const val TAG = "BuiltinGuideSeeder"
-        const val CONTENT_VERSION = 2
+        const val CONTENT_VERSION = 3
         const val FOLDER_COVER_VERSION = 1
         const val FOLDER_NAME = "lumi"
         const val FOLDER_COVER_ASSET_PATH = "builtin/lumi/folder_cover.png"
 
         val GUIDE_MANIFEST = listOf(
-            GuideManifest("zh-CN", "Lumi 使用教程（简体中文）", "guide_zh-CN.epub", "builtin/lumi/guide_zh-CN.epub", contentVersion = 2),
-            GuideManifest("zh-TW", "Lumi 使用教學（繁體中文・中國台灣）", "guide_zh-TW.epub", "builtin/lumi/guide_zh-TW.epub"),
-            GuideManifest("zh-HK", "Lumi 使用教學（繁體中文・中國香港）", "guide_zh-HK.epub", "builtin/lumi/guide_zh-HK.epub"),
-            GuideManifest("zh-MO", "Lumi 使用教學（繁體中文・中國澳門）", "guide_zh-MO.epub", "builtin/lumi/guide_zh-MO.epub"),
-            GuideManifest("en", "Lumi User Guide", "guide_en.epub", "builtin/lumi/guide_en.epub"),
-            GuideManifest("ja", "Lumi 使い方ガイド", "guide_ja.epub", "builtin/lumi/guide_ja.epub"),
-            GuideManifest("ko", "Lumi 사용 안내서", "guide_ko.epub", "builtin/lumi/guide_ko.epub")
+            GuideManifest("zh-CN", "Lumi 使用教程（简体中文）", "guide_zh-CN.epub", "builtin/lumi/guide_zh-CN.epub", contentVersion = 3),
+            GuideManifest("zh-TW", "Lumi 使用教學（繁體中文・中國台灣）", "guide_zh-TW.epub", "builtin/lumi/guide_zh-TW.epub", contentVersion = 3),
+            GuideManifest("zh-HK", "Lumi 使用教學（繁體中文・中國香港）", "guide_zh-HK.epub", "builtin/lumi/guide_zh-HK.epub", contentVersion = 3),
+            GuideManifest("zh-MO", "Lumi 使用教學（繁體中文・中國澳門）", "guide_zh-MO.epub", "builtin/lumi/guide_zh-MO.epub", contentVersion = 3),
+            GuideManifest("en", "Lumi User Guide", "guide_en.epub", "builtin/lumi/guide_en.epub", contentVersion = 3),
+            GuideManifest("ja", "Lumi 使い方ガイド", "guide_ja.epub", "builtin/lumi/guide_ja.epub", contentVersion = 3),
+            GuideManifest("ko", "Lumi 사용 안내서", "guide_ko.epub", "builtin/lumi/guide_ko.epub", contentVersion = 3)
         )
     }
 }

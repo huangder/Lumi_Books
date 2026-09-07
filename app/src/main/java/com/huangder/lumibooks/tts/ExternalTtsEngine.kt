@@ -187,6 +187,12 @@ class ExternalTtsEngine @Inject constructor(
         return audioPlayer.renderedFrameOffset()
     }
 
+    override fun currentPcmFrameCount(): Long {
+        if (!audioInit) return 0L
+        val key = activeCacheKey ?: return 0L
+        return maxOf(audioCache.frameCount(key), audioPlayer.writtenFrameCount())
+    }
+
     override suspend fun prefetch(text: String) {
         if (text.isBlank()) return
         ensureAudioInitialized()

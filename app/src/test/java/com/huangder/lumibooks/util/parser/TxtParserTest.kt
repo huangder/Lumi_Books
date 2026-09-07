@@ -8,6 +8,9 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.nio.charset.Charset
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class TxtParserTest {
     @get:Rule
@@ -80,6 +83,148 @@ class TxtParserTest {
         val book = parser.parse(file.absolutePath)
 
         assertEquals(listOf("<序幕>", "<第一幕>", "<终幕>"), book.chapters.map { it.title })
+    }
+
+    @Test
+    fun detectsSymbolPrefixedHeadingsAutomatically() {
+        val file = writeText(
+            "symbol-prefixed.txt",
+            "简介\n\n☆、第一章 误入江湖\n正文一\n\n★、第二章 夜探山门\n正文二\n\n◆：终章\n结尾",
+            Charsets.UTF_8
+        )
+        val parser = TxtParser()
+
+        val book = parser.parse(file.absolutePath)
+
+        assertEquals(
+            listOf("Preface", "☆、第一章 误入江湖", "★、第二章 夜探山门", "◆：终章"),
+            book.chapters.map { it.title }
+        )
+    }
+
+    @Test
+    fun parseWithoutTocOpensBodyWhenConfiguredRuleDoesNotMatch() {
+        val file = writeText(
+            "unmatched-rule.txt",
+            "这是一段没有章节标题的正文，应该仍然可以打开。\n第二段正文。",
+            Charsets.UTF_8
+        )
+        val parser = TxtParser().apply {
+            selectedTocRule = TxtTocRule(
+                id = "missing",
+                name = "missing headings",
+                chapterRegex = "^第(\\d+)章\\s*(.*)$"
+            )
+        }
+
+        val book = parser.parseWithoutToc(file.absolutePath)
+
+        assertTrue(parser.getChapterCount() > 0)
+        assertTrue(parser.getChapterContent(0).contains("没有章节标题的正文"))
+        assertTrue(book.tocEntries.isEmpty())
+        assertFalse(parser.skipTocParsing)
+    }
+
+    @Test
+    fun fastOpenBuildsBoundedVirtualChunksWithoutSemanticScan() {
+        val file = temporaryFolder.newFile("large-fast-open.txt")
+        file.outputStream().bufferedWriter(Charsets.UTF_8).use { writer ->
+            repeat(1_200_000) { index ->
+                writer.append("正文行").append(index.toString()).append('\n')
+            }
+        }
+        assertTrue(file.length() >= TxtParser.LARGE_FILE_THRESHOLD_BYTES)
+
+        val parser = TxtParser()
+        val result = parser.parseFastOpen(file.absolutePath)
+
+        assertEquals(TxtIndexState.FAST_PARTIAL, result.state)
+        assertTrue(result.content.tocEntries.isEmpty())
+        assertTrue(result.content.chapters.size > 100)
+        assertTrue(parser.getChapterContent(0).isNotBlank())
+        assertTrue(parser.getChapterByteRange(0)!!.second - parser.getChapterByteRange(0)!!.first <= 64 * 1024L)
+    }
+
+    @Test
+    fun fastOpenKeepsUtf16BoundariesEvenlyAligned() {
+        val file = temporaryFolder.newFile("large-fast-open-utf16.txt")
+        file.outputStream().use { output ->
+            output.write(byteArrayOf(0xFF.toByte(), 0xFE.toByte()))
+            repeat(20_000) { output.write("中文内容\n".toByteArray(Charsets.UTF_16LE)) }
+        }
+        val parser = TxtParser()
+        parser.parseFastOpen(file.absolutePath)
+        val range = parser.getChapterByteRange(0)!!
+        assertEquals(0L, (range.first - 2L) % 2L)
+        assertEquals(0L, (range.second - 2L) % 2L)
+        assertTrue(parser.getChapterContent(0).contains("中文"))
+    }
+
+    @Test
+    fun semanticRebuildCanReplaceFastIndexWithoutLosingByteAnchor() {
+        val file = writeText(
+            "large-rebuild.txt",
+            buildString {
+                repeat(12_000) { append("正文内容").append(it).append('\n') }
+            },
+            Charsets.UTF_8
+        )
+        val parser = TxtParser()
+        parser.parseFastOpen(file.absolutePath)
+        val fastRange = parser.getChapterByteRange(2)!!
+        val anchor = fastRange.first + (fastRange.second - fastRange.first) / 2
+
+        val rebuilt = parser.rebuildSemanticIndex(file.absolutePath)
+
+        assertEquals(TxtIndexState.COMPLETE, parser.indexState)
+        assertTrue(rebuilt.chapters.isNotEmpty())
+        val target = (0 until parser.getChapterCount()).firstOrNull { index ->
+            val range = parser.getChapterByteRange(index)!!
+            anchor in range.first until range.second
+        }
+        assertTrue(target != null)
+        assertTrue(parser.getChapterContent(target!!).isNotBlank())
+    }
+
+    @Test
+    fun concurrentChapterReadsRemainValidDuringSemanticRebuild() {
+        val file = temporaryFolder.newFile("concurrent-rebuild.txt")
+        file.outputStream().bufferedWriter(Charsets.UTF_8).use { writer ->
+            repeat(90_000) { index ->
+                writer.append("正文行").append(index.toString()).append('\n')
+            }
+        }
+        val parser = TxtParser()
+        parser.parseFastOpen(file.absolutePath)
+
+        val start = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(6)
+        val futures = buildList {
+            repeat(5) {
+                add(executor.submit {
+                    start.await()
+                    repeat(40) {
+                        assertTrue(parser.getChapterContent(0).toString().isNotBlank())
+                        assertTrue(parser.getChapterContent(1).toString().isNotBlank())
+                    }
+                })
+            }
+            add(executor.submit {
+                start.await()
+                parser.rebuildSemanticIndex(file.absolutePath)
+            })
+        }
+
+        start.countDown()
+        try {
+            futures.forEach { it.get(30, TimeUnit.SECONDS) }
+        } finally {
+            executor.shutdownNow()
+        }
+
+        assertTrue(parser.getChapterContent(0).toString().isNotBlank())
+        val range = parser.getChapterByteRange(0)!!
+        assertTrue(range.second > range.first)
     }
 
     @Test

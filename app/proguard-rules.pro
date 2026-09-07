@@ -39,6 +39,11 @@
 # Keep data classes
 -keep class com.huangder.lumibooks.data.** { *; }
 -keep class com.huangder.lumibooks.domain.** { *; }
+
+# Android Editor reaches this bridge through the hidden virtual
+# getOffsetAtCoordinate(float, float) callback while dragging selection handles.
+-keep class android.widget.ReaderGeometryTextView { *; }
+
 # Detailed reader diagnostics must not build strings on release/benchmark hot paths.
 -assumenosideeffects class android.util.Log {
     public static *** d(...);

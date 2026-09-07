@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.ui.reader
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -25,12 +27,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -82,7 +78,9 @@ fun TtsPlayerPanel(
     forceSolidSurface: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    val rateOptions = remember { listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f) }
+    val rateOptions = remember {
+        listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f, 3f, 4f, 5f)
+    }
     val timerOptionsMinutes = remember { listOf(10, 20, 30, 40, 50, 60, 90, 120, 150, 180) }
     val timerOptionLabels = timerOptionsMinutes.map { min ->
         when {
@@ -151,42 +149,51 @@ fun TtsPlayerPanel(
                 fallbackColor = readerBackgroundColor,
                 contentScrimColor = readerBackgroundColor.copy(alpha = 0.18f),
                 forceFallback = forceSolidSurface,
-                modifier = Modifier.width(112.dp)
+                modifier = Modifier.width(176.dp)
             ) {
                 Column(
                     modifier = Modifier.padding(vertical = 6.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    rateOptions.forEach { rate ->
-                        val selected = rate == speechRate
-                        Box(
+                    rateOptions.chunked(3).forEach { rowRates ->
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(42.dp)
-                                .padding(horizontal = 6.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .then(
-                                    if (selected) {
-                                        Modifier.background(AppColors.Accent.copy(alpha = 0.14f))
-                                    } else {
-                                        Modifier
-                                    }
-                                )
-                                .clickable(
-                                    indication = null,
-                                    interactionSource = remember { MutableInteractionSource() }
-                                ) {
-                                    showRateMenu = false
-                                    onRateChange(rate)
-                                },
-                            contentAlignment = Alignment.Center
+                                .padding(horizontal = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
-                            Text(
-                                text = formatSpeechRate(rate),
-                                color = if (selected) AppColors.Accent else readerContentColor,
-                                fontSize = 13.sp,
-                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
-                            )
+                            rowRates.forEach { rate ->
+                                val selected = rate == speechRate
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .then(
+                                            if (selected) {
+                                                Modifier.background(AppColors.Accent.copy(alpha = 0.14f))
+                                            } else {
+                                                Modifier
+                                            }
+                                        )
+                                        .clickable(
+                                            indication = null,
+                                            interactionSource = remember { MutableInteractionSource() }
+                                        ) {
+                                            showRateMenu = false
+                                            onRateChange(rate)
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = formatSpeechRate(rate),
+                                        color = if (selected) AppColors.Accent else readerContentColor,
+                                        fontSize = 13.sp,
+                                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -348,7 +355,7 @@ fun TtsPlayerPanel(
             ) {
                 IconButton(onClick = onSkipBackward, modifier = Modifier.size(40.dp)) {
                     Icon(
-                        Icons.Default.SkipPrevious,
+                        AppIcons.SkipBack,
                         contentDescription = stringResource(R.string.tts_previous_sentence),
                         tint = readerContentColor
                     )
@@ -367,7 +374,7 @@ fun TtsPlayerPanel(
                         )
                     } else {
                         Icon(
-                            if (playbackState == TtsPlaybackState.PLAYING) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            if (playbackState == TtsPlaybackState.PLAYING) AppIcons.Pause else AppIcons.Play,
                             contentDescription = stringResource(
                                 if (playbackState == TtsPlaybackState.PLAYING) R.string.tts_pause else R.string.tts_play
                             ),
@@ -378,7 +385,7 @@ fun TtsPlayerPanel(
 
                 IconButton(onClick = onSkipForward, modifier = Modifier.size(40.dp)) {
                     Icon(
-                        Icons.Default.SkipNext,
+                        AppIcons.SkipForward,
                         contentDescription = stringResource(R.string.tts_next_sentence),
                         tint = readerContentColor
                     )
@@ -437,7 +444,7 @@ fun TtsPlayerPanel(
                 }
 
                 LiquidGlassIconButton(
-                    imageVector = Icons.Default.Close,
+                    imageVector = AppIcons.X,
                     contentDescription = stringResource(R.string.tts_stop),
                     onClick = onStop,
                     modifier = Modifier.size(44.dp),

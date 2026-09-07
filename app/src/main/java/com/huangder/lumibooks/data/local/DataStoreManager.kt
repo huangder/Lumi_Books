@@ -728,7 +728,7 @@ class DataStoreManager @Inject constructor(
         }
 
     override val ttsSpeechRate: Flow<Float> = context.dataStore.data.map { preferences ->
-        (preferences[TTS_SPEECH_RATE] ?: 1f).coerceIn(0.5f, 2f)
+        (preferences[TTS_SPEECH_RATE] ?: 1f).coerceIn(0.5f, 5f)
     }
 
     override val ttsPitch: Flow<Float> = context.dataStore.data.map { preferences ->
@@ -1331,7 +1331,7 @@ class DataStoreManager @Inject constructor(
 
     override suspend fun saveTtsSpeechRate(rate: Float) {
         context.dataStore.edit { preferences ->
-            preferences[TTS_SPEECH_RATE] = rate.coerceIn(0.5f, 2f)
+            preferences[TTS_SPEECH_RATE] = rate.coerceIn(0.5f, 5f)
         }
     }
 

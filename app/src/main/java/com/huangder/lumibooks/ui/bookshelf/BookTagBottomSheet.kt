@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.ui.bookshelf
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.spring
@@ -32,10 +33,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
@@ -159,7 +156,7 @@ fun BookTagBottomSheet(
                     modifier = Modifier.weight(1f)
                 )
                 LiquidGlassIconButton(
-                    imageVector = Icons.Outlined.Close,
+                    imageVector = AppIcons.X,
                     contentDescription = stringResource(R.string.close),
                     onClick = onDismiss,
                     size = 40.dp,
@@ -203,7 +200,7 @@ fun BookTagBottomSheet(
                 }
                 Spacer(Modifier.size(AppSpace.sm))
                 LiquidGlassIconButton(
-                    imageVector = Icons.Outlined.Add,
+                    imageVector = AppIcons.Plus,
                     contentDescription = stringResource(R.string.add_tag),
                     onClick = createTag,
                     size = 48.dp,
@@ -433,7 +430,7 @@ private fun PrimaryTagSection(
             if (primaryTag != null) {
                 Spacer(Modifier.width(AppSpace.sm))
                 LiquidGlassIconButton(
-                    imageVector = Icons.Outlined.Add,
+                    imageVector = AppIcons.Plus,
                     contentDescription = stringResource(R.string.add_sub_tag),
                     onClick = onShowSubTagInput,
                     size = 30.dp,
@@ -479,7 +476,7 @@ private fun PrimaryTagSection(
                 }
                 Spacer(Modifier.size(AppSpace.sm))
                 LiquidGlassIconButton(
-                    imageVector = Icons.Outlined.Add,
+                    imageVector = AppIcons.Plus,
                     contentDescription = stringResource(R.string.add_sub_tag),
                     onClick = onSubTagCreate,
                     size = 38.dp,
@@ -491,7 +488,7 @@ private fun PrimaryTagSection(
                 )
                 Spacer(Modifier.size(AppSpace.sm))
                 LiquidGlassIconButton(
-                    imageVector = Icons.Outlined.Close,
+                    imageVector = AppIcons.X,
                     contentDescription = stringResource(R.string.cancel),
                     onClick = onSubTagDismiss,
                     size = 38.dp,
@@ -588,7 +585,7 @@ fun BatchBookTagSheet(
                     )
                 }
                 LiquidGlassIconButton(
-                    imageVector = Icons.Outlined.Close,
+                    imageVector = AppIcons.X,
                     contentDescription = stringResource(R.string.close),
                     onClick = onDismiss,
                     size = 40.dp,
@@ -631,7 +628,7 @@ fun BatchBookTagSheet(
                 }
                 Spacer(Modifier.size(AppSpace.sm))
                 LiquidGlassIconButton(
-                    imageVector = Icons.Outlined.Add,
+                    imageVector = AppIcons.Plus,
                     contentDescription = stringResource(R.string.add_tag),
                     onClick = createTag,
                     enabled = selectedBookCount > 0,

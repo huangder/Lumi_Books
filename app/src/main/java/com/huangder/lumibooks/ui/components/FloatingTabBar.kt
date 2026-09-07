@@ -1,4 +1,6 @@
 package com.huangder.lumibooks.ui.components
+import com.huangder.lumibooks.ui.icons.AppIcons
+import com.huangder.lumibooks.ui.icons.IconPair
 
 /*
  * Portions of the liquid-glass tab implementation are adapted and modified
@@ -35,11 +37,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.AutoStories
-import androidx.compose.material.icons.rounded.Home
-import androidx.compose.material.icons.rounded.Leaderboard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -75,7 +72,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.annotation.StringRes
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -118,16 +114,15 @@ import kotlin.math.roundToInt
 import kotlin.math.sign
 
 data class TabItem(
-    val selectedIcon: ImageVector,
-    val unselectedIcon: ImageVector,
+    val icons: IconPair,
     @StringRes val titleRes: Int,
     val testTag: String
 )
 
 val tabs = listOf(
-    TabItem(Icons.Rounded.Home, Icons.Rounded.Home, R.string.home_title, "home_tab"),
-    TabItem(Icons.Rounded.AutoStories, Icons.Rounded.AutoStories, R.string.bookshelf_title, "bookshelf_tab"),
-    TabItem(Icons.Rounded.Leaderboard, Icons.Rounded.Leaderboard, R.string.statistics_title, "statistics_tab")
+    TabItem(AppIcons.HomeTab, R.string.home_title, "home_tab"),
+    TabItem(AppIcons.BookshelfTab, R.string.bookshelf_title, "bookshelf_tab"),
+    TabItem(AppIcons.StatisticsTab, R.string.statistics_title, "statistics_tab")
 )
 
 @Composable
@@ -151,7 +146,7 @@ fun Material3BottomNavigationBar(
                 onClick = { onTabSelected(index) },
                 icon = {
                     Icon(
-                        imageVector = if (selectedIndex == index) tab.selectedIcon else tab.unselectedIcon,
+                        imageVector = tab.icons.resolve(selectedIndex == index),
                         contentDescription = stringResource(tab.titleRes)
                     )
                 },
@@ -709,7 +704,7 @@ fun LiquidGlassImportButton(
         contentAlignment = Alignment.Center
     ) {
         Icon(
-            imageVector = Icons.Rounded.Add,
+            imageVector = AppIcons.Plus,
             contentDescription = stringResource(R.string.import_books),
             tint = Color.White,
             modifier = Modifier.size(32.dp)
@@ -799,7 +794,7 @@ private fun TabItemView(
             verticalArrangement = Arrangement.Center
         ) {
             Icon(
-                imageVector = if (isSelected) tab.selectedIcon else tab.unselectedIcon,
+                imageVector = tab.icons.resolve(isSelected),
                 contentDescription = stringResource(tab.titleRes),
                 tint = if (isSelected) selectedContentColor else contentColor,
                 modifier = Modifier.size(28.dp)
@@ -840,7 +835,7 @@ private fun TabItemView(
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = if (isSelected) tab.selectedIcon else tab.unselectedIcon,
+                imageVector = tab.icons.resolve(isSelected),
                 contentDescription = null,
                 tint = if (isSelected) selectedContentColor else contentColor,
                 modifier = Modifier.size(22.dp)

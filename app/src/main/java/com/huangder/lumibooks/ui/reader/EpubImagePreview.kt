@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.ui.reader
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import android.Manifest
 import android.content.ContentValues
@@ -23,8 +24,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
@@ -234,7 +233,7 @@ internal fun EpubImagePreviewOverlay(
                 )
             } else {
                 Icon(
-                    imageVector = Icons.Default.Download,
+                    imageVector = AppIcons.DownloadSimple,
                     contentDescription = stringResource(R.string.epub_image_load_failed),
                     tint = Color.DarkGray.copy(alpha = 0.72f),
                     modifier = Modifier.size(38.dp)
@@ -280,7 +279,7 @@ internal fun EpubImagePreviewOverlay(
                 )
             } else {
                 Icon(
-                    imageVector = Icons.Default.Download,
+                    imageVector = AppIcons.DownloadSimple,
                     contentDescription = stringResource(R.string.epub_image_save_to_gallery),
                     tint = if (resource != null) Color(0xFFFF5A63) else Color.Gray,
                     modifier = Modifier.size(28.dp)

@@ -8,11 +8,12 @@ import android.media.AudioManager
 import android.media.AudioTrack
 import android.os.Handler
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlin.math.ceil
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 
 internal const val EXTERNAL_TTS_MIN_PLAYBACK_RATE = 0.5f
-internal const val EXTERNAL_TTS_MAX_PLAYBACK_RATE = 2f
+internal const val EXTERNAL_TTS_MAX_PLAYBACK_RATE = 5f
 
 internal fun normalizeExternalTtsPlaybackRate(rate: Float): Float = rate.coerceIn(
     EXTERNAL_TTS_MIN_PLAYBACK_RATE,
@@ -176,6 +177,9 @@ class ExternalTtsAudioPlayer(
         return initialFrameOffset + activeTrack.playbackHeadPosition.toLong()
     }
 
+    /** Number of frames currently queued for the active utterance. */
+    fun writtenFrameCount(): Long = initialFrameOffset + writtenFrames
+
     private fun createTrack(): AudioTrack? {
         val minimumBufferSize = AudioTrack.getMinBufferSize(
             SAMPLE_RATE,
@@ -183,6 +187,9 @@ class ExternalTtsAudioPlayer(
             AUDIO_FORMAT
         )
         if (minimumBufferSize <= 0) return null
+        // AudioTrack requires the buffer to be large enough for the highest supported
+        // playback speed, so scale the minimum by the configured rate ceiling.
+        val maxPlaybackBuffer = ceil(minimumBufferSize * EXTERNAL_TTS_MAX_PLAYBACK_RATE).toInt()
         return AudioTrack(
             AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -193,7 +200,7 @@ class ExternalTtsAudioPlayer(
                 .setChannelMask(CHANNEL_CONFIG)
                 .setEncoding(AUDIO_FORMAT)
                 .build(),
-            maxOf(minimumBufferSize * 2, MIN_BUFFER_SIZE),
+            maxOf(maxPlaybackBuffer, MIN_BUFFER_SIZE),
             AudioTrack.MODE_STREAM,
             AudioManager.AUDIO_SESSION_ID_GENERATE
         )

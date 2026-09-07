@@ -1,4 +1,6 @@
 package com.huangder.lumibooks.ui.statistics
+import com.huangder.lumibooks.ui.icons.directionalIcon
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -36,9 +38,6 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
@@ -387,7 +386,7 @@ private fun WeeklyOverview(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowLeft,
+                    imageVector = directionalIcon(AppIcons.CaretLeft, AppIcons.CaretRight),
                     contentDescription = null,
                     tint = AppColors.TextPrimary,
                     modifier = Modifier.size(20.dp)
@@ -406,7 +405,7 @@ private fun WeeklyOverview(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                    imageVector = directionalIcon(AppIcons.CaretRight, AppIcons.CaretLeft),
                     contentDescription = null,
                     tint = if (isCurrentWeek) AppColors.TextSecondary.copy(alpha = 0.3f) else AppColors.TextPrimary,
                     modifier = Modifier.size(20.dp)
@@ -551,7 +550,7 @@ private fun MonthlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsView
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowLeft,
+                    imageVector = directionalIcon(AppIcons.CaretLeft, AppIcons.CaretRight),
                     contentDescription = null,
                     tint = AppColors.TextPrimary,
                     modifier = Modifier.size(20.dp)
@@ -571,7 +570,7 @@ private fun MonthlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsView
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                    imageVector = directionalIcon(AppIcons.CaretRight, AppIcons.CaretLeft),
                     contentDescription = null,
                     tint = if (isCurrentMonth) AppColors.TextSecondary.copy(alpha = 0.3f) else AppColors.TextPrimary,
                     modifier = Modifier.size(20.dp)
@@ -736,7 +735,7 @@ private fun YearlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsViewM
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowLeft,
+                    imageVector = directionalIcon(AppIcons.CaretLeft, AppIcons.CaretRight),
                     contentDescription = null,
                     tint = AppColors.TextPrimary,
                     modifier = Modifier.size(20.dp)
@@ -755,7 +754,7 @@ private fun YearlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsViewM
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                    imageVector = directionalIcon(AppIcons.CaretRight, AppIcons.CaretLeft),
                     contentDescription = null,
                     tint = if (isCurrentYear) AppColors.TextSecondary.copy(alpha = 0.3f) else AppColors.TextPrimary,
                     modifier = Modifier.size(20.dp)

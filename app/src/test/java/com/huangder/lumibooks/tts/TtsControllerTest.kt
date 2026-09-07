@@ -97,9 +97,39 @@ class TtsControllerTest {
         try {
             assertTrue(controller.start("book", FakePageSource(page), 0, 0).isSuccess)
 
-            assertEquals(listOf("第二小句，"), externalEngine.spokenTexts)
+            assertEquals(listOf("第一小句，第二小句，句子结束。"), externalEngine.spokenTexts)
             assertEquals(listOf("saved-cache"), externalEngine.suppliedCacheKeys)
             assertEquals(listOf(42L), externalEngine.suppliedStartFrames)
+        } finally {
+            controller.shutdown()
+            runCurrent()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun externalEngineSynthesizesOneLogicalSentenceAndAdvancesAfterCompletion() = runTest {
+        val main = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(main)
+        val externalEngine = FakePlaybackEngine(isExternal = true)
+        val controller = controller(
+            systemEngine = FakePlaybackEngine(),
+            externalEngine = externalEngine,
+            settingsStore = FakeSettingsStore(TtsProviderSelection.AiModel)
+        )
+        try {
+            controller.start("book", FakePageSource(page(0, "第一小句，第二小句，句子结束。下一句。")), 0, 0)
+            assertEquals(listOf("第一小句，第二小句，句子结束。"), externalEngine.spokenTexts)
+            assertEquals("第一小句，", controller.currentSentence.value?.text)
+
+            externalEngine.complete(externalEngine.lastUtteranceId)
+            runCurrent()
+
+            assertEquals("下一句。", controller.currentSentence.value?.text)
+            assertEquals(
+                listOf("第一小句，第二小句，句子结束。", "下一句。"),
+                externalEngine.spokenTexts
+            )
         } finally {
             controller.shutdown()
             runCurrent()

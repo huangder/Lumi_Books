@@ -109,6 +109,24 @@ class JustifiedTextView @JvmOverloads constructor(
     private var spannable: Spannable? = null
     private var layout: StaticLayout? = null
 
+    /** The selectable layer owns the canonical Layout; reuse it for visible glyphs. */
+    private var sourceLayoutProvider: (() -> Layout?)? = null
+
+    var readerJustificationMode: Int = Layout.JUSTIFICATION_MODE_INTER_CHARACTER
+        set(value) {
+            if (field == value) return
+            field = value
+            rebuildLayout()
+            invalidate()
+        }
+
+    fun setSourceLayoutProvider(provider: (() -> Layout?)?) {
+        sourceLayoutProvider = provider
+        invalidate()
+    }
+
+    private fun currentLayout(): Layout? = sourceLayoutProvider?.invoke() ?: layout
+
     /** TTS 褰撳墠鍙ラ珮浜壒ange锛?start, end, color锛夛紝鍦?onDraw 缁樺埗鏁翠綋鍦嗚搴?*/
     private var ttsHighlight: Triple<Int, Int, Int>? = null
 
@@ -204,6 +222,7 @@ class JustifiedTextView @JvmOverloads constructor(
             .setIncludePad(false)
             .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
             .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)
+            .setJustificationMode(readerJustificationMode)
             .build()
     }
 
@@ -224,7 +243,7 @@ class JustifiedTextView @JvmOverloads constructor(
 
     private fun drawWaveUnderlines(canvas: Canvas) {
         val s = spannable ?: return
-        val sl = layout ?: return
+        val sl = currentLayout() ?: return
         if (s.isEmpty() || sl.lineCount == 0) return
         val density = resources.displayMetrics.density
         val wavePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -270,7 +289,7 @@ class JustifiedTextView @JvmOverloads constructor(
 
     private fun drawTtsHighlightBackground(canvas: Canvas) {
         val tts = ttsHighlight ?: return
-        val sl = layout ?: return
+        val sl = currentLayout() ?: return
         val s = spannable ?: return
         if (s.isEmpty()) return
         val start = tts.first.coerceIn(0, s.length)
@@ -301,71 +320,25 @@ class JustifiedTextView @JvmOverloads constructor(
 
     /** Maps offsets through the same per-character spacing used by [onDraw]. */
     private fun justifiedHorizontalRange(
-        sl: StaticLayout,
+        sl: Layout,
         text: Spannable,
         line: Int,
         segmentStart: Int,
         segmentEnd: Int
     ): Pair<Float, Float>? {
-        val lineStart = sl.getLineStart(line)
-        val rawLineEnd = sl.getLineEnd(line)
-        val effectiveEnd = readerLineContentEnd(text, lineStart, rawLineEnd)
-        if (segmentStart < lineStart || segmentEnd > effectiveEnd || segmentStart >= segmentEnd) return null
-
-        val isFirstLineOfParagraph = line == 0 || (lineStart > 0 && text[lineStart - 1] == '\n')
-        val indentPx = text.getSpans(lineStart, (lineStart + 1).coerceAtMost(text.length), LeadingMarginSpan::class.java)
-            .sumOf { it.getLeadingMargin(isFirstLineOfParagraph).toDouble() }
-            .toFloat()
-        val trailingWhitespaceWidth = if (effectiveEnd < rawLineEnd) {
-            textPaint.measureText(text, effectiveEnd, rawLineEnd)
-        } else {
-            0f
-        }
-        val lineWidth = (sl.getLineWidth(line) - trailingWhitespaceWidth).coerceAtLeast(0f)
-        val visibleCharacterCount = (lineStart until effectiveEnd).count { text[it] != '\uFFFC' }
-        val gapCount = (visibleCharacterCount - 1).coerceAtLeast(0)
-        val shouldJustify = shouldJustifyReaderLine(
-            lineIndex = line,
-            lineCount = sl.lineCount,
-            endsWithParagraphBreak = rawLineEnd > lineStart && text[rawLineEnd - 1] == '\n',
-            pageEndsMidParagraph = justifyLastLine
+        val geometry = ReaderLineGeometry(
+            layout = sl,
+            text = text,
+            justificationMode = readerJustificationMode,
+            forceLastLineJustification = justifyLastLine
         )
-        val extraPerCharacter = if (shouldJustify && gapCount > 0) {
-            ((width - paddingLeft - paddingRight).toFloat() - lineWidth).coerceAtLeast(0f) / gapCount
-        } else {
-            0f
-        }
-
-        var x = indentPx
-        var visibleIndex = 0
-        var startX: Float? = if (segmentStart == lineStart) x else null
-        var endX: Float? = null
-        for (index in lineStart until effectiveEnd) {
-            if (text[index] == '\uFFFC') continue
-            if (index == segmentStart) startX = x
-            applySpanStyles(text, index, textPaint)
-            val characterEnd = readerHighlightCharacterEnd(
-                x = x,
-                characterWidth = textPaint.measureText(text, index, index + 1),
-                hasFollowingCharacter = visibleIndex < visibleCharacterCount - 1,
-                letterSpacingPx = readerExplicitLetterSpacing(textPaint.letterSpacing, textPaint.textSize),
-                justificationSpacingPx = extraPerCharacter
-            )
-            resetPaintStyle()
-            x = characterEnd
-            visibleIndex++
-            if (index + 1 == segmentEnd) {
-                endX = x
-                break
-            }
-        }
-        return if (startX != null && endX != null) startX to endX else null
+        return geometry.horizontalRange(line, segmentStart, segmentEnd)?.let { it.left to it.right }
     }
     override fun onDraw(canvas: Canvas) {
         drawTtsHighlightBackground(canvas)
         drawWaveUnderlines(canvas)
         super.onDraw(canvas)
-        val sl = layout ?: return
+        val sl = currentLayout() ?: return
         val s = spannable ?: return
         val textStr = s.toString()
 
@@ -375,6 +348,12 @@ class JustifiedTextView @JvmOverloads constructor(
         canvas.translate(paddingLeft.toFloat(), paddingTop.toFloat())
 
         val viewWidth = (width - paddingLeft - paddingRight).toFloat()
+        val geometry = ReaderLineGeometry(
+            layout = sl,
+            text = s,
+            justificationMode = readerJustificationMode,
+            forceLastLineJustification = justifyLastLine
+        )
 
         for (i in 0 until sl.lineCount) {
             val lineStart = sl.getLineStart(i)
@@ -447,36 +426,6 @@ class JustifiedTextView @JvmOverloads constructor(
                 continue  // 跳过普通文字的逐字绘制
             }
 
-            // 普通文字行：逐字绘制 + 两端对齐
-            // 用 StaticLayout.getLineWidth 获取精确行宽（已考虑所有 span）
-            val trailingWhitespaceWidth = if (effectiveEnd < lineEnd) {
-                textPaint.measureText(textStr, effectiveEnd, lineEnd)
-            } else {
-                0f
-            }
-            val lineWidth = (sl.getLineWidth(i) - trailingWhitespaceWidth).coerceAtLeast(0f)
-            // 计算有效字符数（排除 U+FFFC 对象替换字符，这些是加载失败的图片占位符）
-            val effectiveCharCount = (lineStart until effectiveEnd).count { textStr[it] != '￼' }
-            val gapCount = if (effectiveCharCount > 1) effectiveCharCount - 1 else 0
-            // StaticLayout.getLineWidth() already includes the leading margin of the first line,
-            // so subtracting indentPx again would under-fill the line tail by twice the indent.
-            val availableWidth = viewWidth
-            val extraSpace = availableWidth - lineWidth
-            val shouldJustify = shouldJustifyReaderLine(
-                lineIndex = i,
-                lineCount = sl.lineCount,
-                endsWithParagraphBreak = endsWithParagraphBreak,
-                pageEndsMidParagraph = justifyLastLine
-            )
-            val extraPerChar = if (shouldJustify && extraSpace > 0f && gapCount > 0) {
-                extraSpace / gapCount
-            } else {
-                0f
-            }
-
-            // 逐字绘制（从缩进位置开始）
-            var x = indentPx
-            var visibleCharacterIndex = 0
             for (idx in lineStart until effectiveEnd) {
                 // 跳过 U+FFFC（图片加载失败的占位字符，避免显示 "obj"）
                 if (textStr[idx] == '￼') {
@@ -487,15 +436,10 @@ class JustifiedTextView @JvmOverloads constructor(
                 applySpanStyles(s, idx, textPaint)
 
                 val charStr = textStr[idx].toString()
-                val charWidth = textPaint.measureText(charStr)
-                val hasFollowingCharacter = visibleCharacterIndex < effectiveCharCount - 1
-                val characterEnd = readerHighlightCharacterEnd(
-                    x = x,
-                    characterWidth = charWidth,
-                    hasFollowingCharacter = hasFollowingCharacter,
-                    letterSpacingPx = readerExplicitLetterSpacing(textPaint.letterSpacing, textPaint.textSize),
-                    justificationSpacingPx = extraPerChar
-                )
+                val charRange = geometry.horizontalRange(i, idx, idx + 1)
+                    ?: continue
+                val x = charRange.left
+                val characterEnd = charRange.right
                 val backgroundColor = s.getSpans(idx, idx + 1, ReaderSearchHighlightSpan::class.java)
                     .lastOrNull()
                     ?.color
@@ -513,9 +457,6 @@ class JustifiedTextView @JvmOverloads constructor(
                 }
 
                 canvas.drawText(charStr, x, baseline, textPaint)
-
-                x = characterEnd
-                visibleCharacterIndex++
 
                 resetPaintStyle()
             }
@@ -585,7 +526,7 @@ class JustifiedTextView @JvmOverloads constructor(
      * publisher action instead of opening the image preview.
      */
     fun getImageAtPosition(x: Float, y: Float): ReaderImageHit? {
-        val sl = layout ?: return null
+        val sl = currentLayout() ?: return null
         val text = spannable ?: return null
         val tx = x - paddingLeft
         val ty = y - paddingTop
@@ -640,7 +581,7 @@ class JustifiedTextView @JvmOverloads constructor(
      * 的字符位置时，行内额外字距造成链接点击区域偏移。
      */
     fun getLinkAtPosition(x: Float, y: Float): String? {
-        val sl = layout ?: return null
+        val sl = currentLayout() ?: return null
         val text = spannable ?: return null
         val tx = x - paddingLeft
         val ty = y - paddingTop
@@ -719,7 +660,7 @@ class JustifiedTextView @JvmOverloads constructor(
      * 获取指定坐标处的字符偏移量
      */
     fun getOffsetForPosition(x: Float, y: Float): Int {
-        val sl = layout ?: return 0
+        val sl = currentLayout() ?: return 0
         val tx = x - paddingLeft
         val ty = y - paddingTop
         if (tx < 0 || ty < 0) return 0
@@ -729,7 +670,7 @@ class JustifiedTextView @JvmOverloads constructor(
     }
 
     fun getLineInfoForOffset(offset: Int): Pair<Int, Int>? {
-        val sl = layout ?: return null
+        val sl = currentLayout() ?: return null
         val textLength = spannable?.length ?: return null
         if (textLength <= 0) return null
         val safeOffset = offset.coerceIn(0, textLength - 1)
@@ -741,7 +682,7 @@ class JustifiedTextView @JvmOverloads constructor(
      * 获取字符的视觉边界（用于选区高亮）
      */
     fun getCharBounds(offset: Int): android.graphics.RectF? {
-        val sl = layout ?: return null
+        val sl = currentLayout() ?: return null
         val s = spannable ?: return null
         if (offset < 0 || offset >= s.length) return null
 

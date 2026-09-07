@@ -1,4 +1,6 @@
 package com.huangder.lumibooks.ui.settings
+import com.huangder.lumibooks.ui.icons.directionalIcon
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import android.content.Intent
 import android.net.Uri
@@ -27,22 +29,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.AccountCircle
-import androidx.compose.material.icons.outlined.Backup
-import androidx.compose.material.icons.outlined.Brightness6
-import androidx.compose.material.icons.outlined.ChevronRight
-import androidx.compose.material.icons.outlined.BugReport
-import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.DeleteSweep
-import androidx.compose.material.icons.outlined.FormatSize
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.Palette
-import androidx.compose.material.icons.outlined.Sync
-import androidx.compose.material.icons.outlined.Timer
-import androidx.compose.material.icons.outlined.Translate
-import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -157,7 +143,7 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 LiquidGlassIconButton(
-                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                    imageVector = directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight),
                     contentDescription = stringResource(R.string.back),
                     onClick = onNavigateBack,
                     settingsBackButton = true
@@ -222,7 +208,7 @@ fun SettingsScreen(
                         )
                     } else {
                         Icon(
-                            Icons.Outlined.AccountCircle,
+                            AppIcons.UserCircle,
                             stringResource(R.string.default_avatar),
                             tint = AppColors.TextSecondary,
                             modifier = Modifier.size(48.dp)
@@ -243,48 +229,48 @@ fun SettingsScreen(
                     Text(uiState.nickname, fontSize = AppType.Body, fontWeight = FontWeight.SemiBold, color = AppColors.TextPrimary)
                     Text(stringResource(R.string.tap_to_change_nickname), fontSize = AppType.Caption, color = AppColors.TextSecondary)
                 }
-                Icon(Icons.Outlined.ChevronRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+                Icon(AppIcons.CaretRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
             }
 
                 Spacer(Modifier.height(AppSpace.lg))
 
                 // 分类列表：按设置域分组，组内使用细分隔线保持扫描节奏。
                 SettingsCategoryGroup {
-                    CategoryItem(Icons.Outlined.FormatSize, stringResource(R.string.title_reading_settings), grouped = true) {
+                    CategoryItem(AppIcons.TextAa, stringResource(R.string.title_reading_settings), grouped = true) {
                         context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "reading"))
                     }
                     SettingsGroupDivider()
-                    CategoryItem(Icons.Outlined.Brightness6, stringResource(R.string.category_display), grouped = true) {
+                    CategoryItem(AppIcons.SunDim, stringResource(R.string.category_display), grouped = true) {
                         context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "display"))
                     }
                     SettingsGroupDivider()
-                    CategoryItem(Icons.Outlined.Translate, stringResource(R.string.category_language), grouped = true) {
+                    CategoryItem(AppIcons.Translate, stringResource(R.string.category_language), grouped = true) {
                         context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "language"))
                     }
                     SettingsGroupDivider()
-                    CategoryItem(Icons.Outlined.DeleteSweep, stringResource(R.string.category_storage), grouped = true) {
+                    CategoryItem(AppIcons.Trash, stringResource(R.string.category_storage), grouped = true) {
                         context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "storage"))
                     }
                     SettingsGroupDivider()
-                    CategoryItem(Icons.Outlined.Backup, stringResource(R.string.category_backup), grouped = true) {
+                    CategoryItem(AppIcons.Archive, stringResource(R.string.category_backup), grouped = true) {
                         context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "backup"))
                     }
                 }
                 Spacer(Modifier.height(AppSpace.sm))
                 SettingsCategoryGroup {
-                    CategoryItem(Icons.Outlined.Cloud, stringResource(R.string.category_third_party_services), grouped = true) {
+                    CategoryItem(AppIcons.Cloud, stringResource(R.string.category_third_party_services), grouped = true) {
                         context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "third_party_services"))
                     }
                     SettingsGroupDivider()
-                    CategoryItem(Icons.Outlined.Info, stringResource(R.string.category_about), grouped = true) {
+                    CategoryItem(AppIcons.Info, stringResource(R.string.category_about), grouped = true) {
                         context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "about"))
                     }
                     SettingsGroupDivider()
-                    CategoryItem(Icons.Outlined.FavoriteBorder, stringResource(R.string.category_sponsor), grouped = true) {
+                    CategoryItem(AppIcons.Heart.regular, stringResource(R.string.category_sponsor), grouped = true) {
                         context.startActivity(Intent(context, SponsorActivity::class.java))
                     }
                     SettingsGroupDivider()
-                    CategoryItem(Icons.Outlined.BugReport, stringResource(R.string.category_feedback), grouped = true) {
+                    CategoryItem(AppIcons.Bug, stringResource(R.string.category_feedback), grouped = true) {
                         context.startActivity(Intent(context, FeedbackActivity::class.java))
                     }
                 }
@@ -323,7 +309,7 @@ fun ThirdPartyServicesDetail(viewModel: SettingsViewModel) {
     val context = LocalContext.current
 
     CategoryItem(
-        icon = Icons.Outlined.Cloud,
+        icon = AppIcons.Cloud,
         label = stringResource(R.string.category_mineru),
         supportingText = when (uiState.mineruMode) {
             "agent" -> stringResource(R.string.mineru_mode_agent_short)
@@ -335,7 +321,7 @@ fun ThirdPartyServicesDetail(viewModel: SettingsViewModel) {
     }
         Spacer(Modifier.height(AppSpace.sm))
         CategoryItem(
-            icon = Icons.Outlined.Cloud,
+            icon = AppIcons.Cloud,
             label = stringResource(R.string.category_external_tts),
             supportingText = when {
                 uiState.externalTtsSettings.enabled &&
@@ -350,7 +336,7 @@ fun ThirdPartyServicesDetail(viewModel: SettingsViewModel) {
         }
         Spacer(Modifier.height(AppSpace.sm))
         CategoryItem(
-            icon = Icons.Outlined.Sync,
+            icon = AppIcons.ArrowsClockwise,
             label = stringResource(R.string.category_webdav),
             supportingText = when {
                 uiState.webdavConfig.enabled -> stringResource(R.string.webdav_enabled_status)
@@ -391,7 +377,7 @@ private fun CategoryItem(
                 Text(supportingText, fontSize = AppType.Caption, color = AppColors.TextSecondary)
             }
         }
-        Icon(Icons.Outlined.ChevronRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+        Icon(AppIcons.CaretRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
     }
 }
 

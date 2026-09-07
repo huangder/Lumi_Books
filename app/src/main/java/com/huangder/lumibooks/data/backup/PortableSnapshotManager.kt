@@ -179,7 +179,12 @@ class PortableSnapshotManager @Inject constructor(
                         filePath = book.bodyAssetId?.let(assetPaths::get)
                             ?: existing?.filePath.orEmpty().takeIf { !replaceAssetDirectories }.orEmpty(),
                         coverPath = book.coverAssetId?.let(assetPaths::get)
-                            ?: existing?.coverPath?.takeIf { !replaceAssetDirectories }
+                            ?: existing?.coverPath?.takeIf { !replaceAssetDirectories },
+                        // 状态同步不携带书本体（replaceAssetDirectories=false）时，与 filePath/
+                        // coverPath 同理，保留本机真实的“已下载/仅云端”状态，避免 bodyless
+                        // 快照用推导结果把已下载书籍翻回仅云端。
+                        existingIsCloudOnly = existing?.isCloudOnly
+                            ?.takeIf { !replaceAssetDirectories && book.bodyAssetId == null }
                     )
                 }
                 if (replace) {
@@ -496,16 +501,22 @@ class PortableSnapshotManager @Inject constructor(
         remoteFileSize, remoteFileSha256
     )
 
-    private fun PortableBook.toEntity(filePath: String, coverPath: String?) = BookEntity(
-        id = id, title = title, author = author, filePath = filePath, coverPath = coverPath,
-        format = format, lastReadTime = lastReadTime, readingProgress = readingProgress,
-        locatorJson = locatorJson, createdAt = createdAt, isFavorite = isFavorite,
-        isCloudOnly = bodyAssetId == null && (isCloudOnly || filePath.isBlank()),
-        remoteLibraryKey = remoteLibraryKey, remoteFileName = remoteFileName,
-        remoteFileSize = remoteFileSize, remoteFileSha256 = remoteFileSha256,
-        metadataUpdatedAt = metadataUpdatedAt
-    )
 }
+
+internal fun PortableBook.toEntity(
+    filePath: String,
+    coverPath: String?,
+    existingIsCloudOnly: Boolean? = null
+) = BookEntity(
+    id = id, title = title, author = author, filePath = filePath, coverPath = coverPath,
+    format = format, lastReadTime = lastReadTime, readingProgress = readingProgress,
+    locatorJson = locatorJson, createdAt = createdAt, isFavorite = isFavorite,
+    isCloudOnly = existingIsCloudOnly
+        ?: (bodyAssetId == null && (isCloudOnly || filePath.isBlank())),
+    remoteLibraryKey = remoteLibraryKey, remoteFileName = remoteFileName,
+    remoteFileSize = remoteFileSize, remoteFileSha256 = remoteFileSha256,
+    metadataUpdatedAt = metadataUpdatedAt
+)
 
 private fun stableSuffix(value: String): String = MessageDigest.getInstance("SHA-256")
     .digest(value.toByteArray())

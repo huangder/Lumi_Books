@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.ui.bookshelf
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -50,20 +51,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.Label
-import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.outlined.Bookmark
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.DriveFileMove
-import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.outlined.HideImage
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.Restore
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -167,7 +154,7 @@ internal fun BookshelfSearchLauncher(
                 modifier = Modifier.weight(1f)
             )
             Icon(
-                imageVector = Icons.Outlined.Search,
+                imageVector = AppIcons.MagnifyingGlass,
                 contentDescription = stringResource(R.string.search),
                 tint = AppColors.TextPrimary,
                 modifier = Modifier.size(24.dp)
@@ -465,7 +452,7 @@ private fun ActiveBookshelfSearchField(
                     }
                     Spacer(Modifier.width(12.dp))
                     Icon(
-                        imageVector = Icons.Outlined.Search,
+                        imageVector = AppIcons.MagnifyingGlass,
                         contentDescription = stringResource(R.string.search),
                         tint = AppColors.TextPrimary,
                         modifier = Modifier.size(27.dp)
@@ -701,7 +688,7 @@ private fun BookshelfSearchResultCard(
                 ) {
                     if (book.isFavorite) {
                         Icon(
-                            imageVector = Icons.Filled.Favorite,
+                            imageVector = AppIcons.Heart.filled,
                             contentDescription = stringResource(R.string.favorite),
                             tint = favoritePink,
                             modifier = Modifier.size(19.dp)
@@ -731,7 +718,7 @@ private fun BookshelfSearchResultCard(
 
             if (isSynced) {
                 Icon(
-                    imageVector = Icons.Filled.Cloud,
+                    imageVector = AppIcons.CloudFilled,
                     contentDescription = stringResource(R.string.category_webdav),
                     tint = AppColors.TextSecondary,
                     modifier = Modifier
@@ -771,28 +758,28 @@ private fun SearchResultActionRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         SearchActionButton(
-            icon = Icons.Outlined.Info,
+            icon = AppIcons.Info,
             contentDescription = stringResource(R.string.book_details),
             visible = visible,
             animationIndex = 0,
             onClick = onBookDetails
         )
         SearchActionButton(
-            icon = Icons.Outlined.Edit,
+            icon = AppIcons.PencilSimple,
             contentDescription = stringResource(R.string.edit_book_info),
             visible = visible,
             animationIndex = 1,
             onClick = onEditInfo
         )
         SearchActionButton(
-            icon = Icons.Outlined.Delete,
+            icon = AppIcons.Trash,
             contentDescription = stringResource(R.string.delete),
             visible = visible,
             animationIndex = 2,
             onClick = onDelete
         )
         SearchActionButton(
-            icon = if (book.isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+            icon = AppIcons.Heart.resolve(book.isFavorite),
             contentDescription = stringResource(R.string.favorite),
             tintedColor = if (book.isFavorite) favoritePink else Color.Black,
             contentColor = Color.White,
@@ -803,7 +790,7 @@ private fun SearchResultActionRow(
 
         if (hasCustomCover) {
             SearchActionButton(
-                icon = Icons.Outlined.Image,
+                icon = AppIcons.Image,
                 contentDescription = stringResource(R.string.custom_cover),
                 label = stringResource(R.string.custom_cover),
                 width = 78.dp,
@@ -812,7 +799,7 @@ private fun SearchResultActionRow(
                 onClick = onCustomCover
             )
             SearchActionButton(
-                icon = Icons.Outlined.Restore,
+                icon = AppIcons.ArrowCounterClockwise,
                 contentDescription = stringResource(R.string.remove_custom_cover),
                 label = stringResource(R.string.remove_custom_cover),
                 width = 110.dp,
@@ -822,7 +809,7 @@ private fun SearchResultActionRow(
             )
         } else {
             SearchActionButton(
-                icon = Icons.Outlined.Image,
+                icon = AppIcons.Image,
                 contentDescription = stringResource(R.string.custom_cover),
                 label = stringResource(R.string.custom_cover),
                 width = 192.dp,
@@ -833,21 +820,21 @@ private fun SearchResultActionRow(
         }
 
         SearchActionButton(
-            icon = Icons.AutoMirrored.Outlined.Label,
+            icon = AppIcons.Tag,
             contentDescription = stringResource(R.string.add_tag),
             visible = visible,
             animationIndex = if (hasCustomCover) 6 else 5,
             onClick = onTags
         )
         SearchActionButton(
-            icon = Icons.Outlined.Bookmark,
+            icon = AppIcons.Bookmark.regular,
             contentDescription = stringResource(R.string.bookmarks_notes),
             visible = visible,
             animationIndex = if (hasCustomCover) 7 else 6,
             onClick = onBookmarksNotes
         )
         SearchActionButton(
-            icon = Icons.Outlined.DriveFileMove,
+            icon = AppIcons.FolderSimple,
             contentDescription = stringResource(R.string.move_to_folder),
             label = stringResource(R.string.move_to_folder),
             width = 104.dp,
@@ -879,21 +866,21 @@ internal fun FolderListActionRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             SearchActionButton(
-                icon = Icons.Outlined.Edit,
+                icon = AppIcons.PencilSimple,
                 contentDescription = stringResource(R.string.rename_folder),
                 visible = visible,
                 animationIndex = 0,
                 onClick = onRename
             )
             SearchActionButton(
-                icon = Icons.Outlined.Delete,
+                icon = AppIcons.Trash,
                 contentDescription = stringResource(R.string.delete_folder),
                 visible = visible,
                 animationIndex = 1,
                 onClick = onDelete
             )
             SearchActionButton(
-                icon = Icons.Outlined.Image,
+                icon = AppIcons.Image,
                 contentDescription = stringResource(
                     if (folder.coverPath == null) R.string.set_folder_cover else R.string.change_folder_cover
                 ),
@@ -907,7 +894,7 @@ internal fun FolderListActionRow(
             )
             if (folder.coverPath != null) {
                 SearchActionButton(
-                    icon = Icons.Outlined.HideImage,
+                    icon = AppIcons.ImageBroken,
                     contentDescription = stringResource(R.string.remove_folder_cover),
                     label = stringResource(R.string.remove_folder_cover),
                     width = 118.dp,
@@ -917,7 +904,7 @@ internal fun FolderListActionRow(
                 )
             }
             SearchActionButton(
-                icon = Icons.Outlined.DriveFileMove,
+                icon = AppIcons.FolderSimple,
                 contentDescription = stringResource(R.string.move_folder),
                 label = stringResource(R.string.move_folder),
                 width = 92.dp,

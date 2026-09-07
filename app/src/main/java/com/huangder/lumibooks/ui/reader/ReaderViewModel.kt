@@ -53,6 +53,7 @@ import com.huangder.lumibooks.mineru.MineruMode
 import com.huangder.lumibooks.mineru.MineruTokenStore
 import com.huangder.lumibooks.pdfconversion.PdfConversionState
 import com.huangder.lumibooks.util.DownloadedFonts
+import com.huangder.lumibooks.util.BookFileAccess
 import com.huangder.lumibooks.util.ReaderBackgroundImageProcessor
 import com.huangder.lumibooks.util.TimeUtils
 import com.huangder.lumibooks.util.performance.ReaderOpenPerformance
@@ -63,6 +64,8 @@ import com.huangder.lumibooks.util.parser.BookLinkTarget
 import com.huangder.lumibooks.util.parser.PdfParser
 import com.huangder.lumibooks.util.parser.TxtEncoding
 import com.huangder.lumibooks.util.parser.TxtParser
+import com.huangder.lumibooks.util.parser.TxtIndexState
+import com.huangder.lumibooks.util.parser.TxtOpenResult
 import com.huangder.lumibooks.util.parser.TxtTocRule
 import com.huangder.lumibooks.util.parser.TxtTocRuleDiagnostics
 import com.huangder.lumibooks.util.parser.TxtReplaceText
@@ -267,6 +270,8 @@ data class ReaderUiState(
     val txtTocDiagnostics: List<TxtTocRuleDiagnostics> = emptyList(),
     val isTxtTocChanging: Boolean = false,
     val txtActiveCharsetName: String = "UTF-8",
+    val txtIndexState: TxtIndexState = TxtIndexState.COMPLETE,
+    val txtIndexProgress: Float? = null,
     val showTxtEncodingHint: Boolean = false,
     val isTxtEncodingChanging: Boolean = false,
     val epubLocatorJson: String? = null,
@@ -348,6 +353,40 @@ internal fun ReaderUiState.withReaderCornerContent(
         ReaderPageCorner.BOTTOM_RIGHT -> updated.copy(readerBottomRightContent = content)
     }
 }
+
+/**
+ * A valid first page is enough to release TXT's transition overlay. Exact reader
+ * position restoration is allowed to finish after the visible page is available.
+ */
+internal fun shouldReleasePagedReaderOnFirstPage(
+    isTxtBook: Boolean,
+    isContinuous: Boolean,
+    chapterTotalPages: Int,
+    hasPendingReaderPosition: Boolean,
+    reachedPendingPosition: Boolean
+): Boolean {
+    if (isContinuous || chapterTotalPages <= 0) return false
+    return !hasPendingReaderPosition || reachedPendingPosition || isTxtBook
+}
+
+/**
+ * Large TXT files can use byte-sized virtual chapters only when there is no saved semantic
+ * position to restore. Virtual chapter indexes are not stable enough to persist as a locator.
+ */
+internal fun shouldUseFastTxtOpen(
+    fileSizeBytes: Long,
+    largeFileThresholdBytes: Long,
+    hasPersistedReaderPosition: Boolean,
+    readingProgress: Float
+): Boolean = fileSizeBytes >= largeFileThresholdBytes &&
+    !hasPersistedReaderPosition &&
+    readingProgress <= 0f
+
+/** Fast TXT chunks may provide fallback whole-book progress, but never a semantic locator. */
+internal fun shouldPersistReaderLocator(
+    formatName: String?,
+    txtIndexState: TxtIndexState
+): Boolean = formatName != "TXT" || txtIndexState == TxtIndexState.COMPLETE
 
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
@@ -435,6 +474,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     private var parser: BookParser? = null
+    private var largeTxtIndexJob: Job? = null
     private val firstChapterDecodeTraced = AtomicBoolean(false)
     private var renderSession: BookRenderSession? = null
     private var sessionStartTime: Long = System.currentTimeMillis()
@@ -2393,6 +2433,8 @@ class ReaderViewModel @Inject constructor(
 
     private suspend fun loadBook(preferences: ReaderPreferencesSnapshot, book: Book?) {
             _uiState.value = _uiState.value.copy(isLoading = true)
+            largeTxtIndexJob?.cancel()
+            largeTxtIndexJob = null
             try {
                 if (book != null) {
                     val activeParser = BookParserFactory.createParser(book.format, context)
@@ -2447,6 +2489,9 @@ class ReaderViewModel @Inject constructor(
                     val firstLineIndent = preferences.firstLineIndent
                     val textAlignment = preferences.textAlignment
                     val pdfPageMode = if (eInkModeEnabled) "horizontal" else preferences.pdfPageMode
+                    val storedReaderPosition = book.locatorJson
+                        ?.let(ReaderPositionLocator::fromJson)
+                        ?.takeIf { renderMode == EpubRenderMode.READER_LAYOUT }
 
                     // 应用段间距和首行缩进到 parser
                     activeParser.paragraphSpacingDp = paragraphSpacing
@@ -2455,11 +2500,38 @@ class ReaderViewModel @Inject constructor(
                     (activeParser as? TxtParser)?.selectedEncoding = txtEncoding
                     (activeParser as? TxtParser)?.selectedTocRule = txtTocRule
 
+                    var fastTxtOpen: TxtOpenResult? = null
                     val content = ReaderOpenPerformance.traceStageSuspend(
                         bookId,
                         ReaderOpenStage.METADATA_PARSE
                     ) {
-                        withContext(Dispatchers.IO) { activeParser.parse(book.filePath) }
+                        withContext(Dispatchers.IO) {
+                            val useFastTxtOpen = activeParser is TxtParser && shouldUseFastTxtOpen(
+                                fileSizeBytes = BookFileAccess.size(context, book.filePath),
+                                largeFileThresholdBytes = TxtParser.LARGE_FILE_THRESHOLD_BYTES,
+                                hasPersistedReaderPosition = storedReaderPosition != null,
+                                readingProgress = book.readingProgress
+                            )
+                            try {
+                                if (useFastTxtOpen) {
+                                    activeParser.parseFastOpen(book.filePath).also { fastTxtOpen = it }.content
+                                } else {
+                                    activeParser.parse(book.filePath)
+                                }
+                            } catch (firstError: Throwable) {
+                                if (firstError is CancellationException) throw firstError
+                                // A malformed or stale TXT TOC rule must not prevent the
+                                // readable body from opening. Retry the same source as plain
+                                // fallback chunks while keeping the user's rule unchanged.
+                                if (activeParser is TxtParser) {
+                                    runCatching {
+                                        activeParser.parseWithoutToc(book.filePath)
+                                    }.getOrElse { throw firstError }
+                                } else {
+                                    throw firstError
+                                }
+                            }
+                        }
                     }
 
                     // 解析出更准确的作者时，静默回填数据库并用新值更新 UI
@@ -2487,9 +2559,6 @@ class ReaderViewModel @Inject constructor(
                         content.chapters.map { com.huangder.lumibooks.util.parser.TocEntry(it.title, 1, it.index) }
                     }
                     val progressFraction = book.readingProgress * chapterCount
-                    val storedReaderPosition = book.locatorJson
-                        ?.let(ReaderPositionLocator::fromJson)
-                        ?.takeIf { renderMode == EpubRenderMode.READER_LAYOUT }
                     val startChapter = storedReaderPosition?.chapterIndex
                         ?.coerceIn(0, chapterCount - 1)
                         ?: progressFraction.toInt().coerceIn(0, chapterCount - 1)
@@ -2528,6 +2597,8 @@ class ReaderViewModel @Inject constructor(
                         txtTocCustomRules = txtTocCustomRules,
                         txtTocDiagnostics = (activeParser as? TxtParser)?.lastTocDiagnostics.orEmpty(),
                         txtActiveCharsetName = (activeParser as? TxtParser)?.activeCharsetName ?: "UTF-8",
+                        txtIndexState = fastTxtOpen?.state ?: TxtIndexState.COMPLETE,
+                        txtIndexProgress = fastTxtOpen?.let { 0f },
                         showTxtEncodingHint = showTxtEncodingHint,
                         epubLocatorJson = book.locatorJson.takeIf {
                             renderMode == EpubRenderMode.BOOK_LAYOUT &&
@@ -2555,6 +2626,9 @@ class ReaderViewModel @Inject constructor(
                     }
                     loadBookmarks()
                     loadNotes()
+                    if (fastTxtOpen != null && activeParser is TxtParser) {
+                        startLargeTxtIndexBuild(book, activeParser)
+                    }
                 } else {
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
@@ -2567,6 +2641,71 @@ class ReaderViewModel @Inject constructor(
                     error = e.message
                 )
             }
+    }
+
+    /** Builds a semantic TOC after a large TXT has already become readable. */
+    private fun startLargeTxtIndexBuild(
+        book: Book,
+        txtParser: TxtParser
+    ) {
+        largeTxtIndexJob?.cancel()
+        largeTxtIndexJob = viewModelScope.launch(Dispatchers.IO) {
+            val before = _uiState.value
+            val oldRange = txtParser.getChapterByteRange(before.currentChapterIndex)
+            val oldFraction = if (before.totalPages > 0) {
+                (before.currentPageIndex.toFloat() / before.totalPages.toFloat()).coerceIn(0f, 0.9999f)
+            } else {
+                before.pendingPageFraction.coerceIn(0f, 0.9999f)
+            }
+            val anchor = oldRange?.let { (start, end) ->
+                start + ((end - start).coerceAtLeast(0L) * oldFraction).toLong()
+            }
+            try {
+                val semantic = txtParser.rebuildSemanticIndex(book.filePath)
+                if (parser !== txtParser || _uiState.value.book?.id != book.id) return@launch
+                val targetChapter = anchor?.let { byte ->
+                    (0 until txtParser.getChapterCount()).firstOrNull { index ->
+                        val range = txtParser.getChapterByteRange(index) ?: return@firstOrNull false
+                        byte >= range.first && byte < range.second
+                    }
+                } ?: before.currentChapterIndex.coerceIn(0, (semantic.chapters.size - 1).coerceAtLeast(0))
+                withContext(Dispatchers.Main) {
+                    pageLayoutEngine.invalidateAll()
+                    _uiState.value = _uiState.value.copy(
+                        chapterCount = semantic.chapters.size,
+                        chapterTitles = semantic.chapters.map { it.title },
+                        tocEntries = semantic.tocEntries.ifEmpty {
+                            semantic.chapters.map { chapter ->
+                                com.huangder.lumibooks.util.parser.TocEntry(chapter.title, 1, chapter.index)
+                            }
+                        },
+                        currentChapterIndex = targetChapter,
+                        currentPageIndex = 0,
+                        totalPages = 0,
+                        pendingPageFraction = oldFraction,
+                        pendingPageFractionSemantics = ReaderPageFractionSemantics.START,
+                        pendingReaderPosition = null,
+                        txtIndexState = TxtIndexState.COMPLETE,
+                        txtIndexProgress = 1f,
+                        contentRevision = _uiState.value.contentRevision + 1
+                    )
+                }
+            } catch (_: CancellationException) {
+                throw CancellationException()
+            } catch (error: Exception) {
+                withContext(Dispatchers.Main) {
+                    if (parser === txtParser && _uiState.value.book?.id == book.id) {
+                        _uiState.value = _uiState.value.copy(
+                            pendingPageFraction = 0f,
+                            pendingPageFractionSemantics = ReaderPageFractionSemantics.START,
+                            pendingReaderPosition = null,
+                            txtIndexState = TxtIndexState.FAILED,
+                            txtIndexProgress = null
+                        )
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -2783,6 +2922,16 @@ class ReaderViewModel @Inject constructor(
                 }
             }
         } == true
+        val hasRenderablePage = chapterTotalPages > 0 &&
+            pageInChapter in 0 until chapterTotalPages
+        val isTxtBook = currentState.book?.format?.name == "TXT"
+        val canReleaseInitialLoading = shouldReleasePagedReaderOnFirstPage(
+            isTxtBook = isTxtBook,
+            isContinuous = false,
+            chapterTotalPages = chapterTotalPages,
+            hasPendingReaderPosition = pendingPosition != null,
+            reachedPendingPosition = reachedPendingPosition
+        )
         _uiState.value = currentState.copy(
             globalPageIndex = globalPage,
             currentChapterIndex = chapterIndex,
@@ -2790,7 +2939,7 @@ class ReaderViewModel @Inject constructor(
             totalPages = chapterTotalPages,
             rightPageIndex = null,
             rightChapterIndex = null,
-            pageReady = true,
+            pageReady = currentState.pageReady || hasRenderablePage,
             pendingPageFraction = if (reachedPendingPosition) 0f else currentState.pendingPageFraction,
             pendingPageFractionSemantics = if (reachedPendingPosition) {
                 ReaderPageFractionSemantics.START
@@ -2799,17 +2948,27 @@ class ReaderViewModel @Inject constructor(
             },
             pendingReaderPosition = if (reachedPendingPosition) null else currentState.pendingReaderPosition
         )
+        if (!hasRenderablePage) return
         ttsController.onPageVisible(bookId, chapterIndex, pageInChapter)
-        if (pendingPosition != null && !reachedPendingPosition) return
+        // A TXT opened through the fast index may not be able to resolve an old
+        // character anchor until the semantic index replaces the virtual chunks.
+        // Do not let that deferred restore keep the transition overlay visible.
+        val keepLoadingForPendingRestore = !canReleaseInitialLoading
+        if (keepLoadingForPendingRestore) return
         if (_uiState.value.isLoading) {
             _uiState.value = _uiState.value.copy(isLoading = false)
             // 🔥 如果是恢复进度（pendingPageFraction > 0），不在此处 saveProgress
             // ReaderScreen 会在跳转到正确页面后再触发保存
-            if (_uiState.value.pendingPageFraction <= 0f) {
+            if (!hasPendingReaderRestore(
+                    _uiState.value.pendingReaderPosition,
+                    _uiState.value.pendingPageFraction
+                )
+            ) {
                 saveProgress()
             }
             return
         }
+        if (pendingPosition != null && !reachedPendingPosition) return
         scheduleProgressSave()
     }
 
@@ -3770,7 +3929,9 @@ class ReaderViewModel @Inject constructor(
             isContinuousScroll = isContinuousScroll
         )
         val readerPosition = if (
-            state.renderMode == EpubRenderMode.READER_LAYOUT && state.useNewEngine
+            state.renderMode == EpubRenderMode.READER_LAYOUT &&
+            state.useNewEngine &&
+            shouldPersistReaderLocator(book.format.name, state.txtIndexState)
         ) {
             ReaderPositionLocator(
                 chapterIndex = state.currentChapterIndex,
@@ -3948,6 +4109,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        largeTxtIndexJob?.cancel()
         parser?.close()
         runCatching { renderSession?.close() }
         renderSession = null

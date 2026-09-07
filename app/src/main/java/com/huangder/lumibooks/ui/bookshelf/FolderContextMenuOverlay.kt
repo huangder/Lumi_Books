@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.ui.bookshelf
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -18,12 +19,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.DriveFileMove
-import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.HideImage
-import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -272,7 +267,7 @@ private fun FolderInfoPanel(
                     .clickable(onClick = onRename)
                     .padding(vertical = 4.dp)
             ) {
-                Icon(Icons.Outlined.Edit, null, tint = AppColors.Accent, modifier = Modifier.size(16.dp))
+                Icon(AppIcons.PencilSimple, null, tint = AppColors.Accent, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
                 Text(
                     text = stringResource(R.string.rename_folder),
@@ -313,7 +308,7 @@ private fun FolderActionsPanel(
         ) {
             FolderContextActionItem(
                 label = stringResource(R.string.delete_folder),
-                icon = Icons.Outlined.Delete,
+                icon = AppIcons.Trash,
                 compact = compact,
                 onClick = { onAction(FolderContextAction.Delete) }
             )
@@ -321,21 +316,21 @@ private fun FolderActionsPanel(
                 label = stringResource(
                     if (folder.coverPath == null) R.string.set_folder_cover else R.string.change_folder_cover
                 ),
-                icon = Icons.Outlined.Image,
+                icon = AppIcons.Image,
                 compact = compact,
                 onClick = { onAction(FolderContextAction.SetCover) }
             )
             if (folder.coverPath != null) {
                 FolderContextActionItem(
                     label = stringResource(R.string.remove_folder_cover),
-                    icon = Icons.Outlined.HideImage,
+                    icon = AppIcons.ImageBroken,
                     compact = compact,
                     onClick = { onAction(FolderContextAction.RemoveCover) }
                 )
             }
             FolderContextActionItem(
                 label = stringResource(R.string.move_folder),
-                icon = Icons.Outlined.DriveFileMove,
+                icon = AppIcons.FolderSimple,
                 compact = compact,
                 onClick = { onAction(FolderContextAction.Move) }
             )
