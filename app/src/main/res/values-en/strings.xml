@@ -910,7 +910,7 @@
     <string name="webdav_enabled_status">Enabled</string>
     <string name="webdav_not_configured">Not configured</string>
     <string name="webdav_server_url_label">Server address</string>
-    <string name="webdav_server_url_hint">https://dav.example.com/remote.php/dav/</string>
+    <string name="webdav_server_url_hint">https://dav.example.com/dav/</string>
     <string name="webdav_username_label">Username</string>
     <string name="webdav_password_label">Password</string>
     <string name="webdav_password_hint">Enter WebDAV password</string>
@@ -923,6 +923,20 @@
     <string name="webdav_test_connection">Test connection</string>
     <string name="webdav_test_success">Connected; the WebDAV service is available</string>
     <string name="webdav_test_failed">Connection failed. Check the server address, username, and password.</string>
+    <string name="webdav_test_running">Testing connection…</string>
+    <string name="webdav_test_failed_detail">Connection failed: %1$s</string>
+    <string name="webdav_test_success_dir_pending">Connected; the sync folder will be created on the first sync</string>
+    <string name="webdav_required_password">No WebDAV password is saved. Enter it again and save.</string>
+    <string name="webdav_error_auth">Authentication failed (HTTP 401): check the username and password. If the server uses two-factor authentication, use an app password.</string>
+    <string name="webdav_error_forbidden">Access denied (HTTP 403): make sure the account has permission and the server address points to a writable WebDAV folder.</string>
+    <string name="webdav_error_not_found">Address not found (HTTP 404): check the server address and sync folder. Nextcloud usually looks like https://host/remote.php/dav/files/username/</string>
+    <string name="webdav_error_conflict">The sync folder cannot be created on the server (HTTP 409): make sure the server address points to an existing WebDAV folder.</string>
+    <string name="webdav_error_not_supported">Not a usable WebDAV folder (HTTP %1$d): the server does not support PROPFIND/MKCOL. Check the address.</string>
+    <string name="webdav_error_network">Network request failed: check the connection, server address, and port.</string>
+    <string name="webdav_error_timeout">Connection timed out: check the network, server status, and address.</string>
+    <string name="webdav_error_tls">Certificate validation failed: the server certificate is invalid or self-signed. Use a trusted HTTPS certificate.</string>
+    <string name="webdav_error_invalid_url">Invalid server address: it must start with http:// or https://</string>
+    <string name="webdav_server_url_help">Use the full WebDAV address, for example https://dav.example.com/dav/, or Nextcloud https://host/remote.php/dav/files/username/</string>
     <string name="webdav_sync_success">Sync completed</string>
     <string name="webdav_sync_failed">Sync failed. Check your network and the server.</string>
     <string name="webdav_disable">Disable WebDAV sync</string>
@@ -1358,6 +1372,9 @@
     <string name="tts_timer_decimal_hours">%1$.1f hr</string>
     <string name="tts_timer_cancel">Cancel timer</string>
     <string name="tts_timer_label">Timer</string>
+    <string name="tts_follow_engine">Follow speech engine</string>
+    <string name="tts_follow_engine_short">Follow</string>
+    <string name="tts_pitch_short">Pitch %1$s</string>
     <string name="default_avatar">Default avatar</string>
     <string name="book_title_original_hint">Show original title</string>
     <string name="book_author_original_hint">Show original author</string>
@@ -1408,4 +1425,12 @@
     <string name="pdf_annotation_pen">Pen</string>
     <string name="pdf_annotation_highlighter">Highlighter</string>
     <string name="pdf_annotation_eraser">Eraser</string>
+    <string name="epub_navigation_preparing">Preparing chapter</string>
+    <string name="epub_navigation_loading">Loading chapter</string>
+    <string name="epub_navigation_configuring">Finding reading position</string>
+    <string name="epub_navigation_rendering">Displaying chapter</string>
+    <string name="epub_navigation_failed">Couldn\'t load chapter. Returned to the previous page.</string>
+    <string name="epub_navigation_timeout">Chapter loading timed out. Returned to the previous page.</string>
+    <string name="epub_renderer_recovered">Original-layout rendering stopped. Switched to reflow mode.</string>
+    <string name="tts_prosody_rejected_error">The selected speech rate or pitch is not supported by this TTS engine. The previous setting was kept.</string>
 </resources>

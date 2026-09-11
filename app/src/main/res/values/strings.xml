@@ -941,7 +941,7 @@
     <string name="webdav_enabled_status">已启用</string>
     <string name="webdav_not_configured">未配置</string>
     <string name="webdav_server_url_label">服务器地址</string>
-    <string name="webdav_server_url_hint">https://dav.example.com/remote.php/dav/</string>
+    <string name="webdav_server_url_hint">https://dav.example.com/dav/</string>
     <string name="webdav_username_label">用户名</string>
     <string name="webdav_password_label">密码</string>
     <string name="webdav_password_hint">输入 WebDAV 密码</string>
@@ -954,6 +954,20 @@
     <string name="webdav_test_connection">测试连接</string>
     <string name="webdav_test_success">连接成功，WebDAV 服务可用</string>
     <string name="webdav_test_failed">连接失败，请检查服务器地址、用户名和密码</string>
+    <string name="webdav_test_running">正在测试连接…</string>
+    <string name="webdav_test_failed_detail">连接失败：%1$s</string>
+    <string name="webdav_test_success_dir_pending">连接成功；同步目录将在首次同步时自动创建</string>
+    <string name="webdav_required_password">未配置 WebDAV 密码，请重新输入并保存</string>
+    <string name="webdav_error_auth">认证失败（HTTP 401）：请检查用户名与密码；若服务器开启了两步验证，请使用应用专用密码</string>
+    <string name="webdav_error_forbidden">服务器拒绝访问（HTTP 403）：请确认账号有权限，且服务器地址指向可写入的 WebDAV 目录</string>
+    <string name="webdav_error_not_found">地址不存在（HTTP 404）：请检查服务器地址与同步目录。Nextcloud 一般形如 https://主机/remote.php/dav/files/用户名/</string>
+    <string name="webdav_error_conflict">无法在服务器上创建同步目录（HTTP 409）：请确认服务器地址指向已存在的 WebDAV 目录</string>
+    <string name="webdav_error_not_supported">该地址不是可用的 WebDAV 目录（HTTP %1$d）：服务器不支持 PROPFIND/MKCOL，请确认地址是否正确</string>
+    <string name="webdav_error_network">网络请求失败：请检查网络连接、服务器地址与端口</string>
+    <string name="webdav_error_timeout">连接超时：请检查网络、服务器状态或地址是否正确</string>
+    <string name="webdav_error_tls">证书校验失败：服务器证书无效或为自签名证书，请改用受信任的 HTTPS 证书</string>
+    <string name="webdav_error_invalid_url">服务器地址无效：请以 http:// 或 https:// 开头</string>
+    <string name="webdav_server_url_help">建议填写 WebDAV 的完整访问地址，例如 https://dav.example.com/dav/，Nextcloud 为 https://主机/remote.php/dav/files/用户名/</string>
     <string name="webdav_sync_success">同步完成</string>
     <string name="webdav_sync_failed">同步失败，请检查网络和服务器状态</string>
     <string name="webdav_disable">停用 WebDAV 同步</string>
@@ -1365,6 +1379,9 @@
     <string name="tts_timer_decimal_hours">%1$.1f 小时</string>
     <string name="tts_timer_cancel">取消定时</string>
     <string name="tts_timer_label">定时</string>
+    <string name="tts_follow_engine">跟随语音引擎</string>
+    <string name="tts_follow_engine_short">跟随</string>
+    <string name="tts_pitch_short">音调 %1$s</string>
     <string name="default_avatar">默认头像</string>
     <string name="book_title_original_hint">显示原始书名</string>
     <string name="book_author_original_hint">显示原始作者</string>
@@ -1418,4 +1435,12 @@
     <string name="pdf_annotation_highlighter">荧光笔</string>
     <string name="pdf_annotation_eraser">橡皮擦</string>
     <string name="widget_preview_progress" translatable="false">0%</string>
+    <string name="epub_navigation_preparing">正在准备章节</string>
+    <string name="epub_navigation_loading">正在加载章节</string>
+    <string name="epub_navigation_configuring">正在定位阅读位置</string>
+    <string name="epub_navigation_rendering">正在显示章节</string>
+    <string name="epub_navigation_failed">章节加载失败，已返回原页面</string>
+    <string name="epub_navigation_timeout">章节加载超时，已返回原页面</string>
+    <string name="epub_renderer_recovered">原排版渲染已停止，已切换到重排模式</string>
+    <string name="tts_prosody_rejected_error">当前语音引擎不支持所选语速或声调，已保留上一个设置</string>
 </resources>
