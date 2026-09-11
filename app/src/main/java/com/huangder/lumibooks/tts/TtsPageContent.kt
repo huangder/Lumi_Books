@@ -38,6 +38,12 @@ data class TtsPageTurnRequest(
     val location: TtsPageLocation
 )
 
+enum class TtsPageChangeOrigin {
+    USER,
+    TTS_FOLLOW,
+    LAYOUT
+}
+
 
 internal fun buildTtsPageFingerprint(
     location: TtsPageLocation,

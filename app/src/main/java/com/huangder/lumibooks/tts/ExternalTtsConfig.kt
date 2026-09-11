@@ -1,7 +1,5 @@
 package com.huangder.lumibooks.tts
 
-import java.util.Locale
-
 enum class ExternalTtsProtocol(val key: String) {
     MIMO_CHAT("mimo_chat"),
     OPENAI_SPEECH("openai_speech");
@@ -72,10 +70,5 @@ object ExternalTtsConfig {
             model = DEFAULT_OPENAI_MODEL,
             voice = DEFAULT_OPENAI_VOICE
         )
-    }
-
-    fun pitchInstruction(pitch: Float): String {
-        val normalized = String.format(Locale.US, "%.2f", pitch.coerceIn(0.5f, 2f))
-        return "Read naturally at approximately ${normalized}x pitch."
     }
 }

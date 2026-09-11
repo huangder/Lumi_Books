@@ -56,6 +56,8 @@ import com.huangder.lumibooks.tts.ExternalTtsConfig
 import com.huangder.lumibooks.tts.FloatingSubtitleSettings
 import com.huangder.lumibooks.tts.TtsSettingsStore
 import com.huangder.lumibooks.tts.TtsProviderSelection
+import com.huangder.lumibooks.tts.TtsProsodyMode
+import com.huangder.lumibooks.tts.TtsProsodySettings
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -233,7 +235,9 @@ class DataStoreManager @Inject constructor(
         private val READER_BOTTOM_LEFT_CONTENT = stringPreferencesKey("reader_bottom_left_content")
         private val READER_BOTTOM_RIGHT_CONTENT = stringPreferencesKey("reader_bottom_right_content")
         private val TTS_SPEECH_RATE = floatPreferencesKey("tts_speech_rate")
+        private val TTS_SPEECH_RATE_MODE = stringPreferencesKey("tts_speech_rate_mode")
         private val TTS_PITCH = floatPreferencesKey("tts_pitch")
+        private val TTS_PITCH_MODE = stringPreferencesKey("tts_pitch_mode")
 
         // 统计设置
         private val DAILY_GOAL = intPreferencesKey("daily_goal")
@@ -727,12 +731,19 @@ class DataStoreManager @Inject constructor(
             else ReaderCornerContent.fromKey(stored)
         }
 
-    override val ttsSpeechRate: Flow<Float> = context.dataStore.data.map { preferences ->
-        (preferences[TTS_SPEECH_RATE] ?: 1f).coerceIn(0.5f, 5f)
-    }
-
-    override val ttsPitch: Flow<Float> = context.dataStore.data.map { preferences ->
-        (preferences[TTS_PITCH] ?: 1f).coerceIn(0.5f, 2f)
+    override val ttsProsodySettings: Flow<TtsProsodySettings> = context.dataStore.data.map { preferences ->
+        TtsProsodySettings(
+            speechRate = preferences[TTS_SPEECH_RATE] ?: 1f,
+            speechRateMode = TtsProsodyMode.resolve(
+                storedMode = preferences[TTS_SPEECH_RATE_MODE],
+                hasLegacyValue = preferences[TTS_SPEECH_RATE] != null
+            ),
+            pitch = preferences[TTS_PITCH] ?: 1f,
+            pitchMode = TtsProsodyMode.resolve(
+                storedMode = preferences[TTS_PITCH_MODE],
+                hasLegacyValue = preferences[TTS_PITCH] != null
+            )
+        ).normalized()
     }
 
     // 统计设置
@@ -1329,9 +1340,13 @@ class DataStoreManager @Inject constructor(
         }
     }
 
-    override suspend fun saveTtsSpeechRate(rate: Float) {
+    override suspend fun saveTtsProsodySettings(settings: TtsProsodySettings) {
+        val normalized = settings.normalized()
         context.dataStore.edit { preferences ->
-            preferences[TTS_SPEECH_RATE] = rate.coerceIn(0.5f, 5f)
+            preferences[TTS_SPEECH_RATE] = normalized.speechRate
+            preferences[TTS_SPEECH_RATE_MODE] = normalized.speechRateMode.storedValue
+            preferences[TTS_PITCH] = normalized.pitch
+            preferences[TTS_PITCH_MODE] = normalized.pitchMode.storedValue
         }
     }
 
@@ -1352,12 +1367,6 @@ class DataStoreManager @Inject constructor(
 
     suspend fun saveApplyToBodyOnly(enabled: Boolean) {
         context.dataStore.edit { preferences -> preferences[APPLY_TO_BODY_ONLY] = enabled }
-    }
-
-    override suspend fun saveTtsPitch(pitch: Float) {
-        context.dataStore.edit { preferences ->
-            preferences[TTS_PITCH] = pitch.coerceIn(0.5f, 2f)
-        }
     }
 
     suspend fun resetAdvancedReaderSettings(targetSuiteId: String? = null) {

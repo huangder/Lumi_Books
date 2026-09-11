@@ -48,7 +48,15 @@ sealed class SystemTtsException(message: String, cause: Throwable? = null) :
             if (errorCode == null) "System TTS playback failed"
             else "System TTS playback failed: $errorCode"
         )
+
+    class ProsodyRejected(
+        val setting: TtsProsodySetting,
+        val requestedValue: Float,
+        val errorCode: Int
+    ) : SystemTtsException("System TTS rejected $setting=$requestedValue: $errorCode")
 }
+
+enum class TtsProsodySetting { RATE, PITCH }
 
 class TtsEngine(
     @ApplicationContext context: Context
@@ -70,8 +78,8 @@ class TtsEngine(
     private var initializedRequestPackageName: String? = null
     private var selectedLocale: Locale? = null
     private var utteranceListener: UtteranceProgressListener? = null
-    private var pendingSpeechRate = 1f
-    private var pendingPitch = 1f
+    private var pendingSpeechRate: Float? = null
+    private var pendingPitch: Float? = null
     private val speechAudioAttributes = AudioAttributes.Builder()
         .setUsage(AudioAttributes.USAGE_MEDIA)
         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
@@ -159,11 +167,25 @@ class TtsEngine(
                 return@forEachIndexed
             }
 
-            withContext(Dispatchers.Main.immediate) {
+            val prosodyFailure = withContext(Dispatchers.Main.immediate) {
                 created.setAudioAttributes(speechAudioAttributes)
-                created.setSpeechRate(pendingSpeechRate)
-                created.setPitch(pendingPitch)
+                val rateFailure = pendingSpeechRate?.let { rate ->
+                    created.setSpeechRate(rate)
+                        .takeIf { it != TextToSpeech.SUCCESS }
+                        ?.let { SystemTtsException.ProsodyRejected(TtsProsodySetting.RATE, rate, it) }
+                }
+                val pitchFailure = pendingPitch?.let { pitch ->
+                    created.setPitch(pitch)
+                        .takeIf { it != TextToSpeech.SUCCESS }
+                        ?.let { SystemTtsException.ProsodyRejected(TtsProsodySetting.PITCH, pitch, it) }
+                }
                 utteranceListener?.let(created::setOnUtteranceProgressListener)
+                rateFailure ?: pitchFailure
+            }
+            if (prosodyFailure != null) {
+                withContext(Dispatchers.Main.immediate) { created.shutdown() }
+                _engineStatus.value = TtsEngineStatus.FAILED
+                return@withLock Result.failure(prosodyFailure)
             }
             engine = created
             enginePackageName = packageName ?: runCatching { created.defaultEngine }
@@ -323,15 +345,69 @@ class TtsEngine(
         Unit
     }
 
-    override suspend fun setSpeechRate(rate: Float) = withContext(Dispatchers.Main.immediate) {
-        pendingSpeechRate = rate.coerceIn(0.5f, 5f)
-        engine?.setSpeechRate(pendingSpeechRate)
-        Unit
-    }
+    override suspend fun setSpeechRate(rate: Float): Unit = applyProsody(rate, pendingPitch)
 
-    override suspend fun setPitch(pitch: Float) = withContext(Dispatchers.Main.immediate) {
-        pendingPitch = pitch.coerceIn(0.5f, 2f)
-        engine?.setPitch(pendingPitch)
+    override suspend fun setPitch(pitch: Float): Unit = applyProsody(pendingSpeechRate, pitch)
+
+    override suspend fun applyProsody(rate: Float?, pitch: Float?): Unit = initializeMutex.withLock {
+        val normalizedRate = rate?.coerceIn(0.5f, 5f)
+        val normalizedPitch = pitch?.coerceIn(0.5f, 2f)
+        val previousRate = pendingSpeechRate
+        val previousPitch = pendingPitch
+        val mustRestoreEngineDefaults = engine != null &&
+            ((pendingSpeechRate != null && normalizedRate == null) ||
+                (pendingPitch != null && normalizedPitch == null))
+        if (mustRestoreEngineDefaults) {
+            pendingSpeechRate = normalizedRate
+            pendingPitch = normalizedPitch
+            withContext(Dispatchers.Main.immediate) { shutdownEngine() }
+            _engineStatus.value = TtsEngineStatus.UNINITIALIZED
+            return@withLock
+        }
+        data class ApplyFailure(
+            val error: SystemTtsException.ProsodyRejected,
+            val rateChangedBeforeFailure: Boolean
+        )
+        val failure = withContext(Dispatchers.Main.immediate) {
+            val activeEngine = engine ?: return@withContext null
+            var rateChanged = false
+            normalizedRate?.takeIf { it != previousRate }?.let { value ->
+                val result = activeEngine.setSpeechRate(value)
+                if (result != TextToSpeech.SUCCESS) {
+                    return@withContext ApplyFailure(
+                        SystemTtsException.ProsodyRejected(TtsProsodySetting.RATE, value, result),
+                        rateChangedBeforeFailure = false
+                    )
+                }
+                rateChanged = true
+            }
+            normalizedPitch?.takeIf { it != previousPitch }?.let { value ->
+                val result = activeEngine.setPitch(value)
+                if (result != TextToSpeech.SUCCESS) {
+                    return@withContext ApplyFailure(
+                        SystemTtsException.ProsodyRejected(TtsProsodySetting.PITCH, value, result),
+                        rateChangedBeforeFailure = rateChanged
+                    )
+                }
+            }
+            null
+        }
+        if (failure != null) {
+            if (failure.rateChangedBeforeFailure) {
+                val restored = previousRate?.let { previous ->
+                    withContext(Dispatchers.Main.immediate) {
+                        engine?.setSpeechRate(previous) == TextToSpeech.SUCCESS
+                    }
+                } ?: false
+                if (!restored) {
+                    withContext(Dispatchers.Main.immediate) { shutdownEngine() }
+                    _engineStatus.value = TtsEngineStatus.UNINITIALIZED
+                }
+            }
+            throw failure.error
+        }
+        pendingSpeechRate = normalizedRate
+        pendingPitch = normalizedPitch
         Unit
     }
 
@@ -343,6 +419,10 @@ class TtsEngine(
 
             override fun onDone(utteranceId: String?) {
                 utteranceId?.let(listener::onDone)
+            }
+
+            override fun onRangeStart(utteranceId: String?, start: Int, end: Int, frame: Int) {
+                utteranceId?.let { listener.onRangeStart(it, start, end) }
             }
 
             @Deprecated("Deprecated by Android")

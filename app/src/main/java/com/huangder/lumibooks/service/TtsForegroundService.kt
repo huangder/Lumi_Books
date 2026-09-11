@@ -8,6 +8,7 @@ import android.media.session.MediaSession
 import android.media.session.PlaybackState
 import android.os.IBinder
 import android.os.PowerManager
+import android.view.KeyEvent
 import com.huangder.lumibooks.tts.TtsController
 import com.huangder.lumibooks.tts.TtsPlaybackState
 import dagger.hilt.android.AndroidEntryPoint
@@ -53,6 +54,10 @@ class TtsForegroundService : Service() {
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$packageName:TtsPlayback")
             .apply { setReferenceCounted(false) }
         mediaSession = MediaSession(this, "LumiTtsPlayback").apply {
+            setFlags(
+                MediaSession.FLAG_HANDLES_MEDIA_BUTTONS or
+                    MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS
+            )
             setCallback(object : MediaSession.Callback() {
                 override fun onPlay() = ttsController.resume()
                 override fun onPause() = ttsController.pause()
@@ -62,6 +67,35 @@ class TtsForegroundService : Service() {
                 }
                 override fun onSkipToNext() = ttsController.skip(forward = true)
                 override fun onSkipToPrevious() = ttsController.skip(forward = false)
+
+                override fun onMediaButtonEvent(mediaButtonEvent: Intent): Boolean {
+                    val event = mediaButtonEvent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
+                        ?: return super.onMediaButtonEvent(mediaButtonEvent)
+                    val supported = event.keyCode in setOf(
+                        KeyEvent.KEYCODE_HEADSETHOOK,
+                        KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+                        KeyEvent.KEYCODE_MEDIA_PLAY,
+                        KeyEvent.KEYCODE_MEDIA_PAUSE,
+                        KeyEvent.KEYCODE_MEDIA_STOP,
+                        KeyEvent.KEYCODE_MEDIA_NEXT,
+                        KeyEvent.KEYCODE_MEDIA_PREVIOUS
+                    )
+                    if (!supported) return super.onMediaButtonEvent(mediaButtonEvent)
+                    if (event.action != KeyEvent.ACTION_DOWN || event.repeatCount != 0) return true
+                    when (event.keyCode) {
+                        KeyEvent.KEYCODE_HEADSETHOOK,
+                        KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> togglePlayback()
+                        KeyEvent.KEYCODE_MEDIA_PLAY -> ttsController.resume()
+                        KeyEvent.KEYCODE_MEDIA_PAUSE -> ttsController.pause()
+                        KeyEvent.KEYCODE_MEDIA_STOP -> {
+                            ttsController.stop()
+                            stopSelf()
+                        }
+                        KeyEvent.KEYCODE_MEDIA_NEXT -> ttsController.skip(forward = true)
+                        KeyEvent.KEYCODE_MEDIA_PREVIOUS -> ttsController.skip(forward = false)
+                    }
+                    return true
+                }
             })
             isActive = true
         }
@@ -96,11 +130,7 @@ class TtsForegroundService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_PLAY_PAUSE -> {
-                if (ttsController.playbackState.value == TtsPlaybackState.PLAYING) {
-                    ttsController.pause()
-                } else {
-                    ttsController.resume()
-                }
+                togglePlayback()
             }
             ACTION_PREVIOUS -> ttsController.skip(forward = false)
             ACTION_NEXT -> ttsController.skip(forward = true)
@@ -127,6 +157,14 @@ class TtsForegroundService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun togglePlayback() {
+        if (ttsController.playbackState.value == TtsPlaybackState.PLAYING) {
+            ttsController.pause()
+        } else {
+            ttsController.resume()
+        }
+    }
 
     override fun onDestroy() {
         releasePlaybackWakeLock()

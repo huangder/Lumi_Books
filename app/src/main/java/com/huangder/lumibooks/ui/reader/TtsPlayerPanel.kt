@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -49,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.tts.TtsPlaybackState
+import com.huangder.lumibooks.tts.TtsProsodyMode
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
@@ -59,18 +61,23 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import java.util.Locale
 
-private enum class TtsCenterTab { SPEED, TIMER }
-
 @Composable
 fun TtsPlayerPanel(
     playbackState: TtsPlaybackState,
     speechRate: Float,
+    speechRateMode: TtsProsodyMode,
+    pitch: Float,
+    pitchMode: TtsProsodyMode,
+    usesAndroidTts: Boolean,
     sleepTimerRemainingMs: Long?,
     onPlayPause: () -> Unit,
     onStop: () -> Unit,
     onSkipForward: () -> Unit,
     onSkipBackward: () -> Unit,
     onRateChange: (Float) -> Unit,
+    onRateModeChange: (TtsProsodyMode) -> Unit,
+    onPitchChange: (Float) -> Unit,
+    onPitchModeChange: (TtsProsodyMode) -> Unit,
     onSetSleepTimer: (Int) -> Unit,
     onCancelSleepTimer: () -> Unit,
     readerBackgroundColor: Color,
@@ -81,6 +88,7 @@ fun TtsPlayerPanel(
     val rateOptions = remember {
         listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f, 3f, 4f, 5f)
     }
+    val pitchOptions = remember { listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f) }
     val timerOptionsMinutes = remember { listOf(10, 20, 30, 40, 50, 60, 90, 120, 150, 180) }
     val timerOptionLabels = timerOptionsMinutes.map { min ->
         when {
@@ -90,11 +98,12 @@ fun TtsPlayerPanel(
         }
     }
     val timerActive = sleepTimerRemainingMs != null
-    var activeTab by remember { mutableStateOf(TtsCenterTab.SPEED) }
     var showRateMenu by remember { mutableStateOf(false) }
+    var showPitchMenu by remember { mutableStateOf(false) }
     var showTimerMenu by remember { mutableStateOf(false) }
     fun hideMenus() {
         showRateMenu = false
+        showPitchMenu = false
         showTimerMenu = false
     }
 
@@ -104,7 +113,11 @@ fun TtsPlayerPanel(
     val motionEnabled = LocalMotionEnabled.current
     val panelBackdrop = rememberLayerBackdrop()
     val panelHeight by animateDpAsState(
-        targetValue = if (showRateMenu || showTimerMenu) 328.dp else 56.dp,
+        targetValue = if (showRateMenu || (showPitchMenu && usesAndroidTts) || showTimerMenu) {
+            328.dp
+        } else {
+            56.dp
+        },
         animationSpec = if (motionEnabled) {
             spring(dampingRatio = 0.82f, stiffness = 360f)
         } else {
@@ -155,6 +168,45 @@ fun TtsPlayerPanel(
                     modifier = Modifier.padding(vertical = 6.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
+                    if (usesAndroidTts) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(42.dp)
+                                .padding(horizontal = 6.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .then(
+                                    if (speechRateMode == TtsProsodyMode.FOLLOW_ENGINE) {
+                                        Modifier.background(AppColors.Accent.copy(alpha = 0.14f))
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                                .clickable(
+                                    indication = null,
+                                    interactionSource = remember { MutableInteractionSource() }
+                                ) {
+                                    hideMenus()
+                                    onRateModeChange(TtsProsodyMode.FOLLOW_ENGINE)
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = stringResource(R.string.tts_follow_engine),
+                                color = if (speechRateMode == TtsProsodyMode.FOLLOW_ENGINE) {
+                                    AppColors.Accent
+                                } else {
+                                    readerContentColor
+                                },
+                                fontSize = 13.sp,
+                                fontWeight = if (speechRateMode == TtsProsodyMode.FOLLOW_ENGINE) {
+                                    FontWeight.SemiBold
+                                } else {
+                                    FontWeight.Medium
+                                }
+                            )
+                        }
+                    }
                     rateOptions.chunked(3).forEach { rowRates ->
                         Row(
                             modifier = Modifier
@@ -164,7 +216,8 @@ fun TtsPlayerPanel(
                             horizontalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
                             rowRates.forEach { rate ->
-                                val selected = rate == speechRate
+                                val selected = rate == speechRate &&
+                                    (!usesAndroidTts || speechRateMode == TtsProsodyMode.OVERRIDE)
                                 Box(
                                     modifier = Modifier
                                         .weight(1f)
@@ -193,6 +246,117 @@ fun TtsPlayerPanel(
                                         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
                                     )
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = showPitchMenu && usesAndroidTts,
+            enter = fadeIn(tween(120)) + slideInVertically(
+                animationSpec = tween(160),
+                initialOffsetY = { it / 5 }
+            ),
+            exit = fadeOut(tween(100)) + slideOutVertically(
+                animationSpec = tween(140),
+                targetOffsetY = { it / 6 }
+            ),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 64.dp)
+        ) {
+            LiquidGlassSurface(
+                shape = rateMenuShape,
+                fallbackColor = readerBackgroundColor,
+                contentScrimColor = readerBackgroundColor.copy(alpha = 0.18f),
+                forceFallback = forceSolidSurface,
+                modifier = Modifier.width(176.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(vertical = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(42.dp)
+                            .padding(horizontal = 6.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .then(
+                                if (pitchMode == TtsProsodyMode.FOLLOW_ENGINE) {
+                                    Modifier.background(AppColors.Accent.copy(alpha = 0.14f))
+                                } else {
+                                    Modifier
+                                }
+                            )
+                            .clickable(
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() }
+                            ) {
+                                hideMenus()
+                                onPitchModeChange(TtsProsodyMode.FOLLOW_ENGINE)
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = stringResource(R.string.tts_follow_engine),
+                            color = if (pitchMode == TtsProsodyMode.FOLLOW_ENGINE) {
+                                AppColors.Accent
+                            } else {
+                                readerContentColor
+                            },
+                            fontSize = 13.sp,
+                            fontWeight = if (pitchMode == TtsProsodyMode.FOLLOW_ENGINE) {
+                                FontWeight.SemiBold
+                            } else {
+                                FontWeight.Medium
+                            }
+                        )
+                    }
+                    pitchOptions.chunked(3).forEach { rowPitches ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(42.dp)
+                                .padding(horizontal = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            rowPitches.forEach { pitchOption ->
+                                val selected = pitchMode == TtsProsodyMode.OVERRIDE &&
+                                    pitchOption == pitch
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .then(
+                                            if (selected) {
+                                                Modifier.background(AppColors.Accent.copy(alpha = 0.14f))
+                                            } else {
+                                                Modifier
+                                            }
+                                        )
+                                        .clickable(
+                                            indication = null,
+                                            interactionSource = remember { MutableInteractionSource() }
+                                        ) {
+                                            hideMenus()
+                                            onPitchChange(pitchOption)
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = formatPitch(pitchOption),
+                                        color = if (selected) AppColors.Accent else readerContentColor,
+                                        fontSize = 13.sp,
+                                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
+                                    )
+                                }
+                            }
+                            repeat(3 - rowPitches.size) {
+                                Spacer(modifier = Modifier.weight(1f))
                             }
                         }
                     }
@@ -311,8 +475,7 @@ fun TtsPlayerPanel(
                         onVerticalDrag = { _, dragAmount -> totalDrag += dragAmount },
                         onDragEnd = {
                             if (totalDrag < -24f) {
-                                activeTab = TtsCenterTab.SPEED
-                                showTimerMenu = false
+                                hideMenus()
                                 showRateMenu = true
                             }
                         }
@@ -394,10 +557,16 @@ fun TtsPlayerPanel(
                 Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(20.dp)
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
-                            text = formatSpeechRate(speechRate),
+                            text = if (usesAndroidTts &&
+                                speechRateMode == TtsProsodyMode.FOLLOW_ENGINE
+                            ) {
+                                stringResource(R.string.tts_follow_engine_short)
+                            } else {
+                                formatSpeechRate(speechRate)
+                            },
                             color = readerContentColor,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
@@ -410,13 +579,44 @@ fun TtsPlayerPanel(
                                     if (showRateMenu) {
                                         hideMenus()
                                     } else {
-                                        activeTab = TtsCenterTab.SPEED
                                         showRateMenu = true
+                                        showPitchMenu = false
                                         showTimerMenu = false
                                     }
                                 }
                                 .padding(horizontal = 8.dp, vertical = 6.dp)
                         )
+
+                        if (usesAndroidTts) {
+                            Text(
+                                text = stringResource(
+                                    R.string.tts_pitch_short,
+                                    if (pitchMode == TtsProsodyMode.FOLLOW_ENGINE) {
+                                        stringResource(R.string.tts_follow_engine_short)
+                                    } else {
+                                        formatPitch(pitch)
+                                    }
+                                ),
+                                color = readerContentColor,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .clickable(
+                                        indication = null,
+                                        interactionSource = remember { MutableInteractionSource() }
+                                    ) {
+                                        if (showPitchMenu) {
+                                            hideMenus()
+                                        } else {
+                                            showRateMenu = false
+                                            showPitchMenu = true
+                                            showTimerMenu = false
+                                        }
+                                    }
+                                    .padding(horizontal = 6.dp, vertical = 6.dp)
+                            )
+                        }
 
                         Text(
                             text = sleepTimerRemainingMs?.let(::formatSleepTimer)
@@ -433,9 +633,9 @@ fun TtsPlayerPanel(
                                     if (showTimerMenu) {
                                         hideMenus()
                                     } else {
-                                        activeTab = TtsCenterTab.TIMER
-                                        showTimerMenu = true
                                         showRateMenu = false
+                                        showPitchMenu = false
+                                        showTimerMenu = true
                                     }
                                 }
                                 .padding(horizontal = 8.dp, vertical = 6.dp)
@@ -460,6 +660,13 @@ fun TtsPlayerPanel(
 
 private fun formatSpeechRate(rate: Float): String {
     val formatted = String.format(Locale.US, "%.2f", rate)
+        .trimEnd('0')
+        .trimEnd('.')
+    return "${formatted}x"
+}
+
+private fun formatPitch(pitch: Float): String {
+    val formatted = String.format(Locale.US, "%.2f", pitch)
         .trimEnd('0')
         .trimEnd('.')
     return "${formatted}x"

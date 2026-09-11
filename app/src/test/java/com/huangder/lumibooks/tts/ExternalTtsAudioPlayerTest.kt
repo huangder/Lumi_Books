@@ -20,15 +20,6 @@ class ExternalTtsAudioPlayerTest {
     }
 
     @Test
-    fun pitchInstruction_formatsClampedRate() {
-        val high = ExternalTtsConfig.pitchInstruction(3f)
-        val low = ExternalTtsConfig.pitchInstruction(0.1f)
-
-        assertTrue(high.contains("2.00"))
-        assertTrue(low.contains("0.50"))
-    }
-
-    @Test
     fun createKey_isStableForIdenticalSynthesisInputs() {
         val cache = ExternalTtsAudioCache(temporaryFolder.newFolder("cache"))
         val settings = ExternalTtsConfig.defaults(ExternalTtsProtocol.MIMO_CHAT)
