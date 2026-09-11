@@ -118,7 +118,10 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -191,6 +194,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import com.huangder.lumibooks.ui.animation.AppEasing
 import com.huangder.lumibooks.ui.animation.LumiMotion
 import com.huangder.lumibooks.ui.animation.cardPressEffect
+import com.huangder.lumibooks.ui.layout.currentAdaptiveWindowInfo
 import com.huangder.lumibooks.ui.components.ConfigurableBackHandler
 import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
@@ -251,6 +255,7 @@ import com.huangder.lumibooks.util.DownloadedFonts
 import com.huangder.lumibooks.util.epub.EpubRenderMode
 import com.huangder.lumibooks.util.parser.TxtEncoding
 import com.huangder.lumibooks.tts.TtsPlaybackState
+import com.huangder.lumibooks.tts.TtsPageChangeOrigin
 import com.kyant.backdrop.Backdrop
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.coroutineScope
@@ -269,7 +274,8 @@ private data class ReaderLinkLocation(
 
 private data class ContinuousScrollRequest(
     val chapterIndex: Int,
-    val chapterFraction: Float = 0f
+    val chapterFraction: Float = 0f,
+    val origin: TtsPageChangeOrigin = TtsPageChangeOrigin.USER
 )
 
 private data class ReaderMenuSnapshot(
@@ -635,12 +641,12 @@ fun ReaderScreen(
     val bookmarks by viewModel.bookmarks.collectAsState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    val configuration = LocalConfiguration.current
-    val isPhone = configuration.smallestScreenWidthDp < 600
-    val isTablet = !isPhone
+    val adaptiveWindowInfo = currentAdaptiveWindowInfo()
+    val useWideLayout = adaptiveWindowInfo.isMediumWidthOrLarger
+    val useCompactLayout = !useWideLayout
     val density = LocalDensity.current
     val readerScreenWidthPx = with(density) {
-        configuration.screenWidthDp.dp.toPx().toInt()
+        adaptiveWindowInfo.widthDp.dp.toPx().toInt()
     }
 
     // ReadView 引用
@@ -653,7 +659,10 @@ fun ReaderScreen(
     val readerRootWindowPosition = remember { mutableStateOf(Offset.Zero) }
     val readerRootSize = remember { mutableStateOf(IntSize.Zero) }
     val continuousScrollRequests = remember {
-        MutableSharedFlow<ContinuousScrollRequest>(extraBufferCapacity = 1)
+        MutableSharedFlow<ContinuousScrollRequest>(
+            extraBufferCapacity = 1,
+            onBufferOverflow = BufferOverflow.DROP_OLDEST
+        )
     }
     val continuousSelectionController = remember { ContinuousSelectionController() }
     val isEpub = uiState.book?.format?.name == "EPUB"
@@ -662,12 +671,13 @@ fun ReaderScreen(
     val isVerticalWriting = uiState.readerWritingMode == ReaderWritingMode.VERTICAL_RL &&
         uiState.useNewEngine && !isBookLayout
     // 只判断“是否允许双页”（设备/设置/模式），实际是否启用由 ReadView 按自身宽高（横屏）决定
-    val twoPageSpreadEligible = uiState.twoPageSpreadEnabled && isTablet &&
+    val twoPageSpreadEligible = uiState.twoPageSpreadEnabled && useWideLayout &&
         uiState.useNewEngine && !isBookLayout && !eInkMode &&
         uiState.readerWritingMode == ReaderWritingMode.HORIZONTAL &&
         basePageTransition !in setOf("continuous", "scroll")
     val isBookLayoutContinuousScroll = isBookLayout &&
         uiState.readerWritingMode.usesContinuousScroll(basePageTransition, eInkMode)
+    val usesTransactionalEpubNavigation = isBookLayout && !isBookLayoutContinuousScroll
     val effectivePageTransition = if (isBookLayout &&
         basePageTransition == "continuous" &&
         !isBookLayoutContinuousScroll
@@ -820,11 +830,103 @@ fun ReaderScreen(
     var epubSearchRequestToken by remember(bookId) { mutableIntStateOf(0) }
     var epubLocatorRequest by remember(bookId) { mutableStateOf<EpubLocatorRequest?>(null) }
     var epubLocatorRequestToken by remember(bookId) { mutableIntStateOf(0) }
+    var epubNavigationRequest by remember(bookId) {
+        mutableStateOf<EpubNavigationRequest?>(null)
+    }
+    var epubNavigationStage by remember(bookId) {
+        mutableStateOf(EpubNavigationStage.STARTING)
+    }
+    var failedEpubNavigation by remember(bookId) {
+        mutableStateOf<Pair<EpubNavigationRequest, EpubNavigationFailureReason>?>(null)
+    }
+    var epubNavigationOperationId by remember(bookId) { mutableLongStateOf(0L) }
+    var epubPendingFragment by remember(bookId) { mutableStateOf<String?>(null) }
     var pendingExternalLink by remember(bookId) { mutableStateOf<String?>(null) }
     var epubSelectionClearToken by remember(bookId) { mutableIntStateOf(0) }
     var readerImagePreview by remember(bookId) { mutableStateOf<EpubImagePreviewRequest?>(null) }
     val readerImagePreviewProgress = remember(bookId) { Animatable(0f) }
     var readerImagePreviewJob by remember(bookId) { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    val submitEpubNavigation: (
+        EpubNavigationOrigin,
+        Int,
+        EpubNavigationDestination,
+        Boolean
+    ) -> Unit = { origin, targetChapter, destination, showLoadingPage ->
+        epubNavigationOperationId += 1L
+        if (origin != EpubNavigationOrigin.SEARCH) {
+            epubSearchRequest = null
+        }
+        epubPendingFragment = null
+        epubLocatorRequest = null
+        epubPageRequest = null
+        failedEpubNavigation = null
+        epubNavigationStage = EpubNavigationStage.STARTING
+        epubNavigationRequest = EpubNavigationRequest(
+            operationId = epubNavigationOperationId,
+            origin = origin,
+            sourceChapterIndex = uiState.currentChapterIndex,
+            sourcePageIndex = uiState.currentPageIndex,
+            targetChapterIndex = targetChapter,
+            destination = destination,
+            showLoadingPage = showLoadingPage
+        )
+    }
+    val navigateEpub: (
+        EpubNavigationOrigin,
+        Int,
+        EpubNavigationDestination,
+        Boolean
+    ) -> Unit = { origin, targetChapter, destination, showLoadingPage ->
+        if (usesTransactionalEpubNavigation) {
+            submitEpubNavigation(origin, targetChapter, destination, showLoadingPage)
+        } else {
+            if (origin != EpubNavigationOrigin.SEARCH) {
+                epubSearchRequest = null
+            }
+            when (destination) {
+                EpubNavigationDestination.ChapterStart -> {
+                    epubPendingFragment = null
+                    epubLocatorRequest = null
+                    epubPageRequestToken++
+                    epubPageRequest = EpubPageRequest(
+                        epubPageRequestToken,
+                        targetChapter,
+                        0
+                    )
+                }
+                is EpubNavigationDestination.Fragment -> {
+                    epubPendingFragment = destination.value
+                    epubLocatorRequest = null
+                    epubPageRequest = null
+                }
+                is EpubNavigationDestination.Locator -> {
+                    epubPendingFragment = null
+                    epubPageRequest = null
+                    epubLocatorRequestToken++
+                    epubLocatorRequest = EpubLocatorRequest(
+                        epubLocatorRequestToken,
+                        targetChapter,
+                        destination.json
+                    )
+                }
+                is EpubNavigationDestination.Page -> {
+                    epubPendingFragment = null
+                    epubLocatorRequest = null
+                    epubPageRequestToken++
+                    epubPageRequest = EpubPageRequest(
+                        epubPageRequestToken,
+                        targetChapter,
+                        destination.index,
+                        destination.chapterFraction
+                    )
+                }
+            }
+            if (targetChapter != uiState.currentChapterIndex) {
+                viewModel.setChapter(targetChapter)
+            }
+        }
+    }
+    val latestNavigateEpub = rememberUpdatedState(navigateEpub)
     val showReaderImagePreview: (EpubImagePreviewRequest) -> Unit = { request ->
         viewModel.hideMenu()
         readerImagePreviewJob?.cancel()
@@ -934,20 +1036,30 @@ fun ReaderScreen(
                     viewModel.acknowledgeTtsPageTurnRequest(request)
                     return@collect
                 }
+                epubSearchRequest = null
                 epubLocatorRequest = null
-                epubPageRequestToken++
-                epubPageRequest = EpubPageRequest(
-                    token = epubPageRequestToken,
-                    chapterIndex = request.location.chapterIndex,
-                    pageIndex = request.location.pageIndex
+                epubPageRequest = null
+                latestNavigateEpub.value(
+                    EpubNavigationOrigin.TTS,
+                    request.location.chapterIndex,
+                    EpubNavigationDestination.Page(request.location.pageIndex),
+                    false
                 )
-                if (request.location.chapterIndex != currentUiState.currentChapterIndex) {
-                    viewModel.setChapter(request.location.chapterIndex)
-                }
                 return@collect
             }
             if (latestTtsContinuousScroll.value) {
-                viewModel.acknowledgeTtsPageTurnRequest(request)
+                viewModel.ttsPageFractionForContinuousScroll(
+                    request.location.chapterIndex,
+                    request.location.pageIndex
+                )?.let { targetFraction ->
+                    continuousScrollRequests.emit(
+                        ContinuousScrollRequest(
+                            chapterIndex = request.location.chapterIndex,
+                            chapterFraction = targetFraction,
+                            origin = TtsPageChangeOrigin.TTS_FOLLOW
+                        )
+                    )
+                }
                 return@collect
             }
             var readView = readViewRef.value
@@ -965,15 +1077,25 @@ fun ReaderScreen(
             }
 
             if (latestTtsEInkMode.value) {
-                activeReadView.jumpToChapter(target.first, target.second)
+                activeReadView.jumpToChapter(
+                    target.first,
+                    target.second,
+                    TtsPageChangeOrigin.TTS_FOLLOW
+                )
             } else {
                 val movedWithAnimation = when (target) {
-                    activeReadView.getNextPageLocation() -> activeReadView.turnToNextPage()
-                    activeReadView.getPrevPageLocation() -> activeReadView.turnToPreviousPage()
+                    activeReadView.getNextPageLocation() ->
+                        activeReadView.turnToNextPage(TtsPageChangeOrigin.TTS_FOLLOW)
+                    activeReadView.getPrevPageLocation() ->
+                        activeReadView.turnToPreviousPage(TtsPageChangeOrigin.TTS_FOLLOW)
                     else -> false
                 }
                 if (!movedWithAnimation) {
-                    activeReadView.jumpToChapter(target.first, target.second)
+                    activeReadView.jumpToChapter(
+                        target.first,
+                        target.second,
+                        TtsPageChangeOrigin.TTS_FOLLOW
+                    )
                 }
             }
         }
@@ -983,8 +1105,8 @@ fun ReaderScreen(
     val activity = context as? MainActivity
 
     // 手机阅读页始终保持竖屏；离开阅读页后恢复进入前的方向策略。
-    DisposableEffect(activity, isPhone) {
-        if (activity == null || !isPhone) {
+    DisposableEffect(activity, useCompactLayout) {
+        if (activity == null || !useCompactLayout) {
             return@DisposableEffect onDispose { }
         }
 
@@ -1222,9 +1344,26 @@ fun ReaderScreen(
     var catalogDragReturnLocation by remember(bookId) {
         mutableStateOf<ReaderLinkLocation?>(null)
     }
-    var epubPendingFragment by remember(bookId) { mutableStateOf<String?>(null) }
     var linkReturnToken by remember(bookId) { mutableStateOf(0) }
     var linkNavigationJob by remember(bookId) { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    fun clearCancelledEpubNavigation(request: EpubNavigationRequest?) {
+        when (request?.origin) {
+            EpubNavigationOrigin.SEARCH -> {
+                epubSearchRequest = null
+                linkReturnLocation = null
+            }
+            EpubNavigationOrigin.INTERNAL_LINK,
+            EpubNavigationOrigin.PROGRESS -> linkReturnLocation = null
+            else -> Unit
+        }
+        epubNavigationRequest = null
+    }
+    LaunchedEffect(usesTransactionalEpubNavigation) {
+        if (!usesTransactionalEpubNavigation) {
+            clearCancelledEpubNavigation(epubNavigationRequest)
+            failedEpubNavigation = null
+        }
+    }
 
     // 每次书内链接跳转成功后重新计时，30 秒后自动隐藏原页返回按钮。
     LaunchedEffect(linkReturnLocation, linkReturnToken, uiState.isMenuVisible) {
@@ -1429,7 +1568,12 @@ fun ReaderScreen(
         onNavigateBack()
     }
     ConfigurableBackHandler(
-        enabled = !isAnySheetOpen && linkReturnLocation == null,
+        enabled = epubNavigationRequest?.showLoadingPage == true,
+        onBack = { clearCancelledEpubNavigation(epubNavigationRequest) }
+    )
+    ConfigurableBackHandler(
+        enabled = !isAnySheetOpen && linkReturnLocation == null &&
+            epubNavigationRequest == null,
         onBack = exitReader
     )
 
@@ -1445,6 +1589,7 @@ fun ReaderScreen(
     val shouldHandleVolumePageTurn = uiState.volumeKeyPageTurnEnabled &&
         !uiState.isMenuVisible &&
         !isAnySheetOpen &&
+        epubNavigationRequest == null &&
         selectionState == null
 
     DisposableEffect(
@@ -1482,15 +1627,13 @@ fun ReaderScreen(
             if (isBookLayout) {
                 epubSearchRequest = null
                 epubLocatorRequest = null
-                epubPageRequestToken++
-                epubPageRequest = EpubPageRequest(
-                    token = epubPageRequestToken,
-                    chapterIndex = source.chapterIndex,
-                    pageIndex = source.pageIndex
+                epubPageRequest = null
+                navigateEpub(
+                    EpubNavigationOrigin.RETURN_TO_SOURCE,
+                    source.chapterIndex,
+                    EpubNavigationDestination.Page(source.pageIndex),
+                    true
                 )
-                if (source.chapterIndex != uiState.currentChapterIndex) {
-                    viewModel.setChapter(source.chapterIndex)
-                }
             } else if (isContinuousScrollMode) {
                 jumpToContinuousChapter(
                     source.chapterIndex,
@@ -1502,7 +1645,10 @@ fun ReaderScreen(
         }
         Unit
     }
-    ConfigurableBackHandler(enabled = !isAnySheetOpen && linkReturnLocation != null) {
+    ConfigurableBackHandler(
+        enabled = !isAnySheetOpen && linkReturnLocation != null &&
+            epubNavigationRequest == null
+    ) {
         returnToLinkedSource()
     }
     var searchQuery by remember(bookId) { mutableStateOf("") }
@@ -1864,6 +2010,10 @@ fun ReaderScreen(
                     searchRequest = epubSearchRequest,
                     locatorRequest = epubLocatorRequest,
                     pageRequest = epubPageRequest,
+                    navigationRequest = epubNavigationRequest.takeIf {
+                        usesTransactionalEpubNavigation
+                    },
+                    bookFormat = uiState.book?.format?.name ?: "EPUB",
                     selectionClearToken = epubSelectionClearToken,
                     bookmarkPullEnabled = bookmarkPullEnabled,
                     onPageTextProviderReady = { epubPageTextProvider = it },
@@ -1900,11 +2050,20 @@ fun ReaderScreen(
                     onCenterTap = viewModel::toggleMenu,
                     onImagePreviewOpen = viewModel::hideMenu,
                     onChapterTurn = { direction ->
-                        epubPendingFragment = null
                         epubSearchRequest = null
                         epubLocatorRequest = null
                         epubPageRequest = null
-                        viewModel.onEpubChapterTurn(direction)
+                        val targetChapter = uiState.currentChapterIndex + direction
+                        if (targetChapter in 0 until uiState.chapterCount) {
+                            navigateEpub(
+                                EpubNavigationOrigin.CHAPTER_CONTROL,
+                                targetChapter,
+                                EpubNavigationDestination.Page(
+                                    if (direction < 0) Int.MAX_VALUE else 0
+                                ),
+                                true
+                            )
+                        }
                     },
                     onInternalLink = { targetChapter, fragment ->
                         // 书内链接跳转前捕获来源位置，用于左上角“返回到刚才页”按钮
@@ -1912,19 +2071,19 @@ fun ReaderScreen(
                             uiState.currentChapterIndex,
                             uiState.currentPageIndex
                         )
-                        if (targetChapter != uiState.currentChapterIndex) {
-                            epubSearchRequest = null
-                            epubLocatorRequest = null
-                            epubPageRequest = null
-                            linkReturnLocation = source
-                            linkReturnToken += 1
-                            epubPendingFragment = fragment
-                            viewModel.setChapter(targetChapter)
-                        } else {
-                            // 同章节片段跳转由 WebView 直接完成，这里只记录返回位置
-                            linkReturnLocation = source
-                            linkReturnToken += 1
-                        }
+                        epubSearchRequest = null
+                        epubLocatorRequest = null
+                        epubPageRequest = null
+                        linkReturnLocation = source
+                        linkReturnToken += 1
+                        navigateEpub(
+                            EpubNavigationOrigin.INTERNAL_LINK,
+                            targetChapter,
+                            fragment?.takeIf { it.isNotBlank() }?.let {
+                                EpubNavigationDestination.Fragment(it)
+                            } ?: EpubNavigationDestination.ChapterStart,
+                            true
+                        )
                     },
                     onExternalLink = { href ->
                         if (isExternalBookLink(href)) pendingExternalLink = href
@@ -1987,11 +2146,43 @@ fun ReaderScreen(
                             }
                         }
                     },
+                    onNavigationStage = { operationId, stage ->
+                        if (epubNavigationRequest?.operationId == operationId) {
+                            epubNavigationStage = stage
+                        }
+                    },
+                    onNavigationResult = { result ->
+                        val request = epubNavigationRequest
+                        if (request?.operationId != result.operationId) {
+                            return@EpubWebViewReader
+                        }
+                        when (result) {
+                            is EpubNavigationResult.Committed -> {
+                                epubNavigationRequest = null
+                                failedEpubNavigation = null
+                            }
+                            is EpubNavigationResult.Cancelled -> {
+                                epubNavigationRequest = null
+                            }
+                            is EpubNavigationResult.Failed -> {
+                                epubNavigationRequest = null
+                                if (result.reason != EpubNavigationFailureReason.RENDERER_GONE) {
+                                    failedEpubNavigation = request to result.reason
+                                }
+                            }
+                        }
+                    },
                     onRenderUnavailable = {
                         cancelActiveSearch()
                         epubSearchRequest = null
                         epubLocatorRequest = null
                         epubPageRequest = null
+                        epubNavigationRequest = null
+                        Toast.makeText(
+                            context,
+                            R.string.epub_renderer_recovered,
+                            Toast.LENGTH_LONG
+                        ).show()
                         viewModel.fallbackFromUnsupportedEpubWebView()
                     },
                     modifier = Modifier.fillMaxSize()
@@ -2111,14 +2302,15 @@ fun ReaderScreen(
                                 globalPage: Int,
                                 chapterIndex: Int,
                                 pageInChapter: Int,
-                                chapterTotalPages: Int
+                                chapterTotalPages: Int,
+                                origin: TtsPageChangeOrigin
                             ) {
                                 // 翻页时关闭选择菜单（选区已随页面切换失效）
                                 selectionState = null
                                 isSelectionDragging = false
                                 footnoteBubble = null
                                 viewModel.onNewEnginePageChanged(
-                                    globalPage, chapterIndex, pageInChapter, chapterTotalPages
+                                    globalPage, chapterIndex, pageInChapter, chapterTotalPages, origin
                                 )
                             }
 
@@ -2783,6 +2975,12 @@ fun ReaderScreen(
                             when {
                                 targetChapter < 0 -> Unit
                                 isContinuousScrollMode -> jumpToContinuousChapter(targetChapter)
+                                isBookLayout -> navigateEpub(
+                                    EpubNavigationOrigin.CHAPTER_CONTROL,
+                                    targetChapter,
+                                    EpubNavigationDestination.ChapterStart,
+                                    true
+                                )
                                 !isBookLayout && uiState.useNewEngine -> {
                                     val readView = readViewRef.value
                                     if (readView != null) {
@@ -2799,6 +2997,12 @@ fun ReaderScreen(
                             when {
                                 targetChapter >= uiState.chapterCount -> Unit
                                 isContinuousScrollMode -> jumpToContinuousChapter(targetChapter)
+                                isBookLayout -> navigateEpub(
+                                    EpubNavigationOrigin.CHAPTER_CONTROL,
+                                    targetChapter,
+                                    EpubNavigationDestination.ChapterStart,
+                                    true
+                                )
                                 !isBookLayout && uiState.useNewEngine -> {
                                     val readView = readViewRef.value
                                     if (readView != null) {
@@ -2845,10 +3049,6 @@ fun ReaderScreen(
                                             target.chapterFraction
                                         )
                                     )
-                                    viewModel.onContinuousScrollPosition(
-                                        target.chapterIndex,
-                                        target.chapterFraction
-                                    )
                                 }
                             } else if (isBookLayout) {
                                 mapGlobalProgress(finalProgress, uiState.chapterCount)?.let { target ->
@@ -2865,19 +3065,18 @@ fun ReaderScreen(
                                         (source.chapterIndex != target.chapterIndex ||
                                             source.pageIndex != expectedPage)
 
-                                    epubPendingFragment = null
                                     epubSearchRequest = null
                                     epubLocatorRequest = null
-                                    epubPageRequestToken++
-                                    epubPageRequest = EpubPageRequest(
-                                        token = epubPageRequestToken,
-                                        chapterIndex = target.chapterIndex,
-                                        pageIndex = 0,
-                                        chapterFraction = target.chapterFraction
+                                    epubPageRequest = null
+                                    navigateEpub(
+                                        EpubNavigationOrigin.PROGRESS,
+                                        target.chapterIndex,
+                                        EpubNavigationDestination.Page(
+                                            index = 0,
+                                            chapterFraction = target.chapterFraction
+                                        ),
+                                        true
                                     )
-                                    if (target.chapterIndex != uiState.currentChapterIndex) {
-                                        viewModel.setChapter(target.chapterIndex)
-                                    }
                                     if (destinationDiffers) {
                                         linkReturnLocation = source
                                         linkReturnToken += 1
@@ -2949,12 +3148,19 @@ fun ReaderScreen(
                 TtsPlayerPanel(
                     playbackState = ttsState.playbackState,
                     speechRate = ttsState.speechRate,
+                    speechRateMode = ttsState.speechRateMode,
+                    pitch = ttsState.pitch,
+                    pitchMode = ttsState.pitchMode,
+                    usesAndroidTts = ttsState.usesAndroidTts,
                     sleepTimerRemainingMs = ttsState.sleepTimerRemainingMs,
                     onPlayPause = viewModel::toggleTtsPlayPause,
                     onStop = viewModel::stopTts,
                     onSkipForward = viewModel::ttsSkipForward,
                     onSkipBackward = viewModel::ttsSkipBackward,
                     onRateChange = viewModel::setTtsSpeechRate,
+                    onRateModeChange = viewModel::setTtsSpeechRateMode,
+                    onPitchChange = viewModel::setTtsPitch,
+                    onPitchModeChange = viewModel::setTtsPitchMode,
                     onSetSleepTimer = viewModel::setSleepTimer,
                     onCancelSleepTimer = viewModel::cancelSleepTimer,
                     readerBackgroundColor = composeBgColor,
@@ -2980,6 +3186,18 @@ fun ReaderScreen(
                         val readView = readViewRef.value
                         if (isContinuousScrollMode) {
                             jumpToContinuousChapter(target.chapterIndex)
+                        } else if (isBookLayout) {
+                            epubSearchRequest = null
+                            epubLocatorRequest = null
+                            epubPageRequest = null
+                            navigateEpub(
+                                EpubNavigationOrigin.TOC,
+                                target.chapterIndex,
+                                entry.anchor?.takeIf { it.isNotBlank() }?.let {
+                                    EpubNavigationDestination.Fragment(it)
+                                } ?: EpubNavigationDestination.ChapterStart,
+                                true
+                            )
                         } else if (!isBookLayout && uiState.useNewEngine && readView != null) {
                             // Reload even when state already reports the selected chapter.
                             if (entry.anchor.isNullOrBlank()) {
@@ -3009,28 +3227,18 @@ fun ReaderScreen(
                                     chapterTextLength = viewModel.getChapterTextLength(bm.chapterIndex).coerceAtLeast(1)
                                 )
                             }
-                        epubPendingFragment = null
                         epubSearchRequest = null
-                        if (locatorJson != null) {
-                            epubPageRequest = null
-                            epubLocatorRequestToken++
-                            epubLocatorRequest = EpubLocatorRequest(
-                                token = epubLocatorRequestToken,
-                                chapterIndex = bm.chapterIndex,
-                                locatorJson = locatorJson
-                            )
-                        } else {
-                            epubLocatorRequest = null
-                            epubPageRequestToken++
-                            epubPageRequest = EpubPageRequest(
-                                token = epubPageRequestToken,
-                                chapterIndex = bm.chapterIndex,
-                                pageIndex = bm.position.toInt().coerceAtLeast(0)
-                            )
-                        }
-                        if (bm.chapterIndex != uiState.currentChapterIndex) {
-                            viewModel.setChapter(bm.chapterIndex)
-                        }
+                        epubLocatorRequest = null
+                        epubPageRequest = null
+                        navigateEpub(
+                            EpubNavigationOrigin.BOOKMARK,
+                            bm.chapterIndex,
+                            locatorJson?.let { EpubNavigationDestination.Locator(it) }
+                                ?: EpubNavigationDestination.Page(
+                                    bm.position.toInt().coerceAtLeast(0)
+                                ),
+                            true
+                        )
                     } else if (isContinuousScrollMode) {
                         jumpToContinuousChapter(bm.chapterIndex)
                     } else {
@@ -3166,7 +3374,6 @@ fun ReaderScreen(
 
                     if (isBookLayout) {
                         epubSearchRequestToken++
-                        epubPendingFragment = null
                         epubLocatorRequest = null
                         epubPageRequest = null
                         epubSearchRequest = EpubSearchRequest(
@@ -3174,9 +3381,14 @@ fun ReaderScreen(
                             chapterIndex = result.chapterIndex,
                             locator = epubSearchLocator!!
                         )
-                        if (result.chapterIndex != uiState.currentChapterIndex) {
-                            viewModel.setChapter(result.chapterIndex)
-                        }
+                        navigateEpub(
+                            EpubNavigationOrigin.SEARCH,
+                            result.chapterIndex,
+                            EpubNavigationDestination.Locator(
+                                epubSearchLocator.toJson().toString()
+                            ),
+                            true
+                        )
                     } else if (isContinuousScrollMode) {
                         continuousSearchHighlight = ContinuousSearchHighlight(
                             chapterIndex = result.chapterIndex,
@@ -3316,6 +3528,46 @@ fun ReaderScreen(
                 onDismiss = { showAdvancedSheet = false; requestCloseAdvanced = false }
             )
         }
+
+        epubNavigationRequest?.takeIf { it.showLoadingPage }?.let { request ->
+            EpubNavigationLoadingOverlay(
+                chapterTitle = uiState.chapterTitles
+                    .getOrNull(request.targetChapterIndex)
+                    .orEmpty()
+                    .ifBlank {
+                        context.getString(
+                            R.string.reader_chapter_fallback,
+                            request.targetChapterIndex + 1
+                        )
+                    },
+                stage = epubNavigationStage,
+                backgroundColor = composeBgColor,
+                contentColor = Color(readerTextColorInt),
+                onCancel = { clearCancelledEpubNavigation(epubNavigationRequest) }
+            )
+        }
+
+        failedEpubNavigation?.let { (request, reason) ->
+            EpubNavigationFailureBar(
+                reason = reason,
+                backgroundColor = composeBgColor,
+                contentColor = Color(readerTextColorInt),
+                onRetry = {
+                    failedEpubNavigation = null
+                    submitEpubNavigation(
+                        request.origin,
+                        request.targetChapterIndex,
+                        request.destination,
+                        request.showLoadingPage
+                    )
+                },
+                onDismiss = {
+                    failedEpubNavigation = null
+                    clearCancelledEpubNavigation(request)
+                },
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
+        }
     }
 
     // ── 笔记/高亮列表 ──
@@ -3337,20 +3589,16 @@ fun ReaderScreen(
                         exact = note.selectedText,
                         chapterText = viewModel.getChapterText(note.chapterIndex)
                     )
-                epubPendingFragment = null
                 epubSearchRequest = null
                 epubPageRequest = null
-                epubLocatorRequestToken++
-                epubLocatorRequest = locatorJson?.let {
-                    EpubLocatorRequest(
-                        token = epubLocatorRequestToken,
-                        chapterIndex = note.chapterIndex,
-                        locatorJson = it
-                    )
-                }
-                if (note.chapterIndex != uiState.currentChapterIndex) {
-                    viewModel.setChapter(note.chapterIndex)
-                }
+                epubLocatorRequest = null
+                navigateEpub(
+                    EpubNavigationOrigin.NOTE,
+                    note.chapterIndex,
+                    locatorJson?.let { EpubNavigationDestination.Locator(it) }
+                        ?: EpubNavigationDestination.ChapterStart,
+                    true
+                )
             } else if (isContinuousScrollMode) {
                 val resolved = viewModel.resolvedReaderNote(note) ?: return@noteClick
                 jumpToContinuousChapter(resolved.chapterIndex)
@@ -5209,7 +5457,11 @@ private fun ContinuousScrollReader(
     selectionController: ContinuousSelectionController,
     onSelectionChanging: () -> Unit,
     onSelection: (chapterIndex: Int, selection: ContinuousTextSelection) -> Unit,
-    onChapterVisible: (chapterIndex: Int, chapterFraction: Float) -> Unit,
+    onChapterVisible: (
+        chapterIndex: Int,
+        chapterFraction: Float,
+        origin: TtsPageChangeOrigin
+    ) -> Unit,
     onRestoreComplete: () -> Unit,
     chineseMode: String = "original",
     ttsCurrentSentence: TtsSentencePosition? = null,
@@ -5222,13 +5474,28 @@ private fun ContinuousScrollReader(
     val listState = rememberLazyListState(currentChapter.coerceIn(0, chapterCount - 1))
     val searchHighlightAlpha = remember { Animatable(0f) }
     val loadedChapters = remember(chapterCount, contentRevision) { mutableStateMapOf<Int, Boolean>() }
+    // 连续滚动的章节正文宽度：先量出列表视口宽度，再减去左右边距。
+    // 章节内插图（ImageSpan）按这个宽度排版，否则解析器会退回“整屏减 44dp”的兜底值，
+    // 导致拖动左右边距时图片尺寸不跟随、甚至被边距裁切。
+    var viewportWidthPx by remember { mutableIntStateOf(0) }
+    val readerDensity = LocalDensity.current.density
+    val contentWidthPx = if (viewportWidthPx <= 0) {
+        0
+    } else {
+        (viewportWidthPx - ((marginLeft + marginRight) * readerDensity).roundToInt())
+            .coerceAtLeast(1)
+    }
+    LaunchedEffect(contentWidthPx) {
+        if (contentWidthPx > 0) viewModel.updateReaderContentWidth(contentWidthPx)
+    }
     // 原始章节文本缓存：相邻章节提前拉取，衔接处不再出现“只有标题/空白、松手后突然加载”
-    val rawChapterTextCache = remember(chapterCount, contentRevision, textAlignment) {
+    val rawChapterTextCache = remember(chapterCount, contentRevision, textAlignment, contentWidthPx) {
         mutableStateMapOf<Int, CharSequence>()
     }
     // 跟踪各章节的实际测量高度，用于连续进度加权计算
-    val chapterHeights = remember(chapterCount, contentRevision) { mutableStateMapOf<Int, Int>() }
-    var lastTtsFollowScrollAt by remember { mutableLongStateOf(0L) }
+    val chapterHeights = remember(chapterCount, contentRevision, contentWidthPx) {
+        mutableStateMapOf<Int, Int>()
+    }
     val restoreTarget = remember(chapterCount, contentRevision) {
         currentChapter.coerceIn(0, chapterCount - 1)
     }
@@ -5283,95 +5550,73 @@ private fun ContinuousScrollReader(
             }
         }
         // The bounded measurement wait prevents a corrupt chapter from holding the loading page forever.
-        onChapterVisible(restoreTarget, restoreFraction)
+        onChapterVisible(restoreTarget, restoreFraction, TtsPageChangeOrigin.LAYOUT)
         onRestoreComplete()
         withFrameNanos { }
         isRestoringPosition = false
     }
-    LaunchedEffect(restoreTarget, chapterCount, contentRevision) {
+    LaunchedEffect(restoreTarget, chapterCount, contentRevision, contentWidthPx) {
         // 进入连续滚动时立即预加载恢复章节附近的章节
         listOf(restoreTarget - 1, restoreTarget, restoreTarget + 1, restoreTarget + 2)
             .filter { it in 0 until chapterCount && it !in rawChapterTextCache }
             .forEach { neighbor ->
                 kotlinx.coroutines.withContext(Dispatchers.IO) {
-                    viewModel.getChapterText(neighbor)?.let { rawChapterTextCache[neighbor] = it }
+                    viewModel.getChapterText(neighbor, contentWidthPx.takeIf { it > 0 })
+                        ?.let { rawChapterTextCache[neighbor] = it }
                 }
             }
     }
     LaunchedEffect(scrollRequests) {
-        scrollRequests.collect { request ->
+        scrollRequests.collectLatest { request ->
             val safeTarget = request.chapterIndex.coerceIn(0, chapterCount - 1)
             val safeFraction = request.chapterFraction.coerceIn(0f, 0.9999f)
             isRestoringPosition = true
-            listState.scrollToItem(safeTarget)
-            val measuredItem = awaitStableChapterMeasurement(safeTarget)
-            listState.scrollToItem(safeTarget)
-            if (measuredItem != null && safeFraction > 0f) {
-                listState.scrollBy(measuredItem.size * safeFraction)
+            try {
+                listState.scrollToItem(safeTarget)
+                val measuredItem = awaitStableChapterMeasurement(safeTarget)
+                listState.scrollToItem(safeTarget)
+                if (measuredItem != null && safeFraction > 0f) {
+                    listState.scrollBy(measuredItem.size * safeFraction)
+                }
+                onChapterVisible(safeTarget, safeFraction, request.origin)
+                withFrameNanos { }
+            } finally {
+                isRestoringPosition = false
             }
-            onChapterVisible(safeTarget, safeFraction)
-            withFrameNanos { }
-            isRestoringPosition = false
-        }
-    }
-    LaunchedEffect(ttsCurrentSentence) {
-        val sentence = ttsCurrentSentence ?: return@LaunchedEffect
-        if (sentence.chapterIndex !in 0 until chapterCount) return@LaunchedEffect
-        if (rawChapterTextCache[sentence.chapterIndex] == null) {
-            withContext(Dispatchers.IO) {
-                viewModel.getChapterText(sentence.chapterIndex)
-            }?.let { rawChapterTextCache[sentence.chapterIndex] = it }
-        }
-        val textLength = rawChapterTextCache[sentence.chapterIndex]?.length ?: return@LaunchedEffect
-        val ratio = (sentence.startOffset.toFloat() / textLength.coerceAtLeast(1)).coerceIn(0f, 1f)
-        isRestoringPosition = true
-        try {
-            val viewportHeight = listState.layoutInfo.viewportSize.height
-            val knownHeight = chapterHeights[sentence.chapterIndex]
-            val estimatedHeight = knownHeight?.toFloat()
-                ?: (chapterHeights.values.takeIf { it.isNotEmpty() }?.average() ?: viewportHeight.toDouble()).toFloat()
-            val estimatedOffset = ((estimatedHeight * ratio) - viewportHeight / 2).toInt().coerceAtLeast(0)
-            // 一次动画到位（不再先停章顶再跳），item 高度未知时先用估算，测量后再校正
-            listState.animateScrollToItem(sentence.chapterIndex, estimatedOffset)
-            if (knownHeight == null) {
-                val realHeight = snapshotFlow { chapterHeights[sentence.chapterIndex] }
-                    .first { it != null && it > 0 } ?: return@LaunchedEffect
-                val realOffset = ((realHeight * ratio) - viewportHeight / 2).toInt().coerceAtLeast(0)
-                val delta = (realOffset - listState.firstVisibleItemScrollOffset).toFloat()
-                if (kotlin.math.abs(delta) > 1f) listState.scrollBy(delta)
-            }
-            lastTtsFollowScrollAt = System.currentTimeMillis()
-        } finally {
-            isRestoringPosition = false
         }
     }
     LaunchedEffect(listState, chapterCount) {
+        var userScrollObserved = false
         snapshotFlow {
             val layout = listState.layoutInfo
             val viewportCenter = (layout.viewportStartOffset + layout.viewportEndOffset) / 2
-            layout.visibleItemsInfo.minByOrNull { item ->
+            val item = layout.visibleItemsInfo.minByOrNull { item ->
                 kotlin.math.abs((item.offset + item.size / 2) - viewportCenter)
             }?.let { item ->
                 Triple(item.index, item.offset, item.size)
             }
-        }.collect { item ->
-            item ?: return@collect
+            Triple(listState.isScrollInProgress, isRestoringPosition, item)
+        }.distinctUntilChanged().collectLatest { viewport ->
+            val (isScrolling, isProgrammaticScroll, item) = viewport
+            item ?: return@collectLatest
             val (index, offset, size) = item
-            if (
-                !isRestoringPosition &&
-                System.currentTimeMillis() - lastTtsFollowScrollAt > 500 &&
+            if (isScrolling) {
+                if (!isProgrammaticScroll) userScrollObserved = true
+            } else if (userScrollObserved && !isProgrammaticScroll &&
                 index in 0 until chapterCount &&
                 loadedChapters[index] == true &&
                 size > 0
             ) {
+                userScrollObserved = false
                 val fraction = (-offset).toFloat().div(size).coerceIn(0f, 0.9999f)
-                onChapterVisible(index, fraction)
+                onChapterVisible(index, fraction, TtsPageChangeOrigin.USER)
             }
             // 预加载当前可见章节之后的两章，保证章节衔接处内容已就绪
             listOf(index + 1, index + 2).forEach { neighbor ->
                 if (neighbor in 0 until chapterCount && neighbor !in rawChapterTextCache) {
                     kotlinx.coroutines.withContext(Dispatchers.IO) {
-                        viewModel.getChapterText(neighbor)?.let { rawChapterTextCache[neighbor] = it }
+                        viewModel.getChapterText(neighbor, contentWidthPx.takeIf { it > 0 })
+                            ?.let { rawChapterTextCache[neighbor] = it }
                     }
                 }
             }
@@ -5431,6 +5676,7 @@ private fun ContinuousScrollReader(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
+                .onSizeChanged { viewportWidthPx = it.width }
                 .pointerInput(Unit) { detectTapGestures(onTap = { onMenuToggle() }) },
             contentPadding = PaddingValues(
                 start = marginLeft.dp,
@@ -5461,13 +5707,16 @@ private fun ContinuousScrollReader(
                 textAlignment,
                 fontSize,
                 paragraphSpacing,
-                firstLineIndent
+                firstLineIndent,
+                contentWidthPx
             ) {
                 val cached = rawChapterTextCache[chapterIndex]
                 val rawText = if (cached != null) {
                     cached
                 } else {
-                    withContext(Dispatchers.IO) { viewModel.getChapterText(chapterIndex) }.also { loaded ->
+                    withContext(Dispatchers.IO) {
+                        viewModel.getChapterText(chapterIndex, contentWidthPx.takeIf { it > 0 })
+                    }.also { loaded ->
                         if (loaded != null) rawChapterTextCache[chapterIndex] = loaded
                     }
                 }

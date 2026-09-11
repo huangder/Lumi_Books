@@ -57,9 +57,10 @@ class ReaderTxtOpenStrategyTest {
     }
 
     @Test
-    fun `fast partial txt never persists semantic locator`() {
-        assertFalse(shouldPersistReaderLocator("TXT", TxtIndexState.FAST_PARTIAL))
-        assertTrue(shouldPersistReaderLocator("TXT", TxtIndexState.COMPLETE))
-        assertTrue(shouldPersistReaderLocator("EPUB", TxtIndexState.FAST_PARTIAL))
+    fun `fast partial txt locator requires stable byte anchor`() {
+        assertFalse(shouldPersistReaderLocator("TXT", TxtIndexState.FAST_PARTIAL, null))
+        assertTrue(shouldPersistReaderLocator("TXT", TxtIndexState.FAST_PARTIAL, 12L))
+        assertTrue(shouldPersistReaderLocator("TXT", TxtIndexState.COMPLETE, null))
+        assertTrue(shouldPersistReaderLocator("EPUB", TxtIndexState.FAST_PARTIAL, null))
     }
 }

@@ -23,6 +23,7 @@ import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.ui.reader.BionicReadingFormatter
 import com.huangder.lumibooks.ui.reader.mapGlobalProgress
 import com.huangder.lumibooks.ui.reader.pageIndexForChapterFraction
+import com.huangder.lumibooks.tts.TtsPageChangeOrigin
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -223,6 +224,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var rvDeferredCurlLatestTime = 0L
     private var rvDeferredCurlMetaState = 0
     private var pendingPageTurnDirection: PageAnimationController.Direction? = null
+    private var pendingPageChangeOrigin = TtsPageChangeOrigin.LAYOUT
 
     /** 设置已保存的笔记/高亮并刷新当前页。 */
     fun setSavedNotes(notes: List<Note>) {
@@ -459,7 +461,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         // 翻页后刷新高亮
         slotManager.onPageChangedCallback = { globalPage, chapterIdx, pageInChapter, chapterTotal ->
             curlPageGeneration++
-            callbacks?.onPageChanged(globalPage, chapterIdx, pageInChapter, chapterTotal)
+            val origin = pendingPageChangeOrigin
+            pendingPageChangeOrigin = TtsPageChangeOrigin.LAYOUT
+            callbacks?.onPageChanged(globalPage, chapterIdx, pageInChapter, chapterTotal, origin)
             startSearchHighlightAnimationIfReady(chapterIdx)
             configureCurrentPageView()
             invalidate()
@@ -952,7 +956,12 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     }
 
     /** 跳转到指定章节指定页 */
-    fun jumpToChapter(chapterIndex: Int, pageInChapter: Int = 0) {
+    fun jumpToChapter(
+        chapterIndex: Int,
+        pageInChapter: Int = 0,
+        origin: TtsPageChangeOrigin = TtsPageChangeOrigin.USER
+    ) {
+        pendingPageChangeOrigin = origin
         slotManager.pendingStartCharOffset = -1
         slotManager.pendingStartPageFraction = null
         jumpToChapterInternal(chapterIndex, pageInChapter)
@@ -1259,10 +1268,14 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         return layoutEngine.getChapterPageCount(chapterIndex)
     }
 
-    fun turnToPreviousPage(): Boolean {
+    fun turnToPreviousPage(
+        origin: TtsPageChangeOrigin = TtsPageChangeOrigin.USER
+    ): Boolean {
         if (isPageTurnBlockedAtBoundary(PageAnimationController.Direction.PREV)) return false
         if (animationController is CurlPageAnim) {
-            return requestCurlTurn(PageAnimationController.Direction.PREV)
+            return requestCurlTurn(PageAnimationController.Direction.PREV).also { accepted ->
+                if (accepted) pendingPageChangeOrigin = origin
+            }
         }
         if (isJumpSettling) return false
         finishRunningPageTurnForNewInput()
@@ -1276,6 +1289,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             crossChapter = previous.chapterIndex != current.chapterIndex
         )
         ReaderPageTurnPerformance.markVisualStarted()
+        pendingPageChangeOrigin = origin
         startTapAnimation(PageAnimationController.Direction.PREV)
         return true
     }
@@ -1283,10 +1297,14 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private fun effectiveEdgeTapAction(action: ReaderEdgeTapAction): ReaderEdgeTapAction =
         if (currentWritingMode.isVertical) action.reversed() else action
 
-    fun turnToNextPage(): Boolean {
+    fun turnToNextPage(
+        origin: TtsPageChangeOrigin = TtsPageChangeOrigin.USER
+    ): Boolean {
         if (isPageTurnBlockedAtBoundary(PageAnimationController.Direction.NEXT)) return false
         if (animationController is CurlPageAnim) {
-            return requestCurlTurn(PageAnimationController.Direction.NEXT)
+            return requestCurlTurn(PageAnimationController.Direction.NEXT).also { accepted ->
+                if (accepted) pendingPageChangeOrigin = origin
+            }
         }
         if (isJumpSettling) return false
         finishRunningPageTurnForNewInput()
@@ -1294,6 +1312,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         if (!next.isLoaded) {
             if (slotManager.hasPotentialNextPage()) {
                 pendingPageTurnDirection = PageAnimationController.Direction.NEXT
+                pendingPageChangeOrigin = origin
                 return true
             }
             return false
@@ -1305,6 +1324,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             crossChapter = next.chapterIndex != current.chapterIndex
         )
         ReaderPageTurnPerformance.markVisualStarted()
+        pendingPageChangeOrigin = origin
         startTapAnimation(PageAnimationController.Direction.NEXT)
         return true
     }
@@ -1372,6 +1392,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         }
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                pendingPageChangeOrigin = TtsPageChangeOrigin.USER
                 removeCallbacks(rvImageLongPressRunnable)
                 // A committed curl belongs to the page the user can already see. Commit it
                 // before classifying the next pointer stream so rapid swipes start from that

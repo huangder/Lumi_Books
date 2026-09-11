@@ -17,7 +17,13 @@ import android.text.Spannable
 import android.text.Spanned
 import android.text.TextPaint
 import android.text.style.CharacterStyle
+import android.text.style.ImageSpan
 import android.text.style.UpdateAppearance
+import android.os.Handler
+import android.os.Looper
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewConfiguration
 import android.widget.ReaderGeometryTextView
 import kotlin.math.roundToInt
 
@@ -113,6 +119,24 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
     private val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private var nativeSelectionSuppressed = false
     private var internalSelectionMutation = false
+    // Not `by lazy`: TextView constructors invoke onTextChanged/visibility callbacks
+    // before Kotlin property initializers run, and a lazy delegate getter would NPE.
+    private var selectionMagnifier: ReaderSelectionMagnifier? = null
+    private val magnifierLongPressRunnable = Runnable { onMagnifierLongPressReady() }
+    private val magnifierHandler = Handler(Looper.getMainLooper())
+    private val magnifierLongPressTimeout =
+        ViewConfiguration.getLongPressTimeout().toLong()
+    private val magnifierTouchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+    private var magnifierPointerDown = false
+    private var magnifierLongPressReady = false
+    private var magnifierDownX = 0f
+    private var magnifierDownY = 0f
+    private var magnifierLastTouchX = 0f
+    private var magnifierLastTouchY = 0f
+    private var draggingSelectionStartHandle = false
+    private var draggingHandleMagnifierOffset: Int? = null
+    private var draggingHandleMagnifierTrailing = false
+    private var magnifierStateReady = false
 
     /** Selection-only layers keep the native layout/controller but do not paint glyphs. */
     var readerSelectionOnly: Boolean = false
@@ -150,6 +174,7 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
         }
 
     init {
+        magnifierStateReady = true
         installReaderOffsetMapper()
     }
 
@@ -239,6 +264,9 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
         updateSelectionHandleOffsets()
         invalidate()
         postInvalidateOnAnimation()
+        if (!internalSelectionMutation) {
+            updateMagnifierForCurrentSelection()
+        }
         // Let Editor finish creating its action mode, then detach only its
         // selection controller. The Editable and Selection spans remain intact,
         // so copy/menu callbacks continue to read the exact same range.
@@ -307,9 +335,31 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
 
     override fun onTextChanged(text: CharSequence?, start: Int, before: Int, count: Int) {
         super.onTextChanged(text, start, before, count)
-        if (!internalSelectionMutation) nativeSelectionSuppressed = false
+        if (!internalSelectionMutation) {
+            nativeSelectionSuppressed = false
+            endMagnifierPointerSession()
+        }
         updateSelectionHandleOffsets()
         invalidate()
+    }
+
+    override fun onDetachedFromWindow() {
+        endMagnifierPointerSession()
+        super.onDetachedFromWindow()
+    }
+
+    override fun onVisibilityChanged(changedView: View, visibility: Int) {
+        super.onVisibilityChanged(changedView, visibility)
+        if (visibility != View.VISIBLE) {
+            endMagnifierPointerSession()
+        }
+    }
+
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        super.onWindowVisibilityChanged(visibility)
+        if (visibility != View.VISIBLE) {
+            endMagnifierPointerSession()
+        }
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -365,15 +415,7 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
         trailing: Boolean
     ) {
         val x = geometry.horizontalPosition(offset, trailing) ?: return
-        val safeOffset = offset.coerceIn(0, text?.length ?: 0)
-        val line = if (trailing && safeOffset > 0 && safeOffset < (text?.length ?: 0) &&
-            textLayout.getLineForOffset(safeOffset) > 0 &&
-            textLayout.getLineStart(textLayout.getLineForOffset(safeOffset)) == safeOffset
-        ) {
-            textLayout.getLineForOffset(safeOffset) - 1
-        } else {
-            textLayout.getLineForOffset(safeOffset.coerceAtMost((text?.length ?: 1) - 1))
-        }
+        val line = readerHandleLine(textLayout, offset, trailing)
         val bottom = textLayout.getLineBottom(line).toFloat()
         val stemTop = bottom - 1f
         val circleY = bottom + resources.displayMetrics.density * 7f
@@ -411,26 +453,49 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
                 kotlin.math.abs(eventY - (y + totalPaddingTop - scrollY)) <= hitRadius
         }
         return when {
-            near(start, false) -> { draggingSelectionHandle = forwardSelection; true }
-            near(end, true) -> { draggingSelectionHandle = !forwardSelection; true }
-            else -> false
+            near(start, false) -> {
+                draggingSelectionHandle = forwardSelection
+                draggingSelectionStartHandle = true
+                draggingHandleMagnifierOffset = start
+                draggingHandleMagnifierTrailing = false
+                true
+            }
+            near(end, true) -> {
+                draggingSelectionHandle = !forwardSelection
+                draggingSelectionStartHandle = false
+                draggingHandleMagnifierOffset = end
+                draggingHandleMagnifierTrailing = true
+                true
+            }
+            else -> {
+                draggingHandleMagnifierOffset = null
+                false
+            }
         }
     }
 
-    override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
+    override fun onTouchEvent(event: MotionEvent): Boolean {
         val drag = draggingSelectionHandle
-        if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN) {
-            val hit = customHandleHit(event.x, event.y)
-            if (hit) {
-                parent?.requestDisallowInterceptTouchEvent(true)
-                return true
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                beginMagnifierPointerSession(event.x, event.y)
+                if (customHandleHit(event.x, event.y)) {
+                    // Touching a custom handle is an explicit selection gesture, so
+                    // show the system magnifier immediately instead of waiting for
+                    // the long-press timeout.
+                    markMagnifierLongPressReady()
+                    parent?.requestDisallowInterceptTouchEvent(true)
+                    updateMagnifierForCurrentSelection()
+                    return true
+                }
+                if (nativeSelectionSuppressed) {
+                    restoreNativeSelectionController()
+                }
+                return super.onTouchEvent(event)
             }
-            if (nativeSelectionSuppressed) {
-                restoreNativeSelectionController()
-            }
-        } else if (drag != null) {
-            when (event.actionMasked) {
-                android.view.MotionEvent.ACTION_MOVE -> {
+            MotionEvent.ACTION_MOVE -> {
+                updateMagnifierPointerPosition(event.x, event.y)
+                if (drag != null) {
                     val spanned = text as? Spannable
                     val textLayout = layout
                     if (spanned != null && textLayout != null && spanned.isNotEmpty()) {
@@ -444,22 +509,240 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
                             readerForceLastLineJustification
                         ).offsetForHorizontal(line, localX)
                         if (mapped != null) {
+                            // Anchor on the offset under the finger, not on the
+                            // stored start/end: crossing the other handle flips
+                            // the selection direction and the stored endpoint then
+                            // points at the OTHER handle.
+                            val otherEndpoint = if (drag) {
+                                Selection.getSelectionEnd(spanned)
+                            } else {
+                                Selection.getSelectionStart(spanned)
+                            }
+                            draggingHandleMagnifierOffset = mapped
+                            draggingHandleMagnifierTrailing = mapped > otherEndpoint
                             if (drag) Selection.setSelection(spanned, mapped, Selection.getSelectionEnd(spanned))
                             else Selection.setSelection(spanned, Selection.getSelectionStart(spanned), mapped)
                         }
                     }
+                    updateMagnifierForCurrentSelection()
                     return true
                 }
-                android.view.MotionEvent.ACTION_UP,
-                android.view.MotionEvent.ACTION_CANCEL -> {
+                val handled = super.onTouchEvent(event)
+                updateMagnifierForCurrentSelection()
+                return handled
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                val wasDragging = drag != null
+                // End the magnifier session before Editor handles the terminal event:
+                // a long-press release can still touch the selection and would
+                // otherwise flash the magnifier for one frame.
+                endMagnifierPointerSession()
+                if (wasDragging) {
                     draggingSelectionHandle = null
                     parent?.requestDisallowInterceptTouchEvent(false)
                     return true
                 }
+                return super.onTouchEvent(event)
             }
-            return true
         }
         return super.onTouchEvent(event)
+    }
+
+    private fun beginMagnifierPointerSession(x: Float, y: Float) {
+        selectionMagnifier?.dismiss()
+        draggingHandleMagnifierOffset = null
+        magnifierPointerDown = true
+        magnifierLongPressReady = false
+        magnifierDownX = x
+        magnifierDownY = y
+        magnifierLastTouchX = x
+        magnifierLastTouchY = y
+        magnifierHandler.removeCallbacks(magnifierLongPressRunnable)
+        magnifierHandler.postDelayed(magnifierLongPressRunnable, magnifierLongPressTimeout)
+    }
+
+    private fun markMagnifierLongPressReady() {
+        magnifierHandler.removeCallbacks(magnifierLongPressRunnable)
+        magnifierLongPressReady = true
+    }
+
+    private fun updateMagnifierPointerPosition(x: Float, y: Float) {
+        magnifierLastTouchX = x
+        magnifierLastTouchY = y
+        if (!magnifierPointerDown || magnifierLongPressReady) return
+        if (kotlin.math.abs(x - magnifierDownX) > magnifierTouchSlop ||
+            kotlin.math.abs(y - magnifierDownY) > magnifierTouchSlop
+        ) {
+            magnifierHandler.removeCallbacks(magnifierLongPressRunnable)
+        }
+    }
+
+    private fun endMagnifierPointerSession() {
+        // TextView constructors invoke onTextChanged before Kotlin property
+        // initializers run; nothing is set up yet in that window.
+        if (!magnifierStateReady) return
+        magnifierHandler.removeCallbacks(magnifierLongPressRunnable)
+        magnifierPointerDown = false
+        magnifierLongPressReady = false
+        draggingHandleMagnifierOffset = null
+        selectionMagnifier?.dismiss()
+    }
+
+    private fun onMagnifierLongPressReady() {
+        if (!magnifierPointerDown) return
+        magnifierLongPressReady = true
+        updateMagnifierForCurrentSelection()
+    }
+
+    /**
+     * Shows the system magnifier only for real selection gestures: an active custom
+     * handle drag, or a non-empty text selection while the finger is still down after
+     * the platform long-press timeout. Double-tap word selection is intentionally
+     * excluded so the magnifier does not flash on a short second tap.
+     */
+    private fun updateMagnifierForCurrentSelection() {
+        val spanned = text as? Spanned ?: return
+        val rawStart = Selection.getSelectionStart(spanned)
+        val rawEnd = Selection.getSelectionEnd(spanned)
+        val start = minOf(rawStart, rawEnd)
+        val end = maxOf(rawStart, rawEnd)
+        if (start < 0 || end <= start || selectionIsImageOnly(spanned, start, end)) {
+            selectionMagnifier?.dismiss()
+            return
+        }
+        val draggingHandle = draggingSelectionHandle != null
+        if (!draggingHandle && (!magnifierPointerDown || !magnifierLongPressReady)) return
+        val anchor = if (draggingHandle) {
+            val offset = draggingHandleMagnifierOffset
+            if (offset != null) {
+                magnifierAnchorForOffset(offset, draggingHandleMagnifierTrailing)
+            } else {
+                magnifierAnchorForHandle(draggingSelectionStartHandle)
+            }
+        } else {
+            magnifierAnchorForTouch(magnifierLastTouchX, magnifierLastTouchY)
+        }
+        if (anchor == null) {
+            selectionMagnifier?.dismiss()
+            return
+        }
+        selectionMagnifierOrCreate().showAt(anchor.x, anchor.y, anchor.lineHeight)
+    }
+
+    private fun magnifierAnchorForOffset(offset: Int, trailing: Boolean): MagnifierAnchor? {
+        val spanned = text as? Spanned ?: return null
+        val textLayout = layout ?: return null
+        val safeOffset = offset.coerceIn(0, (text?.length ?: 0))
+        val x = ReaderLineGeometry(
+            textLayout,
+            spanned,
+            readerJustificationMode,
+            readerForceLastLineJustification
+        ).horizontalPosition(safeOffset, trailing) ?: return null
+        val line = readerHandleLine(textLayout, safeOffset, trailing)
+        val lineTop = textLayout.getLineTop(line).toFloat()
+        val lineBottom = textLayout.getLineBottom(line).toFloat()
+        val anchorX = x + totalPaddingLeft - scrollX
+        if (!anchorX.isFinite()) return null
+        val anchorY = (lineTop + lineBottom) / 2f + totalPaddingTop - scrollY
+        return MagnifierAnchor(anchorX, anchorY, (lineBottom - lineTop).coerceAtLeast(0f))
+    }
+
+    private fun selectionMagnifierOrCreate(): ReaderSelectionMagnifier =
+        selectionMagnifier ?: ReaderSelectionMagnifier(this).also { selectionMagnifier = it }
+
+    private fun selectionIsImageOnly(spanned: Spanned, start: Int, end: Int): Boolean {
+        val images = spanned.getSpans(start, end, ImageSpan::class.java)
+        if (images.isEmpty()) return false
+        return images.any { image ->
+            spanned.getSpanStart(image) <= start && spanned.getSpanEnd(image) >= end
+        }
+    }
+
+    private data class MagnifierAnchor(val x: Float, val y: Float, val lineHeight: Float)
+
+    private fun magnifierAnchorForTouch(x: Float, y: Float): MagnifierAnchor? {
+        val spanned = text as? Spanned ?: return null
+        val textLayout = layout ?: return null
+        if (textLayout.lineCount == 0) return null
+        val localX = x - totalPaddingLeft + scrollX
+        val localY = y - totalPaddingTop + scrollY
+        if (!localX.isFinite() || !localY.isFinite()) return null
+        val line = when {
+            localY < 0f -> 0
+            localY >= textLayout.height -> textLayout.lineCount - 1
+            else -> textLayout.getLineForVertical(localY.toInt())
+        }
+        val geometry = ReaderLineGeometry(
+            textLayout,
+            spanned,
+            readerJustificationMode,
+            readerForceLastLineJustification
+        )
+        val lineStart = textLayout.getLineStart(line)
+        val rawLineEnd = textLayout.getLineEnd(line)
+        val contentEnd = readerLineContentEnd(spanned, lineStart, rawLineEnd)
+        val range = if (contentEnd > lineStart) {
+            geometry.horizontalRange(line, lineStart, contentEnd)
+        } else {
+            null
+        } ?: ReaderLineGeometry.HorizontalRange(
+            textLayout.getLineLeft(line),
+            textLayout.getLineRight(line)
+        )
+        val left = range.left + totalPaddingLeft - scrollX
+        val right = range.right + totalPaddingLeft - scrollX
+        val minX = minOf(left, right)
+        val maxX = maxOf(left, right)
+        val anchorX = if (maxX - minX < 1f) minX else x.coerceIn(minX, maxX)
+        val lineTop = textLayout.getLineTop(line).toFloat()
+        val lineBottom = textLayout.getLineBottom(line).toFloat()
+        val anchorY = (lineTop + lineBottom) / 2f + totalPaddingTop - scrollY
+        return MagnifierAnchor(anchorX, anchorY, (lineBottom - lineTop).coerceAtLeast(0f))
+    }
+
+    private fun magnifierAnchorForHandle(isStartHandle: Boolean): MagnifierAnchor? {
+        val spanned = text as? Spanned ?: return null
+        val textLayout = layout ?: return null
+        val rawStart = Selection.getSelectionStart(spanned)
+        val rawEnd = Selection.getSelectionEnd(spanned)
+        val start = minOf(rawStart, rawEnd)
+        val end = maxOf(rawStart, rawEnd)
+        if (start < 0 || end <= start) return null
+        val offset = if (isStartHandle) start else end
+        val trailing = !isStartHandle
+        val x = ReaderLineGeometry(
+            textLayout,
+            spanned,
+            readerJustificationMode,
+            readerForceLastLineJustification
+        ).horizontalPosition(offset, trailing) ?: return null
+        val line = readerHandleLine(textLayout, offset, trailing)
+        val lineTop = textLayout.getLineTop(line).toFloat()
+        val lineBottom = textLayout.getLineBottom(line).toFloat()
+        val anchorX = x + totalPaddingLeft - scrollX
+        if (!anchorX.isFinite()) return null
+        val anchorY = (lineTop + lineBottom) / 2f + totalPaddingTop - scrollY
+        return MagnifierAnchor(anchorX, anchorY, (lineBottom - lineTop).coerceAtLeast(0f))
+    }
+
+    /** Line used by the drawn handle for [offset]; kept in sync with [drawCustomHandle]. */
+    private fun readerHandleLine(textLayout: Layout, offset: Int, trailing: Boolean): Int {
+        val length = text?.length ?: 0
+        val safeOffset = offset.coerceIn(0, length)
+        return if (trailing && safeOffset > 0 && safeOffset < length &&
+            textLayout.getLineForOffset(safeOffset) > 0 &&
+            textLayout.getLineStart(textLayout.getLineForOffset(safeOffset)) == safeOffset
+        ) {
+            textLayout.getLineForOffset(safeOffset) - 1
+        } else {
+            textLayout.getLineForOffset(safeOffset.coerceAtMost((length - 1).coerceAtLeast(0)))
+        }
+    }
+
+    /** Test-only hook: replaces the platform magnifier with an observable fake sink. */
+    internal fun setMagnifierSinkForTest(sink: ReaderMagnifierSink?) {
+        selectionMagnifierOrCreate().sinkOverride = sink
     }
 
     /**

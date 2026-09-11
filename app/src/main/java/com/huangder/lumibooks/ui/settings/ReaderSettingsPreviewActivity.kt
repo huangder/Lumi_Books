@@ -1299,7 +1299,8 @@ private fun PreviewReadView(
                         globalPage: Int,
                         chapterIndex: Int,
                         pageInChapter: Int,
-                        chapterTotalPages: Int
+                        chapterTotalPages: Int,
+                        origin: com.huangder.lumibooks.tts.TtsPageChangeOrigin
                     ) = Unit
                     override fun onMenuToggle() = Unit
                     override fun onLoadingChanged(isLoading: Boolean) = Unit

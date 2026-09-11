@@ -41,19 +41,44 @@ data class ReaderImageHit(
     val hasAction: Boolean = false
 )
 
+/**
+ * Hard line separators that Android's line breaker treats as mandatory breaks
+ * (UAX #14 BK class). A line ending with any of them is the last line of its
+ * paragraph, so it must never be stretched by justification.
+ */
+internal fun isReaderParagraphBreakChar(ch: Char): Boolean = when (ch) {
+    '\n', '\r', '\u000B', '\u000C', '\u0085', '\u2028', '\u2029' -> true
+    else -> false
+}
+
+/** True when the line's last character is a paragraph break. */
+internal fun readerLineEndsParagraph(
+    text: CharSequence,
+    lineStart: Int,
+    rawLineEnd: Int
+): Boolean = rawLineEnd > lineStart && isReaderParagraphBreakChar(text[rawLineEnd - 1])
+
 internal fun readerLineContentEnd(
     text: CharSequence,
     lineStart: Int,
     rawLineEnd: Int
 ): Int {
     var end = rawLineEnd
-    if (end > lineStart && text[end - 1] == '\n') end--
+    if (end > lineStart && isReaderParagraphBreakChar(text[end - 1])) end--
     while (end > lineStart && (text[end - 1] == ' ' || text[end - 1] == '\t' || text[end - 1] == '\r' || text[end - 1] == '\u3000')) {
         end--
     }
     return end
 }
 
+/**
+ * A line may be stretched only when it continues its paragraph.
+ *
+ * [pageEndsMidParagraph] forces the page's final line because the paragraph
+ * keeps flowing on the next page; it must never override
+ * [endsWithParagraphBreak], otherwise every paragraph-final line on such a page
+ * would be stretched into unreadable letter spacing.
+ */
 internal fun shouldJustifyReaderLine(
     lineIndex: Int,
     lineCount: Int,
@@ -101,9 +126,26 @@ class JustifiedTextView @JvmOverloads constructor(
 
     override fun onTouchEvent(event: MotionEvent): Boolean = false
 
+    /**
+     * 仅供测试观测：本 View 请求重绘的次数。
+     *
+     * 可见文字层是独立绘制的 View，颜色变化必须显式 invalidate()，否则硬件渲染会复用
+     * 旧的显示列表（父级重绘不会重新录制本层），表现为「改完文字颜色要退出重进才生效」。
+     */
+    internal var redrawRequestCount = 0
+        private set
+
+    override fun invalidate() {
+        redrawRequestCount++
+        super.invalidate()
+    }
+
     private val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = 56f
         color = 0xFF333333.toInt()
+        // URLSpan 按 linkColor 绘制，而 TextPaint 该字段默认 0（全透明）；不显式同步
+        // 会让链接文字有位置、可点击却看不见。
+        linkColor = color
     }
 
     private var spannable: Spannable? = null
@@ -157,12 +199,6 @@ class JustifiedTextView @JvmOverloads constructor(
         textPaint.textSize = px
         defaultTextSize = px
         rebuildLayout()
-    }
-
-    fun setTextColor(color: Int) {
-        if (textPaint.color == color) return
-        textPaint.color = color
-        invalidate()
     }
 
     fun setTypeface(tf: Typeface) {
@@ -381,7 +417,6 @@ class JustifiedTextView @JvmOverloads constructor(
             }
         }
 
-            val endsWithParagraphBreak = lineEnd > lineStart && textStr[lineEnd - 1] == '\n'
             // 换行点前的空格只参与语义，不参与可见字符的两端对齐。
             val effectiveEnd = readerLineContentEnd(textStr, lineStart, lineEnd)
             if (effectiveEnd <= lineStart) continue
@@ -516,6 +551,7 @@ class JustifiedTextView @JvmOverloads constructor(
         textPaint.isUnderlineText = false
         textPaint.isStrikeThruText = false
         textPaint.color = defaultTextColor
+        textPaint.linkColor = defaultTextColor
         textPaint.textSize = defaultTextSize
     }
 
@@ -590,7 +626,7 @@ class JustifiedTextView @JvmOverloads constructor(
         val line = sl.getLineForVertical(ty.toInt())
         val lineStart = sl.getLineStart(line)
         val rawLineEnd = sl.getLineEnd(line)
-        val endsWithParagraphBreak = rawLineEnd > lineStart && text[rawLineEnd - 1] == '\n'
+        val endsWithParagraphBreak = readerLineEndsParagraph(text, lineStart, rawLineEnd)
         val lineEnd = readerLineContentEnd(text, lineStart, rawLineEnd)
         if (lineStart >= lineEnd) return null
 
@@ -649,9 +685,19 @@ class JustifiedTextView @JvmOverloads constructor(
     private var defaultTextColor = 0xFF333333.toInt()
     private var defaultTextSize = 56f
 
+    /**
+     * 设置正文默认颜色（同时也是 URLSpan 的链接颜色），并在颜色变化时请求重绘。
+     *
+     * 链接沿用正文色 + 下划线，与竖排 [VerticalTextView] 及原书排版的注入 CSS 一致。
+     */
     fun setDefaultTextColor(color: Int) {
+        val changed = defaultTextColor != color ||
+            textPaint.color != color ||
+            textPaint.linkColor != color
         defaultTextColor = color
         textPaint.color = color
+        textPaint.linkColor = color
+        if (changed) invalidate()
     }
 
     // ── 文字选择支持 ──

@@ -77,6 +77,61 @@ class JustifiedTextViewTest {
         )
     }
 
+    /**
+     * A page that ends mid-paragraph forces its final line, but that force must
+     * never leak onto paragraph-final lines elsewhere on the page: stretching
+     * those short lines produced the reported "huge letter spacing" bug.
+     */
+    @Test
+    fun pageEndingMidParagraphDoesNotJustifyParagraphFinalLines() {
+        assertFalse(
+            shouldJustifyReaderLine(
+                lineIndex = 2,
+                lineCount = 8,
+                endsWithParagraphBreak = true,
+                pageEndsMidParagraph = true
+            )
+        )
+        assertTrue(
+            shouldJustifyReaderLine(
+                lineIndex = 2,
+                lineCount = 8,
+                endsWithParagraphBreak = false,
+                pageEndsMidParagraph = true
+            )
+        )
+        assertTrue(
+            shouldJustifyReaderLine(
+                lineIndex = 7,
+                lineCount = 8,
+                endsWithParagraphBreak = false,
+                pageEndsMidParagraph = true
+            )
+        )
+        assertFalse(
+            shouldJustifyReaderLine(
+                lineIndex = 7,
+                lineCount = 8,
+                endsWithParagraphBreak = true,
+                pageEndsMidParagraph = true
+            )
+        )
+    }
+
+    @Test
+    fun paragraphBreaksCoverMandatoryLineSeparators() {
+        val lineSeparator = "正文。\u2028下一段"
+        val paragraphSeparator = "正文。\u2029下一段"
+
+        assertTrue(readerLineEndsParagraph(lineSeparator, 0, 4))
+        assertTrue(readerLineEndsParagraph(paragraphSeparator, 0, 4))
+        assertTrue(readerLineEndsParagraph("正文。\n", 0, 4))
+        assertFalse(readerLineEndsParagraph("正文。", 0, 3))
+
+        assertEquals(3, readerLineContentEnd(lineSeparator, 0, 4))
+        assertEquals(3, readerLineContentEnd("正文。\n", 0, 4))
+    }
+
     @Test
     fun pageIndentOnlyStartsAtRealParagraphBoundary() {
         val text = "第一段仍在继续\n第二段"

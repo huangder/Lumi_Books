@@ -252,11 +252,19 @@ internal class ReaderLineGeometry(
             else -> 0
         }
 
-        val endsWithParagraphBreak = rawLineEnd > lineStart &&
-            (text[rawLineEnd - 1] == '\n' || text[rawLineEnd - 1] == '\r')
+        val endsWithParagraphBreak = readerLineEndsParagraph(text, lineStart, rawLineEnd)
+        // Only continuation lines may be stretched. forceLastLineJustification
+        // covers the page's final line when the paragraph keeps flowing on the
+        // next page; it must not bypass the paragraph-break guard for the rest of
+        // the page, or every paragraph-final line here would be stretched.
         val canJustify = isLtr && justificationMode != Layout.JUSTIFICATION_MODE_NONE &&
             contentEnd > lineStart &&
-            (forceLastLineJustification || (line < layout.lineCount - 1 && !endsWithParagraphBreak))
+            shouldJustifyReaderLine(
+                lineIndex = line,
+                lineCount = layout.lineCount,
+                endsWithParagraphBreak = endsWithParagraphBreak,
+                pageEndsMidParagraph = forceLastLineJustification
+            )
 
         // ParagraphRight includes the available line width after alignment and
         // leading margins. For RTL the reader currently does not justify, but

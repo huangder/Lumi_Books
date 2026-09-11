@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.reader.engine
 
+import com.huangder.lumibooks.tts.TtsPageChangeOrigin
+
 /**
  * ReadView 向外（Compose/ViewModel）的回调接口。
  */
@@ -11,7 +13,8 @@ interface ReadViewCallbacks {
         globalPage: Int,
         chapterIndex: Int,
         pageInChapter: Int,
-        chapterTotalPages: Int
+        chapterTotalPages: Int,
+        origin: TtsPageChangeOrigin
     )
 
     /**

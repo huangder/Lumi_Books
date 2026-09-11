@@ -22,6 +22,7 @@ import com.huangder.lumibooks.ui.reader.engine.PageLayoutEngine
 import com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatter
 import com.huangder.lumibooks.ui.reader.engine.calculateReaderVerticalBalanceOffset
 import com.huangder.lumibooks.ui.reader.shouldStyleTxtChapterTitle
+import com.huangder.lumibooks.ui.reader.txtChapterTitleFontSize
 import com.huangder.lumibooks.util.parser.BookParser
 import com.huangder.lumibooks.util.parser.BookParserFactory
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -247,7 +248,7 @@ class BookNotesExportBuilder @Inject constructor(
                     val body = raw.substring(newlineIndex + 1)
                     SpannableString("$title\n\n$body").apply {
                         setSpan(
-                            AbsoluteSizeSpan(22, true),
+                            AbsoluteSizeSpan(txtChapterTitleFontSize(fontSizeSp), true),
                             0,
                             title.length,
                             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE

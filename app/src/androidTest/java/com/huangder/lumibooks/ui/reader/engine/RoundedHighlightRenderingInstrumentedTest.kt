@@ -467,6 +467,79 @@ class RoundedHighlightRenderingInstrumentedTest {
         }
     }
 
+    /**
+     * A page whose text ends mid-paragraph forces its own final line, but the
+     * short paragraph-final lines earlier on that page must keep their natural
+     * width instead of being stretched into unreadable letter spacing.
+     */
+    @Test
+    fun forcedPageEndJustificationLeavesParagraphFinalLinesAtNaturalWidth() {
+        if (android.os.Build.VERSION.SDK_INT < 35) return
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val context = instrumentation.targetContext
+            val density = context.resources.displayMetrics.density
+            val value = SpannableString(
+                "短句。\n" + "甲乙丙丁戊己庚辛壬癸".repeat(6)
+            )
+            val view = RoundedHighlightTextView(context).apply {
+                includeFontPadding = false
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
+                setPadding((20f * density).roundToInt(), 0, (20f * density).roundToInt(), 0)
+                readerJustificationMode = Layout.JUSTIFICATION_MODE_INTER_CHARACTER
+                text = value
+            }
+            val width = (280f * density).roundToInt()
+            val height = (240f * density).roundToInt()
+            view.measure(
+                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
+            )
+            view.layout(0, 0, width, height)
+            val layout = requireNotNull(view.layout)
+            assertTrue("fixture must produce a wrapped paragraph", layout.lineCount >= 3)
+
+            // The page ends mid-paragraph, so the page's final line is forced.
+            val geometry = ReaderLineGeometry(
+                layout = layout,
+                text = value,
+                justificationMode = Layout.JUSTIFICATION_MODE_INTER_CHARACTER,
+                forceLastLineJustification = true
+            )
+
+            val paragraphFinalLine = 0
+            val paragraphFinalStart = layout.getLineStart(paragraphFinalLine)
+            val paragraphFinalEnd = readerLineContentEnd(
+                value,
+                paragraphFinalStart,
+                layout.getLineEnd(paragraphFinalLine)
+            )
+            assertTrue(
+                "fixture's first line must be a paragraph-final line",
+                readerLineEndsParagraph(value, paragraphFinalStart, layout.getLineEnd(paragraphFinalLine))
+            )
+            val paragraphFinalRange = requireNotNull(
+                geometry.horizontalRange(paragraphFinalLine, paragraphFinalStart, paragraphFinalEnd)
+            )
+            val paragraphFinalTarget = layout.getParagraphRight(paragraphFinalLine).toFloat()
+            assertTrue(
+                "paragraph-final line must stay at its natural width: " +
+                    "right=${paragraphFinalRange.right} target=$paragraphFinalTarget",
+                paragraphFinalRange.right <= paragraphFinalTarget - 20f * density
+            )
+
+            val lastLine = layout.lineCount - 1
+            val lastStart = layout.getLineStart(lastLine)
+            val lastEnd = readerLineContentEnd(value, lastStart, layout.getLineEnd(lastLine))
+            val lastRange = requireNotNull(geometry.horizontalRange(lastLine, lastStart, lastEnd))
+            assertTrue(
+                "page-final continuation line must still be justified: " +
+                    "right=${lastRange.right} target=${layout.getParagraphRight(lastLine)}",
+                lastRange.right >= layout.getParagraphRight(lastLine) - 4f * density
+            )
+        }
+    }
+
     @Test
     fun readerLineGeometryExpandsInterWordSpacesButNotPlainLeftAlignment() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()

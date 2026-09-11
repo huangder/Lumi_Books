@@ -6,15 +6,45 @@ import org.junit.Test
 
 class ReaderPositionLocatorTest {
     @Test
+    fun continuousTtsPageFractionsMapBackToEveryRequestedPage() {
+        val totalPages = 31
+
+        repeat(totalPages) { pageIndex ->
+            val fraction = requireNotNull(continuousTtsPageFraction(pageIndex, totalPages))
+            assertEquals(pageIndex, (fraction * totalPages).toInt())
+        }
+        assertNull(continuousTtsPageFraction(-1, totalPages))
+        assertNull(continuousTtsPageFraction(totalPages, totalPages))
+        assertNull(continuousTtsPageFraction(0, 0))
+    }
+
+    @Test
     fun `round trip preserves paged character anchor`() {
         val locator = ReaderPositionLocator(
             chapterIndex = 4,
             chapterFraction = 0.25f,
             flow = ReaderPositionFlow.PAGED,
-            characterOffset = 812
+            characterOffset = 812,
+            sourceByteOffset = 98_765L
         )
 
         assertEquals(locator, ReaderPositionLocator.fromJson(locator.toJson()))
+    }
+
+    @Test
+    fun `version one locator remains readable without byte anchor`() {
+        val json = """{"type":"lumi_reader_position","version":1,"chapterIndex":2,"chapterFraction":0.5,"flow":"paged","characterOffset":42}"""
+
+        assertEquals(
+            ReaderPositionLocator(
+                chapterIndex = 2,
+                chapterFraction = 0.5f,
+                flow = ReaderPositionFlow.PAGED,
+                characterOffset = 42,
+                sourceByteOffset = null
+            ),
+            ReaderPositionLocator.fromJson(json)
+        )
     }
 
     @Test
