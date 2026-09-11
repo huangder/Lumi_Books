@@ -85,7 +85,6 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
@@ -110,6 +109,7 @@ import com.huangder.lumibooks.domain.model.FolderPreviewPlanner
 import com.huangder.lumibooks.ui.animation.AppEasing
 import com.huangder.lumibooks.ui.animation.OverscrollBounce
 import com.huangder.lumibooks.ui.animation.PageEntranceItem
+import com.huangder.lumibooks.ui.layout.currentAdaptiveWindowInfo
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
 import com.huangder.lumibooks.ui.components.BookCoverProgressOverlay
 import com.huangder.lumibooks.ui.components.CloudAwareBookDeleteDialog
@@ -1384,9 +1384,7 @@ internal fun BookshelfCollection(
     modifier: Modifier = Modifier
 ) {
     val targetMode = layoutMode.coerceIn(1, 3)
-    val configuration = LocalConfiguration.current
-    val isTabletLandscape = configuration.smallestScreenWidthDp >= 600 &&
-        configuration.screenWidthDp > configuration.screenHeightDp
+    val useWideLandscapeLayout = currentAdaptiveWindowInfo().isWideLandscape
     var renderedMode by remember { mutableStateOf(targetMode) }
     var transitionInProgress by remember { mutableStateOf(false) }
     val transitionAlpha = remember { Animatable(1f) }
@@ -1533,7 +1531,7 @@ internal fun BookshelfCollection(
             } else {
                 val gridSpacing = if (renderedMode == 3) 12.dp else AppSpace.lg
             LazyVerticalGrid(
-                columns = if (isTabletLandscape && renderedMode >= 2) {
+                columns = if (useWideLandscapeLayout && renderedMode >= 2) {
                     GridCells.Adaptive(140.dp)
                 } else {
                     GridCells.Fixed(renderedMode)

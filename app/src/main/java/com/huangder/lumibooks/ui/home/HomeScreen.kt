@@ -60,7 +60,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
@@ -98,6 +97,7 @@ import com.huangder.lumibooks.ui.theme.LocalUseMaterial3Theme
 import com.huangder.lumibooks.ui.theme.SansSerif
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.ui.animation.PageEntranceItem
+import com.huangder.lumibooks.ui.layout.currentAdaptiveWindowInfo
 import com.huangder.lumibooks.util.TimeUtils
 
 @Composable
@@ -117,7 +117,7 @@ fun HomeScreen(
     val uiState by viewModel.uiState.collectAsState()
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val isMaterial3 = LocalUseMaterial3Theme.current
-    val isTablet = LocalConfiguration.current.smallestScreenWidthDp >= 600
+    val useWideLayout = currentAdaptiveWindowInfo().isMediumWidthOrLarger
     val topBlurBackdrop = rememberLayerBackdrop()
     val statusBarTopPadding = WindowInsets.statusBars
         .asPaddingValues()
@@ -159,9 +159,9 @@ fun HomeScreen(
         ) {
             LazyColumn(
                 modifier = Modifier
-                    .then(if (isTablet) Modifier.widthIn(max = 840.dp) else Modifier)
+                    .then(if (useWideLayout) Modifier.widthIn(max = 840.dp) else Modifier)
                     .fillMaxWidth()
-                    .then(if (isTablet) Modifier.align(Alignment.TopCenter) else Modifier)
+                    .then(if (useWideLayout) Modifier.align(Alignment.TopCenter) else Modifier)
             ) {
                 item(key = "header") {
                     Spacer(Modifier.height(statusBarTopPadding + AppSpace.md))
@@ -212,7 +212,7 @@ fun HomeScreen(
                                 BooksReadGrid(
                                     books = recentBooks,
                                     downloadStates = uiState.downloadStates,
-                                    isTablet = isTablet,
+                                    useWideLayout = useWideLayout,
                                     onBookClick = { book, bounds ->
                                         onNavigateToReader(book.id, book.coverPath, book.title, bounds)
                                     }
@@ -899,7 +899,7 @@ private fun BooksReadGrid(
     books: List<Book>,
     downloadStates: Map<String, BookDownloadState>,
     modifier: Modifier = Modifier,
-    isTablet: Boolean = false,
+    useWideLayout: Boolean = false,
     onBookClick: (Book, Rect?) -> Unit
 ) {
     val coverShape = RoundedCornerShape(
@@ -916,7 +916,7 @@ private fun BooksReadGrid(
         items(books, key = { it.id }) { book ->
             Box(
                 modifier = Modifier
-                    .width(if (isTablet) 120.dp else 96.dp)
+                    .width(if (useWideLayout) 120.dp else 96.dp)
                     .aspectRatio(0.75f)
                     .shadow(
                         elevation = 8.dp,
