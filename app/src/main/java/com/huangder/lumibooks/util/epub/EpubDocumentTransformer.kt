@@ -1062,7 +1062,15 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     state.page = targetPage;
     var body = document.body;
     clearTimeout(state.animationTimer);
-    if (state.flow === 'scrolled') {
+    if (state.fixed) {
+      // 固定排版整页的缩放/偏移由 paginate() 的 fixed 分支负责；翻页或再次 configure
+      // 进入这里时不能覆盖 transform，否则整页会丢掉缩放（页边距看起来“不生效”）。
+      clearPageStage();
+      body.style.visibility = 'visible';
+      body.style.transition = 'none';
+      body.style.opacity = '1';
+      window.scrollTo(0, 0);
+    } else if (state.flow === 'scrolled') {
       clearPageStage();
       body.style.visibility = 'visible';
       body.style.transition = 'none';
@@ -1120,7 +1128,9 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     body.style.visibility = 'visible';
     body.style.transition = 'none';
     body.style.opacity = '1';
-    if (state.flow === 'scrolled') {
+    if (state.fixed) {
+      window.scrollTo(0, 0);
+    } else if (state.flow === 'scrolled') {
       body.style.transform = '';
       window.scrollTo(0, state.page * state.viewportHeight);
     } else {
@@ -1481,11 +1491,17 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       var viewBox = svg ? (svg.getAttribute('viewBox') || '').trim().split(/\s+/).map(Number) : [];
       var designWidth = widthMatch ? parseFloat(widthMatch[1]) : (viewBox.length === 4 ? viewBox[2] : body.scrollWidth);
       var designHeight = heightMatch ? parseFloat(heightMatch[1]) : (viewBox.length === 4 ? viewBox[3] : body.scrollHeight);
-      var scale = Math.min(state.viewportWidth / Math.max(1, designWidth), state.viewportHeight / Math.max(1, designHeight));
+      // 固定排版书籍也要尊重阅读器的页边距设置：先把整页缩放塞进“视口减去 insets”的盒子，
+      // 再按 insets 偏移。封面（data-lumi-cover）的 insets 为 0，仍然满屏。
+      var fixedInset = readerBox();
+      var availableWidth = Math.max(1, state.viewportWidth - fixedInset.left - fixedInset.right);
+      var availableHeight = Math.max(1, state.viewportHeight - fixedInset.top - fixedInset.bottom);
+      var scale = Math.min(availableWidth / Math.max(1, designWidth), availableHeight / Math.max(1, designHeight));
       body.style.width = designWidth + 'px';
       body.style.height = designHeight + 'px';
       body.style.transform = 'scale(' + scale + ')';
-      body.style.marginLeft = Math.max(0, (state.viewportWidth - designWidth * scale) / 2) + 'px';
+      body.style.marginLeft = (fixedInset.left + Math.max(0, (availableWidth - designWidth * scale) / 2)) + 'px';
+      body.style.marginTop = (fixedInset.top + Math.max(0, (availableHeight - designHeight * scale) / 2)) + 'px';
       state.pageOffsets = [0];
       state.total = 1;
       state.page = 0;
@@ -2926,6 +2942,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     previous: function () { turnByDirection(-1); },
     goToPage: function (page) { moveToPage(page, true); },
     goToProgression: goToProgression,
+    currentPosition: function () { return currentPagePayload(); },
     syncToPage: syncToPage,
     preparePage: preparePage,
     goToFragment: function (fragment) {

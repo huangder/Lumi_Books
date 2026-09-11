@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.graphics.Canvas
 import android.graphics.Color
 import android.net.Uri
+import android.os.SystemClock
 import android.util.Log
 import android.view.ActionMode
 import android.view.ContextMenu
@@ -44,6 +45,8 @@ import com.huangder.lumibooks.util.epub.BookRenderSession
 import com.huangder.lumibooks.util.epub.EpubPageProgressionDirection
 import com.huangder.lumibooks.util.epub.EpubLocator
 import com.huangder.lumibooks.util.epub.EpubRenditionLayout
+import com.huangder.lumibooks.util.diagnostics.DiagnosticLevel
+import com.huangder.lumibooks.util.diagnostics.DiagnosticLoggerRegistry
 import org.json.JSONArray
 import org.json.JSONObject
 import com.huangder.lumibooks.domain.model.Note
@@ -238,6 +241,20 @@ private data class EpubPreparedPage(
     val reverseAxis: Boolean
 )
 
+private data class EpubNavigationInFlight(
+    val request: EpubNavigationRequest,
+    val view: EpubContentWebView,
+    val slot: EpubPageTurnHost.PreloadSlot?,
+    val generation: Int,
+    val requestedTarget: EpubPageTarget,
+    val expectedDocumentUrl: String,
+    val startedAtMs: Long,
+    var sawReady: Boolean,
+    var configurationSubmitted: Boolean = false,
+    var destinationApplied: Boolean = false,
+    var commitPending: Boolean = false
+)
+
 internal data class EpubPageText(
     val chapterIndex: Int,
     val pageIndex: Int,
@@ -287,6 +304,8 @@ internal fun EpubWebViewReader(
     searchRequest: EpubSearchRequest? = null,
     locatorRequest: EpubLocatorRequest? = null,
     pageRequest: EpubPageRequest? = null,
+    navigationRequest: EpubNavigationRequest? = null,
+    bookFormat: String = "EPUB",
     selectionClearToken: Int = 0,
     bookmarkPullEnabled: Boolean = true,
     onPageTextProviderReady: ((suspend (chapterIndex: Int, pageIndex: Int) -> EpubPageText?)?) -> Unit,
@@ -303,6 +322,8 @@ internal fun EpubWebViewReader(
     onSelection: (EpubSelectionInfo) -> Unit,
     onSelectionCleared: () -> Unit,
     onSearchResolved: (token: Int, found: Boolean) -> Unit,
+    onNavigationStage: (operationId: Long, stage: EpubNavigationStage) -> Unit = { _, _ -> },
+    onNavigationResult: (EpubNavigationResult) -> Unit = {},
     onRenderUnavailable: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -348,11 +369,20 @@ internal fun EpubWebViewReader(
     val latestSearchRequest = rememberUpdatedState(searchRequest)
     val latestLocatorRequest = rememberUpdatedState(locatorRequest)
     val latestPageRequest = rememberUpdatedState(pageRequest)
+    val latestBookFormat = rememberUpdatedState(bookFormat)
+    val latestNavigationStage = rememberUpdatedState(onNavigationStage)
+    val latestNavigationResult = rememberUpdatedState(onNavigationResult)
     val latestPageTextProviderReady = rememberUpdatedState(onPageTextProviderReady)
     val latestPageTurnHandlerReady = rememberUpdatedState(onPageTurnHandlerReady)
     val webViewState = remember(session) { mutableStateOf<WebView?>(null) }
     val ttsPageViewByChapter = remember(session) { mutableStateOf<Map<Int, WebView>>(emptyMap()) }
     val pageTurnHostState = remember(session) { mutableStateOf<EpubPageTurnHost?>(null) }
+    val navigationStartHandler = remember(session) {
+        mutableStateOf<((EpubNavigationRequest) -> Unit)?>(null)
+    }
+    val navigationCancelHandler = remember(session) {
+        mutableStateOf<((Long?, Boolean) -> Unit)?>(null)
+    }
     val loadedChapter = remember(session) { mutableStateOf(-1) }
     val activePageCount = remember(session) { mutableStateOf(1) }
     val configuredKey = remember(session) { mutableStateOf("") }
@@ -405,8 +435,38 @@ internal fun EpubWebViewReader(
                 val promotedActiveTargetByView = mutableMapOf<EpubContentWebView, EpubPageTarget>()
                 val preloadConfigurationByView = mutableMapOf<EpubContentWebView, String>()
                 val readyTtsPageViewByChapter = mutableMapOf<Int, EpubContentWebView>()
+                val navigationTracker = EpubNavigationOperationTracker()
+                var navigationInFlight: EpubNavigationInFlight? = null
                 var nextPreloadGeneration = 0
                 var rendererGoneHandled = false
+
+                fun logNavigation(
+                    request: EpubNavigationRequest,
+                    event: String,
+                    level: DiagnosticLevel = DiagnosticLevel.INFO,
+                    result: String? = null,
+                    reason: EpubNavigationFailureReason? = null
+                ) {
+                    val duration = SystemClock.elapsedRealtime()
+                        .minus(navigationInFlight?.startedAtMs ?: SystemClock.elapsedRealtime())
+                        .coerceAtLeast(0L)
+                    DiagnosticLoggerRegistry.logger?.log(
+                        category = "reader",
+                        event = event,
+                        level = level,
+                        attributes = buildMap {
+                            put("origin", request.origin.name.lowercase())
+                            put("sourceChapter", request.sourceChapterIndex)
+                            put("targetChapter", request.targetChapterIndex)
+                            reason?.let { put("reason", it.name.lowercase()) }
+                        },
+                        operationId = request.operationId.toString(),
+                        screen = "ReaderScreen",
+                        bookFormat = latestBookFormat.value,
+                        durationMs = duration,
+                        result = result
+                    )
+                }
 
                 fun publishTtsPageViews() {
                     ttsPageViewByChapter.value = readyTtsPageViewByChapter.toMap()
@@ -637,6 +697,542 @@ internal fun EpubWebViewReader(
                 fun invalidateAdjacentPreloads() {
                     updatePreload(EpubPageTurnHost.PreloadSlot.PREVIOUS, null)
                     updatePreload(EpubPageTurnHost.PreloadSlot.NEXT, null)
+                }
+
+                fun restoreAdjacentPreloads() {
+                    val current = pageTurnHost.currentPageTarget()
+                    if (current.chapterIndex >= 0) {
+                        updateAdjacentPreloads(
+                            current.chapterIndex,
+                            current.pageIndex,
+                            pageTurnHost.currentPageCount()
+                        )
+                    }
+                }
+
+                fun clearNavigationPreparation(inFlight: EpubNavigationInFlight) {
+                    if (inFlight.slot != null) {
+                        inFlight.view.stopLoading()
+                        preloadRequestByView.remove(inFlight.view)
+                        preparedPageByView.remove(inFlight.view)
+                        pageTurnHost.markPreloadFailed(
+                            inFlight.slot,
+                            inFlight.requestedTarget,
+                            inFlight.generation
+                        )
+                    } else {
+                        activeVisualRequestByView[inFlight.view] =
+                            (activeVisualRequestByView[inFlight.view] ?: 0L) + 1L
+                        promotedActiveTargetByView[inFlight.view] = EpubPageTarget(
+                            inFlight.request.sourceChapterIndex,
+                            inFlight.request.sourcePageIndex.coerceAtLeast(0)
+                        )
+                        inFlight.view.evaluateJavascript(
+                            "window.LumiReader&&window.LumiReader.goToPage(" +
+                                inFlight.request.sourcePageIndex.coerceAtLeast(0) + ");",
+                            null
+                        )
+                    }
+                }
+
+                fun cancelNavigation(operationId: Long?, replaced: Boolean) {
+                    val inFlight = navigationInFlight ?: return
+                    if (operationId != null && inFlight.request.operationId != operationId) return
+                    if (!navigationTracker.finish(inFlight.request.operationId)) return
+                    logNavigation(
+                        inFlight.request,
+                        event = "epub_navigation_cancelled",
+                        result = if (replaced) "replaced" else "cancelled"
+                    )
+                    navigationInFlight = null
+                    clearNavigationPreparation(inFlight)
+                    restoreAdjacentPreloads()
+                    latestNavigationResult.value(
+                        EpubNavigationResult.Cancelled(inFlight.request.operationId, replaced)
+                    )
+                }
+
+                fun failNavigation(
+                    inFlight: EpubNavigationInFlight,
+                    reason: EpubNavigationFailureReason
+                ) {
+                    if (navigationInFlight !== inFlight ||
+                        !navigationTracker.finish(inFlight.request.operationId)
+                    ) return
+                    val event = if (reason == EpubNavigationFailureReason.TIMEOUT) {
+                        "epub_navigation_timed_out"
+                    } else {
+                        "epub_navigation_failed"
+                    }
+                    logNavigation(
+                        inFlight.request,
+                        event = event,
+                        level = DiagnosticLevel.WARN,
+                        result = "failed",
+                        reason = reason
+                    )
+                    navigationInFlight = null
+                    clearNavigationPreparation(inFlight)
+                    restoreAdjacentPreloads()
+                    latestNavigationResult.value(
+                        EpubNavigationResult.Failed(inFlight.request.operationId, reason)
+                    )
+                }
+
+                fun commitNavigation(
+                    inFlight: EpubNavigationInFlight,
+                    pageIndex: Int,
+                    pageCount: Int,
+                    pageSerial: Long,
+                    locatorJson: String?,
+                    reverseAxis: Boolean
+                ) {
+                    if (navigationInFlight !== inFlight ||
+                        !navigationTracker.accepts(inFlight.request.operationId) ||
+                        inFlight.commitPending
+                    ) return
+                    inFlight.commitPending = true
+                    val requestId = System.nanoTime()
+                    latestNavigationStage.value(
+                        inFlight.request.operationId,
+                        EpubNavigationStage.WAITING_FOR_FRAME
+                    )
+                    inFlight.view.postVisualStateCallback(
+                        requestId,
+                        object : WebView.VisualStateCallback() {
+                            override fun onComplete(completedRequestId: Long) {
+                                if (completedRequestId != requestId ||
+                                    navigationInFlight !== inFlight ||
+                                    !navigationTracker.accepts(inFlight.request.operationId)
+                                ) return
+                                inFlight.view.runAfterNextDraw {
+                                    if (navigationInFlight !== inFlight ||
+                                        !navigationTracker.accepts(inFlight.request.operationId) ||
+                                        inFlight.view.url.orEmpty().substringBefore('#') !=
+                                        inFlight.expectedDocumentUrl
+                                    ) return@runAfterNextDraw
+                                    logNavigation(
+                                        inFlight.request,
+                                        event = "epub_navigation_first_frame",
+                                        result = "ready"
+                                    )
+
+                                    if (inFlight.slot != null) {
+                                        pageTurnHost.markPreloadReady(
+                                            inFlight.slot,
+                                            inFlight.requestedTarget,
+                                            inFlight.generation,
+                                            pageIndex,
+                                            pageCount,
+                                            inFlight.view
+                                        )
+                                        val promoted = pageTurnHost.promotePreparedPage(
+                                            inFlight.slot,
+                                            EpubPageTarget(
+                                                inFlight.request.targetChapterIndex,
+                                                pageIndex
+                                            ),
+                                            pageCount
+                                        )
+                                        if (!promoted) {
+                                            failNavigation(
+                                                inFlight,
+                                                EpubNavigationFailureReason.DOCUMENT_ERROR
+                                            )
+                                            return@runAfterNextDraw
+                                        }
+                                    } else {
+                                        pageTurnHost.setCurrentPage(
+                                            inFlight.request.targetChapterIndex,
+                                            pageIndex,
+                                            pageCount
+                                        )
+                                    }
+
+                                    if (!navigationTracker.finish(inFlight.request.operationId)) {
+                                        return@runAfterNextDraw
+                                    }
+                                    logNavigation(
+                                        inFlight.request,
+                                        event = "epub_navigation_committed",
+                                        result = "success"
+                                    )
+                                    navigationInFlight = null
+                                    val activeView = pageTurnHost.activeWebView
+                                    loadedChapter.value = inFlight.request.targetChapterIndex
+                                    loadedChapterByView[activeView] = inFlight.request.targetChapterIndex
+                                    activeDocumentUrl.value = inFlight.expectedDocumentUrl
+                                    configuredKey.value = activeConfigurationKey(
+                                        inFlight.request.targetChapterIndex
+                                    )
+                                    chapterLoadPending.value = false
+                                    readyChapter.value = inFlight.request.targetChapterIndex
+                                    activePageCount.value = pageCount
+                                    preparedPageByView.remove(activeView)
+                                    preloadRequestByView.remove(activeView)
+                                    promotedActiveTargetByView[activeView] = EpubPageTarget(
+                                        inFlight.request.targetChapterIndex,
+                                        pageIndex
+                                    )
+                                    pageSerial.takeIf { it >= 0L }?.let {
+                                        minimumActivePageSerialByView[activeView] = it
+                                    } ?: minimumActivePageSerialByView.remove(activeView)
+                                    pageTurnHost.setReverseAxis(reverseAxis)
+                                    webViewState.value = activeView
+                                    readyTtsPageViewByChapter[inFlight.request.targetChapterIndex] = activeView
+                                    publishTtsPageViews()
+                                    restoreActiveHighlights(
+                                        activeView,
+                                        EpubPageTarget(inFlight.request.targetChapterIndex, pageIndex)
+                                    )
+                                    updateAdjacentPreloads(
+                                        inFlight.request.targetChapterIndex,
+                                        pageIndex,
+                                        pageCount
+                                    )
+                                    latestPageChanged.value(
+                                        inFlight.request.targetChapterIndex,
+                                        pageIndex,
+                                        pageCount,
+                                        locatorJson
+                                    )
+                                    latestNavigationResult.value(
+                                        EpubNavigationResult.Committed(
+                                            inFlight.request.operationId,
+                                            inFlight.request.targetChapterIndex,
+                                            pageIndex,
+                                            pageCount,
+                                            locatorJson
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    )
+                }
+
+                fun applyNavigationDestination(inFlight: EpubNavigationInFlight) {
+                    if (navigationInFlight !== inFlight ||
+                        !navigationTracker.accepts(inFlight.request.operationId) ||
+                        inFlight.destinationApplied
+                    ) return
+                    inFlight.destinationApplied = true
+                    val command = when (val destination = inFlight.request.destination) {
+                        EpubNavigationDestination.ChapterStart ->
+                            "reader.goToPage(0);"
+                        is EpubNavigationDestination.Page -> {
+                            destination.chapterFraction?.let { fraction ->
+                                "reader.goToProgression(" +
+                                    fraction.coerceIn(0f, 1f) + ");"
+                            } ?: "reader.goToPage(" +
+                                destination.index.coerceAtLeast(0) + ");"
+                        }
+                        is EpubNavigationDestination.Fragment ->
+                            "if(reader.goToFragment(" +
+                                JSONObject.quote(destination.value) +
+                                ")===false)return JSON.stringify({result:'target_missing'});"
+                        is EpubNavigationDestination.Locator -> {
+                            val locator = runCatching { JSONObject(destination.json) }.getOrNull()
+                            if (locator == null) {
+                                failNavigation(
+                                    inFlight,
+                                    EpubNavigationFailureReason.TARGET_NOT_FOUND
+                                )
+                                return
+                            }
+                            "if(reader.restore(" + locator.toString() +
+                                ")===false)return JSON.stringify({result:'target_missing'});"
+                        }
+                    }
+                    latestNavigationStage.value(
+                        inFlight.request.operationId,
+                        EpubNavigationStage.CONFIGURING
+                    )
+                    inFlight.view.evaluateJavascript(
+                        "(function(){var reader=window.LumiReader;" +
+                            "if(!reader||!reader.currentPosition)" +
+                            "return JSON.stringify({result:'not_ready'});" + command +
+                            "return JSON.stringify({result:'ok',payload:reader.currentPosition()});})()"
+                    ) { result ->
+                        if (navigationInFlight !== inFlight) return@evaluateJavascript
+                        val decoded = runCatching {
+                            JSONArray("[$result]").optString(0)
+                        }.getOrNull()
+                        val response = decoded?.let {
+                            runCatching { JSONObject(it) }.getOrNull()
+                        }
+                        when (response?.optString("result")) {
+                            "not_ready" -> failNavigation(
+                                inFlight,
+                                EpubNavigationFailureReason.SCRIPT_NOT_READY
+                            )
+                            "target_missing" -> failNavigation(
+                                inFlight,
+                                EpubNavigationFailureReason.TARGET_NOT_FOUND
+                            )
+                            "ok" -> {
+                                val payload = response.optJSONObject("payload")
+                                if (payload == null) {
+                                    failNavigation(
+                                        inFlight,
+                                        EpubNavigationFailureReason.SCRIPT_NOT_READY
+                                    )
+                                    return@evaluateJavascript
+                                }
+                                val pageIndex = payload.optInt("pageIndex", 0).coerceAtLeast(0)
+                                val pageCount = payload.optInt("pageCount", 1).coerceAtLeast(1)
+                                val locator = payload.optJSONObject("locator")?.withChapterHref(
+                                    session.chapterHref(inFlight.request.targetChapterIndex)
+                                )?.toString()
+                                val packageRtl = session.pageProgressionDirection(
+                                    inFlight.request.targetChapterIndex
+                                ) == EpubPageProgressionDirection.RTL
+                                commitNavigation(
+                                    inFlight,
+                                    pageIndex,
+                                    pageCount,
+                                    payload.optLong("pageSerial", -1L),
+                                    locator,
+                                    payload.optBoolean("reverseAxis", packageRtl)
+                                )
+                            }
+                            else -> failNavigation(
+                                inFlight,
+                                EpubNavigationFailureReason.SCRIPT_NOT_READY
+                            )
+                        }
+                    }
+                }
+
+                fun handleNavigationMessage(
+                    view: EpubContentWebView,
+                    type: String,
+                    payload: JSONObject
+                ): Boolean {
+                    val inFlight = navigationInFlight ?: return false
+                    if (inFlight.view !== view ||
+                        !navigationTracker.accepts(inFlight.request.operationId) ||
+                        view.url.orEmpty().substringBefore('#') != inFlight.expectedDocumentUrl
+                    ) return false
+                    if (type == "ready") {
+                        if (inFlight.slot != null && !inFlight.configurationSubmitted) return true
+                        inFlight.sawReady = true
+                        logNavigation(
+                            inFlight.request,
+                            event = "epub_navigation_script_ready",
+                            result = "ready"
+                        )
+                        applyNavigationDestination(inFlight)
+                        return true
+                    }
+                    if (type != "page") return inFlight.slot != null
+                    if (!inFlight.sawReady) return true
+                    return true
+                }
+
+                fun configureNavigationView(inFlight: EpubNavigationInFlight) {
+                    if (navigationInFlight !== inFlight) return
+                    latestNavigationStage.value(
+                        inFlight.request.operationId,
+                        EpubNavigationStage.CONFIGURING
+                    )
+                    inFlight.configurationSubmitted = true
+                    val isFixedLayout = session.renditionLayout(
+                        inFlight.request.targetChapterIndex
+                    ) == EpubRenditionLayout.PRE_PAGINATED
+                    inFlight.view.settings.textZoom = if (isFixedLayout) {
+                        100
+                    } else {
+                        ((latestFontSizeSp.value / 16f) * 100f).toInt().coerceIn(50, 300)
+                    }
+                    configureReader(
+                        view = inFlight.view,
+                        session = session,
+                        chapterIndex = inFlight.request.targetChapterIndex,
+                        fontType = latestFontType.value,
+                        fontFilePath = latestFontFilePath.value,
+                        letterSpacingDp = latestLetterSpacingDp.value,
+                        bodyFontWeight = latestBodyFontWeight.value,
+                        textColorOverride = latestTextColorOverride.value,
+                        theme = latestTheme.value,
+                        textAlignment = latestTextAlignment.value,
+                        preservePublisherBackground = latestPreservePublisherBackground.value,
+                        bionicReadingEnabled = latestBionicReadingEnabled.value,
+                        chineseMode = latestChineseMode.value,
+                        restoreLocatorJson = null,
+                        restoreProgression = 0f,
+                        initialFragment = null,
+                        continuousScroll = false,
+                        nativePagingEnabled = true,
+                        pageTransition = "none",
+                        pageTransitionDurationMs = latestPageTransitionDurationMs.value,
+                        edgeTapMode = latestEdgeTapMode.value,
+                        marginTopDp = latestMarginTopDp.value,
+                        marginRightDp = latestMarginRightDp.value,
+                        marginBottomDp = latestMarginBottomDp.value,
+                        marginLeftDp = latestMarginLeftDp.value,
+                        notes = epubNotesForChapter(
+                            latestNotes.value,
+                            inFlight.request.targetChapterIndex
+                        ),
+                        locatorRequest = null,
+                        pageRequest = null,
+                        onConfigured = { configured ->
+                            if (!configured && navigationInFlight === inFlight) {
+                                failNavigation(
+                                    inFlight,
+                                    EpubNavigationFailureReason.SCRIPT_NOT_READY
+                                )
+                            }
+                        }
+                    )
+                }
+
+                fun startNavigation(request: EpubNavigationRequest) {
+                    navigationInFlight?.let {
+                        cancelNavigation(it.request.operationId, replaced = true)
+                    }
+                    if (request.targetChapterIndex !in 0 until session.chapterCount) {
+                        logNavigation(
+                            request,
+                            event = "epub_navigation_failed",
+                            level = DiagnosticLevel.WARN,
+                            result = "failed",
+                            reason = EpubNavigationFailureReason.INVALID_TARGET
+                        )
+                        latestNavigationResult.value(
+                            EpubNavigationResult.Failed(
+                                request.operationId,
+                                EpubNavigationFailureReason.INVALID_TARGET
+                            )
+                        )
+                        return
+                    }
+                    navigationTracker.begin(request.operationId)
+                    val inPlace = !request.requiresStaging(loadedChapter.value)
+                    val slot = if (inPlace) {
+                        null
+                    } else {
+                        listOf(
+                            EpubPageTurnHost.PreloadSlot.NEXT,
+                            EpubPageTurnHost.PreloadSlot.PREVIOUS
+                        ).firstOrNull { candidate ->
+                            val candidateView = if (candidate == EpubPageTurnHost.PreloadSlot.NEXT) {
+                                pageTurnHost.nextWebView
+                            } else {
+                                pageTurnHost.previousWebView
+                            }
+                            loadedChapterByView[candidateView] == request.targetChapterIndex
+                        } ?: EpubPageTurnHost.PreloadSlot.NEXT
+                    }
+                    val view = when (slot) {
+                        EpubPageTurnHost.PreloadSlot.PREVIOUS -> pageTurnHost.previousWebView
+                        EpubPageTurnHost.PreloadSlot.NEXT -> pageTurnHost.nextWebView
+                        null -> pageTurnHost.activeWebView
+                    }
+                    val generation = ++nextPreloadGeneration
+                    val requestedTarget = EpubPageTarget(
+                        request.targetChapterIndex,
+                        request.destination.requestedPageIndex()
+                    )
+                    val expectedUrl = session.chapterUrl(request.targetChapterIndex).substringBefore('#')
+                    val inFlight = EpubNavigationInFlight(
+                        request = request,
+                        view = view,
+                        slot = slot,
+                        generation = generation,
+                        requestedTarget = requestedTarget,
+                        expectedDocumentUrl = expectedUrl,
+                        startedAtMs = SystemClock.elapsedRealtime(),
+                        sawReady = inPlace
+                    )
+                    navigationInFlight = inFlight
+                    latestNavigationStage.value(request.operationId, EpubNavigationStage.STARTING)
+                    logNavigation(request, "epub_navigation_started", result = "started")
+                    view.postDelayed({
+                        if (navigationInFlight === inFlight &&
+                            navigationTracker.accepts(request.operationId)
+                        ) {
+                            failNavigation(inFlight, EpubNavigationFailureReason.TIMEOUT)
+                        }
+                    }, EPUB_NAVIGATION_TIMEOUT_MS)
+
+                    if (inPlace) {
+                        logNavigation(request, "epub_navigation_script_ready", result = "ready")
+                        applyNavigationDestination(inFlight)
+                        return
+                    }
+
+                    val prepared = preparedPageByView[view]
+                    val canReusePrepared = request.destination !is EpubNavigationDestination.Fragment &&
+                        request.destination !is EpubNavigationDestination.Locator &&
+                        prepared != null &&
+                        slot != null &&
+                        pageTurnHost.isPreloadReady(slot) &&
+                        pageTurnHost.preloadTarget(slot) == prepared.actualTarget &&
+                        prepared.actualTarget.chapterIndex == request.targetChapterIndex &&
+                        request.destination.matchesPage(
+                            prepared.actualTarget.pageIndex,
+                            prepared.pageCount
+                        )
+                    if (canReusePrepared) {
+                        inFlight.sawReady = true
+                        inFlight.destinationApplied = true
+                        logNavigation(
+                            request,
+                            "epub_navigation_resource_response",
+                            result = "reused"
+                        )
+                        logNavigation(
+                            request,
+                            "epub_navigation_page_finished",
+                            result = "reused"
+                        )
+                        logNavigation(request, "epub_navigation_script_ready", result = "ready")
+                        commitNavigation(
+                            inFlight,
+                            prepared.actualTarget.pageIndex,
+                            prepared.pageCount,
+                            prepared.pageSerial,
+                            prepared.locatorJson,
+                            prepared.reverseAxis
+                        )
+                        return
+                    }
+
+                    preparedPageByView.remove(view)
+                    minimumActivePageSerialByView.remove(view)
+                    promotedActiveTargetByView.remove(view)
+                    forgetTtsPageView(view)
+                    preloadRequestByView[view] = EpubPreloadRequest(requestedTarget, generation)
+                    pageTurnHost.markPreloadLoading(
+                        requireNotNull(slot),
+                        requestedTarget,
+                        generation
+                    )
+                    latestNavigationStage.value(
+                        request.operationId,
+                        EpubNavigationStage.LOADING_DOCUMENT
+                    )
+                    if (loadedChapterByView[view] == request.targetChapterIndex &&
+                        view.url.orEmpty().substringBefore('#') == expectedUrl
+                    ) {
+                        logNavigation(
+                            request,
+                            "epub_navigation_resource_response",
+                            result = "reused"
+                        )
+                        logNavigation(
+                            request,
+                            "epub_navigation_page_finished",
+                            result = "reused"
+                        )
+                        configureNavigationView(inFlight)
+                    } else {
+                        loadedChapterByView[view] = request.targetChapterIndex
+                        preloadConfigurationByView.remove(view)
+                        view.loadUrl(session.chapterUrl(request.targetChapterIndex))
+                    }
                 }
 
                 fun handlePreparedMessage(view: EpubContentWebView, payload: JSONObject) {
@@ -934,10 +1530,7 @@ internal fun EpubWebViewReader(
                                 if (target.first == messageChapterIndex &&
                                     !target.second.isNullOrBlank()
                                 ) {
-                                    // 先让 ReaderScreen 捕获来源位置（用于左上角“返回刚才页”），
-                                    // 再在当前 WebView 内直接跳转。
                                     latestInternalLink.value(target.first, target.second)
-                                    view.jumpToInternalFragment(target.second)
                                 } else if (target.first != messageChapterIndex) {
                                     latestInternalLink.value(target.first, target.second)
                                 }
@@ -1064,7 +1657,7 @@ internal fun EpubWebViewReader(
                                     val payload = root.optJSONObject("payload") ?: JSONObject()
                                     if (type == "pagePrepared") {
                                         handlePreparedMessage(contentView, payload)
-                                    } else {
+                                    } else if (!handleNavigationMessage(contentView, type, payload)) {
                                         handleActiveMessage(contentView, type, payload)
                                     }
                                 }
@@ -1077,8 +1670,22 @@ internal fun EpubWebViewReader(
                             sourceView: WebView?,
                             request: WebResourceRequest
                         ): WebResourceResponse {
-                            return session.assetLoader.shouldInterceptRequest(request.url)
-                                ?: blockedResponse()
+                            val response = session.assetLoader.shouldInterceptRequest(request.url)
+                            if (request.isForMainFrame) {
+                                (sourceView as? EpubContentWebView)?.post {
+                                    val inFlight = navigationInFlight
+                                    if (inFlight?.view === sourceView &&
+                                        navigationTracker.accepts(inFlight.request.operationId)
+                                    ) {
+                                        logNavigation(
+                                            inFlight.request,
+                                            event = "epub_navigation_resource_response",
+                                            result = if (response != null) "served" else "blocked"
+                                        )
+                                    }
+                                }
+                            }
+                            return response ?: blockedResponse()
                         }
 
                         override fun shouldOverrideUrlLoading(
@@ -1097,7 +1704,6 @@ internal fun EpubWebViewReader(
                                     !internal.second.isNullOrBlank()
                                 ) {
                                     latestInternalLink.value(internal.first, internal.second)
-                                    contentView.jumpToInternalFragment(internal.second)
                                 } else if (internal.first != sourceChapter) {
                                     latestInternalLink.value(internal.first, internal.second)
                                 }
@@ -1118,6 +1724,14 @@ internal fun EpubWebViewReader(
                             super.onReceivedError(sourceView, failedRequest, error)
                             if (!failedRequest.isForMainFrame) return
                             val contentView = sourceView as? EpubContentWebView ?: return
+                            val navigation = navigationInFlight
+                            if (navigation?.view === contentView) {
+                                failNavigation(
+                                    navigation,
+                                    EpubNavigationFailureReason.DOCUMENT_ERROR
+                                )
+                                return
+                            }
                             val (slot, request) = preloadRequestFor(contentView) ?: return
                             if (preloadRequestByView[contentView] !== request) return
                             pageTurnHost.markPreloadFailed(
@@ -1141,6 +1755,14 @@ internal fun EpubWebViewReader(
                             )
                             if (!failedRequest.isForMainFrame) return
                             val contentView = sourceView as? EpubContentWebView ?: return
+                            val navigation = navigationInFlight
+                            if (navigation?.view === contentView) {
+                                failNavigation(
+                                    navigation,
+                                    EpubNavigationFailureReason.HTTP_ERROR
+                                )
+                                return
+                            }
                             val (slot, request) = preloadRequestFor(contentView) ?: return
                             if (preloadRequestByView[contentView] !== request) return
                             pageTurnHost.markPreloadFailed(
@@ -1158,6 +1780,24 @@ internal fun EpubWebViewReader(
                         ): Boolean {
                             if (rendererGoneHandled) return true
                             rendererGoneHandled = true
+                            navigationInFlight?.let { navigation ->
+                                if (navigationTracker.finish(navigation.request.operationId)) {
+                                    logNavigation(
+                                        navigation.request,
+                                        event = "epub_navigation_failed",
+                                        level = DiagnosticLevel.ERROR,
+                                        result = "failed",
+                                        reason = EpubNavigationFailureReason.RENDERER_GONE
+                                    )
+                                    latestNavigationResult.value(
+                                        EpubNavigationResult.Failed(
+                                            navigation.request.operationId,
+                                            EpubNavigationFailureReason.RENDERER_GONE
+                                        )
+                                    )
+                                }
+                            }
+                            navigationInFlight = null
                             chapterLoadPending.value = false
                             readyChapter.value = -1
                             dispatchedSearchToken.value = -1
@@ -1183,6 +1823,20 @@ internal fun EpubWebViewReader(
 
                         override fun onPageFinished(sourceView: WebView, url: String?) {
                             val contentView = sourceView as? EpubContentWebView ?: return
+                            val navigation = navigationInFlight
+                            if (navigation?.view === contentView && navigation.slot != null) {
+                                if (url.orEmpty().substringBefore('#') ==
+                                    navigation.expectedDocumentUrl
+                                ) {
+                                    logNavigation(
+                                        navigation.request,
+                                        event = "epub_navigation_page_finished",
+                                        result = "finished"
+                                    )
+                                    configureNavigationView(navigation)
+                                }
+                                return
+                            }
                             if (pageTurnHost.roleOf(contentView) !=
                                 EpubPageTurnHost.WebViewRole.ACTIVE
                             ) {
@@ -1376,6 +2030,8 @@ internal fun EpubWebViewReader(
                     updateAdjacentPreloads(target.chapterIndex, target.pageIndex, pageCount)
                 }
                 pageTurnHost.onInvalidatePreloads = ::invalidateAdjacentPreloads
+                navigationStartHandler.value = ::startNavigation
+                navigationCancelHandler.value = ::cancelNavigation
 
                 webViewState.value = activeWebView
                 pageTurnHostState.value = pageTurnHost
@@ -1546,6 +2202,15 @@ internal fun EpubWebViewReader(
         }
     }
 
+    LaunchedEffect(navigationRequest?.operationId, pageTurnHostState.value) {
+        val request = navigationRequest
+        if (request == null) {
+            navigationCancelHandler.value?.invoke(null, false)
+        } else {
+            navigationStartHandler.value?.invoke(request)
+        }
+    }
+
     LaunchedEffect(
         ttsCurrentSentence,
         ttsHighlightColor,
@@ -1625,6 +2290,9 @@ internal fun EpubWebViewReader(
         }
         onDispose {
             imagePreviewAnimationJob?.cancel()
+            navigationCancelHandler.value?.invoke(null, false)
+            navigationStartHandler.value = null
+            navigationCancelHandler.value = null
             latestPageTextProviderReady.value(null)
             latestPageTurnHandlerReady.value(null)
             pageTurnHostState.value?.let { host ->
@@ -1747,7 +2415,8 @@ private fun configureReader(
     notes: List<Note>,
     locatorRequest: EpubLocatorRequest?,
     pageRequest: EpubPageRequest?,
-    preparePageRequest: Boolean = false
+    preparePageRequest: Boolean = false,
+    onConfigured: ((Boolean) -> Unit)? = null
 ) {
     val progression = when (session.pageProgressionDirection(chapterIndex)) {
         EpubPageProgressionDirection.RTL -> "rtl"
@@ -1851,9 +2520,11 @@ private fun configureReader(
         }
         append("window.LumiReader.setHighlights(")
         append(highlightsJson(notes).toString())
-        append(");}")
+        append(");}Boolean(window.LumiReader);")
     }
-    view.evaluateJavascript(script, null)
+    view.evaluateJavascript(script) { result ->
+        onConfigured?.invoke(result == "true")
+    }
 }
 
 private fun ReaderEdgeTapAction.toEpubTurnDirection(): Int = when (this) {
@@ -1867,24 +2538,6 @@ private fun WebView.turnEpubPage(action: ReaderEdgeTapAction) {
         ReaderEdgeTapAction.NEXT_PAGE -> "next"
     }
     evaluateJavascript("window.LumiReader&&window.LumiReader.$command();", null)
-}
-
-/**
- * 同章节内部锚点直接在当前 WebView 内跳转，避免经过 ReaderScreen -> setChapter
- * 的同章节 early-return 而静默失效。目标不存在时给用户一个可见反馈。
- */
-private fun EpubContentWebView.jumpToInternalFragment(fragment: String?) {
-    if (fragment.isNullOrBlank()) return
-    evaluateJavascript(
-        "window.LumiReader?window.LumiReader.goToFragment(" +
-            JSONObject.quote(fragment) + "):false"
-    ) { result ->
-        if (result?.trim() == "false" && isAttachedToWindow) {
-            post {
-                if (isAttachedToWindow) showMissingLinkTarget()
-            }
-        }
-    }
 }
 
 private fun EpubContentWebView.showMissingLinkTarget() {
@@ -1990,7 +2643,7 @@ private fun JSONObject.withChapterHref(href: String): JSONObject = apply {
     put("href", href)
 }
 
-private fun EpubLocator.toJson(): JSONObject = JSONObject()
+internal fun EpubLocator.toJson(): JSONObject = JSONObject()
     .put("version", version)
     .put("href", href)
     .put("domPath", JSONArray(domPath))

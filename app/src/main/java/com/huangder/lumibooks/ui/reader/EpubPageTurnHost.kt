@@ -521,6 +521,48 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         PreloadSlot.NEXT -> nextReady
     }
 
+    fun promotePreparedPage(
+        slot: PreloadSlot,
+        target: EpubPageTarget,
+        pageCount: Int
+    ): Boolean {
+        val slotTarget = preloadTarget(slot)
+        if (!isPreloadReady(slot) || slotTarget != target) return false
+
+        controller.abortAnim()
+        resetAnimationOverlay()
+        pendingSlideVisualDirection = PageAnimationController.Direction.NONE
+        queuedSlideTurnDirection = PageAnimationController.Direction.NONE
+        curlTurnSequencer.clear()
+        slideVisualPositionDirty = false
+        lastSlideVisualDirection = PageAnimationController.Direction.NONE
+        waitingForTarget = null
+        waitingForPreparedActivePage = false
+        waitingCurlDirection = PageAnimationController.Direction.NONE
+        pagingGesture = false
+        busyTouchStream = false
+        clearBusyCurlGesture()
+        busySlideTouchStream = false
+        clearPendingSlideInput()
+
+        val direction = if (slot == PreloadSlot.NEXT) {
+            PageAnimationController.Direction.NEXT
+        } else {
+            PageAnimationController.Direction.PREV
+        }
+        if (!advanceSlideRoles(direction, target, notifyLookahead = false)) return false
+        currentPageCount = pageCount.coerceAtLeast(1)
+        slideVisualPositionDirty = false
+        lastSlideVisualDirection = PageAnimationController.Direction.NONE
+        resetLivePageViews()
+        invalidate()
+        return true
+    }
+
+    fun currentPageTarget(): EpubPageTarget = currentTarget
+
+    fun currentPageCount(): Int = currentPageCount
+
     fun markPreloadLoading(
         slot: PreloadSlot,
         target: EpubPageTarget?,
@@ -1390,7 +1432,8 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
 
     private fun advanceSlideRoles(
         direction: PageAnimationController.Direction,
-        target: EpubPageTarget
+        target: EpubPageTarget,
+        notifyLookahead: Boolean = true
     ): Boolean {
         val oldPreviousView = previousRoleView
         val oldActiveView = activeRoleView
@@ -1471,7 +1514,9 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         currentPageCount = promotedPageCount.coerceAtLeast(1)
         slideVisualPositionDirty = true
         lastSlideVisualDirection = direction
-        onSlideVisualPageAdvanced?.invoke(currentTarget, currentPageCount)
+        if (notifyLookahead) {
+            onSlideVisualPageAdvanced?.invoke(currentTarget, currentPageCount)
+        }
         return true
     }
 
