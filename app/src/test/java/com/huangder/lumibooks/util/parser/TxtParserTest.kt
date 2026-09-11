@@ -2,15 +2,19 @@ package com.huangder.lumibooks.util.parser
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.nio.charset.Charset
+import java.security.MessageDigest
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.runBlocking
 
 class TxtParserTest {
     @get:Rule
@@ -69,6 +73,91 @@ class TxtParserTest {
 
         assertEquals(0, position?.first)
         assertEquals(2, position?.second)
+    }
+
+    @Test
+    fun mapsByteAnchorAfterLeadingChapterLineBreaks() {
+        val file = writeText(
+            "leading-break-anchor.txt",
+            "第1章\n正文一\n\n\n第2章\n甲😀乙\n",
+            Charsets.UTF_8
+        )
+        val parser = TxtParser().apply { parse(file.absolutePath) }
+
+        val byte = parser.characterOffsetToByte(1, 2, endBias = true)!!
+
+        assertEquals(1 to 2, parser.byteToCharacterPosition(byte))
+    }
+
+    @Test
+    fun byteAnchorsRoundTripAcrossSupportedMultibyteEncodings() {
+        val encodings = listOf(
+            Triple("utf8-anchor.txt", TxtEncoding.UTF_8, Charsets.UTF_8),
+            Triple("gb18030-anchor.txt", TxtEncoding.GB18030, Charset.forName("GB18030")),
+            Triple("utf16le-anchor.txt", TxtEncoding.UTF_16LE, Charsets.UTF_16LE)
+        )
+
+        encodings.forEach { (name, selectedEncoding, charset) ->
+            val file = writeText(name, "第1章 开始\n正文甲\n第2章 继续\n甲😀乙丙", charset)
+            val parser = TxtParser().apply {
+                this.selectedEncoding = selectedEncoding
+                parse(file.absolutePath)
+            }
+            val offset = parser.getChapterContent(1).toString().indexOf('乙')
+            val byteAnchor = requireNotNull(parser.characterOffsetToByte(1, offset))
+
+            assertEquals(name, 1 to offset, parser.byteToCharacterPosition(byteAnchor))
+            assertEquals(
+                name,
+                byteAnchor,
+                parser.characterOffsetToByte(1, offset)
+            )
+            parser.close()
+        }
+    }
+
+    @Test
+    fun repeatedOpenKeepsChapterBoundariesAndRestoresSameSourceByte() {
+        val file = writeText(
+            "stable-reopen.txt",
+            buildString {
+                repeat(40) { chapter ->
+                    append("第${chapter + 1}章 标题$chapter\n")
+                    append("这是正文$chapter，包含多字节字符😀。\n\n")
+                }
+            },
+            Charsets.UTF_8
+        )
+        val first = TxtParser()
+        val firstBook = first.parse(file.absolutePath)
+        val signatures = (0 until first.getChapterCount()).map { index ->
+            Triple(
+                firstBook.chapters[index].title,
+                first.getChapterByteRange(index)?.first,
+                first.getChapterByteRange(index)?.second
+            )
+        }
+        val byteAnchor = first.characterOffsetToByte(17, 9)!!
+        val originalHash = MessageDigest.getInstance("SHA-256").digest(file.readBytes())
+        first.close()
+
+        repeat(10) {
+            val reopened = TxtParser()
+            val reopenedBook = reopened.parse(file.absolutePath)
+            val reopenedSignatures = (0 until reopened.getChapterCount()).map { index ->
+                Triple(
+                    reopenedBook.chapters[index].title,
+                    reopened.getChapterByteRange(index)?.first,
+                    reopened.getChapterByteRange(index)?.second
+                )
+            }
+            val restored = reopened.byteToCharacterPosition(byteAnchor)!!
+
+            assertTrue(originalHash.contentEquals(MessageDigest.getInstance("SHA-256").digest(file.readBytes())))
+            assertEquals(signatures, reopenedSignatures)
+            assertEquals(byteAnchor, reopened.characterOffsetToByte(restored.first, restored.second))
+            reopened.close()
+        }
     }
 
     @Test
@@ -184,6 +273,120 @@ class TxtParserTest {
         }
         assertTrue(target != null)
         assertTrue(parser.getChapterContent(target!!).isNotBlank())
+    }
+
+    @Test
+    fun semanticSnapshotDoesNotMutateFastIndexUntilInstalled() {
+        val file = writeText(
+            "snapshot-install.txt",
+            buildString {
+                repeat(2_000) { chapter ->
+                    append("第${chapter + 1}章 标题\n正文😀$chapter。\n")
+                }
+            },
+            Charsets.UTF_8
+        )
+        val parser = TxtParser()
+        parser.parseFastOpen(file.absolutePath)
+        val fastRanges = (0 until parser.getChapterCount()).map(parser::getChapterByteRange)
+
+        val snapshot = parser.buildSemanticIndexSnapshot(file.absolutePath)
+
+        assertEquals(TxtIndexState.FAST_PARTIAL, parser.indexState)
+        assertEquals(fastRanges, (0 until parser.getChapterCount()).map(parser::getChapterByteRange))
+        parser.installIndexSnapshot(snapshot)
+        assertEquals(TxtIndexState.COMPLETE, parser.indexState)
+        assertEquals(snapshot.chapters.size, parser.getChapterCount())
+    }
+
+    @Test
+    fun coordinatorSharesOneSemanticBuildForTheSameIndexKey() = runBlocking {
+        val file = writeText("coordinated.txt", "第1章 开始\n正文一\n第2章 继续\n正文二", Charsets.UTF_8)
+        val parser = TxtParser().apply { parseFastOpen(file.absolutePath) }
+        val key = parser.semanticIndexKey(file.absolutePath)
+        val builds = AtomicInteger()
+        TxtIndexCoordinator.clearForTesting()
+
+        val first = TxtIndexCoordinator.getOrBuild(key) {
+            builds.incrementAndGet()
+            parser.buildSemanticIndexSnapshot(file.absolutePath)
+        }
+        val second = TxtIndexCoordinator.getOrBuild(key) {
+            builds.incrementAndGet()
+            parser.buildSemanticIndexSnapshot(file.absolutePath)
+        }
+
+        assertTrue(first === second)
+        assertEquals(first.await(), second.await())
+        assertEquals(1, builds.get())
+        TxtIndexCoordinator.clearForTesting()
+    }
+
+    @Test
+    fun invalidationPreventsAnOldBuildFromRepopulatingTheCompletedCache() = runBlocking {
+        val file = writeText(
+            "invalidate-coordinated.txt",
+            "第1章 开始\n正文一\n第2章 继续\n正文二",
+            Charsets.UTF_8
+        )
+        val parser = TxtParser().apply { parseFastOpen(file.absolutePath) }
+        val key = parser.semanticIndexKey(file.absolutePath)
+        val snapshot = parser.buildSemanticIndexSnapshot(file.absolutePath)
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        TxtIndexCoordinator.clearForTesting()
+
+        try {
+            val stale = TxtIndexCoordinator.getOrBuild(key) {
+                started.countDown()
+                release.await()
+                snapshot
+            }
+            assertTrue(started.await(5, TimeUnit.SECONDS))
+
+            TxtIndexCoordinator.invalidate(key.sourceIdentity)
+            release.countDown()
+            runCatching { stale.await() }
+
+            assertNull(TxtIndexCoordinator.completed(key))
+            assertEquals(snapshot, TxtIndexCoordinator.getOrBuild(key) { snapshot }.await())
+            assertEquals(snapshot, TxtIndexCoordinator.completed(key))
+        } finally {
+            release.countDown()
+            TxtIndexCoordinator.clearForTesting()
+            parser.close()
+        }
+    }
+
+    @Test
+    fun fastOpenReusesACompletedProcessIndexWithoutRebuilding() = runBlocking {
+        val file = writeText(
+            "reuse-completed-index.txt",
+            "第1章 开始\n正文一\n第2章 继续\n正文二",
+            Charsets.UTF_8
+        )
+        val first = TxtParser().apply { parseFastOpen(file.absolutePath) }
+        val key = first.semanticIndexKey(file.absolutePath)
+        val builds = AtomicInteger()
+        TxtIndexCoordinator.clearForTesting()
+
+        try {
+            TxtIndexCoordinator.getOrBuild(key) {
+                builds.incrementAndGet()
+                first.buildSemanticIndexSnapshot(file.absolutePath)
+            }.await()
+            val reopened = TxtParser()
+            val result = reopened.parseFastOpen(file.absolutePath)
+
+            assertEquals(TxtIndexState.COMPLETE, result.state)
+            assertEquals(1, builds.get())
+            assertEquals("第1章 开始", result.content.chapters[0].title)
+            assertTrue(reopened.getChapterContent(1).contains("正文二"))
+            reopened.close()
+        } finally {
+            TxtIndexCoordinator.clearForTesting()
+            first.close()
+        }
     }
 
     @Test

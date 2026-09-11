@@ -8,6 +8,7 @@ import com.huangder.lumibooks.util.SeekableBookSource
 import com.huangder.lumibooks.util.cache.BookFingerprint
 import com.huangder.lumibooks.util.cache.ReaderCacheStore
 import com.huangder.lumibooks.util.performance.ReaderOpenPerformance
+import com.huangder.lumibooks.util.diagnostics.DiagnosticLoggerRegistry
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -21,6 +22,7 @@ import java.nio.charset.Charset
 import java.nio.charset.CodingErrorAction
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
 import java.util.LinkedHashMap
 
 enum class TxtIndexState {
@@ -33,6 +35,35 @@ data class TxtOpenResult(
     val content: BookContent,
     val state: TxtIndexState,
     val sourceLength: Long
+)
+
+data class TxtIndexKey(
+    val cacheScope: String,
+    val sourceIdentity: String,
+    val sourceVersion: String,
+    val encoding: String,
+    val tocRule: String,
+    val localeTag: String
+)
+
+data class TxtIndexChapter(
+    val index: Int,
+    val title: String,
+    val startByte: Long,
+    val endByte: Long,
+    val role: TxtTocHeadingRole,
+    val level: Int
+)
+
+/** A complete TXT index that is built off to the side and installed in one state change. */
+data class TxtIndexSnapshot(
+    val key: TxtIndexKey,
+    val content: BookContent,
+    val charsetName: String,
+    val contentStart: Long,
+    val sourceLength: Long,
+    val chapters: List<TxtIndexChapter>,
+    val diagnostics: List<TxtTocRuleDiagnostics>
 )
 
 class TxtParser(private val context: Context? = null) : BookParser {
@@ -121,7 +152,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
                 BookFileAccess.openSeekable(
                     requireNotNull(context) { "Context is required for document URIs" },
                     filePath,
-                    writable = true
+                    writable = false
                 )
             } else null
         }
@@ -133,28 +164,86 @@ class TxtParser(private val context: Context? = null) : BookParser {
         synchronized(contentCache) { contentCache.clear() }
         synchronized(htmlCache) { htmlCache.clear() }
         detectedEmbeddedTocRange = null
-        encodingInfo = ReaderOpenPerformance.trace("txt_encoding_detect") { resolveEncoding(file) }
-        entries = buildFastEntries(file, encodingInfo)
-        indexState = TxtIndexState.FAST_PARTIAL
+        val completedSnapshot = TxtIndexCoordinator.completed(semanticIndexKey(filePath))
+            ?.takeIf { it.sourceLength == file.length() }
+        if (completedSnapshot != null) {
+            installIndexSnapshot(completedSnapshot)
+        } else {
+            val cached = ReaderOpenPerformance.trace("txt_index_cache_read") { loadChapterCache(file) }
+            if (cached != null) {
+                encodingInfo = cached.first
+                entries = cached.second
+                indexState = TxtIndexState.COMPLETE
+            } else {
+                encodingInfo = ReaderOpenPerformance.trace("txt_encoding_detect") { resolveEncoding(file) }
+                entries = buildFastEntries(file, encodingInfo)
+                indexState = TxtIndexState.FAST_PARTIAL
+            }
+        }
         indexedSourceLength = file.length()
         val title = context?.let { FileUtils.getFileNameFromLocation(it, filePath) }
             ?.substringBeforeLast('.')?.ifBlank { null } ?: file.nameWithoutExtension
         TxtOpenResult(
-            content = BookContent(
-                title = title,
-                author = context?.getString(R.string.book_author_unknown) ?: "Unknown author",
-                chapters = entries.map { entry -> Chapter(entry.index, entry.title, "", "") },
-                tocEntries = emptyList()
-            ),
+            content = currentBookContent(title, includeToc = indexState == TxtIndexState.COMPLETE),
             state = indexState,
             sourceLength = indexedSourceLength
         )
         }
     }
 
-    /** Rebuilds the semantic index in the background and atomically updates this parser. */
-    fun rebuildSemanticIndex(filePath: String): BookContent = synchronized(parseLock(filePath)) {
-        synchronized(parserStateLock) { parseLocked(filePath) }
+    /** Rebuilds the semantic index off-thread and atomically updates this parser. */
+    fun rebuildSemanticIndex(filePath: String): BookContent {
+        return installIndexSnapshot(buildSemanticIndexSnapshot(filePath))
+    }
+
+    /** Builds without touching the chapter table currently used by this reader. */
+    fun buildSemanticIndexSnapshot(filePath: String): TxtIndexSnapshot {
+        val worker = TxtParser(context).apply {
+            selectedEncoding = this@TxtParser.selectedEncoding
+            selectedTocRule = this@TxtParser.selectedTocRule
+        }
+        return try {
+            val content = worker.parse(filePath)
+            worker.captureIndexSnapshot(filePath, content)
+        } finally {
+            worker.close()
+        }
+    }
+
+    /** Installs a completed index as a single parser-state transition. */
+    fun installIndexSnapshot(snapshot: TxtIndexSnapshot): BookContent {
+        return synchronized(parserStateLock) {
+            val location = sourceLocation.ifBlank {
+                error("TXT source is no longer attached")
+            }
+            require(semanticIndexKey(location) == snapshot.key) {
+                "TXT index does not match the active source or parsing configuration"
+            }
+            val file = sourceFile ?: error("TXT source is no longer attached")
+            require(file.length() == snapshot.sourceLength) { "TXT source changed while indexing" }
+            encodingInfo = EncodingInfo(Charset.forName(snapshot.charsetName), snapshot.contentStart)
+            entries = snapshot.chapters.map { chapter ->
+                TxtChapterEntry(
+                    index = chapter.index,
+                    title = chapter.title,
+                    startByte = chapter.startByte,
+                    endByte = chapter.endByte,
+                    role = chapter.role,
+                    level = chapter.level
+                )
+            }
+            lastTocDiagnostics = snapshot.diagnostics.map { it.copy(samples = it.samples.toList()) }
+            detectedEmbeddedTocRange = null
+            indexedSourceLength = snapshot.sourceLength
+            indexState = TxtIndexState.COMPLETE
+            synchronized(contentCache) { contentCache.clear() }
+            synchronized(htmlCache) { htmlCache.clear() }
+            logIndexSnapshotInstalled(snapshot)
+            snapshot.content.copy(
+                chapters = snapshot.content.chapters.toList(),
+                tocEntries = snapshot.content.tocEntries.toList()
+            )
+        }
     }
 
     /**
@@ -181,7 +270,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
                 BookFileAccess.openSeekable(
                     requireNotNull(context) { "Context is required for document URIs" },
                     filePath,
-                    writable = true
+                    writable = false
                 )
             } else null
         }
@@ -259,7 +348,10 @@ class TxtParser(private val context: Context? = null) : BookParser {
         indexState = TxtIndexState.COMPLETE
         indexedSourceLength = file.length()
 
-        return BookContent(
+        return currentBookContent(displayTitle, includeToc = !skipTocParsing)
+    }
+
+    private fun currentBookContent(displayTitle: String, includeToc: Boolean): BookContent = BookContent(
             title = displayTitle,
             author = context?.getString(R.string.book_author_unknown) ?: "Unknown author",
             chapters = entries.map { entry ->
@@ -270,7 +362,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
                     htmlContent = ""
                 )
             },
-            tocEntries = if (skipTocParsing) emptyList() else entries.map { entry ->
+            tocEntries = if (!includeToc) emptyList() else entries.map { entry ->
                 TocEntry(
                     title = entry.title,
                     level = entry.level,
@@ -278,6 +370,70 @@ class TxtParser(private val context: Context? = null) : BookParser {
                     isGroup = entry.role == TxtTocHeadingRole.VOLUME
                 )
             }
+        )
+
+    private fun captureIndexSnapshot(filePath: String, content: BookContent): TxtIndexSnapshot =
+        synchronized(parserStateLock) {
+            check(indexState == TxtIndexState.COMPLETE) { "Only complete TXT indexes can be shared" }
+            TxtIndexSnapshot(
+                key = semanticIndexKey(filePath),
+                content = content.copy(
+                    chapters = content.chapters.toList(),
+                    tocEntries = content.tocEntries.toList()
+                ),
+                charsetName = encodingInfo.charset.name(),
+                contentStart = encodingInfo.contentStart,
+                sourceLength = indexedSourceLength,
+                chapters = entries.map { entry ->
+                    TxtIndexChapter(
+                        index = entry.index,
+                        title = entry.title,
+                        startByte = entry.startByte,
+                        endByte = entry.endByte,
+                        role = entry.role,
+                        level = entry.level
+                    )
+                },
+                diagnostics = lastTocDiagnostics.map { it.copy(samples = it.samples.toList()) }
+            )
+        }
+
+    fun semanticIndexKey(filePath: String): TxtIndexKey {
+        val localeTag = context?.resources?.configuration?.locales?.get(0)?.toLanguageTag().orEmpty()
+        val fingerprint = context?.let { BookFingerprint.resolve(it, filePath) }
+        val localFile = File(filePath)
+        val identity = fingerprint?.identity
+            ?: runCatching { localFile.canonicalPath }.getOrDefault(localFile.absolutePath)
+        val sourceVersion = fingerprint?.let { "${it.key}:${it.reliable}" }
+            ?: "${localFile.length()}:${localFile.lastModified()}"
+        return TxtIndexKey(
+            cacheScope = context?.cacheDir?.absolutePath.orEmpty(),
+            sourceIdentity = identity,
+            sourceVersion = sourceVersion,
+            encoding = selectedEncoding.storageValue,
+            tocRule = TxtTocRuleCodec.fingerprint(selectedTocRule),
+            localeTag = localeTag
+        )
+    }
+
+    private fun logIndexSnapshotInstalled(snapshot: TxtIndexSnapshot) {
+        val boundarySignature = MessageDigest.getInstance("SHA-256")
+            .digest(
+                snapshot.chapters.joinToString("|") { chapter ->
+                    "${chapter.index}:${chapter.startByte}:${chapter.endByte}:${chapter.title}"
+                }.toByteArray(Charsets.UTF_8)
+            )
+            .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+        DiagnosticLoggerRegistry.logger?.log(
+            category = "txt",
+            event = "semantic_index_installed",
+            attributes = mapOf(
+                "sourceFingerprint" to snapshot.key.sourceVersion,
+                "boundarySignature" to boundarySignature,
+                "chapterCount" to snapshot.chapters.size,
+                "sourceLength" to snapshot.sourceLength,
+                "encoding" to snapshot.charsetName
+            )
         )
     }
 
@@ -1534,7 +1690,10 @@ class TxtParser(private val context: Context? = null) : BookParser {
                 .let { if (it < 0) raw.length else it }
             val visibleEnd = raw.indexOfLast { it != '\uFEFF' && it != '\r' && it != '\n' } + 1
             val visible = raw.substring(visibleStart, visibleEnd.coerceAtLeast(visibleStart))
-            val targetBytes = (bounded - entry.startByte).toInt().coerceAtLeast(0)
+            val visibleStartBytes = strictEncode(raw.substring(0, visibleStart), charset).size
+            val targetBytes = ((bounded - entry.startByte) - visibleStartBytes)
+                .coerceIn(0L, Int.MAX_VALUE.toLong())
+                .toInt()
             var cursor = 0
             var characterOffset = 0
             while (characterOffset < visible.length) {
@@ -1565,9 +1724,28 @@ class TxtParser(private val context: Context? = null) : BookParser {
         }
         return synchronized(parseLock(location)) {
             synchronized(parserStateLock) {
+                ensureWritableSourceLocked()
                 rewriteWithOperationsLocked(operations, reparseAfterWrite)
             }
         }
+    }
+
+    private fun ensureWritableSourceLocked() {
+        if (!BookFileAccess.isContentUri(sourceLocation)) return
+        val expectedLength = sourceFile?.length()
+        val writableLease = BookFileAccess.openSeekable(
+            requireNotNull(context) { "Context is required for document URIs" },
+            sourceLocation,
+            writable = true
+        )
+        val writableFile = File(writableLease.path)
+        if (expectedLength != null && writableFile.length() != expectedLength) {
+            writableLease.close()
+            error("TXT source changed after it was opened")
+        }
+        sourceLease?.close()
+        sourceLease = writableLease
+        sourceFile = writableFile
     }
 
     private fun rewriteWithOperationsLocked(
@@ -1662,6 +1840,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
             context?.let { ctx ->
                 ReaderCacheStore.get(ctx).invalidate(sourceLocation.ifBlank { file.absolutePath })
             }
+            TxtIndexCoordinator.invalidate(semanticIndexKey(sourceLocation).sourceIdentity)
             synchronized(contentCache) { contentCache.clear() }
             synchronized(htmlCache) { htmlCache.clear() }
             val reparseError = if (reparseAfterWrite) {
