@@ -105,10 +105,23 @@ fun WebdavSettingsDetail(
             )
 
             WebdavSecondaryButton(
-                label = stringResource(R.string.webdav_test_connection),
+                label = stringResource(
+                    if (uiState.webdavTesting) R.string.webdav_test_running
+                    else R.string.webdav_test_connection
+                ),
                 icon = AppIcons.Pulse,
+                enabled = !uiState.webdavTesting,
                 onClick = viewModel::testWebdavConnection
             )
+            if (uiState.webdavTestResult.isNotBlank()) {
+                Text(
+                    text = uiState.webdavTestResult,
+                    fontSize = AppType.Caption,
+                    color = if (uiState.webdavTestSucceeded) AppColors.TextSecondary
+                        else MaterialTheme.colorScheme.error,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
             WebdavSecondaryButton(
                 label = stringResource(R.string.webdav_sync_now),
                 icon = AppIcons.ArrowsClockwise,
@@ -209,6 +222,7 @@ fun WebdavConfigurationDetail(
             onValueChange = { draftServerUrl = it; serverUrlError = false },
             label = { Text(stringResource(R.string.webdav_server_url_label)) },
             placeholder = { Text(stringResource(R.string.webdav_server_url_hint)) },
+            supportingText = { Text(stringResource(R.string.webdav_server_url_help)) },
             isError = serverUrlError,
             singleLine = true,
             shape = RoundedCornerShape(12.dp),
@@ -371,14 +385,21 @@ private fun WebdavSecondaryButton(
     label: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     destructive: Boolean = false,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
+    val contentColor = when {
+        destructive -> MaterialTheme.colorScheme.error
+        enabled -> AppColors.TextPrimary
+        else -> AppColors.TextSecondary
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppRadius.md))
             .background(AppColors.CardBg)
             .clickable(
+                enabled = enabled,
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick
@@ -396,7 +417,7 @@ private fun WebdavSecondaryButton(
         Text(
             text = label,
             fontSize = AppType.Body,
-            color = if (destructive) MaterialTheme.colorScheme.error else AppColors.TextPrimary
+            color = contentColor
         )
     }
 }

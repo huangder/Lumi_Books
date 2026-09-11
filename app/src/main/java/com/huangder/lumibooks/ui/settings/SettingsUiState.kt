@@ -115,6 +115,9 @@ data class SettingsUiState(
     val isWebdavSyncing: Boolean = false,
     val webdavSyncResult: String = "",
     val webdavSyncSucceeded: Boolean = true,
+    val webdavTesting: Boolean = false,
+    val webdavTestResult: String = "",
+    val webdavTestSucceeded: Boolean = true,
 
     // 检查更新
     val updateCheck: UpdateCheckDisplay = UpdateCheckDisplay(),
