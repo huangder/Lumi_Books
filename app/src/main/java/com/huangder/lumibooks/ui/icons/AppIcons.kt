@@ -106,6 +106,11 @@ object AppIcons {
     val Stop = PhosphorIcons.Regular.Stop
     val SkipBack = PhosphorIcons.Regular.SkipBack
     val SkipForward = PhosphorIcons.Regular.SkipForward
+    // 听书面板使用实心圆润的播放控制图标
+    val PlayFilled = PhosphorIcons.Fill.Play
+    val PauseFilled = PhosphorIcons.Fill.Pause
+    val SkipBackFilled = PhosphorIcons.Fill.SkipBack
+    val SkipForwardFilled = PhosphorIcons.Fill.SkipForward
     val Headphones = PhosphorIcons.Regular.Headphones
     val PaintBrush = PhosphorIcons.Regular.PaintBrush
     val TextAa = PhosphorIcons.Regular.TextAa

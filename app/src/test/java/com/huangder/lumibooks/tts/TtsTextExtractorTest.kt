@@ -57,6 +57,27 @@ class TtsTextExtractorTest {
     }
 
     @Test
+    fun segmentIndexForOffset_findsTheSentenceHoldingTheOffset() {
+        val segments = extractor.splitIntoSegments("第一句。第二句。第三句。", baseCharacterOffset = 10)
+
+        assertEquals(0, extractor.segmentIndexForOffset(segments, 10))
+        assertEquals(0, extractor.segmentIndexForOffset(segments, 13))
+        assertEquals(1, extractor.segmentIndexForOffset(segments, 14))
+        assertEquals(1, extractor.segmentIndexForOffset(segments, 17))
+        assertEquals(2, extractor.segmentIndexForOffset(segments, 18))
+        assertEquals(2, extractor.segmentIndexForOffset(segments, 21))
+    }
+
+    @Test
+    fun segmentIndexForOffset_clampsOutsideTheSegmentRange() {
+        val segments = extractor.splitIntoSegments("第一句。第二句。", baseCharacterOffset = 0)
+
+        assertEquals(0, extractor.segmentIndexForOffset(segments, -5))
+        assertEquals(1, extractor.segmentIndexForOffset(segments, 999))
+        assertEquals(-1, extractor.segmentIndexForOffset(emptyList(), 3))
+    }
+
+    @Test
     fun splitIntoClauses_splitsAtSoftPunctuationAndPreservesOffsets() {
         val segment = TtsTextSegment(
             text = "第一小句，第二小句；第三小句。",

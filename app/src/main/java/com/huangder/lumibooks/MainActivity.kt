@@ -48,6 +48,8 @@ import com.huangder.lumibooks.ui.navigation.Screen
 import com.huangder.lumibooks.ui.home.backfillMissingSourceHashes
 import com.huangder.lumibooks.ui.home.findMatchingAuthorizedBook
 import com.huangder.lumibooks.tts.TtsController
+import com.huangder.lumibooks.tts.TtsPlaybackState
+import com.huangder.lumibooks.service.TtsMediaButtons
 import com.huangder.lumibooks.ui.splash.SplashScreen
 import com.huangder.lumibooks.ui.components.AppUpdateDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
@@ -198,6 +200,14 @@ class MainActivity : ComponentActivity() {
             if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
                 handler(direction)
             }
+            return true
+        }
+        // 部分 ROM / 耳机把媒体按键投递给前台窗口而不是 MediaSession。
+        // 听书进行中时在这里兜底处理；未听书时不拦截，仍交给系统的媒体按键路由。
+        if (TtsMediaButtons.isSupportedEvent(event) &&
+            ttsController.playbackState.value != TtsPlaybackState.IDLE
+        ) {
+            TtsMediaButtons.handle(ttsController, event.keyCode)
             return true
         }
         return super.dispatchKeyEvent(event)

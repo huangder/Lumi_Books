@@ -19,6 +19,18 @@ class ReaderPositionLocatorTest {
     }
 
     @Test
+    fun continuousStartOffsetFollowsTheChapterFraction() {
+        assertEquals(0, continuousStartCharacterOffset(0f, 1_000))
+        assertEquals(500, continuousStartCharacterOffset(0.5f, 1_000))
+        assertEquals(999, continuousStartCharacterOffset(0.9999f, 1_000))
+        // Out-of-range fractions clamp so the offset always addresses a real character.
+        assertEquals(0, continuousStartCharacterOffset(-1f, 1_000))
+        assertEquals(999, continuousStartCharacterOffset(2f, 1_000))
+        assertNull(continuousStartCharacterOffset(0.5f, 0))
+        assertNull(continuousStartCharacterOffset(0.5f, -10))
+    }
+
+    @Test
     fun `round trip preserves paged character anchor`() {
         val locator = ReaderPositionLocator(
             chapterIndex = 4,

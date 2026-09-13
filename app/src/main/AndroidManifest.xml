@@ -273,6 +273,15 @@
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
 
+        <!-- 耳机线控 / 蓝牙媒体按键（Android 12+ 由 MediaSession 指向此接收器） -->
+        <receiver
+            android:name=".service.TtsMediaButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
+
         <receiver
             android:name=".widget.ContinueReadingWidgetProvider"
             android:exported="false"

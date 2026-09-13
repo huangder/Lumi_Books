@@ -518,7 +518,7 @@ fun TtsPlayerPanel(
             ) {
                 IconButton(onClick = onSkipBackward, modifier = Modifier.size(40.dp)) {
                     Icon(
-                        AppIcons.SkipBack,
+                        AppIcons.SkipBackFilled,
                         contentDescription = stringResource(R.string.tts_previous_sentence),
                         tint = readerContentColor
                     )
@@ -537,7 +537,11 @@ fun TtsPlayerPanel(
                         )
                     } else {
                         Icon(
-                            if (playbackState == TtsPlaybackState.PLAYING) AppIcons.Pause else AppIcons.Play,
+                            if (playbackState == TtsPlaybackState.PLAYING) {
+                                AppIcons.PauseFilled
+                            } else {
+                                AppIcons.PlayFilled
+                            },
                             contentDescription = stringResource(
                                 if (playbackState == TtsPlaybackState.PLAYING) R.string.tts_pause else R.string.tts_play
                             ),
@@ -548,7 +552,7 @@ fun TtsPlayerPanel(
 
                 IconButton(onClick = onSkipForward, modifier = Modifier.size(40.dp)) {
                     Icon(
-                        AppIcons.SkipForward,
+                        AppIcons.SkipForwardFilled,
                         contentDescription = stringResource(R.string.tts_next_sentence),
                         tint = readerContentColor
                     )
@@ -559,33 +563,25 @@ fun TtsPlayerPanel(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Text(
-                            text = if (usesAndroidTts &&
-                                speechRateMode == TtsProsodyMode.FOLLOW_ENGINE
-                            ) {
-                                stringResource(R.string.tts_follow_engine_short)
-                            } else {
-                                formatSpeechRate(speechRate)
-                            },
-                            color = readerContentColor,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .clickable(
-                                    indication = null,
-                                    interactionSource = remember { MutableInteractionSource() }
-                                ) {
-                                    if (showRateMenu) {
-                                        hideMenus()
-                                    } else {
-                                        showRateMenu = true
-                                        showPitchMenu = false
-                                        showTimerMenu = false
-                                    }
+                        IconButton(
+                            onClick = {
+                                if (showRateMenu) {
+                                    hideMenus()
+                                } else {
+                                    showRateMenu = true
+                                    showPitchMenu = false
+                                    showTimerMenu = false
                                 }
-                                .padding(horizontal = 8.dp, vertical = 6.dp)
-                        )
+                            },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                AppIcons.Speedometer,
+                                contentDescription = stringResource(R.string.tts_speech_rate),
+                                tint = readerContentColor,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
 
                         if (usesAndroidTts) {
                             Text(
@@ -618,12 +614,9 @@ fun TtsPlayerPanel(
                             )
                         }
 
-                        Text(
-                            text = sleepTimerRemainingMs?.let(::formatSleepTimer)
-                                ?: stringResource(R.string.tts_timer_label),
-                            color = readerContentColor,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
                                 .clickable(
@@ -638,8 +631,24 @@ fun TtsPlayerPanel(
                                         showTimerMenu = true
                                     }
                                 }
-                                .padding(horizontal = 8.dp, vertical = 6.dp)
-                        )
+                                .padding(horizontal = 6.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                AppIcons.Timer,
+                                contentDescription = stringResource(R.string.tts_timer_label),
+                                tint = if (timerActive) AppColors.Accent else readerContentColor,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            // 定时生效时保留倒计时数字，其余情况只显示图标。
+                            sleepTimerRemainingMs?.let { remaining ->
+                                Text(
+                                    text = formatSleepTimer(remaining),
+                                    color = AppColors.Accent,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
                     }
                 }
 

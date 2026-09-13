@@ -87,6 +87,11 @@ class TtsController(
     private var pageTurnSequence = 0L
     private var pendingPageTurn: PendingPageTurn? = null
     private var acknowledgedPageTurn: AcknowledgedPageTurn? = null
+    /**
+     * When false the reader keeps its own position and playback advances on its own. Cleared by a
+     * user page change, restored by a sentence seek or when the user returns to the spoken page.
+     */
+    private var followReaderPageTurns = true
 
     // Sleep timer
     private val _sleepTimerRemainingMs = MutableStateFlow<Long?>(null)
@@ -225,7 +230,8 @@ class TtsController(
         bookId: String,
         source: TtsPageSource,
         startChapter: Int,
-        startPage: Int
+        startPage: Int,
+        startCharacterOffset: Int? = null
     ): Result<Unit> = withContext(Dispatchers.Main.immediate) {
         commandMutex.withLock {
         stopInternal()
@@ -294,13 +300,20 @@ class TtsController(
         pendingResume = resume
         _playbackState.value = TtsPlaybackState.PLAYING
         logTtsEvent("state_changed", state = TtsPlaybackState.PLAYING)
+        val requestedOffset = resume?.characterOffset ?: startCharacterOffset
+        val locatedPage = requestedOffset
+            ?.takeIf { resume == null }
+            ?.let { offset -> locatePageWithFallback(startChapter, offset) }
         val location = resume?.let { TtsPageLocation(it.chapterIndex, it.pageIndex) }
+            ?: locatedPage?.location
             ?: TtsPageLocation(startChapter, startPage)
+        followReaderPageTurns = true
         val moved = moveToPage(
             location = location,
             startAtEnd = false,
             publishLocation = true,
-            startCharacterOffset = resume?.characterOffset
+            startCharacterOffset = resume?.characterOffset,
+            seekCharacterOffset = requestedOffset?.takeIf { resume == null && locatedPage != null }
         )
         if (generation != sessionGeneration) return@withContext Result.success(Unit)
         if (!moved) {
@@ -424,10 +437,16 @@ class TtsController(
                     return@withLock
                 }
                 if (origin != TtsPageChangeOrigin.USER) return@withLock
+                // The reader moved elsewhere while playback was waiting for it. Never block playback.
                 pendingPageTurn = null
-            } else if (origin != TtsPageChangeOrigin.USER) {
+                val canContinue = pending.resumeWhenAcknowledged &&
+                    _playbackState.value == TtsPlaybackState.PLAYING &&
+                    activeUtteranceId == null
+                followReaderPageTurns = false
+                if (canContinue) speakCurrentSegment()
                 return@withLock
             }
+            // Duplicated callbacks from one page animation must not count as user navigation.
             val acknowledged = acknowledgedPageTurn
             if (acknowledged != null) {
                 val withinAnimationWindow = System.nanoTime() - acknowledged.acknowledgedAtNanos <=
@@ -438,6 +457,14 @@ class TtsController(
                 ) return@withLock
                 acknowledgedPageTurn = null
             }
+            // Only the reader confirming a page turn requested by playback may move playback.
+            // Manual page turns and layout callbacks leave the listening position untouched.
+            if (origin != TtsPageChangeOrigin.TTS_FOLLOW) {
+                if (origin == TtsPageChangeOrigin.USER) {
+                    followReaderPageTurns = _currentPage.value?.location == location
+                }
+                return@withLock
+            }
             if (_currentPage.value?.location == location) return@withLock
             if (crossPageMerge?.landingLocation == location) return@withLock
             if (!moveToPage(location, startAtEnd = false, publishLocation = false)) {
@@ -445,6 +472,66 @@ class TtsController(
                 stopInternal()
             }
             }
+        }
+    }
+
+    /**
+     * Jumps playback to [characterOffset] inside [chapterIndex] without moving the reading page.
+     * Used by the double-tap gesture on a sentence.
+     */
+    fun seekTo(chapterIndex: Int, characterOffset: Int) {
+        scope.launch {
+            commandMutex.withLock {
+                val state = _playbackState.value
+                if (state != TtsPlaybackState.PLAYING && state != TtsPlaybackState.PAUSED) {
+                    return@withLock
+                }
+                if (pageSource == null) return@withLock
+                val target = locatePageWithFallback(chapterIndex, characterOffset)
+                    ?: return@withLock
+                followReaderPageTurns = true
+                if (state == TtsPlaybackState.PAUSED) {
+                    _playbackState.value = TtsPlaybackState.PLAYING
+                    logTtsEvent("state_changed", state = TtsPlaybackState.PLAYING)
+                }
+                logTtsEvent(
+                    event = "sentence_seek",
+                    location = target.location,
+                    sentenceOffset = characterOffset
+                )
+                if (!moveToPage(
+                        location = target.location,
+                        startAtEnd = false,
+                        publishLocation = false,
+                        seekCharacterOffset = characterOffset
+                    )
+                ) {
+                    pageContentError?.let(_errors::tryEmit)
+                    stopInternal()
+                }
+            }
+        }
+    }
+
+    private suspend fun locatePageWithFallback(
+        chapterIndex: Int,
+        characterOffset: Int
+    ): TtsPageContent? {
+        val source = pageSource ?: return null
+        val located = try {
+            source.locatePage(chapterIndex, characterOffset)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            pageContentError = error
+            null
+        }
+        if (located != null) return located
+        val current = _currentPage.value
+        return current?.takeIf { page ->
+            page.location.chapterIndex == chapterIndex &&
+                characterOffset in page.startCharacterOffset until
+                (page.startCharacterOffset + page.text.length)
         }
     }
 
@@ -683,7 +770,8 @@ class TtsController(
         location: TtsPageLocation,
         startAtEnd: Boolean,
         publishLocation: Boolean,
-        startCharacterOffset: Int? = null
+        startCharacterOffset: Int? = null,
+        seekCharacterOffset: Int? = null
     ): Boolean {
         val source = pageSource ?: return false
         val token = ++pageLoadToken
@@ -692,6 +780,8 @@ class TtsController(
         resetClausePlayback()
         activeEngine.stop()
         crossPageMerge = null
+        // Any new playback decision supersedes a turn we were still waiting for.
+        pendingPageTurn = null
 
         var target = location
         var selectedPage: TtsPageContent? = null
@@ -726,8 +816,13 @@ class TtsController(
         val sourceLocation = _currentPage.value?.location
         _currentPage.value = page
         segments = selectedSegments
-        sentenceIndex = if (startAtEnd) segments.lastIndex else 0
-        if (publishLocation) {
+        sentenceIndex = when {
+            startAtEnd -> segments.lastIndex
+            seekCharacterOffset != null ->
+                textExtractor.segmentIndexForOffset(segments, seekCharacterOffset).coerceAtLeast(0)
+            else -> 0
+        }
+        if (publishLocation && followReaderPageTurns) {
             val request = TtsPageTurnRequest(
                 bookId = _activeBookId.value ?: return false,
                 sessionId = sessionGeneration,
@@ -1054,6 +1149,7 @@ class TtsController(
         crossPageMerge = null
         pendingPageTurn = null
         acknowledgedPageTurn = null
+        followReaderPageTurns = true
         segments = emptyList()
         sentenceIndex = 0
         _currentPage.value = null
@@ -1106,7 +1202,8 @@ class TtsController(
         callbackOrigin: TtsPageChangeOrigin? = null,
         callbackSource: String? = null,
         requestId: Long? = null,
-        utteranceId: String? = null
+        utteranceId: String? = null,
+        sentenceOffset: Int? = null
     ) {
         DiagnosticLoggerRegistry.logger?.log(
             category = "tts",
@@ -1123,6 +1220,7 @@ class TtsController(
                 callbackSource?.let { put("callbackSource", it) }
                 requestId?.let { put("requestId", it) }
                 utteranceId?.let { put("utteranceId", it) }
+                sentenceOffset?.let { put("sentenceOffset", it) }
                 put("sentenceIndex", sentenceIndex)
             },
             bookId = _activeBookId.value

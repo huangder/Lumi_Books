@@ -101,6 +101,16 @@ class TtsTextExtractor {
     }
 
     /**
+     * Returns the index of the segment that contains [characterOffset]. Offsets that fall inside
+     * skipped whitespace land on the following segment; offsets past the last segment land on it.
+     */
+    fun segmentIndexForOffset(segments: List<TtsTextSegment>, characterOffset: Int): Int {
+        if (segments.isEmpty()) return -1
+        val index = segments.indexOfFirst { characterOffset < it.endCharacterOffset }
+        return if (index >= 0) index else segments.lastIndex
+    }
+
+    /**
      * Splits a logical sentence into subtitle-sized clauses while retaining source offsets.
      * Punctuation stays with the preceding clause and long unpunctuated text is split only at
      * word or grapheme boundaries.
