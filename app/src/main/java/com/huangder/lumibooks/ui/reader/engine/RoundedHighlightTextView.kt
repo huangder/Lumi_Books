@@ -336,7 +336,13 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
     override fun onTextChanged(text: CharSequence?, start: Int, before: Int, count: Int) {
         super.onTextChanged(text, start, before, count)
         if (!internalSelectionMutation) {
-            nativeSelectionSuppressed = false
+            // 🔥 这里不能清掉 nativeSelectionSuppressed。
+            // 外部重新排版（新增/删除高亮后 PageSlotManager 重渲染整页、改字号/主题等）
+            // 会再次 setText，但 setTextIsSelectable(false) 的压制并不会因此解除：
+            // 一旦顺手把标志清成 false，restoreNativeSelectionController() 就再也不会被调用，
+            // TextView 会永久停在 clickable=false、不可选中的状态 —— 表现为长按不再选词、
+            // 点击也不再弹选区菜单，只有父级滑动翻页还生效。
+            // 保持标志，让下一次 ACTION_DOWN 真正恢复系统选区控制器。
             endMagnifierPointerSession()
         }
         updateSelectionHandleOffsets()
