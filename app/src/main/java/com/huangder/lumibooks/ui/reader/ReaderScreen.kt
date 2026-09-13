@@ -92,6 +92,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -7493,12 +7494,23 @@ private fun SelectionMenuOverlay(
         if (isTxtBook && isMenuEnabled(selectionMenuItems, MENU_KEY_REPLACE)) add(stringResource(R.string.menu_replace))
     }
     val actionChipHorizontalPadding = if (isLiquidGlass) 10.dp else 16.dp
+    // chip 实际渲染样式（MenuChip 用 fontSize + 继承的 LocalTextStyle），测量时保持一致
+    val menuChipTextStyle = LocalTextStyle.current.merge(
+        TextStyle(fontSize = SELECTION_MENU_CHIP_FONT_SIZE_SP.sp)
+    )
     fun measuredLabelWidth(label: String): Dp = with(density) {
         textMeasurer.measure(
             text = label,
-            style = TextStyle(fontSize = 13.sp),
+            style = menuChipTextStyle,
             maxLines = 1
         ).size.width.toDp()
+    }
+    fun measuredLabelHeight(label: String): Dp = with(density) {
+        textMeasurer.measure(
+            text = label,
+            style = menuChipTextStyle,
+            maxLines = 1
+        ).size.height.toDp()
     }
     val measuredActionLabelsWidth = actionLabels.fold(0.dp) { width, label ->
         width + measuredLabelWidth(label) + actionChipHorizontalPadding * 2
@@ -7519,6 +7531,16 @@ private fun SelectionMenuOverlay(
         val maxRemoveChipWidth = annotationRemoveLabels.maxOf { measuredLabelWidth(it) + actionChipHorizontalPadding * 2 }
         (182.dp + 12.5.dp + 20.dp + maxRemoveChipWidth).coerceAtMost(maxMenuWidth)
     }
+    // 菜单行高跟随系统字体缩放：固定 52dp 会把大字体下的 chip 文字裁掉下半截
+    val menuChipLabels = buildList {
+        addAll(actionLabels)
+        addAll(annotationRemoveLabels)
+        add(stringResource(R.string.selection_menu_settings))
+        dictionaryAppOptions.forEach { add(it.label) }
+    }
+    val menuRowHeight = selectionMenuRowHeightDp(
+        menuChipLabels.maxOf { measuredLabelHeight(it).value }
+    ).dp
     val desiredActionMenuWidth = maxOf(normalPillWidth, annotationPillWidth)
     val actionMenuWidth = desiredActionMenuWidth.coerceAtMost(maxMenuWidth)
     val colorPickerWidth = (if (isLiquidGlass) 260.dp else 380.dp).coerceAtMost(maxMenuWidth)
@@ -7540,9 +7562,9 @@ private fun SelectionMenuOverlay(
     val menuPillGap = 8.dp
     val menuRowCount = 1 + (if (state.hasHighlight) 1 else 0) + (if (state.hasUnderline) 1 else 0)
     val targetMenuHeight = if (menuMode == SelectionMenuMode.Actions) {
-        52.dp * menuRowCount + menuPillGap * (menuRowCount - 1)
+        menuRowHeight * menuRowCount + menuPillGap * (menuRowCount - 1)
     } else {
-        52.dp
+        menuRowHeight
     }
 
     // Keep the menu within screen bounds; allow horizontal scroll when actions or app names exceed width.
@@ -7610,13 +7632,15 @@ private fun SelectionMenuOverlay(
             modifier = Modifier
                 .offset { IntOffset(menuX.toInt(), menuY.toInt()) }
                 .width(animMenuWidthDp)
-                .height(animMenuHeightDp),
+                // 用 heightIn 而不是固定 height：万一实测行高略大于估算值，菜单也能自然撑开
+                .heightIn(min = animMenuHeightDp),
             contentAlignment = Alignment.Center,
             label = "selectionMenuMode"
         ) { mode ->
             when (mode) {
                 SelectionMenuMode.ColorPicker -> SelectionMenuPill(
                     width = colorPickerWidth,
+                    height = menuRowHeight,
                     reappearKey = reappearKey,
                     menuBg = menuBg,
                     glassBackdrop = glassBackdrop,
@@ -7626,7 +7650,7 @@ private fun SelectionMenuOverlay(
                     Row(
                         modifier = Modifier
                             .horizontalScroll(rememberScrollState())
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                            .padding(horizontal = 12.dp, vertical = SELECTION_MENU_ROW_VERTICAL_PADDING_DP.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
                     ) {
@@ -7648,6 +7672,7 @@ private fun SelectionMenuOverlay(
 
                 SelectionMenuMode.DictionaryApps -> SelectionMenuPill(
                     width = dictionaryMenuWidth,
+                    height = menuRowHeight,
                     reappearKey = reappearKey,
                     menuBg = menuBg,
                     glassBackdrop = glassBackdrop,
@@ -7656,7 +7681,7 @@ private fun SelectionMenuOverlay(
                     Row(
                         modifier = Modifier
                             .horizontalScroll(rememberScrollState())
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                            .padding(horizontal = 10.dp, vertical = SELECTION_MENU_ROW_VERTICAL_PADDING_DP.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         dictionaryAppOptions.forEachIndexed { index, appOption ->
@@ -7668,6 +7693,7 @@ private fun SelectionMenuOverlay(
 
                 SelectionMenuMode.Settings -> SelectionMenuPill(
                     width = colorPickerWidth,
+                    height = menuRowHeight,
                     reappearKey = reappearKey,
                     menuBg = menuBg,
                     glassBackdrop = glassBackdrop,
@@ -7676,7 +7702,7 @@ private fun SelectionMenuOverlay(
                     Row(
                         modifier = Modifier
                             .horizontalScroll(rememberScrollState())
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                            .padding(horizontal = 10.dp, vertical = SELECTION_MENU_ROW_VERTICAL_PADDING_DP.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         MenuChip(stringResource(R.string.selection_menu_settings), menuText) {
@@ -7696,6 +7722,7 @@ private fun SelectionMenuOverlay(
                         if (state.hasHighlight) {
                             SelectionMenuPill(
                                 width = annotationPillWidth,
+                                height = menuRowHeight,
                                 reappearKey = reappearKey,
                                 enterDelayMillis = pillIndex * SELECTION_PILL_STAGGER_MILLIS,
                                 menuBg = menuBg,
@@ -7705,7 +7732,7 @@ private fun SelectionMenuOverlay(
                                 Row(
                                     modifier = Modifier
                                         .horizontalScroll(rememberScrollState())
-                                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                                        .padding(horizontal = 10.dp, vertical = SELECTION_MENU_ROW_VERTICAL_PADDING_DP.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     SelectionAnnotationRow(
@@ -7723,6 +7750,7 @@ private fun SelectionMenuOverlay(
                         if (state.hasUnderline) {
                             SelectionMenuPill(
                                 width = annotationPillWidth,
+                                height = menuRowHeight,
                                 reappearKey = reappearKey,
                                 enterDelayMillis = pillIndex * SELECTION_PILL_STAGGER_MILLIS,
                                 menuBg = menuBg,
@@ -7732,7 +7760,7 @@ private fun SelectionMenuOverlay(
                                 Row(
                                     modifier = Modifier
                                         .horizontalScroll(rememberScrollState())
-                                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                                        .padding(horizontal = 10.dp, vertical = SELECTION_MENU_ROW_VERTICAL_PADDING_DP.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     SelectionAnnotationRow(
@@ -7763,6 +7791,7 @@ private fun SelectionMenuOverlay(
                         }
                         SelectionMenuPill(
                             width = normalPillWidth,
+                            height = menuRowHeight,
                             reappearKey = reappearKey,
                             enterDelayMillis = pillIndex * SELECTION_PILL_STAGGER_MILLIS,
                             menuBg = menuBg,
@@ -7772,7 +7801,7 @@ private fun SelectionMenuOverlay(
                             Row(
                                 modifier = Modifier
                                     .horizontalScroll(rememberScrollState())
-                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                    .padding(horizontal = 10.dp, vertical = SELECTION_MENU_ROW_VERTICAL_PADDING_DP.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 actionItems.forEachIndexed { index, (label, action) ->
@@ -8117,14 +8146,15 @@ private fun MenuDivider(color: Color) {
 @Composable
 private fun MenuChip(label: String, textColor: Color, onClick: () -> Unit) {
     val horizontalPadding = if (LocalAppTheme.current == "liquid_glass" && !LocalEInkMode.current) 10.dp else 16.dp
+    // 字号与 SelectionMenuMetrics 的行高推算共用同一常量，避免菜单高度与文字脱节
     Text(
         text = label,
-        fontSize = 13.sp,
+        fontSize = SELECTION_MENU_CHIP_FONT_SIZE_SP.sp,
         color = textColor,
         modifier = Modifier
             .clip(RoundedCornerShape(16.dp))
             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() }
-            .padding(horizontal = horizontalPadding, vertical = 8.dp)
+            .padding(horizontal = horizontalPadding, vertical = SELECTION_MENU_CHIP_VERTICAL_PADDING_DP.dp)
     )
 }
 
@@ -8132,6 +8162,7 @@ private fun MenuChip(label: String, textColor: Color, onClick: () -> Unit) {
 @Composable
 private fun SelectionMenuPill(
     width: Dp,
+    height: Dp,
     reappearKey: Int,
     menuBg: Color,
     glassBackdrop: Backdrop?,
@@ -8159,7 +8190,8 @@ private fun SelectionMenuPill(
         forceFallback = forceSolidSurface,
         modifier = Modifier
             .width(width)
-            .height(52.dp)
+            // 行高按系统字体缩放推导，避免大字体下 chip 文字被固定高度裁掉
+            .heightIn(min = height)
             .graphicsLayer {
                 scaleX = enterScale.value
                 scaleY = enterScale.value
